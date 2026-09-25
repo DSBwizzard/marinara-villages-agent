@@ -1,0 +1,1733 @@
+import assert from "node:assert/strict";
+import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
+import { proposeHappenings } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
+import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
+import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
+import { proposeWishVerdict } from "../packages/villages/src/engine/packages/server/src/services/villages/wishes.js";
+import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import {
+  readVillageWriting,
+  saveVillageWriting,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
+import {
+  DEFAULT_NARRATION_STYLE,
+  DEFAULT_VILLAGER_REPLY_GUIDANCE,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/narration-style.js";
+import {
+  activeVenueSession,
+  continueVenueWithoutGreeting,
+  endVenueSession,
+  leaveVenueMemoryPending,
+  enterVenue,
+  greetVenue,
+  listVenueVisits,
+  listVenueVisitSummaries,
+  readVenueVisit,
+  pruneVenueVisits,
+  setVenueVisitRetention,
+  backfillVenueMemories,
+  parseVenueReply,
+  resetVenueSessions,
+  sendVenueTurn,
+  touchVenueSession,
+  discardVenueVisitDebug,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+  mutateVillageState,
+  readVillageState,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+import {
+  reconcileVillage,
+  resetVillage,
+  updateVillageVenue,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+
+const records = new Map<string, any>();
+const key = (packageId: string, id: string) => `${packageId}:${id}`;
+let legacyVisits = true;
+const documents = {
+  async getById(packageId: string, id: string) {
+    return records.get(key(packageId, id)) ?? null;
+  },
+  async list(packageId: string, kind: string) {
+    return [...records.values()].filter((row) => row.packageId === packageId && row.kind === kind);
+  },
+  async create(input: any) {
+    const id = key(input.packageId, input.id);
+    if (records.has(id)) throw new Error("already created");
+    const row = {
+      ...input,
+      data: input.kind === "venue-visit" && legacyVisits ? { ...input.data, memoryMode: "end" } : input.data,
+      revision: 1,
+    };
+    records.set(id, row);
+    return row;
+  },
+  async update(input: any) {
+    const id = key(input.packageId, input.id);
+    const old = records.get(id);
+    if (!old || old.revision !== input.expectedRevision) return null;
+    const row = { ...old, ...input, revision: old.revision + 1 };
+    records.set(id, row);
+    return row;
+  },
+  async remove(packageId: string, id: string, expectedRevision: number) {
+    const stored = key(packageId, id);
+    if (records.get(stored)?.revision !== expectedRevision) return false;
+    return records.delete(stored);
+  },
+};
+
+let calls = 0;
+let debugEnabled = false;
+let memoryCalls = 0;
+let failMemoryOnce = false;
+let failMemoryAtCall = -1;
+let saturateMemoryOnce = false;
+let misattributeMemoryOnce = false;
+let holdMemoryOnce = false;
+let signalMemoryStarted: (() => void) | null = null;
+let fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
+let memoryInputChars = 0;
+let memoryOutputChars = 0;
+let wishScanCalls = 0;
+let failWishScanOnce = false;
+let failGreetingOnce = false;
+let holdGreetingOnce = false;
+let greetingStarted: (() => void) | null = null;
+let releaseHeldGreeting: (() => void) | null = null;
+let malformedGreetingOnce = false;
+let failReplyOnce = false;
+let failActReplyOnce = false;
+let narrationOnlyOnce = false;
+let featureProposal: Record<string, string> | null = null;
+let creativeActorIds = ["bob", "tina"];
+let lastVenueSystem = "";
+let lastJudgeSystem = "";
+const memoryEvidence: any[] = [];
+const release = configureVillagesRuntime({
+  logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
+  isDebugAgentsEnabled: () => debugEnabled,
+  getAgentConfig: async () => ({ connectionId: "fixture" }),
+  persistence: { documents },
+  resources: {
+    async listCharacters() {
+      return [];
+    },
+  },
+  languageModels: {
+    async resolveForRequest() {
+      return {
+        model: "fixture",
+        maxOutputTokens: 4096,
+        fitContext(messages: any[], options: any) {
+          const inputChars = messages.reduce((size, message) => size + String(message.content ?? "").length, 0);
+          return {
+            messages,
+            maxTokens: inputChars > fitAnswerBudgetChars ? options.maxTokens - 1 : options.maxTokens,
+          };
+        },
+        async chatComplete(messages: any[], options: any) {
+          calls += 1;
+          const system = String(messages[0]?.content ?? "");
+          const user = String(messages[1]?.content ?? "");
+          if (user.startsWith("The player is already inside"))
+            assert.ok(options.maxTokens <= 1_600, "a brief greeting cannot spend a full-turn output budget");
+          if (system.includes("Distill one venue visit")) {
+            memoryCalls += 1;
+            if (holdMemoryOnce) {
+              holdMemoryOnce = false;
+              signalMemoryStarted?.();
+              await new Promise<void>((_resolve, reject) => {
+                options.signal.addEventListener("abort", () => reject(new Error("memory aborted")), { once: true });
+              });
+            }
+            memoryInputChars += system.length + user.length;
+            const evidence = JSON.parse(user);
+            evidence.evidence = evidence.evidence.map(([lineId, part, role, speaker, text, heardBy]: any[]) => ({
+              lineId,
+              part,
+              role,
+              speaker,
+              text,
+              heardBy,
+            }));
+            memoryEvidence.push(evidence);
+            if (saturateMemoryOnce) {
+              saturateMemoryOnce = false;
+              const content = JSON.stringify({ memories: [], more: true, complete: false });
+              memoryOutputChars += content.length;
+              return { content, finishReason: "length" };
+            }
+            if (memoryCalls === failMemoryAtCall) throw new Error("memory chunk unavailable");
+            if (failMemoryOnce) {
+              failMemoryOnce = false;
+              throw new Error("memory unavailable");
+            }
+            if (misattributeMemoryOnce) {
+              misattributeMemoryOnce = false;
+              const privateLine = evidence.evidence.find(
+                (line: any) => line.heardBy.includes("bob") && !line.heardBy.includes("tina"),
+              );
+              return {
+                content: JSON.stringify({
+                  memories: [
+                    { characterId: "tina", text: "A secret Tina did not hear.", lineIds: [privateLine.lineId] },
+                  ],
+                  complete: true,
+                }),
+                finishReason: "stop",
+              };
+            }
+            const content = JSON.stringify({
+              memories: evidence.evidence.some((line: any) => line.heardBy.includes("tina"))
+                ? [
+                    {
+                      characterId: "tina",
+                      text: "Tina remembers the visit.",
+                      lineIds: [evidence.evidence.find((line: any) => line.heardBy.includes("tina")).lineId],
+                    },
+                  ]
+                : [],
+              complete: true,
+            });
+            memoryOutputChars += content.length;
+            return { content, finishReason: "stop" };
+          }
+          if (system.includes("Find exact, short quotations")) {
+            wishScanCalls += 1;
+            if (failWishScanOnce) {
+              failWishScanOnce = false;
+              throw new Error("wish scan unavailable");
+            }
+            const input = JSON.parse(user);
+            return {
+              content: JSON.stringify({
+                evidence: input.lines
+                  .filter((line: any) => line.content.includes("important detail"))
+                  .map((line: any) => ({ lineId: line.lineId, quote: "important detail" })),
+                complete: true,
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (system.startsWith("Write a brief visual Events update"))
+            return {
+              content: JSON.stringify({
+                happenings: [
+                  {
+                    opportunityId: "opportunity-feature",
+                    kind: "routine",
+                    actorIds: creativeActorIds,
+                    venueId: "park",
+                    narration: "Bob tends the place.",
+                  },
+                ],
+                memory: [],
+                notices: [],
+                featureEdits: featureProposal ? [featureProposal] : [],
+              }),
+              finishReason: "stop",
+            };
+          if (system.includes("You narrate one action")) {
+            const failed = user.includes("tries to: Fail to lift the wall");
+            const lantern = user.includes("tries to: Set down a lantern");
+            const note = user.includes("tries to: Leave a note for Tina");
+            const spill = user.includes("tries to: Spill tea");
+            const window = user.includes("tries to: Open the window");
+            const cleanup = user.includes("tries to: Clean the spill");
+            return {
+              content: JSON.stringify({
+                happened: !failed,
+                narration: failed
+                  ? "The wall is too heavy to lift."
+                  : lantern
+                    ? "The player sets down a lantern."
+                    : note
+                      ? "The player leaves a note for Tina."
+                      : spill
+                        ? "The player spills tea on the floor."
+                        : window
+                          ? "The player opens the window."
+                          : cleanup
+                            ? "The player cleans the spill."
+                            : "The player sets down a cup.",
+                addItem: failed || note || spill || window || cleanup ? "" : lantern ? "lantern" : "cup",
+                removeItem: "",
+                traceKind: note ? "note" : spill ? "stain" : window ? "open-window" : "",
+                traceText: note ? "Meet me by the bridge." : spill ? "a tea stain" : window ? "an open window" : "",
+                recipientId: note ? "tina" : "",
+                resolveTraceId: cleanup ? "trace:spill-action" : "",
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (!system.includes("You write one shared scene")) {
+            lastJudgeSystem = system;
+            assert.match(user, /Has .* really done that/u);
+            return {
+              content: JSON.stringify({
+                fulfilled: true,
+                wishId: "wish-tina",
+                reason: "The deed happened.",
+                memory: "Tina remembers the help.",
+              }),
+              finishReason: "stop",
+            };
+          }
+          lastVenueSystem = system;
+          if (system.includes("Nobody is present."))
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: [],
+                segments: [{ kind: "narration", text: "The empty room stays quiet.", heardBy: [] }],
+              }),
+              finishReason: "stop",
+            };
+          if (user.startsWith("The player is already inside") && failGreetingOnce) {
+            failGreetingOnce = false;
+            throw new Error("greeting unavailable");
+          }
+          if (user.startsWith("The player is already inside") && holdGreetingOnce) {
+            holdGreetingOnce = false;
+            return new Promise((resolve) => {
+              releaseHeldGreeting = () =>
+                resolve({
+                  content: JSON.stringify({
+                    heardPlayerBy: [],
+                    segments: [{ kind: "dialogue", speakerId: "bob", text: "A late hello.", heardBy: ["bob"] }],
+                  }),
+                  finishReason: "stop",
+                });
+              greetingStarted?.();
+            });
+          }
+          if (user.startsWith("The player is already inside") && malformedGreetingOnce) {
+            malformedGreetingOnce = false;
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["outsider"],
+                segments: [
+                  {
+                    kind: "whisper",
+                    speakerId: "tina",
+                    targetId: "unavailable target",
+                    text: "Welcome.",
+                    heardBy: ["outsider"],
+                    expression: "a very long expression that should be bounded rather than fail the visit",
+                  },
+                ],
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (user === "Fail once" && failReplyOnce) {
+            failReplyOnce = false;
+            throw new Error("reply unavailable");
+          }
+          if (user === "Set down a lantern" && failActReplyOnce) {
+            failActReplyOnce = false;
+            throw new Error("action reply unavailable");
+          }
+          if (user === "How are you doing?" && narrationOnlyOnce) {
+            narrationOnlyOnce = false;
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "narration", text: "Tina glanced over.", heardBy: ["bob", "tina"] }],
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (user === "Still no answer")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "narration", text: "No one spoke.", heardBy: ["bob", "tina"] }],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "A lively scene")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [
+                  { kind: "narration", text: "The room quiets.", heardBy: ["bob", "tina"] },
+                  {
+                    kind: "dialogue",
+                    speakerId: "tina",
+                    text: "Did you hear that?",
+                    heardBy: ["bob", "tina"],
+                    expression: "surprised",
+                  },
+                  { kind: "side", speakerId: "bob", text: "I did.", heardBy: ["bob"], expression: "thinking" },
+                  { kind: "whisper", speakerId: "tina", targetId: "bob", text: "Stay close.", heardBy: ["tina"] },
+                ],
+                departures: [],
+                sceneEnded: false,
+              }),
+              finishReason: "stop",
+            };
+          if (
+            [
+              "I fixed the ceiling drip",
+              "I moved the tables",
+              "I tell Bob I moved the tables",
+              "I lift the wall",
+            ].includes(user)
+          ) {
+            const sceneChange =
+              user === "I fixed the ceiling drip"
+                ? {
+                    happened: true,
+                    narration: "The player repaired the ceiling drip.",
+                    conditionBefore: "a ceiling drip",
+                    conditionAfter: "a dry ceiling",
+                    resolveTraceId: "trace:drip",
+                  }
+                : user === "I moved the tables"
+                  ? {
+                      happened: true,
+                      narration: "The player moved the tables aside.",
+                      sceneNote: "The tables stand beside the wall.",
+                    }
+                  : undefined;
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "bob",
+                    text: sceneChange ? "That helps." : "I hear you.",
+                    heardBy: ["bob", "tina"],
+                  },
+                ],
+                ...(sceneChange ? { sceneChange } : {}),
+                ...(system.includes("Also return recap") ? { recap: "Bob and Tina discussed the visit." } : {}),
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (user === "Remember the bridge")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob"],
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "bob",
+                    text: "I will remember your promise about the bridge.",
+                    heardBy: ["bob"],
+                  },
+                ],
+                memories: [
+                  {
+                    characterId: "bob",
+                    text: "The player promised Bob to help with the bridge.",
+                    evidence: ["player", 0],
+                  },
+                  { characterId: "tina", text: "Tina heard a private promise.", evidence: ["player"] },
+                ],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "Bob asks to move") {
+            const quote = "May I move to the empty room?";
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob"],
+                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
+                residenceRequest: { speakerId: "bob", venueId: "empty", quote },
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (user === "Bob says goodbye" || user === "Tina says goodbye") {
+            const speakerId = user.startsWith("Bob") ? "bob" : "tina";
+            const quote = "I am heading out now.";
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: [speakerId],
+                segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
+                departures: [{ speakerId, quote }],
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (user === "Everyone says goodbye") {
+            const quote = "We are all closing up and heading home.";
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
+                sceneEnded: { speakerId: "bob", quote },
+              }),
+              finishReason: "stop",
+            };
+          }
+          const cast = system.match(/The residents currently here are: ([^.]+)\./u)?.[1] ?? "";
+          const hasBob = cast.includes("bob");
+          const speakerId = system.includes("Intended target: tina") ? "tina" : hasBob ? "bob" : "tina";
+          let departures: string[] = [];
+          let sceneEnded = false;
+          let heardBy = hasBob ? ["bob"] : ["tina"];
+          if (user === "Bob heads away") {
+            departures = ["bob"];
+            heardBy = ["bob", "tina"];
+          }
+          if (user === "Tina heads away") departures = ["tina"];
+          if (user === "A natural goodbye") sceneEnded = true;
+          return {
+            content: JSON.stringify({
+              heardPlayerBy: user.startsWith("The player is already inside") ? [] : heardBy,
+              lines: [
+                {
+                  speakerId: user === "Tina heads away" ? "tina" : speakerId,
+                  text: user.startsWith("The player is already inside") ? "Welcome." : `Answer to ${user}`,
+                  heardBy,
+                },
+              ],
+              departures,
+              sceneEnded,
+            }),
+            finishReason: "stop",
+          };
+        },
+      };
+    },
+  },
+} as any);
+
+const now = new Date();
+const dateKey = agendaDateKey(now);
+const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+const venue = (id: string) => ({
+  id,
+  name: id,
+  purpose: "meeting",
+  description: `A quiet meeting place in ${id}.`,
+  category: "public",
+  presentation: { image: null, x: 0.5, y: 0.5 },
+  occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+  capabilities: [],
+  state: { condition: "quiet", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+});
+const card = (id: string) => ({
+  id,
+  revision: 1,
+  sourceStatus: "available",
+  name: id,
+  capturedAt: now.toISOString(),
+  comment: "",
+  summary: "",
+  tags: [],
+  systemPrompt: "",
+  description: "",
+  personality: "",
+  scenario: "",
+  backstory: "",
+  appearance: "",
+  exampleDialogue: "",
+});
+const agenda = (placeId: string, wishes: any[] = []) => ({
+  wishes,
+  routineSummary: "",
+  source: "village",
+  generatedAt: now.toISOString(),
+  day: [{ startMinute: 0, endMinute: 1440, venueId: placeId, activity: "passing the time" }],
+  activeDay: {
+    dateKey,
+    weekday,
+    scheduleInformed: false,
+    blocks: [{ startMinute: 0, endMinute: 1440, venueId: placeId, activity: "passing the time", status: "online" }],
+  },
+});
+
+async function main() {
+  try {
+    assert.equal(
+      readVenueActionResult({
+        happened: true,
+        narration: "The window opens.",
+        traceKind: "open-window",
+        traceText: "an open window",
+      }).traceKind,
+      "open-window",
+      "active traces accept scene kinds beyond notes and stains",
+    );
+    assert.equal(
+      readVenueActionResult({ happened: true, narration: "A note is left.", traceKind: "note", traceText: "For Tina" })
+        .happened,
+      false,
+      "a note without a valid recipient is not falsely committed",
+    );
+    assert.equal(
+      readVenueActionResult({ happened: true, narration: "The stain is gone.", resolveTraceId: "missing" }).happened,
+      false,
+      "cleanup cannot claim to remove a missing trace",
+    );
+    await mutateVillageState((state) => {
+      state.name = "Fixture village";
+      state.setting = "A quiet village";
+      state.venues = [venue("park"), venue("empty")];
+      state.villagers = [
+        {
+          characterId: "bob",
+          cardSnapshot: card("bob"),
+          agenda: agenda("park"),
+          addedAt: now.toISOString(),
+          ingestSchedule: false,
+        },
+        {
+          characterId: "tina",
+          cardSnapshot: card("tina"),
+          agenda: agenda("park", [
+            {
+              id: "wish-tina",
+              wish: "help with a parcel",
+              intensity: 1,
+              tell: "",
+              addedAt: now.toISOString(),
+              expiresAt: "",
+            },
+          ]),
+          addedAt: now.toISOString(),
+          ingestSchedule: false,
+        },
+      ] as any;
+      state.venues[0]!.state.furniture = ["old armchair"];
+    });
+    const features = Array.from({ length: 5 }, (_, index) => ({
+      id: `draft-${index}`,
+      text: `Feature ${index + 1}`,
+      locked: index === 0 || index === 1,
+    }));
+    await updateVillageVenue("park", { workerIds: ["bob"], state: { features } });
+    let park = (await readVillageState()).venues.find((place) => place.id === "park")!;
+    assert.equal(park.state.features?.length, 5);
+    assert.deepEqual(park.state.furniture, ["old armchair"], "ordinary furniture is never squeezed into feature slots");
+    assert.deepEqual(park.workerIds, ["bob"]);
+    await assert.rejects(
+      () => updateVillageVenue("park", { state: { features: [...features, { text: "Sixth" }] } }),
+      /at most five features/u,
+    );
+    await assert.rejects(() => updateVillageVenue("park", { workerIds: ["outsider"] }), /Assign only villagers/u);
+    const lockedId = park.state.features![0]!.id;
+    await updateVillageVenue("park", {
+      state: {
+        features: park.state.features?.map((feature) =>
+          feature.id === lockedId ? { ...feature, text: "Player replaced the first feature", locked: false } : feature,
+        ),
+      },
+    });
+    park = (await readVillageState()).venues.find((place) => place.id === "park")!;
+    assert.equal(park.state.features?.[0]?.id, lockedId, "player edits keep a feature's stable identity");
+    assert.equal(park.state.features?.[0]?.locked, false, "player may unlock a feature");
+    const empty = await enterVenue("empty");
+    assert.equal(empty.status, "active", "an empty visit has a durable session");
+    assert.deepEqual(empty.participants, []);
+    assert.equal(calls, 0);
+    const emptyChat = await sendVenueTurn({
+      sessionId: empty.id,
+      message: "Hello",
+      mode: "chat",
+      targetId: "",
+      submissionId: "empty-chat",
+    });
+    assert.equal(emptyChat.session.lines.at(-1)?.content, "The empty room stays quiet.");
+    assert.equal(calls, 1, "empty Chat uses one scene narration call");
+    const emptyAction = await sendVenueTurn({
+      sessionId: empty.id,
+      message: "Set down a cup",
+      mode: "act",
+      targetId: "",
+      submissionId: "empty-action",
+    });
+    assert.equal(emptyAction.action?.happened, true);
+    assert.equal(emptyAction.session.lines.at(-1)?.content, "The player sets down a cup.");
+    await endVenueSession(empty.id);
+    assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
+    await mutateVillageState((state) => {
+      const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });
+      state.happenings.unshift({
+        id: "legacy-visual-only",
+        kind: "weather",
+        actorIds: [],
+        venueId: "park",
+        dayIndex: moment.dayIndex,
+        clock: moment.dayPhase,
+        occurredAt: moment.instant,
+        timePrecision: "exact",
+        sourceOpportunityId: "old",
+        narration: "LEGACY_EVENT_POISON drip",
+        text: "LEGACY_EVENT_POISON drip",
+      });
+      state.chronicle.unshift({
+        id: "legacy-tick-memory",
+        kind: "tick",
+        scope: "village",
+        actors: [],
+        dayIndex: moment.dayIndex,
+        clock: moment.dayPhase,
+        occurredAt: moment.instant,
+        timePrecision: "exact",
+        text: "LEGACY_EVENT_POISON memory",
+      });
+      state.noticeboard.push({ author: "Buster", text: "LEGACY_EVENT_POISON notice" });
+    });
+    const callsAfterEmpty = calls;
+    let group = (await enterVenue("park"))!;
+    assert.equal(group.status, "opening", "Go inside returns the venue before greeting generation");
+    assert.equal(calls, callsAfterEmpty, "entry itself spends no model call");
+    assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
+    group = await greetVenue(group.id);
+    assert.doesNotMatch(
+      lastVenueSystem,
+      /LEGACY_EVENT_POISON/u,
+      "legacy visual Events, tick memories, and resident notices cannot ground a scene",
+    );
+    assert.ok(
+      (await readVillageState()).happenings.some((entry) => entry.id === "legacy-visual-only"),
+      "the old visual entry remains readable without affecting the scene",
+    );
+    assert.equal((await readVillageWriting()).styleInstructions, DEFAULT_NARRATION_STYLE);
+    assert.match(lastVenueSystem, /Write narration segments.*present tense/u);
+    assert.match(lastVenueSystem, /Address the player as "you"/u);
+    assert.match(lastVenueSystem, /Content rating: SFW/u);
+    assert.match(lastVenueSystem, /## Villager reply guidance/u);
+    assert.deepEqual(coerceVillageState({}).narrationStyle, defaultVillageState().narrationStyle);
+    records.set(key("villages", "villages-narration"), {
+      packageId: "villages",
+      id: "villages-narration",
+      kind: "settings",
+      revision: 1,
+      data: { presetId: "obsolete-preset", voiceGuidance: "LEGACY GUIDANCE", replyLength: "preset" },
+    });
+    await saveVillageWriting({
+      tense: "past",
+      person: "third",
+      rating: "nsfw",
+      styleInstructions: "Plain and dry scene prose.",
+      replyGuidance: "CUSTOM VILLAGER GUIDANCE",
+    });
+    assert.equal((await readVillageWriting()).replyGuidance, "CUSTOM VILLAGER GUIDANCE");
+    await assert.rejects(() => saveVillageWriting({ tense: "future" }), /Choose present or past/u);
+    await assert.rejects(() => resetVenueSessions(), /Finish the active venue conversation/u);
+    assert.deepEqual(group.activeIds, ["bob", "tina"]);
+    assert.equal(calls, callsAfterEmpty + 1, "one opening call writes one shared scene");
+    assert.equal((await activeVenueSession())?.id, group.id, "reload restores the same active visit");
+    await assert.rejects(() => enterVenue("empty"), /Finish the conversation/u);
+
+    const asked = await sendVenueTurn({
+      sessionId: group.id,
+      message: "A quiet question",
+      mode: "ask",
+      targetId: "bob",
+      submissionId: "ask-1",
+    });
+    assert.match(lastVenueSystem, /Plain and dry scene prose/u);
+    assert.match(lastVenueSystem, /Write narration segments.*past tense/u);
+    assert.match(lastVenueSystem, /Refer to the player in scene prose/u);
+    assert.match(lastVenueSystem, /Content rating: NSFW/u);
+    assert.match(lastVenueSystem, /CUSTOM VILLAGER GUIDANCE/u);
+    assert.doesNotMatch(lastVenueSystem, /LEGACY GUIDANCE|obsolete-preset/u);
+    await saveVillageWriting({
+      tense: "present",
+      person: "second",
+      rating: "sfw",
+      styleInstructions: "",
+      replyGuidance: null,
+    });
+    assert.equal((await readVillageWriting()).replyGuidance, DEFAULT_VILLAGER_REPLY_GUIDANCE);
+    assert.equal(asked.session.lines.at(-2)?.heardBy.join(), "bob", "targeting can keep a line from a bystander");
+    assert.equal(asked.session.lines.at(-1)?.speakerId, "bob");
+    assert.ok(
+      asked.session.heardHistory
+        .find((person) => person.characterId === "bob")
+        ?.lineIds.includes(asked.session.lines.at(-2)!.id),
+    );
+    assert.ok(
+      !asked.session.heardHistory
+        .find((person) => person.characterId === "tina")
+        ?.lineIds.includes(asked.session.lines.at(-2)!.id),
+    );
+    await saveVillageWriting({ person: "first" });
+    const lively = await sendVenueTurn({
+      sessionId: group.id,
+      message: "A lively scene",
+      mode: "chat",
+      targetId: "",
+      submissionId: "lively-1",
+    });
+    assert.match(lastVenueSystem, /Use "I" for the player in scene prose/u);
+    assert.match(lastVenueSystem, /Do not invent the player's spoken words, decisions, private thoughts/u);
+    await saveVillageWriting({ person: "second" });
+    const aside = lively.session.lines.find((line) => line.kind === "side")!;
+    const main = lively.session.lines.find((line) => line.id === aside.asideFor)!;
+    assert.equal(main.speakerId, "tina", "side chatter stays attached to the preceding dialogue");
+    assert.equal(aside.speakerId, "bob", "the aside keeps its own speaker");
+    assert.equal(aside.expression, "thinking");
+    assert.deepEqual(aside.heardBy, ["bob"], "a side remark keeps its own audience");
+    assert.deepEqual(lively.session.lines.find((line) => line.kind === "whisper")?.heardBy, ["tina", "bob"]);
+    narrationOnlyOnce = true;
+    const beforeSpeechRetry = calls;
+    const answered = await sendVenueTurn({
+      sessionId: group.id,
+      message: "How are you doing?",
+      mode: "chat",
+      targetId: "tina",
+      submissionId: "speech-retry",
+    });
+    assert.equal(calls - beforeSpeechRetry, 2, "narration-only speech receives one retry");
+    assert.equal(answered.session.lines.at(-1)?.speakerId, "tina");
+    assert.ok(!answered.session.lines.some((line) => line.content === "Tina glanced over."));
+    const beforeNoAnswer = answered.session.lines.length;
+    const beforeDoubleFailure = calls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Still no answer",
+          mode: "ask",
+          targetId: "tina",
+          submissionId: "speech-failure",
+        }),
+      /Nobody answered aloud/u,
+    );
+    assert.equal(calls - beforeDoubleFailure, 2);
+    assert.equal((await activeVenueSession())?.lines.length, beforeNoAnswer, "neither silent attempt is archived");
+    failReplyOnce = true;
+    const beforeFailedSend = (await activeVenueSession())!.lines.length;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Fail once",
+          mode: "chat",
+          targetId: "",
+          submissionId: "retry-once",
+        }),
+      /reply unavailable/u,
+    );
+    assert.equal((await activeVenueSession())?.lines.length, beforeFailedSend, "failed send commits no partial turn");
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Fail once",
+      mode: "chat",
+      targetId: "",
+      submissionId: "retry-once",
+    });
+    assert.equal((await activeVenueSession())?.lines.filter((line) => line.content === "Fail once").length, 1);
+    const beforeAction = calls;
+    const action = await sendVenueTurn({
+      sessionId: group.id,
+      message: "Set down a cup",
+      mode: "act",
+      targetId: "",
+      submissionId: "group-action",
+    });
+    assert.equal(action.action?.happened, true);
+    assert.equal(calls - beforeAction, 2, "an action with villagers uses a check and one shared reply");
+    assert.ok(
+      (await activeVenueSession())?.lines.some((line) => line.content === "The player sets down a cup."),
+      "the checked action outcome appears in the visit",
+    );
+    const beforeFailedAction = calls;
+    const failedAction = await sendVenueTurn({
+      sessionId: group.id,
+      message: "Fail to lift the wall",
+      mode: "act",
+      targetId: "",
+      submissionId: "failed-action",
+    });
+    assert.equal(failedAction.action?.happened, false);
+    assert.equal(calls - beforeFailedAction, 2, "a failed action still gets one shared villager reaction");
+    assert.ok(
+      !(await readVillageState()).venues.find((place) => place.id === "park")?.state.furniture.includes("wall"),
+    );
+    failActReplyOnce = true;
+    const beforeUncertainAction = calls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Set down a lantern",
+          mode: "act",
+          targetId: "",
+          submissionId: "uncertain-action",
+        }),
+      /action reply unavailable/u,
+    );
+    assert.equal(
+      (await readVillageState()).venues
+        .find((place) => place.id === "park")
+        ?.state.furniture.filter((item) => item === "lantern").length,
+      1,
+    );
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Set down a lantern",
+      mode: "act",
+      targetId: "",
+      submissionId: "uncertain-action",
+    });
+    assert.equal(calls - beforeUncertainAction, 3, "retry regenerates only the missing reaction");
+    assert.equal(
+      (await readVillageState()).venues
+        .find((place) => place.id === "park")
+        ?.state.furniture.filter((item) => item === "lantern").length,
+      1,
+      "an uncertain reply never applies the item twice",
+    );
+    for (const [message, submissionId] of [
+      ["Leave a note for Tina", "note-action"],
+      ["Spill tea", "spill-action"],
+      ["Open the window", "window-action"],
+    ]) {
+      await sendVenueTurn({ sessionId: group.id, message, mode: "act", targetId: "", submissionId });
+    }
+    let traces = (await readVillageState()).venues.find((place) => place.id === "park")?.state.traces ?? [];
+    assert.deepEqual(
+      traces.map((trace) => trace.kind),
+      ["note", "stain", "open-window"],
+    );
+    await mutateVillageState((state) => {
+      for (const trace of state.venues.find((place) => place.id === "park")?.state.traces ?? []) {
+        trace.createdAt = new Date(Date.now() - 120_000).toISOString();
+      }
+      state.storyPace = "off";
+    });
+    await reconcileVillage({ now: new Date() });
+    const discovered = await readVillageState();
+    traces = discovered.venues.find((place) => place.id === "park")?.state.traces ?? [];
+    assert.ok(
+      !traces.some((trace) => trace.kind === "note"),
+      "an addressed note resolves after its recipient finds it",
+    );
+    assert.ok(
+      traces.some((trace) => trace.kind === "stain"),
+      "a stain persists after discovery",
+    );
+    assert.ok(
+      traces.some((trace) => trace.kind === "open-window"),
+      "other trace kinds persist after discovery",
+    );
+    assert.ok(
+      discovered.chronicle.some(
+        (entry) => entry.text.includes("Meet me by the bridge.") && entry.actors.some((actor) => actor.id === "tina"),
+      ),
+      "the recipient remembers the found note",
+    );
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Clean the spill",
+      mode: "act",
+      targetId: "",
+      submissionId: "cleanup-action",
+    });
+    traces = (await readVillageState()).venues.find((place) => place.id === "park")?.state.traces ?? [];
+    assert.ok(!traces.some((trace) => trace.kind === "stain"), "cleaning resolves the active stain");
+    assert.ok(
+      traces.some((trace) => trace.kind === "open-window"),
+      "unrelated traces remain",
+    );
+    await mutateVillageState((state) => {
+      const room = state.venues.find((place) => place.id === "park")!;
+      room.state.condition = "a ceiling drip";
+      room.state.traces!.push({
+        id: "trace:drip",
+        kind: "leak",
+        text: "water drips from the ceiling",
+        recipientId: "",
+        createdAt: new Date().toISOString(),
+      });
+    });
+    const beforeChatRepair = calls;
+    const chatRepair = await sendVenueTurn({
+      sessionId: group.id,
+      message: "I fixed the ceiling drip",
+      mode: "chat",
+      targetId: "",
+      submissionId: "chat-repair",
+    });
+    assert.equal(calls - beforeChatRepair, 1, "a Chat repair uses its existing one reply call");
+    assert.equal(chatRepair.recordEvents.filter((event) => event.kind === "venue").length, 1);
+    park = (await readVillageState()).venues.find((place) => place.id === "park")!;
+    assert.equal(park.state.condition, "a dry ceiling");
+    assert.ok(!park.state.traces?.some((trace) => trace.id === "trace:drip"));
+    const beforeRepairReplay = calls;
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "I fixed the ceiling drip",
+      mode: "chat",
+      targetId: "",
+      submissionId: "chat-repair",
+    });
+    assert.equal(calls, beforeRepairReplay, "a repair retry neither regenerates nor reapplies the deed");
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "I moved the tables",
+      mode: "chat",
+      targetId: "",
+      submissionId: "chat-tables",
+    });
+    park = (await readVillageState()).venues.find((place) => place.id === "park")!;
+    assert.equal(
+      park.state.traces?.find((trace) => trace.kind === "scene-note")?.text,
+      "The tables stand beside the wall.",
+    );
+    const beforeClaims = (await readVillageState()).happenings.length;
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "I tell Bob I moved the tables",
+      mode: "chat",
+      targetId: "",
+      submissionId: "chat-claim",
+    });
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "I lift the wall",
+      mode: "chat",
+      targetId: "",
+      submissionId: "chat-impossible",
+    });
+    assert.equal(
+      (await readVillageState()).happenings.length,
+      beforeClaims,
+      "speech about a deed and an impossible attempt create no physical events",
+    );
+    assert.match(lastVenueSystem, /Current condition: a dry ceiling/u);
+    assert.doesNotMatch(lastVenueSystem, /a ceiling drip|water drips from the ceiling/u);
+    assert.ok((await activeVenueSession())!.recap.length <= 600, "long visits keep a bounded recap");
+    assert.ok(
+      lastVenueSystem.split("Recent scene history:\n")[1]!.split("\n\n")[0]!.split("\n").length <= 18,
+      "long visits send only a bounded recent transcript",
+    );
+    const beforeReplay = calls;
+    const replay = await sendVenueTurn({
+      sessionId: group.id,
+      message: "A quiet question",
+      mode: "ask",
+      targetId: "bob",
+      submissionId: "ask-1",
+    });
+    assert.equal(calls, beforeReplay, "retry does not generate a duplicate turn");
+    assert.equal(replay.session.lines.filter((line) => line.content === "A quiet question").length, 1);
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "different",
+          mode: "ask",
+          targetId: "bob",
+          submissionId: "ask-1",
+        }),
+      /different line/u,
+    );
+
+    await mutateVillageState((state) => {
+      state.villagers[0]!.agenda!.activeDay!.blocks[0]!.venueId = "empty";
+      state.villagers[1]!.agenda!.activeDay!.blocks[0]!.venueId = "empty";
+    });
+    assert.deepEqual(
+      (await activeVenueSession())?.activeIds,
+      ["bob", "tina"],
+      "agenda changes do not evict the starting cast",
+    );
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Bob heads away",
+      mode: "chat",
+      targetId: "",
+      submissionId: "leave-bob",
+    });
+    assert.deepEqual(
+      (await activeVenueSession())?.activeIds,
+      ["bob", "tina"],
+      "a narrated departure does not change the cast",
+    );
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Tina heads away",
+      mode: "chat",
+      targetId: "",
+      submissionId: "leave-tina",
+    });
+    assert.deepEqual((await activeVenueSession())?.activeIds, ["bob", "tina"], "the cast stays fixed until exit");
+    await endVenueSession(group.id);
+    assert.equal(await activeVenueSession(), null, "Visit ends only when the player leaves");
+    assert.equal(memoryCalls, 1, "one batched memory call closes a played visit");
+    assert.ok(
+      memoryEvidence[0].evidence.some(
+        (line: any) => line.text.includes("quiet question") && !line.heardBy.includes("tina"),
+      ),
+      "private evidence carries its exact audience",
+    );
+    assert.equal((await listVenueVisits({ characterId: "bob" })).length, 1);
+    assert.equal((await listVenueVisits({ placeId: "park" })).length, 1);
+    assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
+
+    await mutateVillageState((state) => {
+      state.villagers[1]!.agenda!.activeDay!.blocks[0]!.venueId = "park";
+    });
+    const single = await greetVenue((await enterVenue("park"))!.id);
+    assert.deepEqual(single.activeIds, ["tina"]);
+    await mutateVillageState((state) => {
+      state.villagers[0]!.agenda!.activeDay!.blocks[0]!.venueId = "park";
+    });
+    assert.deepEqual((await activeVenueSession())?.activeIds, ["tina"], "later arrival cannot join the current cast");
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: single.id,
+          message: "Hello",
+          mode: "chat",
+          targetId: "bob",
+          submissionId: "wrong-target",
+        }),
+      /no longer in this conversation/u,
+    );
+
+    const beforeFulfill = calls;
+    const fulfilled = await sendVenueTurn({
+      sessionId: single.id,
+      message: "I delivered the parcel",
+      mode: "fulfill",
+      targetId: "tina",
+      submissionId: "wish-1",
+    });
+    assert.equal(calls - beforeFulfill, 2, "Fulfill spends one judgment and one shared reply call");
+    assert.equal(fulfilled.verdict?.fulfilled, true);
+    assert.equal(fulfilled.recordEvents.filter((event) => event.kind === "wish").length, 1);
+    assert.doesNotMatch(lastJudgeSystem, /LEGACY_EVENT_POISON/u, "visual Events are not evidence for a wish verdict");
+    assert.equal(
+      (await readVillageState()).villagers.find((person) => person.characterId === "tina")?.agenda?.wishes.length,
+      0,
+    );
+    const replayFulfill = await sendVenueTurn({
+      sessionId: single.id,
+      message: "I delivered the parcel",
+      mode: "fulfill",
+      targetId: "tina",
+      submissionId: "wish-1",
+    });
+    assert.equal(replayFulfill.verdict?.reason, fulfilled.verdict?.reason);
+    assert.equal(calls - beforeFulfill, 2, "Fulfill retry spends no second judgment");
+
+    await sendVenueTurn({
+      sessionId: single.id,
+      message: "A natural goodbye",
+      mode: "chat",
+      targetId: "",
+      submissionId: "goodbye",
+    });
+    assert.equal((await activeVenueSession())?.id, single.id, "narrated endings do not close the visit");
+    failMemoryOnce = true;
+    await assert.rejects(() => endVenueSession(single.id), /memory unavailable/u);
+    assert.equal((await activeVenueSession())?.id, single.id, "failed closing keeps the scene retryable");
+    const beforeRetry = calls;
+    const closed = await endVenueSession(single.id);
+    assert.equal(closed.status, "closed");
+    assert.equal(calls - beforeRetry, 1, "retry repeats only the failed memory call");
+    assert.equal(closed.lines.filter((line) => line.content === "A natural goodbye").length, 1);
+    assert.equal((await listVenueVisits({ characterId: "bob" })).length, 1);
+    assert.equal((await listVenueVisits({ characterId: "tina" })).length, 2);
+
+    const greetingOnly = await greetVenue((await enterVenue("park"))!.id);
+    const beforeEnd = calls;
+    await endVenueSession(greetingOnly.id);
+    assert.equal(calls, beforeEnd, "greeting-only visit skips memory generation");
+    assert.equal(await activeVenueSession(), null);
+    const manualGroup = await greetVenue((await enterVenue("park"))!.id);
+    assert.deepEqual(manualGroup.activeIds, ["bob", "tina"]);
+    await sendVenueTurn({
+      sessionId: manualGroup.id,
+      message: "An ordinary chat",
+      mode: "chat",
+      targetId: "",
+      submissionId: "manual-chat",
+    });
+    const beforeManualEnd = memoryCalls;
+    await endVenueSession(manualGroup.id);
+    assert.equal(memoryCalls - beforeManualEnd, 1, "the player can end a group chat with one batched memory call");
+    assert.equal(await activeVenueSession(), null);
+    assert.deepEqual(
+      parseVenueReply({ heardPlayerBy: ["bob"], lines: [], departures: [], sceneEnded: false }, ["tina"]).heardPlayerBy,
+      [],
+      "unavailable audience hints are ignored",
+    );
+    failGreetingOnce = true;
+    const delayed = (await enterVenue("park"))!;
+    await assert.rejects(() => greetVenue(delayed.id), /greeting unavailable/u);
+    assert.equal(
+      (await activeVenueSession())?.status,
+      "opening",
+      "failed greeting keeps the player in a retryable venue",
+    );
+    const greeted = await greetVenue(delayed.id);
+    assert.equal(greeted.status, "active");
+    assert.equal(greeted.lines.length, 1, "greeting retry stores one opening line");
+    await endVenueSession(delayed.id);
+    holdGreetingOnce = true;
+    const bypassed = await enterVenue("park");
+    const started = new Promise<void>((resolve) => {
+      greetingStarted = resolve;
+    });
+    const pendingGreeting = greetVenue(bypassed.id);
+    await started;
+    const continued = await continueVenueWithoutGreeting(bypassed.id);
+    assert.equal(continued.status, "active", "the player may speak after a failed or stalled greeting");
+    assert.deepEqual(continued.lines, [], "continuing does not invent a villager line");
+    await assert.rejects(pendingGreeting, /aborted/u);
+    releaseHeldGreeting?.();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal((await activeVenueSession())?.lines.length, 0, "a late greeting cannot enter the transcript");
+    const firstLine = await sendVenueTurn({
+      sessionId: bypassed.id,
+      message: "Hello first",
+      mode: "chat",
+      targetId: "",
+      submissionId: "after-bypass",
+    });
+    assert.equal(firstLine.session.submissions.length, 1, "conversation works after continuing without a greeting");
+    await endVenueSession(bypassed.id);
+    greetingStarted = null;
+    releaseHeldGreeting = null;
+    malformedGreetingOnce = true;
+    const malformed = await greetVenue((await enterVenue("park")).id);
+    assert.equal(malformed.status, "active", "optional malformed target and expression do not break first greeting");
+    assert.equal(malformed.lines[0]?.kind, "dialogue", "unavailable whisper target becomes ordinary speech");
+    assert.ok((malformed.lines[0]?.expression?.length ?? 0) <= 40, "expression is bounded");
+    assert.deepEqual(malformed.lines[0]?.heardBy, ["tina"], "unavailable audience is not admitted to the cast");
+    await endVenueSession(malformed.id);
+    const scene = parseVenueReply(
+      {
+        heardPlayerBy: ["bob"],
+        segments: [
+          { kind: "narration", text: "A bell rings." },
+          { kind: "dialogue", speakerId: "bob", text: "Listen.", heardBy: ["bob", "tina"] },
+          { kind: "side", speakerId: "tina", text: "I heard it.", heardBy: ["tina"] },
+        ],
+        departures: [],
+        sceneEnded: false,
+      },
+      ["bob", "tina"],
+    );
+    assert.equal(scene.lines[2]?.anchorIndex, 1);
+    assert.throws(
+      () =>
+        parseVenueReply(
+          {
+            heardPlayerBy: [],
+            segments: [{ kind: "dialogue", speakerId: "outsider", text: "No.", heardBy: [] }],
+            departures: [],
+            sceneEnded: false,
+          },
+          ["bob"],
+        ),
+      /unreadable speaker/u,
+    );
+    assert.throws(
+      () =>
+        parseVenueReply(
+          {
+            heardPlayerBy: [],
+            segments: [{ kind: "side", speakerId: "bob", text: "No.", heardBy: ["bob"] }],
+            departures: [],
+            sceneEnded: false,
+          },
+          ["bob"],
+        ),
+      /without a main line/u,
+    );
+    const featureVenue = (await readVillageState()).venues.find((place) => place.id === "park")!;
+    const featureMoment = deriveVillageMoment({
+      foundedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      seed: "feature-fixture",
+      now: new Date(),
+    });
+    const featureContext = () => ({
+      village: "Fixture village",
+      setting: "A quiet village",
+      moment: featureMoment,
+      foundedAt: new Date(Date.now() - 86_400_000).toISOString(),
+      residents: ["bob", "tina"].map((id) => ({
+        characterId: id,
+        name: id,
+        summary: "",
+        tags: [],
+        doing: "at the park",
+        status: "online",
+        routine: "",
+        week: [],
+        today: [],
+        agenda: null,
+        remembered: [],
+      })),
+      recent: [],
+      memory: [],
+      noticeboard: [],
+      venues: [featureVenue],
+      pendingVenueNames: [],
+      opportunities: [
+        {
+          id: "opportunity-feature",
+          kind: "routine",
+          startsAt: featureMoment.instant,
+          endsAt: featureMoment.instant,
+          actorIds: creativeActorIds,
+          venueId: "park",
+          facts: [],
+        },
+      ],
+      lastSimulatedAt: featureMoment.instant,
+      forced: false,
+    });
+    const unlockedFeatureId = featureVenue.state.features![0]!.id;
+    featureProposal = { who: "bob", venueId: "park", featureId: unlockedFeatureId, text: "Bob repainted the wall" };
+    const visualProposal = await proposeHappenings(featureContext() as any);
+    assert.equal(visualProposal.happenings.length, 1);
+    assert.deepEqual(visualProposal.featureEdits, [], "visual Events cannot edit venue features");
+    assert.deepEqual(visualProposal.memory, [], "visual Events cannot create memory");
+    creativeActorIds = ["tina"];
+    featureProposal = null;
+    const privateVisit = await enterVenue("park");
+    const privateRecord = records.get(key("villages", `villages-venue-visit-${privateVisit.id}`));
+    privateRecord.data.status = "active";
+    privateRecord.data.participants = [
+      { characterId: "bob", name: "Bob", doing: "listening" },
+      { characterId: "tina", name: "Tina", doing: "listening" },
+    ];
+    privateRecord.data.activeIds = ["bob", "tina"];
+    privateRecord.data.lines = [
+      {
+        id: "bob-secret",
+        speakerId: "",
+        name: "Player",
+        role: "user",
+        content: "A private secret for Bob.",
+        at: new Date().toISOString(),
+        heardBy: ["bob"],
+      },
+      {
+        id: "tina-public",
+        speakerId: "",
+        name: "Player",
+        role: "user",
+        content: "Hello Tina.",
+        at: new Date().toISOString(),
+        heardBy: ["tina"],
+      },
+    ];
+    privateRecord.data.heardHistory = [
+      { characterId: "bob", lineIds: ["bob-secret"] },
+      { characterId: "tina", lineIds: ["tina-public"] },
+    ];
+    misattributeMemoryOnce = true;
+    await assert.rejects(
+      () => endVenueSession(privateVisit.id),
+      /could not be remembered/u,
+      "a memory cannot cite a line its villager did not hear",
+    );
+    await endVenueSession(privateVisit.id);
+    const compactVisit = await enterVenue("park");
+    const compactRecord = records.get(key("villages", `villages-venue-visit-${compactVisit.id}`));
+    compactRecord.data.status = "active";
+    compactRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
+    compactRecord.data.activeIds = ["tina"];
+    compactRecord.data.lines = Array.from({ length: 105 }, (_, index) => ({
+      id: `compact-${index}`,
+      speakerId: "",
+      name: "Player",
+      role: "user",
+      content: `Short line ${index}.`,
+      at: new Date().toISOString(),
+      heardBy: ["tina"],
+    }));
+    compactRecord.data.heardHistory = [
+      { characterId: "tina", lineIds: compactRecord.data.lines.map((line: any) => line.id) },
+    ];
+    const beforeCompactCalls = memoryCalls;
+    await endVenueSession(compactVisit.id);
+    assert.equal(memoryCalls - beforeCompactCalls, 1, "105 short lines fit one memory call");
+    const fitVisit = await enterVenue("park");
+    const fitRecord = records.get(key("villages", `villages-venue-visit-${fitVisit.id}`));
+    fitRecord.data.status = "active";
+    fitRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
+    fitRecord.data.activeIds = ["tina"];
+    fitRecord.data.lines = Array.from({ length: 20 }, (_, index) => ({
+      id: `fit-${index}`,
+      speakerId: "",
+      name: "Player",
+      role: "user",
+      content: `Detail ${index}: ${"substantial context ".repeat(12)}`,
+      at: new Date().toISOString(),
+      heardBy: ["tina"],
+    }));
+    fitRecord.data.heardHistory = [{ characterId: "tina", lineIds: fitRecord.data.lines.map((line: any) => line.id) }];
+    fitAnswerBudgetChars = 3_000;
+    const beforeFitCalls = memoryCalls;
+    const beforeFitEvidence = memoryEvidence.length;
+    await endVenueSession(fitVisit.id);
+    fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
+    assert.ok(memoryCalls - beforeFitCalls > 1, "reduced answer room forces smaller chunks");
+    assert.ok(memoryCalls - beforeFitCalls < 20, "fitting still batches multiple lines per call");
+    assert.equal(
+      new Set(memoryEvidence.slice(beforeFitEvidence).flatMap((call) => call.evidence.map((line: any) => line.lineId)))
+        .size,
+      20,
+      "every line is scanned after fitting the answer budget",
+    );
+    const heldVisit = await enterVenue("park");
+    const heldRecord = records.get(key("villages", `villages-venue-visit-${heldVisit.id}`));
+    heldRecord.data.status = "active";
+    heldRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
+    heldRecord.data.activeIds = ["tina"];
+    heldRecord.data.lines = [
+      {
+        id: "held-line",
+        speakerId: "",
+        name: "Player",
+        role: "user",
+        content: "Remember the bridge plan.",
+        at: new Date().toISOString(),
+        heardBy: ["tina"],
+      },
+    ];
+    heldRecord.data.heardHistory = [{ characterId: "tina", lineIds: ["held-line"] }];
+    const memoryStarted = new Promise<void>((resolve) => {
+      signalMemoryStarted = resolve;
+    });
+    holdMemoryOnce = true;
+    const ending = endVenueSession(heldVisit.id);
+    await memoryStarted;
+    const leftWhileSaving = await leaveVenueMemoryPending(heldVisit.id);
+    assert.equal(leftWhileSaving.memoryPending, true);
+    assert.equal(await activeVenueSession(), null, "leaving pending releases the room during a model call");
+    await assert.rejects(ending, /memory aborted/u);
+    assert.equal((await readVenueVisit(heldVisit.id)).lines.length, 1, "cancellation retains the exact transcript");
+    signalMemoryStarted = null;
+    const retried = await endVenueSession(heldVisit.id);
+    assert.equal(retried.memoryPending, false, "a canceled visit can be filed from the archive");
+    // A 100-plus-line archive with an exceptional line exercises chunk fitting,
+    // saturation, persisted progress, pending exit, retry and exact evidence coverage.
+    const longVisit = await enterVenue("park");
+    const longLine = `Early important detail: ${"details ".repeat(900)} late detail.`;
+    const longRecord = records.get(key("villages", `villages-venue-visit-${longVisit.id}`));
+    assert.ok(longRecord);
+    longRecord.data.status = "active";
+    longRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
+    longRecord.data.activeIds = ["tina"];
+    longRecord.data.lines = Array.from({ length: 112 }, (_, index) => ({
+      id: `long-${index}`,
+      speakerId: "",
+      name: "Player",
+      role: "user",
+      content:
+        index === 0
+          ? longLine
+          : index === 111
+            ? "Late important detail: the bridge was finished."
+            : `Conversation line ${index}: ${"ordinary talk ".repeat(8)}`,
+      at: new Date().toISOString(),
+      heardBy: ["tina"],
+    }));
+    longRecord.data.heardHistory = [
+      { characterId: "tina", lineIds: longRecord.data.lines.map((line: any) => line.id) },
+    ];
+    const beforeLongCalls = memoryCalls;
+    const beforeLongInput = memoryInputChars;
+    const beforeLongOutput = memoryOutputChars;
+    const beforeLongEvidence = memoryEvidence.length;
+    saturateMemoryOnce = true;
+    failMemoryAtCall = memoryCalls + 3;
+    await assert.rejects(() => endVenueSession(longVisit.id), /memory chunk unavailable/u);
+    const interrupted = await activeVenueSession();
+    assert.ok(interrupted?.memoryProgress?.nextUnit, "completed chunks are checkpointed");
+    const pending = await leaveVenueMemoryPending(longVisit.id);
+    assert.equal(pending.memoryPending, true);
+    assert.equal(await activeVenueSession(), null);
+    assert.equal((await readVenueVisit(longVisit.id)).lines.length, 112);
+    await setVenueVisitRetention({ mode: "count", value: 1 });
+    assert.equal((await readVenueVisit(longVisit.id)).memoryPending, true, "automatic cleanup skips pending visits");
+    failMemoryAtCall = -1;
+    const filed = await endVenueSession(longVisit.id);
+    assert.equal(filed.memoryPending, false);
+    assert.equal(
+      filed.memoryProgress?.nextUnit,
+      Math.ceil(longLine.length / 2_400) + 111,
+      "all split line pieces were scanned",
+    );
+    const scanned = memoryEvidence.slice(beforeLongEvidence).flatMap((call) => call.evidence);
+    assert.equal(
+      [
+        ...new Map(
+          scanned.filter((part: any) => part.lineId === "long-0").map((part: any) => [part.part, part.text]),
+        ).entries(),
+      ]
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+        .map((entry) => entry[1])
+        .join(""),
+      longLine,
+    );
+    assert.ok(
+      scanned.some((part: any) => part.lineId === "long-111"),
+      "the late important line was scanned",
+    );
+    assert.ok(memoryCalls - beforeLongCalls > 2, "long visits use bounded chunks and retry only unfinished work");
+    assert.ok(
+      memoryInputChars > beforeLongInput && memoryOutputChars > beforeLongOutput,
+      "fixture records input and output cost",
+    );
+    const archivePage = await listVenueVisitSummaries({ limit: 1 });
+    assert.equal(archivePage.visits[0]?.lineCount, 112);
+    assert.equal(archivePage.total, 1, "archive pagination reports the filtered total");
+    const selected = selectPromptMemories((await readVillageState()).chronicle, ["tina"], "bridge", 600);
+    assert.ok(selected.reduce((size, entry) => size + entry.text.length + 24, 0) <= 2_400);
+    assert.ok(
+      selected.every((entry) => entry.scope === "village" || entry.actors.some((actor) => actor.id === "tina")),
+    );
+    const beforeWishScan = wishScanCalls;
+    const wishContext = {
+      village: "Fixture village",
+      setting: "A village",
+      moment: deriveVillageMoment({
+        foundedAt: new Date(Date.now() - 86_400_000).toISOString(),
+        seed: "wish-fixture",
+        now: new Date(),
+      }),
+      card: { id: "tina", name: "Tina", description: "A resident", personality: "Careful" },
+      playerName: "Player",
+      playerDescription: "A visitor",
+      wishes: [{ id: "wish-tina", wish: "Finish the bridge", tell: "the bridge", intensity: 2 }],
+      claim: "I finished the bridge",
+      transcript: longRecord.data.lines.map((line: any) => ({ role: line.role, content: line.content, at: line.at })),
+      happenings: [{ text: "The bridge was finished." }],
+      memory: [],
+    } as any;
+    const longWish = await proposeWishVerdict(wishContext);
+    assert.equal(longWish.verdict.fulfilled, true);
+    assert.ok(wishScanCalls - beforeWishScan > 1, "long Fulfill scans the complete transcript in bounded batches");
+    assert.match(lastJudgeSystem, /\[L1\].*important detail/u);
+    assert.match(lastJudgeSystem, /\[L112\].*important detail/u);
+    failWishScanOnce = true;
+    const failedWish = await proposeWishVerdict(wishContext);
+    assert.equal(failedWish.verdict.fulfilled, false, "a failed long scan cannot fulfill a wish");
+    const longMemoryId = `${longVisit.id}:memory:0`;
+    await mutateVillageState((state) => {
+      state.chronicle = state.chronicle.filter((entry) => entry.id !== longMemoryId);
+      state.visitMemoryBackfilled = false; // Simulate an older archive awaiting its one-time migration.
+    });
+    await backfillVenueMemories();
+    await backfillVenueMemories();
+    assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === longMemoryId).length, 1);
+    console.log(
+      `long-visit cost: ${memoryCalls - beforeLongCalls} calls, ~${Math.ceil((memoryInputChars - beforeLongInput) / 4)} input tokens, ~${Math.ceil((memoryOutputChars - beforeLongOutput) / 4)} output tokens`,
+    );
+    records.get(key("villages", `villages-venue-visit-${longVisit.id}`)).data.endedAt = new Date(
+      Date.now() - 40 * 86_400_000,
+    ).toISOString();
+    await setVenueVisitRetention({ mode: "days", value: 30 });
+    await pruneVenueVisits();
+    await assert.rejects(() => readVenueVisit(longVisit.id), /no longer available/u);
+    assert.equal(
+      (await readVillageState()).chronicle.filter((entry) => entry.id === longMemoryId).length,
+      1,
+      "retiring a transcript never deletes its filed memory",
+    );
+    await mutateVillageState((state) => {
+      state.chronicle = state.chronicle.filter((entry) => entry.id !== longMemoryId);
+    });
+    await backfillVenueMemories();
+    assert.equal(
+      (await readVillageState()).chronicle.filter((entry) => entry.id === longMemoryId).length,
+      0,
+      "a player-deleted memory is not resurrected by archive migration",
+    );
+    await setVenueVisitRetention({ mode: "forever", value: 0 });
+    await resetVenueSessions();
+    assert.equal((await listVenueVisits()).length, 0, "starting a new village clears the previous visit archive");
+    legacyVisits = false;
+    await mutateVillageState((state) => {
+      state.residences = [];
+      for (const resident of state.villagers.slice(0, 2))
+        if (resident.agenda?.activeDay?.blocks[0]) resident.agenda.activeDay.blocks[0].venueId = "park";
+    });
+    const current = await greetVenue((await enterVenue("park")).id);
+    assert.deepEqual(current.activeIds, ["bob", "tina"]);
+    const beforeTurnMemory = memoryCalls;
+    const remembered = await sendVenueTurn({
+      sessionId: current.id,
+      message: "Remember the bridge",
+      mode: "chat",
+      targetId: "bob",
+      submissionId: "turn-memory",
+    });
+    assert.equal(memoryCalls, beforeTurnMemory, "new visits form memories in the existing reply call");
+    assert.equal(remembered.recordEvents.filter((event) => event.kind === "memory").length, 1);
+    const memoryId = `${current.id}:turn:turn-memory:memory:bob`;
+    assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
+    const requestedMove = await sendVenueTurn({
+      sessionId: current.id,
+      message: "Bob asks to move",
+      mode: "chat",
+      targetId: "",
+      submissionId: "bob-move",
+    });
+    assert.equal(
+      requestedMove.recordEvents.filter((event) => event.kind === "request").length,
+      1,
+      "verified villager requests have a notice receipt",
+    );
+    assert.equal(
+      (await readVillageState()).chronicle.filter((entry) => entry.id.includes("memory:tina")).length,
+      0,
+      "unheard evidence cannot become Tina's memory",
+    );
+    const replayRemembered = await sendVenueTurn({
+      sessionId: current.id,
+      message: "Remember the bridge",
+      mode: "chat",
+      targetId: "bob",
+      submissionId: "turn-memory",
+    });
+    assert.deepEqual(replayRemembered.recordEvents, remembered.recordEvents, "retry returns stable notice IDs");
+    assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
+    await assert.rejects(
+      () => discardVenueVisitDebug(current.id),
+      /debug action is unavailable/u,
+      "DEBUG discard is gated on the server",
+    );
+    const departedBob = await sendVenueTurn({
+      sessionId: current.id,
+      message: "Bob says goodbye",
+      mode: "chat",
+      targetId: "",
+      submissionId: "departure-bob",
+    });
+    assert.deepEqual(departedBob.session.activeIds, ["tina"]);
+    const departedTina = await sendVenueTurn({
+      sessionId: current.id,
+      message: "Tina says goodbye",
+      mode: "chat",
+      targetId: "",
+      submissionId: "departure-tina",
+    });
+    assert.equal(departedTina.session.status, "closed");
+    assert.equal(departedTina.session.endReason, "scene");
+    assert.equal(await activeVenueSession(), null);
+    assert.equal(memoryCalls, beforeTurnMemory, "new visits do not run an end-of-visit memory pass");
+
+    const natural = await greetVenue((await enterVenue("park")).id);
+    const naturalEnding = await sendVenueTurn({
+      sessionId: natural.id,
+      message: "Everyone says goodbye",
+      mode: "chat",
+      targetId: "",
+      submissionId: "scene-goodbye",
+    });
+    assert.equal(naturalEnding.session.status, "closed", "an evidenced whole-scene goodbye closes the visit");
+    assert.equal(naturalEnding.session.endReason, "scene");
+
+    const timed = await greetVenue((await enterVenue("park")).id);
+    await sendVenueTurn({
+      sessionId: timed.id,
+      message: "An ordinary chat",
+      mode: "chat",
+      targetId: "",
+      submissionId: "timed-line",
+    });
+    const timedRecord = records.get(key("villages", `villages-venue-visit-${timed.id}`));
+    timedRecord.data.lastActivityAt = new Date(Date.now() - 15 * 60_000).toISOString();
+    assert.equal((await activeVenueSession())?.id, timed.id, "15 minutes restores the live scene");
+    await touchVenueSession(timed.id);
+    const refreshedTimedRecord = records.get(key("villages", `villages-venue-visit-${timed.id}`));
+    assert.ok(
+      Date.now() - Date.parse(refreshedTimedRecord.data.lastActivityAt) < 10_000,
+      "deliberate activity extends the scene",
+    );
+    refreshedTimedRecord.data.lastActivityAt = new Date(Date.now() - 45 * 60_000).toISOString();
+    assert.equal(await activeVenueSession(), null, "a 45-minute return opens at the map on any device");
+    const interruptedVisit = await readVenueVisit(timed.id);
+    assert.equal(interruptedVisit.endReason, "inactivity");
+    assert.equal(
+      (await listVenueVisitSummaries({ placeId: "park" })).visits.find((visit) => visit.id === timed.id)?.endReason,
+      "inactivity",
+      "the archive summary exposes the exact ending reason",
+    );
+    assert.equal(
+      interruptedVisit.lines.filter((line) => line.role === "user").length,
+      1,
+      "played lines survive interruption",
+    );
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: timed.id,
+          message: "Stale Send",
+          mode: "chat",
+          targetId: "",
+          submissionId: "stale-send",
+        }),
+      /Interrupted: Inactivity/u,
+    );
+    assert.equal((await readVenueVisit(timed.id)).lines.filter((line) => line.role === "user").length, 1);
+    const staleDesktop = await greetVenue((await enterVenue("park")).id);
+    await sendVenueTurn({
+      sessionId: staleDesktop.id,
+      message: "An ordinary chat",
+      mode: "chat",
+      targetId: "",
+      submissionId: "desktop-line",
+    });
+    records.get(key("villages", `villages-venue-visit-${staleDesktop.id}`)).data.lastActivityAt = new Date(
+      Date.now() - 50 * 60_000,
+    ).toISOString();
+    await assert.rejects(
+      () => touchVenueSession(staleDesktop.id),
+      /Interrupted: Inactivity/u,
+      "the first desktop interaction after 50 minutes cannot revive the scene",
+    );
+    assert.equal((await readVenueVisit(staleDesktop.id)).endReason, "inactivity");
+    const unplayed = await enterVenue("empty");
+    records.get(key("villages", `villages-venue-visit-${unplayed.id}`)).data.lastActivityAt = new Date(
+      Date.now() - 50 * 60_000,
+    ).toISOString();
+    assert.equal(await activeVenueSession(), null, "a 50-minute return clears an unplayed scene");
+    await assert.rejects(() => readVenueVisit(unplayed.id), /no longer available/u, "greeting-only visits are dropped");
+    const debugVisit = await greetVenue((await enterVenue("park")).id);
+    await sendVenueTurn({
+      sessionId: debugVisit.id,
+      message: "Remember the bridge",
+      mode: "chat",
+      targetId: "bob",
+      submissionId: "debug-memory",
+    });
+    const keptMemoryId = `${debugVisit.id}:turn:debug-memory:memory:bob`;
+    debugEnabled = true;
+    await discardVenueVisitDebug(debugVisit.id);
+    debugEnabled = false;
+    assert.equal(await activeVenueSession(), null);
+    await assert.rejects(
+      () => readVenueVisit(debugVisit.id),
+      /no longer available/u,
+      "DEBUG discard removes its transcript",
+    );
+    assert.ok(
+      (await readVillageState()).chronicle.some((entry) => entry.id === keptMemoryId),
+      "DEBUG discard keeps committed memories",
+    );
+    await saveVillageWriting({ styleInstructions: "An old village's style" });
+    await resetVillage();
+    assert.deepEqual((await readVillageState()).narrationStyle, defaultVillageState().narrationStyle);
+    console.log("villages-venue-session: ok");
+  } finally {
+    release();
+  }
+}
+
+void main();

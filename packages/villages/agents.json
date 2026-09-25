@@ -1,0 +1,21 @@
+[
+  {
+    "id": "villages",
+    "name": "Villages",
+    "description": "A text-first slice-of-life village that reconstructs elapsed life when you return.",
+    "author": "Pasta Devs",
+    "phase": "pre_generation",
+    "enabledByDefault": false,
+    "category": "misc",
+    "runtimeDisabled": false,
+    "modeAllowlist": [
+      "conversation",
+      "roleplay",
+      "game"
+    ],
+    "defaultTools": [],
+    "defaultSettings": {},
+    "defaultPromptTemplate": "",
+    "execution": "feature"
+  }
+]

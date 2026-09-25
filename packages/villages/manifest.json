@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "capabilityApi": {
+    "major": 1,
+    "minor": 14
+  },
+  "builtAgainst": {
+    "engineVersion": "2.4.6",
+    "engineCommit": "e0313a33caef973e645616419d11894f4d8c434e"
+  },
+  "id": "villages",
+  "name": "Villages",
+  "version": "0.6.20",
+  "description": "A text-first slice-of-life village that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
+  "engine": {
+    "min": "2.4.6",
+    "maxExclusive": "4.0.0"
+  },
+  "kind": [
+    "agent"
+  ],
+  "entrypoints": {
+    "agents": "agents.json",
+    "server": "server.mjs",
+    "client": "client.js"
+  },
+  "contributions": {
+    "slots": [
+      "home-browser-tab",
+      "roleplay-tracker",
+      "tracker-panel"
+    ],
+    "homeBrowserTab": {
+      "label": "Villages",
+      "ariaLabel": "Open Villages",
+      "iconPaths": [
+        "villages-icon.png"
+      ]
+    }
+  },
+  "files": [
+    {
+      "path": "agents.json",
+      "sha256": "dc302de432bc5f1fd072e67438f7ddb14fdcfb3fd73a04f0c8b658c69443b9de",
+      "bytes": 501
+    },
+    {
+      "path": "server.mjs",
+      "sha256": "0fd75556e35f9aece22cdc640fff4c83c6f4ca5b712f3ccf49e624968e8a558b",
+      "bytes": 248001
+    },
+    {
+      "path": "client.js",
+      "sha256": "54f249c0b5d94769e7a57d3a9788160ccd6c75c88fe867305a6c9ab2bb277d56",
+      "bytes": 580349
+    },
+    {
+      "path": "villages-icon.png",
+      "sha256": "e45351b98093012f0932fe265d0c6943043bdeb89240d46657bf01d52a4a1cc4",
+      "bytes": 4383
+    }
+  ],
+  "permissions": [
+    "network",
+    "routes",
+    "storage",
+    "ui",
+    "chat-read",
+    "chat-write"
+  ],
+  "restartRequired": true
+}
