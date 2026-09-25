@@ -2,3 +2,5 @@ node_modules/
 /.build-tmp/
 /catalog/
 /marinara-villages/
+DEVELOPMENT.md
+scripts/sideload-villages.mjs
