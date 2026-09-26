@@ -32,9 +32,10 @@ import { readVillageVisualLore } from "./lorebooks.js";
 import { MAX_VENUE_IMAGE_BYTES } from "./prompt-preset.js";
 import { describeMoment, deriveVillageMoment } from "./village-clock.js";
 import { readVillageState } from "./village-store.js";
-import { setVillageVenueImage } from "./village.js";
+import { assertVenueImageAccess, setVillageVenueImage } from "./village.js";
+import { venueInArea, venueInSpace, venueClasses } from "./venue-model.js";
 import type { VillageMoment } from "./village-clock.js";
-import type { VillageSnapshot, VillageState, VillageVenue } from "./types.js";
+import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "./types.js";
 
 /**
  * The shape of a place's picture.
@@ -114,6 +115,7 @@ export function buildLocationPrompt(
   venue: VillageVenue,
   moment: VillageMoment,
   lore = "",
+  area: "exterior" | "interior" = "exterior",
 ): string {
   const purpose = venue.purpose.trim();
   const setting = village.setting.trim().slice(0, MAX_SETTING_IN_PROMPT_LENGTH);
@@ -125,11 +127,15 @@ export function buildLocationPrompt(
     .join(", ");
   const building = venue.occupancy.homeKind ? village.homeBuildingNames[venue.occupancy.homeKind] : "";
   return [
-    `A wide, empty establishing view of ${venue.name} in ${village.name}.`,
+    area === "exterior"
+      ? `A wide, empty exterior view of ${venue.name} and its approach in ${village.name}. Show the building from outside; do not show an interior.`
+      : `A wide, empty interior view of the described space at ${venue.name} in ${village.name}. Show the room from inside; do not show the building exterior.`,
     building ? `Building type: ${building}.` : "",
     venue.occupancy.residentCharacterId && !building ? "This venue is also a villager's residence." : "",
     purpose ? `Venue purpose: ${purpose}.` : "",
-    venue.description ? `Approved description of this room: ${venue.description}.` : "",
+    venue.description
+      ? `Approved description of this ${area === "exterior" ? "exterior" : "space"}: ${venue.description}.`
+      : "",
     venue.state.condition ? `Current condition: ${venue.state.condition}.` : "",
     venue.state.furniture.length ? `Visible furniture and items: ${venue.state.furniture.join(", ")}.` : "",
     venue.state.publicFacts.length ? `Established venue facts: ${venue.state.publicFacts.join("; ")}.` : "",
@@ -181,8 +187,22 @@ async function requireVenue(venueId: string): Promise<{ village: VillageState; v
  * after a twenty-second generation that had nowhere to go. Nothing is drawn
  * until an id is in hand and still real.
  */
-export async function generateVillageLocationImage(venueId: string, connectionId?: string): Promise<VillageSnapshot> {
-  const { village, venue } = await requireVenue(venueId);
+export async function generateVillageLocationImage(
+  venueId: string,
+  connectionId?: string,
+  spaceClass?: VillageVenueClass,
+  privateOwnerId = "",
+): Promise<VillageSnapshot> {
+  const found = await requireVenue(venueId);
+  const village = found.village;
+  if (spaceClass && !venueClasses(found.venue).includes(spaceClass))
+    throw notFound("That Venue space no longer exists.");
+  await assertVenueImageAccess(venueId, spaceClass, privateOwnerId);
+  const venue = privateOwnerId
+    ? venueInArea(found.venue, "private", "residence", privateOwnerId)
+    : spaceClass
+      ? venueInSpace(found.venue, spaceClass)
+      : venueInArea(found.venue, "outside");
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
     seed: village.seed,
@@ -193,7 +213,13 @@ export async function generateVillageLocationImage(venueId: string, connectionId
     `${village.name}\n${village.setting}\n${village.foundingDetails}\n${venue.name}\n${venue.purpose}\n${venue.description}\n${venue.state.condition}`,
     300,
   );
-  const prompt = buildLocationPrompt(village, venue, moment, lore);
+  const prompt = buildLocationPrompt(
+    village,
+    venue,
+    moment,
+    lore,
+    spaceClass || privateOwnerId ? "interior" : "exterior",
+  );
 
   const decoded = await generateVillageImage({
     connectionId,
@@ -212,7 +238,7 @@ export async function generateVillageLocationImage(venueId: string, connectionId
     width: LOCATION_IMAGE_WIDTH,
     height: LOCATION_IMAGE_HEIGHT,
   });
-  return setVillageVenueImage(venueId, image);
+  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId);
 }
 
 /**
@@ -223,8 +249,15 @@ export async function generateVillageLocationImage(venueId: string, connectionId
  * That is what keeps a village with twenty photographed places as small as one
  * with none.
  */
-export async function storeVillageVenueImage(venueId: string, dataUrl: unknown): Promise<VillageSnapshot> {
+export async function storeVillageVenueImage(
+  venueId: string,
+  dataUrl: unknown,
+  spaceClass?: VillageVenueClass,
+  privateOwnerId = "",
+): Promise<VillageSnapshot> {
   const { venue } = await requireVenue(venueId);
+  if (spaceClass && !venueClasses(venue).includes(spaceClass)) throw notFound("That Venue space no longer exists.");
+  await assertVenueImageAccess(venueId, spaceClass, privateOwnerId);
   const decoded = decodeImageDataUrl(dataUrl);
   const image = await uploadVillageGalleryImage({
     bytes: decoded.bytes,
@@ -232,5 +265,5 @@ export async function storeVillageVenueImage(venueId: string, dataUrl: unknown):
     name: venue.name,
     prompt: "",
   });
-  return setVillageVenueImage(venueId, image);
+  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId);
 }

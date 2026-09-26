@@ -1,6 +1,6 @@
 # Villages development workspace
 
-This folder contains Villages and the focused source, build, and regression files needed to work on it. It is a Villages-only development copy, not a complete checkout of the official Marinara-Agents monorepo. The original source workspace is preserved under `marinara-villages/` inside this folder and ignored by Git. Work from the Villages files at the repository root; do not modify or track that preserved source copy.
+This folder is the active Villages development workspace. Work from the Villages files at the repository root. It is a Villages-only development copy, not a complete checkout of the official Marinara-Agents monorepo.
 
 ## Build
 
@@ -8,7 +8,7 @@ Requires Node.js 24 or newer and an installed Marinara Engine checkout with its 
 
 ```powershell
 npm ci
-$env:MARINARA_ENGINE_ROOT = 'C:\Users\dsbwi\Desktop\Marinara-ENgine-LatestStaging'
+$env:MARINARA_ENGINE_ROOT = Read-Host 'Path to the installed Marinara Engine checkout'
 node scripts/build-feature-packages.mjs villages
 ```
 

@@ -104,9 +104,11 @@ assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "ope
 ]);
 assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "move", venueId: "occupied" }], housingContext), []);
 assert.deepEqual(readHousingRequests([{ who: "stranger", kind: "move", venueId: "open" }], housingContext), []);
-assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "rosa-home" }], housingContext), [
-  { characterId: "rosa", kind: "upgrade", venueId: "rosa-home" },
-]);
+assert.deepEqual(
+  readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "rosa-home" }], housingContext),
+  [],
+  "home improvements go through the separate resident proposal flow",
+);
 assert.deepEqual(readHousingRequests([{ who: "rosa", kind: "upgrade", venueId: "open" }], housingContext), []);
 assert.deepEqual(
   readHousingRequests([{ who: "rosa", kind: "move", venueId: "open" }], {
@@ -133,16 +135,9 @@ const id = persisted.pendingDecisions[0]!.id;
 persisted.noticeboard.splice(0, 1);
 assert.equal(persisted.pendingDecisions[0]?.id, id, "removing a note does not dismiss its request");
 
-applyVillageVenueDecision(
-  persisted,
-  id,
-  true,
-  { ...core, category: "community" },
-  "A shared glasshouse for herbs.",
-  new Date(at),
-);
+applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse for herbs.", new Date(at));
 assert.equal(persisted.pendingDecisions[0]?.status, "approved");
-assert.equal(persisted.venues[0]?.category, "community");
+assert.equal(persisted.venues[0]?.category, "garden");
 assert.equal(persisted.venues[0]?.description, "A shared glasshouse for herbs.");
 assert.equal(remapVenues(persisted.venues)[0]?.name, core.name);
 assert.match(persisted.chronicle[0]?.text ?? "", /approved Rosa's request/u);
@@ -176,7 +171,7 @@ assert.throws(
 assert.equal(competing.pendingDecisions[0]?.status, "pending", "a failed approval remains reviewable");
 
 const full = defaultVillageState();
-full.venues = Array.from({ length: 24 }, (_, index) => venue(`Place ${index}`));
+full.venues = Array.from({ length: 48 }, (_, index) => venue(`Place ${index}`));
 assert.throws(() => addVillageVenue(full, venue("One more")), /no room/u);
 
 console.log("Villages venue request regression: draft, dedup, persistence, review decisions and limits ok");

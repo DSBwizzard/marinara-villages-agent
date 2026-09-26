@@ -534,10 +534,83 @@ export type VillageVenueTrace = {
   expiresAt?: string;
 };
 
+export type VillageVenueClass = "residence" | "workplace" | "gathering" | "other";
+
+/** One class contributes one enterable scene. The venue remains one map place. */
+export type VillageVenueSpace = {
+  id: string;
+  venueClass: VillageVenueClass;
+  description: string;
+  image: VillageVenueImage | null;
+  state: {
+    condition: string;
+    items: string[];
+    publicFacts: string[];
+    features: VillageVenueFeature[];
+    traces: VillageVenueTrace[];
+    updatedAt: string;
+  };
+};
+
+export type VillagePrivateSpace = VillageVenueSpace & {
+  ownerId: string;
+  adaptationPending?: boolean;
+  adaptationSourceArchiveAt?: string;
+};
+
+export type VillageVenueEditProposal = {
+  id: string;
+  target: "shared" | "private";
+  ownerId: string;
+  baseUpdatedAt: string;
+  proposed: VillageVenueSpace;
+  requiredIds: string[];
+  approvedIds: string[];
+  declined: boolean;
+  createdAt: string;
+};
+
+/** An active structural change occupies one of the venue's two slots. */
+export type VillageVenueImprovement = {
+  id: string;
+  title: string;
+  description: string;
+  spaceId: string | null;
+  /** Bounded mechanical effect. Other improvements are durable narrative truth. */
+  extraBeds: number;
+  approvedAt: string;
+};
+
 export type VillageVenue = {
   /** Stable within one village; every literal location reference uses this id. */
   id: string;
   name: string;
+  /** The literal form of this unique place, such as sleeping pod or converted diner. */
+  form?: string;
+  /** One or two mechanical roles. There is no shared venue-type catalogue. */
+  classes?: VillageVenueClass[];
+  spaces?: VillageVenueSpace[];
+  /** Starting capacity; active improvements may add beds, up to four total people. */
+  residenceCapacity?: number;
+  /** The complete resident roster. The older occupancy field remains a read projection. */
+  residentIds?: string[];
+  /** One-use invitations backed by resident speech; older manual entries remain shared invitations. */
+  playerInvitations?: {
+    residentId: string;
+    recordedAt: string;
+    scope?: "shared" | "private";
+    ownerId?: string;
+    sourceLineId?: string;
+    quote?: string;
+  }[];
+  /** The approach is distinct from both shared and private Residence state. */
+  exteriorState?: VillageVenueSpace["state"];
+  privateSpaces?: VillagePrivateSpace[];
+  playerSeenShared?: boolean;
+  playerSeenPrivateIds?: string[];
+  archivedPrivateSpaces?: { ownerId: string; archivedAt: string; space: VillagePrivateSpace }[];
+  editProposals?: VillageVenueEditProposal[];
+  improvements?: (VillageVenueImprovement | null)[];
   /** Optional category/purpose metadata; never used as a location identity. */
   purpose: string;
   /** Player-approved visual and spatial description, distinct from the short purpose. */
@@ -569,6 +642,31 @@ export type VillageVenue = {
     traces?: VillageVenueTrace[];
     updatedAt: string;
   };
+};
+
+/** A durable Venue decision shown in the player's Mailbox. */
+export type VillageVenueMail = {
+  id: string;
+  venueId: string;
+  title: string;
+  detail: string;
+  kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move";
+  status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
+  createdAt: string;
+  dueAt: string;
+  resolvedAt: string;
+  requesterCharacterId: string;
+  movingCharacterId?: string;
+  counterofferRequestId?: string;
+  counterofferDraft?: { name: string; purpose: string; category: string; description: string };
+  /** Exact reviewed terms; retained alongside the outcome for future relationship use. */
+  proposedClasses?: VillageVenueClass[];
+  proposedCapacity?: number;
+  improvementSlot?: number;
+  improvement?: VillageVenueImprovement | null;
+  affectedIds: string[];
+  decisions: { characterId: string; accepted: boolean; reply: string }[];
+  error: string;
 };
 
 /** A compact reference used anywhere a current literal location is required. */
@@ -804,7 +902,7 @@ export type VillagePendingDecision = {
   detail: string;
   proposedAt: string;
   sourceOpportunityId: string;
-  status?: "pending" | "approved" | "denied";
+  status?: "pending" | "approved" | "denied" | "countered";
   venueDraft?: VillageVenueDraft;
   venueId?: string;
   proposedHomeKind?: HomeBuildingKind;
@@ -940,6 +1038,7 @@ export type VillageState = {
   relationships: VillageRelationship[];
   projects: VillageProject[];
   pendingDecisions: VillagePendingDecision[];
+  venueMail: VillageVenueMail[];
   villagers: VillageVillager[];
   /**
    * The village's one prompt box: what a villager here knows.
@@ -1411,6 +1510,7 @@ export type VillageSnapshot = {
   venueRequests: VillagePendingDecision[];
   upgradeRequests: VillagePendingDecision[];
   residences: VillageResidence[];
+  venueMail: VillageVenueMail[];
   /** Newest last, so the board reads the way a board fills up. */
   noticeboard: VillageNotice[];
   /** Newest first, so the window on the map opens on what just happened. */

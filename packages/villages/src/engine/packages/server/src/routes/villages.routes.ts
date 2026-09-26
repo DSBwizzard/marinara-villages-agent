@@ -12,6 +12,8 @@ import {
   activeVenueSession,
   continueVenueWithoutGreeting,
   endVenueSession,
+  leaveVenueSession,
+  enterResidencePrivateSpace,
   leaveVenueMemoryPending,
   enterVenue,
   greetVenue,
@@ -29,6 +31,8 @@ import {
 import { readVillageConnectionSettings, saveVillageConnections } from "../services/villages/connections.js";
 import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
 import { badRequest, statusCodeOf } from "../services/villages/errors.js";
+import { VENUE_CLASSES } from "../services/villages/venue-model.js";
+import type { VillageVenueClass } from "../services/villages/types.js";
 import { listVillageLorebooks } from "../services/villages/lorebooks.js";
 import {
   generateVillageLocationImage,
@@ -68,12 +72,14 @@ import {
   decideVillageHomeUpgrade,
   decideVillageResidence,
   completeVillageResidence,
+  retryResidencePrivateSpaceAdaptation,
   draftVenueDescriptions,
   deleteVillageVenue,
   approveVillageResidence,
   previewVillageVenueDeletion,
   previewVillagerRefresh,
   proposeVillageResidence,
+  proposeResidenceSpaceEdit,
   readVillageTownMapImage,
   refreshPlayerPersona,
   removeChronicleEntry,
@@ -96,6 +102,11 @@ import {
   setVillageVenues,
   updateVillageVenue,
 } from "../services/villages/village.js";
+import {
+  proposeVenueChange,
+  proposePlayerMove,
+  decideVillagerVenueImprovement,
+} from "../services/villages/venue-mailbox.js";
 
 /** Read one id off a route parameter without trusting its type. */
 function readCharacterId(value: unknown): string {
@@ -109,6 +120,13 @@ function readVenueId(value: unknown): string {
   const venueId = typeof value === "string" ? value.trim() : "";
   if (venueId.length === 0) throw badRequest("A place id is required.");
   return venueId;
+}
+
+function readVenueSpaceClass(value: unknown): VillageVenueClass | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !VENUE_CLASSES.includes(value as VillageVenueClass))
+    throw badRequest("Choose a valid Venue Class space.");
+  return value as VillageVenueClass;
 }
 
 /** The same, for a chat. */
@@ -528,13 +546,31 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading the active venue");
     }
   });
-  app.post<{ Body: { venueId?: unknown } }>("/rooms", async (request, reply) => {
-    try {
-      return { session: await enterVenue(readPlaceId(request.body?.venueId)) };
-    } catch (error) {
-      return fail(reply, error, "entering a venue");
-    }
-  });
+  app.post<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
+    "/rooms",
+    async (request, reply) => {
+      try {
+        const spaceClass = request.body?.spaceClass;
+        if (
+          spaceClass !== undefined &&
+          spaceClass !== "residence" &&
+          spaceClass !== "workplace" &&
+          spaceClass !== "gathering" &&
+          spaceClass !== "other"
+        )
+          throw badRequest("Choose a valid Venue Class space.");
+        return {
+          session: await enterVenue(
+            readPlaceId(request.body?.venueId),
+            spaceClass,
+            typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+          ),
+        };
+      } catch (error) {
+        return fail(reply, error, "entering a venue");
+      }
+    },
+  );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/greet", async (request, reply) => {
     try {
       return { session: await greetVenue(readChatId(request.body?.sessionId)) };
@@ -554,6 +590,18 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return { session: await touchVenueSession(readChatId(request.body?.sessionId)) };
     } catch (error) {
       return fail(reply, error, "updating venue activity");
+    }
+  });
+  app.post<{ Body: { sessionId?: unknown; ownerId?: unknown } }>("/rooms/enter-private", async (request, reply) => {
+    try {
+      return {
+        session: await enterResidencePrivateSpace(
+          readChatId(request.body?.sessionId),
+          readCharacterId(request.body?.ownerId),
+        ),
+      };
+    } catch (error) {
+      return fail(reply, error, "entering a private Residence space");
     }
   });
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/debug/discard", async (request, reply) => {
@@ -581,6 +629,20 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "sending a venue turn");
     }
   });
+  app.post<{ Body: { sessionId?: unknown; submissionId?: unknown; message?: unknown } }>(
+    "/rooms/leave",
+    async (request, reply) => {
+      try {
+        return await leaveVenueSession(
+          readChatId(request.body?.sessionId),
+          readSubmissionId(request.body?.submissionId),
+          typeof request.body?.message === "string" ? request.body.message : "",
+        );
+      } catch (error) {
+        return fail(reply, error, "leaving a venue naturally");
+      }
+    },
+  );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/end", async (request, reply) => {
     try {
       return { session: await endVenueSession(readChatId(request.body?.sessionId)) };
@@ -866,7 +928,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // not any timer — a picture costs the player money, so the only thing that
   // draws one is the player pressing the button that posts here.
 
-  app.post<{ Body: { venueId?: unknown; connectionId?: unknown } }>(
+  app.post<{ Body: { venueId?: unknown; connectionId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
     "/locations/venue/image",
     async (request, reply) => {
       try {
@@ -877,6 +939,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
           // whether it draws images is a question only the Engine can answer,
           // and it already answers it with a better message than this could.
           typeof request.body?.connectionId === "string" ? request.body.connectionId : undefined,
+          readVenueSpaceClass(request.body?.spaceClass),
+          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
         );
       } catch (error) {
         return fail(reply, error, "drawing a place");
@@ -887,12 +951,17 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // A picture the player already has. Same road past the drawing: it goes to
   // the gallery and the village keeps a reference, so a village with twenty
   // photographed places weighs the same as one with none.
-  app.put<{ Body: { venueId?: unknown; image?: unknown } }>(
+  app.put<{ Body: { venueId?: unknown; image?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
     "/locations/venue/image",
     { bodyLimit: VENUE_IMAGE_BODY_LIMIT },
     async (request, reply) => {
       try {
-        return await storeVillageVenueImage(readVenueId(request.body?.venueId), request.body?.image);
+        return await storeVillageVenueImage(
+          readVenueId(request.body?.venueId),
+          request.body?.image,
+          readVenueSpaceClass(request.body?.spaceClass),
+          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+        );
       } catch (error) {
         return fail(reply, error, "keeping a place's picture");
       }
@@ -903,14 +972,22 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // gallery is the player's, and an image that lands there is theirs to keep or
   // delete; a package that reached in and removed it would be deleting from a
   // library it does not own. It costs a reference on one venue and nothing else.
-  app.delete<{ Body: { venueId?: unknown } }>("/locations/venue/image", async (request, reply) => {
-    try {
-      await setVillageVenueImage(readVenueId(request.body?.venueId), null);
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "taking a place's picture away");
-    }
-  });
+  app.delete<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
+    "/locations/venue/image",
+    async (request, reply) => {
+      try {
+        await setVillageVenueImage(
+          readVenueId(request.body?.venueId),
+          null,
+          readVenueSpaceClass(request.body?.spaceClass),
+          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+        );
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "taking a place's picture away");
+      }
+    },
+  );
 
   app.post<{ Body: unknown }>("/locations/venue", async (request, reply) => {
     try {
@@ -962,6 +1039,17 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
+  app.post<{ Params: { venueId: string }; Body: unknown }>(
+    "/locations/venue/:venueId/edit-proposals",
+    async (request, reply) => {
+      try {
+        return await proposeResidenceSpaceEdit(readVenueId(request.params.venueId), request.body);
+      } catch (error) {
+        return fail(reply, error, "proposing a Residence edit");
+      }
+    },
+  );
+
   app.get<{ Params: { venueId: string } }>("/locations/venue/:venueId/dependencies", async (request, reply) => {
     try {
       return await previewVillageVenueDeletion(readVenueId(request.params.venueId));
@@ -989,6 +1077,43 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
+  app.post<{ Params: { venueId: string }; Body: unknown }>(
+    "/locations/venue/:venueId/proposals",
+    async (request, reply) => {
+      try {
+        await proposeVenueChange(readVenueId(request.params.venueId), request.body);
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "proposing a Venue change");
+      }
+    },
+  );
+
+  app.post<{ Params: { venueId: string } }>("/locations/venue/:venueId/player-move", async (request, reply) => {
+    try {
+      await proposePlayerMove(readVenueId(request.params.venueId));
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "requesting a player move");
+    }
+  });
+
+  app.post<{
+    Params: { mailId: string };
+    Body: { approved?: unknown; title?: unknown; description?: unknown; extraBeds?: unknown; slot?: unknown };
+  }>("/venue-mail/:mailId/decision", async (request, reply) => {
+    try {
+      await decideVillagerVenueImprovement(
+        readVenueId(request.params.mailId),
+        request.body?.approved === true,
+        request.body,
+      );
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "deciding a Venue improvement");
+    }
+  });
+
   app.post<{ Body: { characterId?: unknown } }>("/residences/approvals", async (request, reply) => {
     try {
       return await approveVillageResidence(request.body?.characterId);
@@ -1010,6 +1135,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return await completeVillageResidence(request.body?.characterId, true);
     } catch (error) {
       return fail(reply, error, "completing a residence change");
+    }
+  });
+
+  app.post<{ Body: { characterId?: unknown } }>("/residences/private-space/retry", async (request, reply) => {
+    try {
+      return await retryResidencePrivateSpaceAdaptation(request.body?.characterId);
+    } catch (error) {
+      return fail(reply, error, "adapting a private space");
     }
   });
 

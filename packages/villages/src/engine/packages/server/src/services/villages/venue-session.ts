@@ -23,9 +23,9 @@ import { deriveVillageMoment } from "./village-clock.js";
 import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
 import {
   decideVillageResidence,
+  applyResidenceEditApproval,
   proposeVillageResidence,
   readPlayerIdentity,
-  requestVillageHomeUpgrade,
   rollActiveAgendas,
   villagerPlaceView,
 } from "./village.js";
@@ -33,6 +33,9 @@ import { proposeWishVerdict } from "./wishes.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VenueActionResult } from "./venue-actions.js";
 import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
+import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
+import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
+import type { VillageVenueClass } from "./types.js";
 
 export type VenueLine = {
   id: string;
@@ -52,8 +55,10 @@ export type VenueParticipant = { characterId: string; name: string; doing: strin
 type VenueSubmission = {
   id: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act";
+  mode: "chat" | "ask" | "fulfill" | "act" | "leave";
   targetId: string;
+  areaAtTurn?: VenueSession["area"];
+  privateOwnerIdAtTurn?: string;
   verdict: { fulfilled: boolean; reason: string } | null;
   wishId: string;
   wishMemory: string;
@@ -61,7 +66,23 @@ type VenueSubmission = {
   actionReplyDone?: boolean;
   sceneChange?: VenueSceneChange;
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
-  upgradeSignal?: { characterId: string; venueId: string };
+  upgradeSignal?: { characterId: string; venueId: string; quote: string };
+  invitationSignal?: {
+    residentId: string;
+    venueId: string;
+    scope: "shared" | "private";
+    timing: "now" | "later";
+    ownerId: string;
+    quote: string;
+    sourceLineId?: string;
+  };
+  editApprovalSignal?: {
+    proposalId: string;
+    residentId: string;
+    approved: boolean;
+    quote: string;
+    sourceLineId?: string;
+  };
   turnMemories?: VenueMemory[];
   recordEvents?: VenueRecordEvent[];
   at?: string;
@@ -77,6 +98,10 @@ export type VenueSession = {
   id: string;
   placeId: string;
   placeName: string;
+  spaceClass?: VillageVenueClass;
+  area: "outside" | "shared" | "private" | "public";
+  privateOwnerId: string;
+  privateAccessOwnerId: string;
   startedAt: string;
   endedAt: string;
   lastActivityAt: string;
@@ -157,6 +182,21 @@ function coerceSession(value: unknown): VenueSession {
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),
+    spaceClass:
+      raw.spaceClass === "residence" ||
+      raw.spaceClass === "workplace" ||
+      raw.spaceClass === "gathering" ||
+      raw.spaceClass === "other"
+        ? raw.spaceClass
+        : undefined,
+    area:
+      raw.area === "outside" || raw.area === "shared" || raw.area === "private" || raw.area === "public"
+        ? raw.area
+        : raw.spaceClass === "residence"
+          ? "shared"
+          : "public",
+    privateOwnerId: asTrimmedString(raw.privateOwnerId),
+    privateAccessOwnerId: asTrimmedString(raw.privateAccessOwnerId),
     startedAt: asString(raw.startedAt),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
@@ -196,14 +236,25 @@ function coerceSession(value: unknown): VenueSession {
               id: asTrimmedString(row.id),
               message: asString(row.message),
               mode:
-                row.mode === "act"
-                  ? ("act" as const)
-                  : row.mode === "fulfill"
-                    ? ("fulfill" as const)
-                    : row.mode === "ask"
-                      ? ("ask" as const)
-                      : ("chat" as const),
+                row.mode === "leave"
+                  ? ("leave" as const)
+                  : row.mode === "act"
+                    ? ("act" as const)
+                    : row.mode === "fulfill"
+                      ? ("fulfill" as const)
+                      : row.mode === "ask"
+                        ? ("ask" as const)
+                        : ("chat" as const),
               targetId: asString(row.targetId),
+              ...(row.areaAtTurn === "outside" ||
+              row.areaAtTurn === "shared" ||
+              row.areaAtTurn === "private" ||
+              row.areaAtTurn === "public"
+                ? { areaAtTurn: row.areaAtTurn as VenueSession["area"] }
+                : {}),
+              ...(typeof row.privateOwnerIdAtTurn === "string"
+                ? { privateOwnerIdAtTurn: row.privateOwnerIdAtTurn }
+                : {}),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
                   ? {
@@ -220,6 +271,12 @@ function coerceSession(value: unknown): VenueSession {
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
                 : {}),
               ...(row.upgradeSignal ? { upgradeSignal: row.upgradeSignal as VenueSubmission["upgradeSignal"] } : {}),
+              ...(row.invitationSignal
+                ? { invitationSignal: row.invitationSignal as VenueSubmission["invitationSignal"] }
+                : {}),
+              ...(row.editApprovalSignal
+                ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
+                : {}),
               ...(Array.isArray(row.turnMemories) ? { turnMemories: row.turnMemories as VenueMemory[] } : {}),
               ...(Array.isArray(row.recordEvents) ? { recordEvents: row.recordEvents as VenueRecordEvent[] } : {}),
               ...(typeof row.at === "string" ? { at: row.at } : {}),
@@ -304,7 +361,7 @@ function heardLines(session: VenueSession, characterId: string): VenueLine[] {
 
 function castAtEntry(village: VillageState, placeId: string, now: Date): VenueParticipant[] {
   const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  return village.villagers
+  const cast = village.villagers
     .filter((villager) => {
       return villagerPlaceView(village, villager, null, moment.minuteOfDay, now)?.id === placeId;
     })
@@ -313,6 +370,8 @@ function castAtEntry(village: VillageState, placeId: string, now: Date): VenuePa
       name: villager.cardSnapshot.name,
       doing: agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.activity ?? "",
     }));
+  if (cast.length > 4) throw conflict("Five villagers are scheduled here at once. Edit their agendas before entering.");
+  return cast;
 }
 
 type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
@@ -327,6 +386,7 @@ async function generate(
   retrySpeech = false,
   trace?: GreetingTrace,
   actionOutcome?: string,
+  consentRetry = false,
 ) {
   const preparationStarted = performance.now();
   const [village, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
@@ -356,6 +416,12 @@ async function generate(
       `${card.name} (${person.characterId})`,
       `Card: ${[card.systemPrompt, card.description, card.personality, card.scenario, card.backstory, card.exampleDialogue].filter(Boolean).join("\n").slice(0, 2800)}`,
       `Current agenda: ${block?.activity ?? "unspecified"}; availability: ${block?.status ?? "unspecified"}; due at ${village.venues.find((venue) => venue.id === block?.venueId)?.name ?? "elsewhere"}. A resident may leave naturally after saying so.`,
+      `Current Residence: ${
+        village.venues
+          .filter((venue) => venueResidentIds(venue).includes(person.characterId))
+          .map((venue) => `${venue.name} (${venue.id})`)
+          .join(", ") || "none"
+      }.`,
       `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
       `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
     ].join("\n");
@@ -380,7 +446,10 @@ async function generate(
     )
     .join("\n");
   const audience = active.map((person) => person.characterId);
-  const place = village.venues.find((venue) => venue.id === session.placeId);
+  const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
+  const place = storedPlace
+    ? venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
+    : undefined;
   const pendingMoves = village.residences.filter(
     (residence) => residence.status === "pending" && audience.includes(residence.characterId),
   );
@@ -436,22 +505,43 @@ async function generate(
     effectiveVillagerReplyGuidance(village.narrationStyle),
     venueWritingDirection(village.narrationStyle, player.name),
     `The residents currently here are: ${audience.join(", ")}. Nobody joins mid-visit. A resident may leave after a clear spoken departure, and the scene ends when the last one leaves. Do not force a departure merely because time passed.`,
-    active.length
-      ? "Write as the named residents, preserving their separate voices and knowledge. Do not disclose one resident's private knowledge through another. Every player speech turn needs spoken dialogue from the intended target, or from at least one resident when the player addressed the room. A resident may decline or say they do not know, but must say so aloud. Quoted dialogue is not required because each segment has an explicit kind."
-      : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
+    session.area === "outside"
+      ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Narration alone is a valid response. Never describe the player entering the shared area or a private space without validated permission. Do not expose unseen interior details."
+      : active.length
+        ? "Write as the named residents, preserving their separate voices and knowledge. Do not disclose one resident's private knowledge through another. Every player speech turn needs spoken dialogue from the intended target, or from at least one resident when the player addressed the room. A resident may decline or say they do not know, but must say so aloud. Quoted dialogue is not required because each segment has an explicit kind."
+        : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
     ...profiles,
     `Earlier visit recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
     `Recent scene history:\n${history || "The player has just entered."}`,
     `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
+    mode === "leave"
+      ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate the player's departure if the room is empty. Do not introduce a new errand or prolong the encounter."
+      : "",
+    "If a current resident explicitly invites the player into their Residence, return invitation with speakerId, venueId, scope (shared or private), timing (now or later), and an exact quote from that resident's spoken dialogue. Private entry may be granted only by that private space's owner. Later means one future visit; conditional, vague, sarcastic, or third-party permission is not an invitation. Omit invitation unless the resident actually says it. Entry never grants permission to change the space.",
+    `Pending exact Residence edit proposals: ${
+      (storedPlace?.editProposals ?? [])
+        .filter(
+          (proposal) =>
+            !proposal.declined && (proposal.target === "shared" || proposal.ownerId === session.privateOwnerId),
+        )
+        .map(
+          (proposal) =>
+            `${proposal.id}: ${proposal.target} ${proposal.ownerId || "shared"}; description ${proposal.proposed.description}; condition ${proposal.proposed.state.condition}; items ${proposal.proposed.state.items.join(", ")}; public facts ${proposal.proposed.state.publicFacts.join(", ")}; features ${proposal.proposed.state.features.map((feature) => feature.text).join(", ")}; required ${proposal.requiredIds.join(", ")}; approved ${proposal.approvedIds.join(", ")}`,
+        )
+        .join(" | ") || "none"
+    }. If a required resident explicitly approves or declines one exact proposal aloud, return editApproval with its proposalId, speakerId, approved boolean, and exact spoken quote. Never infer approval from silence or a general invitation.`,
     actionOutcome
       ? `The action was checked separately. Its settled outcome is: ${actionOutcome}. React to this outcome; do not redo or contradict the action judgment.`
       : "",
     "Targeting is intent, not isolation. Decide contextually who heard the player's words and each reply; moving aside is narrative and does not guarantee privacy.",
+    (mode === "chat" || mode === "ask") && (session.area === "shared" || session.area === "private")
+      ? "This is a resident-controlled Residence space. Player actions may be attempted and residents may react, but do not return sceneChange or narrate a lasting change until the exact room edit proposal has every required resident's explicit approval. Entry is not edit consent."
+      : "",
     mode === "chat" || mode === "ask"
       ? `If the player physically acts in this scene, including plausible first-person past tense such as "I fixed the drip", resolve it as part of this SAME reply. Mere speech about a deed, a promise, an unsupported claim elsewhere, or an impossible attempt changes nothing. Return sceneChange only for a completed, persistent physical result: {"happened":true,"narration":"short past-tense public result","conditionBefore":"exact current condition","conditionAfter":"complete updated condition","featureId":"existing id","featureText":"updated text","publicFactBefore":"exact old fact","publicFactAfter":"updated fact","resolveTraceId":"existing id","addItem":"item","removeItem":"exact item","sceneNote":"temporary layout detail"}. Omit unused fields. Use an exact old value or ID to replace or resolve stale state; use sceneNote for a small temporary layout change, never for a repaired condition that must stay repaired. The player may change a locked feature; its lock remains. Do not invent exceptional supplies or consent. If the action fails, narrate the failure and omit sceneChange. Never narrate a lasting change without a valid sceneChange. A resident's reaction does not independently change physical state.`
       : "",
     mode === "chat" || mode === "ask"
-      ? "If a resident explicitly asks to move to an available venue, return residenceRequest with speakerId, venueId and an exact quote from that resident's dialogue. If a resident explicitly accepts or refuses a pending player move request, return residenceDecision with speakerId, approved boolean and an exact quote from that resident's dialogue. If a resident explicitly asks to upgrade their own home, return upgradeRequest with speakerId and an exact quote. Omit all three unless the corresponding speech actually occurs. A player request alone is never consent."
+      ? "If a resident explicitly asks to move to an available Residence, return residenceRequest with speakerId, venueId and an exact quote from that resident's dialogue. If a resident explicitly accepts or refuses a pending player move request, return residenceDecision with speakerId, approved boolean and an exact quote from that resident's dialogue. If a resident or worker suggests one concrete structural improvement to this Venue, return upgradeRequest with speakerId and an exact quote. Omit all three unless the corresponding speech actually occurs. A player request alone is never consent."
       : "",
     session.lines.length >= 12
       ? "Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state."
@@ -462,6 +552,9 @@ async function generate(
     retrySpeech
       ? `The previous draft contained no spoken answer from ${targetId || "anyone present"}. Rewrite this turn with a dialogue segment from that resident. A brief refusal or uncertainty is a valid answer; narration alone is not.`
       : "",
+    consentRetry
+      ? "The previous draft changed a resident-controlled space without an approved exact proposal. Rewrite the outcome as a pending request, a refusal, or a temporary attempt; omit sceneChange and any claim that a lasting edit occurred."
+      : "",
     "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional. Narration has no speakerId and is visible to the whole active cast. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Alternate narration and speakers naturally, including reactions to one another within this single response. Use only active IDs; keep private knowledge with those who know it. For a greeting, heardPlayerBy is empty.",
   ].join("\n\n");
   const messages: CapabilityLanguageModelMessage[] = [
@@ -470,8 +563,12 @@ async function generate(
       role: "user",
       content:
         mode === "greet"
-          ? "The player is already inside this venue. Write a brief opening beat that begins here with the present cast."
-          : message,
+          ? session.area === "outside"
+            ? "The player has reached the outside of this Residence. Write a brief opening beat from outside; nobody is obliged to answer."
+            : "The player is already inside this venue. Write a brief opening beat that begins here with the present cast."
+          : mode === "leave" && !message.trim()
+            ? "The player leaves without saying anything."
+            : message,
     },
   ];
   // Opening a room needs one brief spoken beat, not a full turn's output budget.
@@ -517,6 +614,8 @@ async function generate(
   const request = readSpeechSignal(raw?.residenceRequest);
   const decision = readSpeechSignal(raw?.residenceDecision);
   const upgrade = readSpeechSignal(raw?.upgradeRequest);
+  const invitation = readSpeechSignal(raw?.invitation);
+  const editApproval = readSpeechSignal(raw?.editApproval);
   const departures = Array.isArray(raw?.departures)
     ? [
         ...new Set(
@@ -557,6 +656,22 @@ async function generate(
       turnMemories.push({ characterId, text, evidence: evidence as (number | "player")[] });
     }
   const requestedVenueId = request ? asTrimmedString(request.entry.venueId) : "";
+  const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
+  const invitedVenue = village.venues.find((venue) => venue.id === invitedVenueId);
+  const invitationScope: "shared" | "private" = invitation?.entry.scope === "private" ? "private" : "shared";
+  const invitationOwnerId = invitationScope === "private" ? asTrimmedString(invitation?.entry.ownerId) : "";
+  const invitationQuote = asTrimmedString(invitation?.entry.quote).toLowerCase();
+  const invitationIsFuture =
+    /\b(later|tomorrow|next visit|next time|another day|anytime|when you return|come back)\b/u.test(invitationQuote);
+  const invitationIsEntry = /\b(come in|come into|step in|step inside|enter|welcome inside|welcome in|visit)\b/u.test(
+    invitationQuote,
+  );
+  const invitationTiming = invitation?.entry.timing === "now" ? "now" : "later";
+  const invitationTimingSupported =
+    invitationTiming === "later" ? invitationIsFuture : invitationIsEntry && !invitationIsFuture;
+  const privateScopeSupported =
+    invitationScope === "shared" ||
+    /\b(my|mine|your)\s+(private\s+)?(room|bedroom|space|quarters)|private space\b/u.test(invitationQuote);
   const pendingDecision = decision
     ? pendingMoves.find((move) => move.characterId === decision.speakerId && move.requestedBy === "player")
     : null;
@@ -577,8 +692,43 @@ async function generate(
             }
           : null,
     upgradeSignal:
-      (mode === "chat" || mode === "ask") && upgrade && place?.occupancy.residentCharacterId === upgrade.speakerId
-        ? { characterId: upgrade.speakerId, venueId: place.id }
+      (mode === "chat" || mode === "ask") &&
+      upgrade &&
+      (place?.residentIds?.includes(upgrade.speakerId) || place?.workerIds?.includes(upgrade.speakerId))
+        ? { characterId: upgrade.speakerId, venueId: place.id, quote: asTrimmedString(upgrade.entry.quote) }
+        : null,
+    invitationSignal:
+      invitation &&
+      invitedVenue &&
+      invitationTimingSupported &&
+      privateScopeSupported &&
+      venueClasses(invitedVenue).includes("residence") &&
+      venueResidentIds(invitedVenue).includes(invitation.speakerId) &&
+      (invitationScope === "shared" || invitationOwnerId === invitation.speakerId)
+        ? {
+            residentId: invitation.speakerId,
+            venueId: invitedVenueId,
+            scope: invitationScope,
+            timing: invitationTiming,
+            ownerId: invitationOwnerId,
+            quote: asTrimmedString(invitation.entry.quote),
+          }
+        : null,
+    editApprovalSignal:
+      editApproval &&
+      (place?.editProposals ?? []).some(
+        (proposal) =>
+          proposal.id === asTrimmedString(editApproval.entry.proposalId) &&
+          !proposal.declined &&
+          proposal.requiredIds.includes(editApproval.speakerId),
+      ) &&
+      typeof editApproval.entry.approved === "boolean"
+        ? {
+            proposalId: asTrimmedString(editApproval.entry.proposalId),
+            residentId: editApproval.speakerId,
+            approved: editApproval.entry.approved === true,
+            quote: asTrimmedString(editApproval.entry.quote),
+          }
         : null,
     recap: asString(raw?.recap).slice(0, 600),
     departures,
@@ -765,15 +915,55 @@ async function clearActivePointer(id: string): Promise<void> {
   });
 }
 
-export async function enterVenue(placeId: string): Promise<VenueSession> {
+export async function enterVenue(
+  placeId: string,
+  requestedClass?: VillageVenueClass,
+  privateOwnerId = "",
+): Promise<VenueSession> {
   await rollActiveAgendas(new Date());
   const village = await readVillageState();
   const place = village.venues.find((entry) => entry.id === placeId);
   if (!place) throw notFound("That place is not in this village.");
+  const classes = venueClasses(place);
+  const spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
+  if (!classes.includes(spaceClass)) throw badRequest("That Venue has no such space.");
   const existing = await activeVenueSession();
   if (existing) {
     if (existing.placeId !== placeId) throw conflict(`Finish the conversation in ${existing.placeName} first.`);
+    if (existing.spaceClass && existing.spaceClass !== spaceClass)
+      throw conflict("Finish the active Venue space visit first.");
     return existing;
+  }
+  let area: VenueSession["area"] = spaceClass === "residence" ? "shared" : "public";
+  let privateAccessOwnerId = "";
+  if (spaceClass === "residence" && !place.occupancy.playerHome && venueResidentIds(place).length > 0) {
+    area = "outside";
+    await mutateVillageState((state) => {
+      const current = state.venues.find((entry) => entry.id === placeId);
+      if (!current) throw notFound("That Residence is no longer here.");
+      const invitation = current.playerInvitations?.findIndex(
+        (entry) =>
+          venueResidentIds(current).includes(entry.residentId) &&
+          (privateOwnerId ? entry.scope === "private" && entry.ownerId === privateOwnerId : entry.scope !== "private"),
+      );
+      if (invitation !== undefined && invitation >= 0) {
+        current.playerInvitations?.splice(invitation, 1);
+        area = privateOwnerId ? "private" : "shared";
+        current.playerSeenShared = true;
+        if (privateOwnerId)
+          current.playerSeenPrivateIds = [...new Set([...(current.playerSeenPrivateIds ?? []), privateOwnerId])];
+      } else if (!privateOwnerId) {
+        const privateInvitation = current.playerInvitations?.findIndex(
+          (entry) => entry.scope === "private" && entry.ownerId === entry.residentId,
+        );
+        if (privateInvitation !== undefined && privateInvitation >= 0) {
+          privateAccessOwnerId = current.playerInvitations![privateInvitation]!.ownerId ?? "";
+          current.playerInvitations?.splice(privateInvitation, 1);
+          area = "shared";
+          current.playerSeenShared = true;
+        }
+      }
+    });
   }
   const participants = castAtEntry(village, placeId, new Date());
   const id = randomUUID();
@@ -782,6 +972,10 @@ export async function enterVenue(placeId: string): Promise<VenueSession> {
     id,
     placeId,
     placeName: place.name,
+    spaceClass,
+    area,
+    privateOwnerId: (area as VenueSession["area"]) === "private" ? privateOwnerId : "",
+    privateAccessOwnerId,
     startedAt: new Date().toISOString(),
     endedAt: "",
     lastActivityAt: new Date().toISOString(),
@@ -805,6 +999,39 @@ export async function enterVenue(placeId: string): Promise<VenueSession> {
     active.placeId = placeId;
   });
   return session;
+}
+
+export async function enterResidencePrivateSpace(sessionId: string, ownerId: string): Promise<VenueSession> {
+  const session = await requireLiveVenueSession(sessionId);
+  if (session.status !== "active" || session.spaceClass !== "residence")
+    throw conflict("Enter the Residence scene first.");
+  const village = await readVillageState();
+  const venue = village.venues.find((entry) => entry.id === session.placeId);
+  if (!venue || !venueResidentIds(venue).includes(ownerId))
+    throw notFound("That resident's private space is no longer here.");
+  if (session.area === "private" && session.privateOwnerId === ownerId) return session;
+  if (session.privateAccessOwnerId !== ownerId) {
+    let consumed = false;
+    await mutateVillageState((state) => {
+      const current = state.venues.find((entry) => entry.id === session.placeId);
+      const index = current?.playerInvitations?.findIndex(
+        (entry) => entry.scope === "private" && entry.ownerId === ownerId && entry.residentId === ownerId,
+      );
+      if (current && index !== undefined && index >= 0) {
+        current.playerInvitations?.splice(index, 1);
+        consumed = true;
+      }
+    });
+    if (!consumed) throw conflict("This private space needs its owner's invitation.");
+  }
+  const entered = await changeSession(sessionId, (state) => {
+    if (state.status !== "active") throw conflict("That scene has ended.");
+    state.area = "private";
+    state.privateOwnerId = ownerId;
+    state.privateAccessOwnerId = "";
+  });
+  await markResidenceSeen(entered);
+  return entered;
 }
 
 export async function greetVenue(id: string): Promise<VenueSession> {
@@ -855,17 +1082,38 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
   signal.throwIfAborted();
   const reply = await generate(session, "", "greet", "", null, signal, false, trace);
   signal.throwIfAborted();
-  if (!reply.lines.some((line) => line.kind === "dialogue"))
+  if (
+    !reply.lines.some((line) => line.kind === "dialogue" || (session.area === "outside" && line.kind === "narration"))
+  )
     throw badGateway("The villagers did not greet you aloud. Retry the greeting or continue without it.");
-  return changeSession(id, (state) => {
+  const greeted = await changeSession(id, (state) => {
     signal.throwIfAborted();
     if (state.status !== "opening") return;
     if (isInactive(state))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
     const at = new Date().toISOString();
     appendVenueReply(state, reply.lines, at);
+    if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
+      state.area = reply.invitationSignal.scope === "private" ? "private" : "shared";
+      state.privateOwnerId = reply.invitationSignal.scope === "private" ? reply.invitationSignal.ownerId : "";
+    }
     state.status = "active";
   });
+  if (reply.invitationSignal && reply.invitationSignal.timing === "later")
+    await recordSpokenInvitation(greeted, reply.invitationSignal);
+  if (reply.editApprovalSignal) {
+    const approval = reply.editApprovalSignal;
+    const quote = approval.quote.replace(/\s+/gu, " ").toLowerCase();
+    if (
+      greeted.lines.some(
+        (line) =>
+          line.speakerId === approval.residentId && line.content.replace(/\s+/gu, " ").toLowerCase().includes(quote),
+      )
+    )
+      await applyResidenceEditApproval(greeted.placeId, approval.proposalId, approval.residentId, approval.approved);
+  }
+  if (greeted.area === "shared" || greeted.area === "private") await markResidenceSeen(greeted);
+  return greeted;
 }
 
 export async function continueVenueWithoutGreeting(id: string): Promise<VenueSession> {
@@ -883,7 +1131,7 @@ export async function continueVenueWithoutGreeting(id: string): Promise<VenueSes
 type VenueTurnInput = {
   sessionId: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act";
+  mode: "chat" | "ask" | "fulfill" | "act" | "leave";
   targetId: string;
   submissionId: string;
 };
@@ -909,6 +1157,18 @@ export async function sendVenueTurn(input: VenueTurnInput) {
   } finally {
     turnTasks.delete(key);
   }
+}
+
+/** Generate a final beat once, then use the ordinary visit filing path. */
+export async function leaveVenueSession(sessionId: string, submissionId: string, message = "") {
+  const result = await sendVenueTurn({
+    sessionId,
+    submissionId,
+    message,
+    mode: "leave",
+    targetId: "",
+  });
+  return { ...result, session: await endVenueSession(sessionId) };
 }
 
 async function finishActReply(
@@ -964,7 +1224,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       };
     await applyVenueTurnChange(session, prior);
     await applyFulfilledWish(session, prior);
-    await applyVenueRequests(prior);
+    await applyVenueRequests(session, prior);
+    if (prior.invitationSignal && prior.invitationSignal.timing === "later")
+      await recordSpokenInvitation(session, prior.invitationSignal);
     await applyTurnMemories(session, prior);
     const recordEvents = await receiptForTurn(session, prior);
     return {
@@ -978,7 +1240,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   await requireLiveVenueSession(session.id);
   if (session.status !== "active") throw conflict("That venue conversation is not active.");
-  if (!input.message.trim()) throw badRequest("Write something before sending it.");
+  if (input.mode !== "leave" && !input.message.trim()) throw badRequest("Write something before sending it.");
   if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
   if (input.mode === "fulfill" && session.activeIds.length === 0)
     throw badRequest("Nobody is here to fulfill a wish for.");
@@ -1028,7 +1290,10 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       })),
       happenings: village.venueEvents.slice(0, 20),
       worldState: (() => {
-        const place = village.venues.find((venue) => venue.id === session.placeId);
+        const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
+        const place = storedPlace
+          ? venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
+          : undefined;
         if (!place) return [];
         return [
           `Current condition of ${place.name}: ${place.state.condition}`,
@@ -1057,12 +1322,30 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
     AbortSignal.timeout(90_000),
   );
+  if ((session.area === "shared" || session.area === "private") && reply.sceneChange) {
+    reply = await generate(
+      session,
+      input.message,
+      input.mode,
+      responseTargetId,
+      verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
+      AbortSignal.timeout(90_000),
+      false,
+      undefined,
+      undefined,
+      true,
+    );
+    if (reply.sceneChange) throw conflict("A lasting Residence change needs the residents' approval first.");
+  }
   const hasSpokenReply = (lines: typeof reply.lines) =>
     lines.some((line) =>
       session.activeIds.length === 0
         ? line.kind === "narration"
-        : line.kind === "dialogue" && (!responseTargetId || line.speakerId === responseTargetId),
-    );
+        : input.mode === "leave" || session.area === "outside"
+          ? line.kind === "narration" || line.kind === "dialogue"
+          : line.kind === "dialogue" && (!responseTargetId || line.speakerId === responseTargetId),
+    ) ||
+    (input.mode === "leave" && reply.lines.some((line) => line.kind === "dialogue"));
   if (!hasSpokenReply(reply.lines)) {
     reply = await generate(
       session,
@@ -1073,7 +1356,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       AbortSignal.timeout(90_000),
       true,
     );
-    if (!hasSpokenReply(reply.lines)) throw badGateway("Nobody answered aloud. Your message was not sent; try again.");
+    if (!hasSpokenReply(reply.lines)) throw badGateway("The scene did not answer. Try again.");
   }
   const updated = await changeSession(session.id, (state) => {
     if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
@@ -1084,16 +1367,17 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       throw conflict("The conversation moved on. Try sending that line again.");
     const at = new Date().toISOString();
     state.lastActivityAt = at;
-    const playerLineId = randomUUID();
-    appendLine(state, {
-      id: playerLineId,
-      speakerId: "",
-      name: "",
-      role: "user",
-      content: input.message,
-      at,
-      heardBy: reply.heardPlayerBy,
-    });
+    const playerLineId = input.message.trim() ? randomUUID() : "";
+    if (playerLineId)
+      appendLine(state, {
+        id: playerLineId,
+        speakerId: "",
+        name: "",
+        role: "user",
+        content: input.message,
+        at,
+        heardBy: reply.heardPlayerBy,
+      });
     appendVenueReply(state, reply.lines, at);
     const replyLineIds = state.lines.slice(-reply.lines.length).map((line) => line.id);
     const turnMemories: VenueMemory[] = reply.turnMemories.map((memory) => ({
@@ -1113,6 +1397,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
+      areaAtTurn: session.area,
+      privateOwnerIdAtTurn: session.privateOwnerId,
       verdict,
       wishId,
       wishMemory,
@@ -1120,8 +1406,40 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
+      ...(reply.invitationSignal
+        ? {
+            invitationSignal: {
+              ...reply.invitationSignal,
+              sourceLineId: reply.lines
+                .map((line, index) => ({ line, id: replyLineIds[index] }))
+                .find(
+                  ({ line }) =>
+                    line.speakerId === reply.invitationSignal?.residentId &&
+                    line.content.toLowerCase().includes(reply.invitationSignal.quote.toLowerCase()),
+                )?.id,
+            },
+          }
+        : {}),
+      ...(reply.editApprovalSignal
+        ? {
+            editApprovalSignal: {
+              ...reply.editApprovalSignal,
+              sourceLineId: reply.lines
+                .map((line, index) => ({ line, id: replyLineIds[index] }))
+                .find(
+                  ({ line }) =>
+                    line.speakerId === reply.editApprovalSignal?.residentId &&
+                    line.content.toLowerCase().includes(reply.editApprovalSignal.quote.toLowerCase()),
+                )?.id,
+            },
+          }
+        : {}),
       at,
     });
+    if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
+      state.area = reply.invitationSignal.scope === "private" ? "private" : "shared";
+      state.privateOwnerId = reply.invitationSignal.scope === "private" ? reply.invitationSignal.ownerId : "";
+    }
     state.activeIds = state.activeIds.filter((id) => !reply.departures.includes(id));
     if (reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0)) {
       state.status = "closed";
@@ -1132,14 +1450,72 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
   await applyVenueTurnChange(updated, submission);
   await applyFulfilledWish(updated, submission);
-  await applyVenueRequests(submission);
+  await applyVenueRequests(updated, submission);
+  if (submission.invitationSignal && submission.invitationSignal.timing === "later")
+    await recordSpokenInvitation(updated, submission.invitationSignal);
+  if (updated.area === "shared" || updated.area === "private") await markResidenceSeen(updated);
   await applyTurnMemories(updated, submission);
   const recordEvents = await receiptForTurn(updated, submission);
   if (updated.status === "closed") await clearActivePointer(updated.id);
   return { session: await readSession(updated.id), verdict, action: null, recordEvents };
 }
 
-async function applyVenueRequests(submission: VenueSubmission): Promise<void> {
+async function recordSpokenInvitation(
+  session: VenueSession,
+  signal: NonNullable<VenueSubmission["invitationSignal"]>,
+): Promise<void> {
+  const quote = signal.quote.replace(/\s+/gu, " ").toLowerCase();
+  const spoken = session.lines.find(
+    (line) =>
+      line.speakerId === signal.residentId &&
+      line.content.replace(/\s+/gu, " ").toLowerCase().includes(quote) &&
+      (!signal.sourceLineId || line.id === signal.sourceLineId),
+  );
+  if (!spoken || quote.length < 8) return;
+  await mutateVillageState((state) => {
+    const venue = state.venues.find((entry) => entry.id === signal.venueId);
+    if (!venue || !venueClasses(venue).includes("residence") || !venueResidentIds(venue).includes(signal.residentId))
+      return;
+    if (signal.scope === "private" && signal.ownerId !== signal.residentId) return;
+    if (venue.playerInvitations?.some((entry) => entry.sourceLineId === spoken.id)) return;
+    venue.playerInvitations = [
+      ...(venue.playerInvitations ?? []),
+      {
+        residentId: signal.residentId,
+        recordedAt: new Date().toISOString(),
+        scope: signal.scope,
+        ownerId: signal.ownerId,
+        sourceLineId: spoken.id,
+        quote: signal.quote,
+      },
+    ].slice(-16);
+  });
+}
+
+async function markResidenceSeen(session: VenueSession): Promise<void> {
+  await mutateVillageState((state) => {
+    const venue = state.venues.find((entry) => entry.id === session.placeId);
+    if (!venue || !venueClasses(venue).includes("residence")) return;
+    venue.playerSeenShared = true;
+    if (session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
+      venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
+  });
+}
+
+async function applyVenueRequests(session: VenueSession, submission: VenueSubmission): Promise<void> {
+  if (submission.editApprovalSignal) {
+    const signal = submission.editApprovalSignal;
+    const quote = signal.quote.replace(/\s+/gu, " ").toLowerCase();
+    if (
+      session.lines.some(
+        (line) =>
+          line.id === signal.sourceLineId &&
+          line.speakerId === signal.residentId &&
+          line.content.replace(/\s+/gu, " ").toLowerCase().includes(quote),
+      )
+    )
+      await applyResidenceEditApproval(session.placeId, signal.proposalId, signal.residentId, signal.approved);
+  }
   if (submission.residenceSignal) {
     const signal = submission.residenceSignal;
     if (signal.kind === "request") {
@@ -1158,9 +1534,10 @@ async function applyVenueRequests(submission: VenueSubmission): Promise<void> {
   }
   if (submission.upgradeSignal) {
     try {
-      await requestVillageHomeUpgrade(
+      await recordVillagerVenueImprovement(
         submission.upgradeSignal.characterId,
         submission.upgradeSignal.venueId,
+        submission.upgradeSignal.quote,
         `venue-upgrade:${submission.id}`,
       );
     } catch (error) {
@@ -1171,16 +1548,27 @@ async function applyVenueRequests(submission: VenueSubmission): Promise<void> {
 
 async function applyVenueTurnChange(session: VenueSession, submission: VenueSubmission): Promise<void> {
   if (!submission.sceneChange) return;
+  const area = submission.areaAtTurn ?? session.area;
+  if (area === "private") return;
+  const privateOwnerId = submission.privateOwnerIdAtTurn ?? session.privateOwnerId;
   const id = `venue-chat:${session.id}:${submission.id}`;
   await mutateVillageState((state) => {
+    if (
+      area === "shared" &&
+      state.venues.some((venue) => venue.id === session.placeId && venueResidentIds(venue).length > 0)
+    )
+      return;
     if (state.venueEvents.some((event) => event.id === id)) return;
     const change = readVenueSceneChange(
       { happened: true, ...submission.sceneChange },
-      state.venues.find((place) => place.id === session.placeId),
+      (() => {
+        const place = state.venues.find((entry) => entry.id === session.placeId);
+        return place ? venueInArea(place, area, session.spaceClass, privateOwnerId) : undefined;
+      })(),
     );
     if (!change) return;
     const at = submission.at || new Date().toISOString();
-    applyVenueSceneChange(state, session.placeId, change, submission.id, at);
+    applyVenueSceneChange(state, session.placeId, change, submission.id, at, session.spaceClass, area, privateOwnerId);
     const venue = state.venues.find((place) => place.id === session.placeId)!;
     const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date(at) });
     state.happenings = prependHappenings(state.happenings, [
@@ -1298,7 +1686,11 @@ async function receiptForTurn(session: VenueSession, submission: VenueSubmission
     const name =
       session.participants.find((person) => person.characterId === submission.upgradeSignal!.characterId)?.name ??
       "A villager";
-    events.push({ id: `venue-upgrade:${submission.id}`, kind: "request", text: `${name} asked for a home upgrade.` });
+    events.push({
+      id: `venue-upgrade:${submission.id}`,
+      kind: "request",
+      text: `${name} suggested a Venue improvement.`,
+    });
   }
   await changeSession(session.id, (state) => {
     const saved = state.submissions.find((entry) => entry.id === submission.id);
@@ -1519,7 +1911,8 @@ async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<Ven
     state.endReason ||= "player";
   });
   await clearActivePointer(id);
-  if (!hasPlayerTurn) {
+  const hasLeaveSubmission = closing.submissions.some((submission) => submission.mode === "leave");
+  if (!hasPlayerTurn && !hasLeaveSubmission) {
     const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
   }

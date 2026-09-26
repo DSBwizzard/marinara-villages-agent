@@ -9,6 +9,7 @@ import { mutateVillageState, readVillageState } from "./village-store.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { readPlayerIdentity, rollActiveAgendas } from "./village.js";
 import { activeVenueSession, recordVenueAction } from "./venue-session.js";
+import { venueInArea, venueResidentIds } from "./venue-model.js";
 
 export const MAX_VENUE_ACTION_LENGTH = 500;
 
@@ -114,11 +115,14 @@ export async function actAtVenue(placeId: string, rawAction: string, submissionI
     await recordVenueAction(placeId, action, prior, submissionId);
     return prior;
   }
-  const place = village.venues.find((entry) => entry.id === placeId);
-  if (!place) throw notFound("That place is not in this village.");
+  const storedPlace = village.venues.find((entry) => entry.id === placeId);
+  if (!storedPlace) throw notFound("That place is not in this village.");
   const active = await activeVenueSession();
   if (!active || active.placeId !== placeId || active.status !== "active")
     throw badRequest("Visit this venue before acting here.");
+  if (active.area === "private" || (active.area === "shared" && venueResidentIds(storedPlace).length > 0))
+    throw badRequest("Private and shared Residence changes require the residents' specific approval.");
+  const place = venueInArea(storedPlace, active.area, active.spaceClass, active.privateOwnerId);
   const people =
     active?.participants
       .filter((person) => active.activeIds.includes(person.characterId))
@@ -171,6 +175,20 @@ export async function actAtVenue(placeId: string, rawAction: string, submissionI
       if (state.venueEvents.some((event) => event.actionReceipt?.submissionId === submissionId)) return;
       const current = state.venues.find((entry) => entry.id === placeId);
       if (!current) throw notFound("That place is not in this village.");
+      const originalState = current.state;
+      const space =
+        active.area === "outside" ? undefined : current.spaces?.find((entry) => entry.venueClass === active.spaceClass);
+      const areaState = active.area === "outside" ? current.exteriorState : space?.state;
+      if (areaState)
+        current.state = {
+          ...current.state,
+          condition: areaState.condition,
+          furniture: [...areaState.items],
+          publicFacts: [...areaState.publicFacts],
+          features: [...areaState.features],
+          traces: [...areaState.traces],
+          updatedAt: areaState.updatedAt,
+        };
       if (result.removeItem && !current.state.furniture.includes(result.removeItem)) {
         throw badRequest("That item is no longer here.");
       }
@@ -198,6 +216,18 @@ export async function actAtVenue(placeId: string, rawAction: string, submissionI
         ];
       }
       if (result.addItem || result.removeItem) current.state.updatedAt = moment.instant;
+      const nextState = {
+        condition: current.state.condition,
+        items: [...current.state.furniture],
+        publicFacts: [...current.state.publicFacts],
+        features: [...(current.state.features ?? [])],
+        traces: [...(current.state.traces ?? [])],
+        updatedAt: current.state.updatedAt,
+      };
+      if (active.area === "outside") {
+        current.exteriorState = nextState;
+        current.state = originalState;
+      } else if (space) space.state = nextState;
       state.happenings = prependHappenings(state.happenings, [happening]);
       state.venueEvents = [
         {

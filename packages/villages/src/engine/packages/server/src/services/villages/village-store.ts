@@ -12,6 +12,7 @@ import { coerceSelectedLorebookIds } from "./lorebooks.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "./narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "./native-remap.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./package-runtime.js";
+import { defaultVenueSpace, validVenueClasses, validVenueImprovements } from "./venue-model.js";
 import {
   boundText,
   DEFAULT_TOWN_MAP_VIEW,
@@ -78,6 +79,8 @@ import type {
   VillageState,
   VillageTownMapView,
   VillageVenue,
+  VillageVenueClass,
+  VillageVenueMail,
   VillageVenueFeature,
   VillageVenueTrace,
   VillageVenueEvent,
@@ -185,6 +188,7 @@ export function defaultVillageState(): VillageState {
     relationships: [],
     projects: [],
     pendingDecisions: [],
+    venueMail: [],
     villagers: [],
     // Empty rather than the default text: the default lives in `prompt-preset.ts`
     // and is applied at render time, so improving it reaches villages that never
@@ -637,6 +641,86 @@ function coerceVenue(value: unknown): VillageVenue | null {
   const playerHome = occupancy.playerHome === true;
   const residentCharacterId = asTrimmedString(occupancy.residentCharacterId);
   const homeKind = isHomeBuildingKind(occupancy.homeKind) ? occupancy.homeKind : null;
+  const classes: VillageVenueClass[] = validVenueClasses(raw.classes)
+    ? raw.classes
+    : playerHome || residentCharacterId || homeKind
+      ? ["residence"]
+      : ["other"];
+  const residentIds = coerceVenueIds(raw.residentIds);
+  if (!residentIds.length && residentCharacterId && !playerHome) residentIds.push(residentCharacterId);
+  const coerceSpaceState = (value: unknown) => {
+    const scene = asRecord(value);
+    return {
+      condition: boundText(scene.condition, MAX_VENUE_NOTE_LENGTH),
+      items: coerceVenueStringList(scene.items),
+      publicFacts: coerceVenueStringList(scene.publicFacts),
+      features: coerceVenueFeatures(scene.features),
+      traces: coerceVenueTraces(scene.traces),
+      updatedAt: asIsoString(scene.updatedAt) ?? "",
+    };
+  };
+  const privateSpaceFor = (ownerId: string, value: unknown) => {
+    const row = asRecord(value);
+    return {
+      ...defaultVenueSpace("residence", `A private space for this resident at ${name}.`),
+      id: `private:${ownerId}`,
+      ownerId,
+      description:
+        boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`,
+      image: coerceVenueImage(row.image),
+      state: coerceSpaceState(row.state),
+      adaptationPending: row.adaptationPending === true,
+      adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
+    };
+  };
+  const privateSpaces = classes.includes("residence")
+    ? residentIds.map((ownerId) =>
+        privateSpaceFor(
+          ownerId,
+          Array.isArray(raw.privateSpaces)
+            ? raw.privateSpaces.find((entry) => asTrimmedString(asRecord(entry).ownerId) === ownerId)
+            : null,
+        ),
+      )
+    : [];
+  const spaces = classes.map((venueClass) => {
+    const row = Array.isArray(raw.spaces)
+      ? asRecord(raw.spaces.find((entry) => asRecord(entry).venueClass === venueClass))
+      : {};
+    const scene = asRecord(row.state);
+    const fallback = defaultVenueSpace(venueClass, description);
+    const legacyScene: Record<string, unknown> = Array.isArray(raw.spaces) ? {} : state;
+    return {
+      ...fallback,
+      id: asTrimmedString(row.id) || venueClass,
+      description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || description,
+      image:
+        coerceVenueImage(row.image) ??
+        (Array.isArray(raw.spaces) || venueClass === "residence" ? null : coerceVenueImage(presentation.image)),
+      state: {
+        condition: boundText(scene.condition ?? legacyScene.condition, MAX_VENUE_NOTE_LENGTH),
+        items: coerceVenueStringList(scene.items ?? legacyScene.furniture),
+        publicFacts: coerceVenueStringList(scene.publicFacts ?? legacyScene.publicFacts),
+        features: coerceVenueFeatures(scene.features ?? legacyScene.features),
+        traces: coerceVenueTraces(scene.traces ?? legacyScene.traces),
+        updatedAt: asIsoString(scene.updatedAt ?? legacyScene.updatedAt) ?? "",
+      },
+    };
+  });
+  const improvements = validVenueImprovements(raw.improvements)
+    ? raw.improvements.map((entry) =>
+        entry
+          ? {
+              id: entry.id,
+              title: boundText(entry.title, MAX_VENUE_NOTE_LENGTH),
+              description: boundText(entry.description, MAX_VENUE_DESCRIPTION_LENGTH),
+              spaceId: asTrimmedString(entry.spaceId) || null,
+              extraBeds: entry.extraBeds,
+              approvedAt: asIsoString(entry.approvedAt) ?? "",
+            }
+          : null,
+      )
+    : [null, null];
   if (
     asTrimmedString(raw.id).length === 0 ||
     (name.length === 0 && !playerHome && residentCharacterId.length === 0 && homeKind === null)
@@ -646,6 +730,81 @@ function coerceVenue(value: unknown): VillageVenue | null {
   return {
     id: asTrimmedString(raw.id),
     name,
+    form: boundText(raw.form, MAX_VENUE_NOTE_LENGTH),
+    classes,
+    spaces,
+    residenceCapacity:
+      Number.isInteger(raw.residenceCapacity) &&
+      Number(raw.residenceCapacity) >= 1 &&
+      Number(raw.residenceCapacity) <= 4
+        ? Number(raw.residenceCapacity)
+        : 1,
+    residentIds,
+    exteriorState: coerceSpaceState(raw.exteriorState),
+    privateSpaces,
+    playerSeenShared: raw.playerSeenShared === true,
+    playerSeenPrivateIds: coerceVenueIds(raw.playerSeenPrivateIds).filter((id) => residentIds.includes(id)),
+    archivedPrivateSpaces: Array.isArray(raw.archivedPrivateSpaces)
+      ? raw.archivedPrivateSpaces
+          .map((value) => {
+            const entry = asRecord(value);
+            const ownerId = asTrimmedString(entry.ownerId);
+            const archivedAt = asIsoString(entry.archivedAt);
+            return ownerId && archivedAt ? { ownerId, archivedAt, space: privateSpaceFor(ownerId, entry.space) } : null;
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
+          .slice(-32)
+      : [],
+    editProposals: Array.isArray(raw.editProposals)
+      ? raw.editProposals
+          .flatMap((value) => {
+            const entry = asRecord(value);
+            const id = asTrimmedString(entry.id);
+            const target = entry.target === "private" ? ("private" as const) : ("shared" as const);
+            const ownerId = asTrimmedString(entry.ownerId);
+            const proposed = asRecord(entry.proposed);
+            const requiredIds = coerceVenueIds(entry.requiredIds);
+            if (!id || !requiredIds.length || (target === "private" && ownerId !== requiredIds[0])) return [];
+            return [
+              {
+                id,
+                target,
+                ownerId,
+                baseUpdatedAt: asIsoString(entry.baseUpdatedAt) ?? "",
+                proposed: {
+                  id: asTrimmedString(proposed.id) || (target === "private" ? `private:${ownerId}` : "residence"),
+                  venueClass: "residence" as const,
+                  description: boundText(proposed.description, MAX_VENUE_DESCRIPTION_LENGTH),
+                  image: coerceVenueImage(proposed.image),
+                  state: coerceSpaceState(proposed.state),
+                },
+                requiredIds,
+                approvedIds: coerceVenueIds(entry.approvedIds).filter((residentId) => requiredIds.includes(residentId)),
+                declined: entry.declined === true,
+                createdAt: asIsoString(entry.createdAt) ?? "",
+              },
+            ];
+          })
+          .slice(-8)
+      : [],
+    playerInvitations: Array.isArray(raw.playerInvitations)
+      ? raw.playerInvitations
+          .map((entry) => ({
+            residentId: asTrimmedString(asRecord(entry).residentId),
+            recordedAt: asIsoString(asRecord(entry).recordedAt) ?? "",
+            scope: asRecord(entry).scope === "private" ? ("private" as const) : ("shared" as const),
+            ownerId: asTrimmedString(asRecord(entry).ownerId),
+            sourceLineId: asTrimmedString(asRecord(entry).sourceLineId),
+            quote: boundText(asRecord(entry).quote, MAX_VENUE_NOTE_LENGTH),
+          }))
+          .filter(
+            (entry) =>
+              residentIds.includes(entry.residentId) &&
+              (entry.scope === "shared" || entry.ownerId === entry.residentId),
+          )
+          .slice(-16)
+      : [],
+    improvements,
     purpose,
     description,
     category,
@@ -656,7 +815,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     },
     occupancy: {
       playerHome,
-      residentCharacterId: playerHome ? null : residentCharacterId || null,
+      residentCharacterId: residentIds[0] ?? null,
       homeKind,
     },
     capabilities,
@@ -1314,7 +1473,10 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
           detail: boundText(raw.detail, MAX_CHRONICLE_LENGTH),
           proposedAt,
           sourceOpportunityId: asTrimmedString(raw.sourceOpportunityId),
-          status: raw.status === "approved" || raw.status === "denied" ? raw.status : ("pending" as const),
+          status:
+            raw.status === "approved" || raw.status === "denied" || raw.status === "countered"
+              ? raw.status
+              : ("pending" as const),
           ...(requestName && requestPurpose
             ? {
                 venueDraft: {
@@ -1345,6 +1507,90 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       ];
     })
     .slice(-MAX_SIMULATION_RECORDS);
+}
+
+function coerceVenueMail(value: unknown): VillageVenueMail[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .flatMap((entry) => {
+      const row = asRecord(entry);
+      if (!asTrimmedString(row.id) || !asTrimmedString(row.venueId)) return [];
+      if (
+        row.kind !== "change" &&
+        row.kind !== "player-move" &&
+        row.kind !== "counteroffer" &&
+        row.kind !== "villager-change" &&
+        row.kind !== "villager-move"
+      )
+        return [];
+      const proposedClasses = validVenueClasses(row.proposedClasses) ? row.proposedClasses : undefined;
+      const proposedCapacity =
+        Number.isInteger(row.proposedCapacity) && Number(row.proposedCapacity) >= 1 && Number(row.proposedCapacity) <= 4
+          ? Number(row.proposedCapacity)
+          : undefined;
+      const proposedImprovement = asRecord(row.improvement);
+      const improvement =
+        row.improvement === null
+          ? null
+          : asTrimmedString(proposedImprovement.id)
+            ? {
+                id: asTrimmedString(proposedImprovement.id),
+                title: boundText(proposedImprovement.title, MAX_VENUE_NOTE_LENGTH),
+                description: boundText(proposedImprovement.description, MAX_VENUE_DESCRIPTION_LENGTH),
+                spaceId: asTrimmedString(proposedImprovement.spaceId) || null,
+                extraBeds: Number.isInteger(proposedImprovement.extraBeds)
+                  ? Math.max(0, Math.min(3, Number(proposedImprovement.extraBeds)))
+                  : 0,
+                approvedAt: asIsoString(proposedImprovement.approvedAt) ?? "",
+              }
+            : undefined;
+      return [
+        {
+          id: asTrimmedString(row.id),
+          venueId: asTrimmedString(row.venueId),
+          title: boundText(row.title, MAX_VENUE_NOTE_LENGTH),
+          detail: boundText(row.detail, MAX_VENUE_DESCRIPTION_LENGTH),
+          kind: row.kind,
+          status:
+            row.status === "approved" || row.status === "declined" || row.status === "pending-player"
+              ? row.status
+              : "awaiting-villagers",
+          createdAt: asIsoString(row.createdAt) ?? "",
+          dueAt: asIsoString(row.dueAt) ?? "",
+          resolvedAt: asIsoString(row.resolvedAt) ?? "",
+          requesterCharacterId: asTrimmedString(row.requesterCharacterId),
+          movingCharacterId: asTrimmedString(row.movingCharacterId) || undefined,
+          counterofferRequestId: asTrimmedString(row.counterofferRequestId) || undefined,
+          counterofferDraft: (() => {
+            const draft = asRecord(row.counterofferDraft);
+            return asTrimmedString(draft.name) && asTrimmedString(draft.description)
+              ? {
+                  name: boundText(draft.name, MAX_VENUE_NAME_LENGTH),
+                  purpose: boundText(draft.purpose, MAX_VENUE_NOTE_LENGTH),
+                  category: boundText(draft.category, MAX_VENUE_NOTE_LENGTH),
+                  description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
+                }
+              : undefined;
+          })(),
+          ...(proposedClasses ? { proposedClasses } : {}),
+          ...(proposedCapacity ? { proposedCapacity } : {}),
+          improvementSlot: Number.isInteger(row.improvementSlot) ? Number(row.improvementSlot) : undefined,
+          improvement,
+          affectedIds: coerceVenueIds(row.affectedIds),
+          decisions: Array.isArray(row.decisions)
+            ? row.decisions
+                .map((decision) => ({
+                  characterId: asTrimmedString(asRecord(decision).characterId),
+                  accepted: asRecord(decision).accepted === true,
+                  reply: boundText(asRecord(decision).reply, MAX_VENUE_NOTE_LENGTH),
+                }))
+                .filter((decision) => decision.characterId)
+            : [],
+          error: boundText(row.error, MAX_VENUE_NOTE_LENGTH),
+        } satisfies VillageVenueMail,
+      ];
+    })
+    .slice(-256);
 }
 
 export function coerceVillageState(value: unknown): VillageState {
@@ -1414,6 +1660,7 @@ export function coerceVillageState(value: unknown): VillageState {
     relationships: coerceRelationships(raw.relationships),
     projects: coerceProjects(raw.projects),
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
+    venueMail: coerceVenueMail(raw.venueMail),
     villagers: villagers
       .filter((entry) => {
         if (seen.has(entry.characterId)) return false;

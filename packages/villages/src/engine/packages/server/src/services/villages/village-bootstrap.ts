@@ -46,7 +46,6 @@ import {
   MAX_CHRONICLE_PER_WRITE,
   MAX_HAPPENINGS_PER_WRITE,
   MAX_HAPPENING_LENGTH,
-  HOME_BUILDING_ORDER,
   MAX_LAPSES_PER_WRITE,
   MAX_NOTICES_PER_WRITE,
   MAX_NOTICE_AUTHOR_LENGTH,
@@ -712,11 +711,8 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
         const destinations = context.venues.filter(
           (venue) => !venue.occupancy.playerHome && !venue.occupancy.residentCharacterId && venue.id !== home?.id,
         );
-        const nextTier = home?.occupancy.homeKind
-          ? HOME_BUILDING_ORDER[HOME_BUILDING_ORDER.indexOf(home.occupancy.homeKind) + 1]
-          : undefined;
         return [
-          `${resident.name} (${actorId}): ${destinations.length ? `move destinations ${destinations.map((venue) => `${venue.name} (${venue.id})`).join(", ")}` : "no available move destination"}; ${nextTier ? `upgrade own home ${home?.name} (${home?.id}) to ${nextTier}` : "no home upgrade available"}`,
+          `${resident.name} (${actorId}): ${destinations.length ? `move destinations ${destinations.map((venue) => `${venue.name} (${venue.id})`).join(", ")}` : "no available move destination"}`,
         ];
       }),
     );
@@ -747,7 +743,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
       housingOptions.length
         ? `Housing options for people in the offered opportunity: ${housingOptions.join(" | ")}.`
         : "No housing request options are available.",
-      `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move or upgrade","venueId":"destination id for move, own home id for upgrade"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move or next home tier. Never treat a player request as their consent. No other keys.`,
+      `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move","venueId":"destination id"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move. Never treat a player request as their consent. No other keys.`,
     ];
     return [
       { role: "system", content: sections.filter(Boolean).join("\n\n") },
@@ -1032,13 +1028,6 @@ export function readHousingRequests(
       return [];
     return [{ characterId, kind, venueId }];
   }
-  if (
-    kind === "upgrade" &&
-    venue.occupancy.residentCharacterId === characterId &&
-    venue.occupancy.homeKind &&
-    HOME_BUILDING_ORDER[HOME_BUILDING_ORDER.indexOf(venue.occupancy.homeKind) + 1]
-  )
-    return [{ characterId, kind, venueId }];
   return [];
 }
 

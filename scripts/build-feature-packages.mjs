@@ -15,7 +15,9 @@ import { withPackageActivationGuidance } from "./catalog-package-guidance.mjs";
 import { writeEnglishPackageLocale } from "./package-locales.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const engineRoot = resolve(process.env.MARINARA_ENGINE_ROOT || join(repoRoot, "../Marinara-Engine"));
+const engineRootArgument = process.env.MARINARA_ENGINE_ROOT;
+if (!engineRootArgument) throw new Error("Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
+const engineRoot = resolve(engineRootArgument);
 
 // Tool binaries run as JS entrypoints under the current Node instead of via
 // `pnpm exec`: pnpm is a .cmd on Windows that bare spawnSync cannot start, and
@@ -3092,7 +3094,7 @@ const features = [
     // 0.2.x still renders.
     // 0.6.0: continuous device-local time, exact repeating agenda intervals,
     // durable restart reconciliation, bounded story pacing, and return recaps.
-    version: "0.6.20",
+    version: "0.6.31",
     minEngineVersion: "2.4.6",
     maxEngineExclusive: MAX_ENGINE_EXCLUSIVE,
     name: "Villages",

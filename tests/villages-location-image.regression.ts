@@ -68,7 +68,8 @@ async function collectSources(root: string): Promise<Array<{ path: string; sourc
 
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT ?? join(repoRoot, "../Marinara-Engine");
+  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
+  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
   const services = "packages/villages/src/engine/packages/server/src/services/villages";
 
@@ -211,7 +212,7 @@ async function main() {
       moment,
     ),
     [
-      "A wide, empty establishing view of the mill pond in Willowbrook.",
+      "A wide, empty exterior view of the mill pond and its approach in Willowbrook. Show the building from outside; do not show an interior.",
       "Venue purpose: where the grain is ground.",
       `Village setting and theme: ${setting}.`,
       `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
@@ -220,6 +221,18 @@ async function main() {
     ].join(" "),
     "the prompt is the place, the village, the weather, and an explicit refusal of people",
   );
+  const interiorPrompt = buildLocationPrompt(
+    village,
+    coerceVillageState({
+      venues: [{ id: "mill", name: "the mill pond", purpose: "grain", description: "A timbered room" }],
+    }).venues[0]!,
+    moment,
+    "",
+    "interior",
+  );
+  assert.match(interiorPrompt, /interior view/u);
+  assert.match(interiorPrompt, /A timbered room/u);
+  assert.doesNotMatch(interiorPrompt, /building from outside/u);
   assert.match(
     buildLocationPrompt(
       village,
@@ -349,14 +362,27 @@ async function main() {
   assert.deepEqual(
     Object.keys(placesOf([house("bram-house", "character-bram")])[0]!).sort(),
     [
+      "archivedPrivateSpaces",
       "capabilities",
       "category",
+      "classes",
       "description",
+      "editProposals",
+      "exteriorState",
+      "form",
       "id",
+      "improvements",
       "name",
       "occupancy",
+      "playerInvitations",
+      "playerSeenPrivateIds",
+      "playerSeenShared",
       "presentation",
+      "privateSpaces",
       "purpose",
+      "residenceCapacity",
+      "residentIds",
+      "spaces",
       "state",
       "workerIds",
     ],
@@ -722,23 +748,29 @@ async function main() {
     venues: [
       {
         id: "player-home",
-        name: "",
+        name: "Robin's Diner",
+        form: "A converted diner",
+        classes: ["residence"],
         purpose: "",
         description: "A modest home for the player.",
         presentation: { x: 0.2, y: 0.3 },
-        occupancy: { playerHome: true, residentCharacterId: null, homeKind: "small-home" },
+        occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
       },
       {
         id: "millie-home",
-        name: "",
+        name: "Millie's Pod",
+        form: "A sleeping pod",
+        classes: ["residence"],
         purpose: "",
         description: "Millie's small home.",
         presentation: { x: 0.4, y: 0.5 },
-        occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: "small-home" },
+        occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
       },
       {
         id: "village-square",
         name: "Village square",
+        form: "An open square",
+        classes: ["gathering"],
         purpose: "The center of town.",
         description: "A public square where neighbours meet.",
         category: "public-center",
@@ -749,7 +781,7 @@ async function main() {
   });
   assert.equal(founded.statusCode, 200);
   assert.equal(
-    founded.json().settings.venues.filter((venue: any) => venue.occupancy.homeKind === null).length,
+    founded.json().settings.venues.filter((venue: any) => venue.classes.includes("gathering")).length,
     1,
     "founding creates exactly one public venue",
   );
@@ -931,7 +963,7 @@ async function main() {
   );
   assert.ok(
     request.appearance.startsWith(
-      "A wide, empty establishing view of the mill pond in Ashcroft. Venue purpose: where the grain is ground.",
+      "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show the building from outside; do not show an interior. Venue purpose: where the grain is ground.",
     ),
     "the picture is of the place, with its own note",
   );
@@ -1046,13 +1078,13 @@ async function main() {
   // And the button really is a button. Each handler is defined once and reached
   // only from an event, so there is no effect anywhere that could call one.
   //
-  // The counts are occurrences of the NAME: one definition and one control.
-  // Edit Room owns image actions on desktop and mobile, including for homes.
+  // The counts are occurrences of the NAME: one definition and three controls,
+  // for exterior, Class space, and a resident's private space.
   const client = await readFile(
     join(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  const presses: Record<string, number> = { drawPlaceImage: 2, keepPlaceImage: 2, dropPlaceImage: 2 };
+  const presses: Record<string, number> = { drawPlaceImage: 4, keepPlaceImage: 4, dropPlaceImage: 4 };
   for (const [handler, count] of Object.entries(presses)) {
     assert.equal(
       client.split(handler).length - 1,

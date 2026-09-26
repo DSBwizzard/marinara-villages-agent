@@ -10,13 +10,19 @@ Villages is a first-class downloadable agent in the normal catalog channels. It 
 
 ## Venue editing and resident authority
 
-**View venue → Edit Room** edits that venue's name, purpose, description, condition, furniture, public facts, features, workers, and image. Village Settings manages the map and founding choices. Every founding venue, including homes and the public center, needs a player-approved description; the AI can draft it before founding, and the player can edit or regenerate it. Venue images use the approved description, venue facts, surrounding places, the village setting, founding premise, and relevant lore.
+**View Venue → Edit Venue** edits public venues and the player's own home. An occupied villager Residence requires an invitation to see its shared or private space. Drafts for those spaces, including image changes, become exact proposals. Every current resident approves a shared proposal; the owner approves a private proposal. The server applies the proposed revision only after evidenced spoken approval.
+
+View Venue has separate **Exterior image** and **Interior/space image** controls. Drawing is always an explicit player action. Exterior art appears on the map and outside scenes; an entered space uses its own image. A proposed Residence image is drawn or uploaded for review before residents decide whether to adopt it.
 
 A player can propose a move to an available venue. The villager accepts or refuses in conversation. A villager can also propose a move or one home-tier upgrade in conversation or during village life; the player decides in Venue Requests. An approved move completes after 24 elapsed hours, with a visible DEBUG shortcut. Occupied homes cannot be relocated, reassigned, converted, or removed until their resident moves out.
 
-**Future relationship-system integration:** room and feature editing is currently under player control. When player–villager relationships and consent are implemented, gate the relevant edits by the resident's approved relationship level and honor resident authority over their home. Keep this requirement with the Edit Room permissions and server mutations; do not infer permission from the existing villager–villager closeness record.
+Residence entry and editing rely on explicit resident dialogue. A recorded invitation permits a one-use future visit; an invitation during a scene can admit the player immediately. Entry does not authorize changing furnishings or room state. A move archives the old private room and asks the System connection once to select portable personal elements for a new room. A failed adaptation leaves a retryable draft and the archive intact.
 
 ## What this release contains
+
+0.6.31 opens uninvited Residence visits outside with a friendly notice and a freeform composer. Residents may answer, remain unavailable, or be away; the player can leave without a scripted approach. Residence shared and private spaces use server-held access and resident consent for edits. The venue page labels exterior and interior image controls and removes duplicate controls. **Leave Scene** is in the chat bubble menu: the exact draft is an optional final line, and an empty draft leaves silently while the scene supplies a grounded close. The final exchange remains visible until **Return to map**.
+
+0.6.21 brings the Game Mode reading layout to venue visits on desktop and mobile: a compact bottom panel, floating asides, and a Chat/Fulfill speech-bubble menu in the composer. Players can write only at the latest paragraph. **End scene** now generates a final exchange to read before returning to the map; the immediate end control is labeled DEBUG. Star notices open the exact saved villager memory. Founding and village maps both use compact photograph pins, with spacing checks when placing homes and the public center.
 
 0.6.20 lets players leave with memory pending while a visit is still being saved. The in-flight filing call is canceled and the exact transcript remains available for an archive retry. Extraction reserves its full answer budget when fitting chunks and selects at most eight consequential memories per chunk, so long visits take fewer calls and produce fewer routine notes.
 
@@ -895,7 +901,7 @@ Two things are deliberately different from the Engine. Macros are resolved in on
 | `{{time}}` / `{{weather}}`              | For example `morning on day 1 of Spring`, and the weather in lower case.                                                                                                                                                                                                                   |
 | `{{player}}`, `{{roster}}`, `{{homes}}` | Whole blocks. Each one renders nothing at all when its source is empty, so a village with no named player and one resident produces exactly the prompt it produced before these channels existed. `{{homes}}` lists one line per **occupied** home only, saying what building each one is. |
 | `{{wishes}}`                            | What this villager privately wishes for, each with the small ordinary thing that gives it away. Renders nothing at all when the village has not written an agenda for them yet, which is the common case.                                                                                  |
-| `{{noticeboard}}`, `{{lore}}`           | The same rule. `{{lore}}` renders selected, relevant live Engine lorebook entries, or nothing when no entries match.                                                                                                                                                     |
+| `{{noticeboard}}`, `{{lore}}`           | The same rule. `{{lore}}` renders selected, relevant live Engine lorebook entries, or nothing when no entries match.                                                                                                                                                                       |
 
 `{{user}}`, `{{userDescription}}` and `{{player}}` are one answer read three ways: who you are. A linked Persona supplies it — its display name, and its description with appearance, personality and backstory attached in labelled paragraphs — and the hand-written name and description supply it while nothing is linked. Everything downstream reads the resolved answer and never the two fields, which is why the name a villager uses in the roster, on the map and in the prompt is always the same one.
 
@@ -958,7 +964,7 @@ node packages/villages/build/cover.mjs        # only when the placeholder art ch
 node scripts/build-feature-packages.mjs villages
 ```
 
-The second command bundles `server.mjs` and `client.js`, writes the manifest, `agents.json`, and `locales/en.json`, and produces a deterministic store-only zip under `artifacts/` named for the manifest version. It needs the Engine workspace next to this repository (`../Marinara-Engine`) for its `esbuild` and client dependencies, or `MARINARA_ENGINE_ROOT` pointing at one.
+The second command bundles `server.mjs` and `client.js`, writes the manifest, `agents.json`, and `locales/en.json`, and produces a deterministic store-only zip under `artifacts/` named for the manifest version. Set `MARINARA_ENGINE_ROOT` to the current Engine checkout to provide its `esbuild` and client dependencies.
 
 Then run the repository checks:
 
