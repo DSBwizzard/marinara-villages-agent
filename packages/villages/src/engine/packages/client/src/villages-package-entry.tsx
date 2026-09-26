@@ -4529,7 +4529,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-tack { position: absolute; top: -.35rem; left: 50%; width: .55rem; height: .55rem; transform: translateX(-50%); border-radius: 50%; background: #b89a43; box-shadow: 0 1px 2px #0009; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .55rem; font-weight: 700; }
-.${ELEMENT_TAG}-pin-photo-empty { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: #e8dfc9; font-size: 1.15rem; }
+.${ELEMENT_TAG}-pin-photo-empty { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: #e8dfc9; font-size: 1.5rem; }
 .${ELEMENT_TAG}-pin-placement-error { position: absolute; z-index: 15; left: .5rem; bottom: .5rem; margin: 0; max-width: calc(100% - 1rem); padding: .4rem .6rem; border-radius: .5rem; background: #261a19e8; color: white; font-size: .75rem; pointer-events: none; }
 .${ELEMENT_TAG}-setup-venue-list { display: grid; gap: .45rem; margin: .5rem 0; }
 .${ELEMENT_TAG}-setup-venue-card { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); align-items: center; gap: .65rem; min-height: 4.4rem; width: 100%; box-sizing: border-box; text-align: left; border: 1px solid var(--border); border-radius: .6rem; background: var(--background); color: var(--foreground); padding: .45rem; }
@@ -6757,6 +6757,7 @@ function MapStage({
       data-shaped={shape ? "true" : "false"}
       data-framing={framing && live.fit === "cover" ? "true" : "false"}
       data-mobile={mobile ? "true" : "false"}
+      data-photo-pins={photoPins ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
         if (mobile) {
@@ -6887,7 +6888,9 @@ function MapStage({
                         {pin.image ? (
                           <img src={pin.image} alt="" loading="lazy" draggable={false} />
                         ) : (
-                          <span className={`${ELEMENT_TAG}-pin-photo-empty`}>⌂</span>
+                          <span className={`${ELEMENT_TAG}-pin-photo-empty`} role="img" aria-label="House">
+                            🏠
+                          </span>
                         )}
                         <span className={`${ELEMENT_TAG}-pin-photo-tack`} />
                       </span>
