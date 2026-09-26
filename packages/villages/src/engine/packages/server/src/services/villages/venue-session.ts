@@ -52,7 +52,7 @@ export type VenueParticipant = { characterId: string; name: string; doing: strin
 type VenueSubmission = {
   id: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act";
+  mode: "chat" | "ask" | "fulfill" | "act" | "leave";
   targetId: string;
   verdict: { fulfilled: boolean; reason: string } | null;
   wishId: string;
@@ -68,7 +68,12 @@ type VenueSubmission = {
 };
 
 type VenueMemory = { characterId: string; text: string; lineIds?: string[] };
-export type VenueRecordEvent = { id: string; kind: "memory" | "wish" | "venue" | "request"; text: string };
+export type VenueRecordEvent = {
+  id: string;
+  kind: "memory" | "wish" | "venue" | "request";
+  text: string;
+  detail?: string;
+};
 type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 
 /** One document is both the active transcript and the player's durable visit archive. */
@@ -196,13 +201,15 @@ function coerceSession(value: unknown): VenueSession {
               id: asTrimmedString(row.id),
               message: asString(row.message),
               mode:
-                row.mode === "act"
-                  ? ("act" as const)
-                  : row.mode === "fulfill"
-                    ? ("fulfill" as const)
-                    : row.mode === "ask"
-                      ? ("ask" as const)
-                      : ("chat" as const),
+                row.mode === "leave"
+                  ? ("leave" as const)
+                  : row.mode === "act"
+                    ? ("act" as const)
+                    : row.mode === "fulfill"
+                      ? ("fulfill" as const)
+                      : row.mode === "ask"
+                        ? ("ask" as const)
+                        : ("chat" as const),
               targetId: asString(row.targetId),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
@@ -320,7 +327,7 @@ type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void
 async function generate(
   session: VenueSession,
   message: string,
-  mode: "greet" | "chat" | "ask" | "fulfill" | "act",
+  mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
   targetId: string,
   settled: { fulfilled: boolean; wish: string } | null,
   signal?: AbortSignal,
@@ -443,6 +450,9 @@ async function generate(
     `Earlier visit recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
     `Recent scene history:\n${history || "The player has just entered."}`,
     `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
+    mode === "leave"
+      ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate the player's departure if the room is empty. Do not introduce a new errand or prolong the encounter."
+      : "",
     actionOutcome
       ? `The action was checked separately. Its settled outcome is: ${actionOutcome}. React to this outcome; do not redo or contradict the action judgment.`
       : "",
@@ -883,7 +893,7 @@ export async function continueVenueWithoutGreeting(id: string): Promise<VenueSes
 type VenueTurnInput = {
   sessionId: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act";
+  mode: "chat" | "ask" | "fulfill" | "act" | "leave";
   targetId: string;
   submissionId: string;
 };
@@ -909,6 +919,18 @@ export async function sendVenueTurn(input: VenueTurnInput) {
   } finally {
     turnTasks.delete(key);
   }
+}
+
+/** Generate a final beat once, then use the ordinary visit filing path. */
+export async function leaveVenueSession(sessionId: string, submissionId: string) {
+  const result = await sendVenueTurn({
+    sessionId,
+    submissionId,
+    message: "I say goodbye and leave.",
+    mode: "leave",
+    targetId: "",
+  });
+  return { ...result, session: await endVenueSession(sessionId) };
 }
 
 async function finishActReply(
@@ -1123,10 +1145,10 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       at,
     });
     state.activeIds = state.activeIds.filter((id) => !reply.departures.includes(id));
-    if (reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0)) {
+    if (input.mode === "leave" || reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0)) {
       state.status = "closed";
       state.endedAt = at;
-      state.endReason = "scene";
+      state.endReason = input.mode === "leave" ? "player" : "scene";
     }
   });
   const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
@@ -1270,16 +1292,24 @@ async function applyTurnMemories(session: VenueSession, submission: VenueSubmiss
 }
 
 async function receiptForTurn(session: VenueSession, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
-  if (submission.recordEvents) return submission.recordEvents;
   const village = await readVillageState();
+  if (submission.recordEvents)
+    return submission.recordEvents.map((event) => {
+      if (event.kind !== "memory") return event;
+      const saved = village.chronicle.find((entry) => entry.id === event.id);
+      const name = saved?.actors[0]?.name ?? "A villager";
+      return saved ? { ...event, text: `${name}: New memory`, detail: saved.text } : event;
+    });
   const events: VenueRecordEvent[] = [];
   for (const memory of submission.turnMemories ?? []) {
     const id = `${session.id}:turn:${submission.id}:memory:${memory.characterId}`;
-    if (village.chronicle.some((entry) => entry.id === id))
+    const saved = village.chronicle.find((entry) => entry.id === id);
+    if (saved)
       events.push({
         id,
         kind: "memory",
-        text: `${session.participants.find((person) => person.characterId === memory.characterId)?.name ?? "A villager"} remembered this exchange.`,
+        text: `${saved.actors[0]?.name ?? "A villager"}: New memory`,
+        detail: saved.text,
       });
   }
   const wishId = `${session.id}:wish:${submission.wishId}`;
@@ -1459,7 +1489,11 @@ const closingControllers = new Map<string, AbortController>();
 
 async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueSession> {
   const session = await readSession(id);
-  if (session.status === "closed" && !session.memoryPending) {
+  if (
+    session.status === "closed" &&
+    !session.memoryPending &&
+    (session.memoryMode === "turn" || session.memories !== null || !session.lines.some((line) => line.role === "user"))
+  ) {
     await clearActivePointer(id);
     return session;
   }

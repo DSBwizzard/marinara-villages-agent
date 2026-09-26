@@ -18,6 +18,8 @@ A player can propose a move to an available venue. The villager accepts or refus
 
 ## What this release contains
 
+0.6.21 brings the Game Mode reading layout to venue visits on desktop and mobile: a compact bottom panel, floating asides, and a Chat/Fulfill speech-bubble menu in the composer. Players can write only at the latest paragraph. **End scene** now generates a final exchange to read before returning to the map; the immediate end control is labeled DEBUG. Star notices open the exact saved villager memory. Founding and village maps both use compact photograph pins, with spacing checks when placing homes and the public center.
+
 0.6.20 lets players leave with memory pending while a visit is still being saved. The in-flight filing call is canceled and the exact transcript remains available for an archive retry. Extraction reserves its full answer budget when fitting chunks and selects at most eight consequential memories per chunk, so long visits take fewer calls and produce fewer routine notes.
 
 0.6.19 makes exact visit transcripts and attributed memories independently durable. Memory extraction and long Fulfill judgments scan all heard lines in bounded calls, with resumable progress and a pending-memory exit. Prompt memories are selected within token budgets; archive and Story reads are paged, and players control transcript retention.

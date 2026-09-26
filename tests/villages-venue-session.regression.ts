@@ -19,6 +19,7 @@ import {
   continueVenueWithoutGreeting,
   endVenueSession,
   leaveVenueMemoryPending,
+  leaveVenueSession,
   enterVenue,
   greetVenue,
   listVenueVisits,
@@ -1570,6 +1571,12 @@ async function main() {
     assert.equal(memoryCalls, beforeTurnMemory, "new visits form memories in the existing reply call");
     assert.equal(remembered.recordEvents.filter((event) => event.kind === "memory").length, 1);
     const memoryId = `${current.id}:turn:turn-memory:memory:bob`;
+    assert.equal(remembered.recordEvents.find((event) => event.id === memoryId)?.text, "bob: New memory");
+    assert.equal(
+      remembered.recordEvents.find((event) => event.id === memoryId)?.detail,
+      (await readVillageState()).chronicle.find((entry) => entry.id === memoryId)?.text,
+      "the notice opens the exact stored memory",
+    );
     assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
     const requestedMove = await sendVenueTurn({
       sessionId: current.id,
@@ -1632,6 +1639,19 @@ async function main() {
     });
     assert.equal(naturalEnding.session.status, "closed", "an evidenced whole-scene goodbye closes the visit");
     assert.equal(naturalEnding.session.endReason, "scene");
+
+    const leaving = await greetVenue((await enterVenue("park")).id);
+    const farewell = await leaveVenueSession(leaving.id, "leave-once");
+    assert.equal(farewell.session.status, "closed");
+    assert.equal(farewell.session.endReason, "player");
+    assert.ok(farewell.session.lines.some((line) => line.content.includes("Answer to I say goodbye and leave.")));
+    const farewellReplay = await leaveVenueSession(leaving.id, "leave-once");
+    assert.equal(
+      farewellReplay.session.lines.length,
+      farewell.session.lines.length,
+      "leave retry adds no second goodbye",
+    );
+    assert.equal(await activeVenueSession(), null);
 
     const timed = await greetVenue((await enterVenue("park")).id);
     await sendVenueTurn({

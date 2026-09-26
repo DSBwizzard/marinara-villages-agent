@@ -42,6 +42,7 @@ import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villag
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
 import { createVillagesClientId, shouldSubmitVenueKey } from "./villages-venue-send";
 import { nextRoomReadIndex } from "./villages-room-reading";
+import { photoPinFits } from "./villages-photo-pin-layout";
 import {
   mobileCoverZoom,
   mobileDoorPoint,
@@ -654,7 +655,7 @@ type RoomView = {
   memoryProgress?: { nextUnit: number } | null;
 };
 
-type RoomRecordEvent = { id: string; kind: "memory" | "wish" | "venue" | "request"; text: string };
+type RoomRecordEvent = { id: string; kind: "memory" | "wish" | "venue" | "request"; text: string; detail?: string };
 
 type ArchiveVisitSummary = Pick<
   RoomView,
@@ -4357,6 +4358,39 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-mobile-map-preview { display: block; max-width: min(100%, 22rem); max-height: 13rem; object-fit: contain; border: 2px solid var(--border); }
 .${ELEMENT_TAG}-setup-map-viewport:has(> .${ELEMENT_TAG}-stage[data-mobile="true"]) { height: min(55cqh, 30rem); overflow: hidden; }
 .${ELEMENT_TAG}-setup-map-viewport > .${ELEMENT_TAG}-stage[data-mobile="true"] { width: 100% !important; height: 100% !important; aspect-ratio: auto !important; }
+/* Shared place photographs, including the founding map before an image exists. */
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin[data-kind="place"] { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; overflow: visible; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex-direction: column; gap: .1rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; color: #30261c; box-shadow: 0 3px 8px #0009; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-tack { position: absolute; top: -.35rem; left: 50%; width: .55rem; height: .55rem; transform: translateX(-50%); border-radius: 50%; background: #b89a43; box-shadow: 0 1px 2px #0009; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .55rem; font-weight: 700; }
+.${ELEMENT_TAG}-pin-photo-empty { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: #e8dfc9; font-size: 1.15rem; }
+.${ELEMENT_TAG}-pin-placement-error { position: absolute; z-index: 15; left: .5rem; bottom: .5rem; margin: 0; max-width: calc(100% - 1rem); padding: .4rem .6rem; border-radius: .5rem; background: #261a19e8; color: white; font-size: .75rem; pointer-events: none; }
+/* Game Mode's reading stack: asides float over a bounded bottom panel. */
+.${ELEMENT_TAG}-root.${ELEMENT_TAG}-room-screen { box-sizing: border-box; padding: 0; overflow: hidden; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { position: relative; align-self: center; width: min(58rem, 100%); margin-top: auto; padding: .6rem; box-sizing: border-box; border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: 1rem; background: var(--marinara-chat-chrome-panel-bg, color-mix(in srgb, var(--popover) 88%, transparent)); backdrop-filter: blur(14px); box-shadow: 0 .75rem 2rem #0007; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .5rem); width: min(75%, 24rem); max-height: min(30cqh, 12rem); }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-card { background: color-mix(in srgb, var(--background) 62%, transparent); box-shadow: none; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-reading { max-height: min(30cqh, 18rem); }
+.${ELEMENT_TAG}-room-panel-tools { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-history-toggle { min-height: 2rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { min-width: 0; }
+.${ELEMENT_TAG}-room-mode-anchor { position: relative; flex: 0 0 auto; }
+.${ELEMENT_TAG}-room-mode-toggle { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 0; border-radius: .5rem; background: transparent; color: var(--primary); font-size: 1rem; cursor: pointer; }
+.${ELEMENT_TAG}-room-mode-menu { position: absolute; z-index: 20; left: 0; bottom: calc(100% + .45rem); display: grid; width: 9rem; padding: .25rem; border: 1px solid var(--border); border-radius: .6rem; background: var(--popover); box-shadow: 0 .5rem 1rem #0008; }
+.${ELEMENT_TAG}-room-mode-menu button { border: 0; border-radius: .35rem; background: transparent; color: var(--foreground); text-align: left; padding: .5rem; font: inherit; cursor: pointer; }
+.${ELEMENT_TAG}-room-mode-menu button[aria-checked="true"] { background: color-mix(in srgb, var(--primary) 17%, var(--popover)); }
+.${ELEMENT_TAG}-room-mode-menu button:disabled { opacity: .5; cursor: default; }
+.${ELEMENT_TAG}-room-mode-toggle:focus-visible, .${ELEMENT_TAG}-room-mode-menu button:focus-visible, .${ELEMENT_TAG}-room-star-detail:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.${ELEMENT_TAG}-room-star-detail { flex: 1; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.${ELEMENT_TAG}-memory-backdrop { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1rem; background: #0009; }
+.${ELEMENT_TAG}-memory-dialog { box-sizing: border-box; width: min(28rem, 100%); max-height: min(75cqh, 36rem); overflow-y: auto; padding: 1rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--popover); color: var(--foreground); box-shadow: 0 1rem 2rem #0009; }
+.${ELEMENT_TAG}-memory-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.${ELEMENT_TAG}-memory-dialog-head button { border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.5rem; cursor: pointer; }
+.${ELEMENT_TAG}-memory-dialog p { margin: .75rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+@container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { width: min(85%, 22rem); } .${ELEMENT_TAG}-room-mode-toggle { width: 2.5rem; height: 2.5rem; } }
+@container ${ELEMENT_TAG} (min-width: 34rem) and (max-height: 30rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 64%; align-self: flex-end; } }
 `;
 
 function syncVillagesStyles() {
@@ -5886,6 +5920,7 @@ function MapStage({
    */
   const [fitted, setFitted] = useState<{ width: number; height: number } | null>(null);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const [placementError, setPlacementError] = useState("");
   /** What a drag started from, held by reference because it is read on every move. */
   const dragRef = useRef<{ x: number; y: number; focusX: number; focusY: number; spanX: number; spanY: number } | null>(
     null,
@@ -6007,6 +6042,26 @@ function MapStage({
     return () => observer.disconnect();
   }, [fitToRoom, measureRoom]);
 
+  const tryPlace = useCallback(
+    (x: number, y: number) => {
+      if (!onPlace || !picture) return;
+      if (photoPins) {
+        const width = mobile
+          ? Math.min(84, Math.max(64, frame?.width ? frame.width * 0.17 : 64)) *
+            mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)
+          : Math.min(44, Math.max(24, picture.width * 0.055));
+        const height = width + (mobile ? 18 : 13);
+        if (!photoPinFits({ x, y }, pins, picture, { width, height })) {
+          setPlacementError("Choose a spot farther from another photograph.");
+          return;
+        }
+      }
+      setPlacementError("");
+      onPlace(round4(x), round4(y));
+    },
+    [frame?.width, mobile, mobileCurrent.zoom, mobileInitial.zoom, onPlace, photoPins, picture, pins],
+  );
+
   const handleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       if (!picking || !onPlace || !picture) return;
@@ -6016,9 +6071,9 @@ function MapStage({
       // The margin beside a picture that does not fill the frame is not part of
       // the map, so a click there is not a position the player chose.
       if (!(x >= 0 && x <= 1) || !(y >= 0 && y <= 1)) return;
-      onPlace(round4(x), round4(y));
+      tryPlace(x, y);
     },
-    [onPlace, picking, picture],
+    [onPlace, picking, picture, tryPlace],
   );
 
   const handlePointerDown = useCallback(
@@ -6155,7 +6210,7 @@ function MapStage({
       const y = (event.clientY - rect.top - picture.top) / picture.height;
       if (x >= 0 && x <= 1 && y >= 0 && y <= 1) {
         suppressTouchClickRef.current = true;
-        onPlace(round4(x), round4(y));
+        tryPlace(x, y);
       }
     } else if (onDismiss) {
       suppressTouchClickRef.current = true;
@@ -6171,6 +6226,7 @@ function MapStage({
       data-shaped={shape ? "true" : "false"}
       data-framing={framing && live.fit === "cover" ? "true" : "false"}
       data-mobile={mobile ? "true" : "false"}
+      data-photo-pins={photoPins ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
         if (mobile) {
@@ -6207,6 +6263,11 @@ function MapStage({
           component rather than left in the caller's markup so that the box they
           are measured from is this one and cannot drift. */}
       {children}
+      {placementError && placing ? (
+        <p className={`${ELEMENT_TAG}-pin-placement-error`} role="alert">
+          {placementError}
+        </p>
+      ) : null}
       <div
         ref={frameRef}
         className={`${ELEMENT_TAG}-canvas`}
@@ -6294,11 +6355,15 @@ function MapStage({
                       style={
                         mobile
                           ? { transform: `scale(${mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)})` }
-                          : undefined
+                          : { width: `${Math.min(44, Math.max(24, picture.width * 0.055))}px` }
                       }
                     >
                       <span className={`${ELEMENT_TAG}-pin-photo`} aria-hidden="true">
-                        {pin.image ? <img src={pin.image} alt="" loading="lazy" draggable={false} /> : null}
+                        {pin.image ? (
+                          <img src={pin.image} alt="" loading="lazy" draggable={false} />
+                        ) : (
+                          <span className={`${ELEMENT_TAG}-pin-photo-empty`}>⌂</span>
+                        )}
                         <span className={`${ELEMENT_TAG}-pin-photo-tack`} />
                       </span>
                       <span className={`${ELEMENT_TAG}-pin-name`}>{pin.text}</span>
@@ -7709,6 +7774,7 @@ function RoomPanel({
   onMode,
   onTarget,
   onSend,
+  onLeave,
   onEnd,
   onLeavePending,
   endFailed,
@@ -7739,6 +7805,7 @@ function RoomPanel({
   onMode: (value: "chat" | "fulfill") => void;
   onTarget: (value: string) => void;
   onSend: () => void;
+  onLeave: () => void;
   onEnd: () => void;
   onLeavePending: () => void;
   endFailed: boolean;
@@ -7759,6 +7826,8 @@ function RoomPanel({
    */
   const [readStep, setReadStep] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
 
   /**
@@ -7828,6 +7897,16 @@ function RoomPanel({
   const step = steps[at];
   const canReadPrevious = at > 0;
   const canReadNext = at < steps.length - 1;
+  const canCompose = !canReadNext && !ended && room.status === "active";
+
+  useEffect(() => {
+    if (!openMemory) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMemory(null);
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [openMemory]);
 
   /**
    * Whether the card is wearing a face, and it is the paragraph's own answer.
@@ -7928,15 +8007,17 @@ function RoomPanel({
               DEBUG: Discard Visit
             </button>
           ) : null}
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`}
-            onClick={onEnd}
-            disabled={busy}
-            title="End this visit and leave the venue"
-          >
-            End visit and leave
-          </button>
+          {debugDiscardEnabled && room.status !== "closed" ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`}
+              onClick={onEnd}
+              disabled={busy}
+              title="DEBUG: End this visit immediately without a closing exchange"
+            >
+              DEBUG: End immediately
+            </button>
+          ) : null}
           {endFailed || room.status === "closing" ? (
             <button type="button" className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`} onClick={onLeavePending}>
               Leave with memory pending
@@ -7944,12 +8025,23 @@ function RoomPanel({
           ) : null}
         </span>
       </div>
-      {notices.length > 0 && room.status !== "closed" ? (
+      {notices.length > 0 ? (
         <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
           {notices.map((notice) => (
             <div key={notice.id} className={`${ELEMENT_TAG}-room-star`} role="status">
               <span aria-hidden="true">✦</span>
-              <span>{notice.text}</span>
+              {notice.kind === "memory" && notice.detail ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-room-star-detail`}
+                  onClick={() => setOpenMemory(notice)}
+                  aria-label={`Read ${notice.text}`}
+                >
+                  {notice.text}
+                </button>
+              ) : (
+                <span>{notice.text}</span>
+              )}
               <button
                 type="button"
                 onClick={() => onDismissNotice(notice.id)}
@@ -7960,6 +8052,25 @@ function RoomPanel({
               </button>
             </div>
           ))}
+        </div>
+      ) : null}
+      {openMemory ? (
+        <div className={`${ELEMENT_TAG}-memory-backdrop`} onClick={() => setOpenMemory(null)}>
+          <div
+            className={`${ELEMENT_TAG}-memory-dialog`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={openMemory.text}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={`${ELEMENT_TAG}-memory-dialog-head`}>
+              <strong>{openMemory.text}</strong>
+              <button type="button" onClick={() => setOpenMemory(null)} aria-label="Close memory">
+                ×
+              </button>
+            </div>
+            <p>{openMemory.detail}</p>
+          </div>
         </div>
       ) : null}
 
@@ -8030,16 +8141,6 @@ function RoomPanel({
       </div>
 
       <div className={`${ELEMENT_TAG}-chat-vn`}>
-        {room.lines.length > 0 ? (
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-chat-history-toggle`}
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((value) => !value)}
-          >
-            {historyOpen ? "Hide history" : "History"}
-          </button>
-        ) : null}
         {historyOpen ? (
           <div className={`${ELEMENT_TAG}-chat-log`} role="log" aria-label="Venue conversation history" tabIndex={0}>
             {room.lines.map((line, index) => (
@@ -8194,138 +8295,168 @@ function RoomPanel({
             </div>
           ) : null}
         </div>
-      </div>
-
-      {error && room.status === "opening" ? (
-        <div className={`${ELEMENT_TAG}-room-error`} role="alert">
-          <p>{error}</p>
-          {room.status === "opening" ? (
-            <>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>
-                Retry greeting
-              </button>
-              {room.id ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  onClick={onContinueWithoutGreeting}
-                  disabled={busy}
-                >
-                  Continue without greeting
-                </button>
-              ) : null}
-            </>
+        <div className={`${ELEMENT_TAG}-room-panel-tools`}>
+          {room.lines.length > 0 ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-chat-history-toggle`}
+              aria-expanded={historyOpen}
+              onClick={() => setHistoryOpen((value) => !value)}
+            >
+              {historyOpen ? "Hide history" : "History"}
+            </button>
+          ) : null}
+          <span className={`${ELEMENT_TAG}-spacer`} />
+          {ended && !canReadNext ? (
+            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onEnd} disabled={busy}>
+              Return to map
+            </button>
+          ) : canCompose ? (
+            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onLeave} disabled={busy}>
+              End scene
+            </button>
           ) : null}
         </div>
-      ) : null}
-      {greetingNotice ? (
-        <div className={`${ELEMENT_TAG}-room-error`} role="status">
-          <p>{greetingNotice}</p>
-        </div>
-      ) : null}
-      {ruling ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
-      {room.status === "closing" ? (
-        <p className={`${ELEMENT_TAG}-hint`}>
-          The visit is still being remembered. Choose End visit and leave to retry closing it.
-        </p>
-      ) : null}
 
-      {mode === "fulfill" && activeParticipants.length === 0 ? (
-        <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
-      ) : null}
-      {/* The draft stays with this visit while the cast remains fixed. */}
-      <div className={`${ELEMENT_TAG}-composer`}>
-        {mode === "fulfill" && activeParticipants.length > 0 ? (
-          <select
-            value={targetId}
-            onChange={(event) => onTarget(event.target.value)}
-            aria-label="Whose wish you fulfilled"
-            disabled={busy || ended || room.status !== "active"}
-          >
-            <option value="">Choose one villager</option>
-            {activeParticipants.map((person) => (
-              <option key={person.characterId} value={person.characterId}>
-                {person.name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-        <div className={`${ELEMENT_TAG}-room-modes`} role="group" aria-label="Visit mode">
-          {(["chat", "fulfill"] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`${ELEMENT_TAG}-room-mode`}
-              data-active={mode === option ? "true" : "false"}
-              aria-pressed={mode === option}
-              disabled={
-                busy || ended || room.status !== "active" || (option === "fulfill" && activeParticipants.length === 0)
-              }
-              onClick={() => onMode(option)}
-            >
-              {option === "chat" ? "Chat" : "Fulfill"}
-            </button>
-          ))}
-        </div>
-        <div className={`${ELEMENT_TAG}-composer-row`}>
-          <span className={`${ELEMENT_TAG}-chat-input`}>
-            <textarea
-              className={`${ELEMENT_TAG}-textarea`}
-              value={draft}
-              onChange={(event) => onDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing)) {
-                  event.preventDefault();
-                  if (room.status === "active" && (mode !== "fulfill" || targetId)) onSend();
-                }
-              }}
-              placeholder={mode === "fulfill" ? "What did you do for them?" : "Say or do something…"}
-              aria-label={`Message at ${room.placeName}`}
-              disabled={busy || ended || room.status !== "active"}
-            />
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-chat-send`}
-              onClick={onSend}
-              disabled={
-                busy ||
-                ended ||
-                room.status !== "active" ||
-                draft.trim().length === 0 ||
-                (mode === "fulfill" && !targetId)
-              }
-              aria-label={busy ? "Sending" : "Send"}
-              title={busy ? "Sending" : "Send"}
-            >
-              {busy ? "Sending…" : "Send"}
-            </button>
-          </span>
-        </div>
-        {error && room.status !== "opening" ? (
+        {error && room.status === "opening" ? (
           <div className={`${ELEMENT_TAG}-room-error`} role="alert">
             <p>{error}</p>
-            {room.status === "active" && draft.trim() ? (
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onSend} disabled={busy || ended}>
-                Retry message
-              </button>
+            {room.status === "opening" ? (
+              <>
+                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>
+                  Retry greeting
+                </button>
+                {room.id ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-button`}
+                    onClick={onContinueWithoutGreeting}
+                    disabled={busy}
+                  >
+                    Continue without greeting
+                  </button>
+                ) : null}
+              </>
             ) : null}
           </div>
         ) : null}
-      </div>
+        {greetingNotice ? (
+          <div className={`${ELEMENT_TAG}-room-error`} role="status">
+            <p>{greetingNotice}</p>
+          </div>
+        ) : null}
+        {ruling ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
+        {room.status === "closing" ? (
+          <p className={`${ELEMENT_TAG}-hint`}>
+            The visit is still being remembered. You can leave with memory pending if filing cannot finish.
+          </p>
+        ) : null}
 
-      {ended ? (
-        /*
-          Where the composer was, and it is the private drawer's sentence with the
-          room's own difference: FOUR people have said goodbye in this, or however
-          many were standing here, so the note is about the room rather than about
-          somebody. The village has finished writing it down by the time this is
-          drawn — the press waits for the last of the calls — so there is no second
-          reading of it here the way there is in the private drawer.
-        */
-        <p className={`${ELEMENT_TAG}-chat-ended`}>
-          {`That is the end of it. Each of them has kept what they took from it, and the village is yours again.`}
-        </p>
-      ) : null}
+        {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (
+          <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
+        ) : null}
+        {/* The draft stays with this visit while the cast remains fixed. */}
+        {canCompose ? (
+          <div className={`${ELEMENT_TAG}-composer`}>
+            {mode === "fulfill" && activeParticipants.length > 0 ? (
+              <select
+                value={targetId}
+                onChange={(event) => onTarget(event.target.value)}
+                aria-label="Whose wish you fulfilled"
+                disabled={busy || ended || room.status !== "active"}
+              >
+                <option value="">Choose one villager</option>
+                {activeParticipants.map((person) => (
+                  <option key={person.characterId} value={person.characterId}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <div className={`${ELEMENT_TAG}-composer-row`}>
+              <span className={`${ELEMENT_TAG}-chat-input`}>
+                <span className={`${ELEMENT_TAG}-room-mode-anchor`}>
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-room-mode-toggle`}
+                    onClick={() => setModeMenuOpen((value) => !value)}
+                    aria-label={`Mode: ${mode === "chat" ? "Chat" : "Fulfill"}. Choose mode`}
+                    aria-haspopup="menu"
+                    aria-expanded={modeMenuOpen}
+                    title={mode === "chat" ? "Chat" : "Fulfill"}
+                  >
+                    💬
+                  </button>
+                  {modeMenuOpen ? (
+                    <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Visit mode">
+                      {(["chat", "fulfill"] as const).map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={mode === option}
+                          disabled={busy || (option === "fulfill" && activeParticipants.length === 0)}
+                          onClick={() => {
+                            onMode(option);
+                            setModeMenuOpen(false);
+                          }}
+                        >
+                          {option === "chat" ? "Chat" : "Fulfill"}
+                        </button>
+                      ))}
+                    </span>
+                  ) : null}
+                </span>
+                <textarea
+                  className={`${ELEMENT_TAG}-textarea`}
+                  value={draft}
+                  onChange={(event) => onDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing)) {
+                      event.preventDefault();
+                      if (room.status === "active" && (mode !== "fulfill" || targetId)) onSend();
+                    }
+                  }}
+                  placeholder={mode === "fulfill" ? "What did you do for them?" : "Say or do something…"}
+                  aria-label={`Message at ${room.placeName}`}
+                  disabled={busy || ended || room.status !== "active"}
+                />
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-chat-send`}
+                  onClick={onSend}
+                  disabled={
+                    busy ||
+                    ended ||
+                    room.status !== "active" ||
+                    draft.trim().length === 0 ||
+                    (mode === "fulfill" && !targetId)
+                  }
+                  aria-label={busy ? "Sending" : "Send"}
+                  title={busy ? "Sending" : "Send"}
+                >
+                  {busy ? "Sending…" : "Send"}
+                </button>
+              </span>
+            </div>
+            {error && room.status !== "opening" ? (
+              <div className={`${ELEMENT_TAG}-room-error`} role="alert">
+                <p>{error}</p>
+                {room.status === "active" && draft.trim() ? (
+                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onSend} disabled={busy || ended}>
+                    Retry message
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {error && endFailed && !busy && room.status === "active" ? (
+          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onLeave}>
+            Retry ending scene
+          </button>
+        ) : null}
+      </div>
     </aside>
   );
 }
@@ -8846,6 +8977,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [roomBusy, setRoomBusy] = useState(false);
   const leavingRoomPendingRef = useRef(false);
   const roomSubmissionIdRef = useRef<string | null>(null);
+  const roomLeaveSubmissionIdRef = useRef<string | null>(null);
   const roomSendInFlightRef = useRef(false);
   /** What the room's last attempt had to say, and empty when it has nothing to. */
   const [roomError, setRoomError] = useState("");
@@ -9614,6 +9746,36 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, [loadSnapshot, room, roomBusy]);
 
+  const leaveRoom = useCallback(async () => {
+    if (!room?.id || room.status !== "active" || roomBusy || roomSendInFlightRef.current) return;
+    const submissionId = roomLeaveSubmissionIdRef.current ?? createVillagesClientId();
+    roomLeaveSubmissionIdRef.current = submissionId;
+    setRoomBusy(true);
+    setRoomError("");
+    setEndFailed(false);
+    try {
+      const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/leave", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: room.id, submissionId }),
+        signal: AbortSignal.timeout(300_000),
+      });
+      setRoom(currentRoom(answer.session));
+      setRoomEnded(true);
+      for (const event of answer.recordEvents ?? []) {
+        if (seenRoomEventIdsRef.current.has(event.id)) continue;
+        seenRoomEventIdsRef.current.add(event.id);
+        setRoomNotices((current) => [...current, event]);
+      }
+      roomLeaveSubmissionIdRef.current = null;
+      void loadSnapshot();
+    } catch (cause) {
+      setRoomError(messageFrom(cause, "The scene could not end yet."));
+      setEndFailed(true);
+    } finally {
+      setRoomBusy(false);
+    }
+  }, [loadSnapshot, room, roomBusy]);
+
   const leaveRoomPending = useCallback(async () => {
     if (!room?.id || leavingRoomPendingRef.current) return;
     leavingRoomPendingRef.current = true;
@@ -9727,15 +9889,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       });
       setRoom(currentRoom(answer.session));
       setRoomEnded(answer.session.status === "closed");
-      if (answer.session.status === "closed") {
-        setRoomNotices([]);
-        seenRoomEventIdsRef.current.clear();
-      } else
-        for (const event of answer.recordEvents ?? []) {
-          if (seenRoomEventIdsRef.current.has(event.id)) continue;
-          seenRoomEventIdsRef.current.add(event.id);
-          setRoomNotices((current) => [...current, event]);
-        }
+      for (const event of answer.recordEvents ?? []) {
+        if (seenRoomEventIdsRef.current.has(event.id)) continue;
+        seenRoomEventIdsRef.current.add(event.id);
+        setRoomNotices((current) => [...current, event]);
+      }
       if (roomTargetId && !answer.session.activeIds.includes(roomTargetId)) setRoomTargetId("");
       setRoomRuling(answer.verdict?.reason ?? "");
       roomSubmissionIdRef.current = null;
@@ -11402,6 +11560,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           x: home.x,
           y: home.y,
           text: pinText(occupant),
+          image: snapshot?.settings.venues.find((venue) => venue.id === home.id)?.presentation.image?.url ?? null,
           tone: pinTone({ isPlayerHome: home.isPlayerHome, occupant }),
           onSelect: () => setActiveHomeId(home.id),
           onRemove: () => removeHome(home.id),
@@ -11415,6 +11574,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             x: publicCenterSpot.x,
             y: publicCenterSpot.y,
             text: publicCenterName.trim() || "Public center",
+            image:
+              snapshot?.settings.venues.find((venue) => venue.id === "setup-public-center")?.presentation.image?.url ??
+              null,
             tone: "place" as const,
             onSelect: () => {
               setPlacingHome(false);
@@ -11473,6 +11635,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               setRoomTargetId(value);
             }}
             onSend={() => void sendRoom()}
+            onLeave={() => void leaveRoom()}
             onEnd={() => void closeRoom()}
             notices={roomNotices}
             onDismissNotice={(id) => setRoomNotices((current) => current.filter((event) => event.id !== id))}
@@ -14886,6 +15049,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 onPlace={setupStep === 3 ? placeSetupPin : undefined}
                 compact={setupStep < 2}
                 mobile={mobile && setupStep >= 2}
+                photoPins
               />
             </div>
           </div>

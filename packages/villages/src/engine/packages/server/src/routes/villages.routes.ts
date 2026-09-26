@@ -12,6 +12,7 @@ import {
   activeVenueSession,
   continueVenueWithoutGreeting,
   endVenueSession,
+  leaveVenueSession,
   leaveVenueMemoryPending,
   enterVenue,
   greetVenue,
@@ -579,6 +580,13 @@ export async function villagesRoutes(engine: FastifyInstance) {
       });
     } catch (error) {
       return fail(reply, error, "sending a venue turn");
+    }
+  });
+  app.post<{ Body: { sessionId?: unknown; submissionId?: unknown } }>("/rooms/leave", async (request, reply) => {
+    try {
+      return await leaveVenueSession(readChatId(request.body?.sessionId), readSubmissionId(request.body?.submissionId));
+    } catch (error) {
+      return fail(reply, error, "leaving a venue naturally");
     }
   });
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/end", async (request, reply) => {
