@@ -26,7 +26,7 @@ import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, conflict, notFound, statusCodeOf } from "./errors.js";
 import { readSelectedLorebookIds, readVillageLore } from "./lorebooks.js";
 import { selectPromptMemories } from "./memory-selection.js";
-import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT } from "./town-map-image.js";
+import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-image.js";
 import { inspectVillageImage } from "./image-generation.js";
 import {
   buildRemapPrompt,
@@ -76,6 +76,7 @@ import {
   homeBuildingOptions,
   isHomeBuildingKind,
   isHousePlace,
+  isGlobalGalleryRef,
   isTownMapImage,
   LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
   MAX_CHRONICLE_ABOUT_ONE_VILLAGER,
@@ -348,11 +349,14 @@ function villageSettings(
     selectedLorebookIds: village.selectedLorebookIds,
     foundingDetailsMaxLength: 500,
     townMapLayoutPrompt: DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+    townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     settingMaxLength: MAX_SETTING_LENGTH,
     venues: village.venues.map((venue) => {
       if (!hasVenueClass(venue, "residence")) return venue;
       const inside =
-        venue.occupancy.playerHome || (residenceAccess?.placeId === venue.id && residenceAccess.area !== "outside");
+        venue.occupancy.playerHome ||
+        venue.playerSeenShared === true ||
+        (residenceAccess?.placeId === venue.id && residenceAccess.area !== "outside");
       const privateOwnerId =
         residenceAccess?.placeId === venue.id && residenceAccess.area === "private"
           ? residenceAccess.privateOwnerId
@@ -370,7 +374,9 @@ function villageSettings(
             : space,
         ),
         privateSpaces: (venue.privateSpaces ?? []).map((space) =>
-          space.ownerId === privateOwnerId ? space : { ...space, description: "", image: null, state: blankState },
+          space.ownerId === privateOwnerId || venue.playerSeenPrivateIds?.includes(space.ownerId)
+            ? space
+            : { ...space, description: "", image: null, state: blankState },
         ),
         archivedPrivateSpaces: [],
         editProposals: inside
@@ -517,6 +523,7 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
   });
   return {
     status: "ready",
+    foundingPreparation: village.foundingPreparation ?? null,
     village: villageMomentView(village, now, exactSnapshotTransition(village, now)),
     venueRequests: village.pendingDecisions.filter(
       (decision) =>
@@ -1993,39 +2000,22 @@ export async function setVillageVenueImage(
   image: VillageVenueImage | null,
   spaceClass?: VillageVenueClass,
   privateOwnerId = "",
+  onlyIfEmpty = false,
 ): Promise<VillageSnapshot> {
   await assertVenueImageAccess(venueId, spaceClass, privateOwnerId);
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === venueId);
     if (!venue) throw notFound("That place is no longer in the village.");
-    if ((privateOwnerId || spaceClass === "residence") && venueResidentIds(venue).length) {
-      const target: "shared" | "private" = privateOwnerId ? "private" : "shared";
-      const current = privateOwnerId
-        ? venue.privateSpaces?.find((entry) => entry.ownerId === privateOwnerId)
-        : venueSpaces(venue).find((entry) => entry.venueClass === "residence");
-      if (!current) throw notFound("That Residence space no longer exists.");
-      const requiredIds = privateOwnerId ? [privateOwnerId] : venueResidentIds(venue);
-      venue.editProposals = [
-        ...(venue.editProposals ?? []).filter((proposal) => !proposal.declined),
-        {
-          id: randomVillageSeed(),
-          target,
-          ownerId: privateOwnerId,
-          baseUpdatedAt: current.state.updatedAt,
-          proposed: { ...current, image },
-          requiredIds,
-          approvedIds: [],
-          declined: false,
-          createdAt: new Date().toISOString(),
-        },
-      ].slice(-8);
-      return;
-    }
     if (privateOwnerId) {
       const space = venue.privateSpaces?.find((entry) => entry.ownerId === privateOwnerId);
       if (!space) throw notFound("That private space no longer exists.");
+      if (!venue.playerSeenPrivateIds?.includes(privateOwnerId))
+        throw conflict("Visit this Residence space before changing its image.");
+      if (onlyIfEmpty && space.image) return;
       space.image = image;
     } else if (spaceClass) {
+      if (spaceClass === "residence" && !venue.occupancy.playerHome && !venue.playerSeenShared)
+        throw conflict("Visit this Residence space before changing its image.");
       venue.spaces = venueSpaces(venue);
       const space = venue.spaces.find((entry) => entry.venueClass === spaceClass);
       if (!space) throw badRequest("That Class has no space at this Venue.");
@@ -2046,17 +2036,9 @@ export async function assertVenueImageAccess(
   if (!venue || !hasVenueClass(venue, "residence")) throw notFound("That Residence is no longer here.");
   if (privateOwnerId && !venueResidentIds(venue).includes(privateOwnerId))
     throw notFound("That resident no longer has a private space here.");
-  if (venue?.occupancy.playerHome && !privateOwnerId) return;
-  const { activeVenueSession } = await import("./venue-session.js");
-  const session = await activeVenueSession();
-  if (
-    !session ||
-    session.placeId !== venueId ||
-    (privateOwnerId
-      ? session.area !== "private" || session.privateOwnerId !== privateOwnerId
-      : session.area !== "shared" && session.area !== "private")
-  )
-    throw conflict("You need the resident's invitation to work with this Residence image.");
+  if (venue.occupancy.playerHome && !privateOwnerId) return;
+  if (privateOwnerId ? venue.playerSeenPrivateIds?.includes(privateOwnerId) : venue.playerSeenShared) return;
+  throw conflict("Visit this Residence space before changing its image.");
 }
 
 export async function setVillageHomeBuildingNames(value: unknown): Promise<VillageSnapshot> {
@@ -2176,17 +2158,26 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
       row.state && typeof row.state === "object" && !Array.isArray(row.state)
         ? (row.state as Record<string, unknown>)
         : {};
+    const nextDescription = venueFieldText(row.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+    const nextState = {
+      condition: venueFieldText(scene.condition, prior.state.condition, MAX_VENUE_NOTE_LENGTH),
+      items: venueStringList(scene.items, prior.state.items),
+      publicFacts: venueStringList(scene.publicFacts, prior.state.publicFacts),
+      features: venueFeatures(scene.features, prior.state.features),
+      traces: prior.state.traces,
+      updatedAt: prior.state.updatedAt,
+    };
+    const changed =
+      nextDescription !== prior.description ||
+      nextState.condition !== prior.state.condition ||
+      JSON.stringify(nextState.items) !== JSON.stringify(prior.state.items) ||
+      JSON.stringify(nextState.publicFacts) !== JSON.stringify(prior.state.publicFacts) ||
+      JSON.stringify(nextState.features) !== JSON.stringify(prior.state.features);
+    if (changed) nextState.updatedAt = new Date().toISOString();
     return {
       ...prior,
-      description: venueFieldText(row.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim(),
-      state: {
-        condition: venueFieldText(scene.condition, prior.state.condition, MAX_VENUE_NOTE_LENGTH),
-        items: venueStringList(scene.items, prior.state.items),
-        publicFacts: venueStringList(scene.publicFacts, prior.state.publicFacts),
-        features: venueFeatures(scene.features, prior.state.features),
-        traces: prior.state.traces,
-        updatedAt: new Date().toISOString(),
-      },
+      description: nextDescription,
+      state: nextState,
     };
   });
   if (spaces.some((space) => !space.description)) throw badRequest("Approve a description for every Venue space.");
@@ -2648,7 +2639,9 @@ export async function applyResidenceEditApproval(
       state: { ...proposal.proposed.state, updatedAt: new Date().toISOString() },
     };
     if (proposal.target === "shared") {
-      venue.spaces = venueSpaces(venue).map((space) => (space.venueClass === "residence" ? applied : space));
+      venue.spaces = venueSpaces(venue).map((space) =>
+        space.venueClass === "residence" ? { ...applied, image: space.image } : space,
+      );
       venue.description = applied.description;
       venue.state.condition = applied.state.condition;
       venue.state.furniture = applied.state.items;
@@ -2657,7 +2650,7 @@ export async function applyResidenceEditApproval(
       venue.state.updatedAt = applied.state.updatedAt;
     } else {
       venue.privateSpaces = (venue.privateSpaces ?? []).map((space) =>
-        space.ownerId === proposal.ownerId ? { ...applied, ownerId: proposal.ownerId } : space,
+        space.ownerId === proposal.ownerId ? { ...applied, image: space.image, ownerId: proposal.ownerId } : space,
       );
     }
     venue.editProposals = venue.editProposals?.filter((entry) => entry.id !== proposal.id);
@@ -2843,9 +2836,11 @@ export async function completeVillageResidence(
         old.privateSpaces = (old.privateSpaces ?? []).filter((space) => space.ownerId !== characterId);
       }
       old.residentIds = venueResidentIds(old).filter((id) => id !== characterId);
+      old.playerSeenPrivateIds = (old.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
       old.occupancy.residentCharacterId = old.residentIds[0] ?? null;
     }
     destination.residentIds = [...venueResidentIds(destination), characterId];
+    destination.playerSeenPrivateIds = (destination.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
     destination.privateSpaces = [
       ...(destination.privateSpaces ?? []).filter((space) => space.ownerId !== characterId),
       {
@@ -2987,7 +2982,71 @@ function readPlacePosition(record: Record<string, unknown>): { x: number | null;
  * with the number of the one it means, and the houses are not in that list. So
  * demanding a name for one would be demanding a fact nothing reads.
  */
-function parsePlace(value: unknown): ParsedPlace {
+function foundingImage(value: unknown): VillageVenueImage | null {
+  if (value === null || value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw badRequest("A founding image must come from the gallery.");
+  const row = value as Record<string, unknown>;
+  const ref = asTrimmedString(row.ref);
+  const id = asTrimmedString(row.id);
+  const url = asTrimmedString(row.url);
+  if (
+    !isGlobalGalleryRef(ref) ||
+    id !== ref.slice("global-gallery:".length) ||
+    !url ||
+    url.length > MAX_VENUE_IMAGE_URL_LENGTH
+  ) {
+    throw badRequest("A founding image needs a valid gallery reference.");
+  }
+  return { ref, id, url };
+}
+
+function foundingLines(value: unknown, label: string): string[] {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    value.length > 20 ||
+    value.some((item) => typeof item !== "string" || item.length > 300)
+  ) {
+    throw badRequest(`${label} must be a short list of text.`);
+  }
+  return value.map((item: string) => item.trim()).filter(Boolean);
+}
+
+function foundingSpace(
+  value: unknown,
+  venueClass: VillageVenueClass,
+  description: string,
+): NonNullable<VillageVenue["spaces"]>[number] {
+  const row = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const rawState =
+    row.state && typeof row.state === "object" && !Array.isArray(row.state)
+      ? (row.state as Record<string, unknown>)
+      : {};
+  const features = Array.isArray(rawState.features) ? rawState.features : [];
+  if (features.length > 5) throw badRequest("A founding space can have at most five features.");
+  return {
+    ...defaultVenueSpace(venueClass, description),
+    description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH).trim() || description,
+    image: foundingImage(row.image),
+    state: {
+      condition: boundText(rawState.condition, 300).trim(),
+      items: foundingLines(rawState.items, "Initial items"),
+      publicFacts: foundingLines(rawState.publicFacts, "Initial facts"),
+      features: features.map((entry) => {
+        const feature =
+          entry && typeof entry === "object" && !Array.isArray(entry) ? (entry as Record<string, unknown>) : {};
+        const text = boundText(feature.text, 300).trim();
+        if (!text) throw badRequest("A founding feature needs text.");
+        return { id: randomVillageSeed(), text, sourceCharacterId: "", locked: feature.locked === true, updatedAt: "" };
+      }),
+      traces: [],
+      updatedAt: "",
+    },
+  };
+}
+
+export function parsePlace(value: unknown, founding = false): ParsedPlace {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw badRequest("Every place needs a name.");
   }
@@ -3073,7 +3132,9 @@ function parsePlace(value: unknown): ParsedPlace {
           )
         : null;
       const scene = posted && typeof posted === "object" ? (posted as Record<string, unknown>) : {};
-      return defaultVenueSpace(venueClass, boundText(scene.description, MAX_VENUE_DESCRIPTION_LENGTH) || description);
+      return founding
+        ? foundingSpace(scene, venueClass, description)
+        : defaultVenueSpace(venueClass, boundText(scene.description, MAX_VENUE_DESCRIPTION_LENGTH) || description);
     }),
     residenceCapacity: capacity,
     residentIds: characterId ? [characterId] : [],
@@ -3081,7 +3142,7 @@ function parsePlace(value: unknown): ParsedPlace {
     purpose,
     description,
     category: typeof record.category === "string" ? record.category.trim() : "",
-    presentation: { image: null, x, y },
+    presentation: { image: founding ? foundingImage(presentationRecord.image) : null, x, y },
     occupancy: {
       playerHome,
       residentCharacterId: characterId.length > 0 ? characterId : null,
@@ -3112,7 +3173,7 @@ function parsePlace(value: unknown): ParsedPlace {
 function parsePlaces(value: unknown, residents: ReadonlySet<string>, founding: boolean): ParsedPlace[] {
   if (!Array.isArray(value)) throw badRequest("The places must be a list.");
   if (value.length > MAX_PLACES) throw badRequest(`A village holds at most ${MAX_PLACES} places.`);
-  const places = value.map(parsePlace);
+  const places = value.map((entry) => parsePlace(entry, founding));
   const homes = places.filter((place) => isHousePlace(place));
   const playerHomes = places.filter((place) => place.occupancy.playerHome).length;
   if (playerHomes > 1) throw badRequest("Only one place can be your home.");
@@ -3137,8 +3198,9 @@ function parsePlaces(value: unknown, residents: ReadonlySet<string>, founding: b
     seenOccupants.add(place.occupancy.residentCharacterId);
   }
   if (founding) {
-    if (places.some((place) => !place.description.trim()))
-      throw badRequest("Approve a description for every founding place.");
+    if (places.some((place) => !place.description.trim())) throw badRequest("Describe every founding venue.");
+    if (places.some((place) => place.spaces?.some((space) => !space.description.trim())))
+      throw badRequest("Describe every founding venue scene.");
     if (homes.some((place) => place.presentation.x === null || place.presentation.y === null))
       throw badRequest("Every founding home needs a spot on the map.");
     const assignedVillagers = places.filter((place) => place.occupancy.residentCharacterId !== null);
@@ -3257,17 +3319,18 @@ export async function runVillageSetup(input: {
     return {
       ...place,
       classes: prior?.classes ?? place.classes,
-      spaces: prior
-        ? venueSpaces(prior).map((space) =>
-            space.venueClass === "residence"
-              ? {
-                  ...space,
-                  description:
-                    place.spaces?.find((entry) => entry.venueClass === "residence")?.description ?? space.description,
-                }
-              : space,
-          )
-        : place.spaces,
+      spaces:
+        prior && !founding
+          ? venueSpaces(prior).map((space) =>
+              space.venueClass === "residence"
+                ? {
+                    ...space,
+                    description:
+                      place.spaces?.find((entry) => entry.venueClass === "residence")?.description ?? space.description,
+                  }
+                : space,
+            )
+          : place.spaces,
       residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
       residentIds: prior ? venueResidentIds(prior) : place.residentIds,
       playerInvitations: prior?.playerInvitations ?? [],
@@ -3275,7 +3338,10 @@ export async function runVillageSetup(input: {
       capabilities: prior?.capabilities ?? place.capabilities,
       workerIds: prior?.workerIds ?? [],
       state: prior?.state ?? place.state,
-      presentation: { ...place.presentation, image: storedImages.get(place.id) ?? null },
+      presentation: {
+        ...place.presentation,
+        image: founding ? place.presentation.image : (storedImages.get(place.id) ?? null),
+      },
     };
   });
   const keptPlaces = founding ? [] : village.venues.filter((place) => !isHousePlace(place) && !postedIds.has(place.id));
@@ -3323,6 +3389,7 @@ export async function runVillageSetup(input: {
     // The stamp that closes the wizard. Written here and nowhere else, so a
     // village can only become founded by coming through this flow.
     state.setupAt = new Date().toISOString();
+    if (founding) state.foundingPreparation = { status: "pending", completedIds: [], currentId: "", error: "" };
     // Only a village with nowhere to send anybody needs places invented; a
     // second run must not throw away places the player has since renamed or
     // added by hand. The houses do not count — see `remapVenues`.
@@ -3355,10 +3422,105 @@ export async function runVillageSetup(input: {
   // forged village asks everyone to plan a day with only the houses available.
   // The complete provisional day written above remains usable if either model
   // call fails, and the next tick can still retry the authored agenda.
-  for (const card of addedResidents) {
-    await queueVillagerAgenda(card.id);
-  }
+  if (founding)
+    queueMicrotask(() => {
+      void prepareFoundedVillage();
+    });
+  else for (const card of addedResidents) await queueVillagerAgenda(card.id);
   return buildVillageSnapshot();
+}
+
+let foundingWork: Promise<void> | null = null;
+
+/** Durable, idempotent first-founding work. The read route restarts it after a process exit. */
+export function prepareFoundedVillage(): Promise<void> {
+  if (foundingWork) return foundingWork;
+  foundingWork = (async () => {
+    const initial = await readVillageState();
+    if (initial.foundingPreparation?.status !== "pending") return;
+    if (!(await readNativeScheduleSnapshot(new Date())).cardsReadable)
+      throw new Error("The character library could not be read, so the villagers' schedules could not be checked.");
+    for (const villager of initial.villagers) {
+      const id = villager.characterId;
+      const latest = await readVillageState();
+      if (latest.foundingPreparation?.status !== "pending") return;
+      if (latest.foundingPreparation.completedIds.includes(id)) continue;
+      await mutateVillageState((state) => {
+        if (state.foundingPreparation?.status === "pending") state.foundingPreparation.currentId = id;
+      });
+      try {
+        const current = (await readVillageState()).villagers.find((entry) => entry.characterId === id);
+        if (!current?.agenda?.generatedAt || current.agenda.personalizationPending) {
+          if (!(await writeVillagerAgenda(id))) throw new Error("This villager's agenda was not prepared.");
+        }
+        await clearVillagerRemap(id);
+        await refreshVillagerRemaps(await readVillageState(), new Date(), id);
+        const prepared = (await readVillageState()).villagers.find((entry) => entry.characterId === id);
+        if (prepared?.remapFailure) throw new Error(prepared.remapFailure.message);
+        await mutateVillageState((state) => {
+          const marker = state.foundingPreparation;
+          if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
+        });
+      } catch (error) {
+        await mutateVillageState((state) => {
+          if (state.foundingPreparation?.status !== "pending") return;
+          state.foundingPreparation.status = "failed";
+          state.foundingPreparation.error = boundText(error instanceof Error ? error.message : String(error), 300);
+        });
+        return;
+      }
+    }
+    await mutateVillageState((state) => {
+      if (state.foundingPreparation?.status === "pending") {
+        state.foundingPreparation.status = "ready";
+        state.foundingPreparation.currentId = "";
+      }
+    });
+  })()
+    .catch(async (error) => {
+      villagesLogger().warn("[villages] founding preparation stopped: %s", String(error));
+      try {
+        await mutateVillageState((state) => {
+          if (state.foundingPreparation?.status !== "pending") return;
+          state.foundingPreparation.status = "failed";
+          state.foundingPreparation.error = boundText(error instanceof Error ? error.message : String(error), 300);
+        });
+      } catch (writeError) {
+        villagesLogger().warn("[villages] founding preparation failure could not be recorded: %s", String(writeError));
+      }
+    })
+    .finally(() => {
+      foundingWork = null;
+    });
+  return foundingWork;
+}
+
+export async function retryFoundedVillagePreparation(): Promise<VillageSnapshot> {
+  await mutateVillageState((state) => {
+    const marker = state.foundingPreparation;
+    if (!marker || marker.status !== "failed") return;
+    marker.status = "pending";
+    marker.error = "";
+  });
+  queueMicrotask(() => {
+    void prepareFoundedVillage();
+  });
+  return buildVillageSnapshot();
+}
+
+export async function foundingPreparationSnapshot(): Promise<VillageSnapshot> {
+  const state = await readVillageState();
+  if (state.foundingPreparation?.status === "pending")
+    queueMicrotask(() => {
+      void prepareFoundedVillage();
+    });
+  return buildVillageSnapshot();
+}
+
+export async function assertFoundedVillageReady(): Promise<void> {
+  const marker = (await readVillageState()).foundingPreparation;
+  if (marker && marker.status !== "ready")
+    throw conflict("The village is still preparing. Retry any failed preparation before entering.");
 }
 
 /**
@@ -3645,6 +3807,7 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
   const now = options.now ?? new Date();
   let recorded = await readVillageState();
   if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
+  if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready") return buildVillageSnapshot(now);
   let completedMove = false;
   for (const residence of recorded.residences) {
     if (residence.status !== "moving" || Date.parse(residence.completesAt ?? "") > now.getTime()) continue;

@@ -15,6 +15,7 @@ const mapImage = image("#719b77");
 const place = (id, x, y) => ({
   id,
   name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
+  classes: id === "mill" ? ["workplace", "gathering"] : ["other"],
   purpose: "A place to visit.",
   category: "destination",
   description: "A village place.",
@@ -227,6 +228,55 @@ try {
       );
       await pin.click();
     }
+    await doors.getByRole("button", { name: /View venue/i }).click();
+    await expect(page.getByText("Nobody is here right now")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Visit Venue" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "About" })).toHaveCount(0);
+    if (process.env.VILLAGES_VISUAL_OUTPUT) {
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-${width}x${height}.png`),
+      });
+    }
+    if (!mobile) {
+      await page.getByRole("button", { name: "Visit Venue" }).click();
+      await expect(page.getByText("Choose a space")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Workplace space" })).toBeVisible();
+    }
+    await page.getByRole("button", { name: "Edit Venue" }).click();
+    await expect(page.getByRole("button", { name: "Close Editor" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Visit Venue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Propose Change" })).toHaveCount(0);
+    if (process.env.VILLAGES_VISUAL_OUTPUT) {
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-edit-${width}x${height}.png`),
+      });
+    }
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill("Unsaved venue name");
+    page.once("dialog", (dialog) => void dialog.dismiss());
+    await page.getByRole("button", { name: "Close Editor" }).click();
+    await expect(page.getByRole("button", { name: "Close Editor" })).toBeVisible();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Close Editor" }).click();
+    await page.getByRole("button", { name: "Propose Change" }).click();
+    await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit Venue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Visit Venue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
+    if (process.env.VILLAGES_VISUAL_OUTPUT) {
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-proposal-${width}x${height}.png`),
+      });
+    }
+    await page.getByRole("textbox", { name: /Improvement title/u }).fill("Unsaved improvement");
+    page.once("dialog", (dialog) => void dialog.dismiss());
+    await page.getByRole("button", { name: "Exit Change Proposal" }).click();
+    await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Exit Change Proposal" }).click();
+    await page.getByRole("button", { name: "Back to map" }).click();
+    await pin.focus();
+    await page.keyboard.press("Enter");
     await doors.getByRole("button", { name: "Visit" }).click();
     const composer = page.getByRole("textbox", { name: mobile ? "Message at The Market" : "Message at The Mill" });
     await composer.fill("My response.");

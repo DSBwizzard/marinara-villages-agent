@@ -41,6 +41,11 @@ import {
 } from "../services/villages/location-image.js";
 import { generateVillageTownMap } from "../services/villages/town-map-image.js";
 import {
+  draftFoundingVenueText,
+  generateFoundingVenueImage,
+  uploadFoundingVenueImage,
+} from "../services/villages/founding-drafts.js";
+import {
   approveResidentSprite,
   generateResidentSprite,
   importSourceResidentSprite,
@@ -63,6 +68,9 @@ import {
   buildVillageCatalog,
   buildVillagePersonaCatalog,
   buildVillageSnapshot,
+  assertFoundedVillageReady,
+  foundingPreparationSnapshot,
+  retryFoundedVillagePreparation,
   buildVillageStory,
   clearVillagerAgenda,
   setVillagerScheduleIngestion,
@@ -550,6 +558,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     "/rooms",
     async (request, reply) => {
       try {
+        await assertFoundedVillageReady();
         const spaceClass = request.body?.spaceClass;
         if (
           spaceClass !== undefined &&
@@ -573,6 +582,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/greet", async (request, reply) => {
     try {
+      await assertFoundedVillageReady();
       return { session: await greetVenue(readChatId(request.body?.sessionId)) };
     } catch (error) {
       return fail(reply, error, "greeting a venue");
@@ -580,6 +590,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   });
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/continue", async (request, reply) => {
     try {
+      await assertFoundedVillageReady();
       return { session: await continueVenueWithoutGreeting(readChatId(request.body?.sessionId)) };
     } catch (error) {
       return fail(reply, error, "continuing a venue without a greeting");
@@ -594,6 +605,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   });
   app.post<{ Body: { sessionId?: unknown; ownerId?: unknown } }>("/rooms/enter-private", async (request, reply) => {
     try {
+      await assertFoundedVillageReady();
       return {
         session: await enterResidencePrivateSpace(
           readChatId(request.body?.sessionId),
@@ -615,6 +627,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
 
   app.post<{ Body: VenueTurnBody }>("/rooms/turn", async (request, reply) => {
     try {
+      await assertFoundedVillageReady();
       const mode = request.body?.mode;
       if (mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act")
         throw badRequest("Choose Chat, Ask, Fulfill, or Act.");
@@ -858,6 +871,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   app.post<{
     Body: {
       structure?: unknown;
+      negative?: unknown;
       setting?: unknown;
       options?: unknown;
       connectionId?: unknown;
@@ -915,6 +929,46 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
+  app.post<{ Body: unknown }>("/setup/venues/draft", async (request, reply) => {
+    try {
+      return await draftFoundingVenueText(request.body);
+    } catch (error) {
+      return fail(reply, error, "drafting founding venues");
+    }
+  });
+
+  app.get("/setup/preparation", async (_request, reply) => {
+    try {
+      return await foundingPreparationSnapshot();
+    } catch (error) {
+      return fail(reply, error, "reading founding preparation");
+    }
+  });
+
+  app.post("/setup/preparation/retry", async (_request, reply) => {
+    try {
+      return await retryFoundedVillagePreparation();
+    } catch (error) {
+      return fail(reply, error, "retrying founding preparation");
+    }
+  });
+
+  app.post<{ Body: unknown }>("/setup/venue-image/generate", async (request, reply) => {
+    try {
+      return await generateFoundingVenueImage(request.body);
+    } catch (error) {
+      return fail(reply, error, "drawing a founding venue");
+    }
+  });
+
+  app.put<{ Body: unknown }>("/setup/venue-image", { bodyLimit: VENUE_IMAGE_BODY_LIMIT }, async (request, reply) => {
+    try {
+      return await uploadFoundingVenueImage(request.body);
+    } catch (error) {
+      return fail(reply, error, "keeping a founding venue image");
+    }
+  });
+
   // ── Pictures of places ───────────────────────────────────────────────────
   //
   // The picture is what the chat surface is drawn on. It is deliberately NOT
@@ -923,10 +977,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // take twenty seconds to arrive at all. As part of the same write, any edit
   // made while a picture was being drawn would have thrown it away.
   //
-  // Nothing in this package reaches the route below on its own. Not founding a
-  // village, not suggesting places, not remapping a villager, not the tick, and
-  // not any timer — a picture costs the player money, so the only thing that
-  // draws one is the player pressing the button that posts here.
+  // Exterior and shared-space draws use this player action. First entry to a
+  // private room uses the same generator once in the background, with a
+  // persisted attempt marker so visits and refreshes cannot repeat it.
 
   app.post<{ Body: { venueId?: unknown; connectionId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
     "/locations/venue/image",

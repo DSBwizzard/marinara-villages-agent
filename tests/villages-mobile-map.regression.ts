@@ -96,7 +96,8 @@ assert.equal(source.includes('mobileStart="contain"'), false);
 assert.ok(
   source.includes("const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current"),
 );
-assert.ok(source.includes("onPlace(round4(x), round4(y));"));
+assert.ok(source.includes("onPlace(round4(x), round4(y), {"));
+assert.ok(source.includes("photoWidth: photoRect?.width"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-canvas`)"));
 assert.ok(source.includes("aria-label={`Noticeboard (${snapshot?.noticeboard.length ?? 0})`}"));
 assert.ok(source.includes('aria-label="Events (NYI)"'));

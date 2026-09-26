@@ -554,6 +554,8 @@ export type VillageVenueSpace = {
 
 export type VillagePrivateSpace = VillageVenueSpace & {
   ownerId: string;
+  /** A first-entry picture is attempted once; later drawing is player controlled. */
+  initialImageAttemptedAt?: string;
   adaptationPending?: boolean;
   adaptationSourceArchiveAt?: string;
 };
@@ -1001,6 +1003,13 @@ export type VillageState = {
    * different question with a different answer.
    */
   setupAt: string;
+  /** Only first founding waits for this durable preparation marker; absent legacy villages are ready. */
+  foundingPreparation?: {
+    status: "pending" | "failed" | "ready";
+    completedIds: string[];
+    currentId: string;
+    error: string;
+  } | null;
   /**
    * When the village began keeping its own time. Empty until the first write,
    * because merely opening the tab must not create a document.
@@ -1407,6 +1416,7 @@ export type VillageSettingsView = {
   foundingDetailsMaxLength: number;
   /** Testing-only editable copy; omitted from the image prompt unless explicitly submitted. */
   townMapLayoutPrompt: string;
+  townMapNegativePrompt: string;
   /** Every place the village holds, homes included. The tab draws its map and its editor from this one list. */
   venues: VillageVenue[];
   homeBuildingNames: Record<HomeBuildingKind, string>;
@@ -1506,6 +1516,7 @@ export type VillageMomentView = {
 
 export type VillageSnapshot = {
   status: "ready";
+  foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];
   upgradeRequests: VillagePendingDecision[];

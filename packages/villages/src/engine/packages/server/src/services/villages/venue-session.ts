@@ -998,6 +998,7 @@ export async function enterVenue(
     active.sessionId = id;
     active.placeId = placeId;
   });
+  if (area === "private") await markResidenceSeen(session);
   return session;
 }
 
@@ -1500,6 +1501,13 @@ async function markResidenceSeen(session: VenueSession): Promise<void> {
     if (session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
       venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
   });
+  if (session.area === "private" && session.privateOwnerId) {
+    void import("./location-image.js")
+      .then(({ generateFirstPrivateSpaceImage }) =>
+        generateFirstPrivateSpaceImage(session.placeId, session.privateOwnerId),
+      )
+      .catch((error) => villagesLogger().warn("[villages] private-space image could not start: %s", String(error)));
+  }
 }
 
 async function applyVenueRequests(session: VenueSession, submission: VenueSubmission): Promise<void> {

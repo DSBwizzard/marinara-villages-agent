@@ -5,6 +5,7 @@ import { deriveVillageMoment } from "../packages/villages/src/engine/packages/se
 import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
 import { proposeWishVerdict } from "../packages/villages/src/engine/packages/server/src/services/villages/wishes.js";
 import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
+import { generateFirstPrivateSpaceImage } from "../packages/villages/src/engine/packages/server/src/services/villages/location-image.js";
 import {
   decideVillagerVenueImprovement,
   proposeVenueChange,
@@ -50,6 +51,7 @@ import {
 import {
   reconcileVillage,
   resetVillage,
+  completeVillageResidence,
   updateVillageVenue,
   buildVillageSnapshot,
   proposeResidenceSpaceEdit,
@@ -1917,6 +1919,7 @@ async function main() {
         ...venue("home"),
         classes: ["residence"],
         residentIds: ["bob", "tina"],
+        residenceCapacity: 2,
         occupancy: { playerHome: false, residentCharacterId: "bob", homeKind: "small-home" },
       } as any);
       for (const resident of state.villagers)
@@ -1960,6 +1963,7 @@ async function main() {
       state: { condition: "warm", items: ["cup"] },
     });
     assert.equal(proposed.settings.venues.find((place) => place.id === "home")?.editProposals?.length, 1);
+    await updateVillageVenue("home", { purpose: "A quiet home." });
     await sendVenueTurn({
       sessionId: outside.id,
       message: "Bob approves the edit",
@@ -1989,25 +1993,11 @@ async function main() {
     );
     home = (await readVillageState()).venues.find((place) => place.id === "home")!;
     assert.equal(
-      home.spaces?.find((space) => space.venueClass === "residence")?.image,
-      null,
-      "drawing a resident's interior creates a proposal instead of changing it",
+      home.spaces?.find((space) => space.venueClass === "residence")?.image?.id,
+      "shared-image",
+      "a visited Residence image belongs to the player and changes immediately",
     );
-    assert.equal(home.editProposals?.at(-1)?.proposed.image?.id, "shared-image");
-    await sendVenueTurn({
-      sessionId: outside.id,
-      message: "Bob approves the edit",
-      mode: "chat",
-      targetId: "",
-      submissionId: "bob-image-approval",
-    });
-    await sendVenueTurn({
-      sessionId: outside.id,
-      message: "Tina approves the edit",
-      mode: "chat",
-      targetId: "",
-      submissionId: "tina-image-approval",
-    });
+    assert.equal(home.editProposals?.length, 0, "the image does not create a resident approval proposal");
     assert.equal(
       (await readVillageState()).venues
         .find((place) => place.id === "home")
@@ -2023,6 +2013,19 @@ async function main() {
     });
     assert.equal(privateInvite.session.area, "private");
     assert.equal(privateInvite.session.privateOwnerId, "bob");
+    await generateFirstPrivateSpaceImage("home", "bob");
+    const firstImageAttempt = (await readVillageState()).venues
+      .find((place) => place.id === "home")
+      ?.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt;
+    assert.ok(firstImageAttempt, "the first private entry records one automatic image attempt");
+    await generateFirstPrivateSpaceImage("home", "bob");
+    assert.equal(
+      (await readVillageState()).venues
+        .find((place) => place.id === "home")
+        ?.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt,
+      firstImageAttempt,
+      "later visits cannot claim another automatic draw, even after a failed first draw",
+    );
     const privateBefore = home.privateSpaces?.find((space) => space.ownerId === "bob")?.description;
     await proposeResidenceSpaceEdit("home", { target: "private", ownerId: "bob", description: "Bob's snug nook." });
     assert.equal(
@@ -2030,6 +2033,17 @@ async function main() {
         .find((place) => place.id === "home")
         ?.privateSpaces?.find((space) => space.ownerId === "bob")?.description,
       privateBefore,
+    );
+    await setVillageVenueImage(
+      "home",
+      { id: "private-image", ref: "global-gallery:private-image", url: "/private.webp" },
+      "residence",
+      "bob",
+    );
+    assert.equal(
+      (await readVillageState()).venues.find((place) => place.id === "home")?.editProposals?.length,
+      1,
+      "changing an image does not add a second room proposal",
     );
     await sendVenueTurn({
       sessionId: outside.id,
@@ -2044,7 +2058,61 @@ async function main() {
         ?.privateSpaces?.find((space) => space.ownerId === "bob")?.description,
       "Bob's snug nook.",
     );
+    assert.equal(
+      (await readVillageState()).venues
+        .find((place) => place.id === "home")
+        ?.privateSpaces?.find((space) => space.ownerId === "bob")?.image?.id,
+      "private-image",
+      "resident approval of room text does not overwrite a player-chosen image",
+    );
     await leaveVenueSession(outside.id, "home-leave");
+    await setVillageVenueImage(
+      "home",
+      { id: "private-redraw", ref: "global-gallery:private-redraw", url: "/redraw.webp" },
+      "residence",
+      "bob",
+    );
+    assert.equal(
+      (await readVillageState()).venues
+        .find((place) => place.id === "home")
+        ?.privateSpaces?.find((space) => space.ownerId === "bob")?.image?.id,
+      "private-redraw",
+      "the player may redraw after the invited visit ends",
+    );
+    const persistedForMigration = await readVillageState();
+    const homeForMigration = persistedForMigration.venues.find((place) => place.id === "home")!;
+    const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
+    const migrated = coerceVillageState({
+      ...persistedForMigration,
+      venues: persistedForMigration.venues.map((place) =>
+        place.id === "home"
+          ? {
+              ...place,
+              editProposals: [
+                {
+                  id: "legacy-image-proposal",
+                  target: "private",
+                  ownerId: "bob",
+                  baseUpdatedAt: roomForMigration.state.updatedAt,
+                  proposed: {
+                    ...roomForMigration,
+                    image: { id: "older-image", ref: "global-gallery:older-image", url: "/older.webp" },
+                  },
+                  requiredIds: ["bob"],
+                  approvedIds: [],
+                  declined: false,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }
+          : place,
+      ),
+    });
+    assert.equal(
+      migrated.venues.find((place) => place.id === "home")?.editProposals?.length,
+      0,
+      "legacy image-only proposals are retired when persisted state is read",
+    );
     outside = await greetVenue((await enterVenue("home", "residence")).id);
     assert.equal(outside.area, "outside");
     await sendVenueTurn({
@@ -2087,6 +2155,43 @@ async function main() {
     assert.deepEqual(exteriorChanged.exteriorState?.items, ["sign"]);
     assert.deepEqual(exteriorChanged.spaces?.find((space) => space.venueClass === "residence")?.state.items, ["cup"]);
     await endVenueSession(emptyOutside.id);
+    await mutateVillageState((state) => {
+      const oldHome = state.venues.find((place) => place.id === "home")!;
+      const oldRoom = oldHome.privateSpaces!.find((space) => space.ownerId === "bob")!;
+      oldRoom.description = `A private space for this resident at ${oldHome.name}.`;
+      oldRoom.state.items = [];
+      oldRoom.state.features = [];
+      state.venues.push({
+        ...venue("new-home"),
+        classes: ["residence"],
+        residentIds: [],
+        residenceCapacity: 1,
+      } as any);
+      state.residences = state.residences.filter((entry) => entry.characterId !== "bob");
+      state.residences.push({
+        characterId: "bob",
+        venueId: "home",
+        status: "moving",
+        proposedVenueId: "new-home",
+        requestedAt: new Date().toISOString(),
+        requestedBy: "player",
+        villagerDecision: "approved",
+        approvedAt: new Date().toISOString(),
+        completesAt: new Date().toISOString(),
+      });
+    });
+    await completeVillageResidence("bob", true);
+    const afterMove = await readVillageState();
+    const destination = afterMove.venues.find((place) => place.id === "new-home")!;
+    assert.equal(afterMove.venues.find((place) => place.id === "home")?.playerSeenPrivateIds?.includes("bob"), false);
+    assert.equal(destination.playerSeenPrivateIds?.includes("bob"), false);
+    assert.equal(destination.privateSpaces?.find((space) => space.ownerId === "bob")?.image, null);
+    assert.ok(!destination.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt);
+    await assert.rejects(
+      () => setVillageVenueImage("new-home", null, "residence", "bob"),
+      /Visit this Residence space/u,
+      "a move creates a fresh private room that has not been discovered",
+    );
     await saveVillageWriting({ styleInstructions: "An old village's style" });
     await resetVillage();
     assert.deepEqual((await readVillageState()).narrationStyle, defaultVillageState().narrationStyle);

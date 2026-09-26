@@ -161,6 +161,7 @@ export function defaultVillageState(): VillageState {
     // is stamped only by the setup route, never by `mutateVillageState`, so a
     // village cannot become "founded" as a side effect of some other write.
     setupAt: "",
+    foundingPreparation: null,
     // Both are filled in by `mutateDocument` on the village's first write, so a
     // player who only ever looks at the tab never gets a record created for them.
     foundedAt: "",
@@ -669,6 +670,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
         boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`,
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
+      initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
       adaptationPending: row.adaptationPending === true,
       adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
     };
@@ -765,6 +767,17 @@ function coerceVenue(value: unknown): VillageVenue | null {
             const proposed = asRecord(entry.proposed);
             const requiredIds = coerceVenueIds(entry.requiredIds);
             if (!id || !requiredIds.length || (target === "private" && ownerId !== requiredIds[0])) return [];
+            const current =
+              target === "private"
+                ? privateSpaces.find((space) => space.ownerId === ownerId)
+                : spaces.find((space) => space.venueClass === "residence");
+            // Older image-only proposals have no resident decision to make now.
+            if (
+              current &&
+              boundText(proposed.description, MAX_VENUE_DESCRIPTION_LENGTH) === current.description &&
+              JSON.stringify(coerceSpaceState(proposed.state)) === JSON.stringify(current.state)
+            )
+              return [];
             return [
               {
                 id,
@@ -1639,6 +1652,17 @@ export function coerceVillageState(value: unknown): VillageState {
     // Left empty rather than stamped with "now": a record that predates the
     // setup flow should open the wizard, not claim it has been set up.
     setupAt: asIsoString(raw.setupAt) ?? "",
+    foundingPreparation: (() => {
+      const preparation = asRecord(raw.foundingPreparation);
+      if (preparation.status !== "pending" && preparation.status !== "failed" && preparation.status !== "ready")
+        return null;
+      return {
+        status: preparation.status,
+        completedIds: asStringArray(preparation.completedIds).slice(0, 12),
+        currentId: asTrimmedString(preparation.currentId),
+        error: boundText(preparation.error, 300),
+      };
+    })(),
     // Left empty rather than stamped with "now": a record that predates the
     // village clock should start keeping time when it is next written, not
     // pretend it has been running since the upgrade.
