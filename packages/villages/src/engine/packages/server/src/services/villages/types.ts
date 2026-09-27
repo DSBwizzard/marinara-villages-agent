@@ -86,6 +86,13 @@ export type VillageWish = {
   expiresAt: string;
 };
 
+/** A confirmed wish outcome, kept separately from the prose memory about it. */
+export type VillageCompletedWish = {
+  wish: VillageWish;
+  fulfilledAt: string;
+  memoryId: string;
+};
+
 /**
  * What a villager is after, written once when they move in and then kept.
  *
@@ -403,6 +410,7 @@ export type VillageVillager = {
    * retried on every part of every day forever.
    */
   agenda: VillageAgenda | null;
+  completedWishes: VillageCompletedWish[];
   /** Schedule changes influence tomorrow's agenda, never today's. */
   ingestSchedule?: boolean;
   /**
@@ -972,6 +980,7 @@ export type VillageState = {
   foundingDetails: string;
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
+  loreTokenBudget: number;
   /**
    * Every place the village has: the houses people live in, the player's own
    * home, and everywhere anyone goes.
@@ -1033,6 +1042,8 @@ export type VillageState = {
    * whole village or to specific residents. Visual Events age out separately.
    */
   chronicle: VillageChronicleEntry[];
+  /** Submission IDs whose false wish completion was explicitly corrected. */
+  correctedWishMemoryIds: string[];
   /** Durable high-water mark for deterministic reconciliation. */
   simulatedThrough: string;
   /** Device timezone observed by the last reconciliation. */
@@ -1413,6 +1424,9 @@ export type VillageSettingsView = {
   foundingReason: string;
   foundingDetails: string;
   selectedLorebookIds: string[];
+  loreTokenBudget: number;
+  loreTokenBudgetMin: number;
+  loreTokenBudgetMax: number;
   foundingDetailsMaxLength: number;
   /** Testing-only editable copy; omitted from the image prompt unless explicitly submitted. */
   townMapLayoutPrompt: string;
@@ -1584,6 +1598,7 @@ export type VillageAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillageAgenda | null;
+  completedWishes: VillageCompletedWish[];
   ingestSchedule: boolean;
   nativeSchedule: {
     weekStart: string;

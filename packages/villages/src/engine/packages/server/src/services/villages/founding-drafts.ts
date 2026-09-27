@@ -4,7 +4,13 @@ import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 import { uploadVillageGalleryImage } from "./global-gallery.js";
 import { decodeVillageImageDataUrl, generateVillageImage } from "./image-generation.js";
-import { readSelectedLorebookIds, readVillageLore, readVillageVisualLore } from "./lorebooks.js";
+import {
+  DEFAULT_LORE_TOKEN_BUDGET,
+  readLoreTokenBudget,
+  readSelectedLorebookIds,
+  readVillageLore,
+  readVillageVisualLore,
+} from "./lorebooks.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { MAX_VENUE_IMAGE_BYTES, villageNarrativeSetting } from "./prompt-preset.js";
@@ -82,6 +88,8 @@ export async function draftFoundingVenueText(
   const lore = await readVillageLore(
     readSelectedLorebookIds(input.selectedLorebookIds ?? []),
     [setting, ...rows.map((row) => `${row.name} ${row.form} ${row.purpose} ${row.guidance}`)].join("\n"),
+    undefined,
+    input.loreTokenBudget === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(input.loreTokenBudget),
   );
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),

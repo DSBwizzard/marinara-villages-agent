@@ -186,6 +186,8 @@ const REMAP_SYSTEM_PROMPT = [
   '- "here" must be about something this village HAS. Use the places listed below by their own names where one fits. If what they are doing has no place here, describe it as the nearest thing this village could hold, or as part of an ordinary day in a place like this.',
   `- "place" is the NUMBER of the one place in the numbered list below where this block happens, as a number and not a name. ${PLACE_QUESTION} Write 0 when there is no place on that list for it — somebody asleep, somebody walking between two places, somebody doing something this village has no room for. Do not invent a number, and do not leave the field out. Say the same place twice if two blocks happen at the same one.`,
   "- The person's wishes may subtly influence how they carry out an activity. Keep each block about the activity itself; do not turn an hour into a wish, errand, or request.",
+  "- Current village places and confirmed outcomes outrank lorebook descriptions of older desires. Never portray an already fulfilled wish as still unmet.",
+  "- A desire in lore does not prove that an object exists or belongs to this person. Only current venue facts and confirmed outcomes establish present assets.",
   "- Keep the availability you were given. Somebody whose block is busy is busy doing this; somebody whose block is asleep is asleep through it. Do not turn a committed hour into free time, or the other way round.",
   `- "agenda" is one sentence under ${MAX_ROUTINE_SUMMARY_LENGTH} characters describing an ordinary day for them HERE, in the same terms as your moves. It must not mention anything this village does not have.`,
   "- Never mention anything this village does not have: no technology, no vehicles, no travel to other worlds, no countries, no companies, no institutions, no places and no people the description does not imply. Somebody whose week involves flying a ship does not fly one here; they do the nearest thing this village could actually hold.",
@@ -209,6 +211,9 @@ const REMAP_SYSTEM_PROMPT = [
 export type VillageRemapContext = {
   village: string;
   setting: string;
+  lore: readonly string[];
+  completedWishes: readonly string[];
+  loreKey: string;
   venues: readonly VillageVenue[];
   /**
    * What this villager wishes for, in the order the agenda holds them.
@@ -420,6 +425,7 @@ export function routineKey(routine: NativeRoutine | null): string {
  */
 export function remapSignature(input: {
   setting: string;
+  loreKey?: string;
   venues: readonly VillageVenue[];
   wishes: readonly VillageWish[];
   weekStart: string;
@@ -438,9 +444,9 @@ export function remapSignature(input: {
     .slice(0, MAX_VENUES)
     .map(
       (venue) =>
-        `${venue.id}\u0000${venue.name.trim()}\u0000${venue.purpose.trim()}\u0000${venue.state.condition.trim()}`,
+        `${venue.id}\u0000${venue.name.trim()}\u0000${venue.purpose.trim()}\u0000${venue.state.condition.trim()}\u0000${venue.state.publicFacts.slice(0, 4).join("\u0000")}`,
     );
-  const digest = [weekStart, ...asked, ...wished, input.setting.trim(), ...lens].join("\u0001");
+  const digest = [weekStart, ...asked, ...wished, input.setting.trim(), input.loreKey ?? "", ...lens].join("\u0001");
   let hash = 2166136261;
   for (let index = 0; index < digest.length; index += 1) {
     hash ^= digest.charCodeAt(index);
@@ -473,7 +479,10 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
   const places = remapVenues(context.venues)
     .slice(0, MAX_VENUES)
     .map((venue, index) => {
-      const description = [venue.purpose.trim(), venue.state.condition.trim()].filter(Boolean).join("; ");
+      const description = [venue.purpose.trim(), venue.state.condition.trim(), ...venue.state.publicFacts.slice(0, 4)]
+        .filter(Boolean)
+        .map((part) => condense(part, 160))
+        .join("; ");
       return description.length > 0 ? `${index + 1}. ${venue.name}: ${description}` : `${index + 1}. ${venue.name}`;
     });
   // Wishes are private context, not numbered labels for agenda hours. Weight is
@@ -529,6 +538,12 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
           'Their week, day by day and hour by hour. The day and the hour range of every line below are the key of its entry in "moves", so copy both back exactly:',
           ...week.map((day) => [day.day, ...day.lines].join("\n")),
         ].join("\n")
+      : "",
+    context.lore.length
+      ? `Established lore, used only when consistent with the existing week and current village:\n${context.lore.join("\n")}`
+      : "",
+    context.completedWishes.length
+      ? `Already fulfilled; these older desires are not unmet errands:\n${context.completedWishes.join("\n")}`
       : "",
     `Write their week as it happens in ${context.village}.`,
   ].filter((section) => section.length > 0);

@@ -24,6 +24,7 @@ import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState
 import {
   decideVillageResidence,
   applyResidenceEditApproval,
+  clearVillagerAgenda,
   proposeVillageResidence,
   readPlayerIdentity,
   rollActiveAgendas,
@@ -464,6 +465,7 @@ async function generate(
       "\n",
     ),
     signal,
+    village.loreTokenBudget,
   ).then((value) => {
     trace?.("lore", performance.now() - loreStarted);
     return value;
@@ -1224,7 +1226,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           : [],
       };
     await applyVenueTurnChange(session, prior);
-    await applyFulfilledWish(session, prior);
+    if (await applyFulfilledWish(session, prior)) await refreshAgendaAfterWish(prior.targetId);
     await applyVenueRequests(session, prior);
     if (prior.invitationSignal && prior.invitationSignal.timing === "later")
       await recordSpokenInvitation(session, prior.invitationSignal);
@@ -1450,7 +1452,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   });
   const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
   await applyVenueTurnChange(updated, submission);
-  await applyFulfilledWish(updated, submission);
+  if (await applyFulfilledWish(updated, submission)) await refreshAgendaAfterWish(submission.targetId);
   await applyVenueRequests(updated, submission);
   if (submission.invitationSignal && submission.invitationSignal.timing === "later")
     await recordSpokenInvitation(updated, submission.invitationSignal);
@@ -1601,16 +1603,36 @@ async function applyVenueTurnChange(session: VenueSession, submission: VenueSubm
   });
 }
 
-async function applyFulfilledWish(session: VenueSession, submission: VenueSubmission): Promise<void> {
-  if (!submission.wishId) return;
+async function refreshAgendaAfterWish(characterId: string): Promise<void> {
+  try {
+    await clearVillagerAgenda(characterId);
+  } catch (error) {
+    villagesLogger().warn(
+      "[villages] could not refresh %s's agenda after a fulfilled wish: %s",
+      characterId,
+      String(error),
+    );
+  }
+}
+
+async function applyFulfilledWish(session: VenueSession, submission: VenueSubmission): Promise<boolean> {
+  if (!submission.wishId) return false;
+  let applied = false;
   await mutateVillageState((state) => {
+    applied = false;
     const memoryId = `${session.id}:wish:${submission.wishId}`;
+    if (state.correctedWishMemoryIds.includes(memoryId)) return;
     if (state.chronicle.some((entry) => entry.id === memoryId)) return;
     const resident = state.villagers.find((person) => person.characterId === submission.targetId);
     const wish = resident?.agenda?.wishes.find((entry) => entry.id === submission.wishId);
     if (!resident?.agenda || !wish) return;
+    applied = true;
     resident.agenda.wishes = resident.agenda.wishes.filter((entry) => entry.id !== submission.wishId);
     const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() });
+    resident.completedWishes = [
+      { wish, fulfilledAt: moment.instant, memoryId },
+      ...resident.completedWishes.filter((entry) => entry.wish.id !== wish.id),
+    ];
     state.chronicle = [
       {
         id: memoryId,
@@ -1627,6 +1649,7 @@ async function applyFulfilledWish(session: VenueSession, submission: VenueSubmis
       ...state.chronicle,
     ];
   });
+  return applied;
 }
 
 async function applyTurnMemories(session: VenueSession, submission: VenueSubmission): Promise<void> {

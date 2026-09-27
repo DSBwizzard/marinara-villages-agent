@@ -519,6 +519,9 @@ type VillageSettings = {
   foundingReason: string;
   foundingDetails: string;
   selectedLorebookIds: string[];
+  loreTokenBudget: number;
+  loreTokenBudgetMin: number;
+  loreTokenBudgetMax: number;
   foundingDetailsMaxLength: number;
   townMapLayoutPrompt: string;
   townMapNegativePrompt: string;
@@ -932,6 +935,8 @@ type VillagerWish = {
   expiresAt?: string;
 };
 
+type CompletedVillagerWish = { wish: VillagerWish; fulfilledAt: string; memoryId: string };
+
 /**
  * What one villager is after, or null when the village has not written for them.
  *
@@ -1105,6 +1110,7 @@ type VillagerAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillagerAgenda | null;
+  completedWishes: CompletedVillagerWish[];
   ingestSchedule: boolean;
   nativeSchedule: {
     weekStart: string;
@@ -7188,8 +7194,8 @@ function VillageLorebookPicker({
     <fieldset className={`${ELEMENT_TAG}-field`}>
       <legend className={`${ELEMENT_TAG}-label`}>Lorebooks for this village</legend>
       <p className={`${ELEMENT_TAG}-hint`}>
-        Selected books supply live world facts for places, stories, conversations, and generated scenery. Villages never
-        edits them.
+        Selected books supply live world facts for places, stories, conversations, wishes, agendas, and generated
+        scenery. Villages never edits them.
       </p>
       {error ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">
@@ -9317,7 +9323,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [personas, setPersonas] = useState<PersonaEntry[] | null>(null);
   const [settingDraft, setSettingDraft] = useState("");
   const [lorebookDraft, setLorebookDraft] = useState<string[]>([]);
+  const [loreTokenBudgetDraft, setLoreTokenBudgetDraft] = useState(1600);
   const [setupLorebookDraft, setSetupLorebookDraft] = useState<string[]>([]);
+  const [setupLoreTokenBudgetDraft, setSetupLoreTokenBudgetDraft] = useState(1600);
   const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
   const [lorebooksError, setLorebooksError] = useState("");
   const [venuesDraft, setVenuesDraft] = useState<VillageVenue[]>([]);
@@ -9824,6 +9832,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, []);
 
+  const correctCompletedWish = useCallback(async (characterId: string, wishId: string) => {
+    setBusy(true);
+    try {
+      const response = await request<AgendaListResponse>(
+        `/agendas/${encodeURIComponent(characterId)}/completed/${encodeURIComponent(wishId)}/correct`,
+        { method: "POST" },
+      );
+      setAgendas(response.villagers);
+      setError("");
+    } catch (cause) {
+      setError(messageFrom(cause, "That wish completion could not be corrected."));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const setAgendaScheduleIngestion = useCallback(async (characterId: string, enabled: boolean) => {
     setBusy(true);
     try {
@@ -10209,6 +10233,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setPersonaDraft(snapshot.settings.playerPersonaId);
         setSettingDraft(snapshot.settings.setting);
         setLorebookDraft(snapshot.settings.selectedLorebookIds);
+        setLoreTokenBudgetDraft(snapshot.settings.loreTokenBudget);
         // Destinations only: the houses are the map's to edit and are drawn on it
         // — see `destinationPlaces`.
         setVenuesDraft(destinationPlaces(snapshot.settings.venues).map((venue) => ({ ...venue })));
@@ -10625,6 +10650,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             playerPersonaId: personaDraft,
             setting: settingDraft,
             selectedLorebookIds: lorebookDraft,
+            loreTokenBudget: loreTokenBudgetDraft,
           }),
         }),
       );
@@ -10633,7 +10659,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } finally {
       setBusy(false);
     }
-  }, [knowledgeDraft, lorebookDraft, personaDraft, settingDraft]);
+  }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft]);
 
   /**
    * Save the automatic-update switches.
@@ -10775,7 +10801,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     try {
       const result = await request<{ names: string[] }>("/setup/public-venue/names/suggest", {
         method: "POST",
-        body: JSON.stringify({ setting: setupSetting, selectedLorebookIds: setupLorebookDraft }),
+        body: JSON.stringify({
+          setting: setupSetting,
+          selectedLorebookIds: setupLorebookDraft,
+          loreTokenBudget: setupLoreTokenBudgetDraft,
+        }),
       });
       setSetupNameSuggestions(result.names);
     } catch (cause) {
@@ -10783,7 +10813,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } finally {
       setBusy(false);
     }
-  }, [setupLorebookDraft, setupSetting]);
+  }, [setupLorebookDraft, setupLoreTokenBudgetDraft, setupSetting]);
 
   const pickSetupTownMap = useCallback(
     async (file: File | undefined) => {
@@ -11350,6 +11380,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupImageDraft(null);
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
+      setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
       setSetupMapOptions({ ...DEFAULT_TOWN_MAP_OPTIONS });
       setSetupMapSource(fresh ? "generate" : village?.settings.townMapImageSetAt ? "existing" : "none");
       setSetupMapImage("");
@@ -11521,6 +11552,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           foundingReason: setupFoundingReason,
           foundingDetails: setupFoundingDetails,
           selectedLorebookIds: setupLorebookDraft,
+          loreTokenBudget: setupLoreTokenBudgetDraft,
           venues: venues.map(setupDraftRow),
         }),
       });
@@ -11707,6 +11739,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           foundingReason: setupFoundingReason,
           foundingDetails: setupFoundingDetails.trim(),
           selectedLorebookIds: setupLorebookDraft,
+          loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
           townMapImage: setupMapSrc ?? "",
           townMapView: setupMapSource === "existing" ? savedTownMapView : defaultView("cover"),
@@ -11741,6 +11774,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupFoundingReason,
     setupFoundingDetails,
     setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
     setupSetting,
   ]);
 
@@ -13880,6 +13914,26 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   onChange={setLorebookDraft}
                   disabled={busy}
                 />
+                <div className={`${ELEMENT_TAG}-field`}>
+                  <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-lore-budget`}>
+                    Lorebook token budget
+                  </label>
+                  <input
+                    id={`${ELEMENT_TAG}-lore-budget`}
+                    className={`${ELEMENT_TAG}-notice-input`}
+                    type="number"
+                    min={snapshot.settings.loreTokenBudgetMin}
+                    max={snapshot.settings.loreTokenBudgetMax}
+                    step={100}
+                    value={loreTokenBudgetDraft}
+                    disabled={busy}
+                    onChange={(event) => setLoreTokenBudgetDraft(Number(event.target.value))}
+                  />
+                  <p className={`${ELEMENT_TAG}-hint`}>
+                    Maximum approximate lore tokens in future text generation. Image prompts keep a separate short
+                    excerpt.
+                  </p>
+                </div>
 
                 <section className={`${ELEMENT_TAG}-field`}>
                   <div className={`${ELEMENT_TAG}-row`} style={{ justifyContent: "space-between" }}>
@@ -15282,6 +15336,29 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             ))}
                           </ul>
                         )}
+                        {villager.completedWishes.length > 0 ? (
+                          <details className={`${ELEMENT_TAG}-agenda-notes`}>
+                            <summary>{`Completed wishes (${villager.completedWishes.length})`}</summary>
+                            <ul className={`${ELEMENT_TAG}-story`}>
+                              {villager.completedWishes.map((entry) => (
+                                <li key={entry.wish.id} className={`${ELEMENT_TAG}-wish-card`}>
+                                  <p className={`${ELEMENT_TAG}-wish-text`}>{entry.wish.wish}</p>
+                                  <p
+                                    className={`${ELEMENT_TAG}-wish-meta`}
+                                  >{`Fulfilled ${new Date(entry.fulfilledAt).toLocaleDateString()}`}</p>
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    disabled={busy}
+                                    onClick={() => void correctCompletedWish(villager.characterId, entry.wish.id)}
+                                  >
+                                    Mark as not fulfilled
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        ) : null}
                         {/*
                           The Engine's own week and the village's translation of
                           it live in Villager Agendas, not alongside wishes.
@@ -15674,6 +15751,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     }}
                     disabled={busy}
                   />
+                  <div className={`${ELEMENT_TAG}-field`}>
+                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-lore-budget`}>
+                      Lorebook token budget
+                    </label>
+                    <input
+                      id={`${ELEMENT_TAG}-setup-lore-budget`}
+                      className={`${ELEMENT_TAG}-notice-input`}
+                      type="number"
+                      min={snapshot?.settings.loreTokenBudgetMin ?? 200}
+                      max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
+                      step={100}
+                      value={setupLoreTokenBudgetDraft}
+                      disabled={busy}
+                      onChange={(event) => setSetupLoreTokenBudgetDraft(Number(event.target.value))}
+                    />
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      Maximum approximate lore tokens for village text, wishes, and agendas.
+                    </p>
+                  </div>
                 </>
               ) : null}
 

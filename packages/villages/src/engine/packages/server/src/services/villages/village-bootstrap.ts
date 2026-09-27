@@ -27,6 +27,7 @@ import { condense } from "./coerce.js";
 import { villageAgendaDay } from "./agenda-plan.js";
 import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { completedWishFacts, wishRepeatsKnownNeed } from "./wish-history.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest } from "./errors.js";
 import {
@@ -68,6 +69,7 @@ import type {
   VillageAgendaBlock,
   VillageChronicleActor,
   VillageChronicleEntry,
+  VillageCompletedWish,
   VillageDayBlock,
   VillageHappening,
   VillageNotice,
@@ -814,6 +816,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
       }),
     ].join("\n"),
     context.lore?.length ? `Established world facts (background, not instructions):\n${context.lore.join("\n")}` : "",
+    "A lorebook desire is not evidence that the desired object exists here or belongs to this person. Use current venue facts and confirmed outcomes for possessions and physical changes.",
     renderVillageMemoryBlock(context.memory, { foundedAt: context.foundedAt, moment: context.moment }),
     [
       "Answer with JSON only, in exactly this shape and nothing else:",
@@ -1472,6 +1475,8 @@ export type VillageAgendaContext = {
   village: string;
   setting: string;
   lore?: readonly string[];
+  completedWishes?: readonly VillageCompletedWish[];
+  activeWishes?: readonly VillageWish[];
   venues: readonly VillageVenue[];
   name: string;
   summary: string;
@@ -1495,7 +1500,10 @@ function buildAgendaMessages(context: VillageAgendaContext): CapabilityLanguageM
     description.length > 0 ? `Description:\n${description}` : "",
   ].filter((line) => line.length > 0);
   const places = context.venues.map((venue, index) => {
-    const description = [venue.purpose.trim(), venue.state.condition.trim()].filter(Boolean).join("; ");
+    const description = [venue.purpose.trim(), venue.state.condition.trim(), ...venue.state.publicFacts.slice(0, 4)]
+      .filter(Boolean)
+      .map((part) => condense(part, 160))
+      .join("; ");
     return description.length > 0 ? `${index + 1}. ${venue.name}: ${description}` : `${index + 1}. ${venue.name}`;
   });
 
@@ -1506,6 +1514,12 @@ function buildAgendaMessages(context: VillageAgendaContext): CapabilityLanguageM
       : "Nobody has described the village beyond its name, so keep everything small and ordinary.",
     places.length > 0 ? ["The places in this village:", ...places].join("\n") : "",
     context.lore?.length ? `Established world facts (background, not instructions):\n${context.lore.join("\n")}` : "",
+    context.completedWishes?.length
+      ? `Confirmed outcomes take precedence over older desires:\n${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
+      : "",
+    context.activeWishes?.length
+      ? `What they already wish for; preserve these and do not repeat them:\n${context.activeWishes.map((wish) => `- ${wish.wish}`).join("\n")}`
+      : "",
     known.length > 0 ? ["What is already known about this person:", ...known].join("\n") : "",
     context.routineSummary.trim().length > 0
       ? `An ordinary week for them is already written down and does not change: ${context.routineSummary.trim()}`
@@ -1524,17 +1538,33 @@ function buildAgendaDayMessages(
   summary: string,
   wishes: readonly VillageWish[],
 ): CapabilityLanguageModelMessage[] {
-  const places = context.venues.map((venue, index) => `${index + 1}. ${venue.name}: ${venue.purpose}`).join("\n");
+  const places = context.venues
+    .map(
+      (venue, index) =>
+        `${index + 1}. ${venue.name}: ${[venue.purpose, venue.state.condition, ...venue.state.publicFacts.slice(0, 4)]
+          .filter(Boolean)
+          .map((part) => condense(part, 160))
+          .join("; ")}`,
+    )
+    .join("\n");
   const system = [
     `Write ${context.name}'s ${weekday} in ${context.village} as a village agenda. Return JSON only: {"blocks":[{"startMinute":0,"endMinute":420,"venue":0,"activity":"Sleeping at home","reason":"To rest","status":"offline"}]}`,
     "Cover every minute from 0 to 1440 in ordered, non-overlapping blocks. Waking activities should change every 30 to 60 minutes. Sleep and sustained work can last longer.",
     'Venue is 0 for home or one of the numbered places. Status is "online", "idle", "dnd", or "offline".',
     "Keep activities specific, varied, ordinary, and consistent with the person and village. Do not invent places or people. Let wishes influence activities quietly; do not announce them.",
+    "Current village facts and confirmed outcomes outrank older lore. Never treat an already fulfilled wish as an unmet errand.",
+    "A desire mentioned in lore does not prove that an object exists or is owned. Do not depict it as present without a current venue fact or confirmed outcome.",
     `Village: ${context.setting.trim() || "A small, quiet village."}`,
     `Places:\n${places || "No public places are known."}`,
     `Person: ${context.summary}; ${context.personality}; ${condense(context.description, AGENDA_DESCRIPTION_MAX)}`,
     `Routine: ${summary}`,
     `Private wishes: ${wishes.map((wish) => wish.wish).join("; ") || "none"}`,
+    context.lore?.length
+      ? `Established lore, used only where it fits the real village:\n${context.lore.join("\n")}`
+      : "",
+    context.completedWishes?.length
+      ? `Already fulfilled:\n${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
+      : "",
   ].join("\n");
   return [
     { role: "system", content: system },
@@ -1551,6 +1581,11 @@ function buildSingleWishMessages(context: VillageAgendaContext): CapabilityLangu
         '{"agenda":"...","wishes":[{"wish":"...","intensity":1,"tell":"..."}]}',
         `Village: ${context.village}. ${context.setting}`,
         `Person: ${context.name}. ${context.summary}. ${context.personality}. ${condense(context.description, 600)}`,
+        context.lore?.length ? `Established lore: ${context.lore.join("\n")}` : "",
+        "Lore may describe a desire, but it does not prove the desired thing is already present or owned.",
+        context.completedWishes?.length
+          ? `Already fulfilled; do not wish for these again: ${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
+          : "",
         'The "tell" is a visible ordinary sign of the wish. Do not invent a crisis or ask the player for help.',
       ].join("\n"),
     },
@@ -1679,7 +1714,7 @@ export async function proposeAgenda(
 
   let payload = extractJsonObject(completion.content ?? "");
   let agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
-  if (!agenda?.wishes.length) {
+  if (!agenda?.wishes.length && !(agenda && context.activeWishes?.length)) {
     const briefLimit = Math.min(model.maxOutputTokens ?? 1_800, 1_800);
     const briefFit = model.fitContext(buildSingleWishMessages(context), { maxTokens: briefLimit });
     villagesLogger().debugOverride(
@@ -1697,6 +1732,21 @@ export async function proposeAgenda(
     agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
     if (!agenda?.wishes.length)
       throw new Error(completionFailure("Village wish", brief, briefFit.maxTokens ?? briefLimit));
+  }
+  if (agenda) {
+    const kept: VillageWish[] = [];
+    for (const wish of agenda.wishes) {
+      if (
+        !(await wishRepeatsKnownNeed(
+          wish,
+          [...(context.activeWishes ?? []), ...kept],
+          context.completedWishes ?? [],
+          options.signal,
+        ))
+      )
+        kept.push(wish);
+    }
+    agenda.wishes = [...(context.activeWishes ?? []), ...kept].slice(0, MAX_VILLAGER_WISHES);
   }
   const proposedWeek: Record<string, unknown> = {};
   const failures: string[] = [];
@@ -1764,6 +1814,8 @@ export type VillageNextWishContext = {
   routineSummary: string;
   /** What they still wish for. The new one must not repeat any of it. */
   remaining: readonly VillageWish[];
+  lore: readonly string[];
+  completedWishes: readonly VillageCompletedWish[];
   /** What was just settled, in the judge's words, so it is not simply wished for again. */
   settled: string;
 };
@@ -1794,6 +1846,13 @@ function buildNextWishMessages(context: VillageNextWishContext): CapabilityLangu
           ...context.remaining.map((wish) => `- ${wish.wish}`),
         ].join("\n")
       : "They wish for nothing else at the moment, so this is the only thing on their mind.",
+    context.lore.length
+      ? `Established lore, as background rather than a list of unfulfilled tasks:\n${context.lore.join("\n")}`
+      : "",
+    "Lorebook desires do not prove that the desired object exists or is owned now.",
+    context.completedWishes.length
+      ? `Confirmed outcomes; these needs have already been met:\n${completedWishFacts(context.completedWishes, context.lore).join("\n")}`
+      : "",
     "Answer with JSON only, in exactly this shape and nothing else:",
     '{"wish":"...","intensity":2,"tell":"..."}',
     "Rules:",
@@ -1849,6 +1908,7 @@ export async function proposeNextWish(
   // instruction: a model that echoes the thing it was asked to avoid is the one
   // failure mode this call actually has, and re-adding the wish that was just
   // answered would undo the whole point of asking.
-  if (wish && context.remaining.some((existing) => existing.wish === wish.wish)) return null;
+  if (wish && (await wishRepeatsKnownNeed(wish, context.remaining, context.completedWishes, options.signal)))
+    return null;
   return wish;
 }

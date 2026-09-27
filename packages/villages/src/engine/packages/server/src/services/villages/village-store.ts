@@ -8,7 +8,7 @@
 import { unwrittenVillageAgenda, VILLAGE_AGENDA_WINDOWS } from "./agenda-plan.js";
 import { completeAgendaWeek, legacyAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
 import { asFraction, asInstant, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "./coerce.js";
-import { coerceSelectedLorebookIds } from "./lorebooks.js";
+import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "./lorebooks.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "./narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "./native-remap.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./package-runtime.js";
@@ -63,6 +63,7 @@ import type {
   VillageAgenda,
   VillageChronicleActor,
   VillageChronicleEntry,
+  VillageCompletedWish,
   VillageHappening,
   VillageNotice,
   VillageOpportunity,
@@ -143,6 +144,7 @@ export function defaultVillageState(): VillageState {
     foundingReason: "",
     foundingDetails: "",
     selectedLorebookIds: [],
+    loreTokenBudget: DEFAULT_LORE_TOKEN_BUDGET,
     // No place in the village yet, and no home on the map: the founding flow
     // writes the homes the player placed, and a village that predates places
     // simply has none, so the place and home blocks render nothing.
@@ -179,6 +181,7 @@ export function defaultVillageState(): VillageState {
     // happenings — a village shipped with a few memories to make the panel look
     // occupied would be inventing a past it never had.
     chronicle: [],
+    correctedWishMemoryIds: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
     storyPace: "balanced",
@@ -243,6 +246,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name),
+    completedWishes: coerceCompletedWishes(raw.completedWishes),
     ingestSchedule: raw.ingestSchedule !== false,
     // Read on the same terms as the agenda, and for the same reason — but null
     // here is a settled state rather than a pending one. A translation carries
@@ -377,6 +381,20 @@ function coerceWish(value: unknown): VillageWish | null {
     addedAt: asInstant(raw.addedAt),
     expiresAt: asInstant(raw.expiresAt),
   };
+}
+
+function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((entry): VillageCompletedWish[] => {
+    const raw = asRecord(entry);
+    const wish = coerceWish(raw.wish);
+    const fulfilledAt = asInstant(raw.fulfilledAt);
+    const memoryId = asTrimmedString(raw.memoryId);
+    if (!wish || !fulfilledAt || !memoryId || seen.has(wish.id)) return [];
+    seen.add(wish.id);
+    return [{ wish, fulfilledAt, memoryId }];
+  });
 }
 
 /**
@@ -1630,6 +1648,7 @@ export function coerceVillageState(value: unknown): VillageState {
     foundingReason: boundText(raw.foundingReason, 40),
     foundingDetails: boundText(raw.foundingDetails, 500),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
+    loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),
     venues,
     homeBuildingNames: Object.fromEntries(
       Object.entries(HOME_BUILDINGS).map(([kind, building]) => [
@@ -1671,6 +1690,7 @@ export function coerceVillageState(value: unknown): VillageState {
     noticeboard: coerceNotices(raw.noticeboard),
     happenings: coerceHappenings(raw.happenings, foundedAt),
     chronicle: coerceChronicle(raw.chronicle, foundedAt),
+    correctedWishMemoryIds: [...new Set(asStringArray(raw.correctedWishMemoryIds).filter(Boolean))],
     simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
     storyPace: coerceStoryPace(raw),

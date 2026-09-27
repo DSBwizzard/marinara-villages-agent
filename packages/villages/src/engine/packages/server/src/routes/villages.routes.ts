@@ -73,6 +73,7 @@ import {
   retryFoundedVillagePreparation,
   buildVillageStory,
   clearVillagerAgenda,
+  correctCompletedWish,
   setVillagerScheduleIngestion,
   clearVillagerRemap,
   createVillageVenue,
@@ -101,7 +102,7 @@ import {
   setVillageName,
   setVillagePlayer,
   setVillagePromptKnowledge,
-  setVillageLorebooks,
+  setVillageLoreSettings,
   setVillageStoryPace,
   setVillageSetting,
   setVillageTownMapImage,
@@ -732,6 +733,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       name?: unknown;
       promptKnowledge?: unknown;
       selectedLorebookIds?: unknown;
+      loreTokenBudget?: unknown;
       playerPersonaId?: unknown;
       setting?: unknown;
       venues?: unknown;
@@ -750,7 +752,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
       if (body.promptKnowledge !== undefined) {
         snapshot = await setVillagePromptKnowledge(body.promptKnowledge);
       }
-      if (body.selectedLorebookIds !== undefined) snapshot = await setVillageLorebooks(body.selectedLorebookIds);
+      if (body.selectedLorebookIds !== undefined || body.loreTokenBudget !== undefined)
+        snapshot = await setVillageLoreSettings(body.selectedLorebookIds, body.loreTokenBudget);
       // Choosing who the player is. There used to be a typed name and
       // description beside this, and there is no door left for them: the
       // Persona is the only answer, so this is one write with one shape.
@@ -839,6 +842,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       foundingReason?: unknown;
       foundingDetails?: unknown;
       selectedLorebookIds?: unknown;
+      loreTokenBudget?: unknown;
       playerPersonaId?: unknown;
       venues?: unknown;
       townMapImage?: unknown;
@@ -854,6 +858,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
         foundingReason: body.foundingReason,
         foundingDetails: body.foundingDetails,
         selectedLorebookIds: body.selectedLorebookIds,
+        loreTokenBudget: body.loreTokenBudget,
         playerPersonaId: body.playerPersonaId,
         venues: body.venues,
         townMapImage: body.townMapImage,
@@ -904,17 +909,25 @@ export async function villagesRoutes(engine: FastifyInstance) {
   app.post("/bootstrap", async (_request, reply) => {
     try {
       const snapshot = await buildVillageSnapshot();
-      return await suggestFoundingPlaces(snapshot.settings.setting, snapshot.settings.selectedLorebookIds);
+      return await suggestFoundingPlaces(
+        snapshot.settings.setting,
+        snapshot.settings.selectedLorebookIds,
+        snapshot.settings.loreTokenBudget,
+      );
     } catch (error) {
       return fail(reply, error, "suggesting places");
     }
   });
 
-  app.post<{ Body: { setting?: unknown; selectedLorebookIds?: unknown } }>(
+  app.post<{ Body: { setting?: unknown; selectedLorebookIds?: unknown; loreTokenBudget?: unknown } }>(
     "/setup/public-venue/names/suggest",
     async (request, reply) => {
       try {
-        return await suggestFoundingVenueNames(request.body?.setting, request.body?.selectedLorebookIds);
+        return await suggestFoundingVenueNames(
+          request.body?.setting,
+          request.body?.selectedLorebookIds,
+          request.body?.loreTokenBudget,
+        );
       } catch (error) {
         return fail(reply, error, "suggesting public venue names");
       }
@@ -1303,6 +1316,18 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "regenerating a villager's agenda");
     }
   });
+
+  app.post<{ Params: CharacterParams & { wishId: string } }>(
+    "/agendas/:characterId/completed/:wishId/correct",
+    async (request, reply) => {
+      try {
+        await correctCompletedWish(readCharacterId(request.params.characterId), request.params.wishId);
+        return { villagers: await buildVillageAgendas() };
+      } catch (error) {
+        return fail(reply, error, "correcting a completed wish");
+      }
+    },
+  );
 
   app.patch<{ Params: CharacterParams; Body: { ingestSchedule?: unknown } }>(
     "/agendas/:characterId/ingestion",

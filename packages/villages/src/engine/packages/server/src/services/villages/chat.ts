@@ -784,6 +784,8 @@ export async function buildPromptContext(
     lore: await readVillageLore(
       village.selectedLorebookIds,
       [villageNarrativeSetting(village), speakerPlace, speaker?.cardSnapshot.name ?? "", topic].join("\n"),
+      undefined,
+      village.loreTokenBudget,
     ),
     homes: projectHomeLines(village, residents.names),
     memory: memoryForVillager(village.chronicle, speakerId),
