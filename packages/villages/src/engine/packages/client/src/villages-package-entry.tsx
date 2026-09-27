@@ -4388,7 +4388,7 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-overlay-head > .${ELEMENT_TAG}-panel-title { flex: 1 1 auto; margin: 0; }
 
 /* The founding wizard. */
-.${ELEMENT_TAG}-setup-root { container-type: inline-size; }
+.${ELEMENT_TAG}-setup-root { box-sizing: border-box; container-type: inline-size; }
 .${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body[data-step="0"]) {
   --background: #121936; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
@@ -4419,29 +4419,34 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-setup-body[data-step="0"] {
   --background: #151d3b; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
-  gap: .75rem; color: var(--foreground);
+  gap: .75rem; align-items: flex-start; color: var(--foreground);
 }
 .${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-side { flex-basis: 35rem; }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-overlay {
-  gap: .4rem; padding: .85rem 1rem; border-color: #5268b8; border-radius: 1rem;
+  gap: .2rem; padding: .65rem .8rem; border-color: #5268b8; border-radius: 1rem;
   background: linear-gradient(145deg, #182044, #101831);
   box-shadow: inset 0 0 2rem #27347866;
 }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-panel-title {
-  font-size: clamp(1.3rem, 2vw, 1.9rem); color: #f5f5ff;
+  font-size: clamp(1.25rem, 1.8vw, 1.65rem); color: #f5f5ff;
 }
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-field { margin-top: .3rem; }
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-field { margin-top: .15rem; }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-search,
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea {
   background: #1c254a; border-color: #7082cf; color: #f2f4ff;
 }
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea { height: 4.25rem; }
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-setup-premise .${ELEMENT_TAG}-textarea {
+  height: 3.25rem;
+}
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-setup-guidance .${ELEMENT_TAG}-textarea {
+  height: 2.5rem; min-height: 2.5rem;
+}
 .${ELEMENT_TAG}-scenario-options {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; margin-top: .25rem;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; margin-top: .15rem;
 }
 .${ELEMENT_TAG}-scenario-option {
   position: relative; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: .15rem; min-height: 4.75rem; padding: .35rem .3rem;
+  justify-content: center; gap: .1rem; min-height: 3.2rem; padding: .25rem .3rem;
   border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b;
   color: #f0f2ff; text-align: center; cursor: pointer;
 }
@@ -4453,11 +4458,11 @@ const VILLAGES_STYLES = `
   box-shadow: 0 0 0 2px #9a78ff, 0 0 1rem #9a78ff9c;
 }
 .${ELEMENT_TAG}-scenario-option:has(input:focus-visible) { outline: 3px solid #f2d6ff; outline-offset: 3px; }
-.${ELEMENT_TAG}-scenario-icon { color: #b9c8ff; font-size: 1.35rem; line-height: 1; }
-.${ELEMENT_TAG}-scenario-option strong { font-size: .8rem; }
-.${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: .65rem; line-height: 1.25; }
+.${ELEMENT_TAG}-scenario-icon { color: #b9c8ff; font-size: max(1.1rem, 18px); line-height: 1; }
+.${ELEMENT_TAG}-scenario-option strong { font-size: max(.72rem, 13px); }
+.${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: max(.6rem, 11px); line-height: 1.2; }
 .${ELEMENT_TAG}-scenario-art-panel {
-  position: relative; flex: 1 1 19rem; min-width: 0; min-height: 34rem;
+  position: relative; flex: 1 1 19rem; min-width: 0; height: 24.5rem; min-height: 0;
   overflow: hidden; border: 1px solid #6684d4; border-radius: 1.2rem; background: #162550;
 }
 .${ELEMENT_TAG}-scenario-art-panel > img {
@@ -4484,6 +4489,11 @@ const VILLAGES_STYLES = `
 @container (min-width: 80rem) {
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
+@container (min-width: 42.01rem) and (max-width: 80rem) {
+  .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-setup-premise .${ELEMENT_TAG}-textarea {
+    height: 4.25rem;
+  }
+}
 @container (max-width: 70rem) {
   .${ELEMENT_TAG}-setup-body { flex-wrap: wrap; }
   .${ELEMENT_TAG}-setup-rail {
@@ -4491,12 +4501,16 @@ const VILLAGES_STYLES = `
   }
   .${ELEMENT_TAG}-setup-rail-step { flex: 0 0 auto; }
 }
+@container (min-width: 42.01rem) and (max-width: 70rem) {
+  .${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-side { flex-basis: 25rem; }
+  .${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-scenario-art-panel { flex-basis: 14rem; }
+}
 @container (max-width: 42rem) {
   .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side,
   .${ELEMENT_TAG}-scenario-art-panel,
   .${ELEMENT_TAG}-setup-map-shell { flex: 1 1 100%; }
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .${ELEMENT_TAG}-scenario-art-panel { min-height: 18rem; }
+  .${ELEMENT_TAG}-scenario-art-panel { height: 18rem; min-height: 18rem; }
 }
 .${ELEMENT_TAG}-steps { display: flex; flex-wrap: wrap; gap: .375rem; }
 /*
@@ -16890,7 +16904,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </p>
                   ) : (
                     <>
-                      <div className={`${ELEMENT_TAG}-field`}>
+                      <div className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-premise`}>
                         <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
                           Scenario premise (required)
                         </label>
@@ -16912,7 +16926,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             : "Edit this starting point freely. Switching scenarios restores the original premise."}
                         </span>
                       </div>
-                      <div className={`${ELEMENT_TAG}-field`}>
+                      <div className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-guidance`}>
                         <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-guidance`}>
                           Narrative direction (optional)
                         </label>
