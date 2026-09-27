@@ -5090,6 +5090,80 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-aside-face { width: 1.5rem; height: 1.5rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-backdrop { padding: .5rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-dialog { width: min(20rem, 100%); max-height: 60cqh; padding: .75rem; }
+
+/* Venue visits use a single shallow reading dock so the stage owns the remaining height. */
+.${ELEMENT_TAG}-room-screen > .${ELEMENT_TAG}-chat { gap: 0; padding: 0; overflow: hidden; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-scrim {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--background) 30%, transparent), transparent 25%, transparent 65%, color-mix(in srgb, var(--background) 30%, transparent));
+}
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vignette { opacity: .45; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-head { top: .65rem; left: .75rem; right: .75rem; z-index: 6; align-items: center; }
+.${ELEMENT_TAG}-room-place, .${ELEMENT_TAG}-room-actions-trigger, .${ELEMENT_TAG}-room-notices-trigger {
+  border: 1px solid var(--marinara-chat-chrome-panel-border, var(--border)); border-radius: .65rem;
+  background: var(--marinara-chat-chrome-panel-bg, color-mix(in srgb, var(--popover) 82%, transparent));
+  color: var(--foreground); backdrop-filter: blur(12px); box-shadow: 0 .25rem .75rem #0004;
+}
+.${ELEMENT_TAG}-room-place { display: block; max-width: min(18rem, 60%); padding: .35rem .65rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-actions { position: relative; width: auto; margin-left: auto; }
+.${ELEMENT_TAG}-room-actions-trigger { width: 2rem; height: 2rem; cursor: pointer; font-size: 1.25rem; line-height: 1; }
+.${ELEMENT_TAG}-room-actions-menu { position: absolute; right: 0; top: calc(100% + .4rem); z-index: 15; display: grid; width: min(16rem, 80vw); padding: .25rem; border: 1px solid var(--border); border-radius: .7rem; background: var(--popover); box-shadow: 0 .6rem 1.5rem #0009; }
+.${ELEMENT_TAG}-room-actions-menu button { border: 0; border-radius: .4rem; padding: .55rem .65rem; background: transparent; color: var(--foreground); text-align: left; font: inherit; font-size: .8125rem; cursor: pointer; }
+.${ELEMENT_TAG}-room-actions-menu button:hover { background: color-mix(in srgb, var(--foreground) 9%, transparent); }
+.${ELEMENT_TAG}-room-actions-menu button:disabled { opacity: .45; cursor: default; }
+.${ELEMENT_TAG}-room-notices { position: absolute; top: 3.2rem; left: .75rem; z-index: 4; }
+.${ELEMENT_TAG}-room-notices-trigger { min-width: 2.5rem; min-height: 2rem; padding: .25rem .55rem; color: #e5b13e; font-size: .75rem; cursor: pointer; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-room-stars, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-stars { position: absolute; top: calc(100% + .35rem); left: 0; width: min(20rem, calc(100vw - 1.5rem)); max-height: 35cqh; overflow-y: auto; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage { position: relative; top: auto; bottom: auto; left: auto; width: 100%; height: auto; min-height: 0; flex: 1 1 auto; padding: 3rem .75rem 0; box-sizing: border-box; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast { height: 100%; max-height: none; gap: clamp(.2rem, 1vw, 1rem); }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person,
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: relative; flex: 1 1 0; max-width: 25%; height: 100%; min-width: 0; opacity: .78; transition: transform .18s ease, opacity .18s ease, filter .18s ease; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { z-index: 2; opacity: 1; filter: brightness(1.08); transform: scale(1.035); transform-origin: center bottom; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-sprite="false"] { justify-content: center; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > img { width: 100%; height: 100%; max-width: none; object-fit: contain; object-position: center bottom; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > .${ELEMENT_TAG}-avatar { width: min(8rem, 80%); }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > span:not(.${ELEMENT_TAG}-avatar) { position: absolute; bottom: .3rem; max-width: 95%; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-rest { position: absolute; right: .5rem; bottom: .25rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { position: relative; z-index: 3; flex: 0 0 auto; align-self: center; width: min(72rem, calc(100% - 1.5rem)); margin: 0 auto .5rem; padding: .5rem .75rem; gap: .25rem; border-radius: .85rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat[data-opening-error="true"] .${ELEMENT_TAG}-chat-vn { display: flex; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-card { border: 0; border-radius: 0; background: transparent; backdrop-filter: none; box-shadow: none; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-row { padding: 0; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-column { gap: .18rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-reading { max-height: 5.8rem; min-height: 1.45rem; padding: 0 .25rem 0 0; overflow-y: auto; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-text,
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-beat { max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--foreground); font-size: 1rem; line-height: 1.45; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-name,
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-label { align-self: flex-start; margin: 0; padding: 0; border-radius: 0; background: transparent; color: var(--marinara-chat-chrome-highlight-text, var(--primary)); font-size: .72rem; font-weight: 650; line-height: 1.35; letter-spacing: 0; text-transform: none; }
+.${ELEMENT_TAG}-room-panel-tools { display: grid; grid-template-columns: minmax(4rem, 1fr) auto minmax(4rem, 1fr); gap: .4rem; min-height: 1.75rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); padding-top: .25rem; }
+.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-history-toggle { justify-self: start; min-height: 1.75rem; padding: .15rem .35rem; border: 0; background: transparent; font-size: .75rem; }
+.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-counter { justify-self: center; }
+.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-nav { justify-self: end; gap: .25rem; padding: 0; border: 0; }
+.${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-button { min-height: 1.75rem; padding: .2rem .4rem; border: 0; color: var(--foreground); }
+.${ELEMENT_TAG}-room-compose-trigger { color: var(--primary) !important; font-weight: 600; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-log { position: absolute; z-index: 8; bottom: calc(100% + .45rem); left: 0; width: 100%; max-height: min(55cqh, 32rem); box-sizing: border-box; overflow-y: auto; padding: .75rem; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); box-shadow: 0 .75rem 2rem #0009; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .45rem); width: min(25vw, 22rem); max-height: min(20cqh, 10rem); overflow-y: auto; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .5rem; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .45rem); width: min(25vw, 22rem); max-height: min(20cqh, 10rem); margin: 0; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .5rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { padding-top: .35rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-input > .${ELEMENT_TAG}-textarea { min-height: 2.25rem; }
+.${ELEMENT_TAG}-room-actions-trigger:focus-visible, .${ELEMENT_TAG}-room-actions-menu button:focus-visible, .${ELEMENT_TAG}-room-notices-trigger:focus-visible, .${ELEMENT_TAG}-room-panel-tools button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@container ${ELEMENT_TAG} (max-width: 44rem) {
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage { min-height: 0; padding-top: 3rem; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person, .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { flex: 1 1 0; max-width: 25%; height: 100%; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > img { height: 100%; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: calc(100% - .75rem); margin-bottom: .35rem; padding: .45rem .55rem; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .25rem; bottom: calc(100% + .3rem); width: min(52vw, 13rem); max-height: 20cqh; margin: 0; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides[data-side="left"], .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .25rem; }
+}
+@container ${ELEMENT_TAG} (max-height: 30rem) {
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage { min-height: 0; padding-top: 2.5rem; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: min(72rem, calc(100% - .75rem)); align-self: center; }
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-reading { max-height: 4.35rem; }
+}
+@container ${ELEMENT_TAG} (max-width: 44rem) and (min-height: 40rem) {
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { bottom: calc(100% + 13rem); }
+}
+@media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { transition: none; } }
 `;
 
 function syncVillagesStyles() {
@@ -9107,22 +9181,49 @@ function RoomPanel({
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
 }) {
-  /**
-   * Which paragraph the card is on.
-   *
-   * The same reading the private drawer keeps, and it arrives here for the same
-   * reason: a room's answers are as long as a villager's, and an answer from four
-   * of them is four times as long. The player joins the end of it, because the
-   * thing they walked in for is what was just said — see the effect below.
-   */
+  /** The current paragraph in this venue visit's ordered reading. */
   const [readStep, setReadStep] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [noticesOpen, setNoticesOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
-  const canCompose = !ended && room.status === "active";
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const composeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const historyRef = useRef<HTMLDivElement | null>(null);
+  const readingRef = useRef<HTMLDivElement | null>(null);
+  const actionsRef = useRef<HTMLSpanElement | null>(null);
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
+
+  useEffect(() => {
+    if (!composerOpen) return;
+    window.requestAnimationFrame(() => composerRef.current?.focus());
+  }, [composerOpen]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    window.requestAnimationFrame(() => historyRef.current?.focus());
+  }, [historyOpen]);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (!actionsRef.current?.contains(event.target as Node)) setActionsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [actionsOpen]);
 
   const closeMemory = useCallback(() => {
     setOpenMemory(null);
@@ -9215,16 +9316,18 @@ function RoomPanel({
   const step = steps[at];
   const canReadPrevious = at > 0;
   const canReadNext = at < steps.length - 1;
+  const canCompose = !ended && room.status === "active" && !canReadNext;
+  const submitComposer = () => {
+    if (!canCompose || busy || !draft.trim() || (mode === "fulfill" && !targetId)) return;
+    setComposerOpen(false);
+    onSend();
+  };
 
-  /**
-   * Whether the card is wearing a face, and it is the paragraph's own answer.
-   *
-   * The private drawer asks this of the whole turn, because a turn is the
-   * villager's or the room's. Here it is asked paragraph by paragraph, and that is
-   * the point of the drawing: four villagers answer in one room and the room
-   * describes itself between them, so a described paragraph has to lose the face
-   * and the name that the spoken paragraph under it is wearing.
-   */
+  useLayoutEffect(() => {
+    if (readingRef.current) readingRef.current.scrollTop = 0;
+  }, [at, room.id]);
+
+  /** Each paragraph keeps its own narration or speech attribution. */
   const register: VillageBeatRegister =
     step?.register ??
     (step === undefined || step.speakerId === "__venue_scene__"
@@ -9237,20 +9340,10 @@ function RoomPanel({
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
   const cast = room.status === "closed" && activeParticipants.length === 0 ? room.participants : activeParticipants;
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
-  const neighbors = cast.filter((person) => person.characterId !== speaker?.characterId);
-  const gazeTarget = cast.find(
-    (person) => person.characterId === step?.gazeAt && person.characterId !== speaker?.characterId,
-  );
-  const otherNeighbors = neighbors.filter((person) => person.characterId !== gazeTarget?.characterId);
-  const targetOnLeft = Boolean(speaker && gazeTarget && cast.indexOf(gazeTarget) < cast.indexOf(speaker));
-  const displayed = speaker
-    ? gazeTarget
-      ? [targetOnLeft ? gazeTarget : otherNeighbors[0], speaker, targetOnLeft ? otherNeighbors[0] : gazeTarget].filter(
-          (person): person is RoomParticipant => !!person,
-        )
-      : [neighbors[0], speaker, neighbors[1]].filter((person): person is RoomParticipant => !!person)
-    : cast.slice(0, 3);
+  const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
+  const asideSide =
+    displayed.findIndex((person) => person.characterId === speaker?.characterId) >= 2 ? "left" : "right";
 
   /**
    * The wait, in the room's own words.
@@ -9314,51 +9407,95 @@ function RoomPanel({
         )}
       </div>
 
-      {/* Leaving an occupied venue closes its visit before returning to the map. */}
       <div className={`${ELEMENT_TAG}-chat-head`}>
-        <span className={`${ELEMENT_TAG}-chat-actions`}>
+        <span className={`${ELEMENT_TAG}-room-place`}>{room.placeName}</span>
+        <span ref={actionsRef} className={`${ELEMENT_TAG}-chat-actions`}>
           <button
             type="button"
-            className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`}
-            onClick={onViewVenue}
-            disabled={busy}
+            className={`${ELEMENT_TAG}-room-actions-trigger`}
+            onClick={() => setActionsOpen((value) => !value)}
+            aria-label="Venue actions"
+            aria-haspopup="menu"
+            aria-expanded={actionsOpen}
           >
-            View Venue
+            ···
           </button>
-          {onEnterPrivate ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`}
-              onClick={onEnterPrivate}
-              disabled={busy}
-            >
-              Enter {privateSpaceOwnerName ?? "private space"}
-            </button>
-          ) : null}
-          {debugDiscardEnabled && room.status !== "closed" ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`}
-              onClick={onDebugDiscard}
-              disabled={busy}
-              title="DEBUG: Clears this visit and transcript. Completed effects and memories remain."
-            >
-              DEBUG: Discard Visit
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`}
-            onClick={onEnd}
-            disabled={busy}
-            title="End this visit and leave the venue"
-          >
-            End visit and leave
-          </button>
-          {endFailed || room.status === "closing" ? (
-            <button type="button" className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-chat-tool`} onClick={onLeavePending}>
-              Leave with memory pending
-            </button>
+          {actionsOpen ? (
+            <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onViewVenue();
+                }}
+                disabled={busy}
+              >
+                View Venue
+              </button>
+              {onEnterPrivate ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onEnterPrivate();
+                  }}
+                  disabled={busy}
+                >
+                  Enter {privateSpaceOwnerName ?? "private space"}
+                </button>
+              ) : null}
+              {!ended && room.status === "active" ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onLeave();
+                  }}
+                  disabled={busy}
+                >
+                  {draft.trim() ? "Leave Scene · send draft as final line" : "Leave Scene · play ending"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setActionsOpen(false);
+                  onEnd();
+                }}
+                disabled={busy}
+              >
+                {ended ? "Return to map" : "End visit now"}
+              </button>
+              {endFailed || room.status === "closing" ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onLeavePending();
+                  }}
+                >
+                  Leave with memory pending
+                </button>
+              ) : null}
+              {debugDiscardEnabled && room.status !== "closed" ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onDebugDiscard();
+                  }}
+                  disabled={busy}
+                >
+                  DEBUG: Discard Visit
+                </button>
+              ) : null}
+            </span>
           ) : null}
         </span>
       </div>
@@ -9369,40 +9506,53 @@ function RoomPanel({
         </p>
       ) : null}
       {notices.length > 0 ? (
-        <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
-          {notices.map((notice) => (
-            <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-              <span aria-hidden="true">✦</span>
-              {notice.kind === "memory" && notice.detail ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-room-star-detail`}
-                  onClick={(event) => {
-                    memoryTriggerRef.current = event.currentTarget;
-                    setOpenMemory(notice);
-                  }}
-                  aria-label={`View memory: ${notice.text}`}
-                  title="View saved memory"
-                >
-                  {notice.text}
-                </button>
-              ) : (
-                <span>{notice.text}</span>
-              )}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-room-star-dismiss`}
-                onClick={() => {
-                  if (openMemory?.id === notice.id) setOpenMemory(null);
-                  onDismissNotice(notice.id);
-                }}
-                aria-label={`Dismiss ${notice.text}`}
-                title="Dismiss notice"
-              >
-                ×
-              </button>
+        <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
+          <button
+            type="button"
+            className={`${ELEMENT_TAG}-room-notices-trigger`}
+            onClick={() => setNoticesOpen((value) => !value)}
+            aria-expanded={noticesOpen}
+            aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
+          >
+            ✦ {notices.length}
+          </button>
+          {noticesOpen ? (
+            <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
+              {notices.map((notice) => (
+                <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
+                  <span aria-hidden="true">✦</span>
+                  {notice.kind === "memory" && notice.detail ? (
+                    <button
+                      type="button"
+                      className={`${ELEMENT_TAG}-room-star-detail`}
+                      onClick={(event) => {
+                        memoryTriggerRef.current = event.currentTarget;
+                        setOpenMemory(notice);
+                      }}
+                      aria-label={`View memory: ${notice.text}`}
+                      title="View saved memory"
+                    >
+                      {notice.text}
+                    </button>
+                  ) : (
+                    <span>{notice.text}</span>
+                  )}
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-room-star-dismiss`}
+                    onClick={() => {
+                      if (openMemory?.id === notice.id) setOpenMemory(null);
+                      onDismissNotice(notice.id);
+                    }}
+                    aria-label={`Dismiss ${notice.text}`}
+                    title="Dismiss notice"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : null}
         </div>
       ) : null}
       {openMemory?.detail ? (
@@ -9460,8 +9610,7 @@ function RoomPanel({
             const wanted = isSpeaker ? (step?.expression ?? "neutral") : (aside?.expression ?? "neutral");
             const gazeAt = isSpeaker
               ? step?.gazeAt
-              : (aside?.gazeAt ??
-                (villager.characterId === gazeTarget?.characterId ? speaker?.characterId : undefined));
+              : (aside?.gazeAt ?? (villager.characterId === step?.gazeAt ? speaker?.characterId : undefined));
             const targetIndex = displayed.findIndex((person) => person.characterId === gazeAt);
             const selected = selectSpriteImage(sprite?.images ?? [], wanted, spriteFacing(index, targetIndex));
             return (
@@ -9469,6 +9618,7 @@ function RoomPanel({
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
                 data-active={villager.characterId === speaker?.characterId ? "true" : "false"}
+                data-sprite={selected ? "true" : "false"}
               >
                 {selected ? (
                   <img
@@ -9506,18 +9656,19 @@ function RoomPanel({
       </div>
 
       <div className={`${ELEMENT_TAG}-chat-vn`}>
-        {room.lines.length > 0 ? (
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-chat-history-toggle`}
-            aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((value) => !value)}
-          >
-            {historyOpen ? "Hide history" : "History"}
-          </button>
-        ) : null}
         {historyOpen ? (
-          <div className={`${ELEMENT_TAG}-chat-log`} role="log" aria-label="Venue conversation history" tabIndex={0}>
+          <div
+            ref={historyRef}
+            className={`${ELEMENT_TAG}-chat-log`}
+            role="log"
+            aria-label="Venue conversation history"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              setHistoryOpen(false);
+              window.requestAnimationFrame(() => historyTriggerRef.current?.focus());
+            }}
+          >
             {room.lines.map((line, index) => (
               <p key={line.id ?? index} className={`${ELEMENT_TAG}-chat-vn-text`}>
                 <strong>
@@ -9534,7 +9685,7 @@ function RoomPanel({
           </div>
         ) : null}
         {step && step.asides.length > 0 ? (
-          <div className={`${ELEMENT_TAG}-chat-vn-asides`} aria-live="polite">
+          <div className={`${ELEMENT_TAG}-chat-vn-asides`} data-side={asideSide} aria-live="polite">
             {step.asides.map((aside, index) => (
               <div
                 key={`${index}-${aside.register}`}
@@ -9566,28 +9717,9 @@ function RoomPanel({
           </div>
         ) : null}
 
-        {/*
-          The card, and the name on it is the paragraph's own.
-
-          This is the whole of what the player asked for: each paragraph wears the
-          speaker's name, the way a Visual Novel paragraph does and the way a
-          villager's own card already did. Nothing about the card changed to make
-          that work — the name over a paragraph was always the name of whoever the
-          card was about, and the only new thing here is that the card is about one
-          PARAGRAPH rather than one turn, so four villagers answering in a row
-          produce four names over four paragraphs without anything having to be
-          merged or split.
-        */}
+        {/* One readable paragraph shares the same dock with navigation and the optional composer. */}
         <div className={`${ELEMENT_TAG}-chat-vn-card`} data-register={register}>
           <div className={`${ELEMENT_TAG}-chat-vn-row`}>
-            {register === "speech" ? (
-              <AvatarFace
-                portrait={speakerPortrait}
-                name={step?.name ?? ""}
-                glyph={step?.player ? "person" : "initial"}
-                className={`${ELEMENT_TAG}-chat-vn-portrait`}
-              />
-            ) : null}
             <div className={`${ELEMENT_TAG}-chat-vn-column`}>
               {register === "narration" ? (
                 <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
@@ -9595,6 +9727,7 @@ function RoomPanel({
                 <p className={`${ELEMENT_TAG}-chat-vn-name`}>{step?.name ?? ""}</p>
               )}
               <div
+                ref={readingRef}
                 className={`${ELEMENT_TAG}-chat-vn-reading`}
                 role="region"
                 aria-label="Current paragraph"
@@ -9626,67 +9759,59 @@ function RoomPanel({
               </div>
             </div>
           </div>
-          {canReadPrevious || canReadNext ? (
-            <div className={`${ELEMENT_TAG}-chat-vn-nav`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-chat-vn-button`}
-                onClick={() => setReadStep(at - 1)}
-                disabled={!canReadPrevious}
-                title="Read the paragraph before this one"
-              >
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path
-                    d="M10 3.5 5.5 8l4.5 4.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                Previous paragraph
-              </button>
-              <span className={`${ELEMENT_TAG}-chat-vn-counter`}>{`${at + 1} / ${Math.max(1, steps.length)}`}</span>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-chat-vn-button`}
-                onClick={() => setReadStep(at + 1)}
-                disabled={!canReadNext}
-                title="Read the next paragraph"
-              >
-                Next paragraph
-                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                  <path
-                    d="M6 3.5 10.5 8 6 12.5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            </div>
-          ) : null}
         </div>
         <div className={`${ELEMENT_TAG}-room-panel-tools`}>
           {room.lines.length > 0 ? (
             <button
+              ref={historyTriggerRef}
               type="button"
               className={`${ELEMENT_TAG}-chat-history-toggle`}
+              aria-label="History"
               aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((value) => !value)}
             >
               {historyOpen ? "Hide history" : "History"}
             </button>
           ) : null}
-          <span className={`${ELEMENT_TAG}-spacer`} />
-          {ended && !canReadNext ? (
-            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onEnd} disabled={busy}>
-              Return to map
+          <span className={`${ELEMENT_TAG}-chat-vn-counter`}>{`${at + 1} / ${Math.max(1, steps.length)}`}</span>
+          <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-chat-vn-button`}
+              onClick={() => {
+                setComposerOpen(false);
+                setReadStep(at - 1);
+              }}
+              disabled={!canReadPrevious}
+              aria-label="Previous paragraph"
+            >
+              ‹ <span>Previous</span>
             </button>
-          ) : null}
+            {canReadNext ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-chat-vn-button`}
+                onClick={() => setReadStep(at + 1)}
+                aria-label="Next paragraph"
+              >
+                <span>Next</span> ›
+              </button>
+            ) : canCompose ? (
+              <button
+                ref={composeTriggerRef}
+                type="button"
+                className={`${ELEMENT_TAG}-chat-vn-button ${ELEMENT_TAG}-room-compose-trigger`}
+                onClick={() => setComposerOpen((value) => !value)}
+                aria-expanded={composerOpen}
+              >
+                {composerOpen ? "Hide composer" : "Compose"}
+              </button>
+            ) : ended ? (
+              <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
+                Return to map
+              </button>
+            ) : null}
+          </span>
         </div>
 
         {error && room.status === "opening" ? (
@@ -9722,10 +9847,10 @@ function RoomPanel({
           </p>
         ) : null}
 
-        {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (
+        {canCompose && composerOpen && mode === "fulfill" && activeParticipants.length === 0 ? (
           <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
         ) : null}
-        {canCompose ? (
+        {canCompose && composerOpen ? (
           <div className={`${ELEMENT_TAG}-composer`}>
             {mode === "fulfill" && activeParticipants.length > 0 ? (
               <select
@@ -9773,17 +9898,6 @@ function RoomPanel({
                           {option === "chat" ? "Chat" : "Fulfill"}
                         </button>
                       ))}
-                      <button
-                        type="button"
-                        role="menuitem"
-                        disabled={busy || room.status !== "active"}
-                        onClick={() => {
-                          setModeMenuOpen(false);
-                          onLeave();
-                        }}
-                      >
-                        Leave Scene
-                      </button>
                     </span>
                   ) : null}
                 </span>
@@ -9798,13 +9912,20 @@ function RoomPanel({
                   </button>
                 ) : null}
                 <textarea
+                  ref={composerRef}
                   className={`${ELEMENT_TAG}-textarea`}
                   value={draft}
                   onChange={(event) => onDraft(event.target.value)}
                   onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setComposerOpen(false);
+                      window.requestAnimationFrame(() => composeTriggerRef.current?.focus());
+                      return;
+                    }
                     if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing)) {
                       event.preventDefault();
-                      if (room.status === "active" && (mode !== "fulfill" || targetId)) onSend();
+                      submitComposer();
                     }
                   }}
                   placeholder={mode === "fulfill" ? "What did you do for them?" : "Say or do something…"}
@@ -9814,7 +9935,7 @@ function RoomPanel({
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-chat-send`}
-                  onClick={onSend}
+                  onClick={submitComposer}
                   disabled={
                     busy ||
                     ended ||
@@ -9829,33 +9950,24 @@ function RoomPanel({
                 </button>
               </span>
             </div>
-            {error && room.status !== "opening" ? (
-              <div className={`${ELEMENT_TAG}-room-error`} role="alert">
-                <p>{error}</p>
-                {room.status === "active" && draft.trim() ? (
-                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onSend} disabled={busy || ended}>
-                    Retry message
-                  </button>
-                ) : null}
-              </div>
+          </div>
+        ) : null}
+        {error && room.status !== "opening" ? (
+          <div className={`${ELEMENT_TAG}-room-error`} role="alert">
+            <p>{error}</p>
+            {canCompose && draft.trim() ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                onClick={() => setComposerOpen(true)}
+                disabled={busy}
+              >
+                Review draft
+              </button>
             ) : null}
           </div>
         ) : null}
       </div>
-
-      {ended ? (
-        /*
-          Where the composer was, and it is the private drawer's sentence with the
-          room's own difference: FOUR people have said goodbye in this, or however
-          many were standing here, so the note is about the room rather than about
-          somebody. The village has finished writing it down by the time this is
-          drawn — the press waits for the last of the calls — so there is no second
-          reading of it here the way there is in the private drawer.
-        */
-        <p className={`${ELEMENT_TAG}-chat-ended`}>
-          {`That is the end of it. Each of them has kept what they took from it, and the village is yours again.`}
-        </p>
-      ) : null}
     </aside>
   );
 }
