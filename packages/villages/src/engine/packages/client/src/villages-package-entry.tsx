@@ -3387,8 +3387,8 @@ const VILLAGES_STYLES = `
   box, at its left-hand edge, where the press that sends already was at its
   right-hand edge — so the only thing left in this row is the box itself. Nothing
   is pinned to a corner because nothing is in a corner any more: how to talk is a
-  menu rather than a row of words, both controls are glyphs inside the frame, and
-  Leave is one press down inside the menu.
+  menu rather than a row of words. Conclude selects an ending in that menu, and
+  Send performs it.
 
   It stays a row of its own rather than being folded into the composer above it,
   because the box is what the row is for and a wrapper that says so reads better
@@ -3410,10 +3410,8 @@ const VILLAGES_STYLES = `
   player's words with the way to talk standing outside it in the row, which made
   that button the one piece of the composer that was not in the composer. Both are
   glyphs, both are inside the same frame as the words they act on, and both are
-  centred on the frame's height — which is what align-items: center is doing here,
-  and it is the whole of what the picture of the target layout asked for. The
-  words are the only thing left on the frame's last line, and the only thing whose
-  height changes as they wrap.
+  centred on the frame's height. The words are the only thing whose height
+  changes as they wrap.
 
   The frame is the ENGINE'S OWN input shell, in the Engine's own words: the same
   rounded-2xl radius, the same input border and input fill, the same blurred
@@ -3426,8 +3424,8 @@ const VILLAGES_STYLES = `
 
   The textarea inside it is stripped of its frame rather than given a second one:
   no border, no fill, no resize grip. The grip matters — a dragged corner would
-  sit exactly where the glyph now is — and what it cost is small: the box still
-  scrolls once it reaches its ceiling, and the ceiling is where it always was.
+  sit exactly where the glyph now is. The room composer grows from one line to
+  two and then scrolls inside the frame.
 
   The button that sends is a glyph rather than a word in every one of the three
   verbs. The box already says what mode the player is in, so a label saying Send,
@@ -5285,14 +5283,13 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-counter { justify-self: center; }
 .${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-nav { justify-self: end; gap: .25rem; padding: 0; border: 0; }
 .${ELEMENT_TAG}-room-panel-tools .${ELEMENT_TAG}-chat-vn-button { min-height: 1.75rem; padding: .2rem .4rem; border: 0; color: var(--foreground); }
-.${ELEMENT_TAG}-room-compose-trigger { color: var(--primary) !important; font-weight: 600; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-log { position: absolute; z-index: 8; bottom: calc(100% + .45rem); left: 0; width: 100%; max-height: min(55cqh, 32rem); box-sizing: border-box; overflow-y: auto; padding: .75rem; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); box-shadow: 0 .75rem 2rem #0009; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .45rem); width: min(25vw, 22rem); max-height: min(20cqh, 10rem); overflow-y: auto; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .5rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: absolute; right: .5rem; bottom: calc(100% + .45rem); width: min(25vw, 22rem); max-height: min(20cqh, 10rem); margin: 0; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides[data-side="left"] { right: auto; left: .5rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-composer { padding-top: .35rem; border-top: 1px solid var(--marinara-chat-chrome-panel-divider, var(--border)); }
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-input > .${ELEMENT_TAG}-textarea { min-height: 2.25rem; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-input > .${ELEMENT_TAG}-textarea { height: 1.75rem; min-height: 0; max-height: none; overflow-y: hidden; }
 .${ELEMENT_TAG}-room-actions-trigger:focus-visible, .${ELEMENT_TAG}-room-actions-menu button:focus-visible, .${ELEMENT_TAG}-room-notices-trigger:focus-visible, .${ELEMENT_TAG}-room-panel-tools button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 @container ${ELEMENT_TAG} (max-width: 44rem) {
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage { min-height: 0; padding-top: 3rem; }
@@ -9278,7 +9275,6 @@ function RoomPanel({
   onMode,
   onTarget,
   onSend,
-  onLeave,
   onViewVenue,
   onEnterPrivate,
   privateSpaceOwnerName,
@@ -9297,7 +9293,7 @@ function RoomPanel({
   /** The picture of the place, or `""` for one that has never been drawn. */
   picture: string;
   draft: string;
-  mode: "chat" | "fulfill";
+  mode: "chat" | "fulfill" | "conclude";
   targetId: string;
   busy: boolean;
   error: string;
@@ -9310,10 +9306,9 @@ function RoomPanel({
   portraits: PortraitMap;
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
-  onMode: (value: "chat" | "fulfill") => void;
+  onMode: (value: "chat" | "fulfill" | "conclude") => void;
   onTarget: (value: string) => void;
   onSend: () => void;
-  onLeave: () => void;
   onViewVenue: () => void;
   onEnterPrivate?: () => void;
   privateSpaceOwnerName?: string;
@@ -9331,7 +9326,6 @@ function RoomPanel({
   /** The current paragraph in this venue visit's ordered reading. */
   const [readStep, setReadStep] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
@@ -9339,17 +9333,12 @@ function RoomPanel({
   const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
   const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const composeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const modeAnchorRef = useRef<HTMLSpanElement | null>(null);
   const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
   const historyRef = useRef<HTMLDivElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
-
-  useEffect(() => {
-    if (!composerOpen) return;
-    window.requestAnimationFrame(() => composerRef.current?.focus());
-  }, [composerOpen]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -9371,6 +9360,24 @@ function RoomPanel({
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [actionsOpen]);
+
+  useEffect(() => {
+    if (!modeMenuOpen) return;
+    const closeOnOutside = (event: Event) => {
+      if (!modeAnchorRef.current?.contains(event.target as Node)) setModeMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setModeMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("focusin", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("focusin", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [modeMenuOpen]);
 
   const closeMemory = useCallback(() => {
     setOpenMemory(null);
@@ -9464,9 +9471,39 @@ function RoomPanel({
   const canReadPrevious = at > 0;
   const canReadNext = at < steps.length - 1;
   const canCompose = !ended && room.status === "active" && !canReadNext;
+  const resizeComposer = useCallback(() => {
+    const field = composerRef.current;
+    if (!field) return;
+    const style = window.getComputedStyle(field);
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    const oneLine = Math.ceil(lineHeight + padding);
+    const twoLines = Math.ceil(lineHeight * 2 + padding);
+    field.style.height = "auto";
+    field.style.height = `${Math.min(Math.max(field.scrollHeight, oneLine), twoLines)}px`;
+    field.style.overflowY = field.scrollHeight > twoLines + 1 ? "auto" : "hidden";
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeComposer();
+  }, [canCompose, draft, resizeComposer]);
+
+  useEffect(() => {
+    const frame = composerRef.current?.parentElement;
+    if (!frame) return;
+    let width = frame.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (frame.clientWidth === width) return;
+      width = frame.clientWidth;
+      resizeComposer();
+    });
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [canCompose, resizeComposer]);
+
   const submitComposer = () => {
-    if (!canCompose || busy || !draft.trim() || (mode === "fulfill" && !targetId)) return;
-    setComposerOpen(false);
+    if (!canCompose || busy || (mode !== "conclude" && !draft.trim()) || (mode === "fulfill" && !targetId)) return;
+    setModeMenuOpen(false);
     onSend();
   };
 
@@ -9591,19 +9628,6 @@ function RoomPanel({
                   disabled={busy}
                 >
                   Enter {privateSpaceOwnerName ?? "private space"}
-                </button>
-              ) : null}
-              {!ended && room.status === "active" ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setActionsOpen(false);
-                    onLeave();
-                  }}
-                  disabled={busy}
-                >
-                  {draft.trim() ? "Leave Scene · send draft as final line" : "Leave Scene · play ending"}
                 </button>
               ) : null}
               <button
@@ -9864,7 +9888,7 @@ function RoomPanel({
           </div>
         ) : null}
 
-        {/* One readable paragraph shares the same dock with navigation and the optional composer. */}
+        {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}
         <div className={`${ELEMENT_TAG}-chat-vn-card`} data-register={register}>
           <div className={`${ELEMENT_TAG}-chat-vn-row`}>
             <div className={`${ELEMENT_TAG}-chat-vn-column`}>
@@ -9925,10 +9949,7 @@ function RoomPanel({
             <button
               type="button"
               className={`${ELEMENT_TAG}-chat-vn-button`}
-              onClick={() => {
-                setComposerOpen(false);
-                setReadStep(at - 1);
-              }}
+              onClick={() => setReadStep(at - 1)}
               disabled={!canReadPrevious}
               aria-label="Previous paragraph"
             >
@@ -9942,16 +9963,6 @@ function RoomPanel({
                 aria-label="Next paragraph"
               >
                 <span>Next</span> ›
-              </button>
-            ) : canCompose ? (
-              <button
-                ref={composeTriggerRef}
-                type="button"
-                className={`${ELEMENT_TAG}-chat-vn-button ${ELEMENT_TAG}-room-compose-trigger`}
-                onClick={() => setComposerOpen((value) => !value)}
-                aria-expanded={composerOpen}
-              >
-                {composerOpen ? "Hide composer" : "Compose"}
               </button>
             ) : ended ? (
               <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
@@ -9994,10 +10005,10 @@ function RoomPanel({
           </p>
         ) : null}
 
-        {canCompose && composerOpen && mode === "fulfill" && activeParticipants.length === 0 ? (
+        {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (
           <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
         ) : null}
-        {canCompose && composerOpen ? (
+        {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
             {mode === "fulfill" && activeParticipants.length > 0 ? (
               <select
@@ -10016,21 +10027,21 @@ function RoomPanel({
             ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
               <span className={`${ELEMENT_TAG}-chat-input`}>
-                <span className={`${ELEMENT_TAG}-room-mode-anchor`}>
+                <span ref={modeAnchorRef} className={`${ELEMENT_TAG}-room-mode-anchor`}>
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-room-mode-toggle`}
                     onClick={() => setModeMenuOpen((value) => !value)}
-                    aria-label={`Mode: ${mode === "chat" ? "Chat" : "Fulfill"}. Choose mode`}
+                    aria-label={`Mode: ${mode === "chat" ? "Chat" : mode === "fulfill" ? "Fulfill" : "Conclude"}. Choose mode`}
                     aria-haspopup="menu"
                     aria-expanded={modeMenuOpen}
-                    title={mode === "chat" ? "Chat" : "Fulfill"}
+                    title={mode === "chat" ? "Chat" : mode === "fulfill" ? "Fulfill" : "Conclude"}
                   >
-                    💬
+                    {mode === "chat" ? "💬" : mode === "fulfill" ? "🫴" : "🚪"}
                   </button>
                   {modeMenuOpen ? (
                     <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Visit mode">
-                      {(["chat", "fulfill"] as const).map((option) => (
+                      {(["chat", "fulfill", "conclude"] as const).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -10042,7 +10053,7 @@ function RoomPanel({
                             setModeMenuOpen(false);
                           }}
                         >
-                          {option === "chat" ? "Chat" : "Fulfill"}
+                          {option === "chat" ? "Chat" : option === "fulfill" ? "Fulfill" : "Conclude"}
                         </button>
                       ))}
                     </span>
@@ -10061,21 +10072,22 @@ function RoomPanel({
                 <textarea
                   ref={composerRef}
                   className={`${ELEMENT_TAG}-textarea`}
+                  rows={1}
                   value={draft}
                   onChange={(event) => onDraft(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      setComposerOpen(false);
-                      window.requestAnimationFrame(() => composeTriggerRef.current?.focus());
-                      return;
-                    }
                     if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing)) {
                       event.preventDefault();
                       submitComposer();
                     }
                   }}
-                  placeholder={mode === "fulfill" ? "What did you do for them?" : "Say or do something…"}
+                  placeholder={
+                    mode === "fulfill"
+                      ? "What did you do for them?"
+                      : mode === "conclude"
+                        ? "Final line (optional)…"
+                        : "Say or do something…"
+                  }
                   aria-label={`Message at ${room.placeName}`}
                   disabled={busy || ended || room.status !== "active"}
                 />
@@ -10087,7 +10099,7 @@ function RoomPanel({
                     busy ||
                     ended ||
                     room.status !== "active" ||
-                    draft.trim().length === 0 ||
+                    (mode !== "conclude" && draft.trim().length === 0) ||
                     (mode === "fulfill" && !targetId)
                   }
                   aria-label={busy ? "Sending" : "Send"}
@@ -10102,16 +10114,6 @@ function RoomPanel({
         {error && room.status !== "opening" ? (
           <div className={`${ELEMENT_TAG}-room-error`} role="alert">
             <p>{error}</p>
-            {canCompose && draft.trim() ? (
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                onClick={() => setComposerOpen(true)}
-                disabled={busy}
-              >
-                Review draft
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>
@@ -10501,7 +10503,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [roomOpen, setRoomOpen] = useState(false);
   /** What has been typed into the room's box and not yet said. */
   const [roomDraft, setRoomDraft] = useState("");
-  const [roomMode, setRoomMode] = useState<"chat" | "fulfill">("chat");
+  const [roomMode, setRoomMode] = useState<"chat" | "fulfill" | "conclude">("chat");
   const [roomTargetId, setRoomTargetId] = useState("");
   const [roomRuling, setRoomRuling] = useState("");
   const [roomNotices, setRoomNotices] = useState<RoomRecordEvent[]>([]);
@@ -11492,6 +11494,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         }
       if (roomTargetId && !answer.session.activeIds.includes(roomTargetId)) setRoomTargetId("");
       setRoomRuling(answer.verdict?.reason ?? "");
+      setRoomMode("chat");
       roomSubmissionIdRef.current = null;
       setRoomGreetingNotice("");
       void loadSnapshot();
@@ -13424,14 +13427,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             onMode={(value) => {
               roomSubmissionIdRef.current = null;
               setRoomMode(value);
-              if (value !== "fulfill") setRoomTargetId("");
             }}
             onTarget={(value) => {
               roomSubmissionIdRef.current = null;
               setRoomTargetId(value);
             }}
-            onSend={() => void sendRoom()}
-            onLeave={() => void leaveRoom()}
+            onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
             onViewVenue={() => {
               setVenueId(room.placeId);
               setVenueEditDraft(null);
