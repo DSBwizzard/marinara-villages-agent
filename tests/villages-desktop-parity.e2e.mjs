@@ -11,6 +11,27 @@ const browser = await chromium.launch({
 const now = new Date().toISOString();
 const image = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000"><rect width="1500" height="1000" fill="${color}"/><path d="M0 500h1500M750 0v1000" stroke="#eee1bf" stroke-width="80"/></svg>`).toString("base64")}`;
+const spriteImage = (color) =>
+  `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="700"><circle cx="150" cy="100" r="65" fill="${color}"/><path d="M90 175h120l45 360H45zM105 530h35v170h-45zM160 530h35l45 170h-45z" fill="${color}"/></svg>`).toString("base64")}`;
+const residentNames = ["Mara", "Eli", "Lina", "Taro"];
+const residents = residentNames.map((name, index) => ({
+  characterId: name.toLowerCase(),
+  name,
+  sprite: {
+    assetId: name.toLowerCase(),
+    expressions: [],
+    images: [
+      { view: "front", label: "neutral", url: spriteImage(["#e8ba91", "#a7cdf2", "#d9a8cd", "#bbd59a"][index]) },
+    ],
+    framing: { mode: "full", cropPercent: 0 },
+  },
+  summary: "A resident of the village.",
+  tags: [],
+  missing: false,
+  place: null,
+}));
+const longGreeting =
+  "The mill hums softly while dust turns in the late light, and each villager pauses to listen. ".repeat(12);
 const mapImage = image("#719b77");
 const place = (id, x, y) => ({
   id,
@@ -49,7 +70,7 @@ const snapshot = {
   upgradeRequests: [],
   residences: [],
   happenings: [],
-  villagers: [],
+  villagers: residents,
   recap: null,
   settings: {
     promptKnowledge: "",
@@ -90,8 +111,16 @@ try {
     { width: 844, height: 390, mobile: true },
     { width: 800, height: 600, mobile: false },
     { width: 1440, height: 900, mobile: false },
+    { width: 1917, height: 655, mobile: false },
   ]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    const fixtureSnapshot =
+      width === 800
+        ? {
+            ...snapshot,
+            villagers: residents.map((resident, index) => (index === 3 ? { ...resident, sprite: null } : resident)),
+          }
+        : snapshot;
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let session = {
@@ -103,8 +132,8 @@ try {
       lastActivityAt: now,
       endedAt: "",
       status: "active",
-      activeIds: [],
-      participants: [],
+      activeIds: residents.map((resident) => resident.characterId),
+      participants: residents.map(({ characterId, name }) => ({ characterId, name, doing: "spending time here" })),
       lines: [
         {
           id: "hello",
@@ -112,14 +141,14 @@ try {
           speakerId: "__venue_scene__",
           name: "",
           kind: "narration",
-          content: "Welcome to the mill.",
+          content: longGreeting,
           at: now,
         },
       ],
     };
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
-      let value = snapshot;
+      let value = fixtureSnapshot;
       if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/personas")) value = { personas: [] };
@@ -138,7 +167,13 @@ try {
       else if (path.endsWith("/rooms/activity")) value = { session };
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         const visited = snapshot.settings.venues.find((venue) => venue.id === route.request().postDataJSON().venueId);
-        session = { ...session, placeId: visited.id, placeName: visited.name };
+        session = {
+          ...session,
+          placeId: visited.id,
+          placeName: visited.name,
+          spaceClass: visited.classes[0],
+          area: "public",
+        };
         value = { session };
       } else if (path.endsWith("/rooms/turn")) {
         const message = route.request().postDataJSON().message;
@@ -150,9 +185,9 @@ try {
             {
               id: "answer",
               role: "assistant",
-              speakerId: "__venue_scene__",
-              name: "",
-              kind: "narration",
+              speakerId: "mara",
+              name: "Mara",
+              kind: "dialogue",
               content: "First reply.\n\nSecond reply.\n\nThird reply.\n\nFourth reply.\n\nFifth reply.\n\nSixth reply.",
               at: now,
             },
@@ -312,10 +347,71 @@ try {
     await page.keyboard.press("Enter");
     await doors.getByRole("button", { name: "Visit" }).click();
     const composer = page.getByRole("textbox", { name: mobile ? "Message at The Market" : "Message at The Mill" });
+    const dock = page.locator(".marinara-capability-villages-chat-vn");
+    const stage = page.locator(".marinara-capability-villages-chat-stage");
+    const cast = page.locator(".marinara-capability-villages-chat-cast-person");
+    const reading = page.getByRole("region", { name: "Current paragraph" });
+    await expect(cast).toHaveCount(4);
+    const castPositions = await cast.evaluateAll((people) => people.map((person) => person.offsetLeft));
+    if (process.env.VILLAGES_VISUAL_OUTPUT) {
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-room-initial-${width}x${height}.png`),
+      });
+    }
+    await expect(cast.locator("img")).toHaveCount(width === 800 ? 3 : 4);
+    if (width === 800) await expect(cast.locator(".marinara-capability-villages-avatar")).toHaveCount(1);
+    const stageBox = await stage.boundingBox();
+    const dockBox = await dock.boundingBox();
+    assert.ok(stageBox && dockBox && stageBox.height > 0 && stageBox.y + stageBox.height <= dockBox.y + 1);
+    if (width === 1917) assert.ok(dockBox.height <= 180, `wide reading dock stays compact (${dockBox.height}px)`);
+    const castBoxes = await cast.all();
+    for (const person of castBoxes) {
+      const box = await person.boundingBox();
+      assert.ok(box && box.width > 0 && box.height > 0 && box.x >= 0 && box.x + box.width <= width);
+    }
+    const readingOverflow = await reading.evaluate((element) => ({
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    }));
+    assert.ok(readingOverflow.scrollHeight > readingOverflow.clientHeight, "long narration scrolls inside the dock");
+    assert.ok(
+      (await reading.evaluate((element) => {
+        element.scrollTop = element.scrollHeight;
+        return element.scrollTop;
+      })) > 0,
+      "the full paragraph remains reachable by scrolling",
+    );
+    const historyButton = page.getByRole("button", { name: "History", exact: true });
+    await expect(historyButton).toHaveCount(1);
+    await historyButton.click();
+    await expect(page.getByRole("log", { name: "Venue conversation history" })).toBeVisible();
+    const stageWithHistory = await stage.boundingBox();
+    assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
+    await historyButton.click();
+    await expect(composer).toHaveCount(0);
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Leave Scene · play ending" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "End visit now" })).toBeVisible();
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("button", { name: "Compose" }).click();
     await composer.fill("My response.");
+    await composer.press("Escape");
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Compose" })).toBeFocused();
+    await page.getByRole("button", { name: "Compose" }).click();
+    await expect(composer).toHaveValue("My response.");
     await page.getByRole("button", { name: "Send" }).click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("First reply.");
-    await expect(page.getByRole("region", { name: "Current paragraph" })).not.toContainText("Sixth reply.");
+    await expect(composer).toHaveCount(0);
+    await expect(reading).toContainText("First reply.");
+    await expect(reading).not.toContainText("Sixth reply.");
+    assert.equal(await reading.evaluate((element) => element.scrollTop), 0, "a new paragraph starts at its top");
+    assert.deepEqual(
+      await cast.evaluateAll((people) => people.map((person) => person.offsetLeft)),
+      castPositions,
+      "a new speaker does not rearrange the four cast slots",
+    );
+    await expect(page.getByRole("button", { name: "Compose" })).toHaveCount(0);
+    await page.getByRole("button", { name: "1 village notice" }).click();
     const memoryTrigger = page.getByRole("button", { name: "View memory: The village remembered this exchange." });
     await memoryTrigger.click();
     await expect(page.getByRole("dialog", { name: "The village remembered this exchange." })).toContainText(
@@ -324,7 +420,8 @@ try {
     await page.getByRole("button", { name: "Close memory" }).click();
     await expect(memoryTrigger).toBeFocused();
     for (let step = 0; step < 5; step += 1) await page.getByRole("button", { name: "Next paragraph" }).click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Sixth reply.");
+    await expect(reading).toContainText("Sixth reply.");
+    await expect(page.getByRole("button", { name: "Compose" })).toBeVisible();
     const asideBand = page.locator(".marinara-capability-villages-chat-vn-asides");
     await expect(asideBand).toContainText("A small aside rides with the final reply.");
     await expect(asideBand).toContainText("A quiet word stays visible too.");
@@ -332,25 +429,22 @@ try {
       scrollHeight: element.scrollHeight,
       clientHeight: element.clientHeight,
     }));
-    assert.ok(
-      asideOverflow.scrollHeight <= asideOverflow.clientHeight + 1,
-      `the ${width}x${height} two-bubble fixture is fully readable without clipping (${asideOverflow.scrollHeight}/${asideOverflow.clientHeight})`,
-    );
+    assert.ok(asideOverflow.clientHeight > 0 && asideOverflow.scrollHeight >= asideOverflow.clientHeight);
     const asideBox = await asideBand.boundingBox();
-    const composerBox = await page.locator(".marinara-capability-villages-composer").boundingBox();
+    const finalDockBox = await dock.boundingBox();
     assert.ok(
       asideBox &&
-        composerBox &&
+        finalDockBox &&
         asideBox.x >= 0 &&
         asideBox.x + asideBox.width <= width &&
         asideBox.y >= 0 &&
-        asideBox.y + asideBox.height <= composerBox.y,
-      "aside and whisper bubbles stay visible above the composer",
+        asideBox.y + asideBox.height <= finalDockBox.y,
+      `aside and whisper bubbles stay within the ${width}x${height} viewport above the dock: ${JSON.stringify({ asideBox, finalDockBox })}`,
     );
     assert.equal(
       await asideBand.evaluate((element) => getComputedStyle(element).position),
-      mobile ? "static" : "absolute",
-      "mobile asides reserve visible space while desktop asides continue floating",
+      "absolute",
+      "asides float without reserving stage height",
     );
     assert.deepEqual(errors, [], `${width}×${height} renders without page errors`);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
@@ -360,7 +454,7 @@ try {
     }
     await page.close();
   }
-  console.log("Villages desktop parity: four viewports, menu, map controls, and reply reading passed");
+  console.log("Villages desktop parity: five viewports, four-person stage, compact reading, and map controls passed");
 } finally {
   await browser.close();
 }
