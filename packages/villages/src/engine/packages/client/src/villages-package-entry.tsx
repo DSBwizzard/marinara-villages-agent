@@ -4419,27 +4419,29 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-setup-body[data-step="0"] {
   --background: #151d3b; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
-  gap: 1rem; color: var(--foreground);
+  gap: .75rem; color: var(--foreground);
 }
 .${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-side { flex-basis: 35rem; }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-overlay {
-  padding: 1.3rem; border-color: #5268b8; border-radius: 1rem;
+  gap: .4rem; padding: .85rem 1rem; border-color: #5268b8; border-radius: 1rem;
   background: linear-gradient(145deg, #182044, #101831);
   box-shadow: inset 0 0 2rem #27347866;
 }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-panel-title {
-  font-size: clamp(1.45rem, 2.6vw, 2.4rem); color: #f5f5ff;
+  font-size: clamp(1.3rem, 2vw, 1.9rem); color: #f5f5ff;
 }
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-field { margin-top: .3rem; }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-search,
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea {
   background: #1c254a; border-color: #7082cf; color: #f2f4ff;
 }
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea { height: 4.25rem; }
 .${ELEMENT_TAG}-scenario-options {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; margin-top: .4rem;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .45rem; margin-top: .25rem;
 }
 .${ELEMENT_TAG}-scenario-option {
   position: relative; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: .3rem; min-height: 7.25rem; padding: .75rem .45rem;
+  justify-content: center; gap: .15rem; min-height: 4.75rem; padding: .35rem .3rem;
   border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b;
   color: #f0f2ff; text-align: center; cursor: pointer;
 }
@@ -4451,9 +4453,9 @@ const VILLAGES_STYLES = `
   box-shadow: 0 0 0 2px #9a78ff, 0 0 1rem #9a78ff9c;
 }
 .${ELEMENT_TAG}-scenario-option:has(input:focus-visible) { outline: 3px solid #f2d6ff; outline-offset: 3px; }
-.${ELEMENT_TAG}-scenario-icon { color: #b9c8ff; font-size: 2.2rem; line-height: 1; }
-.${ELEMENT_TAG}-scenario-option strong { font-size: .9rem; }
-.${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: .72rem; line-height: 1.35; }
+.${ELEMENT_TAG}-scenario-icon { color: #b9c8ff; font-size: 1.35rem; line-height: 1; }
+.${ELEMENT_TAG}-scenario-option strong { font-size: .8rem; }
+.${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: .65rem; line-height: 1.25; }
 .${ELEMENT_TAG}-scenario-art-panel {
   position: relative; flex: 1 1 19rem; min-width: 0; min-height: 34rem;
   overflow: hidden; border: 1px solid #6684d4; border-radius: 1.2rem; background: #162550;
@@ -4478,6 +4480,9 @@ const VILLAGES_STYLES = `
   width: min(100%, 15rem); margin-top: .55rem; padding: .65rem;
   border-color: #7584ff; background: linear-gradient(135deg, #6077ff, #7365ed); color: #fff;
   font-size: 1rem; font-weight: 700;
+}
+@container (min-width: 80rem) {
+  .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @container (max-width: 70rem) {
   .${ELEMENT_TAG}-setup-body { flex-wrap: wrap; }
@@ -10352,8 +10357,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("rebuild");
   const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>(foundingScenario("rebuild").premise);
   const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
-  const [setupScenarioDrafts, setSetupScenarioDrafts] = useState<
-    Partial<Record<FoundingScenarioId, { details: string; guidance: string }>>
+  const [setupScenarioGuidanceDrafts, setSetupScenarioGuidanceDrafts] = useState<
+    Partial<Record<FoundingScenarioId, string>>
   >({});
   const [setupNameSuggestions, setSetupNameSuggestions] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
@@ -12395,15 +12400,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   const chooseSetupScenario = (value: FoundingScenarioId) => {
     if (value === setupFoundingReason) return;
-    const previous = {
-      details: setupFoundingDetails,
-      guidance: setupFoundingGuidance,
-    };
-    const next = setupScenarioDrafts[value];
-    setSetupScenarioDrafts((drafts) => ({ ...drafts, [setupFoundingReason]: previous }));
+    const nextGuidance = setupScenarioGuidanceDrafts[value] ?? "";
+    setSetupScenarioGuidanceDrafts((drafts) => ({ ...drafts, [setupFoundingReason]: setupFoundingGuidance }));
     setSetupFoundingReason(value);
-    setSetupFoundingDetails(value === "none" ? "" : (next?.details ?? foundingScenario(value).premise));
-    setSetupFoundingGuidance(value === "none" ? "" : (next?.guidance ?? ""));
+    setSetupFoundingDetails(foundingScenario(value).premise);
+    setSetupFoundingGuidance(value === "none" ? "" : nextGuidance);
     setSetupProblem("");
   };
 
@@ -12451,7 +12452,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
       setSetupFoundingGuidance(reason === "none" ? "" : guidance);
-      setSetupScenarioDrafts({ [reason]: { details, guidance } });
+      setSetupScenarioGuidanceDrafts({ [reason]: guidance });
       setSetupNameSuggestions([]);
       const foundingPlaces =
         fresh || !village
@@ -12481,8 +12482,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // setting: the second run is a chance to redraw the map, not to be told
       // something new about yourself by accident.
       setPersonaDraft(fresh ? "" : (village?.settings.playerPersonaId ?? ""));
-      // The picker is on the first step, so its list is read as the wizard opens
-      // rather than when a step is walked to.
+      // Load the Persona and lorebook choices as the wizard opens so their
+      // respective steps are ready when the player reaches them.
       void loadPersonas();
       void loadLorebooks();
       // The wizard places houses, so it is handed the places and picks the houses
@@ -16819,20 +16820,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const wizardVillagers = (catalog ?? []).map((entry) => ({ id: entry.id, name: entry.name }));
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root`}>
-        <div className={`${ELEMENT_TAG}-mapbar`}>
-          {/*
-            The village's name, and nothing to click. The wizard carried a Later
-            here once, and Later was never a way out of anything: it put the
-            player on a homepage for a village that did not exist, and the next
-            time the tab was opened the village still did not exist and every
-            one of these questions was asked again, because none of them is
-            written down until the last step. A village is founded by founding
-            it, so the end of the wizard is the only door, and this bar is a
-            title rather than a row of controls.
-          */}
-          <span className={`${ELEMENT_TAG}-mapbar-title`}>{setupName.trim() || "A new village"}</span>
-        </div>
-
         <div className={`${ELEMENT_TAG}-home-body ${ELEMENT_TAG}-setup-body`} data-step={setupStep}>
           <aside className={`${ELEMENT_TAG}-setup-rail`} aria-label="Founding progress">
             {SETUP_STEPS.map((label, index) => (
@@ -16917,14 +16904,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           onChange={(event) => {
                             const details = event.target.value;
                             setSetupFoundingDetails(details);
-                            setSetupScenarioDrafts((drafts) => ({
-                              ...drafts,
-                              [setupFoundingReason]: { details, guidance: setupFoundingGuidance },
-                            }));
                           }}
                         />
                         <span className={`${ELEMENT_TAG}-hint`}>
-                          Edit this starting point freely. It informs stories without forcing repeated events.
+                          {setupFoundingReason === "custom"
+                            ? "Write your own starting point. Switching scenarios clears this premise."
+                            : "Edit this starting point freely. Switching scenarios restores the original premise."}
                         </span>
                       </div>
                       <div className={`${ELEMENT_TAG}-field`}>
@@ -16941,9 +16926,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           onChange={(event) => {
                             const guidance = event.target.value;
                             setSetupFoundingGuidance(guidance);
-                            setSetupScenarioDrafts((drafts) => ({
+                            setSetupScenarioGuidanceDrafts((drafts) => ({
                               ...drafts,
-                              [setupFoundingReason]: { details: setupFoundingDetails, guidance },
+                              [setupFoundingReason]: guidance,
                             }));
                           }}
                         />
