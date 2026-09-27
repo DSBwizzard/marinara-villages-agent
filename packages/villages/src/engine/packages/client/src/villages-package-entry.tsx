@@ -783,7 +783,12 @@ type RoomView = {
   memoryProgress?: { nextUnit: number } | null;
 };
 
-type RoomRecordEvent = { id: string; kind: "memory" | "wish" | "venue" | "request"; text: string };
+type RoomRecordEvent = {
+  id: string;
+  kind: "memory" | "wish" | "venue" | "request";
+  text: string;
+  detail?: string;
+};
 
 type ArchiveVisitSummary = Pick<
   RoomView,
@@ -1628,7 +1633,8 @@ const VILLAGES_STYLES = `
 }
 .${ELEMENT_TAG}-room-star > span:first-child { color: #e5b13e; font-size: 1.2rem; line-height: 1; }
 .${ELEMENT_TAG}-room-star > span:nth-child(2) { flex: 1; }
-.${ELEMENT_TAG}-room-star button { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 1.2rem; line-height: 1; }
+.${ELEMENT_TAG}-room-star button { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.${ELEMENT_TAG}-room-star-dismiss { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; margin: -.5rem -.55rem -.5rem 0; font-size: 1.2rem !important; line-height: 1; }
 .${ELEMENT_TAG}-room-star button:focus-visible { outline: 2px solid currentColor; border-radius: .2rem; }
 @media (max-width: 600px) {
   .${ELEMENT_TAG}-room-stars { top: 4.75rem; left: .625rem; width: min(19rem, calc(100% - 1.25rem)); max-height: 32vh; }
@@ -4574,14 +4580,23 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-mailbox-item { padding: .9rem; border: 1px solid var(--border); border-radius: .75rem; }
 .${ELEMENT_TAG}-venue-space-picture { display: block; width: min(100%, 24rem); aspect-ratio: 4 / 3; object-fit: cover; border: 1px solid var(--border); border-radius: .625rem; }
 .${ELEMENT_TAG}-room-mode-toggle:focus-visible, .${ELEMENT_TAG}-room-mode-menu button:focus-visible, .${ELEMENT_TAG}-room-star-detail:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.${ELEMENT_TAG}-room-star-detail { flex: 1; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.${ELEMENT_TAG}-room-star-detail { flex: 1; align-self: stretch; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; text-align: left; cursor: pointer; }
 .${ELEMENT_TAG}-memory-backdrop { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1rem; background: #0009; }
 .${ELEMENT_TAG}-memory-dialog { box-sizing: border-box; width: min(28rem, 100%); max-height: min(75cqh, 36rem); overflow-y: auto; padding: 1rem; border: 1px solid var(--border); border-radius: .8rem; background: var(--popover); color: var(--foreground); box-shadow: 0 1rem 2rem #0009; }
 .${ELEMENT_TAG}-memory-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.${ELEMENT_TAG}-memory-dialog-head h2 { margin: 0; font-size: 1rem; line-height: 1.4; }
 .${ELEMENT_TAG}-memory-dialog-head button { border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.5rem; cursor: pointer; }
 .${ELEMENT_TAG}-memory-dialog p { margin: .75rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 @container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { width: min(85%, 22rem); } .${ELEMENT_TAG}-room-mode-toggle { width: 2.5rem; height: 2.5rem; } }
 @container ${ELEMENT_TAG} (min-width: 34rem) and (max-height: 30rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 64%; align-self: flex-end; } }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-stars { top: 4.25rem; left: .625rem; width: min(15rem, calc(100% - 1.25rem)); max-height: 20cqh; gap: .25rem; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star { gap: .35rem; padding: .35rem .45rem; font-size: .75rem; line-height: 1.3; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star-dismiss { margin: -.3rem -.35rem -.3rem 0; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { position: static; flex: 0 0 auto; align-self: flex-end; width: min(90%, 20rem); max-height: 9rem; margin-bottom: .125rem; z-index: 2; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-aside { max-width: 100%; padding: .4rem .55rem; gap: .375rem; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-aside-face { width: 1.5rem; height: 1.5rem; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-backdrop { padding: .5rem; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-dialog { width: min(20rem, 100%); max-height: 60cqh; padding: .75rem; }
 `;
 
 function syncVillagesStyles() {
@@ -8479,8 +8494,33 @@ function RoomPanel({
   const [readStep, setReadStep] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
+  const memoryTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const memoryCloseRef = useRef<HTMLButtonElement | null>(null);
   const canCompose = !ended && room.status === "active";
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
+
+  const closeMemory = useCallback(() => {
+    setOpenMemory(null);
+    window.requestAnimationFrame(() => memoryTriggerRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!openMemory) return;
+    window.requestAnimationFrame(() => memoryCloseRef.current?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        event.preventDefault();
+        memoryCloseRef.current?.focus();
+        return;
+      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeMemory();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [closeMemory, openMemory]);
 
   /**
    * The whole room, one paragraph at a time, each paragraph wearing a name.
@@ -8696,12 +8736,31 @@ function RoomPanel({
       {notices.length > 0 ? (
         <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
           {notices.map((notice) => (
-            <div key={notice.id} className={`${ELEMENT_TAG}-room-star`} role="status">
+            <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
               <span aria-hidden="true">✦</span>
-              <span>{notice.text}</span>
+              {notice.kind === "memory" && notice.detail ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-room-star-detail`}
+                  onClick={(event) => {
+                    memoryTriggerRef.current = event.currentTarget;
+                    setOpenMemory(notice);
+                  }}
+                  aria-label={`View memory: ${notice.text}`}
+                  title="View saved memory"
+                >
+                  {notice.text}
+                </button>
+              ) : (
+                <span>{notice.text}</span>
+              )}
               <button
                 type="button"
-                onClick={() => onDismissNotice(notice.id)}
+                className={`${ELEMENT_TAG}-room-star-dismiss`}
+                onClick={() => {
+                  if (openMemory?.id === notice.id) setOpenMemory(null);
+                  onDismissNotice(notice.id);
+                }}
                 aria-label={`Dismiss ${notice.text}`}
                 title="Dismiss notice"
               >
@@ -8709,6 +8768,29 @@ function RoomPanel({
               </button>
             </div>
           ))}
+        </div>
+      ) : null}
+      {openMemory?.detail ? (
+        <div
+          className={`${ELEMENT_TAG}-memory-backdrop`}
+          onClick={(event) => {
+            if (event.currentTarget === event.target) closeMemory();
+          }}
+        >
+          <div
+            className={`${ELEMENT_TAG}-memory-dialog`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={`${ELEMENT_TAG}-memory-dialog-title`}
+          >
+            <div className={`${ELEMENT_TAG}-memory-dialog-head`}>
+              <h2 id={`${ELEMENT_TAG}-memory-dialog-title`}>{openMemory.text}</h2>
+              <button ref={memoryCloseRef} type="button" onClick={closeMemory} aria-label="Close memory">
+                ×
+              </button>
+            </div>
+            <p>{openMemory.detail}</p>
+          </div>
         </div>
       ) : null}
 
@@ -12322,7 +12404,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // nothing in this village happens because the player looked at it.
   if (screen === "room") {
     return (
-      <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`}>
+      <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
         {room ? (
           <RoomPanel
             room={room}
