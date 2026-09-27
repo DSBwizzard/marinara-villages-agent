@@ -20,6 +20,8 @@ Residence entry and editing rely on explicit resident dialogue. A recorded invit
 
 ## What this release contains
 
+0.6.40 makes in-chat memory notices tappable on desktop and mobile, opening the exact saved memory while keeping dismissal separate. Phone notices take less room, and side remarks and whispers stay visible above the reading card in both portrait and short-landscape layouts.
+
 0.6.34 packages the completed Village founding and Venue screen changes together under a distinct version. It includes the final private-room image attempt and discovery guards, direct player image replacement after discovery, and the exclusive View Venue, Edit Venue, and Propose Change navigation.
 
 0.6.33 keeps a chosen founding map usable after later setting or DEBUG prompt edits, strengthens image guidance, and moves complete Residence and Gathering Place setup into Step 4. Venue text and art are explicit, previewed founding actions informed by the village setting, lorebooks, resident card, and player guidance. Step 5 is a read-only review. First founding waits on a resumable preparation screen until each initial villager agenda and applicable schedule translation succeeds. View Venue, Edit Venue, and Propose Change are separate pages with visible venue context and one Visit Venue control. Previously entered Residence spaces remain visible; the first private-room visit draws its image once in the background, and later image changes belong to the player. Exterior prompts use the venue's form and purpose, and physical scene fields are grouped with clearer guidance.

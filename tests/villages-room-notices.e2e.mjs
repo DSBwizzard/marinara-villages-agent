@@ -105,9 +105,19 @@ await page.route("**/api/villages**", async (route) => {
     };
     const event =
       body.message === "First memory" || body.message === "Repeat receipt"
-        ? { id: "memory-1", kind: "memory", text: "Bob remembered the first exchange." }
+        ? {
+            id: "memory-1",
+            kind: "memory",
+            text: "Bob remembered the first exchange.",
+            detail: "The player promised Bob to repair the bridge.",
+          }
         : body.message === "Second memory"
-          ? { id: "memory-2", kind: "memory", text: "Bob remembered the second exchange." }
+          ? {
+              id: "memory-2",
+              kind: "memory",
+              text: "Bob remembered the second exchange.",
+              detail: "Bob learned that the market opens before sunrise.",
+            }
           : null;
     value = { session, verdict: null, action: null, recordEvents: event ? [event] : [] };
   } else if (path.endsWith("/rooms/end")) {
@@ -146,6 +156,21 @@ try {
   assert.ok(stackBox && controlsBox);
   assert.ok(stackBox.x >= 0 && stackBox.x + stackBox.width <= 375, "notice fits a phone viewport");
   assert.ok(stackBox.y >= controlsBox.y + controlsBox.height, "notice sits below venue controls");
+  assert.ok(stackBox.width <= 240, "mobile memory notice stays a compact toast");
+  assert.ok(stackBox.height <= 148, "mobile memory stack stays under twenty percent of the viewport");
+  const memoryTrigger = page.getByRole("button", { name: "View memory: Bob remembered the first exchange." });
+  await memoryTrigger.click();
+  const memoryDialog = page.getByRole("dialog", { name: "Bob remembered the first exchange." });
+  await expect(memoryDialog).toContainText("The player promised Bob to repair the bridge.");
+  const dialogBox = await memoryDialog.boundingBox();
+  assert.ok(dialogBox && dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= 375, "memory dialog fits a phone");
+  await expect(page.getByRole("button", { name: "Close memory" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(memoryDialog).toHaveCount(0);
+  await expect(memoryTrigger).toBeFocused();
+  await memoryTrigger.click();
+  await page.locator(".marinara-capability-villages-memory-backdrop").click({ position: { x: 4, y: 4 } });
+  await expect(memoryDialog).toHaveCount(0);
   await page.getByRole("button", { name: "Dismiss Bob remembered the first exchange." }).click();
   await expect(stack).toHaveCount(0);
   await send("Repeat receipt");

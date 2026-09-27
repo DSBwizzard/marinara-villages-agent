@@ -90,7 +90,13 @@ type VenueSubmission = {
 };
 
 type VenueMemory = { characterId: string; text: string; lineIds?: string[] };
-export type VenueRecordEvent = { id: string; kind: "memory" | "wish" | "venue" | "request"; text: string };
+export type VenueRecordEvent = {
+  id: string;
+  kind: "memory" | "wish" | "venue" | "request";
+  text: string;
+  /** The exact saved memory behind a short memory receipt. Older persisted receipts may omit it. */
+  detail?: string;
+};
 type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 
 /** One document is both the active transcript and the player's durable visit archive. */
@@ -1689,16 +1695,25 @@ async function applyTurnMemories(session: VenueSession, submission: VenueSubmiss
 }
 
 async function receiptForTurn(session: VenueSession, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
-  if (submission.recordEvents) return submission.recordEvents;
+  if (submission.recordEvents?.every((event) => event.kind !== "memory" || event.detail))
+    return submission.recordEvents;
   const village = await readVillageState();
+  if (submission.recordEvents)
+    return submission.recordEvents.map((event) => {
+      if (event.kind !== "memory" || event.detail) return event;
+      const memory = village.chronicle.find((entry) => entry.id === event.id);
+      return memory ? { ...event, detail: memory.text } : event;
+    });
   const events: VenueRecordEvent[] = [];
   for (const memory of submission.turnMemories ?? []) {
     const id = `${session.id}:turn:${submission.id}:memory:${memory.characterId}`;
-    if (village.chronicle.some((entry) => entry.id === id))
+    const saved = village.chronicle.find((entry) => entry.id === id);
+    if (saved)
       events.push({
         id,
         kind: "memory",
         text: `${session.participants.find((person) => person.characterId === memory.characterId)?.name ?? "A villager"} remembered this exchange.`,
+        detail: saved.text,
       });
   }
   const wishId = `${session.id}:wish:${submission.wishId}`;

@@ -120,6 +120,8 @@ let featureProposal: Record<string, string> | null = null;
 let creativeActorIds = ["bob", "tina"];
 let lastVenueSystem = "";
 let lastJudgeSystem = "";
+let venueReplyCalls = 0;
+let wishJudgeCalls = 0;
 let mailboxAccept = true;
 const memoryEvidence: any[] = [];
 const release = configureVillagesRuntime({
@@ -391,6 +393,7 @@ const release = configureVillagesRuntime({
           if (!system.includes("You write one shared scene")) {
             lastJudgeSystem = system;
             assert.match(user, /Has .* really done that/u);
+            wishJudgeCalls += 1;
             return {
               content: JSON.stringify({
                 fulfilled: true,
@@ -402,6 +405,7 @@ const release = configureVillagesRuntime({
             };
           }
           lastVenueSystem = system;
+          venueReplyCalls += 1;
           if (system.includes("Nobody is present."))
             return {
               content: JSON.stringify({
@@ -1222,7 +1226,7 @@ async function main() {
       /no longer in this conversation/u,
     );
 
-    const beforeFulfill = calls;
+    const beforeFulfill = { venue: venueReplyCalls, wish: wishJudgeCalls };
     const fulfilled = await sendVenueTurn({
       sessionId: single.id,
       message: "I delivered the parcel",
@@ -1230,7 +1234,8 @@ async function main() {
       targetId: "tina",
       submissionId: "wish-1",
     });
-    assert.equal(calls - beforeFulfill, 2, "Fulfill spends one judgment and one shared reply call");
+    assert.equal(wishJudgeCalls - beforeFulfill.wish, 1, "Fulfill spends one judgment call");
+    assert.equal(venueReplyCalls - beforeFulfill.venue, 1, "Fulfill spends one shared reply call");
     assert.equal(fulfilled.verdict?.fulfilled, true);
     assert.equal(fulfilled.recordEvents.filter((event) => event.kind === "wish").length, 1);
     assert.doesNotMatch(lastJudgeSystem, /LEGACY_EVENT_POISON/u, "visual Events are not evidence for a wish verdict");
@@ -1246,7 +1251,8 @@ async function main() {
       submissionId: "wish-1",
     });
     assert.equal(replayFulfill.verdict?.reason, fulfilled.verdict?.reason);
-    assert.equal(calls - beforeFulfill, 2, "Fulfill retry spends no second judgment");
+    assert.equal(wishJudgeCalls - beforeFulfill.wish, 1, "Fulfill retry spends no second judgment");
+    assert.equal(venueReplyCalls - beforeFulfill.venue, 1, "Fulfill retry spends no second shared reply");
 
     await sendVenueTurn({
       sessionId: single.id,
@@ -1699,6 +1705,11 @@ async function main() {
     });
     assert.equal(memoryCalls, beforeTurnMemory, "new visits form memories in the existing reply call");
     assert.equal(remembered.recordEvents.filter((event) => event.kind === "memory").length, 1);
+    assert.equal(
+      remembered.recordEvents.find((event) => event.kind === "memory")?.detail,
+      "The player promised Bob to help with the bridge.",
+      "a memory receipt exposes the exact memory that was saved",
+    );
     const memoryId = `${current.id}:turn:turn-memory:memory:bob`;
     assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
     const requestedMove = await sendVenueTurn({
@@ -1714,10 +1725,19 @@ async function main() {
       "verified villager requests have a notice receipt",
     );
     assert.equal(
+      requestedMove.recordEvents.find((event) => event.kind === "request")?.detail,
+      undefined,
+      "non-memory receipts do not expose memory detail",
+    );
+    assert.equal(
       (await readVillageState()).chronicle.filter((entry) => entry.id.includes("memory:tina")).length,
       0,
       "unheard evidence cannot become Tina's memory",
     );
+    const storedTurn = records
+      .get(key("villages", `villages-venue-visit-${current.id}`))
+      .data.submissions.find((submission: any) => submission.id === "turn-memory");
+    storedTurn.recordEvents = storedTurn.recordEvents.map(({ detail: _detail, ...event }: any) => event);
     const replayRemembered = await sendVenueTurn({
       sessionId: current.id,
       message: "Remember the bridge",
@@ -1725,7 +1745,11 @@ async function main() {
       targetId: "bob",
       submissionId: "turn-memory",
     });
-    assert.deepEqual(replayRemembered.recordEvents, remembered.recordEvents, "retry returns stable notice IDs");
+    assert.deepEqual(
+      replayRemembered.recordEvents,
+      remembered.recordEvents,
+      "retry returns stable notice IDs and hydrates detail on an older persisted receipt",
+    );
     assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
     await assert.rejects(
       () => discardVenueVisitDebug(current.id),

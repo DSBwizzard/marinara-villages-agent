@@ -156,9 +156,42 @@ try {
               content: "First reply.\n\nSecond reply.\n\nThird reply.\n\nFourth reply.\n\nFifth reply.\n\nSixth reply.",
               at: now,
             },
+            {
+              id: "aside",
+              role: "assistant",
+              speakerId: "mara",
+              name: "Mara",
+              kind: "side",
+              content: "A small aside rides with the final reply.",
+              asideFor: "answer",
+              at: now,
+            },
+            {
+              id: "whisper",
+              role: "assistant",
+              speakerId: "mara",
+              name: "Mara",
+              kind: "whisper",
+              targetId: "player",
+              content: "A quiet word stays visible too.",
+              asideFor: "answer",
+              at: now,
+            },
           ],
         };
-        value = { session, verdict: null, action: null, recordEvents: [] };
+        value = {
+          session,
+          verdict: null,
+          action: null,
+          recordEvents: [
+            {
+              id: "memory-responsive",
+              kind: "memory",
+              text: "The village remembered this exchange.",
+              detail: "The player answered while Mara shared a quiet aside.",
+            },
+          ],
+        };
       }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -283,8 +316,42 @@ try {
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("First reply.");
     await expect(page.getByRole("region", { name: "Current paragraph" })).not.toContainText("Sixth reply.");
-    await page.getByRole("button", { name: "Next paragraph" }).click();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Second reply.");
+    const memoryTrigger = page.getByRole("button", { name: "View memory: The village remembered this exchange." });
+    await memoryTrigger.click();
+    await expect(page.getByRole("dialog", { name: "The village remembered this exchange." })).toContainText(
+      "The player answered while Mara shared a quiet aside.",
+    );
+    await page.getByRole("button", { name: "Close memory" }).click();
+    await expect(memoryTrigger).toBeFocused();
+    for (let step = 0; step < 5; step += 1) await page.getByRole("button", { name: "Next paragraph" }).click();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Sixth reply.");
+    const asideBand = page.locator(".marinara-capability-villages-chat-vn-asides");
+    await expect(asideBand).toContainText("A small aside rides with the final reply.");
+    await expect(asideBand).toContainText("A quiet word stays visible too.");
+    const asideOverflow = await asideBand.evaluate((element) => ({
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    }));
+    assert.ok(
+      asideOverflow.scrollHeight <= asideOverflow.clientHeight + 1,
+      `the ${width}x${height} two-bubble fixture is fully readable without clipping (${asideOverflow.scrollHeight}/${asideOverflow.clientHeight})`,
+    );
+    const asideBox = await asideBand.boundingBox();
+    const composerBox = await page.locator(".marinara-capability-villages-composer").boundingBox();
+    assert.ok(
+      asideBox &&
+        composerBox &&
+        asideBox.x >= 0 &&
+        asideBox.x + asideBox.width <= width &&
+        asideBox.y >= 0 &&
+        asideBox.y + asideBox.height <= composerBox.y,
+      "aside and whisper bubbles stay visible above the composer",
+    );
+    assert.equal(
+      await asideBand.evaluate((element) => getComputedStyle(element).position),
+      mobile ? "static" : "absolute",
+      "mobile asides reserve visible space while desktop asides continue floating",
+    );
     assert.deepEqual(errors, [], `${width}×${height} renders without page errors`);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
