@@ -191,9 +191,10 @@ function projectVillager(
     sprite: villager.sprite
       ? {
           ...villager.sprite,
-          images: villager.sprite.expressions.map(({ label, filename, revision }) => ({
+          images: villager.sprite.expressions.map(({ view, label, filename, revision }) => ({
+            view,
             label,
-            url: `/api/sprites/${villager.sprite!.assetId}/file/${encodeURIComponent(filename)}${revision ? `?v=${revision}` : ""}`,
+            url: `/api/sprites/${view === "side" ? villager.sprite!.sideAssetId : villager.sprite!.assetId}/file/${encodeURIComponent(filename)}${revision ? `?v=${revision}` : ""}`,
           })),
         }
       : null,

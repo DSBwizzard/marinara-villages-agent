@@ -48,6 +48,7 @@ export type VenueLine = {
   heardBy: string[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
   expression?: string;
+  gazeAt?: string;
   targetId?: string;
   asideFor?: string;
 };
@@ -162,6 +163,7 @@ function coerceSession(value: unknown): VenueSession {
         })
         .filter((person) => person.characterId && person.name)
     : [];
+  const participantIds = new Set(participants.map((person) => person.characterId));
   const lines: VenueLine[] = Array.isArray(raw.lines)
     ? raw.lines
         .map((value) => {
@@ -178,6 +180,9 @@ function coerceSession(value: unknown): VenueSession {
               ? { kind: row.kind as VenueLine["kind"] }
               : {}),
             ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
+            ...(row.gazeAt === "player" || (typeof row.gazeAt === "string" && participantIds.has(row.gazeAt))
+              ? { gazeAt: row.gazeAt as string }
+              : {}),
             ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
             ...(typeof row.asideFor === "string" ? { asideFor: row.asideFor } : {}),
           };
@@ -419,6 +424,7 @@ async function generate(
     const memories = promptMemories
       .filter((entry) => entry.scope === "private" && entry.actors.some((actor) => actor.id === person.characterId))
       .map((entry) => entry.text);
+    const spriteLabels = [...new Set(resident.sprite?.expressions.map((entry) => entry.label) ?? [])].slice(0, 8);
     return [
       `${card.name} (${person.characterId})`,
       `Card: ${[card.systemPrompt, card.description, card.personality, card.scenario, card.backstory, card.exampleDialogue].filter(Boolean).join("\n").slice(0, 2800)}`,
@@ -431,7 +437,10 @@ async function generate(
       }.`,
       `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
       `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
-    ].join("\n");
+      spriteLabels.length ? `Visible expressions for ${card.name}: ${spriteLabels.join(", ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   });
   const older = session.lines.slice(0, -16);
   const queryWords = memoryQuery.toLowerCase().match(/[a-z]{4,}/gu) ?? [];
@@ -563,7 +572,7 @@ async function generate(
     consentRetry
       ? "The previous draft changed a resident-controlled space without an approved exact proposal. Rewrite the outcome as a pending request, a refusal, or a temporary attempt; omit sceneChange and any claim that a lasting edit occurred."
       : "",
-    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional. Narration has no speakerId and is visible to the whole active cast. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Alternate narration and speakers naturally, including reactions to one another within this single response. Use only active IDs; keep private knowledge with those who know it. For a greeting, heardPlayerBy is empty.",
+    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Alternate narration and speakers naturally, including reactions to one another within this single response. Use only active IDs; keep private knowledge with those who know it. For a greeting, heardPlayerBy is empty.",
   ].join("\n\n");
   const messages: CapabilityLanguageModelMessage[] = [
     { role: "system", content: system },
@@ -751,6 +760,7 @@ type VenueReplyLine = {
   content: string;
   heardBy: string[];
   expression?: string;
+  gazeAt?: string;
   targetId?: string;
   anchorIndex?: number;
 };
@@ -795,6 +805,15 @@ export function parseVenueReply(
     // An invalid whisper target must never make the whole greeting or turn fail.
     // Treat it as an ordinary spoken line, without claiming anyone heard a whisper.
     if (kind === "whisper" && !targetId) kind = "dialogue";
+    const requestedGaze = asTrimmedString(row.gazeAt);
+    const gazeAt =
+      kind === "narration"
+        ? ""
+        : requestedGaze === "player" || (allowed.has(requestedGaze) && requestedGaze !== speakerId)
+          ? requestedGaze
+          : kind === "whisper"
+            ? targetId
+            : "";
     return {
       kind,
       speakerId: kind === "narration" ? "__venue_scene__" : speakerId,
@@ -804,6 +823,7 @@ export function parseVenueReply(
           ? [...audience]
           : [...new Set([speakerId, ...ids(row.heardBy), ...(kind === "whisper" ? [targetId] : [])])],
       ...(expression ? { expression } : {}),
+      ...(gazeAt ? { gazeAt } : {}),
       ...(targetId ? { targetId } : {}),
     };
   });
@@ -843,6 +863,7 @@ function appendVenueReply(session: VenueSession, lines: ReturnType<typeof parseV
       heardBy: line.heardBy,
       kind: line.kind,
       ...(line.expression ? { expression: line.expression } : {}),
+      ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
       ...(line.targetId ? { targetId: line.targetId } : {}),
       ...(line.anchorIndex !== undefined ? { asideFor: lineIds[line.anchorIndex]! } : {}),
     }),
