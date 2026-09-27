@@ -354,10 +354,13 @@ function sideLineDirection(playerName: string): string {
 }
 
 function spriteExpressionDirection(village: VillageState, characterId: string): string {
-  const labels =
-    village.villagers
-      .find((entry) => entry.characterId === characterId)
-      ?.sprite?.expressions.map((entry) => entry.label) ?? [];
+  const labels = [
+    ...new Set(
+      village.villagers
+        .find((entry) => entry.characterId === characterId)
+        ?.sprite?.expressions.map((entry) => entry.label) ?? [],
+    ),
+  ];
   if (!labels.includes("neutral")) return "";
   return `When one of your lines has a visible expression, you may start that paragraph with [expression:label]. Available labels: ${labels.join(", ")}. Use at most one expression label per paragraph. Leave the tag out when neutral fits. The tag changes the picture only; it does not change how you write.`;
 }

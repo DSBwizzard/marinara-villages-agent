@@ -263,27 +263,36 @@ function coerceResidentSprite(value: unknown): VillageVillager["sprite"] {
   const raw = asRecord(value);
   const assetId = asString(raw.assetId);
   if (!/^villages-[a-f0-9-]{36}$/i.test(assetId)) return null;
+  const sideAssetId =
+    /^villages-[a-f0-9-]{36}$/i.test(asString(raw.sideAssetId)) && asString(raw.sideAssetId) !== assetId
+      ? asString(raw.sideAssetId)
+      : undefined;
   const seen = new Set<string>();
+  const counts = { front: 0, side: 0 };
   const expressions = (Array.isArray(raw.expressions) ? raw.expressions : [])
     .map((value) => {
       const entry = asRecord(value);
+      const view = entry.view === "side" ? "side" : "front";
       const label = asString(entry.label);
       const filename = asString(entry.filename);
       if (
         !/^[a-z0-9_-]{1,40}$/.test(label) ||
         !/^[a-z0-9_-]{1,40}\.(?:png|jpg|jpeg|webp|avif)$/.test(filename) ||
-        seen.has(label)
+        seen.has(`${view}:${label}`)
       )
         return null;
-      seen.add(label);
+      seen.add(`${view}:${label}`);
       const revision =
         typeof entry.revision === "number" && Number.isSafeInteger(entry.revision) && entry.revision > 0
           ? entry.revision
           : undefined;
-      return { label, filename, ...(revision ? { revision } : {}) };
+      return { view, label, filename, ...(revision ? { revision } : {}) };
     })
-    .filter((entry): entry is { label: string; filename: string; revision?: number } => entry !== null)
-    .slice(0, 24);
+    .filter(
+      (entry): entry is { view: "front" | "side"; label: string; filename: string; revision?: number } =>
+        entry !== null,
+    )
+    .filter((entry) => (entry.view === "front" || sideAssetId !== undefined) && ++counts[entry.view] <= 24);
   if (expressions.length === 0) return null;
   const framing = asRecord(raw.framing);
   const cropPercent =
@@ -292,6 +301,7 @@ function coerceResidentSprite(value: unknown): VillageVillager["sprite"] {
       : 58;
   return {
     assetId,
+    ...(sideAssetId ? { sideAssetId } : {}),
     expressions,
     framing: { mode: framing.mode === "half" ? "half" : "full", cropPercent },
   };

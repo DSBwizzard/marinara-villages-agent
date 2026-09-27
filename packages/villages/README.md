@@ -8,6 +8,12 @@ Find the package in **Agents → Download Agents**. Installation requires a rest
 
 Villages is a first-class downloadable agent in the normal catalog channels. It remains under active development while this release is exercised.
 
+## Villager sprites
+
+Open **Villagers → Sprites** beside any resident to use their sprite studio. **Facing you** holds front-facing art; **Facing villagers** holds one right-facing side profile that the scene mirrors when the resident looks left. Start with a front neutral sprite, then a side neutral. Add only the expressions you want in either view. Each generated candidate is one requested image, shown for review before approval; uploading, approval, mirroring, and sheet export do not call an image model. The Engine may try its configured fallback image connection if the first attempt fails.
+
+Approved images belong to this Village. The scene uses the expression and gaze chosen in the existing dialogue reply, falls back to a neutral expression or front art when needed, and never generates sprites while you talk. The studio can copy existing Engine full-body sprites into the front view and export approved front and side cells with a JSON manifest.
+
 ## Venue editing and resident authority
 
 **View Venue → Edit Venue** edits venue details and pictures. An occupied villager Residence requires an invitation to enter its shared or private space. Once the player has entered, that space remains visible and its picture can be drawn, uploaded, replaced, or removed by the player. Edits to an occupied room's description or physical state become exact proposals. Every current resident approves a shared proposal; the owner approves a private proposal through evidenced spoken approval.
@@ -19,6 +25,8 @@ A player can propose a move to an available venue. The villager accepts or refus
 Residence entry and editing rely on explicit resident dialogue. A recorded invitation permits a one-use future visit; an invitation during a scene can admit the player immediately. Entry does not authorize changing furnishings or room state. A move archives the old private room and asks the System connection once to select portable personal elements for a new room. A failed adaptation leaves a retryable draft and the archive intact.
 
 ## What this release contains
+
+0.6.41 adds front and side Villager sprite sets, an inline two-view sprite studio with expression tiles and candidate review, and model-selected gaze that turns residents toward one another in venue scenes. Image generation remains one explicit cell at a time; older approved sprites stay front-facing.
 
 0.6.40 makes in-chat memory notices tappable on desktop and mobile, opening the exact saved memory while keeping dismissal separate. Phone notices take less room, and side remarks and whispers stay visible above the reading card in both portrait and short-landscape layouts.
 

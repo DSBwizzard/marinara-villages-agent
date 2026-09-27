@@ -445,7 +445,8 @@ export type VillageVillager = {
 
 export type VillageResidentSprite = {
   assetId: string;
-  expressions: Array<{ label: string; filename: string; revision?: number }>;
+  sideAssetId?: string;
+  expressions: Array<{ view: "front" | "side"; label: string; filename: string; revision?: number }>;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
 
@@ -1353,7 +1354,7 @@ export type VillagePlayerIdentity = {
 /** A villager as the tab renders it: live card fields where they exist, cached name otherwise. */
 export type VillageVillagerView = {
   characterId: string;
-  sprite: (VillageResidentSprite & { images: Array<{ label: string; url: string }> }) | null;
+  sprite: (VillageResidentSprite & { images: Array<{ view: "front" | "side"; label: string; url: string }> }) | null;
   name: string;
   summary: string;
   tags: string[];

@@ -502,18 +502,18 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
-  app.post<{ Params: CharacterParams; Body: { expression?: unknown; appearance?: unknown; useReference?: unknown } }>(
-    "/villagers/:characterId/sprites/generate",
-    async (request, reply) => {
-      try {
-        return await generateResidentSprite(readCharacterId(request.params.characterId), request.body ?? {});
-      } catch (error) {
-        return fail(reply, error, "drawing a resident sprite");
-      }
-    },
-  );
+  app.post<{
+    Params: CharacterParams;
+    Body: { view?: unknown; expression?: unknown; appearance?: unknown; useReference?: unknown };
+  }>("/villagers/:characterId/sprites/generate", async (request, reply) => {
+    try {
+      return await generateResidentSprite(readCharacterId(request.params.characterId), request.body ?? {});
+    } catch (error) {
+      return fail(reply, error, "drawing a resident sprite");
+    }
+  });
 
-  app.post<{ Params: CharacterParams; Body: { expression?: unknown; image?: unknown } }>(
+  app.post<{ Params: CharacterParams; Body: { view?: unknown; expression?: unknown; image?: unknown } }>(
     "/villagers/:characterId/sprites/approve",
     { bodyLimit: SETTINGS_BODY_LIMIT },
     async (request, reply) => {
@@ -525,11 +525,15 @@ export async function villagesRoutes(engine: FastifyInstance) {
     },
   );
 
-  app.post<{ Params: CharacterParams; Body: { expression?: unknown } }>(
+  app.post<{ Params: CharacterParams; Body: { view?: unknown; expression?: unknown } }>(
     "/villagers/:characterId/sprites/import",
     async (request, reply) => {
       try {
-        return await importSourceResidentSprite(readCharacterId(request.params.characterId), request.body?.expression);
+        return await importSourceResidentSprite(
+          readCharacterId(request.params.characterId),
+          request.body?.expression,
+          request.body?.view,
+        );
       } catch (error) {
         return fail(reply, error, "copying a source sprite");
       }

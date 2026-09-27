@@ -42,6 +42,7 @@ import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villag
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
 import { createVillagesClientId, shouldSubmitVenueKey } from "./villages-venue-send";
 import { nextRoomReadIndex } from "./villages-room-reading";
+import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import {
   focusedPhotoScale,
@@ -100,8 +101,8 @@ type VillageVillagerView = {
 
 type ResidentSprite = {
   assetId: string;
-  expressions: Array<{ label: string; filename: string }>;
-  images: Array<{ label: string; url: string }>;
+  expressions: Array<{ view: "front" | "side"; label: string; filename: string }>;
+  images: Array<{ view: "front" | "side"; label: string; url: string }>;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
 
@@ -746,6 +747,7 @@ type RoomLine = {
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
   expression?: string;
+  gazeAt?: string;
   targetId?: string;
   asideFor?: string;
   id?: string;
@@ -1514,7 +1516,9 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-menu-group-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
 .${ELEMENT_TAG}-menu-body { display: flex; flex-direction: column; gap: 1rem; }
 .${ELEMENT_TAG}-roster { display: flex; flex-direction: column; gap: .375rem; margin-top: .75rem; }
-.${ELEMENT_TAG}-roster-row { display: flex; align-items: center; gap: .5rem; font-size: .75rem; }
+.${ELEMENT_TAG}-roster-entry { min-width: 0; border: 1px solid var(--border); border-radius: .75rem; padding: .5rem .625rem; background: color-mix(in srgb, var(--popover) 92%, transparent); }
+.${ELEMENT_TAG}-roster-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; font-size: .75rem; }
+.${ELEMENT_TAG}-roster-row > div:first-child { flex: 1 1 10rem; min-width: 0; }
 .${ELEMENT_TAG}-roster-row > .${ELEMENT_TAG}-villager-name {
   flex: 1 1 auto;
   min-width: 0;
@@ -2177,15 +2181,37 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-chat-figure[data-sprite="true"] > img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .${ELEMENT_TAG}-chat-figure[data-sprite="true"][data-framing="half"] { overflow: hidden; height: min(54cqh, 25rem); }
 .${ELEMENT_TAG}-chat-figure[data-sprite="true"][data-framing="half"] > img { object-fit: cover; object-position: center top; }
-.${ELEMENT_TAG}-sprite-editor { border: 1px solid var(--border); border-radius: .75rem; padding: 1rem; margin-top: 1rem; display: grid; gap: .75rem; }
-.${ELEMENT_TAG}-sprite-editor label { display: grid; gap: .25rem; }
+.${ELEMENT_TAG}-sprite-editor { min-width: 0; border-top: 1px solid var(--border); padding: 1rem .125rem .25rem; margin-top: .625rem; display: grid; gap: .875rem; }
+.${ELEMENT_TAG}-sprite-heading, .${ELEMENT_TAG}-sprite-section-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; }
+.${ELEMENT_TAG}-sprite-heading h3 { margin: 0; font-size: 1.1rem; }
+.${ELEMENT_TAG}-sprite-heading p { margin: .25rem 0 0; color: var(--muted-foreground); font-size: .8125rem; }
+.${ELEMENT_TAG}-sprite-count { border: 1px solid var(--border); border-radius: 99rem; padding: .25rem .625rem; white-space: nowrap; font-size: .75rem; }
+.${ELEMENT_TAG}-sprite-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.${ELEMENT_TAG}-sprite-view { display: grid; gap: .2rem; min-width: 0; text-align: left; border: 1px solid var(--border); border-radius: .7rem; padding: .7rem .8rem; background: var(--popover); color: var(--foreground); cursor: pointer; font: inherit; }
+.${ELEMENT_TAG}-sprite-view span { color: var(--muted-foreground); font-size: .75rem; }
+.${ELEMENT_TAG}-sprite-view[data-active="true"], .${ELEMENT_TAG}-sprite-choice[data-active="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--popover)); box-shadow: inset 0 0 0 1px var(--primary); }
+.${ELEMENT_TAG}-sprite-section-head { color: var(--foreground); font-size: .8125rem; }
+.${ELEMENT_TAG}-sprite-section-head span { color: var(--muted-foreground); }
+.${ELEMENT_TAG}-sprite-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr)); gap: .5rem; }
+.${ELEMENT_TAG}-sprite-choice { display: grid; justify-items: center; gap: .15rem; min-width: 0; border: 1px solid var(--border); border-radius: .65rem; padding: .4rem; background: var(--popover); color: var(--foreground); cursor: pointer; font: inherit; text-transform: capitalize; }
+.${ELEMENT_TAG}-sprite-choice-art { display: grid; place-items: center; width: 100%; height: 6rem; border-radius: .4rem; background: color-mix(in srgb, var(--muted) 75%, transparent); color: var(--muted-foreground); font-size: 1.3rem; overflow: hidden; }
+.${ELEMENT_TAG}-sprite-choice-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.${ELEMENT_TAG}-sprite-choice small { color: var(--muted-foreground); font-size: .6875rem; text-transform: none; }
+.${ELEMENT_TAG}-sprite-selected { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .75rem; font-size: .8125rem; text-transform: capitalize; }
+.${ELEMENT_TAG}-sprite-selected span { color: var(--muted-foreground); text-transform: none; }
+.${ELEMENT_TAG}-sprite-editor label { display: grid; gap: .25rem; font-size: .8125rem; }
 .${ELEMENT_TAG}-sprite-editor label.${ELEMENT_TAG}-row { display: flex; align-items: center; }
 .${ELEMENT_TAG}-sprite-editor textarea { min-height: 5rem; }
-.${ELEMENT_TAG}-sprite-candidate { display: grid; justify-items: start; gap: .5rem; }
-.${ELEMENT_TAG}-sprite-candidate img { max-width: min(100%, 20rem); max-height: 24rem; object-fit: contain; background: repeating-conic-gradient(#7773 0 25%, transparent 0 50%) 0 0/20px 20px; }
-.${ELEMENT_TAG}-sprite-approved { display: flex; flex-wrap: wrap; gap: .5rem; }
-.${ELEMENT_TAG}-sprite-approved > div { display: grid; width: 6rem; text-align: center; }
-.${ELEMENT_TAG}-sprite-approved img { width: 6rem; height: 8rem; object-fit: contain; }
+.${ELEMENT_TAG}-sprite-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.${ELEMENT_TAG}-sprite-candidate { display: grid; gap: .75rem; border: 1px solid var(--border); border-radius: .7rem; padding: .75rem; background: var(--popover); }
+.${ELEMENT_TAG}-sprite-candidate-views { display: flex; flex-wrap: wrap; gap: .75rem; }
+.${ELEMENT_TAG}-sprite-candidate-views > div { display: grid; gap: .25rem; justify-items: center; flex: 0 1 12rem; min-width: 0; font-size: .75rem; color: var(--muted-foreground); }
+.${ELEMENT_TAG}-sprite-candidate-views img { display: block; width: 100%; height: 14rem; object-fit: contain; background: repeating-conic-gradient(#7773 0 25%, transparent 0 50%) 0 0/20px 20px; }
+.${ELEMENT_TAG}-sprite-mirrored { transform: scaleX(-1); }
+.${ELEMENT_TAG}-sprite-more { border-top: 1px solid var(--border); padding-top: .5rem; }
+.${ELEMENT_TAG}-sprite-more summary { cursor: pointer; font-size: .8125rem; }
+.${ELEMENT_TAG}-sprite-more > .${ELEMENT_TAG}-row { margin-top: .75rem; }
+.${ELEMENT_TAG}-sprite-view:focus-visible, .${ELEMENT_TAG}-sprite-choice:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 /*
   THE ROOM'S OWN CAST, standing in the floor the villager stands in.
 
@@ -2215,6 +2241,7 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { flex-basis: 40%; height: 100%; }
 .${ELEMENT_TAG}-chat-cast-person > img { display: block; width: 100%; height: calc(100% - 1.5rem); object-fit: contain; object-position: center bottom; filter: drop-shadow(0 .5rem .75rem #0009); }
 .${ELEMENT_TAG}-chat-cast-person > img[data-framing="half"] { object-fit: cover; object-position: center top; }
+.${ELEMENT_TAG}-chat-cast-person > img[data-facing="left"] { transform: scaleX(-1); }
 .${ELEMENT_TAG}-chat-cast-person > .${ELEMENT_TAG}-avatar { width: min(7rem, 100%); height: auto; aspect-ratio: 1; }
 .${ELEMENT_TAG}-chat-cast-person > span:not(.${ELEMENT_TAG}-avatar) { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .15rem .35rem; border-radius: .35rem; background: #0009; }
 .${ELEMENT_TAG}-chat-cast-rest { display: flex; flex-wrap: wrap; justify-content: center; gap: .25rem; max-height: 2rem; overflow-y: auto; }
@@ -7998,7 +8025,7 @@ async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promi
       const index = STARTER_SPRITE_EXPRESSIONS.indexOf(label as (typeof STARTER_SPRITE_EXPRESSIONS)[number]);
       return index < 0 ? STARTER_SPRITE_EXPRESSIONS.length : index;
     };
-    return rank(a.label) - rank(b.label) || a.label.localeCompare(b.label);
+    return rank(a.label) - rank(b.label) || a.label.localeCompare(b.label) || a.view.localeCompare(b.view);
   });
   const cellWidth = 512;
   const cellHeight = 768;
@@ -8008,7 +8035,14 @@ async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promi
   canvas.height = Math.ceil(ordered.length / columns) * cellHeight;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("The browser cannot assemble this sprite sheet.");
-  const cells: Array<{ expression: string; x: number; y: number; width: number; height: number }> = [];
+  const cells: Array<{
+    view: "front" | "side";
+    expression: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> = [];
   for (let index = 0; index < ordered.length; index += 1) {
     const sprite = ordered[index]!;
     const image = new Image();
@@ -8020,7 +8054,7 @@ async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promi
     const width = Math.round(image.naturalWidth * scale);
     const height = Math.round(image.naturalHeight * scale);
     context.drawImage(image, x + Math.floor((cellWidth - width) / 2), y + cellHeight - height, width, height);
-    cells.push({ expression: sprite.label, x, y, width: cellWidth, height: cellHeight });
+    cells.push({ view: sprite.view, expression: sprite.label, x, y, width: cellWidth, height: cellHeight });
   }
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
@@ -8050,21 +8084,33 @@ function ResidentSpriteEditor({
   onSaved: (snapshot: VillageSnapshot) => void;
 }) {
   const base = `/villagers/${encodeURIComponent(villager.characterId)}/sprites`;
+  const [view, setView] = useState<"front" | "side">("front");
   const [expression, setExpression] = useState("neutral");
   const [custom, setCustom] = useState("");
   const [appearance, setAppearance] = useState("");
   const [useReference, setUseReference] = useState(true);
-  const [candidate, setCandidate] = useState<string | null>(null);
+  const [candidate, setCandidate] = useState<{ view: "front" | "side"; label: string; image: string } | null>(null);
   const [source, setSource] = useState<Array<{ expression: string; url: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-  const approved = villager.sprite?.images ?? [];
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const allApproved = villager.sprite?.images ?? [];
+  const approved = allApproved.filter((item) => item.view === view);
+  const hasFrontNeutral = allApproved.some((item) => item.view === "front" && item.label === "neutral");
   const hasNeutral = approved.some((item) => item.label === "neutral");
   const selectedExpression = expression === "custom" ? custom.trim().toLowerCase().replace(/\s+/g, "_") : expression;
+  const selectedApproved = approved.find((item) => item.label === selectedExpression);
+  const expressionChoices = [
+    ...STARTER_SPRITE_EXPRESSIONS,
+    ...allApproved
+      .map((item) => item.label)
+      .filter((label) => !STARTER_SPRITE_EXPRESSIONS.includes(label as (typeof STARTER_SPRITE_EXPRESSIONS)[number])),
+  ].filter((label, index, all) => all.indexOf(label) === index);
 
   useEffect(() => {
     setCandidate(null);
+    setView("front");
     setExpression("neutral");
     setError("");
     request<{ sprites: Array<{ expression: string; url: string }> }>(`${base}/source`)
@@ -8088,40 +8134,96 @@ function ResidentSpriteEditor({
   function validExpression(): string {
     if (!/^[a-z0-9_-]{1,40}$/.test(selectedExpression))
       throw new Error("Use a short expression name with letters, numbers, dashes, or underscores.");
-    if (selectedExpression !== "neutral" && !hasNeutral) throw new Error("Approve the neutral sprite first.");
+    if (view === "side" && !hasFrontNeutral) throw new Error("Approve the front neutral sprite first.");
+    if (selectedExpression !== "neutral" && !hasNeutral) throw new Error(`Approve the ${view} neutral sprite first.`);
     return selectedExpression;
   }
 
   return (
-    <section className={`${ELEMENT_TAG}-sprite-editor`} aria-label={`${villager.name} sprite creator`}>
-      <h3>Sprites for {villager.name}</h3>
-      <p>
-        Generate a neutral full-body sprite, review it, then add expressions one at a time. Your approved art belongs to
-        this Village.
-      </p>
-      <label>
-        Expression
-        <select
-          value={expression}
-          onChange={(event) => {
-            setExpression(event.target.value);
+    <section className={`${ELEMENT_TAG}-sprite-editor`} aria-label={`${villager.name} sprite studio`}>
+      <div className={`${ELEMENT_TAG}-sprite-heading`}>
+        <div>
+          <h3>{villager.name}&apos;s sprite studio</h3>
+          <p>Build a front view for player conversations and one side profile for villager-to-villager moments.</p>
+        </div>
+        <span className={`${ELEMENT_TAG}-sprite-count`}>{allApproved.length} approved</span>
+      </div>
+      <div className={`${ELEMENT_TAG}-sprite-views`} aria-label="Sprite view">
+        {(["front", "side"] as const).map((item) => (
+          <button
+            key={item}
+            type="button"
+            className={`${ELEMENT_TAG}-sprite-view`}
+            aria-pressed={view === item}
+            data-active={view === item ? "true" : "false"}
+            disabled={busy}
+            onClick={() => {
+              setView(item);
+              setExpression("neutral");
+              setCandidate(null);
+            }}
+          >
+            <strong>{item === "front" ? "Facing you" : "Facing villagers"}</strong>
+            <span>
+              {allApproved.filter((cell) => cell.view === item).length} approved ·{" "}
+              {item === "front" ? "front" : "side, mirrored left or right"}
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className={`${ELEMENT_TAG}-sprite-section-head`}>
+        <strong>Choose an expression</strong>
+        <span>Only approved images appear in scenes.</span>
+      </div>
+      <div className={`${ELEMENT_TAG}-sprite-choices`}>
+        {expressionChoices.map((item) => {
+          const image = approved.find((cell) => cell.label === item);
+          return (
+            <button
+              key={item}
+              type="button"
+              className={`${ELEMENT_TAG}-sprite-choice`}
+              data-active={expression === item ? "true" : "false"}
+              aria-pressed={expression === item}
+              disabled={busy}
+              onClick={() => {
+                setExpression(item);
+                setCandidate(null);
+              }}
+            >
+              <span className={`${ELEMENT_TAG}-sprite-choice-art`}>
+                {image ? <img src={image.url} alt="" /> : <span aria-hidden="true">＋</span>}
+              </span>
+              <span>{item}</span>
+              <small>{image ? "Approved" : "Open"}</small>
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-sprite-choice`}
+          data-active={expression === "custom" ? "true" : "false"}
+          aria-pressed={expression === "custom"}
+          disabled={busy}
+          onClick={() => {
+            setExpression("custom");
             setCandidate(null);
           }}
         >
-          {STARTER_SPRITE_EXPRESSIONS.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-          <option value="custom">Custom…</option>
-        </select>
-      </label>
+          <span className={`${ELEMENT_TAG}-sprite-choice-art`} aria-hidden="true">
+            ✦
+          </span>
+          <span>Custom</span>
+          <small>Name your own</small>
+        </button>
+      </div>
       {expression === "custom" ? (
         <label>
-          Custom expression
+          Custom expression name
           <input
             value={custom}
             maxLength={40}
+            disabled={busy}
             onChange={(event) => {
               setCustom(event.target.value);
               setCandidate(null);
@@ -8129,85 +8231,145 @@ function ResidentSpriteEditor({
           />
         </label>
       ) : null}
-      <p className={`${ELEMENT_TAG}-hint`}>More starter expressions are coming.</p>
+      <div className={`${ELEMENT_TAG}-sprite-selected`}>
+        <strong>
+          {view === "front" ? "Front" : "Side"} · {selectedExpression || "custom"}
+        </strong>
+        <span>
+          {selectedApproved
+            ? "Approved art is ready. You can replace it after reviewing a new candidate."
+            : "No approved art yet."}
+        </span>
+      </div>
+      {view === "side" && !hasFrontNeutral ? (
+        <p className={`${ELEMENT_TAG}-hint`}>
+          Start with an approved front neutral sprite to keep the side profile recognizable.
+        </p>
+      ) : null}
+      {selectedExpression !== "neutral" && !hasNeutral ? (
+        <p className={`${ELEMENT_TAG}-hint`}>Approve this view&apos;s neutral sprite before adding expressions.</p>
+      ) : null}
       <label>
         Appearance details for generation
         <textarea
           value={appearance}
           maxLength={2000}
+          disabled={busy}
           onChange={(event) => setAppearance(event.target.value)}
           placeholder="Use the resident’s saved appearance, or describe it here"
         />
       </label>
       <label className={`${ELEMENT_TAG}-row`}>
-        <input type="checkbox" checked={useReference} onChange={(event) => setUseReference(event.target.checked)} /> Use
-        approved neutral and available portrait as identity references
+        <input
+          type="checkbox"
+          checked={useReference}
+          disabled={busy}
+          onChange={(event) => setUseReference(event.target.checked)}
+        />{" "}
+        Use an approved neutral or available portrait as the identity reference
       </label>
       <p className={`${ELEMENT_TAG}-hint`}>
         Turn references off for a connection that cannot accept images. Review identity carefully before approval.
       </p>
-      <div className={`${ELEMENT_TAG}-row`}>
+      <div className={`${ELEMENT_TAG}-sprite-actions`}>
         <button
           type="button"
           className={`${ELEMENT_TAG}-button`}
-          disabled={busy}
+          disabled={busy || (view === "side" && !hasFrontNeutral) || (selectedExpression !== "neutral" && !hasNeutral)}
           onClick={() =>
             void perform(async () => {
               const label = validExpression();
               const result = await request<{ image: string; width: number; height: number }>(`${base}/generate`, {
                 method: "POST",
-                body: JSON.stringify({ expression: label, appearance, useReference }),
+                body: JSON.stringify({ view, expression: label, appearance, useReference }),
               });
-              setCandidate(result.image);
+              setCandidate({ view, label, image: result.image });
               setNote(`Candidate: ${result.width} × ${result.height}. Review before approving.`);
             })
           }
         >
-          {busy ? "Working…" : candidate ? "Retry this expression" : "Generate candidate"}
+          {busy ? "Working…" : `Generate ${view} ${selectedExpression || "sprite"} · 1 image request`}
         </button>
-        <label className={`${ELEMENT_TAG}-button`}>
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          disabled={busy || (view === "side" && !hasFrontNeutral) || (selectedExpression !== "neutral" && !hasNeutral)}
+          onClick={() => uploadRef.current?.click()}
+        >
           Upload candidate
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/avif"
-            hidden
-            onChange={(event) =>
-              void perform(async () => {
-                validExpression();
-                const file = event.target.files?.[0];
-                if (file) setCandidate(await readFileAsDataUrl(file));
-                event.target.value = "";
-              })
-            }
-          />
-        </label>
+        </button>
+        <input
+          ref={uploadRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/avif"
+          hidden
+          onChange={(event) =>
+            void perform(async () => {
+              const label = validExpression();
+              const file = event.target.files?.[0];
+              if (file) setCandidate({ view, label, image: await readFileAsDataUrl(file) });
+              event.target.value = "";
+            })
+          }
+        />
       </div>
+      <p className={`${ELEMENT_TAG}-hint`}>
+        One cell per click. Approval, mirroring, and export use no image API. If the selected Engine connection fails,
+        its configured fallback may make another provider attempt.
+      </p>
       {candidate ? (
         <div className={`${ELEMENT_TAG}-sprite-candidate`}>
-          <img src={candidate} alt={`${selectedExpression} candidate for ${villager.name}`} />
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button`}
-            disabled={busy}
-            onClick={() =>
-              void perform(async () => {
-                const next = await request<VillageSnapshot>(`${base}/approve`, {
-                  method: "POST",
-                  body: JSON.stringify({ expression: validExpression(), image: candidate }),
-                });
-                onSaved(next);
-                setCandidate(null);
-                setNote(`${selectedExpression} approved.`);
-              })
-            }
-          >
-            Approve this sprite
-          </button>
+          <div className={`${ELEMENT_TAG}-sprite-section-head`}>
+            <strong>Review candidate</strong>
+            <span>
+              {candidate.view} · {candidate.label}
+            </span>
+          </div>
+          <div className={`${ELEMENT_TAG}-sprite-candidate-views`}>
+            <div>
+              <img src={candidate.image} alt={`${candidate.view} ${candidate.label} candidate for ${villager.name}`} />
+              <span>{candidate.view === "side" ? "Facing right" : "Facing you"}</span>
+            </div>
+            {candidate.view === "side" ? (
+              <div>
+                <img className={`${ELEMENT_TAG}-sprite-mirrored`} src={candidate.image} alt="" />
+                <span>Mirrored left · no extra image</span>
+              </div>
+            ) : null}
+          </div>
+          <div className={`${ELEMENT_TAG}-row`}>
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={busy}
+              onClick={() =>
+                void perform(async () => {
+                  const next = await request<VillageSnapshot>(`${base}/approve`, {
+                    method: "POST",
+                    body: JSON.stringify({ view: candidate.view, expression: candidate.label, image: candidate.image }),
+                  });
+                  onSaved(next);
+                  setCandidate(null);
+                  setNote(`${candidate.view} ${candidate.label} approved.`);
+                })
+              }
+            >
+              Approve this sprite
+            </button>
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={busy}
+              onClick={() => setCandidate(null)}
+            >
+              Discard candidate
+            </button>
+          </div>
         </div>
       ) : null}
-      {source.length ? (
-        <div>
-          <p>Copy an existing Engine full-body sprite:</p>
+      {source.length && view === "front" ? (
+        <details className={`${ELEMENT_TAG}-sprite-more`}>
+          <summary>Copy an existing Engine full-body sprite</summary>
           <div className={`${ELEMENT_TAG}-row`}>
             {source.map((item) => (
               <button
@@ -8219,7 +8381,7 @@ function ResidentSpriteEditor({
                   void perform(async () => {
                     const next = await request<VillageSnapshot>(`${base}/import`, {
                       method: "POST",
-                      body: JSON.stringify({ expression: item.expression }),
+                      body: JSON.stringify({ view, expression: item.expression }),
                     });
                     onSaved(next);
                     setNote(`${item.expression} copied to this Village.`);
@@ -8230,73 +8392,68 @@ function ResidentSpriteEditor({
               </button>
             ))}
           </div>
-        </div>
+        </details>
       ) : null}
-      {approved.length ? (
+      {allApproved.length ? (
         <>
-          <div className={`${ELEMENT_TAG}-sprite-approved`}>
-            {approved.map((item) => (
-              <div key={item.label}>
-                <img src={item.url} alt={`${villager.name}: ${item.label}`} />
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-          <div className={`${ELEMENT_TAG}-row`}>
-            <label>
-              Display framing{" "}
-              <select
-                value={villager.sprite?.framing.mode ?? "full"}
-                disabled={busy}
-                onChange={(event) =>
-                  void perform(async () =>
-                    onSaved(
-                      await request<VillageSnapshot>(`${base}/framing`, {
-                        method: "PATCH",
-                        body: JSON.stringify({
-                          mode: event.target.value,
-                          cropPercent: villager.sprite?.framing.cropPercent ?? 58,
-                        }),
-                      }),
-                    ),
-                  )
-                }
-              >
-                <option value="full">Full body</option>
-                <option value="half">Waist up</option>
-              </select>
-            </label>
-            {villager.sprite?.framing.mode === "half" ? (
+          <details className={`${ELEMENT_TAG}-sprite-more`}>
+            <summary>Display framing and export</summary>
+            <div className={`${ELEMENT_TAG}-row`}>
               <label>
-                Visible height: {villager.sprite.framing.cropPercent}%{" "}
-                <input
-                  type="range"
-                  min={40}
-                  max={85}
-                  value={villager.sprite.framing.cropPercent}
+                Display framing{" "}
+                <select
+                  value={villager.sprite?.framing.mode ?? "full"}
                   disabled={busy}
                   onChange={(event) =>
                     void perform(async () =>
                       onSaved(
                         await request<VillageSnapshot>(`${base}/framing`, {
                           method: "PATCH",
-                          body: JSON.stringify({ mode: "half", cropPercent: Number(event.target.value) }),
+                          body: JSON.stringify({
+                            mode: event.target.value,
+                            cropPercent: villager.sprite?.framing.cropPercent ?? 58,
+                          }),
                         }),
                       ),
                     )
                   }
-                />
+                >
+                  <option value="full">Full body</option>
+                  <option value="half">Waist up</option>
+                </select>
               </label>
-            ) : null}
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              disabled={busy}
-              onClick={() => void perform(() => downloadResidentSpriteSheet(villager))}
-            >
-              Download sheet and manifest
-            </button>
-          </div>
+              {villager.sprite?.framing.mode === "half" ? (
+                <label>
+                  Visible height: {villager.sprite.framing.cropPercent}%{" "}
+                  <input
+                    type="range"
+                    min={40}
+                    max={85}
+                    value={villager.sprite.framing.cropPercent}
+                    disabled={busy}
+                    onChange={(event) =>
+                      void perform(async () =>
+                        onSaved(
+                          await request<VillageSnapshot>(`${base}/framing`, {
+                            method: "PATCH",
+                            body: JSON.stringify({ mode: "half", cropPercent: Number(event.target.value) }),
+                          }),
+                        ),
+                      )
+                    }
+                  />
+                </label>
+              ) : null}
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={busy}
+                onClick={() => void perform(() => downloadResidentSpriteSheet(villager))}
+              >
+                Download both views and manifest
+              </button>
+            </div>
+          </details>
         </>
       ) : null}
       {note ? <p role="status">{note}</p> : null}
@@ -8322,9 +8479,10 @@ type RoomStep = {
   name: string;
   player: boolean;
   text: string;
-  asides: Array<VillagesWalkAside & { speakerId?: string; name?: string; expression?: string }>;
+  asides: Array<VillagesWalkAside & { speakerId?: string; name?: string; expression?: string; gazeAt?: string }>;
   register?: VillageBeatRegister;
   expression?: string;
+  gazeAt?: string;
 };
 
 function MailboxImprovementEditor({
@@ -8553,6 +8711,7 @@ function RoomPanel({
         speakerId: line.speakerId,
         name: line.name,
         expression: line.expression,
+        gazeAt: line.gazeAt,
       });
       attached.set(line.asideFor, list);
     }
@@ -8573,6 +8732,7 @@ function RoomPanel({
           ],
           ...(line.kind ? { register: line.kind === "narration" ? "narration" : "speech" } : {}),
           ...(line.expression ? { expression: line.expression } : {}),
+          ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
         });
       });
     }
@@ -8612,8 +8772,17 @@ function RoomPanel({
   const cast = room.status === "closed" && activeParticipants.length === 0 ? room.participants : activeParticipants;
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const neighbors = cast.filter((person) => person.characterId !== speaker?.characterId);
+  const gazeTarget = cast.find(
+    (person) => person.characterId === step?.gazeAt && person.characterId !== speaker?.characterId,
+  );
+  const otherNeighbors = neighbors.filter((person) => person.characterId !== gazeTarget?.characterId);
+  const targetOnLeft = Boolean(speaker && gazeTarget && cast.indexOf(gazeTarget) < cast.indexOf(speaker));
   const displayed = speaker
-    ? [neighbors[0], speaker, neighbors[1]].filter((person): person is RoomParticipant => !!person)
+    ? gazeTarget
+      ? [targetOnLeft ? gazeTarget : otherNeighbors[0], speaker, targetOnLeft ? otherNeighbors[0] : gazeTarget].filter(
+          (person): person is RoomParticipant => !!person,
+        )
+      : [neighbors[0], speaker, neighbors[1]].filter((person): person is RoomParticipant => !!person)
     : cast.slice(0, 3);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
 
@@ -8818,20 +8987,30 @@ function RoomPanel({
       ) : null}
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div className={`${ELEMENT_TAG}-chat-cast`}>
-          {displayed.map((villager) => {
+          {displayed.map((villager, index) => {
             const sprite = sprites[villager.characterId];
-            const wanted = villager.characterId === speaker?.characterId ? (step?.expression ?? "neutral") : "neutral";
-            const image =
-              sprite?.images.find((item) => item.label === wanted) ??
-              sprite?.images.find((item) => item.label === "neutral");
+            const isSpeaker = villager.characterId === speaker?.characterId;
+            const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
+            const wanted = isSpeaker ? (step?.expression ?? "neutral") : (aside?.expression ?? "neutral");
+            const gazeAt = isSpeaker
+              ? step?.gazeAt
+              : (aside?.gazeAt ??
+                (villager.characterId === gazeTarget?.characterId ? speaker?.characterId : undefined));
+            const targetIndex = displayed.findIndex((person) => person.characterId === gazeAt);
+            const selected = selectSpriteImage(sprite?.images ?? [], wanted, spriteFacing(index, targetIndex));
             return (
               <div
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
                 data-active={villager.characterId === speaker?.characterId ? "true" : "false"}
               >
-                {image ? (
-                  <img src={image.url} alt="" data-framing={sprite?.framing.mode ?? "full"} />
+                {selected ? (
+                  <img
+                    src={selected.image.url}
+                    alt=""
+                    data-framing={sprite?.framing.mode ?? "full"}
+                    data-facing={selected.mirrored ? "left" : "right"}
+                  />
                 ) : (
                   <AvatarFace
                     portrait={portraits[villager.characterId]}
@@ -14356,67 +14535,71 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </div>
                     <div className={`${ELEMENT_TAG}-roster`}>
                       {snapshot.villagers.map((villager) => (
-                        <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-row`}>
-                          <div>
-                            <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
-                            {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-                            {refreshPreviews[villager.characterId] ? (
-                              <div className={`${ELEMENT_TAG}-tile-summary`}>
-                                {refreshPreviews[villager.characterId].changed
-                                  ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
-                                  : refreshPreviews[villager.characterId].sourceAvailable
-                                    ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
-                                    : "The saved snapshot remains playable; the source card is unavailable."}
-                              </div>
-                            ) : null}
-                          </div>
-                          <span className={`${ELEMENT_TAG}-row`}>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() =>
-                                setSpriteEditorId(spriteEditorId === villager.characterId ? null : villager.characterId)
-                              }
-                            >
-                              {spriteEditorId === villager.characterId ? "Close sprites" : "Sprites"}
-                            </button>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() => void previewVillagerRefresh(villager.characterId)}
-                              disabled={busy || refreshBusyId.length > 0}
-                            >
-                              Compare card
-                            </button>
-                            {refreshPreviews[villager.characterId]?.changed &&
-                            refreshPreviews[villager.characterId]?.sourceAvailable ? (
+                        <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-entry`}>
+                          <div className={`${ELEMENT_TAG}-roster-row`}>
+                            <div>
+                              <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
+                              {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
+                              {refreshPreviews[villager.characterId] ? (
+                                <div className={`${ELEMENT_TAG}-tile-summary`}>
+                                  {refreshPreviews[villager.characterId].changed
+                                    ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
+                                    : refreshPreviews[villager.characterId].sourceAvailable
+                                      ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
+                                      : "The saved snapshot remains playable; the source card is unavailable."}
+                                </div>
+                              ) : null}
+                            </div>
+                            <span className={`${ELEMENT_TAG}-row`}>
                               <button
                                 type="button"
                                 className={`${ELEMENT_TAG}-button`}
-                                onClick={() => void applyVillagerRefresh(villager.characterId)}
+                                onClick={() =>
+                                  setSpriteEditorId(
+                                    spriteEditorId === villager.characterId ? null : villager.characterId,
+                                  )
+                                }
+                                aria-expanded={spriteEditorId === villager.characterId}
+                              >
+                                {spriteEditorId === villager.characterId
+                                  ? "Close sprite studio"
+                                  : `Sprites · ${villager.sprite?.images.length ?? 0} approved`}
+                              </button>
+                              <button
+                                type="button"
+                                className={`${ELEMENT_TAG}-button`}
+                                onClick={() => void previewVillagerRefresh(villager.characterId)}
                                 disabled={busy || refreshBusyId.length > 0}
                               >
-                                Apply refresh
+                                Compare card
                               </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() => void removeVillager(villager.characterId)}
-                              disabled={busy || refreshBusyId.length > 0}
-                            >
-                              Move out
-                            </button>
-                          </span>
+                              {refreshPreviews[villager.characterId]?.changed &&
+                              refreshPreviews[villager.characterId]?.sourceAvailable ? (
+                                <button
+                                  type="button"
+                                  className={`${ELEMENT_TAG}-button`}
+                                  onClick={() => void applyVillagerRefresh(villager.characterId)}
+                                  disabled={busy || refreshBusyId.length > 0}
+                                >
+                                  Apply refresh
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                className={`${ELEMENT_TAG}-button`}
+                                onClick={() => void removeVillager(villager.characterId)}
+                                disabled={busy || refreshBusyId.length > 0}
+                              >
+                                Move out
+                              </button>
+                            </span>
+                          </div>
+                          {spriteEditorId === villager.characterId ? (
+                            <ResidentSpriteEditor villager={villager} onSaved={setSnapshot} />
+                          ) : null}
                         </div>
                       ))}
                     </div>
-                    {snapshot.villagers.find((villager) => villager.characterId === spriteEditorId) ? (
-                      <ResidentSpriteEditor
-                        villager={snapshot.villagers.find((villager) => villager.characterId === spriteEditorId)!}
-                        onSaved={setSnapshot}
-                      />
-                    ) : null}
                   </>
                 ) : (
                   <p className={`${ELEMENT_TAG}-empty`}>
