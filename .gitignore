@@ -4,3 +4,4 @@ node_modules/
 /marinara-villages/
 DEVELOPMENT.md
 scripts/sideload-villages.mjs
+/artifacts
