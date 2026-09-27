@@ -39,6 +39,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.47 makes Village Identity fit the Engine's larger desktop text scale: the scenario cards and writing fields take less vertical room, and the illustration is shorter so its Next button remains visible. The wizard's height now includes its padding, eliminating the extra page scrollbar.
+
 0.6.46 fits Village Identity into a typical desktop tab without page scrolling. The repeated village name banner is gone, scenario cards are shorter on desktop and mobile, and wide screens show all five cards in one row. Choosing another scenario now discards edits to its premise; returning to a preset restores its original text, while Narrative direction remains available per mode.
 
 0.6.44 gives Village Identity five illustrated founding scenarios and editable scenario premises. Rebuild, Pioneer, and Prosper begin with distinct story templates; Custom starts from the player's own premise, and No scenario leaves story direction open. A separate Narrative direction field carries ongoing story guidance. Founding now has a dedicated World & Setting step before Village Map, with Persona moved to Connections & Persona. Existing founding reasons remain readable and become editable Custom premises when setup is reopened.

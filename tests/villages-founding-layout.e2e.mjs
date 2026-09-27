@@ -36,11 +36,14 @@ const snapshot = {
 };
 
 try {
-  for (const { width, height, cardsPerRow } of [
-    { width: 1917, height: 655, cardsPerRow: 5 },
-    { width: 1366, height: 768, cardsPerRow: 5 },
-    { width: 1024, height: 768, cardsPerRow: 3 },
-    { width: 390, height: 844, cardsPerRow: 2 },
+  for (const { width, height, cardsPerRow, fontSize } of [
+    { width: 1917, height: 655, cardsPerRow: 5, fontSize: 20 },
+    { width: 1917, height: 600, cardsPerRow: 5, fontSize: 20 },
+    { width: 1366, height: 768, cardsPerRow: 3, fontSize: 20 },
+    { width: 1024, height: 768, cardsPerRow: 3, fontSize: 20 },
+    { width: 1917, height: 655, cardsPerRow: 5, fontSize: 16 },
+    { width: 390, height: 844, cardsPerRow: 2, fontSize: 20 },
+    { width: 390, height: 844, cardsPerRow: 2, fontSize: 16 },
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
@@ -68,7 +71,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: "text/html",
-        body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>`,
       }),
     );
     await page.goto("http://villages.test/");
@@ -90,10 +93,30 @@ try {
     assert.ok(first.height < 100, "scenario cards are compact");
 
     if (width > 1000) {
-      const fit = await root.evaluate((element) => element.scrollHeight <= element.clientHeight + 1);
-      assert.ok(fit, "Village Identity fits in the desktop tab without page scrolling");
-      await expect(root.getByLabel("Narrative direction (optional)")).toBeInViewport();
-      await expect(root.getByRole("button", { name: "Next →" })).toBeInViewport();
+      const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
+      assert.ok(
+        size.scroll <= size.visible + 1,
+        `Village Identity fits at ${width}×${height} without page scrolling (${size.scroll}/${size.visible})`,
+      );
+      const documentHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+      assert.ok(documentHeight <= height + 1, `the document fits at ${width}×${height} (${documentHeight})`);
+      const scrollPosition = await root.evaluate((element) => {
+        element.scrollTop = 100;
+        window.scrollTo(0, 100);
+        return { panel: element.scrollTop, page: window.scrollY };
+      });
+      assert.deepEqual(scrollPosition, { panel: 0, page: 0 }, "the desktop page cannot scroll");
+      const controls = [
+        root.getByLabel("Narrative direction (optional)"),
+        root.getByRole("button", { name: "Next →" }),
+      ];
+      for (const control of controls) {
+        const bounds = await control.boundingBox();
+        assert.ok(
+          bounds && bounds.y >= 0 && bounds.y + bounds.height <= height,
+          `all controls fit at ${width}×${height}: ${JSON.stringify(bounds)}`,
+        );
+      }
     }
 
     const premise = root.getByLabel("Scenario premise (required)");
