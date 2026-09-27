@@ -12,8 +12,27 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
+  parallel-work:
+    name: parallel-work
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request and staging base
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check branch freshness and overlapping Villages PR files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-parallel-work.mjs
+
   validate:
     name: validate
     runs-on: ubuntu-latest
