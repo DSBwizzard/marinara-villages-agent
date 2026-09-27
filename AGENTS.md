@@ -2,6 +2,8 @@
 
 - Keep work focused on Villages and the shared files required to build or validate Villages.
 - Codex may perform Git operations for requested Villages work: create/switch branches, stage, commit, push, and create/update pull requests. Never change remotes or GitHub repository settings without the user's explicit request.
+- On this Windows workspace, ordinary Codex processes may report a Git "dubious ownership" error even though the user configured the exact repository as a global `safe.directory`. When Git commands fail for this reason, retry them with elevated access; do not treat the normal-process failure as a blocker. The exact repository path is `C:\Users\dsbwi\Desktop\marinara-villages-agent`. Never change ownership or use `safe.directory '*'`.
+- GitHub CLI is installed at `C:\Program Files\GitHub CLI\gh.exe` but may not be available on `PATH`. If `gh` is not resolved, invoke that exact executable before concluding GitHub CLI is unavailable. If it cannot read `%APPDATA%\GitHub CLI\config.yml` in the sandbox, retry it with elevated access rather than switching to browser automation.
 - Do not modify or track the preserved source workspace under `marinara-villages/`.
 - Preserve package-generated files through the documented build command; do not hand-edit bundles, manifests, or checksums.
 - Read `DEVELOPMENT.md` and `packages/villages/README.md` for setup, package, and coding guidance.
