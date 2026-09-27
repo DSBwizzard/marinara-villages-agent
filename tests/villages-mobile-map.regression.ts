@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  focusedPhotoScale,
   mobileCoverZoom,
   mobileDoorPoint,
   mobileGestureMoved,
@@ -43,6 +44,10 @@ assert.deepEqual(all, centered);
 assert.equal(mobilePhotoScale(cover, cover), 0.32);
 assert.equal(mobilePhotoScale((cover + Math.max(4, cover * 2)) / 2, cover), 0.835);
 assert.equal(mobilePhotoScale(cover * 2, cover), 1.35);
+assert.equal(focusedPhotoScale(0.32, false), 0.32);
+assert.equal(focusedPhotoScale(0.32, true), 1);
+assert.equal(focusedPhotoScale(1, true), 1);
+assert.equal(focusedPhotoScale(1.35, true), 1.35);
 for (const mapShape of [
   { width: 1500, height: 1000 },
   { width: 1000, height: 1000 },
@@ -70,11 +75,11 @@ for (const mapShape of [
 }
 assert.deepEqual(mobileDoorPoint({ left: 0, top: 0, width: 360, height: 600 }, frame, { x: 0.95, y: 0.97 }), {
   left: 270,
-  top: 466,
+  top: 402,
 });
 assert.deepEqual(mobileDoorPoint({ left: 0, top: 0, width: 360, height: 600 }, frame, { x: 0.05, y: 0.05 }), {
   left: 90,
-  top: 30,
+  top: 94,
 });
 
 const source = readFileSync(
@@ -90,13 +95,18 @@ assert.ok(source.includes("mobile={mobile}"));
 assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo`}"));
 assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo-card`}"));
 assert.ok(source.includes("data-pin-id={pin.id}"));
+assert.ok(source.includes("selected: openPlaceId === place.id"));
+assert.ok(source.includes('data-selected={pin.selected ? "true" : "false"}'));
+assert.ok(source.includes("focusedPhotoScale("));
+assert.ok(source.includes('data-mobile-gesturing", "true"'));
 assert.ok(source.includes("left: `${picture.left + pin.x * picture.width}px`"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)"));
 assert.equal(source.includes('mobileStart="contain"'), false);
 assert.ok(
   source.includes("const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current"),
 );
-assert.ok(source.includes("onPlace(round4(x), round4(y));"));
+assert.ok(source.includes("onPlace(round4(x), round4(y), {"));
+assert.ok(source.includes("photoWidth: photoRect?.width"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-canvas`)"));
 assert.ok(source.includes("aria-label={`Noticeboard (${snapshot?.noticeboard.length ?? 0})`}"));
 assert.ok(source.includes('aria-label="Events (NYI)"'));

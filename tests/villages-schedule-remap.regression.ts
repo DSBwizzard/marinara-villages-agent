@@ -188,6 +188,9 @@ async function main() {
   const context = {
     village: "Willowbrook",
     setting: "A small farming village on a river.",
+    lore: [],
+    completedWishes: [],
+    loreKey: "",
     venues: [venue("mill", "the mill", "where the grain goes"), venue("hives", "the hives")],
     // Two wishes, in the order that gives the numbering something to prove: the
     // LIGHTEST one is first, so a number that resolves to it can only have been

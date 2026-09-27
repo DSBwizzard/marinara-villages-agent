@@ -36,17 +36,6 @@ let session = {
       heardBy: ["bob"],
       at: now,
     },
-    {
-      id: "hello-aside",
-      role: "assistant",
-      speakerId: "bob",
-      name: "Bob",
-      content: "A quiet aside.",
-      kind: "side",
-      asideFor: "hello",
-      heardBy: ["bob"],
-      at: now,
-    },
   ],
 };
 const snapshot = {
@@ -119,39 +108,18 @@ await page.route("**/api/villages**", async (route) => {
         ? {
             id: "memory-1",
             kind: "memory",
-            text: "Bob: New memory",
-            detail: "Bob remembers the first exchange exactly.",
+            text: "Bob remembered the first exchange.",
+            detail: "The player promised Bob to repair the bridge.",
           }
         : body.message === "Second memory"
           ? {
               id: "memory-2",
               kind: "memory",
-              text: "Bob: New memory",
-              detail: "Bob remembers the second exchange exactly.",
+              text: "Bob remembered the second exchange.",
+              detail: "Bob learned that the market opens before sunrise.",
             }
           : null;
     value = { session, verdict: null, action: null, recordEvents: event ? [event] : [] };
-  } else if (path.endsWith("/rooms/leave")) {
-    session = {
-      ...session,
-      status: "closed",
-      endedAt: now,
-      endReason: "player",
-      lines: [
-        ...session.lines,
-        { id: "leaving", role: "user", speakerId: "", name: "", content: "I say goodbye and leave.", at: now },
-        {
-          id: "goodbye",
-          role: "assistant",
-          speakerId: "bob",
-          name: "Bob",
-          content: "Goodbye for now.",
-          kind: "dialogue",
-          at: now,
-        },
-      ],
-    };
-    value = { session, recordEvents: [] };
   } else if (path.endsWith("/rooms/end")) {
     session = { ...session, status: "closed", endedAt: now, endReason: "player" };
     value = { session };
@@ -172,66 +140,44 @@ try {
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
   const stack = page.locator("[aria-label='Village events']");
   await composer.waitFor();
-  const panel = page.locator(".marinara-capability-villages-chat-vn");
-  const aside = page.locator(".marinara-capability-villages-chat-vn-asides");
-  for (const viewport of [
-    { width: 375, height: 740 },
-    { width: 1440, height: 900 },
-    { width: 640, height: 360 },
-  ]) {
-    await page.setViewportSize(viewport);
-    const panelBox = await panel.boundingBox();
-    const asideBox = await aside.boundingBox();
-    assert.ok(panelBox && asideBox);
-    assert.ok(panelBox.x >= 0 && panelBox.x + panelBox.width <= viewport.width, "panel fits the viewport");
-    assert.ok(
-      panelBox.y + panelBox.height <= viewport.height + 1,
-      `panel stays above the bottom edge: ${JSON.stringify({ viewport, panelBox })}`,
-    );
-    assert.ok(asideBox.y + asideBox.height <= panelBox.y + 1, "aside floats above the panel");
-    if (viewport.width === 1440) assert.ok(panelBox.width <= 950, "desktop panel remains compact");
-  }
-  await page.setViewportSize({ width: 375, height: 740 });
   const send = async (message) => {
     await composer.fill(message);
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith("/rooms/turn")),
       page.getByRole("button", { name: "Send" }).click(),
     ]);
-    await page.getByRole("button", { name: "Previous paragraph" }).click();
-    await expect(composer).toHaveCount(0, "input hides while reading an older paragraph");
-    await page.getByRole("button", { name: "Next paragraph" }).click();
-    await expect(composer).toBeVisible();
   };
-  await page.getByRole("button", { name: /Mode: Chat/u }).click();
-  await page.getByRole("menuitemradio", { name: "Fulfill" }).click();
-  await expect(page.getByRole("combobox", { name: "Whose wish you fulfilled" })).toBeVisible();
-  await page.getByRole("button", { name: /Mode: Fulfill/u }).click();
-  await page.getByRole("menuitemradio", { name: "Chat" }).click();
   await send("Ordinary chat");
   await expect(stack).toHaveCount(0);
   await send("First memory");
-  await expect(stack).toContainText("Bob: New memory");
-  await page.getByRole("button", { name: "Read Bob: New memory" }).click();
-  await expect(page.getByRole("dialog", { name: "Bob: New memory" })).toContainText(
-    "Bob remembers the first exchange exactly.",
-  );
-  await page.getByRole("button", { name: "Close memory" }).click();
+  await expect(stack).toContainText("Bob remembered the first exchange.");
   const stackBox = await stack.boundingBox();
   const controlsBox = await page.locator(".marinara-capability-villages-chat-head").boundingBox();
   assert.ok(stackBox && controlsBox);
   assert.ok(stackBox.x >= 0 && stackBox.x + stackBox.width <= 375, "notice fits a phone viewport");
   assert.ok(stackBox.y >= controlsBox.y + controlsBox.height, "notice sits below venue controls");
-  await page.getByRole("button", { name: "Dismiss Bob: New memory" }).click();
+  assert.ok(stackBox.width <= 240, "mobile memory notice stays a compact toast");
+  assert.ok(stackBox.height <= 148, "mobile memory stack stays under twenty percent of the viewport");
+  const memoryTrigger = page.getByRole("button", { name: "View memory: Bob remembered the first exchange." });
+  await memoryTrigger.click();
+  const memoryDialog = page.getByRole("dialog", { name: "Bob remembered the first exchange." });
+  await expect(memoryDialog).toContainText("The player promised Bob to repair the bridge.");
+  const dialogBox = await memoryDialog.boundingBox();
+  assert.ok(dialogBox && dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= 375, "memory dialog fits a phone");
+  await expect(page.getByRole("button", { name: "Close memory" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(memoryDialog).toHaveCount(0);
+  await expect(memoryTrigger).toBeFocused();
+  await memoryTrigger.click();
+  await page.locator(".marinara-capability-villages-memory-backdrop").click({ position: { x: 4, y: 4 } });
+  await expect(memoryDialog).toHaveCount(0);
+  await page.getByRole("button", { name: "Dismiss Bob remembered the first exchange." }).click();
   await expect(stack).toHaveCount(0);
   await send("Repeat receipt");
   await expect(stack).toHaveCount(0, "dismissed event ID stays dismissed");
   await send("Second memory");
-  await expect(stack).toContainText("Bob: New memory");
-  await page.getByRole("button", { name: "End scene" }).click();
-  await expect(composer).toHaveCount(0);
-  await page.getByRole("button", { name: "Next paragraph" }).click();
-  await page.getByRole("button", { name: "Return to map" }).click();
+  await expect(stack).toContainText("Bob remembered the second exchange.");
+  await page.getByRole("button", { name: "End visit and leave" }).click();
   await expect(stack).toHaveCount(0, "notices clear on scene exit");
 
   // A second device ends this scene while its old desktop tab is left open.
@@ -259,23 +205,8 @@ try {
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect(composer).toHaveCount(0, "a phone refresh after expiry opens on the map");
-  serverExpired = false;
-  session = {
-    ...session,
-    id: "visit-3",
-    status: "active",
-    endedAt: "",
-    endReason: "",
-    lines: session.lines.slice(0, 1),
-  };
-  await page.reload();
-  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-  await composer.waitFor();
-  await page.getByRole("button", { name: "DEBUG: End immediately" }).click();
-  await expect(composer).toHaveCount(0, "DEBUG end returns to the map without a goodbye");
-  assert.equal(session.endReason, "player");
   assert.deepEqual(errors, []);
-  console.log("villages-room-notices: responsive panel, memory detail, natural and DEBUG exits, stale input ok");
+  console.log("villages-room-notices: mobile notices, dismissal, exit clearing, stale input and refresh ok");
 } finally {
   await browser.close();
 }

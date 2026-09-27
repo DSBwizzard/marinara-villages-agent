@@ -6,9 +6,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const services = join(root, "packages/villages/src/engine/packages/server/src/services/villages");
-  const { buildTownMapPrompt, MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH, DEFAULT_TOWN_MAP_LAYOUT_PROMPT } = await import(
-    pathToFileURL(join(services, "town-map-image.ts")).href
-  );
+  const {
+    buildTownMapPrompt,
+    buildTownMapNegativePrompt,
+    MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH,
+    DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+  } = await import(pathToFileURL(join(services, "town-map-image.ts")).href);
   const { TOWN_MAP_EXPECTED_HEIGHT, TOWN_MAP_EXPECTED_WIDTH, MAX_TOWN_MAP_IMAGE_LENGTH, villageNarrativeSetting } =
     await import(pathToFileURL(join(services, "prompt-preset.ts")).href);
   const { defaultVillageState, coerceVillageState } = await import(
@@ -56,7 +60,8 @@ async function main() {
   assert.ok(oversizedMap.length > MAX_TOWN_MAP_IMAGE_LENGTH);
   assert.equal(coerceVillageState({ townMapImage: acceptedMap }).townMapImage.length, acceptedMap.length);
   assert.equal(coerceVillageState({ townMapImage: oversizedMap }).townMapImage, "");
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /at least 36/);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /many visually distinct, usable places/);
+  assert.doesNotMatch(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /\d/);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /wide landscape/);
   assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /never outlined lots, square plots, zones, or a grid/);
@@ -65,6 +70,20 @@ async function main() {
   assert.match(defaultPrompt, /connecting usable areas/);
   assert.match(defaultPrompt, /Do not include buildings/);
   assert.match(defaultPrompt, /Do not include water/);
+  assert.match(defaultPrompt, /without any writing, numerals/);
+  assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, digits, numbers, labels/);
+  assert.equal(
+    buildTownMapNegativePrompt(),
+    `${DEFAULT_TOWN_MAP_NEGATIVE_PROMPT}, buildings, decorative structures, ocean, sea, lake, river, pond, canal, waterfall, water`,
+  );
+  assert.match(
+    buildTownMapNegativePrompt({ roads: true, structures: true, water: true }, "foggy artifacts"),
+    /writing, numerals.*foggy artifacts/,
+  );
+  assert.equal(
+    buildTownMapNegativePrompt({ roads: true, structures: true, water: true }, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT),
+    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+  );
   for (let mask = 0; mask < 8; mask += 1) {
     const prompt = buildTownMapPrompt(undefined, "harbor city with canals", {
       roads: !!(mask & 1),
@@ -113,7 +132,8 @@ async function main() {
   assert.ok(client.includes("mobile={mobile && setupStep >= 2}"));
   assert.equal(client.includes('mobileStart="contain"'), false);
   assert.ok(client.includes("No background image"));
-  assert.ok(client.includes("setupMapGeneratedFor !== setupMapGenerationKey"));
+  assert.equal(client.includes("setupMapGeneratedFor !== setupMapGenerationKey"), false);
+  assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
   assert.equal(client.match(/\/setup\/town-map\/generate/g)?.length, 1, "only the explicit generation handler spends");
 

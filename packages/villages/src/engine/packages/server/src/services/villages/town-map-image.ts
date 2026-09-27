@@ -19,17 +19,17 @@ export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
   "Create a wide landscape, top-down or three-quarter-view illustrated game navigation map. " +
   "Use the Setting and Theme for the art style, tone, and surroundings. Show varied, coherent, traversable terrain " +
-  "and natural landmarks. Distribute at least 36 visually distinct, usable places for future structures and clickable " +
-  "markers across the image, with clear separation. These should read as natural clearings, terraces, platforms, " +
+  "and natural landmarks. Distribute many visually distinct, usable places for future venue placements " +
+  "across the image, with clear separation. These should read as natural clearings, terraces, platforms, " +
   "or other setting-appropriate open spaces, never outlined lots, square plots, zones, or a grid. Avoid clutter and " +
-  "large unusable empty regions. Keep useful places clear of the image edges. No numbers, labels, words, icons, " +
-  "markers, legend, watermark, or UI elements.";
+  "large unusable empty regions. Keep useful places clear of the image edges. This is uninterrupted scenery, with " +
+  "no readable marks, writing, numerals, labels, signs, icons, legend, watermark, or UI elements.";
 
 export type TownMapOptions = { roads: boolean; structures: boolean; water: boolean };
 export const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: true, structures: false, water: false };
 
-const TOWN_MAP_NEGATIVE_PROMPT =
-  "text, labels, numbers, captions, icons, markers, UI, interface elements, legend, compass rose, watermark, border, people, characters, square plots, outlined lots, zoning grid, crowded composition, blurry, low quality";
+export const DEFAULT_TOWN_MAP_NEGATIVE_PROMPT =
+  "text, letters, writing, numerals, digits, numbers, labels, captions, signs, icons, markers, UI, interface elements, legend, compass rose, watermark, border, people, characters, square plots, outlined lots, zoning grid, crowded composition, blurry, low quality";
 
 function readOptions(value: unknown): TownMapOptions {
   if (value === undefined) return { ...DEFAULT_TOWN_MAP_OPTIONS };
@@ -65,13 +65,13 @@ export function buildTownMapPrompt(structure: unknown, setting: unknown, options
       ? "Include streets, roads, trails, paths, or bridges appropriate to the setting, connecting usable areas."
       : "Do not include streets, roads, trails, paths, or bridges.",
     chosen.structures
-      ? "Decorative buildings may appear anywhere, but must not occupy or obscure the 36 future locations."
+      ? "Decorative buildings may appear, but must not occupy or obscure future locations."
       : "Do not include buildings or other decorative structures.",
     chosen.water
       ? "Include setting-appropriate water features."
       : "Do not include water, including oceans, rivers, ponds, canals, or waterfalls.",
   ];
-  const base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nSetting and Theme (follow only where consistent with the required map elements): ${world}`;
+  const base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nSetting and Theme (follow only where consistent with the required map elements): ${world}`;
   if (base.length > 4_000)
     throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or Setting and Theme.");
   const lorePrefix =
@@ -80,25 +80,40 @@ export function buildTownMapPrompt(structure: unknown, setting: unknown, options
   return lore && room > 0 ? `${base}${lorePrefix}${lore.slice(0, room)}` : base;
 }
 
-export async function generateVillageTownMap(input: {
-  structure?: unknown;
-  setting?: unknown;
-  options?: unknown;
-  connectionId?: unknown;
-  selectedLorebookIds?: unknown;
-}): Promise<{ image: string; width: number; height: number }> {
-  const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
-  const lore = await readVillageVisualLore(ids, typeof input.setting === "string" ? input.setting : "", 260);
-  const prompt = buildTownMapPrompt(input.structure, input.setting, input.options, lore);
-  const chosen = readOptions(input.options);
-  const negativePrompt = [
-    TOWN_MAP_NEGATIVE_PROMPT,
+export function buildTownMapNegativePrompt(options?: unknown, negative?: unknown): string {
+  const chosen = readOptions(options);
+  return [
+    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+    negative === undefined || negative === null || negative === ""
+      ? ""
+      : (() => {
+          const extra = readRequiredText(
+            negative,
+            "The DEBUG negative map prompt",
+            MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH,
+          );
+          return extra === DEFAULT_TOWN_MAP_NEGATIVE_PROMPT ? "" : extra;
+        })(),
     chosen.roads ? "" : "streets, roads, trails, paths, bridges",
     chosen.structures ? "" : "buildings, decorative structures",
     chosen.water ? "" : "ocean, sea, lake, river, pond, canal, waterfall, water",
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+export async function generateVillageTownMap(input: {
+  structure?: unknown;
+  setting?: unknown;
+  options?: unknown;
+  negative?: unknown;
+  connectionId?: unknown;
+  selectedLorebookIds?: unknown;
+}): Promise<{ image: string; width: number; height: number }> {
+  const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
+  const lore = await readVillageVisualLore(ids, typeof input.setting === "string" ? input.setting : "", 260);
+  const prompt = buildTownMapPrompt(input.structure, input.setting, input.options, lore);
+  const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const generated = await generateVillageImage({
     connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,
     name: "Village map",

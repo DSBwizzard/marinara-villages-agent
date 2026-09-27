@@ -6,8 +6,30 @@ import { villagesLogger } from "./package-runtime.js";
 import { badRequest } from "./errors.js";
 
 const MAX_BOOKS = 24;
-const LORE_TOKEN_BUDGET = 1_600;
-const MAX_LORE_ENTRIES = 12;
+export const DEFAULT_LORE_TOKEN_BUDGET = 1_600;
+export const MIN_LORE_TOKEN_BUDGET = 200;
+export const MAX_LORE_TOKEN_BUDGET = 3_200;
+const MAX_LORE_ENTRIES = 24;
+
+export function readLoreTokenBudget(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < MIN_LORE_TOKEN_BUDGET ||
+    value > MAX_LORE_TOKEN_BUDGET
+  )
+    throw badRequest(`Lorebook token budget must be between ${MIN_LORE_TOKEN_BUDGET} and ${MAX_LORE_TOKEN_BUDGET}.`);
+  return value;
+}
+
+export function coerceLoreTokenBudget(value: unknown): number {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= MIN_LORE_TOKEN_BUDGET &&
+    value <= MAX_LORE_TOKEN_BUDGET
+    ? value
+    : DEFAULT_LORE_TOKEN_BUDGET;
+}
 
 type EngineBook = { id: string; name: string; enabled: boolean; hiddenFromLibrary?: boolean };
 type EngineFolder = { id: string; parentFolderId: string | null; enabled: boolean };
@@ -123,6 +145,7 @@ export async function readVillageLore(
   ids: readonly string[],
   context: string,
   signal?: AbortSignal,
+  tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
 ): Promise<string[]> {
   if (!ids.length) return [];
   try {
@@ -158,7 +181,7 @@ export async function readVillageLore(
     for (const entry of candidates) {
       const content = entry.content.trim();
       const cost = Math.ceil((entry.name.length + content.length) / 4) + 4;
-      if (tokens + cost > LORE_TOKEN_BUDGET) continue;
+      if (tokens + cost > coerceLoreTokenBudget(tokenBudget)) continue;
       selected.push(`${entry.name}: ${content}`);
       tokens += cost;
       if (selected.length >= MAX_LORE_ENTRIES) break;

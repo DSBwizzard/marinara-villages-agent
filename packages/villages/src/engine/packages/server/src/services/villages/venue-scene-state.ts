@@ -1,6 +1,6 @@
 import { badGateway, conflict } from "./errors.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
-import type { VillageState, VillageVenue } from "./types.js";
+import type { VillageState, VillageVenue, VillageVenueClass } from "./types.js";
 
 /** The small, present-tense consequence of a player action resolved by the scene reply. */
 export type VenueSceneChange = {
@@ -82,9 +82,31 @@ export function applyVenueSceneChange(
   change: VenueSceneChange,
   submissionId: string,
   at: string,
+  spaceClass?: VillageVenueClass,
+  area: "outside" | "shared" | "private" | "public" = "public",
+  privateOwnerId = "",
 ): void {
   const venue = state.venues.find((place) => place.id === placeId);
   if (!venue) throw conflict("That place is no longer in the village.");
+  const originalState = venue.state;
+  const space =
+    area === "private"
+      ? venue.privateSpaces?.find((entry) => entry.ownerId === privateOwnerId)
+      : area === "outside"
+        ? undefined
+        : venue.spaces?.find((entry) => entry.venueClass === spaceClass);
+  if (area === "private" && !space) throw conflict("That private space is no longer here.");
+  const areaState = area === "outside" ? venue.exteriorState : space?.state;
+  if (areaState)
+    venue.state = {
+      ...venue.state,
+      condition: areaState.condition,
+      furniture: [...areaState.items],
+      publicFacts: [...areaState.publicFacts],
+      features: [...areaState.features],
+      traces: [...areaState.traces],
+      updatedAt: areaState.updatedAt,
+    };
   if (change.conditionBefore !== undefined) {
     if (venue.state.condition !== change.conditionBefore)
       throw conflict("The room changed while you acted. Try again.");
@@ -135,4 +157,15 @@ export function applyVenueSceneChange(
     ];
   }
   venue.state.updatedAt = at;
+  const nextState = {
+    condition: venue.state.condition,
+    items: [...venue.state.furniture],
+    publicFacts: [...venue.state.publicFacts],
+    features: [...(venue.state.features ?? [])],
+    traces: [...(venue.state.traces ?? [])],
+    updatedAt: at,
+  };
+  if (area === "outside") venue.exteriorState = nextState;
+  else if (space) space.state = nextState;
+  if (area !== "public") venue.state = originalState;
 }

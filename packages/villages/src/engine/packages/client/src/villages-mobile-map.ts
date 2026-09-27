@@ -68,6 +68,11 @@ export function mobilePhotoScale(zoom: number, initialZoom: number): number {
   return 0.32 + 1.03 * ((clamp(zoom, cover, maximum) - cover) / (maximum - cover));
 }
 
+/** Open photographs reach a readable full card, without undoing a closer map zoom. */
+export function focusedPhotoScale(scale: number, focused: boolean): number {
+  return focused ? Math.max(1, scale) : scale;
+}
+
 /** Keep both venue choices inside the wooden frame, including at map edges. */
 export function mobileDoorPoint(
   box: MobileMapBox,
@@ -75,10 +80,14 @@ export function mobileDoorPoint(
   pin: { x: number; y: number },
 ): { left: number; top: number } {
   const edge = Math.min(90, frame.width / 2);
+  const photoClearance = 64;
+  const menuHeight = 116;
   const x = box.left + pin.x * box.width;
   const y = box.top + pin.y * box.height;
+  const below = y + photoClearance;
+  const top = below + menuHeight <= frame.height ? below : y - photoClearance - menuHeight;
   return {
     left: clamp(x, edge, frame.width - edge),
-    top: clamp(y > frame.height - 130 ? y - 116 : y, 0, Math.max(0, frame.height - 116)),
+    top: clamp(top, 0, Math.max(0, frame.height - menuHeight)),
   };
 }

@@ -1,17 +1,13 @@
 // Villages — proof for the pictures a place can have.
 //
-// A place's picture is the one thing in this package that spends the player's
-// money, and most of what is below is about the two halves of that sentence:
+// A place's picture spends the player's image tokens, so these tests cover:
 //
-//   * it is never spent unless somebody pressed a button, and
+//   * explicit drawing for exterior and shared spaces, and one automatic
+//     attempt only after the player first enters a private space; and
 //   * what comes back is a REFERENCE, never bytes.
 //
-// The first half is proved structurally rather than by watching one call site,
-// because "there is no timer, no hook on venue creation and no call from the
-// remap" is a claim about the whole package. Every source file in it is read
-// and the files that are even capable of drawing are counted, so a future
-// release that helpfully draws a picture when a place is added fails here
-// rather than on somebody's bill.
+// The generation boundary is checked structurally so founding, remapping, and
+// the clock cannot start extra image requests.
 //
 // The second half is proved at the document: what the village writes is three
 // short strings, and the picture itself lives in the Engine's own gallery
@@ -68,7 +64,8 @@ async function collectSources(root: string): Promise<Array<{ path: string; sourc
 
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT ?? join(repoRoot, "../Marinara-Engine");
+  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
+  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
   const services = "packages/villages/src/engine/packages/server/src/services/villages";
 
@@ -211,7 +208,8 @@ async function main() {
       moment,
     ),
     [
-      "A wide, empty establishing view of the mill pond in Willowbrook.",
+      "A wide, empty exterior view of the mill pond and its approach in Willowbrook. Show the building from outside; do not show an interior.",
+      "Venue roles: other.",
       "Venue purpose: where the grain is ground.",
       `Village setting and theme: ${setting}.`,
       `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
@@ -220,6 +218,18 @@ async function main() {
     ].join(" "),
     "the prompt is the place, the village, the weather, and an explicit refusal of people",
   );
+  const interiorPrompt = buildLocationPrompt(
+    village,
+    coerceVillageState({
+      venues: [{ id: "mill", name: "the mill pond", purpose: "grain", description: "A timbered room" }],
+    }).venues[0]!,
+    moment,
+    "",
+    "interior",
+  );
+  assert.match(interiorPrompt, /interior view/u);
+  assert.match(interiorPrompt, /A timbered room/u);
+  assert.doesNotMatch(interiorPrompt, /building from outside/u);
   assert.match(
     buildLocationPrompt(
       village,
@@ -241,12 +251,18 @@ async function main() {
         {
           id: "mill",
           name: "the mill pond",
+          form: "a stone watermill",
           purpose: "grain",
           description: "A stone mill beside shallow water",
-          state: {
+          exteriorState: {
             condition: "weathered but sound",
-            furniture: ["oak workbench"],
+            items: ["oak workbench"],
             publicFacts: ["the wheel turns east"],
+          },
+          state: {
+            condition: "a private interior repair",
+            furniture: ["a hidden cabinet"],
+            publicFacts: ["a private room fact"],
             upgrades: ["new roof"],
             updatedAt: "",
           },
@@ -256,6 +272,7 @@ async function main() {
     moment,
   );
   for (const fact of [
+    "a stone watermill",
     "A stone mill beside shallow water",
     "weathered but sound",
     "oak workbench",
@@ -265,6 +282,31 @@ async function main() {
     "market square",
   ])
     assert.ok(factual.includes(fact), `${fact} informs the venue image`);
+  assert.doesNotMatch(factual, /private interior repair|hidden cabinet|private room fact/u);
+  const occupiedExterior = buildLocationPrompt(
+    village,
+    coerceVillageState({
+      venues: [
+        {
+          id: "home",
+          name: "Bob's home",
+          form: "a brick cottage",
+          classes: ["residence"],
+          residentIds: ["bob"],
+          purpose: "a place to live",
+          description: "a secret shared-room mural",
+          state: {
+            condition: "a secret interior leak",
+            furniture: ["hidden room chest"],
+            publicFacts: ["private room fact"],
+          },
+        },
+      ],
+    }).venues[0]!,
+    moment,
+  );
+  assert.match(occupiedExterior, /brick cottage|place to live/u);
+  assert.doesNotMatch(occupiedExterior, /secret|hidden room chest|private room fact/u);
   assert.equal(
     buildLocationPrompt(
       village,
@@ -349,14 +391,27 @@ async function main() {
   assert.deepEqual(
     Object.keys(placesOf([house("bram-house", "character-bram")])[0]!).sort(),
     [
+      "archivedPrivateSpaces",
       "capabilities",
       "category",
+      "classes",
       "description",
+      "editProposals",
+      "exteriorState",
+      "form",
       "id",
+      "improvements",
       "name",
       "occupancy",
+      "playerInvitations",
+      "playerSeenPrivateIds",
+      "playerSeenShared",
       "presentation",
+      "privateSpaces",
       "purpose",
+      "residenceCapacity",
+      "residentIds",
+      "spaces",
       "state",
       "workerIds",
     ],
@@ -722,23 +777,29 @@ async function main() {
     venues: [
       {
         id: "player-home",
-        name: "",
+        name: "Robin's Diner",
+        form: "A converted diner",
+        classes: ["residence"],
         purpose: "",
         description: "A modest home for the player.",
         presentation: { x: 0.2, y: 0.3 },
-        occupancy: { playerHome: true, residentCharacterId: null, homeKind: "small-home" },
+        occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
       },
       {
         id: "millie-home",
-        name: "",
+        name: "Millie's Pod",
+        form: "A sleeping pod",
+        classes: ["residence"],
         purpose: "",
         description: "Millie's small home.",
         presentation: { x: 0.4, y: 0.5 },
-        occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: "small-home" },
+        occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
       },
       {
         id: "village-square",
         name: "Village square",
+        form: "An open square",
+        classes: ["gathering"],
         purpose: "The center of town.",
         description: "A public square where neighbours meet.",
         category: "public-center",
@@ -749,7 +810,7 @@ async function main() {
   });
   assert.equal(founded.statusCode, 200);
   assert.equal(
-    founded.json().settings.venues.filter((venue: any) => venue.occupancy.homeKind === null).length,
+    founded.json().settings.venues.filter((venue: any) => venue.classes.includes("gathering")).length,
     1,
     "founding creates exactly one public venue",
   );
@@ -931,10 +992,11 @@ async function main() {
   );
   assert.ok(
     request.appearance.startsWith(
-      "A wide, empty establishing view of the mill pond in Ashcroft. Venue purpose: where the grain is ground.",
+      "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show the building from outside; do not show an interior.",
     ),
     "the picture is of the place, with its own note",
   );
+  assert.ok(request.appearance.includes("Venue purpose: where the grain is ground."));
   assert.ok(request.appearance.includes(settingText), "and it knows which village it stands in");
   assert.match(request.appearance, /It is .+, and the weather is .+\./, "and what the weather is doing right now");
   assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
@@ -997,12 +1059,9 @@ async function main() {
     "and what arrives has to be a picture",
   );
 
-  // ── Nothing but the button draws ──────────────────────────────────────────
-  // The claim this whole release rests on, and the only way to keep it true
-  // across a codebase is to count the files that could break it. Only the
-  // shared generation boundary mentions the Engine route, and only the explicit
-  // map/place services and the package route can reach it — so there is no hook
-  // on a new place, no call from the remap, no call from the tick and no timer.
+  // ── Only player actions and first private entry draw ──────────────────────
+  // Count the files that can reach generation so founding, remapping, and the
+  // simulation clock cannot create additional charges.
   const packageRoot = join(repoRoot, "packages/villages/src");
   const sources = await collectSources(packageRoot);
   const canDraw = sources
@@ -1021,7 +1080,7 @@ async function main() {
       "engine/packages/server/src/services/villages/image-generation.ts",
       "engine/packages/server/src/services/villages/location-image.ts",
     ],
-    "the explicit image routes share one generation boundary: anything else here may be an automatic purchase",
+    "manual and first-private-entry drawing share one generation boundary",
   );
   for (const silent of [
     "village.ts",
@@ -1039,15 +1098,14 @@ async function main() {
     assert.equal(
       source.includes(AVATAR_PATH),
       false,
-      `${silent} must not be able to draw: a picture is only ever bought by pressing a button`,
+      `${silent} must not be able to draw outside the single private-entry exception`,
     );
   }
 
-  // And the button really is a button. Each handler is defined once and reached
-  // only from an event, so there is no effect anywhere that could call one.
+  // Manual image controls still draw only on a press. The separate private-entry
+  // path has a durable one-attempt marker and is not a UI redraw effect.
   //
-  // The counts are occurrences of the NAME: one definition and one control.
-  // Edit Room owns image actions on desktop and mobile, including for homes.
+  // The shared venue image control serves exterior, Class, and private spaces.
   const client = await readFile(
     join(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
@@ -1067,9 +1125,13 @@ async function main() {
   );
   assert.match(
     client,
-    /onClick=\{\(\) => void drawPlaceImage\(place\.id\)\}/,
+    /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId\)\}/,
     "and wired to a click on the screen that stands in a place",
   );
+  const imageService = await readFile(join(repoRoot, services, "location-image.ts"), "utf8");
+  const venueSession = await readFile(join(repoRoot, services, "venue-session.ts"), "utf8");
+  assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
+  assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
 
   // The package must not have grown a private Engine import to do any of this.
   // The image connection, the gallery and the drawing are all the Engine's own
@@ -1081,7 +1143,7 @@ async function main() {
   }
 
   process.stdout.write(
-    "Villages location image regression: ceilings, prompt id, refusal, folder, connection, store, no implicit draw ok\n",
+    "Villages location image regression: prompts, gallery, manual draw, one private-entry exception ok\n",
   );
 }
 

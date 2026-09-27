@@ -390,6 +390,7 @@ async function main() {
         {
           ...state.venues[0]!,
           id: "rosa-home",
+          classes: ["residence"],
           name: "",
           description: "Rosa's little house.",
           occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
@@ -398,6 +399,7 @@ async function main() {
         {
           ...state.venues[0]!,
           id: "empty-venue",
+          classes: ["residence"],
           name: "The bakery",
           description: "A small bakery.",
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -422,10 +424,58 @@ async function main() {
       Date.parse(moving.residences[0]!.completesAt!) - Date.parse(moving.residences[0]!.approvedAt!) >=
         24 * 60 * 60_000,
     );
+    await mutateVillageState((state) => {
+      state.venues[0]!.privateSpaces = [
+        {
+          id: "private:housing-resident",
+          ownerId: "housing-resident",
+          venueClass: "residence",
+          description: "Rosa's old nook.",
+          image: null,
+          state: {
+            condition: "",
+            items: ["Rosa's letter"],
+            publicFacts: [],
+            features: [],
+            traces: [],
+            updatedAt: start.toISOString(),
+          },
+        },
+      ];
+      state.venues[0]!.spaces = [
+        {
+          id: "residence",
+          venueClass: "residence",
+          description: "Shared kitchen.",
+          image: null,
+          state: {
+            condition: "",
+            items: ["shared table"],
+            publicFacts: [],
+            features: [],
+            traces: [],
+            updatedAt: start.toISOString(),
+          },
+        },
+      ];
+    });
     await completeVillageResidence("housing-resident", false, new Date());
     assert.equal((await readVillageState()).venues[0]?.occupancy.residentCharacterId, "housing-resident");
     await completeVillageResidence("housing-resident", true, new Date());
     assert.equal((await readVillageState()).venues[1]?.occupancy.residentCharacterId, "housing-resident");
+    const movedState = await readVillageState();
+    assert.deepEqual(movedState.venues[0]?.archivedPrivateSpaces?.at(-1)?.space.state.items, ["Rosa's letter"]);
+    assert.equal(
+      movedState.venues[0]?.privateSpaces?.some((space) => space.ownerId === "housing-resident"),
+      false,
+    );
+    assert.equal(
+      movedState.venues[1]?.privateSpaces
+        ?.find((space) => space.ownerId === "housing-resident")
+        ?.state.items.includes("shared table"),
+      false,
+      "a new private space never copies shared furnishings",
+    );
     assert.match(
       renderHomesBlock(projectHomeLines(await readVillageState(), new Map()), "Player"),
       /Rosa lives at The bakery/u,

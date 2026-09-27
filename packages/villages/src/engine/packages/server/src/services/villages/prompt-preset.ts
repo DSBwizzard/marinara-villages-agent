@@ -27,6 +27,7 @@
 // unknown macro alone means a typo is visible in the prompt and in the debug
 // dump instead of silently deleting a line.
 import { asInstant, asRecord, asTrimmedString } from "./coerce.js";
+import { hasVenueClass } from "./venue-model.js";
 import type {
   TownMapFit,
   VillageAgenda,
@@ -290,7 +291,9 @@ export const MAX_VENUES = 24;
  * named buildings into a list whose uniqueness is enforced by name.
  */
 export function remapVenues(venues: readonly VillageVenue[]): VillageVenue[] {
-  return venues.filter((venue) => !isHousePlace(venue));
+  return venues.filter((venue) =>
+    venue.classes?.length ? venue.classes.some((venueClass) => venueClass !== "residence") : !isHousePlace(venue),
+  );
 }
 
 /**
@@ -323,12 +326,8 @@ export function remapVenues(venues: readonly VillageVenue[]): VillageVenue[] {
  * speak, while keeping a house in the list only offers the model a destination
  * whose only reading is "at home".
  */
-export function isHousePlace(place: { occupancy: VillageVenue["occupancy"] }): boolean {
-  return (
-    Boolean(place.occupancy.playerHome) ||
-    Boolean(place.occupancy.residentCharacterId) ||
-    Boolean(place.occupancy.homeKind)
-  );
+export function isHousePlace(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
+  return hasVenueClass(place, "residence");
 }
 
 /**

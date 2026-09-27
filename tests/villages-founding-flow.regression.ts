@@ -1,0 +1,121 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+async function main() {
+  const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const clientRoot = join(root, "packages/villages/src/engine/packages/client/src");
+  const serverRoot = join(root, "packages/villages/src/engine/packages/server/src");
+  const { foundingPhotoOverlaps } = await import(
+    pathToFileURL(join(clientRoot, "villages-founding-placement.ts")).href
+  );
+  const { coerceVillageState } = await import(
+    pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
+  );
+  const { parsePlace } = await import(pathToFileURL(join(serverRoot, "services/villages/village.ts")).href);
+
+  for (const picture of [
+    { width: 1000, height: 700, photoWidth: 58, photoHeight: 58 },
+    { width: 420, height: 630, photoWidth: 72, photoHeight: 72 },
+  ]) {
+    const first = { x: 0.5, y: 0.5 };
+    assert.equal(foundingPhotoOverlaps({ x: 0.5, y: 0.5 }, [first], picture), true, "stacked photos must be rejected");
+    assert.equal(
+      foundingPhotoOverlaps({ x: 0.5 + (0.15 * picture.photoWidth) / picture.width, y: 0.5 }, [first], picture),
+      true,
+    );
+    assert.equal(
+      foundingPhotoOverlaps({ x: 0.5 + (0.25 * picture.photoWidth) / picture.width, y: 0.5 }, [first], picture),
+      false,
+      "nearby buildings are allowed",
+    );
+    assert.equal(
+      foundingPhotoOverlaps({ x: 0.5, y: 0.5 + (0.25 * picture.photoHeight) / picture.height }, [first], picture),
+      false,
+    );
+    assert.equal(foundingPhotoOverlaps(first, [{ x: null, y: null }], picture), false);
+  }
+
+  assert.equal(
+    coerceVillageState({ setupAt: "2025-01-01T00:00:00Z" }).foundingPreparation,
+    null,
+    "older villages remain ready",
+  );
+  assert.deepEqual(
+    coerceVillageState({
+      foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
+    }).foundingPreparation,
+    { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
+    "preparation progress survives loading",
+  );
+  const outsideImage = { id: "outer", ref: "global-gallery:outer", url: "/outer.webp" };
+  const insideImage = { id: "inner", ref: "global-gallery:inner", url: "/inner.webp" };
+  const parsed = parsePlace(
+    {
+      id: "residence-one",
+      name: "Stone Cottage",
+      form: "Cottage",
+      description: "Stone walls under ivy",
+      classes: ["residence"],
+      presentation: { x: 0.3, y: 0.4, image: outsideImage },
+      occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
+      spaces: [
+        {
+          venueClass: "residence",
+          description: "A hearth and a low table",
+          image: insideImage,
+          state: {
+            condition: "lived in",
+            items: ["wooden bowl"],
+            publicFacts: ["old chimney"],
+            features: [{ text: "blue curtains" }],
+          },
+        },
+      ],
+    },
+    true,
+  );
+  assert.deepEqual(parsed.presentation.image, outsideImage);
+  assert.deepEqual(parsed.spaces?.[0]?.image, insideImage);
+  assert.equal(parsed.spaces?.[0]?.description, "A hearth and a low table");
+  assert.equal(parsed.spaces?.[0]?.state.condition, "lived in");
+  assert.deepEqual(parsed.spaces?.[0]?.state.items, ["wooden bowl"]);
+  assert.deepEqual(parsed.spaces?.[0]?.state.publicFacts, ["old chimney"]);
+  assert.equal(parsed.spaces?.[0]?.state.features[0]?.text, "blue curtains");
+
+  const client = await readFile(join(clientRoot, "villages-package-entry.tsx"), "utf8");
+  const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
+  const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
+  const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
+  assert.ok(client.includes("photoPins={setupStep >= 3}"));
+  assert.ok(client.includes("Reset all venues"));
+  assert.ok(client.includes("Place a Residence"));
+  assert.ok(client.includes("Place a Gathering Place"));
+  assert.ok(client.includes("Replace text with this draft"));
+  assert.ok(client.includes("Use in empty fields"));
+  assert.ok(client.includes('setScreen("preparing")'));
+  assert.equal(client.includes("setupMapGeneratedFor"), false, "edited settings may keep the map");
+  const review =
+    client
+      .split("{setupStep === 4 ? (")[1]
+      ?.split("<div className={`${ELEMENT_TAG}-row`}>\n                {setupStep > 0")[0] ?? "";
+  assert.ok(review.includes("Review your village"));
+  assert.equal(review.includes("onChange="), false, "the review must not edit fields");
+  assert.equal(review.includes("Generate"), false, "the review must not draft content");
+  assert.ok(routes.includes('"/setup/venues/draft"'));
+  assert.ok(routes.includes('"/setup/venue-image/generate"'));
+  assert.ok(routes.includes('"/setup/venue-image"'));
+  assert.ok(routes.includes('"/setup/preparation/retry"'));
+  assert.ok(village.includes("image: foundingImage(row.image)"));
+  assert.ok(village.includes("features: features.map"));
+  assert.ok(village.includes("marker.completedIds.includes(id)"));
+  assert.ok(village.includes("await writeVillagerAgenda(id)"));
+  assert.ok(village.includes("readNativeScheduleSnapshot(new Date())).cardsReadable"));
+  assert.ok(drafts.includes("selectedLorebookIds"));
+  assert.match(drafts, /resident:\s*card\s*\?/);
+  assert.ok(drafts.includes("row.guidance"));
+  console.log("Villages founding flow regression: placement, review, drafts, images, preparation ok");
+}
+
+void main();

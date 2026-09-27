@@ -42,7 +42,8 @@ const CONNECTIONS_DOC_ID = "villages-connections";
 
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT ?? join(repoRoot, "../Marinara-Engine");
+  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
+  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
   const Fastify = (
     await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
   ).default;

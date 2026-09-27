@@ -77,8 +77,8 @@ assert.match(
 );
 assert.match(
   entrySource,
-  /setPublicCenterSpot\(fresh \? null : placeSpot\(publicCenter\)\);/u,
-  "Opening setup for a new village must use the null-safe place helper because a fresh village has no public center yet.",
+  /fresh \|\| !village\s*\? \[\]\s*: village\.settings\.venues\.filter/u,
+  "Opening setup for a new village must start with an empty unified venue list.",
 );
 assert.doesNotMatch(
   entrySource,
