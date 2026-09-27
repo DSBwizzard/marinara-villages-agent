@@ -10,7 +10,7 @@
   },
   "id": "villages",
   "name": "Villages",
-  "version": "0.6.43",
+  "version": "0.6.44",
   "description": "A text-first slice-of-life village that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
   "engine": {
     "min": "2.4.6",
@@ -36,6 +36,15 @@
       "iconPaths": [
         "villages-icon.png"
       ]
+    },
+    "assets": {
+      "paths": [
+        "founding-rebuild.jpg",
+        "founding-pioneer.jpg",
+        "founding-prosper.jpg",
+        "founding-custom.jpg",
+        "founding-none.jpg"
+      ]
     }
   },
   "files": [
@@ -46,18 +55,43 @@
     },
     {
       "path": "server.mjs",
-      "sha256": "c53ee3eab19b08f5481c95e9855ddec2ae9244c508c5480c57432ba63379c203",
-      "bytes": 333150
+      "sha256": "0b18c95b5d66b8da2a4b7816c9e2a24237b1b9d077205406ff27f3eeb7841e5b",
+      "bytes": 334116
     },
     {
       "path": "client.js",
-      "sha256": "91844a214fa9b22c6f7efc6f3916e2e9a9533284131ebb3b3e73835280705c73",
-      "bytes": 666553
+      "sha256": "ee56dbbd2641214c358af5504bee1a193f223593337fe2834cf132decb6cfe6d",
+      "bytes": 675230
     },
     {
       "path": "villages-icon.png",
       "sha256": "e45351b98093012f0932fe265d0c6943043bdeb89240d46657bf01d52a4a1cc4",
       "bytes": 4383
+    },
+    {
+      "path": "founding-rebuild.jpg",
+      "sha256": "32e51b3770255fd87d3b51a385d7c2d10a957723ad12bc71e663b6beecaa9503",
+      "bytes": 413717
+    },
+    {
+      "path": "founding-pioneer.jpg",
+      "sha256": "dea8c4fbbc257375084f5e0898b2566698305ff3c624c892f8ffa730c42220f0",
+      "bytes": 442688
+    },
+    {
+      "path": "founding-prosper.jpg",
+      "sha256": "580d798b7f0f6c783b5519e4b9c8385eea3f7a82924b3c04f0254ba7eb00d9cb",
+      "bytes": 483091
+    },
+    {
+      "path": "founding-custom.jpg",
+      "sha256": "04d8ee03e1a74ecb4320750f0e4899b0af10d11f3fd513be3fd8d6f910684a5f",
+      "bytes": 498079
+    },
+    {
+      "path": "founding-none.jpg",
+      "sha256": "954371f2b1d9e688b4cd611d50ab476a67010b40b42e2b2408bd18b66a68fb0c",
+      "bytes": 473205
     }
   ],
   "permissions": [

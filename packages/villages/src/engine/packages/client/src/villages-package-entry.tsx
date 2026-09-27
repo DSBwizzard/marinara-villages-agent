@@ -59,14 +59,47 @@ const ELEMENT_TAG = "marinara-capability-villages";
 const STYLE_ID = "marinara-capability-villages-styles";
 const API_PATH = "/api/villages";
 const DESKTOP_PHOTO_SCALE = 0.7;
-const FOUNDING_REASONS = [
-  { value: "fresh-start", label: "Fresh start" },
-  { value: "refuge", label: "Refuge" },
-  { value: "shared-project", label: "Shared project" },
-  { value: "discovery", label: "Discovery" },
-  { value: "homecoming", label: "Homecoming" },
-  { value: "something-else", label: "Something else" },
+const FOUNDING_SCENARIOS = [
+  {
+    value: "rebuild",
+    label: "Rebuild",
+    description: "Begin again, together.",
+    icon: "⌂",
+    premise:
+      "In the wake of a devastating upheaval, scattered survivors have chosen this place to begin again. Their early days bring hard choices, shared work, and the trust that grows when people depend on one another.",
+  },
+  {
+    value: "pioneer",
+    label: "Pioneer",
+    description: "Follow the horizon.",
+    icon: "△",
+    premise:
+      "Drawn by a distant purpose, a small group has crossed into unfamiliar country. Each journey brings discoveries and risks, while the foothold they establish slowly becomes a home.",
+  },
+  {
+    value: "prosper",
+    label: "Prosper",
+    description: "Make opportunity grow.",
+    icon: "▥",
+    premise:
+      "A promising crossroads draws makers, merchants, and ambitious newcomers. Workshops open, deals are struck, and the village’s future takes shape through what its people build, exchange, and value.",
+  },
+  { value: "custom", label: "Custom", description: "Write your own beginning.", icon: "✦", premise: "" },
+  { value: "none", label: "No scenario", description: "Let life unfold.", icon: "∞", premise: "" },
 ] as const;
+type FoundingScenarioId = (typeof FOUNDING_SCENARIOS)[number]["value"];
+const LEGACY_FOUNDING_REASONS: Readonly<Record<string, string>> = {
+  "fresh-start": "People founded this village for a fresh start.",
+  refuge: "People founded this village as a refuge.",
+  "shared-project": "People founded this village as a shared project.",
+  discovery: "People founded this village to explore a discovery.",
+  homecoming: "People founded this village as a homecoming.",
+  "something-else": "People founded this village for another reason.",
+};
+const foundingScenario = (value: FoundingScenarioId) =>
+  FOUNDING_SCENARIOS.find((scenario) => scenario.value === value)!;
+const foundingScenarioArt = (value: FoundingScenarioId) =>
+  `/api/capability-packages/villages/assets/founding-${value}.jpg`;
 type TownMapOptions = { roads: boolean; structures: boolean; water: boolean };
 const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: true, structures: false, water: false };
 
@@ -74,7 +107,14 @@ const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: true, structures: fals
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
-const SETUP_STEPS = ["Village identity", "Connections", "Village map", "Build the village", "Review"] as const;
+const SETUP_STEPS = [
+  "Village Identity",
+  "Connections & Persona",
+  "World & Setting",
+  "Village Map",
+  "Build the Village",
+  "Review",
+] as const;
 const SETUP_MIN_VILLAGER_COUNT = 1;
 const SETUP_MAX_VILLAGER_COUNT = 3;
 const VILLAGES_IMAGE_CONNECTION_DISABLED = "__villages_image_disabled__";
@@ -521,11 +561,13 @@ type VillageSettings = {
   settingMaxLength: number;
   foundingReason: string;
   foundingDetails: string;
+  foundingGuidance: string;
   selectedLorebookIds: string[];
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
   foundingDetailsMaxLength: number;
+  foundingGuidanceMaxLength: number;
   townMapLayoutPrompt: string;
   townMapNegativePrompt: string;
   /**
@@ -4348,6 +4390,111 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-overlay-head > .${ELEMENT_TAG}-panel-title { flex: 1 1 auto; margin: 0; }
 
 /* The founding wizard. */
+.${ELEMENT_TAG}-setup-root { container-type: inline-size; }
+.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body[data-step="0"]) {
+  --background: #121936; --popover: #141b39; --foreground: #f3f3ff;
+  --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
+  background: radial-gradient(circle at 12% 95%, #263978, #111832 50%, #0e1430);
+  color: #f3f3ff;
+}
+.${ELEMENT_TAG}-setup-body { flex-wrap: nowrap; align-items: stretch; }
+.${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side { flex: 1 1 34rem; }
+.${ELEMENT_TAG}-setup-rail {
+  flex: 0 0 10rem; display: flex; flex-direction: column; gap: .4rem;
+  padding: .75rem .25rem; color: var(--muted-foreground);
+}
+.${ELEMENT_TAG}-setup-rail-step {
+  display: flex; align-items: center; gap: .65rem; padding: .4rem .25rem;
+  font-size: .78rem; line-height: 1.35; opacity: .75;
+}
+.${ELEMENT_TAG}-setup-rail-step[data-active="true"] { color: var(--foreground); opacity: 1; font-weight: 700; }
+.${ELEMENT_TAG}-setup-rail-step[data-done="true"] { opacity: 1; }
+.${ELEMENT_TAG}-setup-rail-number {
+  display: grid; place-items: center; flex: 0 0 2rem; height: 2rem;
+  border: 1px solid var(--border); border-radius: 50%; font-weight: 700;
+}
+.${ELEMENT_TAG}-setup-rail-step[data-active="true"] .${ELEMENT_TAG}-setup-rail-number {
+  border-color: #bca5ff; background: linear-gradient(135deg, #7663f6, #446ee9);
+  box-shadow: 0 0 .85rem #9878f1a8; color: #fff;
+}
+.${ELEMENT_TAG}-setup-kicker { margin: 0; color: var(--muted-foreground); font-size: .78rem; }
+.${ELEMENT_TAG}-setup-body[data-step="0"] {
+  --background: #151d3b; --popover: #141b39; --foreground: #f3f3ff;
+  --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
+  gap: 1rem; color: var(--foreground);
+}
+.${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-side { flex-basis: 35rem; }
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-overlay {
+  padding: 1.3rem; border-color: #5268b8; border-radius: 1rem;
+  background: linear-gradient(145deg, #182044, #101831);
+  box-shadow: inset 0 0 2rem #27347866;
+}
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-panel-title {
+  font-size: clamp(1.45rem, 2.6vw, 2.4rem); color: #f5f5ff;
+}
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-search,
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea {
+  background: #1c254a; border-color: #7082cf; color: #f2f4ff;
+}
+.${ELEMENT_TAG}-scenario-options {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .65rem; margin-top: .4rem;
+}
+.${ELEMENT_TAG}-scenario-option {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: .3rem; min-height: 7.25rem; padding: .75rem .45rem;
+  border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b;
+  color: #f0f2ff; text-align: center; cursor: pointer;
+}
+.${ELEMENT_TAG}-scenario-option input {
+  position: absolute; width: 1px; height: 1px; opacity: 0;
+}
+.${ELEMENT_TAG}-scenario-option:has(input:checked) {
+  border-color: #dac8ff; background: linear-gradient(165deg, #303d85, #202754);
+  box-shadow: 0 0 0 2px #9a78ff, 0 0 1rem #9a78ff9c;
+}
+.${ELEMENT_TAG}-scenario-option:has(input:focus-visible) { outline: 3px solid #f2d6ff; outline-offset: 3px; }
+.${ELEMENT_TAG}-scenario-icon { color: #b9c8ff; font-size: 2.2rem; line-height: 1; }
+.${ELEMENT_TAG}-scenario-option strong { font-size: .9rem; }
+.${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: .72rem; line-height: 1.35; }
+.${ELEMENT_TAG}-scenario-art-panel {
+  position: relative; flex: 1 1 19rem; min-width: 0; min-height: 34rem;
+  overflow: hidden; border: 1px solid #6684d4; border-radius: 1.2rem; background: #162550;
+}
+.${ELEMENT_TAG}-scenario-art-panel > img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+}
+.${ELEMENT_TAG}-scenario-art-panel::after {
+  content: ""; position: absolute; inset: 36% 0 0;
+  background: linear-gradient(transparent, #0e1a3ba8 48%, #101a3ef0);
+}
+.${ELEMENT_TAG}-scenario-art-content {
+  position: absolute; z-index: 1; inset: auto 1rem 1rem;
+  display: flex; flex-direction: column; align-items: center; gap: .5rem;
+  color: #fff; text-align: center;
+}
+.${ELEMENT_TAG}-scenario-art-content p {
+  margin: 0; font-family: Georgia, serif; font-style: italic; font-size: clamp(1.25rem, 2vw, 1.9rem);
+}
+.${ELEMENT_TAG}-scenario-art-content strong { font-weight: 500; }
+.${ELEMENT_TAG}-scenario-next {
+  width: min(100%, 15rem); margin-top: .55rem; padding: .65rem;
+  border-color: #7584ff; background: linear-gradient(135deg, #6077ff, #7365ed); color: #fff;
+  font-size: 1rem; font-weight: 700;
+}
+@container (max-width: 70rem) {
+  .${ELEMENT_TAG}-setup-body { flex-wrap: wrap; }
+  .${ELEMENT_TAG}-setup-rail {
+    flex: 1 1 100%; flex-direction: row; overflow-x: auto; padding: .25rem 0;
+  }
+  .${ELEMENT_TAG}-setup-rail-step { flex: 0 0 auto; }
+}
+@container (max-width: 42rem) {
+  .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side,
+  .${ELEMENT_TAG}-scenario-art-panel,
+  .${ELEMENT_TAG}-setup-map-shell { flex: 1 1 100%; }
+  .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .${ELEMENT_TAG}-scenario-art-panel { min-height: 18rem; }
+}
 .${ELEMENT_TAG}-steps { display: flex; flex-wrap: wrap; gap: .375rem; }
 /*
   A chip that says where something has got to: which step of the wizard, or
@@ -10200,8 +10347,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupStep, setSetupStep] = useState(0);
   const [setupName, setSetupName] = useState("");
   const [setupSetting, setSetupSetting] = useState("");
-  const [setupFoundingReason, setSetupFoundingReason] = useState("");
-  const [setupFoundingDetails, setSetupFoundingDetails] = useState("");
+  const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("rebuild");
+  const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>(foundingScenario("rebuild").premise);
+  const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
+  const [setupScenarioDrafts, setSetupScenarioDrafts] = useState<
+    Partial<Record<FoundingScenarioId, { details: string; guidance: string }>>
+  >({});
   const [setupNameSuggestions, setSetupNameSuggestions] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
   const [selectedSetupVenueId, setSelectedSetupVenueId] = useState<string | null>(null);
@@ -10218,9 +10369,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("generate");
   const [setupMapImage, setSetupMapImage] = useState("");
   const [setupMapImageSource, setSetupMapImageSource] = useState<"generate" | "upload" | null>(null);
+  const [setupMapGeneratedKey, setSetupMapGeneratedKey] = useState("");
   const [setupMapSize, setSetupMapSize] = useState<{ width: number; height: number } | null>(null);
   const [setupMapPrompt, setSetupMapPrompt] = useState("");
   const [setupMapNegativePrompt, setSetupMapNegativePrompt] = useState("");
+  const setupMapGenerationKey = JSON.stringify({
+    setting: setupSetting.trim(),
+    lorebooks: setupLorebookDraft,
+    structure: setupMapPrompt,
+    negative: setupMapNegativePrompt,
+    options: setupMapOptions,
+  });
   const [setupMapBusy, setSetupMapBusy] = useState(false);
   const [preparationProblem, setPreparationProblem] = useState("");
   const [connectionSetupProblem, setConnectionSetupProblem] = useState("Connections are still loading.");
@@ -10306,7 +10465,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       ? null
       : setupMapSource === "existing"
         ? townMapImage || null
-        : setupMapImageSource === setupMapSource
+        : setupMapImageSource === setupMapSource &&
+            (setupMapSource !== "generate" || setupMapGeneratedKey === setupMapGenerationKey)
           ? setupMapImage || null
           : null;
   /** Whether the panel is framing a picture: one just picked, or the saved one under revision. */
@@ -11661,6 +11821,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       }
       setSetupMapImage(generated.image);
       setSetupMapImageSource("generate");
+      setSetupMapGeneratedKey(setupMapGenerationKey);
       setSetupMapSize(measured);
       setSetupMapSource("generate");
     } catch (cause) {
@@ -11674,6 +11835,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupMapPrompt,
     setupSetting,
     setupMapOptions,
+    setupMapGenerationKey,
     snapshot?.settings.townMapLayoutPrompt,
     snapshot?.settings.townMapNegativePrompt,
   ]);
@@ -12228,6 +12390,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // written until the last one, so a half-answered setup leaves no village
   // claiming to exist.
 
+  const chooseSetupScenario = (value: FoundingScenarioId) => {
+    if (value === setupFoundingReason) return;
+    const previous = {
+      details: setupFoundingDetails,
+      guidance: setupFoundingGuidance,
+    };
+    const next = setupScenarioDrafts[value];
+    setSetupScenarioDrafts((drafts) => ({ ...drafts, [setupFoundingReason]: previous }));
+    setSetupFoundingReason(value);
+    setSetupFoundingDetails(value === "none" ? "" : (next?.details ?? foundingScenario(value).premise));
+    setSetupFoundingGuidance(value === "none" ? "" : (next?.guidance ?? ""));
+    setSetupProblem("");
+  };
+
   /**
    * Open the wizard.
    *
@@ -12247,8 +12423,32 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupStep(0);
       setSetupName(fresh ? "" : (village?.village.name ?? ""));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
-      setSetupFoundingReason(fresh ? "" : (village?.settings.foundingReason ?? ""));
-      setSetupFoundingDetails(fresh ? "" : (village?.settings.foundingDetails ?? ""));
+      const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
+      const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
+      const reason: FoundingScenarioId = isCurrentScenario
+        ? (storedReason as FoundingScenarioId)
+        : storedReason
+          ? "custom"
+          : "rebuild";
+      const legacyReason = LEGACY_FOUNDING_REASONS[storedReason] ?? storedReason;
+      const savedDetails = village?.settings.foundingDetails ?? "";
+      const legacyPremise = [legacyReason, savedDetails].filter(Boolean).join(" ");
+      const legacyOverflow = legacyPremise.length > (village?.settings.foundingDetailsMaxLength ?? 500);
+      const details =
+        storedReason && !isCurrentScenario
+          ? legacyOverflow
+            ? savedDetails
+            : legacyPremise
+          : fresh || !storedReason
+            ? foundingScenario(reason).premise
+            : savedDetails;
+      const guidance = fresh
+        ? ""
+        : [legacyOverflow ? legacyReason : "", village?.settings.foundingGuidance ?? ""].filter(Boolean).join(" ");
+      setSetupFoundingReason(reason);
+      setSetupFoundingDetails(details);
+      setSetupFoundingGuidance(reason === "none" ? "" : guidance);
+      setSetupScenarioDrafts({ [reason]: { details, guidance } });
       setSetupNameSuggestions([]);
       const foundingPlaces =
         fresh || !village
@@ -12268,6 +12468,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupMapSource(fresh ? "generate" : village?.settings.townMapImageSetAt ? "existing" : "none");
       setSetupMapImage("");
       setSetupMapImageSource(null);
+      setSetupMapGeneratedKey("");
       setSetupMapSize(null);
       setSetupMapPrompt(village?.settings.townMapLayoutPrompt ?? "");
       setSetupMapNegativePrompt(village?.settings.townMapNegativePrompt ?? "");
@@ -12296,28 +12497,32 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setSetupProblem("Give the village a name before continuing.");
           return;
         }
-        if (personaDraft.trim().length === 0) {
+        if (setupFoundingReason !== "none" && !setupFoundingDetails.trim()) {
+          setSetupProblem("Write a scenario premise, or choose No scenario.");
+          return;
+        }
+      }
+      if (setupStep === 1 && step > 1) {
+        if (!personaDraft.trim()) {
           setSetupProblem("Choose the Persona who lives in this village.");
           return;
         }
-        if (!setupFoundingReason || (setupFoundingReason === "something-else" && !setupFoundingDetails.trim())) {
-          setSetupProblem("Choose why the village is being founded, and describe Something else if selected.");
+        if (connectionSetupProblem.length > 0) {
+          setSetupProblem(connectionSetupProblem);
           return;
         }
-      }
-      if (setupStep === 1 && step > 1 && connectionSetupProblem.length > 0) {
-        setSetupProblem(connectionSetupProblem);
-        return;
-      }
-      if (setupStep === 1 && step > 1 && imageConnectionWarning) {
-        setImageWarningOpen(true);
-        return;
+        if (imageConnectionWarning) {
+          setImageWarningOpen(true);
+          return;
+        }
       }
       if (setupStep === 2 && step > 2) {
         if (setupSetting.trim().length === 0) {
           setSetupProblem("Write the Setting and Theme before continuing.");
           return;
         }
+      }
+      if (setupStep === 3 && step > 3) {
         if (setupMapSource !== "none" && !setupMapSrc) {
           setSetupProblem(
             setupMapSource === "generate"
@@ -12327,7 +12532,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
       }
-      if (setupStep === 3 && step > 3) {
+      if (setupStep === 4 && step > 4) {
         const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
         const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
         const villagerHomeCount = villagerHomes.length;
@@ -12364,13 +12569,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupProblem("");
       setSetupStep(step);
       // The build step assigns homes from the library, so the library is only read
-      // when that step is reached. The first step picks a Persona, on the same
-      // terms.
-      if (step === 0) {
-        void loadPersonas();
-        void loadLorebooks();
-      }
-      if (step === 3) void loadCatalog();
+      // when that step is reached.
+      if (step === 1) void loadPersonas();
+      if (step === 2) void loadLorebooks();
+      if (step === 4) void loadCatalog();
       setPlacingHome(false);
       setPlacingPublicCenter(false);
       setMovingSetupVenueId(null);
@@ -12434,6 +12636,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setting: setupSetting,
           foundingReason: setupFoundingReason,
           foundingDetails: setupFoundingDetails,
+          foundingGuidance: setupFoundingGuidance,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           venues: venues.map(setupDraftRow),
@@ -12565,9 +12768,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const setupBlocker = useCallback((): string => {
     if (setupName.trim().length === 0) return "Give the village a name.";
     if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
-    if (!setupFoundingReason || (setupFoundingReason === "something-else" && !setupFoundingDetails.trim())) {
-      return "Choose why the village is being founded.";
-    }
+    if (setupFoundingReason !== "none" && !setupFoundingDetails.trim()) return "Write a scenario premise.";
     if (setupSetting.trim().length === 0) return "Write the Setting and Theme.";
     if (setupMapSource !== "none" && !setupMapSrc) return "Choose, generate, or upload the village map.";
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
@@ -12585,7 +12786,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.spaces?.[0]?.description.trim(),
       )
     )
-      return "Give every venue a name, Form, exterior description, and scene description in Step 4.";
+      return "Give every venue a name, Form, exterior description, and scene description in Step 5.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -12621,6 +12822,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setting: setupSetting.trim(),
           foundingReason: setupFoundingReason,
           foundingDetails: setupFoundingDetails.trim(),
+          foundingGuidance: setupFoundingGuidance.trim(),
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
@@ -12656,6 +12858,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupName,
     setupFoundingReason,
     setupFoundingDetails,
+    setupFoundingGuidance,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupSetting,
@@ -16614,7 +16817,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   if (screen === "setup") {
     const wizardVillagers = (catalog ?? []).map((entry) => ({ id: entry.id, name: entry.name }));
     return (
-      <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home`}>
+      <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root`}>
         <div className={`${ELEMENT_TAG}-mapbar`}>
           {/*
             The village's name, and nothing to click. The wizard carried a Later
@@ -16629,7 +16832,21 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           <span className={`${ELEMENT_TAG}-mapbar-title`}>{setupName.trim() || "A new village"}</span>
         </div>
 
-        <div className={`${ELEMENT_TAG}-home-body`}>
+        <div className={`${ELEMENT_TAG}-home-body ${ELEMENT_TAG}-setup-body`} data-step={setupStep}>
+          <aside className={`${ELEMENT_TAG}-setup-rail`} aria-label="Founding progress">
+            {SETUP_STEPS.map((label, index) => (
+              <div
+                key={label}
+                className={`${ELEMENT_TAG}-setup-rail-step`}
+                data-active={index === setupStep ? "true" : "false"}
+                data-done={index < setupStep ? "true" : "false"}
+                aria-current={index === setupStep ? "step" : undefined}
+              >
+                <span className={`${ELEMENT_TAG}-setup-rail-number`}>{index + 1}</span>
+                <span>{label}</span>
+              </div>
+            ))}
+          </aside>
           <div className={`${ELEMENT_TAG}-side`}>
             <div className={`${ELEMENT_TAG}-overlay`}>
               <div className={`${ELEMENT_TAG}-overlay-head`}>
@@ -16637,25 +16854,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   {snapshot?.isFounded ? "Setting the village up again" : "Founding your village"}
                 </h2>
               </div>
-              <div className={`${ELEMENT_TAG}-steps`}>
-                {/*
-                  Where the wizard has got to, drawn as a record rather than as
-                  a control: Back and Next walk the wizard, and a step that took
-                  a click would be a second, quieter way to argue with both of
-                  them. Nothing here answers the cursor, because nothing here
-                  does anything.
-                */}
-                {SETUP_STEPS.map((label, index) => (
-                  <span
-                    key={label}
-                    className={`${ELEMENT_TAG}-step`}
-                    data-active={index === setupStep ? "true" : "false"}
-                    data-done={index < setupStep ? "true" : "false"}
-                  >
-                    {`${index + 1}. ${label}`}
-                  </span>
-                ))}
-              </div>
+              <p className={`${ELEMENT_TAG}-setup-kicker`}>
+                Step {setupStep + 1} of {SETUP_STEPS.length} · {SETUP_STEPS[setupStep]}
+              </p>
 
               {setupStep === 0 ? (
                 <>
@@ -16675,46 +16876,84 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     />
                   </div>
                   <fieldset className={`${ELEMENT_TAG}-field`}>
-                    <legend className={`${ELEMENT_TAG}-label`}>Why is this village being founded?</legend>
-                    <div className={`${ELEMENT_TAG}-reason-options`}>
-                      {FOUNDING_REASONS.map((reason) => (
-                        <label key={reason.value} className={`${ELEMENT_TAG}-reason-option`}>
+                    <legend className={`${ELEMENT_TAG}-label`}>Choose a scenario</legend>
+                    <div className={`${ELEMENT_TAG}-scenario-options`}>
+                      {FOUNDING_SCENARIOS.map((scenario) => (
+                        <label key={scenario.value} className={`${ELEMENT_TAG}-scenario-option`}>
                           <input
                             type="radio"
-                            name={`${ELEMENT_TAG}-founding-reason`}
-                            checked={setupFoundingReason === reason.value}
+                            name={`${ELEMENT_TAG}-founding-scenario`}
+                            checked={setupFoundingReason === scenario.value}
                             disabled={busy}
-                            onChange={() => setSetupFoundingReason(reason.value)}
+                            onChange={() => chooseSetupScenario(scenario.value)}
                           />
-                          {reason.label}
+                          <span className={`${ELEMENT_TAG}-scenario-icon`} aria-hidden="true">
+                            {scenario.icon}
+                          </span>
+                          <strong>{scenario.label}</strong>
+                          <small>{scenario.description}</small>
                         </label>
                       ))}
                     </div>
                   </fieldset>
-                  <div className={`${ELEMENT_TAG}-field`}>
-                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
-                      Founding details {setupFoundingReason === "something-else" ? "(required)" : "(optional)"}
-                    </label>
-                    <textarea
-                      id={`${ELEMENT_TAG}-founding-details`}
-                      className={`${ELEMENT_TAG}-textarea`}
-                      value={setupFoundingDetails}
-                      maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 500}
-                      placeholder="Who brought everyone together, and what are they hoping to build?"
-                      disabled={busy}
-                      onChange={(event) => setSetupFoundingDetails(event.target.value)}
-                    />
-                    <span className={`${ELEMENT_TAG}-hint`}>
-                      This premise informs village stories without forcing repeated events.
-                    </span>
-                  </div>
-                  {/*
-                    Who the player is, asked here rather than left to the
-                    settings panel. The village has to answer "who are you?" the
-                    first time a villager is spoken to, and the Persona that
-                    answer comes from is a choice, not a setting to be found
-                    later.
-                  */}
+                  {setupFoundingReason === "none" ? (
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      Your village will have a world and setting, with no prescribed founding story.
+                    </p>
+                  ) : (
+                    <>
+                      <div className={`${ELEMENT_TAG}-field`}>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
+                          Scenario premise (required)
+                        </label>
+                        <textarea
+                          id={`${ELEMENT_TAG}-founding-details`}
+                          className={`${ELEMENT_TAG}-textarea`}
+                          value={setupFoundingDetails}
+                          maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 500}
+                          placeholder="What brings people here, and what might shape their lives?"
+                          disabled={busy}
+                          onChange={(event) => {
+                            const details = event.target.value;
+                            setSetupFoundingDetails(details);
+                            setSetupScenarioDrafts((drafts) => ({
+                              ...drafts,
+                              [setupFoundingReason]: { details, guidance: setupFoundingGuidance },
+                            }));
+                          }}
+                        />
+                        <span className={`${ELEMENT_TAG}-hint`}>
+                          Edit this starting point freely. It informs stories without forcing repeated events.
+                        </span>
+                      </div>
+                      <div className={`${ELEMENT_TAG}-field`}>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-guidance`}>
+                          Narrative direction (optional)
+                        </label>
+                        <textarea
+                          id={`${ELEMENT_TAG}-founding-guidance`}
+                          className={`${ELEMENT_TAG}-textarea`}
+                          value={setupFoundingGuidance}
+                          maxLength={snapshot?.settings.foundingGuidanceMaxLength ?? 500}
+                          placeholder="Which themes, tensions, or pace should stories favor?"
+                          disabled={busy}
+                          onChange={(event) => {
+                            const guidance = event.target.value;
+                            setSetupFoundingGuidance(guidance);
+                            setSetupScenarioDrafts((drafts) => ({
+                              ...drafts,
+                              [setupFoundingReason]: { details: setupFoundingDetails, guidance },
+                            }));
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : null}
+
+              {setupStep === 1 ? (
+                <>
                   <PlayerIdentityEditor
                     idPrefix="setup"
                     personas={personas}
@@ -16725,40 +16964,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     storedMissing={snapshot?.settings.playerPersonaMissing ?? false}
                     disabled={busy}
                   />
-                  <VillageLorebookPicker
-                    books={lorebooks}
-                    error={lorebooksError}
-                    selected={setupLorebookDraft}
-                    onChange={(ids) => {
-                      setSetupLorebookDraft(ids);
-                      setSetupNameSuggestions([]);
-                    }}
-                    disabled={busy}
-                  />
-                  <div className={`${ELEMENT_TAG}-field`}>
-                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-lore-budget`}>
-                      Lorebook token budget
-                    </label>
-                    <input
-                      id={`${ELEMENT_TAG}-setup-lore-budget`}
-                      className={`${ELEMENT_TAG}-notice-input`}
-                      type="number"
-                      min={snapshot?.settings.loreTokenBudgetMin ?? 200}
-                      max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
-                      step={100}
-                      value={setupLoreTokenBudgetDraft}
-                      disabled={busy}
-                      onChange={(event) => setSetupLoreTokenBudgetDraft(Number(event.target.value))}
-                    />
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      Maximum approximate lore tokens for village text, wishes, and agendas.
-                    </p>
-                  </div>
-                </>
-              ) : null}
-
-              {setupStep === 1 ? (
-                <>
                   <AgentConnections
                     onSetupProblem={setConnectionSetupProblem}
                     onImageWarningChange={setImageConnectionWarning}
@@ -16819,9 +17024,43 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       }}
                     />
                     <span className={`${ELEMENT_TAG}-hint`}>
-                      Required. Describe the village&apos;s setting, visual style, and narrative vibe.
+                      Required. Define the world, its atmosphere, and the village&apos;s visual character.
                     </span>
                   </div>
+                  <VillageLorebookPicker
+                    books={lorebooks}
+                    error={lorebooksError}
+                    selected={setupLorebookDraft}
+                    onChange={(ids) => {
+                      setSetupLorebookDraft(ids);
+                      setSetupNameSuggestions([]);
+                    }}
+                    disabled={busy}
+                  />
+                  <div className={`${ELEMENT_TAG}-field`}>
+                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-lore-budget`}>
+                      Lorebook token budget
+                    </label>
+                    <input
+                      id={`${ELEMENT_TAG}-setup-lore-budget`}
+                      className={`${ELEMENT_TAG}-notice-input`}
+                      type="number"
+                      min={snapshot?.settings.loreTokenBudgetMin ?? 200}
+                      max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
+                      step={100}
+                      value={setupLoreTokenBudgetDraft}
+                      disabled={busy}
+                      onChange={(event) => setSetupLoreTokenBudgetDraft(Number(event.target.value))}
+                    />
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      Maximum approximate lore tokens for village text, wishes, and agendas.
+                    </p>
+                  </div>
+                </>
+              ) : null}
+
+              {setupStep === 3 ? (
+                <>
                   <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="Village map image source">
                     <button
                       type="button"
@@ -17003,7 +17242,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 3 ? (
+              {setupStep === 4 ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
                     Place your Residence, one to three villager Residences, and one Gathering Place. Select a photograph
@@ -17537,10 +17776,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 4 ? (
+              {setupStep === 5 ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
-                    Review your village before opening its gates. Return to Step 4 to change a venue.
+                    Review your village before opening its gates. Return to Step 5 to change a venue.
                   </p>
                   <p className={`${ELEMENT_TAG}-hint`}>
                     {setupName.trim()} · {setupSetting.trim()} ·{" "}
@@ -17551,11 +17790,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     <strong>Persona:</strong>{" "}
                     {personas?.find((persona) => persona.id === personaDraft)?.name ?? "Selected Persona"}
                     {" · "}
-                    <strong>Founded for:</strong>{" "}
-                    {FOUNDING_REASONS.find((reason) => reason.value === setupFoundingReason)?.label ??
-                      setupFoundingReason}
-                    {setupFoundingDetails ? ` · ${setupFoundingDetails}` : ""}
+                    <strong>Scenario:</strong> {foundingScenario(setupFoundingReason).label}
                   </p>
+                  {setupFoundingReason !== "none" ? (
+                    <>
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        <strong>Scenario premise:</strong> {setupFoundingDetails}
+                      </p>
+                      {setupFoundingGuidance ? (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          <strong>Narrative direction:</strong> {setupFoundingGuidance}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
                   <p className={`${ELEMENT_TAG}-hint`}>
                     <strong>Map:</strong> {setupMapSource === "none" ? "Logical map" : "Chosen picture"}
                     {" · "}
@@ -17606,7 +17854,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     Back
                   </button>
                 ) : null}
-                {setupStep < SETUP_STEPS.length - 1 ? (
+                {setupStep > 0 && setupStep < SETUP_STEPS.length - 1 ? (
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-button`}
@@ -17615,7 +17863,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   >
                     Next
                   </button>
-                ) : (
+                ) : setupStep === SETUP_STEPS.length - 1 ? (
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-button`}
@@ -17624,7 +17872,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   >
                     {snapshot?.isFounded ? "Save this village" : "Found the village"}
                   </button>
-                )}
+                ) : null}
                 {/*
                   Founding the village is the whole point of the first-time
                   wizard, so there is nothing behind this button to go and look
@@ -17678,22 +17926,43 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             on a shrunken one would be a guess, and it would be a guess stored on
             the village forever.
           */}
-          <div className={`${ELEMENT_TAG}-setup-map-shell`}>
-            <div className={`${ELEMENT_TAG}-setup-map-viewport`}>
-              <MapStage
-                src={setupMapSrc}
-                alt={`A map of ${setupName.trim() || "your new village"}.`}
-                pins={setupStep < 3 ? [] : draftPins}
-                placing={setupStep === 3 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
-                view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
-                shape={setupMapShape}
-                onPlace={setupStep === 3 ? placeSetupPin : undefined}
-                compact={setupStep < 2}
-                mobile={mobile && setupStep >= 2}
-                photoPins={setupStep >= 3}
+          {setupStep === 0 ? (
+            <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
+              <img
+                src={foundingScenarioArt(setupFoundingReason)}
+                alt={`${foundingScenario(setupFoundingReason).label} village scene`}
               />
+              <div className={`${ELEMENT_TAG}-scenario-art-content`}>
+                <p>A new beginning awaits.</p>
+                <strong>{foundingScenario(setupFoundingReason).description}</strong>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-scenario-next`}
+                  disabled={busy}
+                  onClick={() => gotoSetupStep(1)}
+                >
+                  Next →
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className={`${ELEMENT_TAG}-setup-map-shell`}>
+              <div className={`${ELEMENT_TAG}-setup-map-viewport`}>
+                <MapStage
+                  src={setupMapSrc}
+                  alt={`A map of ${setupName.trim() || "your new village"}.`}
+                  pins={setupStep < 4 ? [] : draftPins}
+                  placing={setupStep === 4 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
+                  view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
+                  shape={setupMapShape}
+                  onPlace={setupStep === 4 ? placeSetupPin : undefined}
+                  compact={setupStep < 3}
+                  mobile={mobile && setupStep >= 3}
+                  photoPins={setupStep >= 4}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

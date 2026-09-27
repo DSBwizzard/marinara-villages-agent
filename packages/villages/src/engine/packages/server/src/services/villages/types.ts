@@ -1015,6 +1015,7 @@ export type VillageState = {
   /** The player's reason for starting this village, kept apart from its visual setting. */
   foundingReason: string;
   foundingDetails: string;
+  foundingGuidance: string;
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   loreTokenBudget: number;
@@ -1462,11 +1463,13 @@ export type VillageSettingsView = {
   settingMaxLength: number;
   foundingReason: string;
   foundingDetails: string;
+  foundingGuidance: string;
   selectedLorebookIds: string[];
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
   foundingDetailsMaxLength: number;
+  foundingGuidanceMaxLength: number;
   /** Testing-only editable copy; omitted from the image prompt unless explicitly submitted. */
   townMapLayoutPrompt: string;
   townMapNegativePrompt: string;

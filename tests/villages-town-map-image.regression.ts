@@ -27,6 +27,24 @@ async function main() {
     villageNarrativeSetting({ setting: "Misty cliffs", foundingReason: "refuge", foundingDetails: "After the flood" }),
     /Misty cliffs\nFounding premise: People founded this village as a refuge\. After the flood/,
   );
+  assert.equal(
+    villageNarrativeSetting({
+      setting: "Misty cliffs",
+      foundingReason: "none",
+      foundingDetails: "",
+      foundingGuidance: "",
+    }),
+    "Misty cliffs",
+  );
+  assert.match(
+    villageNarrativeSetting({
+      setting: "Misty cliffs",
+      foundingReason: "rebuild",
+      foundingDetails: "Survivors gather here.",
+      foundingGuidance: "Favor quiet solidarity.",
+    }),
+    /Scenario: Rebuild\nFounding premise: Survivors gather here\.\nNarrative direction: Favor quiet solidarity\./,
+  );
   assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [1536, 1024]);
   assert.deepEqual(
     [coerceVillageState({}).townMapCanvasWidth, coerceVillageState({}).townMapCanvasHeight],
@@ -123,16 +141,27 @@ async function main() {
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  assert.ok(client.includes('"Village identity", "Connections", "Village map", "Build the village", "Review"'));
+  for (const step of [
+    "Village Identity",
+    "Connections & Persona",
+    "World & Setting",
+    "Village Map",
+    "Build the Village",
+    "Review",
+  ]) {
+    assert.ok(client.includes(`"${step}"`));
+  }
   assert.ok(client.includes('"/setup/town-map/generate"'));
   assert.ok(client.includes("Restore default prompt"));
   assert.ok(client.includes("className={`${ELEMENT_TAG}-debug-label`}>DEBUG"));
   assert.ok(client.includes("setupMapOptions"));
   assert.equal(client.includes("Fit entire map"), false);
-  assert.ok(client.includes("mobile={mobile && setupStep >= 2}"));
+  assert.ok(client.includes("mobile={mobile && setupStep >= 3}"));
+  assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
+  assert.ok(client.includes("lorebooks: setupLorebookDraft"));
+  assert.ok(client.includes("setting: setupSetting.trim()"));
   assert.equal(client.includes('mobileStart="contain"'), false);
   assert.ok(client.includes("No background image"));
-  assert.equal(client.includes("setupMapGeneratedFor !== setupMapGenerationKey"), false);
   assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
   assert.equal(client.match(/\/setup\/town-map\/generate/g)?.length, 1, "only the explicit generation handler spends");
