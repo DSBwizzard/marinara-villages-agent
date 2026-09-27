@@ -82,6 +82,7 @@ export async function draftFoundingVenueText(
     setting: asTrimmedString(input.setting),
     foundingReason: asTrimmedString(input.foundingReason),
     foundingDetails: asTrimmedString(input.foundingDetails),
+    foundingGuidance: asTrimmedString(input.foundingGuidance),
   });
   if (!setting.trim()) throw badRequest("Write the Setting and Theme first.");
   const rows = await Promise.all(rowsOf(input.venues).map(withResident));

@@ -504,16 +504,26 @@ const FOUNDING_REASONS: Readonly<Record<string, string>> = {
   homecoming: "People founded this village as a homecoming.",
   "something-else": "People founded this village for another reason.",
 };
+const SCENARIO_NAMES: Readonly<Record<string, string>> = {
+  rebuild: "Rebuild",
+  pioneer: "Pioneer",
+  prosper: "Prosper",
+};
 
 export function villageNarrativeSetting(village: {
   setting: string;
   foundingReason: string;
   foundingDetails: string;
+  foundingGuidance?: string;
 }): string {
+  if (village.foundingReason === "none") return village.setting;
   const reason = FOUNDING_REASONS[village.foundingReason];
-  if (!reason) return village.setting;
   const detail = village.foundingDetails.trim();
-  return `${village.setting}\nFounding premise: ${reason}${detail ? ` ${detail}` : ""}`;
+  const guidance = village.foundingGuidance?.trim();
+  if (!reason && !detail) return village.setting;
+  const premise = reason ? `${reason}${detail ? ` ${detail}` : ""}` : detail;
+  const scenario = SCENARIO_NAMES[village.foundingReason];
+  return `${village.setting}${scenario ? `\nScenario: ${scenario}` : ""}\nFounding premise: ${premise}${guidance ? `\nNarrative direction: ${guidance}` : ""}`;
 }
 
 /**

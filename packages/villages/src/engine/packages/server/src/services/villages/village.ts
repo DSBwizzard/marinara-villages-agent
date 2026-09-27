@@ -356,11 +356,13 @@ function villageSettings(
     setting: village.setting,
     foundingReason: village.foundingReason,
     foundingDetails: village.foundingDetails,
+    foundingGuidance: village.foundingGuidance,
     selectedLorebookIds: village.selectedLorebookIds,
     loreTokenBudget: village.loreTokenBudget,
     loreTokenBudgetMin: MIN_LORE_TOKEN_BUDGET,
     loreTokenBudgetMax: MAX_LORE_TOKEN_BUDGET,
     foundingDetailsMaxLength: 500,
+    foundingGuidanceMaxLength: 500,
     townMapLayoutPrompt: DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     settingMaxLength: MAX_SETTING_LENGTH,
@@ -3358,6 +3360,7 @@ export async function runVillageSetup(input: {
   setting?: unknown;
   foundingReason?: unknown;
   foundingDetails?: unknown;
+  foundingGuidance?: unknown;
   selectedLorebookIds?: unknown;
   loreTokenBudget?: unknown;
   playerPersonaId?: unknown;
@@ -3371,18 +3374,40 @@ export async function runVillageSetup(input: {
   if (setting.length === 0) throw badRequest("Say what the village is like before founding it.");
   const foundingReason = asTrimmedString(input.foundingReason);
   if (
-    !["fresh-start", "refuge", "shared-project", "discovery", "homecoming", "something-else"].includes(foundingReason)
+    ![
+      "rebuild",
+      "pioneer",
+      "prosper",
+      "custom",
+      "none",
+      "fresh-start",
+      "refuge",
+      "shared-project",
+      "discovery",
+      "homecoming",
+      "something-else",
+    ].includes(foundingReason)
   ) {
-    throw badRequest("Choose why this village is being founded.");
+    throw badRequest("Choose a founding scenario.");
   }
   if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 500) {
-    throw badRequest("Founding details must be text of at most 500 characters.");
+    throw badRequest("Scenario premise must be text of at most 500 characters.");
   }
   const foundingDetails = input.foundingDetails.trim();
+  if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
+    throw badRequest("Narrative direction must be text of at most 500 characters.");
+  }
+  const foundingGuidance = String(input.foundingGuidance ?? "").trim();
   const selectedLorebookIds = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
   const loreTokenBudget =
     input.loreTokenBudget === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(input.loreTokenBudget);
   if (foundingReason === "something-else" && !foundingDetails) throw badRequest("Describe the other founding reason.");
+  if (["rebuild", "pioneer", "prosper", "custom"].includes(foundingReason) && !foundingDetails) {
+    throw badRequest("Write a scenario premise, or choose No scenario.");
+  }
+  if (foundingReason === "none" && (foundingDetails || foundingGuidance)) {
+    throw badRequest("No scenario cannot include a premise or narrative direction.");
+  }
   const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView);
   const connections = await readVillageConnectionSettings();
   await validateVillageSetupConnections(connections);
@@ -3474,6 +3499,7 @@ export async function runVillageSetup(input: {
     state.setting = setting;
     state.foundingReason = foundingReason;
     state.foundingDetails = foundingDetails;
+    state.foundingGuidance = foundingGuidance;
     state.selectedLorebookIds = selectedLorebookIds;
     state.loreTokenBudget = loreTokenBudget;
     state.townMapImage = townMap.image;
@@ -3776,6 +3802,7 @@ export async function draftVenueDescriptions(value: unknown): Promise<{ descript
     setting: typeof input.setting === "string" ? input.setting.trim() : village.setting,
     foundingReason: typeof input.foundingReason === "string" ? input.foundingReason : village.foundingReason,
     foundingDetails: typeof input.foundingDetails === "string" ? input.foundingDetails : village.foundingDetails,
+    foundingGuidance: typeof input.foundingGuidance === "string" ? input.foundingGuidance : village.foundingGuidance,
   });
   const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? village.selectedLorebookIds);
   const rows = Array.isArray(input.venues) ? input.venues : [];

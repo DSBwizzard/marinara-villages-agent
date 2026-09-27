@@ -144,6 +144,7 @@ export function defaultVillageState(): VillageState {
     setting: "",
     foundingReason: "",
     foundingDetails: "",
+    foundingGuidance: "",
     selectedLorebookIds: [],
     loreTokenBudget: DEFAULT_LORE_TOKEN_BUDGET,
     // No place in the village yet, and no home on the map: the founding flow
@@ -1727,6 +1728,7 @@ export function coerceVillageState(value: unknown): VillageState {
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     foundingReason: boundText(raw.foundingReason, 40),
     foundingDetails: boundText(raw.foundingDetails, 500),
+    foundingGuidance: boundText(raw.foundingGuidance, 500),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),
     venues,

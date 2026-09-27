@@ -13,7 +13,9 @@ async function main() {
   const { coerceVillageState } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
   );
-  const { parsePlace } = await import(pathToFileURL(join(serverRoot, "services/villages/village.ts")).href);
+  const { parsePlace, runVillageSetup } = await import(
+    pathToFileURL(join(serverRoot, "services/villages/village.ts")).href
+  );
 
   for (const picture of [
     { width: 1000, height: 700, photoWidth: 58, photoHeight: 58 },
@@ -48,6 +50,30 @@ async function main() {
     }).foundingPreparation,
     { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     "preparation progress survives loading",
+  );
+  assert.equal(coerceVillageState({}).foundingGuidance, "", "older villages have no narrative direction");
+  assert.equal(coerceVillageState({ foundingGuidance: "Favor quiet bonds." }).foundingGuidance, "Favor quiet bonds.");
+  const identity = { name: "Ashwater", setting: "A valley beside the river" };
+  await assert.rejects(
+    runVillageSetup({ ...identity, foundingReason: "none", foundingDetails: "A secret quest", foundingGuidance: "" }),
+    /No scenario cannot include/,
+  );
+  await assert.rejects(
+    runVillageSetup({ ...identity, foundingReason: "none", foundingDetails: "", foundingGuidance: "A secret quest" }),
+    /No scenario cannot include/,
+  );
+  await assert.rejects(
+    runVillageSetup({ ...identity, foundingReason: "custom", foundingDetails: "", foundingGuidance: "" }),
+    /Write a scenario premise/,
+  );
+  await assert.rejects(
+    runVillageSetup({
+      ...identity,
+      foundingReason: "rebuild",
+      foundingDetails: "A place",
+      foundingGuidance: "x".repeat(501),
+    }),
+    /Narrative direction must be text of at most 500/,
   );
   const outsideImage = { id: "outer", ref: "global-gallery:outer", url: "/outer.webp" };
   const insideImage = { id: "inner", ref: "global-gallery:inner", url: "/inner.webp" };
@@ -88,19 +114,24 @@ async function main() {
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
-  assert.ok(client.includes("photoPins={setupStep >= 3}"));
+  assert.ok(client.includes("photoPins={setupStep >= 4}"));
+  assert.ok(client.includes("Scenario premise (required)"));
+  assert.ok(client.includes("Narrative direction (optional)"));
+  assert.ok(client.includes('setupFoundingReason === "none"'));
   assert.ok(client.includes("Reset all venues"));
   assert.ok(client.includes("Place a Residence"));
   assert.ok(client.includes("Place a Gathering Place"));
   assert.ok(client.includes("Replace text with this draft"));
   assert.ok(client.includes("Use in empty fields"));
   assert.ok(client.includes('setScreen("preparing")'));
-  assert.equal(client.includes("setupMapGeneratedFor"), false, "edited settings may keep the map");
+  assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   const review =
     client
-      .split("{setupStep === 4 ? (")[1]
+      .split("{setupStep === 5 ? (")[1]
       ?.split("<div className={`${ELEMENT_TAG}-row`}>\n                {setupStep > 0")[0] ?? "";
   assert.ok(review.includes("Review your village"));
+  assert.ok(review.includes("Scenario premise:"));
+  assert.ok(review.includes("Narrative direction:"));
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
   assert.ok(routes.includes('"/setup/venues/draft"'));
@@ -113,6 +144,14 @@ async function main() {
   assert.ok(village.includes("await writeVillagerAgenda(id)"));
   assert.ok(village.includes("readNativeScheduleSnapshot(new Date())).cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
+  assert.ok(drafts.includes("foundingGuidance"));
+  const builder = await readFile(join(root, "scripts/build-feature-packages.mjs"), "utf8");
+  for (const mode of ["rebuild", "pioneer", "prosper", "custom", "none"]) {
+    const filename = `founding-${mode}.jpg`;
+    assert.ok(builder.includes(`"${filename}"`), `${mode} illustration must be packaged`);
+    const bytes = await readFile(join(root, "packages/villages", filename));
+    assert.deepEqual([...bytes.subarray(0, 3)], [0xff, 0xd8, 0xff], `${mode} illustration must be a JPEG`);
+  }
   assert.match(drafts, /resident:\s*card\s*\?/);
   assert.ok(drafts.includes("row.guidance"));
   console.log("Villages founding flow regression: placement, review, drafts, images, preparation ok");

@@ -39,6 +39,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.44 gives Village Identity five illustrated founding scenarios and editable scenario premises. Rebuild, Pioneer, and Prosper begin with distinct story templates; Custom starts from the player's own premise, and No scenario leaves story direction open. A separate Narrative direction field carries ongoing story guidance. Founding now has a dedicated World & Setting step before Village Map, with Persona moved to Connections & Persona. Existing founding reasons remain readable and become editable Custom premises when setup is reopened.
+
 0.6.43 gives venue visits a compact visual-novel stage. Four residents remain in stable full-body positions over the venue picture, while narration and dialogue share one shallow scrolling reader. The composer opens only after the latest paragraph; history, venue actions, and memory notices stay available without expanding the resting panel. Side remarks and whispers remain floating, bounded bubbles.
 
 0.6.42 separates conversational continuity into live context, 24-hour passing recollections, reviewed durable memories, and exact visit archives. Recollections are event-centric, with distinct subjects, witnesses, deterministic evidence-linked IDs, repeat reinforcement, and a low-temperature System review when a played visit closes. There is no per-character or per-visit promotion quota. Failed reviews release the room and remain retryable from the preserved archive. Villagers now includes a polished Memories library for filtering passing and durable memories, seeing who an event concerns and who knows it, inspecting exact cited lines, and deliberately forgetting either layer.

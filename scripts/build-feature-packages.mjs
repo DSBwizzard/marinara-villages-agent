@@ -3095,7 +3095,7 @@ const features = [
     // 0.2.x still renders.
     // 0.6.0: continuous device-local time, exact repeating agenda intervals,
     // durable restart reconciliation, bounded story pacing, and return recaps.
-    version: "0.6.43",
+    version: "0.6.44",
     minEngineVersion: "2.4.6",
     maxEngineExclusive: MAX_ENGINE_EXCLUSIVE,
     name: "Villages",
@@ -3119,7 +3119,14 @@ const features = [
     agent: {
       runtimeDisabled: false,
     },
-    assetPaths: ["villages-icon.png"],
+    assetPaths: [
+      "villages-icon.png",
+      "founding-rebuild.jpg",
+      "founding-pioneer.jpg",
+      "founding-prosper.jpg",
+      "founding-custom.jpg",
+      "founding-none.jpg",
+    ],
     // 0.4.40 raises that pin to 1.14, the release that added the
     // `roleplay-tracker` slot and package-aware prompt placement. The slot is
     // the village's one control in the Engine's own roleplay chrome: a button
@@ -3145,6 +3152,15 @@ const features = [
         label: "Villages",
         ariaLabel: "Open Villages",
         iconPaths: ["villages-icon.png"],
+      },
+      assets: {
+        paths: [
+          "founding-rebuild.jpg",
+          "founding-pioneer.jpg",
+          "founding-prosper.jpg",
+          "founding-custom.jpg",
+          "founding-none.jpg",
+        ],
       },
     },
   },
