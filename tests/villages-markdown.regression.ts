@@ -181,7 +181,11 @@ for (const raw of ["{currentParagraph}", "{ruling.reason}"]) {
 const countIn = (needle: string) => entrySource.split(needle).length - 1;
 
 assert.equal(countIn("renderVillagesMarkdown(message.content"), 0, "private transcripts are gone");
-assert.equal(countIn("renderVillagesMarkdown(line.content"), 2, "venue history and archive render Markdown");
+assert.equal(
+  countIn("renderVillagesMarkdown(line.content"),
+  3,
+  "venue history, archive, and memory evidence render Markdown",
+);
 assert.equal(countIn("renderVillagesMarkdown(step.text"), 2, "venue narration and speech render Markdown");
 assert.equal(countIn("renderVillagesMarkdown(aside.text"), 1, "venue asides render Markdown");
 assert.equal(countIn("{line.content}"), 0, "venue lines are not drawn raw");

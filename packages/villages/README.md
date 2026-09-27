@@ -2,7 +2,7 @@
 
 Villages is a text-first slice-of-life sim for Home: a small village that follows device-local time, a handful of characters who go about exact daily schedules, and a noticeboard you can read when you stop in. You are a visitor rather than an avatar. When Marinara reopens, the village reconciles from its last saved instant and reconstructs the elapsed life you missed.
 
-Current venue visits stay live for 30 minutes after the last deliberate input. Refresh restores a live visit; after inactivity the scene ends as **Interrupted: Inactivity** and Villages returns to the current map. Completed exchanges and verified effects remain in history, while a greeting-only visit is dropped. Each completed turn may form a selective, evidence-linked memory in its existing reply call; new visits do not need a separate memory call on exit. Meaningful confirmed changes appear once as dismissible star notices inside the venue scene. **DEBUG: Discard Visit** removes the active transcript only and leaves committed effects and memories intact.
+Current venue visits stay live for 30 minutes after the last deliberate input. Refresh restores a live visit; after inactivity the scene ends as **Interrupted: Inactivity** and Villages returns to the current map. Completed exchanges and verified effects remain in history, while a greeting-only visit is dropped. A reply may capture quiet, evidence-linked recollections for 24-hour continuity. When a played visit closes, one low-temperature System review adjudicates every recollection and promotes every distinct commitment, stable truth, meaningful preference or boundary, relationship change, or significant shared experience that deserves to last. There is no per-character or per-visit memory quota. A failed review never holds the room: the exact transcript stays archived and the review remains visibly retryable. Meaningful confirmed changes and newly durable memories appear once as dismissible star notices inside the venue scene. **DEBUG: Discard Visit** removes the active transcript without running durable review; already committed effects and passing recollections remain intact.
 
 Find the package in **Agents → Download Agents**. Installation requires a restart: once installed and Marinara Engine restarts, **Villages** appears as a new tab in Home's browser shell. Uninstalling the package removes that tab and its routes after restart.
 
@@ -24,7 +24,22 @@ A player can propose a move to an available venue. The villager accepts or refus
 
 Residence entry and editing rely on explicit resident dialogue. A recorded invitation permits a one-use future visit; an invitation during a scene can admit the player immediately. Entry does not authorize changing furnishings or room state. A move archives the old private room and asks the System connection once to select portable personal elements for a new room. A failed adaptation leaves a retryable draft and the archive intact.
 
+## Memory model
+
+Villages keeps four deliberately separate layers:
+
+1. **Live context** is the bounded recent scene history and recap used only while a visit is active.
+2. **Passing recollections** are compact conversation events available to their exact witnesses for 24 real hours. They have separate subject and `knownBy` lists, exact visit/line evidence, and no player notification. An exact repeat reinforces the existing recollection and refreshes its expiry.
+3. **Durable memories** are end-of-visit promotions in the chronicle. The System reviewer must decide every recollection, may consolidate several recollections into one event, and has no promotion quota. It promotes only commitments, stable personal facts, meaningful preferences or boundaries, relationship changes, and significant shared experiences not already represented by structured world state. Only promotions create star notices.
+4. **Visit archives** are exact transcripts with line audiences. They are evidence and troubleshooting records, not character knowledge, and retention is configured independently.
+
+Conversation memories are event-centric. A promise heard by four residents is one event with four knowers, not four competing copies. Subjects answer “who is this about?” and knowers answer “who may recall it?”; a knower is accepted only when they heard every cited line. Durable IDs are derived from the visit plus the sorted source-recollection IDs, so retries cannot create a second copy. The visit stores every promote/reject decision and reason before chronicle writes begin.
+
+A played tiered visit is closed and releases the active-room pointer before review. No recollections means no review call. A failed or interrupted review leaves `memoryPending` with its transcript and decisions safely retryable; automatic retention skips it. Opening **Villagers → Memories** retries one pending review and shows passing context, durable history, archive health, and exact cited lines. Existing legacy chronicle entries remain untouched and use their older scope/actor fallback.
+
 ## What this release contains
+
+0.6.42 separates conversational continuity into live context, 24-hour passing recollections, reviewed durable memories, and exact visit archives. Recollections are event-centric, with distinct subjects, witnesses, deterministic evidence-linked IDs, repeat reinforcement, and a low-temperature System review when a played visit closes. There is no per-character or per-visit promotion quota. Failed reviews release the room and remain retryable from the preserved archive. Villagers now includes a polished Memories library for filtering passing and durable memories, seeing who an event concerns and who knows it, inspecting exact cited lines, and deliberately forgetting either layer.
 
 0.6.41 adds front and side Villager sprite sets, an inline two-view sprite studio with expression tiles and candidate review, and model-selected gaze that turns residents toward one another in venue scenes. Image generation remains one explicit cell at a time; older approved sprites stay front-facing.
 

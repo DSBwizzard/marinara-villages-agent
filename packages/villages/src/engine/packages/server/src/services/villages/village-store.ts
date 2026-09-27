@@ -69,6 +69,7 @@ import type {
   VillageOpportunity,
   VillagePendingDecision,
   VillageProject,
+  VillageRecollection,
   VillageRelationship,
   VillageScheduledEvent,
   VillageStoryPace,
@@ -181,6 +182,7 @@ export function defaultVillageState(): VillageState {
     // happenings — a village shipped with a few memories to make the panel look
     // occupied would be inventing a past it never had.
     chronicle: [],
+    recollections: [],
     correctedWishMemoryIds: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
@@ -1250,6 +1252,24 @@ function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronic
     sourceLineIds: Array.isArray(raw.sourceLineIds)
       ? raw.sourceLineIds.filter((id): id is string => typeof id === "string")
       : undefined,
+    memoryCategory:
+      raw.memoryCategory === "commitment" ||
+      raw.memoryCategory === "personal-fact" ||
+      raw.memoryCategory === "preference" ||
+      raw.memoryCategory === "relationship" ||
+      raw.memoryCategory === "shared-experience"
+        ? raw.memoryCategory
+        : undefined,
+    subjectCharacterIds: Array.isArray(raw.subjectCharacterIds)
+      ? [...new Set(raw.subjectCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
+      : undefined,
+    knownByCharacterIds: Array.isArray(raw.knownByCharacterIds)
+      ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
+      : undefined,
+    sourceVisitId: asTrimmedString(raw.sourceVisitId) || undefined,
+    sourceRecollectionIds: Array.isArray(raw.sourceRecollectionIds)
+      ? [...new Set(raw.sourceRecollectionIds.filter((id): id is string => typeof id === "string" && !!id))]
+      : undefined,
     text,
   };
 }
@@ -1259,6 +1279,56 @@ function coerceChronicle(value: unknown, foundedAt: string): VillageChronicleEnt
   return value
     .map((entry) => coerceChronicleEntry(entry, foundedAt))
     .filter((entry): entry is VillageChronicleEntry => entry !== null);
+}
+
+function coerceRecollections(value: unknown): VillageRecollection[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((value): VillageRecollection | null => {
+      const raw = asRecord(value);
+      const id = asTrimmedString(raw.id);
+      const visitId = asTrimmedString(raw.visitId);
+      const text = boundText(raw.text, MAX_CHRONICLE_LENGTH);
+      const occurredAt = asIsoString(raw.occurredAt) ?? "";
+      const expiresAt = asIsoString(raw.expiresAt) ?? "";
+      const subjectCharacterIds = [...new Set(asStringArray(raw.subjectCharacterIds).filter(Boolean))];
+      const knownByCharacterIds = [...new Set(asStringArray(raw.knownByCharacterIds).filter(Boolean))];
+      const sourceLineIds = [...new Set(asStringArray(raw.sourceLineIds).filter(Boolean))];
+      const sourceSubmissionIds = [...new Set(asStringArray(raw.sourceSubmissionIds).filter(Boolean))];
+      const evidence = Array.isArray(raw.evidence)
+        ? raw.evidence
+            .map((value) => {
+              const row = asRecord(value);
+              const sourceVisitId = asTrimmedString(row.visitId);
+              const submissionId = asTrimmedString(row.submissionId);
+              const lineIds = [...new Set(asStringArray(row.lineIds).filter(Boolean))];
+              return sourceVisitId && lineIds.length ? { visitId: sourceVisitId, submissionId, lineIds } : null;
+            })
+            .filter((entry): entry is { visitId: string; submissionId: string; lineIds: string[] } => entry !== null)
+        : [];
+      if (!id || !visitId || !text || !occurredAt || !expiresAt || !knownByCharacterIds.length || !sourceLineIds.length)
+        return null;
+      return {
+        id,
+        visitId,
+        occurredAt,
+        expiresAt,
+        text,
+        subjectCharacterIds,
+        knownByCharacterIds,
+        sourceLineIds,
+        sourceSubmissionIds,
+        evidence: evidence.length
+          ? evidence
+          : [{ visitId, submissionId: sourceSubmissionIds[0] ?? "", lineIds: sourceLineIds }],
+        reinforcementCount:
+          typeof raw.reinforcementCount === "number" && Number.isFinite(raw.reinforcementCount)
+            ? Math.max(0, Math.floor(raw.reinforcementCount))
+            : 0,
+        lastReinforcedAt: asIsoString(raw.lastReinforcedAt) ?? occurredAt,
+      };
+    })
+    .filter((entry): entry is VillageRecollection => entry !== null);
 }
 
 /**
@@ -1700,6 +1770,7 @@ export function coerceVillageState(value: unknown): VillageState {
     noticeboard: coerceNotices(raw.noticeboard),
     happenings: coerceHappenings(raw.happenings, foundedAt),
     chronicle: coerceChronicle(raw.chronicle, foundedAt),
+    recollections: coerceRecollections(raw.recollections),
     correctedWishMemoryIds: [...new Set(asStringArray(raw.correctedWishMemoryIds).filter(Boolean))],
     simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
