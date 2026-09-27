@@ -97,6 +97,8 @@ const documents = {
 let calls = 0;
 let debugEnabled = false;
 let memoryCalls = 0;
+let reviewCalls = 0;
+let failReviewOnce = false;
 let failMemoryOnce = false;
 let failMemoryAtCall = -1;
 let saturateMemoryOnce = false;
@@ -321,6 +323,40 @@ const release = configureVillagesRuntime({
             });
             memoryOutputChars += content.length;
             return { content, finishReason: "stop" };
+          }
+          if (system.includes("You adjudicate short-term conversational recollections")) {
+            reviewCalls += 1;
+            if (failReviewOnce) {
+              failReviewOnce = false;
+              throw new Error("review unavailable");
+            }
+            const input = JSON.parse(user);
+            return {
+              content: JSON.stringify({
+                decisions: input.recollections.map((recollection: any) => ({
+                  action:
+                    recollection.text.includes("promised") || recollection.text.includes("kissed")
+                      ? "promote"
+                      : "reject",
+                  recollectionIds: [recollection.id],
+                  reason:
+                    recollection.text.includes("promised") || recollection.text.includes("kissed")
+                      ? "A distinct lasting event."
+                      : "routine",
+                  ...(recollection.text.includes("promised") || recollection.text.includes("kissed")
+                    ? {
+                        category: recollection.text.includes("promised") ? "commitment" : "shared-experience",
+                        text: recollection.text,
+                        subjectCharacterIds: recollection.subjectCharacterIds,
+                        knownByCharacterIds: recollection.knownByCharacterIds,
+                        lineIds: recollection.evidence.map((line: any) => line.lineId),
+                      }
+                    : {}),
+                })),
+                complete: true,
+              }),
+              finishReason: "stop",
+            };
           }
           if (system.includes("Find exact, short quotations")) {
             wishScanCalls += 1;
@@ -551,13 +587,73 @@ const release = configureVillagesRuntime({
                     heardBy: ["bob"],
                   },
                 ],
-                memories: [
+                recollections: [
                   {
-                    characterId: "bob",
                     text: "The player promised Bob to help with the bridge.",
+                    subjectCharacterIds: ["bob"],
+                    knownByCharacterIds: ["bob"],
                     evidence: ["player", 0],
                   },
-                  { characterId: "tina", text: "Tina heard a private promise.", evidence: ["player"] },
+                  {
+                    text: "Tina heard a private promise.",
+                    subjectCharacterIds: ["tina"],
+                    knownByCharacterIds: ["tina"],
+                    evidence: ["player"],
+                  },
+                ],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "A promise and four kisses") {
+            const everyone = ["bob", "tina", "cora", "dan"];
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: everyone,
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "bob",
+                    text: "That is an unforgettable morning.",
+                    heardBy: everyone,
+                  },
+                ],
+                recollections: [
+                  {
+                    text: "The player promised Bob, Tina, Cora, and Dan twenty million dollars.",
+                    subjectCharacterIds: everyone,
+                    knownByCharacterIds: everyone,
+                    evidence: ["player", 0],
+                  },
+                  ...everyone.map((characterId) => ({
+                    text: `The player kissed ${characterId} on the lips.`,
+                    subjectCharacterIds: [characterId],
+                    knownByCharacterIds: everyone,
+                    evidence: ["player", 0],
+                  })),
+                ],
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (user === "Review failure promise")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob"],
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "bob",
+                    text: "I will hold you to the red umbrella.",
+                    heardBy: ["bob"],
+                  },
+                ],
+                recollections: [
+                  {
+                    text: "The player promised Bob a red umbrella.",
+                    subjectCharacterIds: ["bob"],
+                    knownByCharacterIds: ["bob"],
+                    evidence: ["player", 0],
+                  },
                 ],
               }),
               finishReason: "stop",
@@ -1704,14 +1800,19 @@ async function main() {
       submissionId: "turn-memory",
     });
     assert.equal(memoryCalls, beforeTurnMemory, "new visits form memories in the existing reply call");
-    assert.equal(remembered.recordEvents.filter((event) => event.kind === "memory").length, 1);
     assert.equal(
-      remembered.recordEvents.find((event) => event.kind === "memory")?.detail,
-      "The player promised Bob to help with the bridge.",
-      "a memory receipt exposes the exact memory that was saved",
+      remembered.recordEvents.filter((event) => event.kind === "memory").length,
+      0,
+      "passing recollections stay quiet until end-of-visit review",
     );
-    const memoryId = `${current.id}:turn:turn-memory:memory:bob`;
-    assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
+    const recollectionId = `${current.id}:recollection:turn-memory:0`;
+    assert.equal((await readVillageState()).recollections.filter((entry) => entry.id === recollectionId).length, 1);
+    assert.equal(
+      (await readVillageState()).chronicle.filter((entry) => entry.sourceRecollectionIds?.includes(recollectionId))
+        .length,
+      0,
+      "the narration call cannot promote its own recollection",
+    );
     const requestedMove = await sendVenueTurn({
       sessionId: current.id,
       message: "Bob asks to move",
@@ -1730,14 +1831,10 @@ async function main() {
       "non-memory receipts do not expose memory detail",
     );
     assert.equal(
-      (await readVillageState()).chronicle.filter((entry) => entry.id.includes("memory:tina")).length,
+      (await readVillageState()).recollections.filter((entry) => entry.knownByCharacterIds.includes("tina")).length,
       0,
-      "unheard evidence cannot become Tina's memory",
+      "unheard evidence cannot become Tina's recollection",
     );
-    const storedTurn = records
-      .get(key("villages", `villages-venue-visit-${current.id}`))
-      .data.submissions.find((submission: any) => submission.id === "turn-memory");
-    storedTurn.recordEvents = storedTurn.recordEvents.map(({ detail: _detail, ...event }: any) => event);
     const replayRemembered = await sendVenueTurn({
       sessionId: current.id,
       message: "Remember the bridge",
@@ -1748,9 +1845,9 @@ async function main() {
     assert.deepEqual(
       replayRemembered.recordEvents,
       remembered.recordEvents,
-      "retry returns stable notice IDs and hydrates detail on an older persisted receipt",
+      "retry does not duplicate passing recollections or create a premature notice",
     );
-    assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === memoryId).length, 1);
+    assert.equal((await readVillageState()).recollections.filter((entry) => entry.id === recollectionId).length, 1);
     await assert.rejects(
       () => discardVenueVisitDebug(current.id),
       /debug action is unavailable/u,
@@ -1774,7 +1871,82 @@ async function main() {
     assert.equal(departedTina.session.status, "closed");
     assert.equal(departedTina.session.endReason, "scene");
     assert.equal(await activeVenueSession(), null);
-    assert.equal(memoryCalls, beforeTurnMemory, "new visits do not run an end-of-visit memory pass");
+    assert.equal(memoryCalls, beforeTurnMemory, "tiered visits do not run the retired transcript distiller");
+    assert.equal(reviewCalls, 1, "one compact System review closes an ordinary played visit");
+    assert.equal(departedTina.recordEvents.filter((event) => event.kind === "memory").length, 1);
+    const durable = (await readVillageState()).chronicle.find((entry) =>
+      entry.sourceRecollectionIds?.includes(recollectionId),
+    );
+    assert.ok(durable, "the promise is promoted after the visit closes");
+    assert.equal(durable?.memoryCategory, "commitment");
+    assert.deepEqual(durable?.knownByCharacterIds, ["bob"]);
+    assert.deepEqual(durable?.sourceLineIds?.length, 2);
+
+    const groupDraft = await enterVenue("park");
+    const groupRecord = records.get(key("villages", `villages-venue-visit-${groupDraft.id}`));
+    groupRecord.data.participants = [
+      { characterId: "bob", name: "Bob", doing: "listening" },
+      { characterId: "tina", name: "Tina", doing: "listening" },
+      { characterId: "cora", name: "Cora", doing: "listening" },
+      { characterId: "dan", name: "Dan", doing: "listening" },
+    ];
+    groupRecord.data.activeIds = ["bob", "tina", "cora", "dan"];
+    groupRecord.data.heardHistory = groupRecord.data.participants.map((person: any) => ({
+      characterId: person.characterId,
+      lineIds: [],
+    }));
+    const groupVisit = await greetVenue(groupDraft.id);
+    const reviewsBeforeGroup = reviewCalls;
+    await sendVenueTurn({
+      sessionId: groupVisit.id,
+      message: "A promise and four kisses",
+      mode: "chat",
+      targetId: "",
+      submissionId: "group-memories",
+    });
+    const groupClosed = await endVenueSession(groupVisit.id);
+    assert.equal(groupClosed.memoryReview.status, "complete");
+    assert.equal(reviewCalls - reviewsBeforeGroup, 1, "one ordinary group visit uses one compact review call");
+    const groupDurable = (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === groupVisit.id);
+    assert.equal(groupDurable.length, 5, "all five distinct qualifying events survive; there is no four-memory cap");
+    assert.equal(
+      new Set(groupDurable.map((entry) => entry.id)).size,
+      5,
+      "each source event set produces one stable deterministic durable ID",
+    );
+    assert.deepEqual(
+      groupDurable.find((entry) => entry.memoryCategory === "commitment")?.knownByCharacterIds,
+      ["bob", "tina", "cora", "dan"],
+      "the shared promise is one event known by all witnesses, not four copies",
+    );
+
+    const retryable = await greetVenue((await enterVenue("park")).id);
+    await sendVenueTurn({
+      sessionId: retryable.id,
+      message: "Review failure promise",
+      mode: "chat",
+      targetId: "bob",
+      submissionId: "review-failure",
+    });
+    failReviewOnce = true;
+    const pendingReview = await endVenueSession(retryable.id);
+    assert.equal(pendingReview.status, "closed", "a failed reviewer never holds the room open");
+    assert.equal(pendingReview.memoryPending, true);
+    assert.equal(pendingReview.memoryReview.status, "pending");
+    assert.match(pendingReview.memoryReview.error, /review unavailable/u);
+    assert.equal(await activeVenueSession(), null);
+    assert.equal((await readVenueVisit(retryable.id)).lines.length > 0, true, "the exact archive remains available");
+    const retriedReview = await endVenueSession(retryable.id);
+    assert.equal(retriedReview.memoryPending, false);
+    assert.equal(retriedReview.memoryReview.status, "complete");
+    const retryDurable = (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === retryable.id);
+    assert.equal(retryDurable.length, 1, "retry commits the durable memory exactly once");
+    await endVenueSession(retryable.id);
+    assert.equal(
+      (await readVillageState()).chronicle.filter((entry) => entry.id === retryDurable[0]!.id).length,
+      1,
+      "replaying a completed review preserves its deterministic memory ID",
+    );
 
     const natural = await greetVenue((await enterVenue("park")).id);
     const naturalEnding = await sendVenueTurn({
@@ -1894,7 +2066,22 @@ async function main() {
       targetId: "bob",
       submissionId: "debug-memory",
     });
-    const keptMemoryId = `${debugVisit.id}:turn:debug-memory:memory:bob`;
+    const reinforcedRecollection = (await readVillageState()).recollections.find((entry) =>
+      entry.sourceSubmissionIds.includes("debug-memory"),
+    );
+    const keptRecollectionId = reinforcedRecollection?.id;
+    assert.ok(keptRecollectionId, "an exact repeat reinforces the existing recollection with its evidence");
+    assert.ok((reinforcedRecollection?.reinforcementCount ?? 0) > 0);
+    assert.equal(
+      Date.parse(reinforcedRecollection?.expiresAt ?? "") - Date.parse(reinforcedRecollection?.lastReinforcedAt ?? ""),
+      24 * 60 * 60 * 1000,
+      "reinforcement refreshes the rolling 24-hour expiry",
+    );
+    assert.ok(
+      reinforcedRecollection?.evidence.some((source) => source.visitId === debugVisit.id),
+      "reinforcement preserves the new exact archive link",
+    );
+    const reviewsBeforeDebugDiscard = reviewCalls;
     debugEnabled = true;
     await discardVenueVisitDebug(debugVisit.id);
     debugEnabled = false;
@@ -1905,9 +2092,10 @@ async function main() {
       "DEBUG discard removes its transcript",
     );
     assert.ok(
-      (await readVillageState()).chronicle.some((entry) => entry.id === keptMemoryId),
-      "DEBUG discard keeps committed memories",
+      (await readVillageState()).recollections.some((entry) => entry.id === keptRecollectionId),
+      "DEBUG discard keeps already committed short-term continuity",
     );
+    assert.equal(reviewCalls, reviewsBeforeDebugDiscard, "DEBUG discard intentionally performs no durable review");
     await proposeVenueChange("park", {
       classes: ["workplace", "gathering"],
       title: "Open the workshop for gatherings",

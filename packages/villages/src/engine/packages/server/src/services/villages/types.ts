@@ -835,6 +835,33 @@ export type VillageChronicleScope = "village" | "private";
 /** What wrote a memory down. Kept so the debug tab can say where a line came from. */
 export type VillageChronicleKind = "tick" | "chat" | "favour";
 
+/** Why a conversation memory was important enough to survive its visit. */
+export type VillageMemoryCategory =
+  "commitment" | "personal-fact" | "preference" | "relationship" | "shared-experience";
+
+/**
+ * One event the cast may use for continuity during the next 24 real hours.
+ *
+ * Subjects and knowers are deliberately separate. A promise made to four
+ * people is one event about those four people, known by those four people; it
+ * is not four copies competing for a per-visit quota.
+ */
+export type VillageRecollection = {
+  id: string;
+  visitId: string;
+  occurredAt: string;
+  expiresAt: string;
+  text: string;
+  subjectCharacterIds: string[];
+  knownByCharacterIds: string[];
+  sourceLineIds: string[];
+  sourceSubmissionIds: string[];
+  /** Exact archive coordinates, including each later repeat that refreshed this recollection. */
+  evidence: { visitId: string; submissionId: string; lineIds: string[] }[];
+  reinforcementCount: number;
+  lastReinforcedAt: string;
+};
+
 /**
  * One thing the village remembers.
  *
@@ -874,6 +901,15 @@ export type VillageChronicleEntry = {
   weight?: number;
   /** Visit line IDs supporting a conversation memory, when available. */
   sourceLineIds?: string[];
+  /** Durable conversation-memory classification. Absent on legacy and simulation entries. */
+  memoryCategory?: VillageMemoryCategory;
+  /** Who the event concerns. Kept apart from the audience that is allowed to recall it. */
+  subjectCharacterIds?: string[];
+  /** Who directly witnessed every cited line. Absent entries use legacy scope/actors semantics. */
+  knownByCharacterIds?: string[];
+  /** Exact archived visit and transient recollections that support this durable memory. */
+  sourceVisitId?: string;
+  sourceRecollectionIds?: string[];
   text: string;
 };
 
@@ -1043,6 +1079,8 @@ export type VillageState = {
    * whole village or to specific residents. Visual Events age out separately.
    */
   chronicle: VillageChronicleEntry[];
+  /** Active, expiring conversational continuity. Exact transcripts live in the visit archive. */
+  recollections: VillageRecollection[];
   /** Submission IDs whose false wish completion was explicitly corrected. */
   correctedWishMemoryIds: string[];
   /** Durable high-water mark for deterministic reconciliation. */

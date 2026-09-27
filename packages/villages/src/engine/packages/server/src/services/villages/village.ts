@@ -4428,6 +4428,47 @@ export async function buildVillageStory(): Promise<VillageChronicleEntryView[]> 
   }));
 }
 
+/** A player-facing projection of durable, passing, and archived memory layers. */
+export async function buildVillageMemories() {
+  const [village, cards] = await Promise.all([readVillageState(), listVillagerCards()]);
+  const names = new Map(cards.map((card) => [card.id, card.name]));
+  for (const resident of village.villagers) names.set(resident.characterId, resident.cardSnapshot.name);
+  const person = (id: string) => ({ id, name: names.get(id) ?? "Former resident" });
+  const residents = village.villagers.map((resident) => person(resident.characterId));
+  const now = Date.now();
+  const durable = village.chronicle
+    .filter((entry) => entry.kind !== "tick")
+    .map((entry) => {
+      const knownByIds =
+        entry.scope === "village"
+          ? residents.map((resident) => resident.id)
+          : (entry.knownByCharacterIds ?? entry.actors.map((actor) => actor.id)).filter(Boolean);
+      const subjectIds = (entry.subjectCharacterIds ?? entry.actors.map((actor) => actor.id)).filter(Boolean);
+      return {
+        ...entry,
+        dateLabel: villageDateLabel(village.foundedAt, entry.dayIndex),
+        subjects: [...new Set(subjectIds)].map(person),
+        knownBy: [...new Set(knownByIds)].map(person),
+        evidence: entry.sourceVisitId ? { visitId: entry.sourceVisitId, lineIds: entry.sourceLineIds ?? [] } : null,
+        legacy: !entry.sourceVisitId && !entry.memoryCategory,
+      };
+    });
+  const recollections = village.recollections
+    .filter((entry) => Date.parse(entry.expiresAt) > now)
+    .map((entry) => ({
+      ...entry,
+      subjects: entry.subjectCharacterIds.map(person),
+      knownBy: entry.knownByCharacterIds.map(person),
+    }));
+  return {
+    generatedAt: new Date(now).toISOString(),
+    residents,
+    durable,
+    recollections,
+    expiredRecollectionCount: village.recollections.length - recollections.length,
+  };
+}
+
 /**
  * What every villager is after, as the debug tab draws it.
  *
@@ -4705,6 +4746,16 @@ export async function removeChronicleEntry(id: unknown): Promise<void> {
     const next = state.chronicle.filter((entry) => entry.id !== entryId);
     if (next.length === state.chronicle.length) throw notFound("That memory is no longer kept here.");
     state.chronicle = next;
+  });
+}
+
+export async function removeVillageRecollection(id: unknown): Promise<void> {
+  const entryId = asTrimmedString(id);
+  if (!entryId) throw badRequest("That is not a passing recollection of this village.");
+  await mutateVillageState((state) => {
+    const next = state.recollections.filter((entry) => entry.id !== entryId);
+    if (next.length === state.recollections.length) throw notFound("That recollection is no longer active.");
+    state.recollections = next;
   });
 }
 

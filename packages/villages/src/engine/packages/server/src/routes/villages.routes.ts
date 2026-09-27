@@ -72,6 +72,7 @@ import {
   foundingPreparationSnapshot,
   retryFoundedVillagePreparation,
   buildVillageStory,
+  buildVillageMemories,
   clearVillagerAgenda,
   correctCompletedWish,
   setVillagerScheduleIngestion,
@@ -92,6 +93,7 @@ import {
   readVillageTownMapImage,
   refreshPlayerPersona,
   removeChronicleEntry,
+  removeVillageRecollection,
   removeNoticeAt,
   removeVillager,
   resetVillage,
@@ -1262,6 +1264,53 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return { entries: entries.slice(offset, offset + limit), total: entries.length };
     } catch (error) {
       return fail(reply, error, "reading the village story");
+    }
+  });
+
+  // ── Player-facing memory library ──────────────────────────────────────────
+  app.get("/memories", async (_request, reply) => {
+    try {
+      // Returning to the library gives one pending visit a best-effort retry.
+      // The visit is already closed and archived, so a failing model never
+      // holds the room or prevents this read from succeeding.
+      let archive = await listVenueVisitSummaries({ limit: 100 });
+      const pending = archive.visits.find((visit) => visit.memoryPending);
+      if (pending) {
+        try {
+          await endVenueSession(pending.id);
+        } catch (error) {
+          villagesLogger().warn("[villages] pending memory retry failed for %s: %s", pending.id, String(error));
+        }
+        archive = await listVenueVisitSummaries({ limit: 100 });
+      }
+      return {
+        ...(await buildVillageMemories()),
+        archive: {
+          total: archive.total,
+          pendingReviewCount: archive.visits.filter((visit) => visit.memoryPending).length,
+          recent: archive.visits.slice(0, 6),
+        },
+      };
+    } catch (error) {
+      return fail(reply, error, "reading villager memories");
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/memories/durable/:id", async (request, reply) => {
+    try {
+      await removeChronicleEntry(request.params.id);
+      return buildVillageMemories();
+    } catch (error) {
+      return fail(reply, error, "forgetting a durable memory");
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/memories/recollections/:id", async (request, reply) => {
+    try {
+      await removeVillageRecollection(request.params.id);
+      return buildVillageMemories();
+    } catch (error) {
+      return fail(reply, error, "letting go of a passing recollection");
     }
   });
 

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { agendaAt } from "./agenda-plan.js";
 import { readEffectiveVillagerCard } from "./catalog.js";
@@ -7,7 +7,7 @@ import { asRecord, asString, asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { VillagesRequestError, badGateway, badRequest, conflict, notFound } from "./errors.js";
 import { readVillageLore } from "./lorebooks.js";
-import { selectPromptMemories } from "./memory-selection.js";
+import { selectPromptMemories, selectPromptRecollections } from "./memory-selection.js";
 import { effectiveVillagerReplyGuidance, venueWritingDirection } from "./narration-style.js";
 import {
   VILLAGES_PACKAGE_ID,
@@ -18,7 +18,7 @@ import {
   villagesDebugAgentsEnabled,
 } from "./package-runtime.js";
 import { MAX_CHRONICLE_LENGTH, prependHappenings, villageNarrativeSetting } from "./prompt-preset.js";
-import type { VillageChronicleEntry, VillageState } from "./types.js";
+import type { VillageChronicleEntry, VillageMemoryCategory, VillageRecollection, VillageState } from "./types.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
 import {
@@ -86,11 +86,36 @@ type VenueSubmission = {
     sourceLineId?: string;
   };
   turnMemories?: VenueMemory[];
+  recollections?: VenueRecollection[];
   recordEvents?: VenueRecordEvent[];
   at?: string;
 };
 
 type VenueMemory = { characterId: string; text: string; lineIds?: string[] };
+type VenueRecollection = {
+  id: string;
+  text: string;
+  subjectCharacterIds: string[];
+  knownByCharacterIds: string[];
+  lineIds: string[];
+};
+type VenueMemoryDecision = {
+  id: string;
+  action: "promote" | "reject";
+  recollectionIds: string[];
+  reason: string;
+  category?: VillageMemoryCategory;
+  text?: string;
+  subjectCharacterIds?: string[];
+  knownByCharacterIds?: string[];
+  lineIds?: string[];
+};
+type VenueMemoryReview = {
+  status: "none" | "pending" | "complete";
+  attempts: number;
+  error: string;
+  decisions: VenueMemoryDecision[];
+};
 export type VenueRecordEvent = {
   id: string;
   kind: "memory" | "wish" | "venue" | "request";
@@ -114,7 +139,7 @@ export type VenueSession = {
   endedAt: string;
   lastActivityAt: string;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
-  memoryMode: "turn" | "end";
+  memoryMode: "tiered" | "turn" | "end";
   status: "opening" | "active" | "closing" | "closed";
   participants: VenueParticipant[];
   activeIds: string[];
@@ -124,6 +149,7 @@ export type VenueSession = {
   memories: VenueMemory[] | null;
   memoryProgress: MemoryProgress | null;
   memoryPending: boolean;
+  memoryReview: VenueMemoryReview;
   recap: string;
 };
 
@@ -148,6 +174,57 @@ const activeSlot: DocumentSlot<ActiveVenue> = {
   coerce: coerceActive,
   label: () => "Active venue conversation",
 };
+
+function coerceVenueRecollection(value: unknown): VenueRecollection | null {
+  const raw = asRecord(value);
+  const id = asTrimmedString(raw.id);
+  const text = asTrimmedString(raw.text).slice(0, MAX_CHRONICLE_LENGTH);
+  const subjectCharacterIds = Array.isArray(raw.subjectCharacterIds)
+    ? [...new Set(raw.subjectCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
+    : [];
+  const knownByCharacterIds = Array.isArray(raw.knownByCharacterIds)
+    ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
+    : [];
+  const lineIds = Array.isArray(raw.lineIds)
+    ? [...new Set(raw.lineIds.filter((lineId): lineId is string => typeof lineId === "string" && !!lineId))]
+    : [];
+  return id && text && knownByCharacterIds.length && lineIds.length
+    ? { id, text, subjectCharacterIds, knownByCharacterIds, lineIds }
+    : null;
+}
+
+function coerceMemoryDecision(value: unknown): VenueMemoryDecision | null {
+  const raw = asRecord(value);
+  const id = asTrimmedString(raw.id);
+  const action = raw.action === "promote" ? "promote" : raw.action === "reject" ? "reject" : null;
+  const recollectionIds = Array.isArray(raw.recollectionIds)
+    ? [...new Set(raw.recollectionIds.filter((entry): entry is string => typeof entry === "string" && !!entry))]
+    : [];
+  if (!id || !action || !recollectionIds.length) return null;
+  const category =
+    raw.category === "commitment" ||
+    raw.category === "personal-fact" ||
+    raw.category === "preference" ||
+    raw.category === "relationship" ||
+    raw.category === "shared-experience"
+      ? raw.category
+      : undefined;
+  const strings = (field: unknown) =>
+    Array.isArray(field)
+      ? [...new Set(field.filter((entry): entry is string => typeof entry === "string" && !!entry))]
+      : undefined;
+  return {
+    id,
+    action,
+    recollectionIds,
+    reason: asTrimmedString(raw.reason).slice(0, 240),
+    ...(category ? { category } : {}),
+    ...(asTrimmedString(raw.text) ? { text: asTrimmedString(raw.text).slice(0, MAX_CHRONICLE_LENGTH) } : {}),
+    ...(strings(raw.subjectCharacterIds) ? { subjectCharacterIds: strings(raw.subjectCharacterIds) } : {}),
+    ...(strings(raw.knownByCharacterIds) ? { knownByCharacterIds: strings(raw.knownByCharacterIds) } : {}),
+    ...(strings(raw.lineIds) ? { lineIds: strings(raw.lineIds) } : {}),
+  };
+}
 
 function coerceSession(value: unknown): VenueSession {
   const raw = asRecord(value);
@@ -219,7 +296,7 @@ function coerceSession(value: unknown): VenueSession {
       raw.endReason === "debug"
         ? raw.endReason
         : "",
-    memoryMode: raw.memoryMode === "turn" ? "turn" : "end",
+    memoryMode: raw.memoryMode === "tiered" ? "tiered" : raw.memoryMode === "turn" ? "turn" : "end",
     status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
     participants,
     activeIds: Array.isArray(raw.activeIds) ? raw.activeIds.filter((id): id is string => typeof id === "string") : [],
@@ -290,6 +367,13 @@ function coerceSession(value: unknown): VenueSession {
                 ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
                 : {}),
               ...(Array.isArray(row.turnMemories) ? { turnMemories: row.turnMemories as VenueMemory[] } : {}),
+              ...(Array.isArray(row.recollections)
+                ? {
+                    recollections: row.recollections
+                      .map(coerceVenueRecollection)
+                      .filter((entry): entry is VenueRecollection => entry !== null),
+                  }
+                : {}),
               ...(Array.isArray(row.recordEvents) ? { recordEvents: row.recordEvents as VenueRecordEvent[] } : {}),
               ...(typeof row.at === "string" ? { at: row.at } : {}),
             };
@@ -327,6 +411,21 @@ function coerceSession(value: unknown): VenueSession {
           }
         : null,
     memoryPending: raw.memoryPending === true,
+    memoryReview: (() => {
+      const review = asRecord(raw.memoryReview);
+      const status = review.status === "pending" ? "pending" : review.status === "complete" ? "complete" : "none";
+      return {
+        status,
+        attempts:
+          typeof review.attempts === "number" && Number.isFinite(review.attempts)
+            ? Math.max(0, Math.floor(review.attempts))
+            : 0,
+        error: asTrimmedString(review.error).slice(0, 500),
+        decisions: Array.isArray(review.decisions)
+          ? review.decisions.map(coerceMemoryDecision).filter((entry): entry is VenueMemoryDecision => entry !== null)
+          : [],
+      };
+    })(),
     recap: asString(raw.recap).slice(0, 600),
   };
 }
@@ -415,6 +514,13 @@ async function generate(
     memoryQuery,
     600,
   );
+  const promptRecollections = selectPromptRecollections(
+    village.recollections,
+    active.map((person) => person.characterId),
+    memoryQuery,
+    400,
+    now.getTime(),
+  );
   const sharedMemories = promptMemories.filter((entry) => entry.scope === "village");
   const profiles = active.map((person) => {
     const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
@@ -422,7 +528,14 @@ async function generate(
     const card = readEffectiveVillagerCard(resident);
     const block = agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false);
     const memories = promptMemories
-      .filter((entry) => entry.scope === "private" && entry.actors.some((actor) => actor.id === person.characterId))
+      .filter(
+        (entry) =>
+          entry.scope === "private" &&
+          (entry.knownByCharacterIds ?? entry.actors.map((actor) => actor.id)).includes(person.characterId),
+      )
+      .map((entry) => entry.text);
+    const recent = promptRecollections
+      .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
       .map((entry) => entry.text);
     const spriteLabels = [...new Set(resident.sprite?.expressions.map((entry) => entry.label) ?? [])].slice(0, 8);
     return [
@@ -437,6 +550,7 @@ async function generate(
       }.`,
       `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
       `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
+      `Recent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
       spriteLabels.length ? `Visible expressions for ${card.name}: ${spriteLabels.join(", ")}.` : "",
     ]
       .filter(Boolean)
@@ -564,7 +678,7 @@ async function generate(
       ? "Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state."
       : "",
     mode !== "greet"
-      ? 'Select up to three consequential conversational memories from THIS turn only. Omit routine dialogue and facts already represented in venue state. Return memories as [{"characterId":"active ID","text":"short grounded memory","evidence":["player",0]}], where numeric evidence refers to zero-based segment indexes in this response. Every cited line must be heard by that resident. Omit memories if nothing merits remembering. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
+      ? 'Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
       : "",
     retrySpeech
       ? `The previous draft contained no spoken answer from ${targetId || "anyone present"}. Rewrite this turn with a dialogue segment from that resident. A brief refusal or uncertainty is a valid answer; narration alone is not.`
@@ -644,33 +758,57 @@ async function generate(
       ]
     : [];
   const sceneEnded = !!readSpeechSignal(raw?.sceneEnded);
-  const turnMemories: { characterId: string; text: string; evidence: (number | "player")[] }[] = [];
-  if (mode !== "greet" && Array.isArray(raw?.memories))
-    for (const value of raw.memories.slice(0, 3)) {
+  const recollections: {
+    text: string;
+    subjectCharacterIds: string[];
+    knownByCharacterIds: string[];
+    evidence: (number | "player")[];
+  }[] = [];
+  if (mode !== "greet" && Array.isArray(raw?.recollections))
+    for (const value of raw.recollections) {
       const row = asRecord(value);
-      const characterId = asTrimmedString(row.characterId);
       const text = asTrimmedString(row.text);
       const evidence = Array.isArray(row.evidence) ? row.evidence : [];
+      const subjectCharacterIds = Array.isArray(row.subjectCharacterIds)
+        ? [
+            ...new Set(
+              row.subjectCharacterIds.filter((id): id is string => typeof id === "string" && audience.includes(id)),
+            ),
+          ]
+        : [];
+      const knownByCharacterIds = Array.isArray(row.knownByCharacterIds)
+        ? [
+            ...new Set(
+              row.knownByCharacterIds.filter((id): id is string => typeof id === "string" && audience.includes(id)),
+            ),
+          ]
+        : [];
       if (
-        !audience.includes(characterId) ||
         !text ||
         text.length > MAX_CHRONICLE_LENGTH ||
+        !knownByCharacterIds.length ||
         !evidence.length ||
-        evidence.length > 4
+        evidence.length > 8
       )
         continue;
       if (
         evidence.some((ref) =>
-          ref === "player"
-            ? !parsed.heardPlayerBy.includes(characterId)
-            : !Number.isInteger(ref) ||
-              (ref as number) < 0 ||
-              !parsed.lines[ref as number]?.heardBy.includes(characterId),
+          knownByCharacterIds.some((characterId) =>
+            ref === "player"
+              ? !parsed.heardPlayerBy.includes(characterId)
+              : !Number.isInteger(ref) ||
+                (ref as number) < 0 ||
+                !parsed.lines[ref as number]?.heardBy.includes(characterId),
+          ),
         )
       )
         continue;
-      if (turnMemories.some((entry) => entry.characterId === characterId)) continue;
-      turnMemories.push({ characterId, text, evidence: evidence as (number | "player")[] });
+      recollections.push({
+        text,
+        subjectCharacterIds,
+        knownByCharacterIds,
+        evidence: evidence as (number | "player")[],
+      });
     }
   const requestedVenueId = request ? asTrimmedString(request.entry.venueId) : "";
   const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
@@ -750,7 +888,7 @@ async function generate(
     recap: asString(raw?.recap).slice(0, 600),
     departures,
     sceneEnded,
-    turnMemories,
+    recollections,
   };
 }
 
@@ -896,10 +1034,16 @@ async function interruptInactiveVisit(id: string): Promise<void> {
     state.status = "closed";
     state.endedAt = new Date().toISOString();
     state.endReason = "inactivity";
-    state.memoryPending = state.memoryMode === "end" && state.lines.some((line) => line.role === "user");
+    const hasRecollections = sessionRecollections(state).length > 0;
+    state.memoryPending =
+      (state.memoryMode === "end" && state.lines.some((line) => line.role === "user")) ||
+      (state.memoryMode === "tiered" && hasRecollections);
+    if (state.memoryMode === "tiered") state.memoryReview.status = hasRecollections ? "pending" : "complete";
   });
   if (closed.status !== "closed") return;
   await clearActivePointer(id);
+  if (closed.memoryMode === "tiered" && sessionRecollections(closed).length)
+    await reviewTieredMemories(id, AbortSignal.timeout(90_000));
   if (!closed.lines.some((line) => line.role === "user")) {
     const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
@@ -1009,7 +1153,7 @@ export async function enterVenue(
     endedAt: "",
     lastActivityAt: new Date().toISOString(),
     endReason: "",
-    memoryMode: "turn",
+    memoryMode: "tiered",
     status: participants.length === 0 ? "active" : "opening",
     participants,
     activeIds: participants.map((person) => person.characterId),
@@ -1019,6 +1163,7 @@ export async function enterVenue(
     memories: null,
     memoryProgress: null,
     memoryPending: false,
+    memoryReview: { status: "none", attempts: 0, error: "", decisions: [] },
     recap: "",
   };
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => Object.assign(value, session));
@@ -1198,7 +1343,9 @@ export async function leaveVenueSession(sessionId: string, submissionId: string,
     mode: "leave",
     targetId: "",
   });
-  return { ...result, session: await endVenueSession(sessionId) };
+  const session = await endVenueSession(sessionId);
+  const byId = new Map([...result.recordEvents, ...reviewReceipts(session)].map((event) => [event.id, event] as const));
+  return { ...result, session, recordEvents: [...byId.values()] };
 }
 
 async function finishActReply(
@@ -1258,6 +1405,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     if (prior.invitationSignal && prior.invitationSignal.timing === "later")
       await recordSpokenInvitation(session, prior.invitationSignal);
     await applyTurnMemories(session, prior);
+    await applyTurnRecollections(session, prior);
     const recordEvents = await receiptForTurn(session, prior);
     return {
       session: await readSession(session.id),
@@ -1410,9 +1558,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       });
     appendVenueReply(state, reply.lines, at);
     const replyLineIds = state.lines.slice(-reply.lines.length).map((line) => line.id);
-    const turnMemories: VenueMemory[] = reply.turnMemories.map((memory) => ({
-      characterId: memory.characterId,
+    const recollections: VenueRecollection[] = reply.recollections.map((memory, index) => ({
+      id: `${session.id}:recollection:${input.submissionId}:${index}`,
       text: memory.text,
+      subjectCharacterIds: memory.subjectCharacterIds,
+      knownByCharacterIds: memory.knownByCharacterIds,
       lineIds: [
         ...new Set(
           memory.evidence
@@ -1432,7 +1582,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       verdict,
       wishId,
       wishMemory,
-      turnMemories,
+      recollections,
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
@@ -1466,6 +1616,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
         : {}),
       at,
     });
+    if (recollections.length && state.memoryMode === "turn") state.memoryMode = "tiered";
     if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
       state.area = reply.invitationSignal.scope === "private" ? "private" : "shared";
       state.privateOwnerId = reply.invitationSignal.scope === "private" ? reply.invitationSignal.ownerId : "";
@@ -1485,9 +1636,15 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     await recordSpokenInvitation(updated, submission.invitationSignal);
   if (updated.area === "shared" || updated.area === "private") await markResidenceSeen(updated);
   await applyTurnMemories(updated, submission);
-  const recordEvents = await receiptForTurn(updated, submission);
-  if (updated.status === "closed") await clearActivePointer(updated.id);
-  return { session: await readSession(updated.id), verdict, action: null, recordEvents };
+  await applyTurnRecollections(updated, submission);
+  let recordEvents = await receiptForTurn(updated, submission);
+  let finalSession = updated;
+  if (updated.status === "closed") {
+    finalSession = await endVenueSession(updated.id);
+    const byId = new Map([...recordEvents, ...reviewReceipts(finalSession)].map((event) => [event.id, event] as const));
+    recordEvents = [...byId.values()];
+  }
+  return { session: await readSession(finalSession.id), verdict, action: null, recordEvents };
 }
 
 async function recordSpokenInvitation(
@@ -1679,6 +1836,77 @@ async function applyFulfilledWish(session: VenueSession, submission: VenueSubmis
   return applied;
 }
 
+const RECOLLECTION_LIFETIME_MS = 24 * 60 * 60 * 1000;
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return [...new Set(left)].sort().join("\n") === [...new Set(right)].sort().join("\n");
+}
+
+async function applyTurnRecollections(session: VenueSession, submission: VenueSubmission): Promise<void> {
+  if (!submission.recollections?.length) return;
+  const occurredAt = new Date(submission.at || Date.now()).toISOString();
+  const expiry = new Date(Date.parse(occurredAt) + RECOLLECTION_LIFETIME_MS).toISOString();
+  await mutateVillageState((state) => {
+    const now = Date.parse(occurredAt);
+    state.recollections = state.recollections.filter((entry) => Date.parse(entry.expiresAt) > now);
+    for (const recollection of submission.recollections ?? []) {
+      const knownByCharacterIds = recollection.knownByCharacterIds.filter((id) =>
+        session.participants.some((person) => person.characterId === id),
+      );
+      const subjectCharacterIds = recollection.subjectCharacterIds.filter((id) =>
+        session.participants.some((person) => person.characterId === id),
+      );
+      const lineIds = [...new Set(recollection.lineIds)];
+      if (
+        !recollection.text ||
+        !knownByCharacterIds.length ||
+        !lineIds.length ||
+        lineIds.some(
+          (lineId) =>
+            !session.lines.some(
+              (line) =>
+                line.id === lineId && knownByCharacterIds.every((characterId) => line.heardBy.includes(characterId)),
+            ),
+        )
+      )
+        continue;
+      if (state.recollections.some((entry) => entry.id === recollection.id)) continue;
+      const normalized = recollection.text.replace(/\s+/gu, " ").trim().toLowerCase();
+      const repeated = state.recollections.find(
+        (entry) =>
+          entry.text.replace(/\s+/gu, " ").trim().toLowerCase() === normalized &&
+          sameIds(entry.subjectCharacterIds, subjectCharacterIds) &&
+          sameIds(entry.knownByCharacterIds, knownByCharacterIds),
+      );
+      if (repeated) {
+        if (repeated.sourceSubmissionIds.includes(submission.id)) continue;
+        repeated.expiresAt = expiry;
+        repeated.lastReinforcedAt = occurredAt;
+        repeated.reinforcementCount += 1;
+        repeated.sourceLineIds = [...new Set([...repeated.sourceLineIds, ...lineIds])];
+        repeated.sourceSubmissionIds = [...new Set([...repeated.sourceSubmissionIds, submission.id])];
+        repeated.evidence.push({ visitId: session.id, submissionId: submission.id, lineIds });
+        continue;
+      }
+      const stored: VillageRecollection = {
+        id: recollection.id,
+        visitId: session.id,
+        occurredAt,
+        expiresAt: expiry,
+        text: recollection.text,
+        subjectCharacterIds,
+        knownByCharacterIds,
+        sourceLineIds: lineIds,
+        sourceSubmissionIds: [submission.id],
+        evidence: [{ visitId: session.id, submissionId: submission.id, lineIds }],
+        reinforcementCount: 0,
+        lastReinforcedAt: occurredAt,
+      };
+      state.recollections.unshift(stored);
+    }
+  });
+}
+
 async function applyTurnMemories(session: VenueSession, submission: VenueSubmission): Promise<void> {
   if (session.memoryMode !== "turn" || !submission.turnMemories?.length) return;
   await mutateVillageState((state) => {
@@ -1764,6 +1992,307 @@ async function receiptForTurn(session: VenueSession, submission: VenueSubmission
     if (saved && !saved.recordEvents) saved.recordEvents = events;
   });
   return events;
+}
+
+const MEMORY_REVIEW_ERROR = "This visit is safely archived, but its memory review is still pending.";
+
+function sessionRecollections(session: VenueSession): VenueRecollection[] {
+  const seen = new Set<string>();
+  return session.submissions.flatMap((submission) =>
+    (submission.recollections ?? []).filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    }),
+  );
+}
+
+function durableMemoryId(visitId: string, recollectionIds: readonly string[]): string {
+  const digest = createHash("sha256")
+    .update([...recollectionIds].sort().join("\n"))
+    .digest("hex")
+    .slice(0, 20);
+  return `${visitId}:durable:${digest}`;
+}
+
+function reviewDecisionId(visitId: string, action: "promote" | "reject", recollectionIds: readonly string[]): string {
+  const digest = createHash("sha256")
+    .update(`${action}\n${[...recollectionIds].sort().join("\n")}`)
+    .digest("hex")
+    .slice(0, 20);
+  return `${visitId}:review:${digest}`;
+}
+
+function memoryReviewMessages(
+  session: VenueSession,
+  recollections: readonly VenueRecollection[],
+  village: VillageState,
+): CapabilityLanguageModelMessage[] {
+  const lines = new Map(session.lines.map((line) => [line.id, line]));
+  const venue = village.venues.find((entry) => entry.id === session.placeId);
+  const worldState = venue
+    ? [
+        venue.state.condition,
+        ...venue.state.publicFacts,
+        ...(venue.state.features ?? []).map((feature) => feature.text),
+        ...venue.state.furniture.map((item) => `Present item: ${item}`),
+      ].filter(Boolean)
+    : [];
+  return [
+    {
+      role: "system",
+      content:
+        'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once. Consolidate related recollections when they describe one event. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state. There is NO promotion quota: promote every distinct event that qualifies. Subjects are who the event concerns; knownBy are only residents who heard every cited line. Never broaden the audience. Return JSON only: {"decisions":[{"action":"promote","recollectionIds":["exact id"],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event","subjectCharacterIds":["id"],"knownByCharacterIds":["id"],"lineIds":["exact line id"]},{"action":"reject","recollectionIds":["exact id"],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. A recollection ID must appear in exactly one decision. Do not invent evidence or IDs.',
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        visitId: session.id,
+        venue: session.placeName,
+        participants: session.participants,
+        currentWorldState: worldState,
+        existingDurableMemories: village.chronicle
+          .filter((entry) => entry.kind !== "tick")
+          .slice(0, 80)
+          .map((entry) => ({ id: entry.id, text: entry.text })),
+        recollections: recollections.map((entry) => ({
+          ...entry,
+          evidence: entry.lineIds.map((lineId) => {
+            const line = lines.get(lineId);
+            return line
+              ? { lineId, speaker: line.name || "Player", text: line.content, heardBy: line.heardBy }
+              : { lineId, missing: true };
+          }),
+        })),
+      }),
+    },
+  ];
+}
+
+function parseMemoryReview(
+  raw: Record<string, unknown> | null,
+  session: VenueSession,
+  source: readonly VenueRecollection[],
+): VenueMemoryDecision[] {
+  if (raw?.complete !== true || !Array.isArray(raw.decisions)) throw new Error(MEMORY_REVIEW_ERROR);
+  const sourceById = new Map(source.map((entry) => [entry.id, entry]));
+  const participantIds = new Set(session.participants.map((person) => person.characterId));
+  const lineById = new Map(session.lines.map((line) => [line.id, line]));
+  const used = new Set<string>();
+  const decisions: VenueMemoryDecision[] = [];
+  for (const value of raw.decisions) {
+    const row = asRecord(value);
+    const action = row.action === "promote" ? "promote" : row.action === "reject" ? "reject" : null;
+    const recollectionIds = Array.isArray(row.recollectionIds)
+      ? [...new Set(row.recollectionIds.filter((id): id is string => typeof id === "string" && sourceById.has(id)))]
+      : [];
+    if (!action || !recollectionIds.length || recollectionIds.some((id) => used.has(id)))
+      throw new Error(MEMORY_REVIEW_ERROR);
+    recollectionIds.forEach((id) => used.add(id));
+    const reason = asTrimmedString(row.reason).slice(0, 240) || "other";
+    if (action === "reject") {
+      decisions.push({
+        id: reviewDecisionId(session.id, action, recollectionIds),
+        action,
+        recollectionIds,
+        reason,
+      });
+      continue;
+    }
+    const category =
+      row.category === "commitment" ||
+      row.category === "personal-fact" ||
+      row.category === "preference" ||
+      row.category === "relationship" ||
+      row.category === "shared-experience"
+        ? row.category
+        : null;
+    const text = asTrimmedString(row.text).slice(0, MAX_CHRONICLE_LENGTH);
+    const ids = (field: unknown) =>
+      Array.isArray(field)
+        ? [...new Set(field.filter((id): id is string => typeof id === "string" && participantIds.has(id)))]
+        : [];
+    const subjectCharacterIds = ids(row.subjectCharacterIds);
+    const knownByCharacterIds = ids(row.knownByCharacterIds);
+    const sourceLineIds = new Set(recollectionIds.flatMap((id) => sourceById.get(id)?.lineIds ?? []));
+    const lineIds = Array.isArray(row.lineIds)
+      ? [...new Set(row.lineIds.filter((id): id is string => typeof id === "string" && sourceLineIds.has(id)))]
+      : [];
+    if (
+      !category ||
+      !text ||
+      !knownByCharacterIds.length ||
+      !lineIds.length ||
+      lineIds.some((lineId) => {
+        const line = lineById.get(lineId);
+        return !line || knownByCharacterIds.some((characterId) => !line.heardBy.includes(characterId));
+      })
+    )
+      throw new Error(MEMORY_REVIEW_ERROR);
+    decisions.push({
+      id: reviewDecisionId(session.id, action, recollectionIds),
+      action,
+      recollectionIds,
+      reason,
+      category,
+      text,
+      subjectCharacterIds,
+      knownByCharacterIds,
+      lineIds,
+    });
+  }
+  if (used.size !== source.length || source.some((entry) => !used.has(entry.id))) throw new Error(MEMORY_REVIEW_ERROR);
+  return decisions;
+}
+
+function decisionsCover(decisions: readonly VenueMemoryDecision[], source: readonly VenueRecollection[]): boolean {
+  const ids = decisions.flatMap((decision) => decision.recollectionIds);
+  return (
+    ids.length === new Set(ids).size && ids.length === source.length && source.every((entry) => ids.includes(entry.id))
+  );
+}
+
+async function generateMemoryReview(
+  session: VenueSession,
+  source: readonly VenueRecollection[],
+  village: VillageState,
+  signal: AbortSignal,
+): Promise<VenueMemoryDecision[]> {
+  const model = await villagesLanguageModels().resolveForRequest({
+    connectionId: await villagesConnectionIdFor("system"),
+  });
+  const maxTokens = Math.min(model.maxOutputTokens ?? 3_600, 3_600);
+  const fits = (entries: readonly VenueRecollection[]) => {
+    const messages = memoryReviewMessages(session, entries, village);
+    const fitted = model.fitContext(messages, { maxTokens });
+    return fitted.maxTokens === maxTokens && JSON.stringify(fitted.messages) === JSON.stringify(messages);
+  };
+  const decisions: VenueMemoryDecision[] = [];
+  let cursor = 0;
+  while (cursor < source.length) {
+    signal.throwIfAborted();
+    let end = cursor + 1;
+    if (!fits(source.slice(cursor, end))) throw new Error(MEMORY_REVIEW_ERROR);
+    while (end < source.length && fits(source.slice(cursor, end + 1))) end += 1;
+    const batch = source.slice(cursor, end);
+    const messages = memoryReviewMessages(session, batch, village);
+    const completion = await completeWithRoom(model, messages, maxTokens, {
+      temperature: 0.1,
+      reasoningEffort: null,
+      verbosity: null,
+      debugMode: false,
+      signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
+    });
+    if (completion.finishReason === "length") throw new Error(MEMORY_REVIEW_ERROR);
+    decisions.push(...parseMemoryReview(extractJsonObject(completion.content ?? ""), session, batch));
+    cursor = end;
+  }
+  if (!decisionsCover(decisions, source)) throw new Error(MEMORY_REVIEW_ERROR);
+  return decisions;
+}
+
+async function commitMemoryReview(session: VenueSession, decisions: readonly VenueMemoryDecision[]): Promise<void> {
+  const promoted = decisions.filter(
+    (
+      decision,
+    ): decision is VenueMemoryDecision &
+      Required<
+        Pick<VenueMemoryDecision, "category" | "text" | "subjectCharacterIds" | "knownByCharacterIds" | "lineIds">
+      > =>
+      decision.action === "promote" &&
+      !!decision.category &&
+      !!decision.text &&
+      !!decision.subjectCharacterIds &&
+      !!decision.knownByCharacterIds &&
+      !!decision.lineIds,
+  );
+  if (!promoted.length) return;
+  await mutateVillageState((state) => {
+    const moment = deriveVillageMoment({
+      foundedAt: state.foundedAt,
+      seed: state.seed,
+      now: new Date(session.endedAt || Date.now()),
+    });
+    const fresh: VillageChronicleEntry[] = promoted
+      .map((decision): VillageChronicleEntry => ({
+        id: durableMemoryId(session.id, decision.recollectionIds),
+        dayIndex: moment.dayIndex,
+        clock: moment.dayPhase,
+        occurredAt: moment.instant,
+        timePrecision: "exact",
+        scope: "private",
+        actors: decision.knownByCharacterIds.map((characterId) => ({
+          id: characterId,
+          name: session.participants.find((person) => person.characterId === characterId)?.name ?? "",
+        })),
+        kind: "chat",
+        memoryCategory: decision.category,
+        subjectCharacterIds: decision.subjectCharacterIds,
+        knownByCharacterIds: decision.knownByCharacterIds,
+        sourceVisitId: session.id,
+        sourceRecollectionIds: decision.recollectionIds,
+        sourceLineIds: decision.lineIds,
+        text: decision.text,
+      }))
+      .filter((entry) => !state.chronicle.some((saved) => saved.id === entry.id));
+    state.chronicle = [...fresh, ...state.chronicle];
+  });
+}
+
+async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<VenueSession> {
+  let session = await readSession(id);
+  const source = sessionRecollections(session);
+  if (!source.length)
+    return changeSession(id, (state) => {
+      state.memoryReview = { status: "complete", attempts: state.memoryReview.attempts, error: "", decisions: [] };
+      state.memoryPending = false;
+    });
+  try {
+    let decisions = session.memoryReview.decisions;
+    if (!decisionsCover(decisions, source)) {
+      await changeSession(id, (state) => {
+        state.memoryReview.status = "pending";
+        state.memoryReview.attempts += 1;
+        state.memoryReview.error = "";
+        state.memoryReview.decisions = [];
+        state.memoryPending = true;
+      });
+      session = await readSession(id);
+      decisions = await generateMemoryReview(session, source, await readVillageState(), signal);
+      await changeSession(id, (state) => {
+        state.memoryReview.decisions = decisions;
+      });
+    }
+    await commitMemoryReview(await readSession(id), decisions);
+    return changeSession(id, (state) => {
+      state.memoryReview.status = "complete";
+      state.memoryReview.error = "";
+      state.memoryPending = false;
+    });
+  } catch (error) {
+    villagesLogger().warn("[villages] memory review remains pending for %s: %s", id, String(error));
+    return changeSession(id, (state) => {
+      state.memoryReview.status = "pending";
+      state.memoryReview.error = error instanceof Error ? error.message.slice(0, 500) : MEMORY_REVIEW_ERROR;
+      state.memoryPending = true;
+    });
+  }
+}
+
+function reviewReceipts(session: VenueSession): VenueRecordEvent[] {
+  return session.memoryReview.decisions
+    .filter((decision) => decision.action === "promote" && !!decision.text)
+    .map((decision) => ({
+      id: durableMemoryId(session.id, decision.recollectionIds),
+      kind: "memory" as const,
+      text: `${
+        decision.knownByCharacterIds
+          ?.map((id) => session.participants.find((person) => person.characterId === id)?.name)
+          .filter(Boolean)
+          .join(", ") || "A villager"
+      } remembered this exchange.`,
+      detail: decision.text,
+    }));
 }
 
 type MemoryUnit = {
@@ -1916,8 +2445,50 @@ export async function endVenueSession(id: string): Promise<VenueSession> {
 const closingTasks = new Map<string, Promise<VenueSession>>();
 const closingControllers = new Map<string, AbortController>();
 
+async function endTieredVenueSession(session: VenueSession, signal: AbortSignal): Promise<VenueSession> {
+  if (session.status !== "closed") {
+    if (isInactive(session)) {
+      await interruptInactiveVisit(session.id);
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+    }
+    const active = await readActive();
+    if (active.sessionId !== session.id) throw conflict("That venue conversation is not active.");
+  }
+  const source = sessionRecollections(session);
+  const closed = await changeSession(session.id, (state) => {
+    state.status = "closed";
+    state.endedAt ||= new Date().toISOString();
+    state.endReason ||= "player";
+    if (!source.length) {
+      state.memoryReview = {
+        status: "complete",
+        attempts: state.memoryReview.attempts,
+        error: "",
+        decisions: [],
+      };
+      state.memoryPending = false;
+    } else if (state.memoryReview.status !== "complete") {
+      state.memoryReview.status = "pending";
+      state.memoryPending = true;
+    }
+  });
+  await clearActivePointer(session.id);
+  let result = closed;
+  if (source.length && closed.memoryReview.status !== "complete")
+    result = await reviewTieredMemories(session.id, signal);
+  const hasPlayerTurn = result.lines.some((line) => line.role === "user");
+  const hasLeaveSubmission = result.submissions.some((submission) => submission.mode === "leave");
+  if (!hasPlayerTurn && !hasLeaveSubmission) {
+    const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${session.id}`);
+    if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
+  }
+  await pruneVenueVisits();
+  return result;
+}
+
 async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueSession> {
   const session = await readSession(id);
+  if (session.memoryMode === "tiered") return endTieredVenueSession(session, signal);
   if (session.status === "closed" && !session.memoryPending) {
     await clearActivePointer(id);
     return session;
@@ -2107,6 +2678,7 @@ export async function listVenueVisitSummaries(
     memoryUnits: number;
     memoryPending: boolean;
     memoryProgress: { nextUnit: number } | null;
+    memoryReview: Pick<VenueMemoryReview, "status" | "attempts" | "error">;
   }[];
   total: number;
 }> {
@@ -2128,6 +2700,11 @@ export async function listVenueVisitSummaries(
       memoryUnits: memoryUnits(visit).length,
       memoryPending: visit.memoryPending,
       memoryProgress: visit.memoryProgress ? { nextUnit: visit.memoryProgress.nextUnit } : null,
+      memoryReview: {
+        status: visit.memoryReview.status,
+        attempts: visit.memoryReview.attempts,
+        error: visit.memoryReview.error,
+      },
     })),
   };
 }

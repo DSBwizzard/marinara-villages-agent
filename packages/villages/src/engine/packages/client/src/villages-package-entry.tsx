@@ -761,6 +761,26 @@ type RoomParticipant = {
   doing: string;
 };
 
+type RoomRecollection = {
+  id: string;
+  text: string;
+  subjectCharacterIds: string[];
+  knownByCharacterIds: string[];
+  lineIds: string[];
+};
+
+type RoomMemoryDecision = {
+  id: string;
+  action: "promote" | "reject";
+  recollectionIds: string[];
+  reason: string;
+  category?: MemoryCategory;
+  text?: string;
+  subjectCharacterIds?: string[];
+  knownByCharacterIds?: string[];
+  lineIds?: string[];
+};
+
 /** One venue visit: its cast stays fixed until the player leaves. */
 type RoomView = {
   version: 1;
@@ -783,6 +803,13 @@ type RoomView = {
   lines: RoomLine[];
   memoryPending?: boolean;
   memoryProgress?: { nextUnit: number } | null;
+  memoryReview?: {
+    status: "none" | "pending" | "complete";
+    attempts: number;
+    error: string;
+    decisions?: RoomMemoryDecision[];
+  };
+  submissions?: { id: string; recollections?: RoomRecollection[] }[];
 };
 
 type RoomRecordEvent = {
@@ -803,6 +830,7 @@ type ArchiveVisitSummary = Pick<
   | "participants"
   | "memoryPending"
   | "memoryProgress"
+  | "memoryReview"
 > & {
   lineCount: number;
   memoryUnits: number;
@@ -864,6 +892,37 @@ type StoryResponse = {
   total: number;
 };
 
+type MemoryPerson = { id: string; name: string };
+type MemoryCategory = "commitment" | "personal-fact" | "preference" | "relationship" | "shared-experience";
+type MemoryDurable = StoryEntry & {
+  memoryCategory?: MemoryCategory;
+  subjects: MemoryPerson[];
+  knownBy: MemoryPerson[];
+  evidence: { visitId: string; lineIds: string[] } | null;
+  sourceRecollectionIds?: string[];
+  legacy: boolean;
+};
+type MemoryRecollection = {
+  id: string;
+  visitId: string;
+  occurredAt: string;
+  expiresAt: string;
+  text: string;
+  subjects: MemoryPerson[];
+  knownBy: MemoryPerson[];
+  reinforcementCount: number;
+  lastReinforcedAt: string;
+  evidence: { visitId: string; submissionId: string; lineIds: string[] }[];
+};
+type MemoryLibrary = {
+  generatedAt: string;
+  residents: MemoryPerson[];
+  durable: MemoryDurable[];
+  recollections: MemoryRecollection[];
+  expiredRecollectionCount: number;
+  archive: { total: number; pendingReviewCount: number; recent: ArchiveVisitSummary[] };
+};
+
 /**
  * The story grouped by the day the server filed each memory under.
  *
@@ -879,6 +938,326 @@ function storyDays(entries: StoryEntry[]): { label: string; entries: StoryEntry[
     else days.push({ label: entry.dateLabel, entries: [entry] });
   }
   return days;
+}
+
+const MEMORY_CATEGORY_LABELS: Record<MemoryCategory, string> = {
+  commitment: "Promise & obligation",
+  "personal-fact": "Personal truth",
+  preference: "Preference & boundary",
+  relationship: "Relationship change",
+  "shared-experience": "Shared experience",
+};
+
+function memoryNames(people: readonly MemoryPerson[]): string {
+  return people.map((person) => person.name).join(", ") || "No resident recorded";
+}
+
+function recollectionTimeLeft(expiresAt: string, now: number): string {
+  const remaining = Date.parse(expiresAt) - now;
+  if (remaining <= 0) return "expiring now";
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.max(1, Math.ceil((remaining % 3_600_000) / 60_000));
+  return hours > 0 ? `${hours}h ${minutes}m left` : `${minutes}m left`;
+}
+
+function VillagerMemoriesPanel({
+  library,
+  busy,
+  onRefresh,
+  onForget,
+}: {
+  library: MemoryLibrary | null;
+  busy: boolean;
+  onRefresh: () => void;
+  onForget: (kind: "durable" | "recollections", id: string) => void;
+}) {
+  const [kind, setKind] = useState<"all" | "passing" | "durable">("all");
+  const [residentId, setResidentId] = useState("");
+  const [query, setQuery] = useState("");
+  const [evidence, setEvidence] = useState<{ visit: RoomView; lineIds: string[] } | null>(null);
+  const [evidenceError, setEvidenceError] = useState("");
+  const now = Date.now();
+  const matches = (text: string, people: readonly MemoryPerson[]) =>
+    (!query.trim() ||
+      `${text} ${people.map((person) => person.name).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase())) &&
+    (!residentId || people.some((person) => person.id === residentId));
+  const passing = (library?.recollections ?? []).filter((entry) =>
+    matches(entry.text, [...entry.subjects, ...entry.knownBy]),
+  );
+  const durable = (library?.durable ?? []).filter((entry) =>
+    matches(entry.text, [...entry.subjects, ...entry.knownBy]),
+  );
+  const openEvidence = async (visitId: string, lineIds: string[]) => {
+    try {
+      const response = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(visitId)}`);
+      setEvidence({ visit: response.visit, lineIds });
+      setEvidenceError("");
+    } catch (cause) {
+      setEvidence(null);
+      setEvidenceError(messageFrom(cause, "The source visit could not be read."));
+    }
+  };
+  return (
+    <div className={`${ELEMENT_TAG}-memory-library`}>
+      <section className={`${ELEMENT_TAG}-memory-hero`}>
+        <div>
+          <span className={`${ELEMENT_TAG}-memory-kicker`}>Continuity, with receipts</span>
+          <h3>What your villagers carry forward</h3>
+          <p>
+            Passing recollections keep conversations coherent for 24 hours. Durable memories survive because an
+            end-of-visit review found lasting meaning. Exact transcripts remain separate and are never used as hidden
+            character knowledge.
+          </p>
+        </div>
+        <div className={`${ELEMENT_TAG}-memory-stats`}>
+          <span>
+            <strong>{library?.recollections.length ?? 0}</strong> passing
+          </span>
+          <span>
+            <strong>{library?.durable.length ?? 0}</strong> durable
+          </span>
+          <span>
+            <strong>{library?.archive.total ?? 0}</strong> archived visits
+          </span>
+        </div>
+      </section>
+
+      <div className={`${ELEMENT_TAG}-memory-layers`} aria-label="How Villages memory works">
+        <article>
+          <span>01</span>
+          <strong>Passing</strong>
+          <p>Useful context with a visible 24-hour expiry.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <strong>Durable</strong>
+          <p>Promises, truths, boundaries, bonds, and significant experiences.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <strong>Archive</strong>
+          <p>Word-for-word evidence, stored independently from character memory.</p>
+        </article>
+      </div>
+
+      {library?.archive.pendingReviewCount ? (
+        <div className={`${ELEMENT_TAG}-memory-health`} role="status">
+          <span>◇</span>
+          <div>
+            <strong>{library.archive.pendingReviewCount} visit review pending</strong>
+            <p>The transcript is safe. Villages will retry without holding the room.</p>
+          </div>
+          <button type="button" className={`${ELEMENT_TAG}-button`} disabled={busy} onClick={onRefresh}>
+            Retry now
+          </button>
+        </div>
+      ) : null}
+
+      <div className={`${ELEMENT_TAG}-memory-toolbar`}>
+        <div className={`${ELEMENT_TAG}-memory-tabs`} role="group" aria-label="Memory type">
+          {(
+            [
+              ["all", "All"],
+              ["passing", "Passing"],
+              ["durable", "Durable"],
+            ] as const
+          ).map(([value, label]) => (
+            <button key={value} type="button" data-active={kind === value} onClick={() => setKind(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search memories…"
+          aria-label="Search memories"
+        />
+        <select
+          value={residentId}
+          onChange={(event) => setResidentId(event.target.value)}
+          aria-label="Filter memories by resident"
+        >
+          <option value="">Everyone</option>
+          {(library?.residents ?? []).map((resident) => (
+            <option key={resident.id} value={resident.id}>
+              {resident.name}
+            </option>
+          ))}
+        </select>
+        <button type="button" className={`${ELEMENT_TAG}-button`} disabled={busy} onClick={onRefresh}>
+          Refresh
+        </button>
+      </div>
+
+      {library === null ? <p className={`${ELEMENT_TAG}-empty`}>Reading the village’s memory layers…</p> : null}
+      {library && kind !== "durable" && passing.length > 0 ? (
+        <section className={`${ELEMENT_TAG}-memory-section`}>
+          <div className={`${ELEMENT_TAG}-memory-section-head`}>
+            <div>
+              <span className={`${ELEMENT_TAG}-memory-orb`} data-kind="passing">
+                ◌
+              </span>
+              <h3>Passing recollections</h3>
+            </div>
+            <span>Quiet context · expires naturally</span>
+          </div>
+          <div className={`${ELEMENT_TAG}-memory-grid`}>
+            {passing.map((entry) => {
+              const source = entry.evidence[entry.evidence.length - 1] ?? { visitId: entry.visitId, lineIds: [] };
+              return (
+                <article key={entry.id} className={`${ELEMENT_TAG}-memory-card`} data-kind="passing">
+                  <div className={`${ELEMENT_TAG}-memory-card-top`}>
+                    <span className={`${ELEMENT_TAG}-memory-pill`}>Passing</span>
+                    <span>{recollectionTimeLeft(entry.expiresAt, now)}</span>
+                  </div>
+                  <p className={`${ELEMENT_TAG}-memory-text`}>{entry.text}</p>
+                  <dl>
+                    <div>
+                      <dt>About</dt>
+                      <dd>{memoryNames(entry.subjects)}</dd>
+                    </div>
+                    <div>
+                      <dt>Known by</dt>
+                      <dd>{memoryNames(entry.knownBy)}</dd>
+                    </div>
+                  </dl>
+                  {entry.reinforcementCount > 0 ? (
+                    <p className={`${ELEMENT_TAG}-memory-reinforced`}>
+                      ↻ Reinforced {entry.reinforcementCount} {entry.reinforcementCount === 1 ? "time" : "times"}
+                    </p>
+                  ) : null}
+                  <div className={`${ELEMENT_TAG}-memory-card-actions`}>
+                    <button type="button" onClick={() => void openEvidence(source.visitId, source.lineIds)}>
+                      View evidence
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => onForget("recollections", entry.id)}>
+                      Let go
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {library && kind !== "passing" && durable.length > 0 ? (
+        <section className={`${ELEMENT_TAG}-memory-section`}>
+          <div className={`${ELEMENT_TAG}-memory-section-head`}>
+            <div>
+              <span className={`${ELEMENT_TAG}-memory-orb`} data-kind="durable">
+                ✦
+              </span>
+              <h3>Durable memories</h3>
+            </div>
+            <span>Lasting meaning · no arbitrary visit quota</span>
+          </div>
+          <div className={`${ELEMENT_TAG}-memory-grid`}>
+            {durable.map((entry) => (
+              <article key={entry.id} className={`${ELEMENT_TAG}-memory-card`} data-kind="durable">
+                <div className={`${ELEMENT_TAG}-memory-card-top`}>
+                  <span className={`${ELEMENT_TAG}-memory-pill`}>
+                    {entry.memoryCategory
+                      ? MEMORY_CATEGORY_LABELS[entry.memoryCategory]
+                      : entry.kind === "favour"
+                        ? "Fulfilled wish"
+                        : "Legacy memory"}
+                  </span>
+                  <span>
+                    {entry.dateLabel}
+                    {storyTime(entry) ? ` · ${storyTime(entry)}` : ""}
+                  </span>
+                </div>
+                <p className={`${ELEMENT_TAG}-memory-text`}>{entry.text}</p>
+                <dl>
+                  <div>
+                    <dt>About</dt>
+                    <dd>{memoryNames(entry.subjects)}</dd>
+                  </div>
+                  <div>
+                    <dt>Known by</dt>
+                    <dd>{memoryNames(entry.knownBy)}</dd>
+                  </div>
+                </dl>
+                <div className={`${ELEMENT_TAG}-memory-card-actions`}>
+                  {entry.evidence ? (
+                    <button
+                      type="button"
+                      onClick={() => void openEvidence(entry.evidence!.visitId, entry.evidence!.lineIds)}
+                    >
+                      View evidence
+                    </button>
+                  ) : (
+                    <span className={`${ELEMENT_TAG}-memory-legacy`}>No evidence link on this older memory</span>
+                  )}
+                  <button type="button" disabled={busy} onClick={() => onForget("durable", entry.id)}>
+                    Forget
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {library && ((kind !== "durable" && passing.length) || (kind !== "passing" && durable.length)) === 0 ? (
+        <div className={`${ELEMENT_TAG}-memory-empty`}>
+          <span>✧</span>
+          <h3>No memories match</h3>
+          <p>Try another resident, phrase, or memory layer.</p>
+        </div>
+      ) : null}
+      {library?.expiredRecollectionCount ? (
+        <p className={`${ELEMENT_TAG}-memory-footnote`}>
+          {library.expiredRecollectionCount} expired passing recollection
+          {library.expiredRecollectionCount === 1 ? " is" : "s are"} waiting for routine cleanup.
+        </p>
+      ) : null}
+      {evidenceError ? (
+        <p className={`${ELEMENT_TAG}-error`} role="alert">
+          {evidenceError}
+        </p>
+      ) : null}
+      {evidence ? (
+        <section className={`${ELEMENT_TAG}-memory-evidence`}>
+          <div className={`${ELEMENT_TAG}-memory-section-head`}>
+            <div>
+              <span className={`${ELEMENT_TAG}-memory-orb`} data-kind="archive">
+                ⌁
+              </span>
+              <h3>Exact evidence · {evidence.visit.placeName}</h3>
+            </div>
+            <button type="button" onClick={() => setEvidence(null)} aria-label="Close evidence">
+              ×
+            </button>
+          </div>
+          <p>Only the cited archive lines are shown. The full visit remains in DEBUG → Venue Visits.</p>
+          <ol>
+            {evidence.visit.lines
+              .filter((line) => evidence.lineIds.includes(line.id))
+              .map((line) => (
+                <li key={line.id}>
+                  <span>
+                    <strong>{line.name || "Player"}</strong>
+                    <small>
+                      {stampTime(line.at)} · heard by{" "}
+                      {line.heardBy
+                        .map(
+                          (id) => evidence.visit.participants.find((person) => person.characterId === id)?.name ?? id,
+                        )
+                        .join(", ") || "no one"}
+                    </small>
+                  </span>
+                  {renderVillagesMarkdown(line.content, `memory-evidence-${line.id}-`)}
+                </li>
+              ))}
+          </ol>
+        </section>
+      ) : null}
+    </div>
+  );
 }
 
 /**
@@ -3317,6 +3696,93 @@ const VILLAGES_STYLES = `
   color: var(--muted-foreground);
 }
 .${ELEMENT_TAG}-story-scope { color: var(--primary); }
+/* Villagers → Memories: a calm library, not a diagnostic table. */
+.${ELEMENT_TAG}-villager-submenu {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: 0 0 1rem;
+  padding: .3rem; border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: .85rem; background: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+.${ELEMENT_TAG}-villager-submenu button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: .12rem; min-width: 0;
+  border: 0; border-radius: .62rem; padding: .62rem .8rem; background: transparent; color: var(--muted-foreground);
+  text-align: left; cursor: pointer; transition: background .16s ease, color .16s ease, box-shadow .16s ease;
+}
+.${ELEMENT_TAG}-villager-submenu button[data-active="true"] {
+  background: var(--background); color: var(--foreground); box-shadow: 0 1px 8px color-mix(in srgb, #000 12%, transparent);
+}
+.${ELEMENT_TAG}-villager-submenu span { font-size: .8rem; font-weight: 700; }
+.${ELEMENT_TAG}-villager-submenu small { overflow: hidden; max-width: 100%; font-size: .64rem; text-overflow: ellipsis; white-space: nowrap; }
+.${ELEMENT_TAG}-memory-library { display: flex; flex-direction: column; gap: 1rem; }
+.${ELEMENT_TAG}-memory-hero {
+  display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(12rem, .8fr); gap: 1rem; padding: 1.15rem;
+  overflow: hidden; border: 1px solid color-mix(in srgb, var(--primary) 25%, var(--border)); border-radius: 1rem;
+  background:
+    radial-gradient(circle at 92% 8%, color-mix(in srgb, var(--primary) 23%, transparent), transparent 37%),
+    linear-gradient(145deg, color-mix(in srgb, var(--popover) 95%, transparent), color-mix(in srgb, var(--muted) 62%, transparent));
+}
+.${ELEMENT_TAG}-memory-kicker { font-size: .62rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; color: var(--primary); }
+.${ELEMENT_TAG}-memory-hero h3 { margin: .28rem 0 .38rem; font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.15rem, 3vw, 1.7rem); font-weight: 500; }
+.${ELEMENT_TAG}-memory-hero p { max-width: 50rem; margin: 0; color: var(--muted-foreground); font-size: .76rem; line-height: 1.55; }
+.${ELEMENT_TAG}-memory-stats { display: grid; grid-template-columns: repeat(3, 1fr); align-self: stretch; gap: .4rem; }
+.${ELEMENT_TAG}-memory-stats span { display: flex; flex-direction: column; justify-content: center; min-width: 0; border: 1px solid color-mix(in srgb, var(--border) 72%, transparent); border-radius: .72rem; padding: .62rem .35rem; background: color-mix(in srgb, var(--background) 78%, transparent); text-align: center; color: var(--muted-foreground); font-size: .6rem; }
+.${ELEMENT_TAG}-memory-stats strong { color: var(--foreground); font-family: Georgia, 'Times New Roman', serif; font-size: 1.28rem; font-weight: 500; }
+.${ELEMENT_TAG}-memory-layers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; }
+.${ELEMENT_TAG}-memory-layers article { display: grid; grid-template-columns: auto 1fr; gap: .05rem .48rem; border: 1px solid var(--border); border-radius: .72rem; padding: .65rem .72rem; background: color-mix(in srgb, var(--background) 74%, transparent); }
+.${ELEMENT_TAG}-memory-layers article > span { grid-row: 1 / span 2; color: color-mix(in srgb, var(--primary) 72%, var(--muted-foreground)); font: 700 .58rem/1.35 ui-monospace, monospace; }
+.${ELEMENT_TAG}-memory-layers strong { font-size: .7rem; }
+.${ELEMENT_TAG}-memory-layers p { margin: 0; color: var(--muted-foreground); font-size: .62rem; line-height: 1.35; }
+.${ELEMENT_TAG}-memory-health { display: flex; align-items: center; gap: .7rem; border: 1px solid color-mix(in srgb, #d59a34 50%, var(--border)); border-radius: .72rem; padding: .66rem .78rem; background: color-mix(in srgb, #d59a34 9%, var(--background)); }
+.${ELEMENT_TAG}-memory-health > span { color: #d59a34; font-size: 1.2rem; }
+.${ELEMENT_TAG}-memory-health > div { flex: 1; min-width: 0; }
+.${ELEMENT_TAG}-memory-health strong { font-size: .72rem; }
+.${ELEMENT_TAG}-memory-health p { margin: .08rem 0 0; color: var(--muted-foreground); font-size: .62rem; }
+.${ELEMENT_TAG}-memory-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.${ELEMENT_TAG}-memory-toolbar input { flex: 1 1 12rem; min-width: 0; }
+.${ELEMENT_TAG}-memory-toolbar input, .${ELEMENT_TAG}-memory-toolbar select { min-height: 2.25rem; border: 1px solid var(--border); border-radius: .58rem; padding: .42rem .62rem; background: var(--background); color: var(--foreground); font-size: .72rem; }
+.${ELEMENT_TAG}-memory-tabs { display: flex; gap: .18rem; border: 1px solid var(--border); border-radius: .6rem; padding: .2rem; background: var(--muted); }
+.${ELEMENT_TAG}-memory-tabs button { border: 0; border-radius: .4rem; padding: .38rem .62rem; background: transparent; color: var(--muted-foreground); font-size: .68rem; cursor: pointer; }
+.${ELEMENT_TAG}-memory-tabs button[data-active="true"] { background: var(--background); color: var(--foreground); box-shadow: 0 1px 4px color-mix(in srgb, #000 12%, transparent); }
+.${ELEMENT_TAG}-memory-section { display: flex; flex-direction: column; gap: .55rem; }
+.${ELEMENT_TAG}-memory-section-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.${ELEMENT_TAG}-memory-section-head > div { display: flex; align-items: center; gap: .48rem; min-width: 0; }
+.${ELEMENT_TAG}-memory-section-head h3 { margin: 0; font-size: .78rem; }
+.${ELEMENT_TAG}-memory-section-head > span { color: var(--muted-foreground); font-size: .62rem; }
+.${ELEMENT_TAG}-memory-orb { display: grid; place-items: center; width: 1.55rem; height: 1.55rem; border-radius: 50%; font-size: .72rem; }
+.${ELEMENT_TAG}-memory-orb[data-kind="passing"] { background: color-mix(in srgb, #60a5fa 16%, transparent); color: #60a5fa; }
+.${ELEMENT_TAG}-memory-orb[data-kind="durable"] { background: color-mix(in srgb, #e5b94b 17%, transparent); color: #dcae35; }
+.${ELEMENT_TAG}-memory-orb[data-kind="archive"] { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
+.${ELEMENT_TAG}-memory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: .62rem; }
+.${ELEMENT_TAG}-memory-card { display: flex; flex-direction: column; gap: .58rem; min-width: 0; border: 1px solid var(--border); border-radius: .82rem; padding: .8rem; background: color-mix(in srgb, var(--popover) 94%, transparent); box-shadow: 0 5px 20px color-mix(in srgb, #000 6%, transparent); }
+.${ELEMENT_TAG}-memory-card[data-kind="passing"] { border-left: 3px solid color-mix(in srgb, #60a5fa 72%, var(--border)); }
+.${ELEMENT_TAG}-memory-card[data-kind="durable"] { border-left: 3px solid color-mix(in srgb, #e5b94b 78%, var(--border)); }
+.${ELEMENT_TAG}-memory-card-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; color: var(--muted-foreground); font-size: .6rem; }
+.${ELEMENT_TAG}-memory-pill { overflow: hidden; border-radius: 999px; padding: .2rem .42rem; background: color-mix(in srgb, var(--primary) 11%, var(--muted)); color: color-mix(in srgb, var(--primary) 82%, var(--foreground)); font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.${ELEMENT_TAG}-memory-text { margin: 0; color: var(--foreground); font-family: Georgia, 'Times New Roman', serif; font-size: .9rem; line-height: 1.45; }
+.${ELEMENT_TAG}-memory-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .38rem; margin: 0; }
+.${ELEMENT_TAG}-memory-card dl > div { min-width: 0; border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); padding-top: .38rem; }
+.${ELEMENT_TAG}-memory-card dt { color: var(--muted-foreground); font-size: .55rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.${ELEMENT_TAG}-memory-card dd { overflow: hidden; margin: .08rem 0 0; font-size: .66rem; text-overflow: ellipsis; }
+.${ELEMENT_TAG}-memory-reinforced, .${ELEMENT_TAG}-memory-footnote, .${ELEMENT_TAG}-memory-legacy { margin: 0; color: var(--muted-foreground); font-size: .6rem; }
+.${ELEMENT_TAG}-memory-card-actions { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: auto; }
+.${ELEMENT_TAG}-memory-card-actions button, .${ELEMENT_TAG}-memory-evidence button { border: 0; padding: .18rem 0; background: transparent; color: var(--primary); font-size: .64rem; font-weight: 700; cursor: pointer; }
+.${ELEMENT_TAG}-memory-card-actions button:last-child { color: var(--muted-foreground); }
+.${ELEMENT_TAG}-memory-empty { display: grid; place-items: center; min-height: 10rem; border: 1px dashed var(--border); border-radius: .82rem; padding: 1rem; text-align: center; color: var(--muted-foreground); }
+.${ELEMENT_TAG}-memory-empty span { color: var(--primary); font-size: 1.35rem; }
+.${ELEMENT_TAG}-memory-empty h3 { margin: .25rem 0 0; color: var(--foreground); font-size: .82rem; }
+.${ELEMENT_TAG}-memory-empty p { margin: .15rem 0 0; font-size: .68rem; }
+.${ELEMENT_TAG}-memory-evidence { display: flex; flex-direction: column; gap: .58rem; border: 1px solid color-mix(in srgb, var(--primary) 28%, var(--border)); border-radius: .82rem; padding: .82rem; background: color-mix(in srgb, var(--primary) 4%, var(--background)); }
+.${ELEMENT_TAG}-memory-evidence > p { margin: 0; color: var(--muted-foreground); font-size: .64rem; }
+.${ELEMENT_TAG}-memory-evidence ol { display: grid; gap: .42rem; margin: 0; padding: 0; list-style: none; }
+.${ELEMENT_TAG}-memory-evidence li { border-left: 2px solid color-mix(in srgb, var(--primary) 46%, var(--border)); padding: .45rem .55rem; background: color-mix(in srgb, var(--popover) 88%, transparent); font-size: .72rem; line-height: 1.45; }
+.${ELEMENT_TAG}-memory-evidence li > span { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; margin-bottom: .16rem; }
+.${ELEMENT_TAG}-memory-evidence small { color: var(--muted-foreground); font-size: .56rem; font-weight: 400; }
+@media (max-width: 700px) {
+  .${ELEMENT_TAG}-memory-hero { grid-template-columns: 1fr; }
+  .${ELEMENT_TAG}-memory-layers { grid-template-columns: 1fr; }
+  .${ELEMENT_TAG}-memory-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .${ELEMENT_TAG}-memory-toolbar > input { order: -1; flex-basis: 100%; }
+  .${ELEMENT_TAG}-memory-section-head > span { display: none; }
+}
 .${ELEMENT_TAG}-wish-card {
   padding: .625rem .75rem; border: 1px solid var(--border); border-radius: .5rem;
   background: var(--background); font-size: .75rem; line-height: 1.4;
@@ -9468,6 +9934,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    */
   const [story, setStory] = useState<StoryEntry[] | null>(null);
   const [storyTotal, setStoryTotal] = useState(0);
+  const [villagersSection, setVillagersSection] = useState<"residents" | "memories">("residents");
+  const [memoryLibrary, setMemoryLibrary] = useState<MemoryLibrary | null>(null);
   const [venueVisits, setVenueVisits] = useState<ArchiveVisitSummary[] | null>(null);
   const [archiveTotal, setArchiveTotal] = useState(0);
   const [archiveOffset, setArchiveOffset] = useState(0);
@@ -10020,6 +10488,35 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, []);
 
+  const loadMemoryLibrary = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await request<MemoryLibrary>("/memories", { signal });
+      setMemoryLibrary(response);
+      setError("");
+    } catch (cause) {
+      if (signal?.aborted) return;
+      setMemoryLibrary(null);
+      setError(messageFrom(cause, "Could not read villager memories."));
+    }
+  }, []);
+
+  const forgetMemory = useCallback(
+    async (kind: "durable" | "recollections", id: string) => {
+      const label = kind === "durable" ? "Forget this durable memory?" : "Let this passing recollection go now?";
+      if (!window.confirm(label)) return;
+      setBusy(true);
+      try {
+        await request(`/memories/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
+        await loadMemoryLibrary();
+      } catch (cause) {
+        setError(messageFrom(cause, "That memory could not be removed."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [loadMemoryLibrary],
+  );
+
   /**
    * Forget one memory.
    *
@@ -10489,6 +10986,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // The villager list is read when it is asked for rather than kept current
       // on every snapshot.
       if (tab === "villagers") void loadCatalog();
+      if (tab === "villagers" && (screen !== "menu" || menuTab !== "villagers")) setVillagersSection("residents");
       // Same rule for the Personas the identity picker offers.
       if (tab === "village") void loadPersonas();
       if (tab === "village") void loadLorebooks();
@@ -14443,168 +14941,211 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Villagers</h2>
                 </div>
-                <p className={`${ELEMENT_TAG}-empty`}>
-                  Characters from your library live here. Moving someone out forgets nothing about the character card
-                  itself.
-                </p>
-                <div className={`${ELEMENT_TAG}-row`}>
+                <nav className={`${ELEMENT_TAG}-villager-submenu`} aria-label="Villagers sections">
                   <button
                     type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    onClick={() => setPickerOpen((open) => !open)}
-                    disabled={busy}
+                    data-active={villagersSection === "residents"}
+                    aria-pressed={villagersSection === "residents"}
+                    onClick={() => setVillagersSection("residents")}
                   >
-                    {pickerOpen ? "Close the list" : "Add a villager"}
+                    <span>Residents</span>
+                    <small>{snapshot?.villagers.length ?? 0} living here</small>
                   </button>
-                </div>
-                {pickerOpen ? (
-                  <div className={`${ELEMENT_TAG}-field`}>
-                    <input
-                      className={`${ELEMENT_TAG}-search`}
-                      type="search"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      placeholder="Search by name, note or tag…"
-                      aria-label="Search your character library"
-                    />
-                    {catalog === null ? (
-                      <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                        Reading your library…
-                      </p>
-                    ) : visibleCatalog.length === 0 ? (
-                      <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                        No characters match that search.
-                      </p>
-                    ) : (
-                      <div className={`${ELEMENT_TAG}-picker-list`}>
-                        {visibleCatalog.map((entry) => (
-                          <div
-                            key={entry.id}
-                            className={`${ELEMENT_TAG}-picker-item`}
-                            data-resident={entry.inVillage ? "true" : "false"}
-                          >
-                            <AvatarFace
-                              portrait={portraits[entry.id]}
-                              name={entry.name}
-                              className={`${ELEMENT_TAG}-avatar`}
-                            />
-                            <div className={`${ELEMENT_TAG}-picker-text`}>
-                              <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
-                              <div className={`${ELEMENT_TAG}-villager-role`}>
-                                {entry.comment || entry.tags.slice(0, 3).join(" · ")}
-                              </div>
-                              {entry.summary ? <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p> : null}
-                            </div>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() => void addVillager(entry.id)}
-                              disabled={busy || entry.inVillage}
-                            >
-                              {entry.inVillage ? "Lives here" : "Move in"}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ) : null}
-                {snapshot && snapshot.villagers.length > 0 ? (
+                  <button
+                    type="button"
+                    data-active={villagersSection === "memories"}
+                    aria-pressed={villagersSection === "memories"}
+                    onClick={() => {
+                      setVillagersSection("memories");
+                      setMemoryLibrary(null);
+                      void loadMemoryLibrary();
+                    }}
+                  >
+                    <span>Memories</span>
+                    <small>Passing, durable & evidence</small>
+                  </button>
+                </nav>
+                {villagersSection === "residents" ? (
                   <>
-                    <div className={`${ELEMENT_TAG}-villagers`}>
-                      {snapshot.villagers.map((villager) => (
-                        <VillagerTile
-                          key={villager.characterId}
-                          villager={villager}
-                          portrait={portraits[villager.characterId]}
-                          selected={false}
-                          // A resident's name leads to the venue they currently
-                          // occupy. Conversation belongs to that venue visit.
-                          onSelect={
-                            !villager.place || room !== null
-                              ? undefined
-                              : () => {
-                                  const place = snapshot.settings.venues.find(
-                                    (entry) => entry.id === villager.place?.id,
-                                  );
-                                  if (place) openVenue(place);
-                                }
-                          }
-                        />
-                      ))}
+                    <p className={`${ELEMENT_TAG}-empty`}>
+                      Characters from your library live here. Moving someone out forgets nothing about the character
+                      card itself.
+                    </p>
+                    <div className={`${ELEMENT_TAG}-row`}>
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        onClick={() => setPickerOpen((open) => !open)}
+                        disabled={busy}
+                      >
+                        {pickerOpen ? "Close the list" : "Add a villager"}
+                      </button>
                     </div>
-                    <div className={`${ELEMENT_TAG}-roster`}>
-                      {snapshot.villagers.map((villager) => (
-                        <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-entry`}>
-                          <div className={`${ELEMENT_TAG}-roster-row`}>
-                            <div>
-                              <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
-                              {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-                              {refreshPreviews[villager.characterId] ? (
-                                <div className={`${ELEMENT_TAG}-tile-summary`}>
-                                  {refreshPreviews[villager.characterId].changed
-                                    ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
-                                    : refreshPreviews[villager.characterId].sourceAvailable
-                                      ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
-                                      : "The saved snapshot remains playable; the source card is unavailable."}
+                    {pickerOpen ? (
+                      <div className={`${ELEMENT_TAG}-field`}>
+                        <input
+                          className={`${ELEMENT_TAG}-search`}
+                          type="search"
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          placeholder="Search by name, note or tag…"
+                          aria-label="Search your character library"
+                        />
+                        {catalog === null ? (
+                          <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                            Reading your library…
+                          </p>
+                        ) : visibleCatalog.length === 0 ? (
+                          <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                            No characters match that search.
+                          </p>
+                        ) : (
+                          <div className={`${ELEMENT_TAG}-picker-list`}>
+                            {visibleCatalog.map((entry) => (
+                              <div
+                                key={entry.id}
+                                className={`${ELEMENT_TAG}-picker-item`}
+                                data-resident={entry.inVillage ? "true" : "false"}
+                              >
+                                <AvatarFace
+                                  portrait={portraits[entry.id]}
+                                  name={entry.name}
+                                  className={`${ELEMENT_TAG}-avatar`}
+                                />
+                                <div className={`${ELEMENT_TAG}-picker-text`}>
+                                  <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
+                                  <div className={`${ELEMENT_TAG}-villager-role`}>
+                                    {entry.comment || entry.tags.slice(0, 3).join(" · ")}
+                                  </div>
+                                  {entry.summary ? (
+                                    <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p>
+                                  ) : null}
                                 </div>
-                              ) : null}
-                            </div>
-                            <span className={`${ELEMENT_TAG}-row`}>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() =>
-                                  setSpriteEditorId(
-                                    spriteEditorId === villager.characterId ? null : villager.characterId,
-                                  )
-                                }
-                                aria-expanded={spriteEditorId === villager.characterId}
-                              >
-                                {spriteEditorId === villager.characterId
-                                  ? "Close sprite studio"
-                                  : `Sprites · ${villager.sprite?.images.length ?? 0} approved`}
-                              </button>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() => void previewVillagerRefresh(villager.characterId)}
-                                disabled={busy || refreshBusyId.length > 0}
-                              >
-                                Compare card
-                              </button>
-                              {refreshPreviews[villager.characterId]?.changed &&
-                              refreshPreviews[villager.characterId]?.sourceAvailable ? (
                                 <button
                                   type="button"
                                   className={`${ELEMENT_TAG}-button`}
-                                  onClick={() => void applyVillagerRefresh(villager.characterId)}
-                                  disabled={busy || refreshBusyId.length > 0}
+                                  onClick={() => void addVillager(entry.id)}
+                                  disabled={busy || entry.inVillage}
                                 >
-                                  Apply refresh
+                                  {entry.inVillage ? "Lives here" : "Move in"}
                                 </button>
-                              ) : null}
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() => void removeVillager(villager.characterId)}
-                                disabled={busy || refreshBusyId.length > 0}
-                              >
-                                Move out
-                              </button>
-                            </span>
+                              </div>
+                            ))}
                           </div>
-                          {spriteEditorId === villager.characterId ? (
-                            <ResidentSpriteEditor villager={villager} onSaved={setSnapshot} />
-                          ) : null}
+                        )}
+                      </div>
+                    ) : null}
+                    {snapshot && snapshot.villagers.length > 0 ? (
+                      <>
+                        <div className={`${ELEMENT_TAG}-villagers`}>
+                          {snapshot.villagers.map((villager) => (
+                            <VillagerTile
+                              key={villager.characterId}
+                              villager={villager}
+                              portrait={portraits[villager.characterId]}
+                              selected={false}
+                              // A resident's name leads to the venue they currently
+                              // occupy. Conversation belongs to that venue visit.
+                              onSelect={
+                                !villager.place || room !== null
+                                  ? undefined
+                                  : () => {
+                                      const place = snapshot.settings.venues.find(
+                                        (entry) => entry.id === villager.place?.id,
+                                      );
+                                      if (place) openVenue(place);
+                                    }
+                              }
+                            />
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                        <div className={`${ELEMENT_TAG}-roster`}>
+                          {snapshot.villagers.map((villager) => (
+                            <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-entry`}>
+                              <div className={`${ELEMENT_TAG}-roster-row`}>
+                                <div>
+                                  <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
+                                  {villager.missing ? (
+                                    <span className={`${ELEMENT_TAG}-badge`}>card missing</span>
+                                  ) : null}
+                                  {refreshPreviews[villager.characterId] ? (
+                                    <div className={`${ELEMENT_TAG}-tile-summary`}>
+                                      {refreshPreviews[villager.characterId].changed
+                                        ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
+                                        : refreshPreviews[villager.characterId].sourceAvailable
+                                          ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
+                                          : "The saved snapshot remains playable; the source card is unavailable."}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <span className={`${ELEMENT_TAG}-row`}>
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    onClick={() =>
+                                      setSpriteEditorId(
+                                        spriteEditorId === villager.characterId ? null : villager.characterId,
+                                      )
+                                    }
+                                    aria-expanded={spriteEditorId === villager.characterId}
+                                  >
+                                    {spriteEditorId === villager.characterId
+                                      ? "Close sprite studio"
+                                      : `Sprites · ${villager.sprite?.images.length ?? 0} approved`}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    onClick={() => void previewVillagerRefresh(villager.characterId)}
+                                    disabled={busy || refreshBusyId.length > 0}
+                                  >
+                                    Compare card
+                                  </button>
+                                  {refreshPreviews[villager.characterId]?.changed &&
+                                  refreshPreviews[villager.characterId]?.sourceAvailable ? (
+                                    <button
+                                      type="button"
+                                      className={`${ELEMENT_TAG}-button`}
+                                      onClick={() => void applyVillagerRefresh(villager.characterId)}
+                                      disabled={busy || refreshBusyId.length > 0}
+                                    >
+                                      Apply refresh
+                                    </button>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    onClick={() => void removeVillager(villager.characterId)}
+                                    disabled={busy || refreshBusyId.length > 0}
+                                  >
+                                    Move out
+                                  </button>
+                                </span>
+                              </div>
+                              {spriteEditorId === villager.characterId ? (
+                                <ResidentSpriteEditor villager={villager} onSaved={setSnapshot} />
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <p className={`${ELEMENT_TAG}-empty`}>
+                        Nobody lives here yet. If you have just founded the village, the people you named are on their
+                        way.
+                      </p>
+                    )}
                   </>
                 ) : (
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    Nobody lives here yet. If you have just founded the village, the people you named are on their way.
-                  </p>
+                  <VillagerMemoriesPanel
+                    library={memoryLibrary}
+                    busy={busy}
+                    onRefresh={() => {
+                      setMemoryLibrary(null);
+                      void loadMemoryLibrary();
+                    }}
+                    onForget={(kind, id) => void forgetMemory(kind, id)}
+                  />
                 )}
               </div>
             ) : null}
@@ -15451,7 +15992,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         {visit.participants.map((person) => person.name).join(", ")} · {visit.lineCount} lines
                         {visit.endReason === "inactivity" ? " · Interrupted: Inactivity" : ""}
                         {visit.memoryPending
-                          ? ` · memory pending (${visit.memoryProgress?.nextUnit ?? 0}/${visit.memoryUnits} pieces processed)`
+                          ? visit.memoryReview?.status === "pending"
+                            ? ` · durable review pending · ${visit.memoryReview.attempts} ${visit.memoryReview.attempts === 1 ? "attempt" : "attempts"}`
+                            : ` · legacy memory pending (${visit.memoryProgress?.nextUnit ?? 0}/${visit.memoryUnits} pieces processed)`
                           : ""}
                       </p>
                       <div className={`${ELEMENT_TAG}-row`}>
@@ -15469,7 +16012,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             disabled={busy}
                             onClick={() => void retryVisitMemory(visit.id)}
                           >
-                            Retry memory
+                            {visit.memoryReview?.status === "pending" ? "Retry review" : "Retry memory"}
                           </button>
                         ) : null}
                         <button
@@ -15482,28 +16025,79 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         </button>
                       </div>
                       {openArchivedVisit?.id === visit.id ? (
-                        <ul className={`${ELEMENT_TAG}-story`}>
-                          {openArchivedVisit.lines.map((line, index) => (
-                            <li key={`${visit.id}:${index}`} className={`${ELEMENT_TAG}-story-row`}>
-                              <span>
-                                <span className={`${ELEMENT_TAG}-story-meta`}>
-                                  {line.name || playerDisplayName(snapshot)} · {stampTime(line.at)}
+                        <>
+                          <ul className={`${ELEMENT_TAG}-story`}>
+                            {openArchivedVisit.lines.map((line, index) => (
+                              <li key={`${visit.id}:${index}`} className={`${ELEMENT_TAG}-story-row`}>
+                                <span>
+                                  <span className={`${ELEMENT_TAG}-story-meta`}>
+                                    {line.name || playerDisplayName(snapshot)} · {stampTime(line.at)}
+                                  </span>
+                                  {renderVillagesMarkdown(line.content, `venue-${visit.id}-${index}-`)}
+                                  <span className={`${ELEMENT_TAG}-story-meta`}>
+                                    Heard by:{" "}
+                                    {line.heardBy
+                                      ?.map(
+                                        (id) =>
+                                          openArchivedVisit.participants.find((person) => person.characterId === id)
+                                            ?.name ?? id,
+                                      )
+                                      .join(", ") || "no one"}
+                                  </span>
                                 </span>
-                                {renderVillagesMarkdown(line.content, `venue-${visit.id}-${index}-`)}
-                                <span className={`${ELEMENT_TAG}-story-meta`}>
-                                  Heard by:{" "}
-                                  {line.heardBy
-                                    ?.map(
-                                      (id) =>
-                                        openArchivedVisit.participants.find((person) => person.characterId === id)
-                                          ?.name ?? id,
-                                    )
-                                    .join(", ") || "no one"}
-                                </span>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                              </li>
+                            ))}
+                          </ul>
+                          {(openArchivedVisit.submissions ?? []).some(
+                            (submission) => submission.recollections?.length,
+                          ) ? (
+                            <details className={`${ELEMENT_TAG}-agenda-notes`}>
+                              <summary>Captured recollections and evidence</summary>
+                              <ul className={`${ELEMENT_TAG}-story`}>
+                                {(openArchivedVisit.submissions ?? []).flatMap((submission) =>
+                                  (submission.recollections ?? []).map((recollection) => (
+                                    <li key={recollection.id} className={`${ELEMENT_TAG}-wish-card`}>
+                                      <p className={`${ELEMENT_TAG}-wish-text`}>{recollection.text}</p>
+                                      <p className={`${ELEMENT_TAG}-wish-meta`}>
+                                        {`Subjects: ${recollection.subjectCharacterIds.join(", ") || "none"} · Known by: ${recollection.knownByCharacterIds.join(", ")}`}
+                                      </p>
+                                      <p className={`${ELEMENT_TAG}-wish-meta`}>
+                                        {`Evidence: ${recollection.lineIds.join(", ")}`}
+                                      </p>
+                                    </li>
+                                  )),
+                                )}
+                              </ul>
+                            </details>
+                          ) : null}
+                          {openArchivedVisit.memoryReview && openArchivedVisit.memoryReview.status !== "none" ? (
+                            <details className={`${ELEMENT_TAG}-agenda-notes`} open={openArchivedVisit.memoryPending}>
+                              <summary>{`Durable review · ${openArchivedVisit.memoryReview?.status ?? "none"}`}</summary>
+                              <div className={`${ELEMENT_TAG}-agenda-notes-body`}>
+                                <p className={`${ELEMENT_TAG}-story-meta`}>
+                                  {`${openArchivedVisit.memoryReview?.attempts ?? 0} review attempts`}
+                                  {openArchivedVisit.memoryReview?.error
+                                    ? ` · Last error: ${openArchivedVisit.memoryReview.error}`
+                                    : ""}
+                                </p>
+                                <ul className={`${ELEMENT_TAG}-story`}>
+                                  {(openArchivedVisit.memoryReview?.decisions ?? []).map((decision) => (
+                                    <li key={decision.id} className={`${ELEMENT_TAG}-wish-card`}>
+                                      <p className={`${ELEMENT_TAG}-wish-text`}>
+                                        {`${decision.action === "promote" ? "Promoted" : "Rejected"}${decision.category ? ` · ${MEMORY_CATEGORY_LABELS[decision.category]}` : ""}`}
+                                      </p>
+                                      {decision.text ? <p>{decision.text}</p> : null}
+                                      <p className={`${ELEMENT_TAG}-wish-meta`}>{decision.reason}</p>
+                                      <p className={`${ELEMENT_TAG}-wish-meta`}>
+                                        {`Sources: ${decision.recollectionIds.join(", ")}`}
+                                      </p>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </details>
+                          ) : null}
+                        </>
                       ) : null}
                     </section>
                   ))
