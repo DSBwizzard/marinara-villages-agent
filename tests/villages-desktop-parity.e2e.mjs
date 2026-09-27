@@ -123,6 +123,8 @@ try {
         : snapshot;
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    let lastTurn = null;
+    let lastLeave = null;
     let session = {
       version: 1,
       id: "visit-1",
@@ -176,7 +178,8 @@ try {
         };
         value = { session };
       } else if (path.endsWith("/rooms/turn")) {
-        const message = route.request().postDataJSON().message;
+        lastTurn = route.request().postDataJSON();
+        const message = lastTurn.message;
         session = {
           ...session,
           lines: [
@@ -227,6 +230,10 @@ try {
             },
           ],
         };
+      } else if (path.endsWith("/rooms/leave")) {
+        lastLeave = route.request().postDataJSON();
+        session = { ...session, status: "closed", endedAt: now };
+        value = { session, recordEvents: [] };
       }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -363,7 +370,8 @@ try {
     const stageBox = await stage.boundingBox();
     const dockBox = await dock.boundingBox();
     assert.ok(stageBox && dockBox && stageBox.height > 0 && stageBox.y + stageBox.height <= dockBox.y + 1);
-    if (width === 1917) assert.ok(dockBox.height <= 180, `wide reading dock stays compact (${dockBox.height}px)`);
+    if (width === 1917)
+      assert.ok(dockBox.height <= 240, `wide reading dock includes the visible composer (${dockBox.height}px)`);
     const castBoxes = await cast.all();
     for (const person of castBoxes) {
       const box = await person.boundingBox();
@@ -388,21 +396,62 @@ try {
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
     await historyButton.click();
-    await expect(composer).toHaveCount(0);
+    await expect(composer).toBeVisible();
+    await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await expect(page.getByRole("menuitem", { name: "Leave Scene · play ending" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /Leave Scene/u })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "End visit now" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
-    await page.getByRole("button", { name: "Compose" }).click();
+    const modeButton = () => page.getByRole("button", { name: /^Mode: /u });
+    await expect(modeButton()).toHaveText("💬");
+    const oneLine = await composer.evaluate((field) => {
+      const style = getComputedStyle(field);
+      return {
+        height: field.clientHeight,
+        lineHeight: Number.parseFloat(style.lineHeight),
+        padding: Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom),
+      };
+    });
+    assert.ok(
+      Math.abs(oneLine.height - (oneLine.lineHeight + oneLine.padding)) <= 2,
+      "empty composer is one line high",
+    );
+    await composer.fill("word ".repeat(100));
+    const wrapped = await composer.evaluate((field) => ({
+      height: field.clientHeight,
+      scrollHeight: field.scrollHeight,
+    }));
+    assert.ok(wrapped.height > oneLine.height, "composer grows as the draft wraps");
+    assert.ok(wrapped.height <= oneLine.lineHeight * 2 + oneLine.padding + 2, "composer stops at two lines");
+    assert.ok(wrapped.scrollHeight > wrapped.height, "long draft scrolls inside the composer");
     await composer.fill("My response.");
     await composer.press("Escape");
-    await expect(composer).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Compose" })).toBeFocused();
-    await page.getByRole("button", { name: "Compose" }).click();
+    await expect(composer).toBeVisible();
+    await modeButton().click();
+    await expect(page.getByRole("menuitemradio", { name: "Conclude" })).toBeVisible();
+    await historyButton.focus();
+    await expect(page.getByRole("menu", { name: "Visit mode" })).toHaveCount(0);
+    await modeButton().click();
+    await reading.click();
+    await expect(page.getByRole("menu", { name: "Visit mode" })).toHaveCount(0);
+    await modeButton().click();
+    await page.getByRole("menuitemradio", { name: "Conclude" }).click();
+    await expect(modeButton()).toHaveText("🚪");
+    assert.equal(lastLeave, null, "selecting Conclude does not leave the scene");
     await expect(composer).toHaveValue("My response.");
+    await modeButton().click();
+    await page.getByRole("menuitemradio", { name: "Chat" }).click();
+    await expect(modeButton()).toHaveText("💬");
+    await modeButton().click();
+    await page.getByRole("menuitemradio", { name: "Fulfill" }).click();
+    await expect(modeButton()).toHaveText("🫴");
+    await page.getByRole("combobox", { name: "Whose wish you fulfilled" }).selectOption("mara");
+    assert.equal(lastTurn, null, "changing modes does not send the draft");
     await page.getByRole("button", { name: "Send" }).click();
     await expect(composer).toHaveCount(0);
     await expect(reading).toContainText("First reply.");
+    assert.equal(lastTurn.mode, "fulfill");
+    assert.equal(lastTurn.message, "My response.");
     await expect(reading).not.toContainText("Sixth reply.");
     assert.equal(await reading.evaluate((element) => element.scrollTop), 0, "a new paragraph starts at its top");
     assert.deepEqual(
@@ -421,7 +470,8 @@ try {
     await expect(memoryTrigger).toBeFocused();
     for (let step = 0; step < 5; step += 1) await page.getByRole("button", { name: "Next paragraph" }).click();
     await expect(reading).toContainText("Sixth reply.");
-    await expect(page.getByRole("button", { name: "Compose" })).toBeVisible();
+    await expect(composer).toBeVisible();
+    await expect(modeButton()).toHaveText("💬");
     const asideBand = page.locator(".marinara-capability-villages-chat-vn-asides");
     await expect(asideBand).toContainText("A small aside rides with the final reply.");
     await expect(asideBand).toContainText("A quiet word stays visible too.");
@@ -452,6 +502,15 @@ try {
         path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-room-${width}x${height}.png`),
       });
     }
+    const finalLine = width === 390 ? "" : "Goodbye.";
+    await composer.fill(finalLine);
+    await modeButton().click();
+    await page.getByRole("menuitemradio", { name: "Conclude" }).click();
+    await expect(modeButton()).toHaveText("🚪");
+    assert.equal(lastLeave, null, "Conclude waits for Send");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByRole("button", { name: "Return to map" }).first()).toBeVisible();
+    assert.equal(lastLeave.message, finalLine, "Conclude sends the optional final line");
     await page.close();
   }
   console.log("Villages desktop parity: five viewports, four-person stage, compact reading, and map controls passed");
