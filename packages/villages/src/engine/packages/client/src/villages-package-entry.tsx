@@ -44,6 +44,7 @@ import { createVillagesClientId, shouldSubmitVenueKey } from "./villages-venue-s
 import { nextRoomReadIndex } from "./villages-room-reading";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import {
+  focusedPhotoScale,
   mobileCoverZoom,
   mobileDoorPoint,
   mobileGestureMoved,
@@ -56,6 +57,7 @@ import {
 const ELEMENT_TAG = "marinara-capability-villages";
 const STYLE_ID = "marinara-capability-villages-styles";
 const API_PATH = "/api/villages";
+const DESKTOP_PHOTO_SCALE = 0.7;
 const FOUNDING_REASONS = [
   { value: "fresh-start", label: "Fresh start" },
   { value: "refuge", label: "Refuge" },
@@ -3822,7 +3824,7 @@ const VILLAGES_STYLES = `
 */
 .${ELEMENT_TAG}-doors {
   position: absolute; z-index: 4;
-  transform: translate(-50%, 1.5rem);
+  transform: translate(-50%, 2.75rem);
   display: flex; flex-direction: column; align-items: stretch; gap: .1875rem;
   border: 1px solid var(--border); border-radius: .5rem;
   background: color-mix(in srgb, var(--popover) 96%, transparent);
@@ -4504,14 +4506,16 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-home-full[data-mobile="false"] .${ELEMENT_TAG}-mobile-datetime { font-size: 1rem; padding: .25rem .45rem; }
 .${ELEMENT_TAG}-home-full[data-mobile="false"] .${ELEMENT_TAG}-mobile-clock { font-size: .75rem; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-holder { z-index: 2; }
+.${ELEMENT_TAG}-stage .${ELEMENT_TAG}-pin-holder[data-selected="true"] { z-index: 7; }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin[data-kind="place"], .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin[data-kind="place"] { display: flex; align-items: center; justify-content: center; width: 3rem; height: 3rem; padding: 0; border: 0; border-radius: 0; background: transparent; color: #30261c; box-shadow: none; text-align: center; white-space: normal; line-height: 1.1; overflow: visible; }
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo-card, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex: 0 0 auto; flex-direction: column; width: clamp(3.5rem, 6cqw, 5rem); gap: .1rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; box-shadow: 0 3px 8px #0009; transform-origin: center; }
+.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo-card, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex: 0 0 auto; flex-direction: column; width: clamp(3.5rem, 6cqw, 5rem); gap: .1rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; box-shadow: 0 3px 8px #0009; transform-origin: center; transition: transform 160ms ease-out; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { width: clamp(4rem, 17cqw, 5.25rem); }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; overflow: visible; }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo img, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo-tack, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-tack { position: absolute; top: -.35rem; left: 50%; width: .55rem; height: .55rem; transform: translateX(-50%); border-radius: 50%; background: #b89a43; box-shadow: 0 1px 2px #0009; }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-name, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: .58rem; font-weight: 700; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin[data-kind="person"] { max-width: 7rem; }
+.${ELEMENT_TAG}-stage[data-mobile="true"][data-mobile-gesturing="true"] .${ELEMENT_TAG}-pin-photo-card { transition: none; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-doors { z-index: 8; transform: translateX(-50%); min-width: min(10rem, 70cqw); }
 .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav { display: none; }
 .${ELEMENT_TAG}-mobile-menu-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .5rem; }
@@ -4529,8 +4533,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-setup-map-viewport > .${ELEMENT_TAG}-stage[data-mobile="true"] { width: 100% !important; height: 100% !important; aspect-ratio: auto !important; }
 /* Shared place photographs, including the founding map before an image exists. */
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin[data-kind="place"] { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; overflow: visible; }
-.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex-direction: column; gap: .1rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; color: #30261c; box-shadow: 0 3px 8px #0009; }
-.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-card { width: 4rem; transform: scale(.32); transform-origin: center; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex-direction: column; gap: .1rem; width: 4rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; color: #30261c; box-shadow: 0 3px 8px #0009; transform-origin: center; transition: transform 160ms ease-out; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-tack { position: absolute; top: -.35rem; left: 50%; width: .55rem; height: .55rem; transform: translateX(-50%); border-radius: 50%; background: #b89a43; box-shadow: 0 1px 2px #0009; }
@@ -4542,6 +4545,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-setup-venue-card[data-selected="true"] { border-color: var(--primary); }
 .${ELEMENT_TAG}-setup-venue-card img, .${ELEMENT_TAG}-setup-venue-placeholder { width: 3.5rem; height: 3.5rem; object-fit: cover; border-radius: .3rem; background: #31291f; }
 .${ELEMENT_TAG}-setup-venue-placeholder { display: grid; place-items: center; color: #eee5d5; font-size: 1.3rem; }
+@media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-pin-photo-card { transition: none; } }
 .${ELEMENT_TAG}-setup-venue-card strong, .${ELEMENT_TAG}-setup-venue-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .${ELEMENT_TAG}-setup-venue-editor { display: grid; gap: .65rem; border-top: 1px solid var(--border); padding-top: .75rem; }
 .${ELEMENT_TAG}-setup-image-preview { display: block; width: min(100%, 18rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; }
@@ -6245,6 +6249,8 @@ type MapPin = {
    * founding wizard and the houses editor is: those are places being put down.
    */
   kind?: "place" | "person";
+  /** True while this place's View venue and Visit choices are open. */
+  selected?: boolean;
   /** Absent for a pin that leads nowhere, which is drawn as a label rather than a button. */
   onSelect?(): void;
   onRemove?(): void;
@@ -6686,6 +6692,7 @@ function MapStage({
     }
     if (!frameRef.current) return;
     if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)) return;
+    stageRef.current?.setAttribute("data-mobile-gesturing", "true");
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
     if (pointersRef.current.size > 1) suppressTouchClickRef.current = true;
@@ -6724,6 +6731,7 @@ function MapStage({
     if (!mobile || !pointersRef.current.has(event.pointerId)) return;
     const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current;
     pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size === 0) stageRef.current?.removeAttribute("data-mobile-gesturing");
     gestureAnchor();
     if (!tapped || !(event.target instanceof Element)) return;
     const pinId = event.target.closest<HTMLButtonElement>(`.${ELEMENT_TAG}-pin`)?.dataset.pinId;
@@ -6859,6 +6867,7 @@ function MapStage({
               <span
                 key={pin.id}
                 className={`${ELEMENT_TAG}-pin-holder`}
+                data-selected={pin.selected ? "true" : "false"}
                 style={{
                   left: `${picture.left + pin.x * picture.width}px`,
                   // The step down is part of the fraction rather than a margin, so
@@ -6872,6 +6881,8 @@ function MapStage({
                   data-pin-id={pin.id}
                   data-tone={pin.tone}
                   data-kind={pin.kind ?? "place"}
+                  data-selected={pin.selected ? "true" : "false"}
+                  aria-expanded={pin.doors ? true : undefined}
                   disabled={pin.onSelect === undefined}
                   title={pin.text}
                   onClick={(event) => {
@@ -6884,11 +6895,12 @@ function MapStage({
                   {(mobile || photoPins) && pin.kind !== "person" ? (
                     <span
                       className={`${ELEMENT_TAG}-pin-photo-card`}
-                      style={
-                        mobile
-                          ? { transform: `scale(${mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)})` }
-                          : undefined
-                      }
+                      style={{
+                        transform: `scale(${focusedPhotoScale(
+                          mobile ? mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom) : DESKTOP_PHOTO_SCALE,
+                          pin.selected === true,
+                        )})`,
+                      }}
                     >
                       <span className={`${ELEMENT_TAG}-pin-photo`} aria-hidden="true">
                         {pin.image ? (
@@ -12230,6 +12242,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         text: house ? pinText(resident) : place.name,
         image: place.presentation.image?.url ?? null,
         tone: house ? pinTone({ isPlayerHome: place.occupancy.playerHome, occupant }) : "venue",
+        selected: openPlaceId === place.id,
         // EVERY PLACE IS A DOOR NOW, not only a house with somebody in it.
         //
         // The pin used to lead straight into the villager's conversation, which
