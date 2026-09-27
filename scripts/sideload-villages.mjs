@@ -19,16 +19,18 @@ const installedPath = join(packageRoot, "installed.json");
 
 if (!existsSync(archivePath)) throw new Error(`Missing archive: ${archivePath}`);
 if (!existsSync(sourcePackage)) throw new Error(`Missing package output: ${sourcePackage}`);
-if (!existsSync(installedPath)) throw new Error(`Missing package registry: ${installedPath}`);
-
 const sourceManifest = JSON.parse(await readFile(join(sourcePackage, "manifest.json"), "utf8"));
 if (sourceManifest.id !== packageId) throw new Error(`Expected ${packageId} manifest`);
 
-const installed = JSON.parse(await readFile(installedPath, "utf8"));
+const registryExists = existsSync(installedPath);
+const installed = registryExists
+  ? JSON.parse(await readFile(installedPath, "utf8"))
+  : { schemaVersion: 1, packages: [] };
+if (installed.schemaVersion !== 1 || !Array.isArray(installed.packages)) {
+  throw new Error(`Invalid package registry: ${installedPath}`);
+}
 const packageIndex = installed.packages.findIndex((entry) => entry.id === packageId);
-if (packageIndex < 0) throw new Error(`No installed ${packageId} package record`);
-
-const previous = installed.packages[packageIndex];
+const previous = packageIndex >= 0 ? installed.packages[packageIndex] : null;
 const versionRoot = join(packageRoot, "versions", packageId);
 const destination = join(versionRoot, sourceManifest.version);
 await mkdir(versionRoot, { recursive: true });
@@ -46,15 +48,27 @@ for (const declaration of sourceManifest.files) {
 }
 
 const backupPath = `${installedPath}.bak-before${sourceManifest.version}`;
-if (!existsSync(backupPath)) await writeFile(backupPath, await readFile(installedPath));
-installed.packages[packageIndex] = {
-  ...previous,
+if (registryExists && !existsSync(backupPath)) await writeFile(backupPath, await readFile(installedPath));
+const nextRecord = {
+  ...(previous ?? {}),
+  id: packageId,
   version: sourceManifest.version,
   manifest: sourceManifest,
+  installedAt: previous?.installedAt ?? new Date().toISOString(),
   status: "active",
+  error: null,
   readiness: "pending",
-  previousVersion: previous.version === sourceManifest.version ? previous.previousVersion : previous.version,
+  readinessError: null,
+  legacy: false,
+  ...(!previous
+    ? {}
+    : previous.version === sourceManifest.version
+      ? { previousVersion: previous.previousVersion, previousManifest: previous.previousManifest }
+      : { previousVersion: previous.version, previousManifest: previous.manifest }),
 };
+if (packageIndex >= 0) installed.packages[packageIndex] = nextRecord;
+else installed.packages.push(nextRecord);
+await mkdir(packageRoot, { recursive: true });
 await writeFile(installedPath, `${JSON.stringify(installed, null, 2)}\n`);
 
 console.log(
@@ -62,11 +76,11 @@ console.log(
     {
       packageId,
       archive: archivePath,
-      previousVersion: previous.version === sourceManifest.version ? previous.previousVersion : previous.version,
+      previousVersion: nextRecord.previousVersion ?? null,
       version: sourceManifest.version,
       readiness: "pending",
       files: sourceManifest.files.length,
-      backupPath,
+      backupPath: registryExists ? backupPath : null,
     },
     null,
     2,

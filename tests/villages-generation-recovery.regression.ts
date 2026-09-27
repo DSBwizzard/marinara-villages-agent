@@ -14,7 +14,7 @@ const venues = [
     name: "Village square",
     purpose: "meeting neighbors",
     occupancy: { playerHome: false, residentCharacterId: null },
-    state: { condition: "well kept" },
+    state: { condition: "well kept", publicFacts: [] },
   },
 ] as VillageVenue[];
 
@@ -146,6 +146,9 @@ async function main() {
     const { remap, failure } = await proposeRemap({
       village: "Willowbrook",
       setting: "A small coastal village",
+      lore: [],
+      completedWishes: [],
+      loreKey: "",
       venues,
       wishes: [],
       name: "Aqua",
