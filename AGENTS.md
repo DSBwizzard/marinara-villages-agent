@@ -1,17 +1,19 @@
 # Villages workspace instructions
 
 - Keep work focused on Villages and the shared files required to build or validate Villages.
-- The user handles all Git operations. Do not initialize or modify Git, create or switch branches, stage, commit, push, fetch, open pull requests, or change remotes.
+- Codex may perform Git operations for requested Villages work: create/switch branches, stage, commit, push, and create/update pull requests. Never change remotes or GitHub repository settings without the user's explicit request.
 - Do not modify or track the preserved source workspace under `marinara-villages/`.
 - Preserve package-generated files through the documented build command; do not hand-edit bundles, manifests, or checksums.
 - Read `DEVELOPMENT.md` and `packages/villages/README.md` for setup, package, and coding guidance.
 
-## Intended development and release workflow
+## Development and staging workflow
 
-- Keep Git history reviewable: make each change on a short-lived feature branch based on `staging`, then integrate it into `staging` through a focused pull request.
-- Treat `staging` as the integration and local validation line, and `main` as the production-ready line. Promote reviewed staging work to `main` through a separate pull request so production promotion has its own review record.
-- For local Marinara validation, use the documented Villages build and sideload flow. Sideloading is the intended way to inspect the running package locally; it does not publish the package or require changes to the Engine Git repository.
+- Start each task from an up-to-date `staging` base on a short-lived `codex/` feature branch. Keep commits focused and atomic, with clear imperative messages. Do not bundle unrelated changes.
+- Before publishing a branch, inspect the full diff and run the applicable checks. Push the branch and open a focused pull request targeting `staging`; never push task changes directly to `staging` or `main`.
+- Enable GitHub auto-merge on the PR when repository rules permit it. Merge only after required CI checks pass and required reviews/approvals are satisfied. If auto-merge is unavailable or blocked, leave the PR ready and report the exact blocker; do not bypass protections.
+- For package changes, increment the Villages package version on the feature branch before opening the PR, following `DEVELOPMENT.md`. After the PR is merged to `staging`, update the local checkout to the merged `staging` revision, run `npm run check` and the documented package build, then sideload the generated package into the configured Marinara Engine checkout. Never sideload unmerged feature-branch output.
+- Sideload only after build and checks pass. Report the installed version and remind the user that Marinara Engine must restart to load the server package. Do not restart or stop the Engine unless explicitly asked.
+- Treat `staging` as integration and local validation; promote reviewed staging work to `main` only through a separate PR. Do not auto-promote to `main` as part of ordinary task completion.
 - Follow the documented package build/versioning process. Do not hand-edit generated package output or publish this Villages-only checkout's catalog as a replacement for the official multi-agent catalog.
-- If a requested workflow appears to bypass the feature-branch → staging PR → local build/sideload validation → staging-to-main PR path, remind the user of this preference and explain the consequence before proceeding. The user still owns all Git operations; never perform Git operations on their behalf.
-
-
+- For large or risky changes, retain the same PR-to-staging flow but split implementation into multiple focused commits or PRs when that materially improves reviewability. Keep each branch scoped to one coherent outcome.
+- If a required credential, remote, branch protection rule, CI check, Engine path, or permission is unavailable, complete the safe local work and report the concrete setup blocker. Never bypass repository protections or use another person's credentials.
