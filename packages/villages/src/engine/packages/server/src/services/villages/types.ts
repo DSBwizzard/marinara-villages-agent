@@ -467,6 +467,9 @@ export type VillageVillagerCardSnapshot = {
   backstory: string;
   appearance: string;
   exampleDialogue: string;
+  /** Absent only on snapshots captured before card colors were supported. */
+  nameColor?: string;
+  dialogueColor?: string;
   capturedAt: string;
 };
 
@@ -1424,6 +1427,7 @@ export type VillagePlayerIdentity = {
 /** A villager as the tab renders it: live card fields where they exist, cached name otherwise. */
 export type VillageVillagerView = {
   characterId: string;
+  nameColor: string;
   dialogueColor: string;
   sprite: (VillageResidentSprite & { images: Array<{ view: "front" | "side"; label: string; url: string }> }) | null;
   name: string;

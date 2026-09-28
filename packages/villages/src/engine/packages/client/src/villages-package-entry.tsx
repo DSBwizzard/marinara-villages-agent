@@ -150,6 +150,7 @@ type SetupMapSource = "existing" | "generate" | "upload" | "none";
 
 type VillageVillagerView = {
   characterId: string;
+  nameColor: string;
   dialogueColor: string;
   name: string;
   sprite: ResidentSprite | null;
@@ -9696,6 +9697,7 @@ function MailboxImprovementEditor({
 /** The single Visit surface for an empty, solo, or group cast. */
 function RoomPanel({
   room,
+  nameColors,
   speechColors,
   picture,
   draft,
@@ -9730,6 +9732,7 @@ function RoomPanel({
   onUseMailbox,
 }: {
   room: RoomView;
+  nameColors: Record<string, string>;
   speechColors: Record<string, string>;
   /** The picture of the place, or `""` for one that has never been drawn. */
   picture: string;
@@ -9977,6 +9980,7 @@ function RoomPanel({
   const cast = room.status === "closed" && activeParticipants.length === 0 ? room.participants : activeParticipants;
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
+  const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
   const asideSide =
@@ -10258,7 +10262,7 @@ function RoomPanel({
                     className={`${ELEMENT_TAG}-avatar`}
                   />
                 )}
-                <span>{villager.name}</span>
+                <span style={nameStyle(villager.characterId)}>{villager.name}</span>
               </div>
             );
           })}
@@ -10272,7 +10276,7 @@ function RoomPanel({
                   name={person.name}
                   className={`${ELEMENT_TAG}-avatar`}
                 />
-                {person.name}
+                <span style={nameStyle(person.characterId)}>{person.name}</span>
               </span>
             ))}
           </div>
@@ -10295,7 +10299,9 @@ function RoomPanel({
           >
             {room.lines.map((line, index) => (
               <p key={line.id ?? index} className={`${ELEMENT_TAG}-chat-vn-text`}>
-                <strong>
+                <strong
+                  style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
+                >
                   {line.role === "user"
                     ? playerName
                     : line.kind === "narration" || line.speakerId === "__venue_scene__"
@@ -10333,7 +10339,12 @@ function RoomPanel({
                     <span className={`${ELEMENT_TAG}-chat-vn-aside-icon`}>
                       {aside.register === "whisper" ? "🤫" : "💬"}
                     </span>
-                    <span className={`${ELEMENT_TAG}-chat-vn-aside-name`}>{aside.name ?? step.name}</span>
+                    <span
+                      className={`${ELEMENT_TAG}-chat-vn-aside-name`}
+                      style={nameStyle(aside.speakerId ?? step.speakerId)}
+                    >
+                      {aside.name ?? step.name}
+                    </span>
                     {aside.register === "whisper" && aside.target ? (
                       <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`→ ${aside.target}`}</span>
                     ) : null}
@@ -10357,7 +10368,12 @@ function RoomPanel({
               {register === "narration" ? (
                 <p className={`${ELEMENT_TAG}-chat-vn-label`}>Narration</p>
               ) : (
-                <p className={`${ELEMENT_TAG}-chat-vn-name`}>{step?.name ?? ""}</p>
+                <p
+                  className={`${ELEMENT_TAG}-chat-vn-name`}
+                  style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
+                >
+                  {step?.name ?? ""}
+                </p>
               )}
               <div
                 ref={readingRef}
@@ -13903,6 +13919,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         {room ? (
           <RoomPanel
             room={room}
+            nameColors={
+              snapshot?.settings.characterSpeechColors
+                ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.nameColor]))
+                : {}
+            }
             speechColors={
               snapshot?.settings.characterSpeechColors
                 ? Object.fromEntries(
@@ -15272,10 +15293,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     disabled={busy}
                     onChange={(event) => void saveCharacterSpeechColors(event.target.checked)}
                   />
-                  <span>Character speech colors</span>
+                  <span>Character chat colors</span>
                 </label>
                 <span className={`${ELEMENT_TAG}-hint`}>
-                  Show each villager’s character card dialogue color in chats.
+                  Show names and spoken words in the colors captured from each villager’s card. Use Compare card and
+                  Apply refresh to adopt later color changes.
                 </span>
               </div>
             ) : null}
@@ -16874,7 +16896,23 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                               <li key={`${visit.id}:${index}`} className={`${ELEMENT_TAG}-story-row`}>
                                 <span>
                                   <span className={`${ELEMENT_TAG}-story-meta`}>
-                                    {line.name || playerDisplayName(snapshot)} · {stampTime(line.at)}
+                                    <span
+                                      style={
+                                        snapshot?.settings.characterSpeechColors &&
+                                        line.role === "assistant" &&
+                                        line.kind !== "narration"
+                                          ? villagesSpeechPaintStyle(
+                                              snapshot.villagers.find(
+                                                (villager) => villager.characterId === line.speakerId,
+                                              )?.nameColor,
+                                            )
+                                          : undefined
+                                      }
+                                    >
+                                      {line.name || playerDisplayName(snapshot)}
+                                    </span>
+                                    {" · "}
+                                    {stampTime(line.at)}
                                   </span>
                                   <span
                                     style={
