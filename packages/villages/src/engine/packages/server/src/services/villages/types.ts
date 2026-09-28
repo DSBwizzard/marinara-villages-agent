@@ -1354,10 +1354,8 @@ export type VillageCatalogEntry = {
  *
  * `identity` is the whole of what the Persona says about the player, already
  * assembled into the text a villager is handed: the description, then whatever
- * else the Persona carries. The prose still never travels to the tab — a picker
- * needs a name and a line of blurb, and shipping every Persona's prose down with
- * the list would put a library's worth of text on the wire to draw a row of
- * cards.
+ * else the Persona carries. The catalog sends only names, portraits, and blurbs;
+ * the Founding preview reads the chosen Persona's authored fields separately.
  *
  * The picture does travel, and costs nothing to read: the Engine hands this row
  * over already decoded, so the avatar is sitting in the same object the name came
@@ -1370,6 +1368,11 @@ export type VillagePersona = {
   name: string;
   /** One line for the picker. */
   summary: string;
+  /** Authored fields for the selected Persona preview. */
+  description: string;
+  appearance: string;
+  personality: string;
+  backstory: string;
   /** Everything the Persona says about itself, as prompt text. Empty when it says nothing. */
   identity: string;
   /** True for the Persona the Engine itself has selected, which the picker offers first. */
@@ -1384,6 +1387,12 @@ export type VillagePersona = {
 export type VillagePersonaEntry = Pick<
   VillagePersona,
   "id" | "name" | "summary" | "isActive" | "avatarPath" | "avatarCrop"
+>;
+
+/** Structured fields read only for the selected Persona. */
+export type VillagePersonaPreview = Pick<
+  VillagePersona,
+  "id" | "name" | "description" | "appearance" | "personality" | "backstory" | "avatarPath" | "avatarCrop"
 >;
 
 /**

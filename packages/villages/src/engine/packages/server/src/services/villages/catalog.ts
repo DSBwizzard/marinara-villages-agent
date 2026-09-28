@@ -259,11 +259,14 @@ export function readPersona(record: CapabilityPersonaRecord): VillagePersona {
   const name = asTrimmedString(data.convoDisplayName) || asTrimmedString(data.name) || "Unnamed persona";
   const expand = (value: unknown) => expandCardMacros(asString(value), name);
   const description = expand(data.description).trim();
+  const appearance = expand(data.appearance).trim();
+  const personality = expand(data.personality).trim();
+  const backstory = expand(data.backstory).trim();
   const identity = [
     description,
-    labelledPersonaLine("Appearance", expand(data.appearance).trim()),
-    labelledPersonaLine("Personality", expand(data.personality).trim()),
-    labelledPersonaLine("Backstory", expand(data.backstory).trim()),
+    labelledPersonaLine("Appearance", appearance),
+    labelledPersonaLine("Personality", personality),
+    labelledPersonaLine("Backstory", backstory),
   ]
     .filter((part) => part.length > 0)
     .join("\n\n");
@@ -276,6 +279,10 @@ export function readPersona(record: CapabilityPersonaRecord): VillagePersona {
     // The description is the blurb when there is one; a Persona that only has
     // an appearance still gets a line to be chosen by rather than a blank row.
     summary: condense(description, 180) || condense(identity, 180),
+    description,
+    appearance,
+    personality,
+    backstory,
     identity,
     // Stored as text by the Engine, and absent on a row written before the flag
     // existed — absent means "not the selected one", which is the quiet answer.

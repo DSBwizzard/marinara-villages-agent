@@ -30,7 +30,7 @@ import {
 } from "../services/villages/venue-session.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "../services/villages/connections.js";
 import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
-import { badRequest, statusCodeOf } from "../services/villages/errors.js";
+import { badRequest, notFound, statusCodeOf } from "../services/villages/errors.js";
 import { VENUE_CLASSES } from "../services/villages/venue-model.js";
 import type { VillageVenueClass } from "../services/villages/types.js";
 import { listVillageLorebooks } from "../services/villages/lorebooks.js";
@@ -68,6 +68,7 @@ import {
   buildVillageAgendas,
   buildVillageCatalog,
   buildVillagePersonaCatalog,
+  readVillagePersonaPreview,
   buildVillageSnapshot,
   assertFoundedVillageReady,
   foundingPreparationSnapshot,
@@ -430,6 +431,16 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return { personas: await buildVillagePersonaCatalog() };
     } catch (error) {
       return fail(reply, error, "persona catalog");
+    }
+  });
+
+  app.get<{ Params: { personaId: string } }>("/personas/:personaId", async (request, reply) => {
+    try {
+      const persona = await readVillagePersonaPreview(readCharacterId(request.params.personaId));
+      if (!persona) throw notFound("That Persona is no longer in the library.");
+      return { persona };
+    } catch (error) {
+      return fail(reply, error, "persona preview");
     }
   });
 

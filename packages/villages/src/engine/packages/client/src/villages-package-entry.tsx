@@ -663,15 +663,28 @@ type CatalogResponse = {
  * One Persona the player could be, as the picker offers it.
  *
  * Deliberately not the whole Persona: the village reads the full text itself
- * when a villager is spoken to, so what travels here is only what a dropdown
- * and a line of blurb need.
+ * when a villager is spoken to, so the catalog carries only what a choice card
+ * needs. The selected Persona's authored fields are read separately.
  */
 type PersonaEntry = {
   id: string;
   name: string;
   summary: string;
+  avatarPath: string | null;
+  avatarCrop: unknown;
   /** The Persona the Engine itself has selected, listed first and marked. */
   isActive: boolean;
+};
+
+type PersonaPreview = {
+  id: string;
+  name: string;
+  description: string;
+  appearance: string;
+  personality: string;
+  backstory: string;
+  avatarPath: string | null;
+  avatarCrop: unknown;
 };
 
 type PersonaResponse = {
@@ -4404,14 +4417,26 @@ const VILLAGES_STYLES = `
 
 /* The founding wizard. */
 .${ELEMENT_TAG}-setup-root { box-sizing: border-box; container-type: inline-size; }
-.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body[data-step="0"]) {
+.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) {
   --background: #121936; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
   background: radial-gradient(circle at 12% 95%, #263978, #111832 50%, #0e1430);
   color: #f3f3ff;
 }
 .${ELEMENT_TAG}-setup-body { flex-wrap: nowrap; align-items: stretch; }
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) { flex: 1 1 auto; min-height: 0; }
+.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) { overflow: hidden; }
 .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side { flex: 1 1 34rem; }
+.${ELEMENT_TAG}-setup-visual {
+  display: flex; flex-direction: column; gap: .6rem; flex: 1 1 19rem; min-width: 0; min-height: 0;
+}
+.${ELEMENT_TAG}-setup-visual > .${ELEMENT_TAG}-setup-map-shell { flex: 1 1 auto; min-height: 0; }
+.${ELEMENT_TAG}-setup-footer { display: flex; gap: .65rem; min-height: 2.75rem; }
+.${ELEMENT_TAG}-setup-footer > .${ELEMENT_TAG}-button { flex: 1 1 0; min-width: 0; }
+.${ELEMENT_TAG}-setup-footer > .${ELEMENT_TAG}-setup-forward {
+  border-color: #7584ff; background: linear-gradient(135deg, #6077ff, #7365ed);
+  color: #fff; font-weight: 700;
+}
 .${ELEMENT_TAG}-setup-rail {
   flex: 0 0 10rem; display: flex; flex-direction: column; gap: .4rem;
   padding: .75rem .25rem; color: var(--muted-foreground);
@@ -4431,23 +4456,26 @@ const VILLAGES_STYLES = `
   box-shadow: 0 0 .85rem #9878f1a8; color: #fff;
 }
 .${ELEMENT_TAG}-setup-kicker { margin: 0; color: var(--muted-foreground); font-size: .78rem; }
-.${ELEMENT_TAG}-setup-body[data-step="0"] {
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) {
   --background: #151d3b; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
   gap: .75rem; align-items: flex-start; color: var(--foreground);
 }
-.${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-side { flex-basis: 35rem; }
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-overlay {
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) > .${ELEMENT_TAG}-side { flex-basis: 35rem; min-height: 0; }
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-overlay {
   gap: .2rem; padding: .65rem .8rem; border-color: #5268b8; border-radius: 1rem;
   background: linear-gradient(145deg, #182044, #101831);
   box-shadow: inset 0 0 2rem #27347866;
 }
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-panel-title {
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-panel-title {
   font-size: clamp(1.25rem, 1.8vw, 1.65rem); color: #f5f5ff;
 }
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-field { margin-top: .15rem; }
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-field { margin-top: .15rem; }
+.${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-overlay { height: 100%; min-height: 0; overflow: hidden; }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-search,
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea {
+.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea,
+.${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-search,
+.${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-select {
   background: #1c254a; border-color: #7082cf; color: #f2f4ff;
 }
 .${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-setup-premise .${ELEMENT_TAG}-textarea {
@@ -4477,7 +4505,7 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-scenario-option strong { font-size: max(.72rem, 13px); }
 .${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: max(.6rem, 11px); line-height: 1.2; }
 .${ELEMENT_TAG}-scenario-art-panel {
-  position: relative; flex: 1 1 19rem; min-width: 0; height: 24.5rem; min-height: 0;
+  position: relative; flex: 1 1 auto; min-width: 0; min-height: 0;
   overflow: hidden; border: 1px solid #6684d4; border-radius: 1.2rem; background: #162550;
 }
 .${ELEMENT_TAG}-scenario-art-panel > img {
@@ -4496,11 +4524,53 @@ const VILLAGES_STYLES = `
   margin: 0; font-family: Georgia, serif; font-style: italic; font-size: clamp(1.25rem, 2vw, 1.9rem);
 }
 .${ELEMENT_TAG}-scenario-art-content strong { font-weight: 500; }
-.${ELEMENT_TAG}-scenario-next {
-  width: min(100%, 15rem); margin-top: .55rem; padding: .65rem;
-  border-color: #7584ff; background: linear-gradient(135deg, #6077ff, #7365ed); color: #fff;
-  font-size: 1rem; font-weight: 700;
+/* Compact, role-neutral identity chooser used by Founding's Persona adapter. */
+.${ELEMENT_TAG}-founding-persona { display: flex; flex-direction: column; gap: .3rem; min-height: 0; }
+.${ELEMENT_TAG}-identity-picker-head { display: flex; align-items: center; gap: .75rem; }
+.${ELEMENT_TAG}-identity-picker-head > .${ELEMENT_TAG}-label { flex: 0 0 auto; }
+.${ELEMENT_TAG}-identity-picker-head > .${ELEMENT_TAG}-search { flex: 1 1 auto; width: 0; min-width: 0; }
+.${ELEMENT_TAG}-identity-strip {
+  display: flex; gap: .4rem; min-height: 5.5rem; overflow-x: auto; overflow-y: hidden;
+  padding: .15rem .15rem .3rem; scrollbar-width: thin;
 }
+.${ELEMENT_TAG}-identity-card {
+  display: flex; flex-direction: column; align-items: center; gap: .15rem;
+  flex: 0 0 6.8rem; min-width: 0; padding: .25rem;
+  border: 1px solid #5265ac; border-radius: .6rem; background: #1c254b;
+  color: #f0f2ff; font: inherit; font-size: .7rem; cursor: pointer;
+}
+.${ELEMENT_TAG}-identity-card[aria-pressed="true"] { border-color: #dac8ff; box-shadow: 0 0 0 2px #9a78ff; }
+.${ELEMENT_TAG}-identity-card:focus-visible { outline: 3px solid #f2d6ff; outline-offset: 2px; }
+.${ELEMENT_TAG}-identity-card-face, .${ELEMENT_TAG}-identity-preview-face {
+  position: relative; display: grid; place-items: center; overflow: hidden; flex: 0 0 auto;
+  border-radius: 50%; background: #324576; color: #e9edff;
+}
+.${ELEMENT_TAG}-identity-card-face { width: 2.5rem; height: 2.5rem; }
+.${ELEMENT_TAG}-identity-card-face > img, .${ELEMENT_TAG}-identity-preview-face > img { width: 100%; height: 100%; object-fit: cover; }
+.${ELEMENT_TAG}-identity-card-face svg, .${ELEMENT_TAG}-identity-preview-face svg { width: 55%; height: 55%; }
+.${ELEMENT_TAG}-identity-card strong, .${ELEMENT_TAG}-identity-card small {
+  overflow: hidden; max-width: 100%; white-space: nowrap; text-overflow: ellipsis;
+}
+.${ELEMENT_TAG}-identity-card small { color: #b9c8e9; font-size: .55rem; }
+.${ELEMENT_TAG}-identity-preview {
+  display: flex; gap: .55rem; min-height: 0; max-height: 9.3rem; overflow-y: auto;
+  padding: .5rem; border: 1px solid #5265ac; border-radius: .65rem; background: #1c254b;
+}
+.${ELEMENT_TAG}-identity-preview-face { width: 3.2rem; height: 3.2rem; }
+.${ELEMENT_TAG}-identity-preview-copy { min-width: 0; font-size: .68rem; line-height: 1.35; }
+.${ELEMENT_TAG}-identity-preview-copy h3 { margin: 0 0 .15rem; font-size: .9rem; }
+.${ELEMENT_TAG}-identity-preview-copy p { margin: .12rem 0; }
+.${ELEMENT_TAG}-identity-overview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.${ELEMENT_TAG}-identity-details { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .35rem; margin: .3rem 0; }
+.${ELEMENT_TAG}-identity-details dt { font-weight: 700; color: #cfdaff; }
+.${ELEMENT_TAG}-identity-details dd { margin: 0; }
+.${ELEMENT_TAG}-identity-context { color: #bdc8ed; }
+.${ELEMENT_TAG}-connections-compact { min-height: 0; }
+.${ELEMENT_TAG}-connections-compact > .${ELEMENT_TAG}-hint { margin: 0; }
+.${ELEMENT_TAG}-connections-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; }
+.${ELEMENT_TAG}-connections-grid > .${ELEMENT_TAG}-field { min-width: 0; }
+.${ELEMENT_TAG}-connections-grid .${ELEMENT_TAG}-select { width: 100%; }
+.${ELEMENT_TAG}-connections-grid .${ELEMENT_TAG}-hint { line-height: 1.25; }
 @container (min-width: 80rem) {
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
@@ -4517,15 +4587,19 @@ const VILLAGES_STYLES = `
   .${ELEMENT_TAG}-setup-rail-step { flex: 0 0 auto; }
 }
 @container (min-width: 42.01rem) and (max-width: 70rem) {
-  .${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-side { flex-basis: 25rem; }
-  .${ELEMENT_TAG}-setup-body[data-step="0"] > .${ELEMENT_TAG}-scenario-art-panel { flex-basis: 14rem; }
+  .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) > .${ELEMENT_TAG}-side { flex-basis: 25rem; }
+  .${ELEMENT_TAG}-setup-visual { flex-basis: 14rem; }
 }
 @container (max-width: 42rem) {
+  .${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) { overflow-y: auto; }
+  .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) { flex: none; }
   .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side,
-  .${ELEMENT_TAG}-scenario-art-panel,
-  .${ELEMENT_TAG}-setup-map-shell { flex: 1 1 100%; }
+  .${ELEMENT_TAG}-setup-visual { flex: 1 1 100%; }
+  .${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-overlay { height: auto; overflow: visible; }
+  .${ELEMENT_TAG}-identity-preview { max-height: none; }
+  .${ELEMENT_TAG}-connections-grid { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .${ELEMENT_TAG}-scenario-art-panel { height: 18rem; min-height: 18rem; }
+  .${ELEMENT_TAG}-scenario-art-panel { flex: none; height: 18rem; }
 }
 .${ELEMENT_TAG}-steps { display: flex; flex-wrap: wrap; gap: .375rem; }
 /*
@@ -5658,13 +5732,8 @@ async function readPortraits(ids: readonly string[], signal?: AbortSignal): Prom
  * uploads to `/api/avatars/file/...` — and `avatarCrop` is the same framing the
  * same editor writes for a character, which is why one reader decodes both.
  *
- * Two fields of a much larger object, and only those two. A Persona carries the
- * player's name, description, colours and gallery, and none of it belongs to this
- * drawer — the village reads the parts it needs on the SERVER, through its own
- * catalog, and what crosses back to the tab is the name the villagers answer to
- * and nothing else. What the server cannot hand over is the picture, because the
- * village's own persona read carries none; so the picture is fetched here, from
- * the Engine, the way the Engine's own panels fetch it.
+ * The home identity drawer still reads the chosen portrait from the Engine.
+ * Founding's card catalog and selected preview use the Villages routes instead.
  */
 type EnginePersonaRow = {
   id: string;
@@ -7835,27 +7904,215 @@ function playerDisplayName(snapshot: VillageSnapshot | undefined): string {
   return typeof playerPersonaName === "string" ? playerPersonaName.trim() || "You" : "You";
 }
 
-/**
- * Who the player is, as the wizard and the settings panel both ask it.
- *
- * The village has exactly one answer to that question and it is the Persona, so
- * this asks for one and says what it means when there is none. It used to offer
- * a second answer beside it — a name and a blurb typed by hand, kept for when no
- * Persona was chosen — and the two were hidden from each other rather than
- * cleared, so picking "not set" handed the player's own words back.
- *
- * That second answer is gone, and it is the server that decided so: the village
- * stopped storing a typed name and a typed blurb when the Persona took the
- * question over, and a box whose contents go nowhere is worse than no box. What
- * is left behind the picker is the consequence, said plainly: nobody is linked,
- * so every villager calls the player "the player" — the same word the prompts
- * and the chat log use for somebody this village has not been told about.
- *
- * The name of the chosen Persona comes from the list when it is loaded and from
- * the snapshot when it is not, so the panel can name who you are without waiting
- * on a request it does not need. Those two are only interchangeable while the
- * draft still matches what is stored, which is what `storedId` is for.
- */
+/** Display data shared by identity choices, independent of their source. */
+type IdentityChoice = { id: string; name: string; portrait?: Portrait; hint?: string };
+type IdentityPreview = IdentityChoice & {
+  overview: string;
+  details: { label: string; text: string }[];
+  context: string;
+};
+
+/** Shared visual selection pattern; callers supply their own identity and status data. */
+function IdentityChoiceStrip({
+  label,
+  choices,
+  selectedId,
+  onSelect,
+  disabled,
+  emptyMessage,
+}: {
+  label: string;
+  choices: IdentityChoice[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  disabled: boolean;
+  emptyMessage: string;
+}) {
+  return choices.length ? (
+    <div className={`${ELEMENT_TAG}-identity-strip`} role="group" aria-label={label}>
+      {choices.map((choice) => (
+        <button
+          key={choice.id}
+          type="button"
+          className={`${ELEMENT_TAG}-identity-card`}
+          aria-pressed={selectedId === choice.id}
+          disabled={disabled}
+          onClick={() => onSelect(choice.id)}
+        >
+          <AvatarFace
+            portrait={choice.portrait}
+            name={choice.name}
+            className={`${ELEMENT_TAG}-identity-card-face`}
+            glyph="person"
+          />
+          <strong>{choice.name}</strong>
+          {choice.hint ? <small>{choice.hint}</small> : null}
+        </button>
+      ))}
+    </div>
+  ) : (
+    <p className={`${ELEMENT_TAG}-hint`}>{emptyMessage}</p>
+  );
+}
+
+function IdentityChoicePreview({ value }: { value: IdentityPreview }) {
+  return (
+    <section className={`${ELEMENT_TAG}-identity-preview`} aria-label={`${value.name} overview`}>
+      <AvatarFace
+        portrait={value.portrait}
+        name={value.name}
+        className={`${ELEMENT_TAG}-identity-preview-face`}
+        glyph="person"
+      />
+      <div className={`${ELEMENT_TAG}-identity-preview-copy`}>
+        <h3>{value.name}</h3>
+        {value.overview ? <p className={`${ELEMENT_TAG}-identity-overview`}>{value.overview}</p> : null}
+        {value.details.length ? (
+          <dl className={`${ELEMENT_TAG}-identity-details`}>
+            {value.details.map(({ label, text }) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{text}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : null}
+        <p className={`${ELEMENT_TAG}-identity-context`}>{value.context}</p>
+      </div>
+    </section>
+  );
+}
+
+/** Shorten authored text at a word boundary without rewriting the Persona. */
+function identityExcerpt(value: string, limit: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= limit) return compact;
+  const boundary = compact.lastIndexOf(" ", limit);
+  const nextBoundary = compact.indexOf(" ", limit);
+  return `${compact.slice(0, boundary > 0 ? boundary : nextBoundary > 0 ? nextBoundary : compact.length).trimEnd()}…`;
+}
+
+function personaPortrait(persona: { avatarPath: string | null; avatarCrop: unknown }): Portrait | undefined {
+  return persona.avatarPath ? { url: persona.avatarPath, crop: readAvatarCrop(persona.avatarCrop) } : undefined;
+}
+
+function FoundingPersonaSelector({
+  personas,
+  draft,
+  onDraft,
+  disabled,
+}: {
+  personas: PersonaEntry[] | null;
+  draft: string;
+  onDraft: (personaId: string) => void;
+  disabled: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const [preview, setPreview] = useState<PersonaPreview | null>(null);
+  const [previewProblem, setPreviewProblem] = useState("");
+  const selected = personas?.find((entry) => entry.id === draft);
+  const selectedId = selected?.id;
+  const normalized = query.trim().toLocaleLowerCase();
+  const choices = (personas ?? [])
+    .filter((entry) => !normalized || `${entry.name} ${entry.summary}`.toLocaleLowerCase().includes(normalized))
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }))
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      portrait: personaPortrait(entry),
+      hint: entry.summary,
+    }));
+
+  useEffect(() => {
+    setPreview(null);
+    setPreviewProblem("");
+    if (!draft || !selectedId) return;
+    const controller = new AbortController();
+    void request<{ persona: PersonaPreview }>(`/personas/${encodeURIComponent(draft)}`, {
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!controller.signal.aborted) setPreview(response.persona);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setPreviewProblem(messageFrom(cause, "This Persona could not be read."));
+      });
+    return () => controller.abort();
+  }, [draft, selectedId]);
+
+  const adapted: IdentityPreview | null =
+    preview && preview.id === draft
+      ? {
+          id: preview.id,
+          name: preview.name,
+          portrait: personaPortrait(preview),
+          overview: identityExcerpt(
+            preview.description || preview.appearance || preview.personality || preview.backstory,
+            180,
+          ),
+          details: (
+            [
+              ["Appearance", preview.appearance],
+              ["Personality", preview.personality],
+              ["Backstory", preview.backstory],
+            ] as const
+          )
+            .filter(([, text]) => text.trim())
+            .map(([label, text]) => ({ label, text: identityExcerpt(text, 120) })),
+          context: "Villages uses this Persona's name and authored details as your identity in future interactions.",
+        }
+      : null;
+
+  return (
+    <div className={`${ELEMENT_TAG}-founding-persona`}>
+      <div className={`${ELEMENT_TAG}-identity-picker-head`}>
+        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-persona-search`}>
+          Who are you?
+        </label>
+        <input
+          id={`${ELEMENT_TAG}-setup-persona-search`}
+          className={`${ELEMENT_TAG}-search`}
+          type="search"
+          value={query}
+          placeholder="Search Personas"
+          onChange={(event) => setQuery(event.target.value)}
+          disabled={disabled || personas === null}
+        />
+      </div>
+      <IdentityChoiceStrip
+        label="Choose a Persona"
+        choices={choices}
+        selectedId={draft}
+        onSelect={onDraft}
+        disabled={disabled}
+        emptyMessage={
+          personas === null
+            ? "Reading Personas…"
+            : personas.length === 0
+              ? "Create a Persona in your library before founding a village."
+              : "No Personas match your search."
+        }
+      />
+      {draft && personas && !selected ? (
+        <p className={`${ELEMENT_TAG}-error`} role="alert">
+          The saved Persona is no longer in your library. Choose another Persona to continue.
+        </p>
+      ) : adapted ? (
+        <IdentityChoicePreview value={adapted} />
+      ) : previewProblem ? (
+        <p className={`${ELEMENT_TAG}-error`} role="alert">
+          {previewProblem}
+        </p>
+      ) : selected ? (
+        <p className={`${ELEMENT_TAG}-hint`}>Reading {selected.name}…</p>
+      ) : (
+        <p className={`${ELEMENT_TAG}-hint`}>Choose a Persona to see how Villages will know you.</p>
+      )}
+    </div>
+  );
+}
+
+/** The compact Persona editor retained in village settings. */
 function PlayerIdentityEditor({
   idPrefix,
   personas,
@@ -8215,9 +8472,11 @@ function ConnectionPicker({
 function AgentConnections({
   onSetupProblem,
   onImageWarningChange,
+  compact = false,
 }: {
   onSetupProblem?: (problem: string) => void;
   onImageWarningChange?: (needed: boolean) => void;
+  compact?: boolean;
 }) {
   const [settings, setSettings] = useState<VillageConnectionSettings | null>(null);
   const [options, setOptions] = useState<VillageConnectionOption[]>([]);
@@ -8305,19 +8564,27 @@ function AgentConnections({
   }, [imageNeedsWarning, onImageWarningChange]);
 
   return (
-    <div className={`${ELEMENT_TAG}-field`}>
+    <div className={`${ELEMENT_TAG}-field ${compact ? `${ELEMENT_TAG}-connections-compact` : ""}`}>
       <span className={`${ELEMENT_TAG}-label`}>Connections</span>
-      <p className={`${ELEMENT_TAG}-empty`}>
-        The village spends model calls on three kinds of work, and they are not worth the same money. The heavy lifting
-        is one long call about the whole village. The conversations are short and frequent. Pictures are drawn only when
-        you ask for one. Leave any of these alone and the agent&apos;s own choice is used.
-      </p>
+      {compact ? (
+        <p className={`${ELEMENT_TAG}-hint`}>Choose models for village planning, conversations, and artwork.</p>
+      ) : (
+        <p className={`${ELEMENT_TAG}-empty`}>
+          The village spends model calls on three kinds of work, and they are not worth the same money. The heavy
+          lifting is one long call about the whole village. The conversations are short and frequent. Pictures are drawn
+          only when you ask for one. Leave any of these alone and the agent&apos;s own choice is used.
+        </p>
+      )}
       {settings ? (
-        <>
+        <div className={compact ? `${ELEMENT_TAG}-connections-grid` : ""}>
           <ConnectionPicker
             id={`${ELEMENT_TAG}-connection-system`}
             label="System"
-            hint="Founding the village, the write-up each time the day turns over, and the village's reading of what happened while you were away."
+            hint={
+              compact
+                ? "Founding, daily planning, and recaps."
+                : "Founding the village, the write-up each time the day turns over, and the village's reading of what happened while you were away."
+            }
             options={talk}
             value={settings.systemConnectionId}
             disabled={busy}
@@ -8326,7 +8593,11 @@ function AgentConnections({
           <ConnectionPicker
             id={`${ELEMENT_TAG}-connection-narration`}
             label="Narration"
-            hint="Everything the villagers say to you, and how the conversation reads back afterwards."
+            hint={
+              compact
+                ? "Villagers' speech and conversation recaps."
+                : "Everything the villagers say to you, and how the conversation reads back afterwards."
+            }
             options={talk}
             value={settings.narrationConnectionId}
             disabled={busy}
@@ -8357,15 +8628,21 @@ function AgentConnections({
               ))}
             </select>
             <span className={`${ELEMENT_TAG}-hint`}>
-              This is the connection that Villages uses to generate images such as character sprites, the Village map,
-              Venue backgrounds, etc.{" "}
-              <span className={`${ELEMENT_TAG}-image-recommendation`}>
-                The intended experience includes an image generation connection to bring the world and characters to
-                life, and is <em>highly</em> recommended.
-              </span>
+              {compact ? (
+                "Maps, sprites, and places. Recommended."
+              ) : (
+                <>
+                  This is the connection that Villages uses to generate images such as character sprites, the Village
+                  map, Venue backgrounds, etc.{" "}
+                  <span className={`${ELEMENT_TAG}-image-recommendation`}>
+                    The intended experience includes an image generation connection to bring the world and characters to
+                    life, and is <em>highly</em> recommended.
+                  </span>
+                </>
+              )}
             </span>
           </div>
-        </>
+        </div>
       ) : error.length === 0 ? (
         <span className={`${ELEMENT_TAG}-hint`}>Reading this agent&apos;s connections…</span>
       ) : null}
@@ -12646,6 +12923,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setSetupProblem("Choose the Persona who lives in this village.");
           return;
         }
+        if (!personas?.some((persona) => persona.id === personaDraft)) {
+          setSetupProblem("That Persona is no longer in your library. Choose another one to continue.");
+          return;
+        }
         if (connectionSetupProblem.length > 0) {
           setSetupProblem(connectionSetupProblem);
           return;
@@ -12730,6 +13011,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       loadPersonas,
       loadLorebooks,
       personaDraft,
+      personas,
       setupMapSource,
       setupMapSrc,
       setupName,
@@ -17162,19 +17444,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
               {setupStep === 1 ? (
                 <>
-                  <PlayerIdentityEditor
-                    idPrefix="setup"
+                  <FoundingPersonaSelector
                     personas={personas}
                     draft={personaDraft}
                     onDraft={setPersonaDraft}
-                    storedId={snapshot?.settings.playerPersonaId ?? ""}
-                    storedName={snapshot?.settings.playerPersonaName ?? ""}
-                    storedMissing={snapshot?.settings.playerPersonaMissing ?? false}
                     disabled={busy}
                   />
                   <AgentConnections
                     onSetupProblem={setConnectionSetupProblem}
                     onImageWarningChange={setImageConnectionWarning}
+                    compact
                   />
                   {imageWarningOpen ? (
                     <div
@@ -18215,63 +18494,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              <div className={`${ELEMENT_TAG}-row`}>
-                {setupStep > 0 ? (
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy || setupMapBusy}
-                    onClick={() => gotoSetupStep(setupStep - 1)}
-                  >
-                    Back
-                  </button>
-                ) : null}
-                {setupStep > 0 && setupStep < SETUP_STEPS.length - 1 ? (
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy || setupMapBusy}
-                    onClick={() => gotoSetupStep(setupStep + 1)}
-                  >
-                    Next
-                  </button>
-                ) : setupStep === SETUP_STEPS.length - 1 ? (
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy || setupMapBusy || !snapshot}
-                    onClick={() => void foundVillage()}
-                  >
-                    {snapshot?.isFounded ? "Save this village" : "Found the village"}
-                  </button>
-                ) : null}
-                {/*
-                  Founding the village is the whole point of the first-time
-                  wizard, so there is nothing behind this button to go and look
-                  at until the village exists. On a village that is already
-                  there it is the way out of a setup the player changed their
-                  mind about, and since the bar above no longer carries a Later
-                  it is the only one. Save this village, beside it, leaves by
-                  the same door but keeps whatever was answered.
-                */}
-                {snapshot?.isFounded ? (
-                  <>
-                    <span className={`${ELEMENT_TAG}-spacer`} />
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => {
-                        setPlacingHome(false);
-                        setScreen("home");
-                      }}
-                    >
-                      Show me the village
-                    </button>
-                  </>
-                ) : null}
-              </div>
-
               {setupProblem ? (
                 <p className={`${ELEMENT_TAG}-error`} role="alert">
                   {setupProblem}
@@ -18298,43 +18520,81 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             on a shrunken one would be a guess, and it would be a guess stored on
             the village forever.
           */}
-          {setupStep === 0 ? (
-            <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
-              <img
-                src={foundingScenarioArt(setupFoundingReason)}
-                alt={`${foundingScenario(setupFoundingReason).label} village scene`}
-              />
-              <div className={`${ELEMENT_TAG}-scenario-art-content`}>
-                <p>A new beginning awaits.</p>
-                <strong>{foundingScenario(setupFoundingReason).description}</strong>
+          <div className={`${ELEMENT_TAG}-setup-visual`}>
+            {setupStep <= 1 ? (
+              <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
+                <img
+                  src={foundingScenarioArt(setupFoundingReason)}
+                  alt={`${foundingScenario(setupFoundingReason).label} village scene`}
+                />
+                <div className={`${ELEMENT_TAG}-scenario-art-content`}>
+                  <p>A new beginning awaits.</p>
+                  <strong>{foundingScenario(setupFoundingReason).description}</strong>
+                </div>
+              </div>
+            ) : (
+              <div className={`${ELEMENT_TAG}-setup-map-shell`}>
+                <div className={`${ELEMENT_TAG}-setup-map-viewport`}>
+                  <MapStage
+                    src={setupMapSrc}
+                    alt={`A map of ${setupName.trim() || "your new village"}.`}
+                    pins={setupStep < 5 ? [] : draftPins}
+                    placing={setupStep === 5 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
+                    view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
+                    shape={setupMapShape}
+                    onPlace={setupStep === 5 ? placeSetupPin : undefined}
+                    compact={setupStep < 4}
+                    mobile={mobile && setupStep >= 4}
+                    photoPins={setupStep >= 5}
+                  />
+                </div>
+              </div>
+            )}
+            <nav className={`${ELEMENT_TAG}-setup-footer`} aria-label="Founding navigation">
+              {setupStep > 0 ? (
                 <button
                   type="button"
-                  className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-scenario-next`}
-                  disabled={busy}
-                  onClick={() => gotoSetupStep(1)}
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={busy || setupMapBusy}
+                  onClick={() => gotoSetupStep(setupStep - 1)}
+                >
+                  ← Back
+                </button>
+              ) : null}
+              {setupStep < SETUP_STEPS.length - 1 ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
+                  disabled={busy || setupMapBusy}
+                  onClick={() => gotoSetupStep(setupStep + 1)}
                 >
                   Next →
                 </button>
-              </div>
-            </div>
-          ) : (
-            <div className={`${ELEMENT_TAG}-setup-map-shell`}>
-              <div className={`${ELEMENT_TAG}-setup-map-viewport`}>
-                <MapStage
-                  src={setupMapSrc}
-                  alt={`A map of ${setupName.trim() || "your new village"}.`}
-                  pins={setupStep < 5 ? [] : draftPins}
-                  placing={setupStep === 5 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
-                  view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
-                  shape={setupMapShape}
-                  onPlace={setupStep === 5 ? placeSetupPin : undefined}
-                  compact={setupStep < 4}
-                  mobile={mobile && setupStep >= 4}
-                  photoPins={setupStep >= 5}
-                />
-              </div>
-            </div>
-          )}
+              ) : (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
+                  disabled={busy || setupMapBusy || !snapshot}
+                  onClick={() => void foundVillage()}
+                >
+                  {snapshot?.isFounded ? "Save this village" : "Found the village"}
+                </button>
+              )}
+              {snapshot?.isFounded ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={busy}
+                  onClick={() => {
+                    setPlacingHome(false);
+                    setScreen("home");
+                  }}
+                >
+                  Show me the village
+                </button>
+              ) : null}
+            </nav>
+          </div>
         </div>
       </div>
     );

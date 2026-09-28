@@ -37,6 +37,22 @@ const snapshot = {
   },
 };
 
+const personas = [
+  { id: "active", name: "Zara", summary: "A watchful traveler", isActive: true, avatarPath: null, avatarCrop: null },
+  { id: "ada", name: "Ada", summary: "A patient observer", isActive: false, avatarPath: null, avatarCrop: null },
+  { id: "bryn", name: "Bryn", summary: "A returning wanderer", isActive: false, avatarPath: null, avatarCrop: null },
+];
+const personaPreview = {
+  id: "ada",
+  name: "Ada",
+  description: "A patient observer of small changes.",
+  appearance: "Wears a green traveling coat and carries a weathered leather satchel.",
+  personality: "Reserved at first, attentive to people around her.",
+  backstory: "Traveled through the northern passes before arriving here.",
+  avatarPath: null,
+  avatarCrop: null,
+};
+
 try {
   for (const { width, height, cardsPerRow, fontSize } of [
     { width: 1917, height: 655, cardsPerRow: 5, fontSize: 20 },
@@ -48,19 +64,52 @@ try {
     { width: 390, height: 844, cardsPerRow: 2, fontSize: 16 },
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
+    let availablePersonas = personas;
+    let connectionSettings = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      const value = path.endsWith("/personas")
-        ? { personas: [] }
-        : path.endsWith("/lorebooks")
-          ? { books: [] }
-          : path.endsWith("/catalog")
-            ? { characters: [] }
-            : snapshot;
+      if (path.endsWith("/connections") && route.request().method() === "PUT") {
+        connectionSettings = { ...connectionSettings, ...JSON.parse(route.request().postData() ?? "{}") };
+      }
+      const value = path.endsWith("/personas/ada")
+        ? { persona: personaPreview }
+        : path.endsWith("/personas/bryn")
+          ? {
+              persona: {
+                ...personaPreview,
+                id: "bryn",
+                name: "Bryn",
+                description: "",
+                appearance: "",
+                personality: "",
+                backstory: "Returned from a long journey.",
+              },
+            }
+          : path.endsWith("/personas/active")
+            ? { persona: { ...personaPreview, id: "active", name: "Zara", description: "A watchful traveler." } }
+            : path.endsWith("/personas")
+              ? { personas: availablePersonas }
+              : path.endsWith("/connections")
+                ? connectionSettings
+                : path.endsWith("/lorebooks")
+                  ? { books: [] }
+                  : path.endsWith("/catalog")
+                    ? { characters: [] }
+                    : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
+    await page.route("**/api/connections", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          { id: "talk", name: "Language model", provider: "language", defaultForAgents: true },
+          { id: "image", name: "Image model", provider: "image_generation", defaultForAgents: true },
+        ]),
+      }),
+    );
     await page.route("**/api/capability-packages/villages/assets/founding-*.jpg", (route) => {
       const file = new URL(route.request().url()).pathname.split("/").at(-1);
       return route.fulfill({
@@ -133,6 +182,76 @@ try {
     await root.getByText("Rebuild", { exact: true }).click();
     await root.getByText("Custom", { exact: true }).click();
     await expect(premise).toHaveValue("");
+    await root.getByText("Rebuild", { exact: true }).click();
+    await root.getByLabel("What is this village called?").fill("Willowbrook");
+    await root.getByRole("button", { name: "Next →" }).click();
+    await expect(root.getByText("Step 2 of 7 · Connections & Persona")).toBeVisible();
+    const personaCards = root.locator(".marinara-capability-villages-identity-card");
+    await expect(personaCards).toHaveCount(3);
+    assert.equal(
+      await personaCards
+        .first()
+        .textContent()
+        .then((value) => value.includes("Ada")),
+      true,
+      "Personas are alphabetic, without promoting the Engine active Persona",
+    );
+    await expect(root.locator('.marinara-capability-villages-identity-card[aria-pressed="true"]')).toHaveCount(0);
+    await root.getByPlaceholder("Search Personas").fill("patient");
+    await expect(personaCards).toHaveCount(1);
+    await personaCards.first().focus();
+    await page.keyboard.press("Enter");
+    await expect(personaCards.first()).toHaveAttribute("aria-pressed", "true");
+    await expect(root.getByRole("heading", { name: "Ada" })).toBeVisible();
+    await expect(root.getByText("A patient observer of small changes.")).toBeVisible();
+    await expect(root.getByText("Appearance", { exact: true })).toBeVisible();
+    await expect(root.getByText("Personality", { exact: true })).toBeVisible();
+    await expect(root.getByText("Backstory", { exact: true })).toBeVisible();
+    await root.getByPlaceholder("Search Personas").fill("returning");
+    await personaCards.first().click();
+    await expect(root.getByRole("heading", { name: "Bryn" })).toBeVisible();
+    await expect(root.getByText("Returned from a long journey.").first()).toBeVisible();
+    await expect(root.locator(".marinara-capability-villages-identity-details dt")).toHaveText(["Backstory"]);
+    await root.getByPlaceholder("Search Personas").fill("");
+    await root.getByRole("button", { name: /Zara/ }).click();
+    await root.getByRole("button", { name: /Ada/ }).click();
+    await expect(root.getByRole("heading", { name: "Ada" })).toBeVisible();
+    for (const name of ["System", "Narration", "Images"])
+      await expect(root.getByLabel(name, { exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "← Back" })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Next →" })).toBeVisible();
+    if (width > 1000) {
+      const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
+      assert.ok(
+        size.scroll <= size.visible + 1,
+        `Connections & Persona fits at ${width}×${height} (${size.scroll}/${size.visible})`,
+      );
+      const documentHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+      assert.ok(documentHeight <= height + 1, `page 2 document fits at ${width}×${height} (${documentHeight})`);
+      for (const control of [
+        root.getByPlaceholder("Search Personas"),
+        root.getByLabel("Images"),
+        root.getByRole("button", { name: "Next →" }),
+      ]) {
+        const bounds = await control.boundingBox();
+        assert.ok(
+          bounds && bounds.y >= 0 && bounds.y + bounds.height <= height,
+          `page 2 controls fit at ${width}×${height}: ${JSON.stringify(bounds)}`,
+        );
+      }
+    }
+    await root.getByLabel("Images", { exact: true }).selectOption("__villages_image_disabled__");
+    await root.getByRole("button", { name: "Next →" }).click();
+    await expect(root.getByRole("alertdialog", { name: "Image connection recommendation" })).toBeVisible();
+    await root.getByRole("button", { name: "Set up an image connection" }).click();
+    await root.getByLabel("Images", { exact: true }).selectOption("image");
+    availablePersonas = personas.filter((entry) => entry.id !== "ada");
+    await root.getByRole("button", { name: "← Back" }).click();
+    await root.getByRole("button", { name: "Next →" }).click();
+    await expect(root.getByText("The saved Persona is no longer in your library.", { exact: false })).toBeVisible();
+    await root.getByRole("button", { name: "Next →" }).click();
+    await expect(root.getByText("Step 2 of 7 · Connections & Persona")).toBeVisible();
+    await expect(root.getByText("That Persona is no longer in your library.", { exact: false })).toBeVisible();
     assert.deepEqual(errors, []);
     await page.close();
   }

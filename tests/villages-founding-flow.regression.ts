@@ -19,6 +19,26 @@ async function main() {
   const { readScenarioImprint } = await import(
     pathToFileURL(join(serverRoot, "services/villages/scenario-imprint.ts")).href
   );
+  const { readPersona } = await import(pathToFileURL(join(serverRoot, "services/villages/catalog.ts")).href);
+  const persona = readPersona({
+    id: "persona-a",
+    data: {
+      name: "Ada",
+      convoDisplayName: "Ada of the Vale",
+      description: "A patient observer.",
+      appearance: "Wears a green coat.",
+      personality: "Careful with strangers.",
+      backstory: "Traveled through the northern pass.",
+      avatarPath: "/portraits/ada.png",
+    },
+  });
+  assert.equal(persona.name, "Ada of the Vale", "the preview uses the name Villages uses");
+  assert.equal(persona.description, "A patient observer.");
+  assert.equal(persona.appearance, "Wears a green coat.");
+  assert.equal(persona.personality, "Careful with strangers.");
+  assert.equal(persona.backstory, "Traveled through the northern pass.");
+  assert.equal(persona.avatarPath, "/portraits/ada.png");
+  assert.match(persona.identity, /Appearance: Wears a green coat\./, "existing prompt identity is preserved");
 
   for (const picture of [
     { width: 1000, height: 700, photoWidth: 58, photoHeight: 58 },
