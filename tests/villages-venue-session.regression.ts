@@ -5,6 +5,10 @@ import { deriveVillageMoment } from "../packages/villages/src/engine/packages/se
 import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
 import { proposeWishVerdict } from "../packages/villages/src/engine/packages/server/src/services/villages/wishes.js";
 import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
+import {
+  venueReplyIntegrity,
+  venueSceneHistory,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-turn-integrity.js";
 import { generateFirstPrivateSpaceImage } from "../packages/villages/src/engine/packages/server/src/services/villages/location-image.js";
 import {
   decideVillagerVenueImprovement,
@@ -118,7 +122,7 @@ let greetingStarted: (() => void) | null = null;
 let releaseHeldGreeting: (() => void) | null = null;
 let malformedGreetingOnce = false;
 let openingSegmentsOnce: Record<string, unknown>[] | null = null;
-let emptyOpeningOnce = false;
+let emptyOpeningFailures = 0;
 let failReplyOnce = false;
 let failActReplyOnce = false;
 let quietActReplyOnce = false;
@@ -128,6 +132,8 @@ let creativeActorIds = ["bob", "tina"];
 let lastVenueSystem = "";
 let lastJudgeSystem = "";
 let venueReplyCalls = 0;
+let malformedTurnOnce = false;
+let exhaustEcho = false;
 let wishJudgeCalls = 0;
 let mailboxAccept = true;
 const memoryEvidence: any[] = [];
@@ -496,8 +502,8 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
-          if (user.startsWith("The player enters this space") && emptyOpeningOnce) {
-            emptyOpeningOnce = false;
+          if (user.startsWith("The player enters this space") && emptyOpeningFailures > 0) {
+            emptyOpeningFailures -= 1;
             return { content: JSON.stringify({ heardPlayerBy: [], segments: [] }), finishReason: "stop" };
           }
           if (user.startsWith("The player enters this space") && openingSegmentsOnce) {
@@ -543,6 +549,82 @@ const release = configureVillagesRuntime({
             };
           if (user === "No scene moment")
             return { content: JSON.stringify({ heardPlayerBy: ["tina"], segments: [] }), finishReason: "stop" };
+          if (user === "Ask me about myself")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "dialogue", speakerId: "bob", text: "What about you?", heardBy: ["bob", "tina"] }],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "I actually don't remember anything. Funny, huh?")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: system.includes("previous draft failed validation")
+                  ? [
+                      {
+                        kind: "dialogue",
+                        speakerId: "bob",
+                        text: "That sounds disorienting. I can listen.",
+                        heardBy: ["bob", "tina"],
+                      },
+                    ]
+                  : [
+                      {
+                        kind: "dialogue",
+                        speakerId: "tina",
+                        text: "Yeah — what about you? We've both done our bit.",
+                        heardBy: ["bob", "tina"],
+                      },
+                      {
+                        kind: "dialogue",
+                        speakerId: "bob",
+                        text: "I actually don't remember anything. Funny, huh?",
+                        heardBy: ["bob", "tina"],
+                      },
+                    ],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "I don't remember where I came from.")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "tina",
+                    text: system.includes("previous draft failed validation")
+                      ? "That sounds unsettling. Do you want to tell us more?"
+                      : "Yeah — what about you? We've both done our bit.",
+                    heardBy: ["bob", "tina"],
+                  },
+                ],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "Malformed once" && malformedTurnOnce) {
+            malformedTurnOnce = false;
+            return { content: "{not json", finishReason: "stop" };
+          }
+          if (user === "Always echo this long player statement" && exhaustEcho)
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
+                sceneChange: { happened: true, narration: "A chair moves.", sceneNote: "A chair moves." },
+              }),
+              finishReason: "stop",
+            };
+          if (user === "Place an intricately carved silver bowl on the table")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
+              }),
+              finishReason: "stop",
+            };
           if (user === "Wait outside quietly" || user === "Look around the private room")
             return {
               content: JSON.stringify({
@@ -748,7 +830,11 @@ const release = configureVillagesRuntime({
               lines: [
                 {
                   speakerId: user === "Tina heads away" ? "tina" : speakerId,
-                  text: user.startsWith("The player is already inside") ? "Welcome." : `Answer to ${user}`,
+                  text: user.startsWith("The player is already inside")
+                    ? "Welcome."
+                    : user === "The player leaves without saying anything."
+                      ? "Take care on your way out."
+                      : "I hear you.",
                   heardBy,
                 },
               ],
@@ -810,6 +896,90 @@ const agenda = (placeId: string, wishes: any[] = []) => ({
 
 async function main() {
   try {
+    const sampleHistory = [
+      { role: "user" as const, name: "", speakerId: "", content: "Discarded prior player turn", heardBy: ["bob"] },
+      {
+        role: "assistant" as const,
+        name: "Bob",
+        speakerId: "bob",
+        kind: "dialogue" as const,
+        content: "Discarded reply.",
+        heardBy: ["bob"],
+      },
+      { role: "user" as const, name: "", speakerId: "", content: "Older player turn", heardBy: ["bob"] },
+      {
+        role: "assistant" as const,
+        name: "Narration",
+        speakerId: "__venue_scene__",
+        kind: "narration" as const,
+        content: "Old scene.",
+        heardBy: ["bob"],
+      },
+      { role: "user" as const, name: "", speakerId: "", content: "Where are you from?", heardBy: ["bob"] },
+      {
+        role: "assistant" as const,
+        name: "Bob",
+        speakerId: "bob",
+        kind: "dialogue" as const,
+        content: "Mecca. What about you?",
+        heardBy: ["bob"],
+      },
+      {
+        role: "assistant" as const,
+        name: "Narration",
+        speakerId: "__venue_scene__",
+        kind: "narration" as const,
+        content: "Bob looks at the fire.",
+        heardBy: ["bob"],
+      },
+      {
+        role: "user" as const,
+        name: "",
+        speakerId: "",
+        content: "I actually don't remember anything. Funny, huh?",
+        heardBy: ["bob"],
+      },
+    ];
+    const history = venueSceneHistory(sampleHistory, "Legitimate Businessperson");
+    assert.match(history, /PLAYER Legitimate Businessperson: I actually don't remember anything/u);
+    assert.match(history, /RESIDENT Bob \(bob\): Mecca\. What about you\?/u);
+    assert.match(history, /SCENE: Bob looks at the fire\./u);
+    assert.doesNotMatch(history, /Old scene\./u);
+    assert.doesNotMatch(history, /Discarded prior player turn|Discarded reply/u);
+    assert.equal(
+      venueReplyIntegrity(sampleHistory.at(-1)!.content, sampleHistory.slice(0, -1), [
+        { kind: "dialogue", content: "I actually don't remember anything. Funny, huh?" },
+      ]),
+      "player-echo",
+    );
+    assert.equal(
+      venueReplyIntegrity(sampleHistory.at(-1)!.content, sampleHistory.slice(0, -1), [
+        { kind: "dialogue", content: "Yeah — what about you? We've both done our bit." },
+      ]),
+      "repeated-question",
+    );
+    assert.equal(
+      venueReplyIntegrity(sampleHistory.at(-1)!.content, sampleHistory.slice(0, -1), [
+        { kind: "dialogue", content: "That sounds disorienting. I can listen." },
+      ]),
+      null,
+    );
+    assert.equal(
+      venueReplyIntegrity("Are you all right?", [], [{ kind: "dialogue", content: "Yes, I'm here." }]),
+      null,
+    );
+    assert.equal(venueReplyIntegrity("I wait.", [], [{ kind: "narration", content: "Bob closes the door." }]), null);
+    assert.equal(
+      venueReplyIntegrity(
+        "I wait.",
+        [],
+        [
+          { kind: "dialogue", content: "Give me a moment." },
+          { kind: "dialogue", content: "I'll be here too." },
+        ],
+      ),
+      null,
+    );
     assert.equal(
       readVenueActionResult({
         happened: true,
@@ -1079,6 +1249,7 @@ async function main() {
     assert.equal(calls - beforeQuietAsk, 1);
     assert.equal(quietAsk.session.lines.at(-1)?.content, "No one spoke.");
     const beforeEmptyReply = quietAsk.session.lines.length;
+    const beforeEmptyCalls = venueReplyCalls;
     await assert.rejects(
       () =>
         sendVenueTurn({
@@ -1088,9 +1259,117 @@ async function main() {
           targetId: "tina",
           submissionId: "empty-reply",
         }),
-      /no scene moment/u,
+      /could not be kept accurate/u,
     );
+    assert.equal(venueReplyCalls - beforeEmptyCalls, 2, "empty scene repairs share the two-call limit");
     assert.equal((await activeVenueSession())?.lines.length, beforeEmptyReply, "an empty reply is not archived");
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Ask me about myself",
+      mode: "chat",
+      targetId: "",
+      submissionId: "ask-about-player-1",
+    });
+    const beforeEchoCalls = venueReplyCalls;
+    const correctedEcho = await sendVenueTurn({
+      sessionId: group.id,
+      message: "I actually don't remember anything. Funny, huh?",
+      mode: "chat",
+      targetId: "",
+      submissionId: "player-answer-1",
+    });
+    assert.equal(venueReplyCalls - beforeEchoCalls, 2, "a copied player answer gets one targeted repair");
+    assert.equal(
+      correctedEcho.session.lines.filter(
+        (line) => line.role === "user" && line.content === "I actually don't remember anything. Funny, huh?",
+      ).length,
+      1,
+    );
+    assert.equal(correctedEcho.session.lines.at(-1)?.content, "That sounds disorienting. I can listen.");
+    assert.match(lastVenueSystem, /previous draft failed validation.*repeated the player's words/u);
+    const beforeEchoReplayCalls = venueReplyCalls;
+    const echoedReplay = await sendVenueTurn({
+      sessionId: group.id,
+      message: "I actually don't remember anything. Funny, huh?",
+      mode: "chat",
+      targetId: "",
+      submissionId: "player-answer-1",
+    });
+    assert.equal(venueReplyCalls, beforeEchoReplayCalls, "replaying the accepted submission makes no model call");
+    assert.equal(echoedReplay.session.lines.length, correctedEcho.session.lines.length);
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Ask me about myself",
+      mode: "chat",
+      targetId: "",
+      submissionId: "ask-about-player-2",
+    });
+    const beforeQuestionCalls = venueReplyCalls;
+    const correctedQuestion = await sendVenueTurn({
+      sessionId: group.id,
+      message: "I don't remember where I came from.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "player-answer-2",
+    });
+    assert.equal(venueReplyCalls - beforeQuestionCalls, 2, "a repeated resident question gets one targeted repair");
+    assert.equal(
+      correctedQuestion.session.lines.at(-1)?.content,
+      "That sounds unsettling. Do you want to tell us more?",
+    );
+    assert.match(lastVenueSystem, /previous draft failed validation.*repeated their prior question/u);
+    malformedTurnOnce = true;
+    const beforeMalformedCalls = venueReplyCalls;
+    const correctedMalformed = await sendVenueTurn({
+      sessionId: group.id,
+      message: "Malformed once",
+      mode: "chat",
+      targetId: "",
+      submissionId: "malformed-turn-1",
+    });
+    assert.equal(venueReplyCalls - beforeMalformedCalls, 2);
+    assert.equal(
+      correctedMalformed.session.lines.filter((line) => line.role === "user" && line.content === "Malformed once")
+        .length,
+      1,
+    );
+    exhaustEcho = true;
+    const beforeExhausted = await activeVenueSession();
+    const beforeExhaustedState = JSON.stringify(
+      (await readVillageState()).venues.find((place) => place.id === "park")?.state,
+    );
+    const beforeExhaustedCalls = venueReplyCalls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Always echo this long player statement",
+          mode: "chat",
+          targetId: "",
+          submissionId: "echo-exhausted",
+        }),
+      /draft is still here; retry/u,
+    );
+    assert.equal(venueReplyCalls - beforeExhaustedCalls, 2);
+    assert.equal((await activeVenueSession())?.lines.length, beforeExhausted?.lines.length);
+    assert.equal(
+      JSON.stringify((await readVillageState()).venues.find((place) => place.id === "park")?.state),
+      beforeExhaustedState,
+    );
+    exhaustEcho = false;
+    const acceptedAfterFailure = await sendVenueTurn({
+      sessionId: group.id,
+      message: "Always echo this long player statement",
+      mode: "chat",
+      targetId: "",
+      submissionId: "echo-exhausted",
+    });
+    assert.equal(
+      acceptedAfterFailure.session.lines.filter(
+        (line) => line.role === "user" && line.content === "Always echo this long player statement",
+      ).length,
+      1,
+    );
     failReplyOnce = true;
     const beforeFailedSend = (await activeVenueSession())!.lines.length;
     await assert.rejects(
@@ -1140,8 +1419,26 @@ async function main() {
     assert.ok(
       !(await readVillageState()).venues.find((place) => place.id === "park")?.state.furniture.includes("wall"),
     );
+    const beforeRejectedAct = await activeVenueSession();
+    const beforeRejectedActEvents = (await readVillageState()).venueEvents.length;
+    const beforeRejectedActCalls = venueReplyCalls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Place an intricately carved silver bowl on the table",
+          mode: "act",
+          targetId: "",
+          submissionId: "act-echo-exhausted",
+        }),
+      /draft is still here; retry/u,
+    );
+    assert.equal(venueReplyCalls - beforeRejectedActCalls, 2);
+    assert.equal((await activeVenueSession())?.lines.length, beforeRejectedAct?.lines.length);
+    assert.equal((await readVillageState()).venueEvents.length, beforeRejectedActEvents);
     failActReplyOnce = true;
     const beforeUncertainAction = calls;
+    const beforeUncertainLines = (await activeVenueSession())!.lines.length;
     await assert.rejects(
       () =>
         sendVenueTurn({
@@ -1157,8 +1454,10 @@ async function main() {
       (await readVillageState()).venues
         .find((place) => place.id === "park")
         ?.state.furniture.filter((item) => item === "lantern").length,
-      1,
+      0,
+      "a failed reaction leaves the physical action uncommitted",
     );
+    assert.equal((await activeVenueSession())?.lines.length, beforeUncertainLines);
     quietActReplyOnce = true;
     const completedQuietAction = await sendVenueTurn({
       sessionId: group.id,
@@ -1167,7 +1466,7 @@ async function main() {
       targetId: "",
       submissionId: "uncertain-action",
     });
-    assert.equal(calls - beforeUncertainAction, 3, "retry regenerates only the missing reaction");
+    assert.equal(calls - beforeUncertainAction, 4, "retry judges the uncommitted action and regenerates its reaction");
     assert.ok(
       completedQuietAction.session.lines.some(
         (line) => line.content === "Bob makes room for the lantern on the table.",
@@ -1488,9 +1787,9 @@ async function main() {
     const speechScene = await greetVenue(speechOpening.id);
     assert.equal(speechScene.lines[0]?.speakerId, "tina", "a direct greeting can lead without narration");
     await endVenueSession(speechScene.id);
-    emptyOpeningOnce = true;
+    emptyOpeningFailures = 2;
     const emptyOpening = await enterVenue("park");
-    await assert.rejects(() => greetVenue(emptyOpening.id), /no scene moment/u);
+    await assert.rejects(() => greetVenue(emptyOpening.id), /could not be kept accurate/u);
     assert.equal((await activeVenueSession())?.status, "opening", "an empty opening remains retryable");
     await endVenueSession((await greetVenue(emptyOpening.id)).id);
     assert.deepEqual(
@@ -2093,11 +2392,7 @@ async function main() {
     const farewell = await leaveVenueSession(leaving.id, "leave-once");
     assert.equal(farewell.session.status, "closed");
     assert.equal(farewell.session.endReason, "player");
-    assert.ok(
-      farewell.session.lines.some((line) =>
-        line.content.includes("Answer to The player leaves without saying anything."),
-      ),
-    );
+    assert.ok(farewell.session.lines.some((line) => line.content.includes("Take care on your way out.")));
     assert.ok(
       !farewell.session.lines.some((line) => line.role === "user" && line.content.includes("goodbye")),
       "a silent Leave Scene does not invent the player's goodbye",
@@ -2117,9 +2412,7 @@ async function main() {
       "a composed final line is preserved exactly",
     );
     assert.ok(
-      spokenFarewell.session.lines.some(
-        (line) => line.role === "assistant" && line.content.includes("Goodbye, everyone."),
-      ),
+      spokenFarewell.session.lines.some((line) => line.role === "assistant" && line.content.includes("I hear you.")),
     );
 
     const timed = await greetVenue((await enterVenue("park")).id);

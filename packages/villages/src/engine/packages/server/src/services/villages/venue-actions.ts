@@ -104,7 +104,12 @@ function actionMessages(
 }
 
 /** Record only a grounded, completed action. Happenings are evidence for the Wish judge. */
-export async function actAtVenue(placeId: string, rawAction: string, submissionId: string): Promise<VenueActionResult> {
+export async function actAtVenue(
+  placeId: string,
+  rawAction: string,
+  submissionId: string,
+  beforeRecord?: (result: VenueActionResult) => Promise<void>,
+): Promise<VenueActionResult> {
   const action = rawAction.trim();
   if (!action || action.length > MAX_VENUE_ACTION_LENGTH) {
     throw badRequest(`Describe one action in 1 to ${MAX_VENUE_ACTION_LENGTH} characters.`);
@@ -155,6 +160,8 @@ export async function actAtVenue(placeId: string, rawAction: string, submissionI
     place.state.traces?.map((trace) => trace.id) ?? [],
     village.villagers.map((resident) => resident.characterId),
   );
+  // A resident reaction must pass scene validation before this action changes the venue or transcript.
+  await beforeRecord?.(result);
   const now = new Date();
   const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
   const publicNarration = result.traceKind === "note" ? `A note was left at ${place.name}.` : result.narration;

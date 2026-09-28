@@ -5,7 +5,7 @@ import { readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
 import { memoryForVillager } from "./chat.js";
 import { asRecord, asString, asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
-import { VillagesRequestError, badRequest, conflict, notFound } from "./errors.js";
+import { VillagesRequestError, badGateway, badRequest, conflict, notFound } from "./errors.js";
 import { readVillageLore } from "./lorebooks.js";
 import { selectPromptMemories, selectPromptRecollections } from "./memory-selection.js";
 import { effectiveVillagerReplyGuidance, venueWritingDirection } from "./narration-style.js";
@@ -39,6 +39,7 @@ import { proposeWishVerdict } from "./wishes.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VenueActionResult } from "./venue-actions.js";
 import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
+import { venueReplyIntegrity, venueSceneHistory } from "./venue-turn-integrity.js";
 import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
 import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
 import type { VillageVenueClass } from "./types.js";
@@ -492,6 +493,25 @@ function castAtEntry(village: VillageState, placeId: string, now: Date): VenuePa
 
 type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
 
+type VenueReplyFailureKind =
+  "invalid-json" | "invalid-segments" | "player-echo" | "repeated-question" | "residence-consent";
+
+class VenueReplyFailure extends Error {
+  constructor(readonly kind: VenueReplyFailureKind) {
+    super(kind);
+  }
+}
+
+function venueRepairHint(kind: VenueReplyFailureKind): string {
+  if (kind === "player-echo")
+    return "A resident or narration repeated the player's words. The player has already spoken; react without quoting or restating that line.";
+  if (kind === "repeated-question")
+    return "A resident repeated their prior question after the player answered it. Continue from the answer instead of asking it again.";
+  if (kind === "residence-consent")
+    return "A lasting Residence edit needs the exact required approvals. Describe a pending request, refusal, or temporary attempt, and omit sceneChange.";
+  return "Return one valid JSON object with heardPlayerBy and a nonempty segments array using active resident IDs.";
+}
+
 /** Keep the card's voice examples visible even when its background is long. */
 export function venueCardProfile(card: VillagerCard): string {
   const prefix = "Card:\n";
@@ -515,7 +535,7 @@ export function venueCardProfile(card: VillagerCard): string {
   return prefix + fields.map((field, index) => `${field.label}: ${field.value.slice(0, lengths[index])}`).join("\n");
 }
 
-async function generate(
+async function generateOnce(
   session: VenueSession,
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act",
@@ -524,7 +544,7 @@ async function generate(
   signal?: AbortSignal,
   trace?: GreetingTrace,
   actionOutcome?: string,
-  consentRetry = false,
+  repairHint = "",
 ) {
   const preparationStarted = performance.now();
   const [village, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
@@ -583,25 +603,7 @@ async function generate(
       .filter(Boolean)
       .join("\n");
   });
-  const older = session.lines.slice(0, -16);
-  const queryWords = memoryQuery.toLowerCase().match(/[a-z]{4,}/gu) ?? [];
-  const recalled = older
-    .map((line, index) => ({
-      line,
-      index,
-      score: queryWords.reduce((score, word) => score + (line.content.toLowerCase().includes(word) ? 1 : 0), 0),
-    }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || b.index - a.index)
-    .slice(0, 2)
-    .sort((a, b) => a.index - b.index)
-    .map(({ line }) => line);
-  const history = [...recalled, ...session.lines.slice(-16)]
-    .map(
-      (line) =>
-        `${line.name || player.name}: ${line.content.slice(0, 500)} [heard by: ${line.heardBy.join(", ") || "nobody"}]`,
-    )
-    .join("\n");
+  const history = venueSceneHistory(session.lines, player.name);
   const audience = active.map((person) => person.characterId);
   const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
   const place = storedPlace
@@ -671,6 +673,9 @@ async function generate(
     ...profiles,
     `Earlier visit recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
     `Recent scene history:\n${history || "The visit has just begun."}`,
+    mode === "greet"
+      ? ""
+      : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered. Let the relevant residents choose whether to speak or act; others may stay occupied. Narration belongs only where something observable changes or clarifies the moment. Stop at a natural handoff without filling a speaker or narration quota.",
     `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
     mode === "greet"
       ? "Open on a brief, specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Someone may notice the player and speak, residents may be talking to each other, or the moment may pass without speech. Do not force a welcome, a description-then-dialogue pattern, or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
@@ -710,8 +715,8 @@ async function generate(
     mode !== "greet"
       ? 'Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
       : "",
-    consentRetry
-      ? "The previous draft changed a resident-controlled space without an approved exact proposal. Rewrite the outcome as a pending request, a refusal, or a temporary attempt; omit sceneChange and any claim that a lasting edit occurred."
+    repairHint
+      ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
       : "",
     "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Each segment records what actually happens; it is not a sequence of beats to fill. Include at least one substantial main segment, narration or dialogue, but use either only when the moment calls for it. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
   ].join("\n\n");
@@ -730,7 +735,7 @@ async function generate(
     },
   ];
   // Keep the opening brief, with enough room for reasoning models.
-  const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS;
+  const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS * (repairHint ? 2 : 1);
   const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
   const fitStarted = performance.now();
   const fitted = model.fitContext(messages, { maxTokens });
@@ -743,6 +748,7 @@ async function generate(
     verbosity: null,
     debugMode: false,
     signal,
+    retryEmpty: false,
     onAttempt: trace
       ? (result, elapsedMs, limit) =>
           trace(
@@ -753,7 +759,12 @@ async function generate(
       : undefined,
   });
   const raw = extractJsonObject(completion.content ?? "");
-  const parsed = parseVenueReply(raw, audience);
+  let parsed: ReturnType<typeof parseVenueReply>;
+  try {
+    parsed = parseVenueReply(raw, audience);
+  } catch {
+    throw new VenueReplyFailure(raw ? "invalid-segments" : "invalid-json");
+  }
   const readSpeechSignal = (value: unknown) => {
     const entry = asRecord(value);
     const speakerId = asTrimmedString(entry.speakerId);
@@ -916,6 +927,49 @@ async function generate(
     sceneEnded,
     recollections,
   };
+}
+
+/** One accepted scene, with no more than two language calls and no partial transcript write. */
+async function generate(
+  session: VenueSession,
+  message: string,
+  mode: "greet" | "chat" | "ask" | "fulfill" | "act",
+  targetId: string,
+  settled: { fulfilled: boolean; wish: string } | null,
+  signal?: AbortSignal,
+  trace?: GreetingTrace,
+  actionOutcome?: string,
+) {
+  let repairHint = "";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const reply = await generateOnce(
+        session,
+        message,
+        mode,
+        targetId,
+        settled,
+        signal,
+        trace,
+        actionOutcome,
+        repairHint,
+      );
+      const integrity = venueReplyIntegrity(message, session.lines, reply.lines);
+      if (integrity) throw new VenueReplyFailure(integrity);
+      if ((session.area === "shared" || session.area === "private") && reply.sceneChange)
+        throw new VenueReplyFailure("residence-consent");
+      return reply;
+    } catch (cause) {
+      if (!(cause instanceof VenueReplyFailure)) throw cause;
+      villagesLogger().warn("[villages] venue scene draft rejected: %s (attempt %d)", cause.kind, attempt + 1);
+      if (attempt === 1)
+        throw badGateway(
+          "The scene reply could not be kept accurate after two attempts. Your draft is still here; retry.",
+        );
+      repairHint = venueRepairHint(cause.kind);
+    }
+  }
+  throw badGateway("The scene reply could not be kept accurate. Your draft is still here; retry.");
 }
 
 type VenueReplyLine = {
@@ -1384,6 +1438,7 @@ async function finishActReply(
   submissionId: string,
   message: string,
   action: VenueActionResult,
+  preparedReply?: Awaited<ReturnType<typeof generate>>,
 ): Promise<VenueSession> {
   await requireLiveVenueSession(session.id);
   const prior = session.submissions.find((entry) => entry.id === submissionId);
@@ -1394,16 +1449,9 @@ async function finishActReply(
       if (entry) entry.actionReplyDone = true;
     });
   }
-  const reply = await generate(
-    session,
-    message,
-    "act",
-    "",
-    null,
-    AbortSignal.timeout(90_000),
-    undefined,
-    action.narration,
-  );
+  const reply =
+    preparedReply ??
+    (await generate(session, message, "act", "", null, AbortSignal.timeout(90_000), undefined, action.narration));
   return changeSession(session.id, (state) => {
     const entry = state.submissions.find((item) => item.id === submissionId);
     if (!entry || entry.actionReplyDone) return;
@@ -1456,8 +1504,27 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   if (input.mode === "act") {
     if (input.targetId) throw badRequest("Actions are about the place, not a villager.");
     const { actAtVenue } = await import("./venue-actions.js");
-    const action = await actAtVenue(session.placeId, input.message, input.submissionId);
-    const completed = await finishActReply(await readSession(session.id), input.submissionId, input.message, action);
+    let preparedReply: Awaited<ReturnType<typeof generate>> | undefined;
+    const action = await actAtVenue(session.placeId, input.message, input.submissionId, async (result) => {
+      if (session.activeIds.length)
+        preparedReply = await generate(
+          session,
+          input.message,
+          "act",
+          "",
+          null,
+          AbortSignal.timeout(90_000),
+          undefined,
+          result.narration,
+        );
+    });
+    const completed = await finishActReply(
+      await readSession(session.id),
+      input.submissionId,
+      input.message,
+      action,
+      preparedReply,
+    );
     return {
       session: completed,
       verdict: null,
@@ -1520,7 +1587,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     wishText = judged.wish?.wish ?? "";
   }
   const responseTargetId = input.targetId || (session.activeIds.length === 1 ? session.activeIds[0]! : "");
-  let reply = await generate(
+  const reply = await generate(
     session,
     input.message,
     input.mode,
@@ -1528,20 +1595,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
     AbortSignal.timeout(90_000),
   );
-  if ((session.area === "shared" || session.area === "private") && reply.sceneChange) {
-    reply = await generate(
-      session,
-      input.message,
-      input.mode,
-      responseTargetId,
-      verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
-      AbortSignal.timeout(90_000),
-      undefined,
-      undefined,
-      true,
-    );
-    if (reply.sceneChange) throw conflict("A lasting Residence change needs the residents' approval first.");
-  }
   const updated = await changeSession(session.id, (state) => {
     if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
     if (state.status !== "active") throw conflict("That conversation has already ended.");
