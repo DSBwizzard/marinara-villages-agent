@@ -57,11 +57,13 @@ try {
   for (const { width, height, cardsPerRow, fontSize } of [
     { width: 1917, height: 655, cardsPerRow: 5, fontSize: 20 },
     { width: 1917, height: 600, cardsPerRow: 5, fontSize: 20 },
+    { width: 1366, height: 500, cardsPerRow: 3, fontSize: 20 },
     { width: 1366, height: 768, cardsPerRow: 3, fontSize: 20 },
     { width: 1024, height: 768, cardsPerRow: 3, fontSize: 20 },
     { width: 1917, height: 655, cardsPerRow: 5, fontSize: 16 },
     { width: 390, height: 844, cardsPerRow: 2, fontSize: 20 },
     { width: 390, height: 844, cardsPerRow: 2, fontSize: 16 },
+    { width: 390, height: 650, cardsPerRow: 2, fontSize: 20 },
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
     let availablePersonas = personas;
@@ -138,12 +140,33 @@ try {
     const artPanel = root.locator(".marinara-capability-villages-scenario-art-panel");
     const artBounds = await artPanel.boundingBox();
     assert.ok(artBounds && artBounds.width > 0 && artBounds.height > 0, "the missing artwork keeps its panel");
+    const firstFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
+    const firstForm = await root.locator(".marinara-capability-villages-side").boundingBox();
+    if (width > 1000) {
+      assert.ok(firstFooter && firstForm && artBounds.height > firstForm.height * 0.6, "artwork fills the form height");
+      assert.ok(
+        Math.abs(firstFooter.y + firstFooter.height - firstForm.y - firstForm.height) < 3,
+        "navigation aligns with the form bottom",
+      );
+    }
+    await root.getByRole("button", { name: "Next →" }).scrollIntoViewIfNeeded();
+    const firstNext = await root.getByRole("button", { name: "Next →" }).boundingBox();
+    assert.ok(
+      firstNext && firstNext.y >= 0 && firstNext.y + firstNext.height <= height,
+      "page 1 navigation is reachable",
+    );
+    await root.getByLabel("Founding direction (optional)").scrollIntoViewIfNeeded();
+    const directionBounds = await root.getByLabel("Founding direction (optional)").boundingBox();
+    assert.ok(
+      directionBounds && directionBounds.y >= 0 && directionBounds.y + directionBounds.height <= height,
+      "page 1 controls are reachable",
+    );
     const first = await cards.nth(0).boundingBox();
     const lastInRow = await cards.nth(cardsPerRow - 1).boundingBox();
     assert.ok(first && lastInRow && Math.abs(first.y - lastInRow.y) < 2, "scenario cards fit their row");
     assert.ok(first.height < 100, "scenario cards are compact");
 
-    if (width > 1000) {
+    if (width > 1000 && height >= 600) {
       const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
       assert.ok(
         size.scroll <= size.visible + 1,
@@ -188,6 +211,31 @@ try {
     await root.getByLabel("What is this village called?").fill("Willowbrook");
     await root.getByRole("button", { name: "Next →" }).click();
     await expect(root.getByText("Step 2 of 7 · Connections & Persona")).toBeVisible();
+    const secondArt = await artPanel.boundingBox();
+    const secondFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
+    const secondForm = await root.locator(".marinara-capability-villages-side").boundingBox();
+    if (width > 1000) {
+      assert.ok(
+        secondArt && secondForm && secondArt.height > secondForm.height * 0.6,
+        "page 2 artwork fills the form height",
+      );
+      assert.ok(
+        secondFooter && Math.abs(secondFooter.y + secondFooter.height - secondForm.y - secondForm.height) < 3,
+        "page 2 navigation aligns with the form bottom",
+      );
+    }
+    await root.getByRole("button", { name: "Next →" }).scrollIntoViewIfNeeded();
+    const secondNext = await root.getByRole("button", { name: "Next →" }).boundingBox();
+    assert.ok(
+      secondNext && secondNext.y >= 0 && secondNext.y + secondNext.height <= height,
+      "page 2 navigation is reachable",
+    );
+    await root.getByLabel("Images", { exact: true }).scrollIntoViewIfNeeded();
+    const imagesBounds = await root.getByLabel("Images", { exact: true }).boundingBox();
+    assert.ok(
+      imagesBounds && imagesBounds.y >= 0 && imagesBounds.y + imagesBounds.height <= height,
+      "page 2 controls are reachable",
+    );
     await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
     const personaCards = root.locator(".marinara-capability-villages-identity-card");
     await expect(personaCards).toHaveCount(3);
@@ -223,7 +271,7 @@ try {
       await expect(root.getByLabel(name, { exact: true })).toBeVisible();
     await expect(root.getByRole("button", { name: "← Back" })).toBeVisible();
     await expect(root.getByRole("button", { name: "Next →" })).toBeVisible();
-    if (width > 1000) {
+    if (width > 1000 && height >= 600) {
       const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
       assert.ok(
         size.scroll <= size.visible + 1,
