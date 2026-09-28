@@ -26,8 +26,9 @@ export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
   "large unusable empty regions. Keep useful places clear of the image edges. This is uninterrupted scenery, with " +
   "no readable marks, writing, numerals, labels, signs, icons, legend, watermark, or UI elements.";
 
-export type TownMapOptions = { roads: boolean; structures: boolean; water: boolean };
-export const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: true, structures: false, water: false };
+export type TownMapChoice = "auto" | "include" | "exclude";
+export type TownMapOptions = { roads: TownMapChoice; structures: TownMapChoice; water: TownMapChoice };
+export const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "auto", water: "auto" };
 
 export const DEFAULT_TOWN_MAP_NEGATIVE_PROMPT =
   "text, letters, writing, numerals, digits, numbers, labels, captions, signs, icons, markers, UI, interface elements, legend, compass rose, watermark, border, people, characters, square plots, outlined lots, zoning grid, crowded composition, blurry, low quality";
@@ -36,14 +37,15 @@ function readOptions(value: unknown): TownMapOptions {
   if (value === undefined) return { ...DEFAULT_TOWN_MAP_OPTIONS };
   if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest("Map options must be an object.");
   const options = value as Record<string, unknown>;
+  const selected = { ...DEFAULT_TOWN_MAP_OPTIONS };
   for (const key of ["roads", "structures", "water"] as const) {
-    if (typeof options[key] !== "boolean") throw badRequest(`The ${key} map option must be true or false.`);
+    const choice = options[key];
+    if (choice === undefined) continue;
+    if (choice !== "auto" && choice !== "include" && choice !== "exclude" && typeof choice !== "boolean")
+      throw badRequest(`The ${key} map option must be Auto, Include, or Exclude.`);
+    selected[key] = choice === true ? "include" : choice === false ? "exclude" : choice;
   }
-  return {
-    roads: options.roads as boolean,
-    structures: options.structures as boolean,
-    water: options.water as boolean,
-  };
+  return selected;
 }
 
 function readRequiredText(value: unknown, label: string, maxLength: number): string {
@@ -68,17 +70,23 @@ export function buildTownMapPrompt(
   const world = readRequiredText(setting, "Village description", MAX_SETTING_LENGTH);
   const chosen = readOptions(options);
   const elements = [
-    chosen.roads
-      ? "Include streets, roads, trails, paths, or bridges appropriate to the setting, connecting usable areas."
-      : "Do not include streets, roads, trails, paths, or bridges.",
-    chosen.structures
+    chosen.roads === "include"
+      ? "Include setting-appropriate streets, roads, trails, paths, or bridges connecting usable areas."
+      : chosen.roads === "exclude"
+        ? "Do not include streets, roads, trails, paths, or bridges."
+        : "",
+    chosen.structures === "include"
       ? "Decorative buildings may appear, but must not occupy or obscure future locations."
-      : "Do not include buildings or other decorative structures.",
-    chosen.water
+      : chosen.structures === "exclude"
+        ? "Do not include buildings or other decorative structures."
+        : "",
+    chosen.water === "include"
       ? "Include setting-appropriate water features."
-      : "Do not include water, including oceans, rivers, ponds, canals, or waterfalls.",
-  ];
-  let base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nVillage description (follow only where consistent with the required map elements): ${world}`;
+      : chosen.water === "exclude"
+        ? "Do not include water, including oceans, rivers, ponds, canals, or waterfalls."
+        : "",
+  ].filter(Boolean);
+  let base = `${rules}\n\nFollow the village description for water, paths, and existing structures unless an explicit map preference below says otherwise. Leave room for future village places.${elements.length ? `\n\nExplicit map preferences:\n${elements.join("\n")}` : ""}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nVillage description: ${world}`;
   if (base.length > 4_000)
     throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or village description.");
   const imprint = coerceScenarioImprint(scenarioImprint);
@@ -106,9 +114,9 @@ export function buildTownMapNegativePrompt(options?: unknown, negative?: unknown
           );
           return extra === DEFAULT_TOWN_MAP_NEGATIVE_PROMPT ? "" : extra;
         })(),
-    chosen.roads ? "" : "streets, roads, trails, paths, bridges",
-    chosen.structures ? "" : "buildings, decorative structures",
-    chosen.water ? "" : "ocean, sea, lake, river, pond, canal, waterfall, water",
+    chosen.roads === "exclude" ? "streets, roads, trails, paths, bridges" : "",
+    chosen.structures === "exclude" ? "buildings, decorative structures" : "",
+    chosen.water === "exclude" ? "ocean, sea, lake, river, pond, canal, waterfall, water" : "",
   ]
     .filter(Boolean)
     .join(", ");

@@ -223,7 +223,8 @@ async function main() {
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
-  assert.ok(client.includes("photoPins={setupStep >= 4}"));
+  assert.ok(client.includes("photoPins={setupStep >= 3}"));
+  assert.ok(client.includes('"Village Beginning"'));
   assert.ok(client.includes("What is this village like?"));
   assert.ok(client.includes("What happens on the village&apos;s first day?"));
   assert.ok(client.includes("Open beginning"));
@@ -233,18 +234,16 @@ async function main() {
   assert.ok(client.includes("Place a Gathering Place"));
   assert.ok(client.includes("Replace text with this draft"));
   assert.ok(client.includes("Use in empty fields"));
+  assert.ok(client.includes("generateSetupText(setupVenues, true)"));
+  assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
-  const review =
-    client
-      .split("{setupStep === 5 ? (")[1]
-      ?.split("<div className={`${ELEMENT_TAG}-row`}>\n                {setupStep > 0")[0] ?? "";
+  const review = client.split("{setupStep === 4 ? (")[1]?.split("{setupProblem ? (")[0] ?? "";
   assert.ok(review.includes("Review your village"));
   assert.ok(review.includes("Day 1:"));
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
   assert.ok(routes.includes('"/setup/venues/draft"'));
-  assert.ok(routes.includes('"/setup/scenario-imprint/draft"'));
   assert.ok(routes.includes('"/setup/venue-image/generate"'));
   assert.ok(routes.includes('"/setup/venue-image"'));
   assert.ok(routes.includes('"/setup/preparation/retry"'));
