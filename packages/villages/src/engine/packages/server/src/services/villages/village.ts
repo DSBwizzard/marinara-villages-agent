@@ -3430,6 +3430,11 @@ export function assertFoundingScenarioLocked(
     throw conflict("The founding Scenario is locked. Start a new village to choose another one.");
 }
 
+/** Existing villages keep their locked beginning, including older records without a first-day account. */
+export function validateFirstDayDescription(description: string, founding: boolean): void {
+  if (founding && !description.trim()) throw badRequest("Describe the village's first day.");
+}
+
 export async function runVillageSetup(input: {
   name?: unknown;
   setting?: unknown;
@@ -3468,7 +3473,7 @@ export async function runVillageSetup(input: {
     throw badRequest("Choose a founding scenario.");
   }
   if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000) {
-    throw badRequest("Scenario premise must be text of at most 2,000 characters.");
+    throw badRequest("The first-day description must be text of at most 2,000 characters.");
   }
   const foundingDetails = input.foundingDetails.trim();
   if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
@@ -3478,15 +3483,12 @@ export async function runVillageSetup(input: {
   const selectedLorebookIds = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
   const loreTokenBudget =
     input.loreTokenBudget === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(input.loreTokenBudget);
-  if (foundingReason === "something-else" && !foundingDetails) throw badRequest("Describe the other founding reason.");
-  if (["rebuild", "pioneer", "prosper", "custom"].includes(foundingReason) && !foundingDetails) {
-    throw badRequest("Write a scenario premise, or choose No scenario.");
-  }
-  if (foundingReason === "none" && (foundingDetails || foundingGuidance)) {
-    throw badRequest("No scenario cannot include a premise or narrative direction.");
+  if (foundingReason === "none" && foundingGuidance) {
+    throw badRequest("Open beginning does not use a separate narrative direction.");
   }
   const village = await readVillageState();
   const founding = !isVillageFounded(village);
+  validateFirstDayDescription(foundingDetails, founding);
   if (!founding)
     assertFoundingScenarioLocked(village, {
       foundingReason,
@@ -3494,11 +3496,7 @@ export async function runVillageSetup(input: {
       foundingGuidance,
       scenarioImprint: input.scenarioImprint,
     });
-  const scenarioImprint = founding
-    ? foundingReason === "none"
-      ? null
-      : readScenarioImprint(input.scenarioImprint)
-    : village.scenarioImprint;
+  const scenarioImprint = founding ? readScenarioImprint(input.scenarioImprint) : village.scenarioImprint;
   const worldFacts = founding
     ? (scenarioImprint?.worldFacts ?? [])
     : readWorldFacts(input.worldFacts ?? village.worldFacts);
@@ -4028,7 +4026,7 @@ export async function runVillageBootstrap(): Promise<VillageSnapshot> {
 /** Read-only founding suggestion; the wizard keeps the result until its final write. */
 export async function suggestFoundingPlaces(settingValue: unknown, idsValue: unknown, budgetValue?: unknown) {
   const setting = readVillageSetting(settingValue);
-  if (!setting) throw badRequest("Write the Setting and Theme before suggesting places.");
+  if (!setting) throw badRequest("Describe what the village is like before suggesting places.");
   const ids = readSelectedLorebookIds(idsValue ?? []);
   const budget = budgetValue === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(budgetValue);
   const proposal = await proposeVillage(setting, { lore: await readVillageLore(ids, setting, undefined, budget) });
@@ -4037,7 +4035,7 @@ export async function suggestFoundingPlaces(settingValue: unknown, idsValue: unk
 
 export async function suggestFoundingVenueNames(settingValue: unknown, idsValue: unknown, budgetValue?: unknown) {
   const setting = readVillageSetting(settingValue);
-  if (!setting) throw badRequest("Write the Setting and Theme before suggesting names.");
+  if (!setting) throw badRequest("Describe what the village is like before suggesting names.");
   const ids = readSelectedLorebookIds(idsValue ?? []);
   const budget = budgetValue === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(budgetValue);
   return { names: await proposePublicVenueNames(setting, await readVillageLore(ids, setting, undefined, budget)) };

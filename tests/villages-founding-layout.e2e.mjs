@@ -42,6 +42,11 @@ const personas = [
   { id: "ada", name: "Ada", summary: "A patient observer", isActive: false, avatarPath: null, avatarCrop: null },
   { id: "bryn", name: "Bryn", summary: "A returning wanderer", isActive: false, avatarPath: null, avatarCrop: null },
 ];
+const lorebooks = Array.from({ length: 60 }, (_, index) => ({
+  id: `lore-${index + 1}`,
+  name: `Lorebook ${index + 1}`,
+  enabled: true,
+}));
 const personaPreview = {
   id: "ada",
   name: "Ada",
@@ -75,31 +80,40 @@ try {
       if (path.endsWith("/connections") && route.request().method() === "PUT") {
         connectionSettings = { ...connectionSettings, ...JSON.parse(route.request().postData() ?? "{}") };
       }
-      const value = path.endsWith("/personas/ada")
-        ? { persona: personaPreview }
-        : path.endsWith("/personas/bryn")
-          ? {
-              persona: {
-                ...personaPreview,
-                id: "bryn",
-                name: "Bryn",
-                description: "",
-                appearance: "",
-                personality: "",
-                backstory: "Returned from a long journey.",
-              },
-            }
-          : path.endsWith("/personas/active")
-            ? { persona: { ...personaPreview, id: "active", name: "Zara", description: "A watchful traveler." } }
-            : path.endsWith("/personas")
-              ? { personas: availablePersonas }
-              : path.endsWith("/connections")
-                ? connectionSettings
-                : path.endsWith("/lorebooks")
-                  ? { books: [] }
-                  : path.endsWith("/catalog")
-                    ? { characters: [] }
-                    : snapshot;
+      const value = path.endsWith("/setup/scenario-imprint/draft")
+        ? {
+            imprint: {
+              origin: "",
+              worldFacts: ["The village overlooks the sea"],
+              openingConditions: ["The group gathers on Day 1"],
+              visualCues: ["Salt-worn cottages"],
+            },
+          }
+        : path.endsWith("/personas/ada")
+          ? { persona: personaPreview }
+          : path.endsWith("/personas/bryn")
+            ? {
+                persona: {
+                  ...personaPreview,
+                  id: "bryn",
+                  name: "Bryn",
+                  description: "",
+                  appearance: "",
+                  personality: "",
+                  backstory: "Returned from a long journey.",
+                },
+              }
+            : path.endsWith("/personas/active")
+              ? { persona: { ...personaPreview, id: "active", name: "Zara", description: "A watchful traveler." } }
+              : path.endsWith("/personas")
+                ? { personas: availablePersonas }
+                : path.endsWith("/connections")
+                  ? connectionSettings
+                  : path.endsWith("/lorebooks")
+                    ? { books: lorebooks }
+                    : path.endsWith("/catalog")
+                      ? { characters: [] }
+                      : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("**/api/connections", (route) =>
@@ -155,12 +169,6 @@ try {
       firstNext && firstNext.y >= 0 && firstNext.y + firstNext.height <= height,
       "page 1 navigation is reachable",
     );
-    await root.getByLabel("Founding direction (optional)").scrollIntoViewIfNeeded();
-    const directionBounds = await root.getByLabel("Founding direction (optional)").boundingBox();
-    assert.ok(
-      directionBounds && directionBounds.y >= 0 && directionBounds.y + directionBounds.height <= height,
-      "page 1 controls are reachable",
-    );
     const first = await cards.nth(0).boundingBox();
     const lastInRow = await cards.nth(cardsPerRow - 1).boundingBox();
     assert.ok(first && lastInRow && Math.abs(first.y - lastInRow.y) < 2, "scenario cards fit their row");
@@ -180,7 +188,7 @@ try {
         return { panel: element.scrollTop, page: window.scrollY };
       });
       assert.deepEqual(scrollPosition, { panel: 0, page: 0 }, "the desktop page cannot scroll");
-      const controls = [root.getByLabel("Founding direction (optional)"), root.getByRole("button", { name: "Next →" })];
+      const controls = [root.getByRole("button", { name: "Next →" })];
       for (const control of controls) {
         const bounds = await control.boundingBox();
         assert.ok(
@@ -190,27 +198,15 @@ try {
       }
     }
 
-    const premise = root.getByLabel("Scenario starting idea (required)");
-    const direction = root.getByLabel("Founding direction (optional)");
-    const original = await premise.inputValue();
-    await premise.fill("My edited premise");
-    await direction.fill("Keep the story hopeful");
     await root.getByText("Pioneer", { exact: true }).click();
     await expect.poll(() => artPanel.locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
     await root.getByText("Rebuild", { exact: true }).click();
     await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
-    await expect(premise).toHaveValue(original);
-    await expect(direction).toHaveValue("Keep the story hopeful");
     await root.getByText("Custom", { exact: true }).click();
-    await expect(premise).toHaveValue("");
-    await premise.fill("A custom premise");
-    await root.getByText("Rebuild", { exact: true }).click();
-    await root.getByText("Custom", { exact: true }).click();
-    await expect(premise).toHaveValue("");
     await root.getByText("Rebuild", { exact: true }).click();
     await root.getByLabel("What is this village called?").fill("Willowbrook");
     await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByText("Step 2 of 7 · Connections & Persona")).toBeVisible();
+    await expect(root.getByText("Step 2 of 6 · Connections & Persona")).toBeVisible();
     const secondArt = await artPanel.boundingBox();
     const secondFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
     const secondForm = await root.locator(".marinara-capability-villages-side").boundingBox();
@@ -271,6 +267,41 @@ try {
       await expect(root.getByLabel(name, { exact: true })).toBeVisible();
     await expect(root.getByRole("button", { name: "← Back" })).toBeVisible();
     await expect(root.getByRole("button", { name: "Next →" })).toBeVisible();
+    await root.getByRole("button", { name: "Next →" }).click();
+    await expect(root.getByText("Step 3 of 6 · World & First Day")).toBeVisible();
+    await expect(root.getByLabel("What is this village like?")).toBeVisible();
+    await expect(root.getByLabel("What happens on the village's first day?")).toHaveValue(/On Day 1/);
+    await expect(artPanel).toBeVisible();
+    await expect(root.getByText("Choose lorebooks (0/24)")).toBeVisible();
+    await root.getByText("Choose lorebooks (0/24)").click();
+    await root.getByRole("searchbox", { name: "Search lorebooks" }).fill("Lorebook 37");
+    await root.getByRole("checkbox", { name: "Lorebook 37" }).check();
+    await expect(root.getByRole("button", { name: "Remove Lorebook 37" })).toBeVisible();
+    await expect(root.getByRole("checkbox", { name: "Lorebook 1", exact: true })).toHaveCount(0);
+    const thirdFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
+    const thirdForm = await root.locator(".marinara-capability-villages-side").boundingBox();
+    const thirdArt = await artPanel.boundingBox();
+    if (width > 1000) {
+      assert.ok(thirdArt && thirdForm && thirdArt.height > thirdForm.height * 0.6, "page 3 keeps the artwork panel");
+      assert.ok(
+        thirdFooter && Math.abs(thirdFooter.y + thirdFooter.height - thirdForm.y - thirdForm.height) < 3,
+        "page 3 navigation aligns with the form bottom",
+      );
+    }
+    await root.getByLabel("What is this village like?").fill("A fishing village above the sea.");
+    await root.getByRole("button", { name: "Preview starting details →" }).click();
+    await expect(root.getByRole("region", { name: "Review starting details" })).toBeVisible();
+    await expect(
+      root
+        .getByRole("region", { name: "Review starting details" })
+        .locator("p")
+        .filter({ hasText: "The group gathers on Day 1" }),
+    ).toBeVisible();
+    await root.getByRole("button", { name: "Use details and continue →" }).click();
+    await expect(root.getByText("Step 4 of 6 · Village Map")).toBeVisible();
+    await root.getByRole("button", { name: "← Back" }).click();
+    await expect(root.getByText("Step 3 of 6 · World & First Day")).toBeVisible();
+    await root.getByRole("button", { name: "← Back" }).click();
     if (width > 1000 && height >= 600) {
       const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
       assert.ok(
@@ -301,7 +332,7 @@ try {
     await root.getByRole("button", { name: "Next →" }).click();
     await expect(root.getByText("The saved Persona is no longer in your library.", { exact: false })).toBeVisible();
     await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByText("Step 2 of 7 · Connections & Persona")).toBeVisible();
+    await expect(root.getByText("Step 2 of 6 · Connections & Persona")).toBeVisible();
     await expect(root.getByText("That Persona is no longer in your library.", { exact: false })).toBeVisible();
     assert.deepEqual(errors, []);
     await page.close();

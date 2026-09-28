@@ -30,7 +30,7 @@ function lines(value: unknown, key: ListKey, strict: boolean): string[] {
 
 /** Accept a player's reviewed draft. The original premise is not silently substituted. */
 export function readScenarioImprint(value: unknown): VillageScenarioImprint {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest("Review a Scenario imprint.");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest("Review the starting details.");
   const raw = record(value);
   if (typeof raw.origin !== "string" || raw.origin.length > LIMITS.origin)
     throw badRequest("Scenario origin can be at most 400 characters.");
@@ -48,7 +48,7 @@ export function readScenarioImprint(value: unknown): VillageScenarioImprint {
     visualCues: lines(raw.visualCues, "visualCues", true),
   };
   if (!imprint.origin && !imprint.worldFacts.length && !imprint.openingConditions.length && !imprint.visualCues.length)
-    throw badRequest("Add at least one founding detail to the Scenario imprint.");
+    throw badRequest("Add at least one starting detail.");
   return imprint;
 }
 
@@ -80,8 +80,8 @@ export async function draftScenarioImprint(value: unknown): Promise<{ imprint: V
   const input = record(value);
   const premise = asTrimmedString(input.foundingDetails);
   const setting = asTrimmedString(input.setting);
-  if (!premise || premise.length > 2_000) throw badRequest("Write a Scenario idea of at most 2,000 characters.");
-  if (!setting || setting.length > 2_000) throw badRequest("Write the Setting and Theme first.");
+  if (!premise || premise.length > 2_000) throw badRequest("Describe Day 1 in at most 2,000 characters.");
+  if (!setting || setting.length > 2_000) throw badRequest("Describe what the village is like first.");
   const direction = asTrimmedString(input.foundingGuidance).slice(0, 500);
   const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
   const budget = input.loreTokenBudget === undefined ? 800 : readLoreTokenBudget(input.loreTokenBudget);
@@ -93,9 +93,10 @@ export async function draftScenarioImprint(value: unknown): Promise<{ imprint: V
     {
       role: "system",
       content: [
-        "Propose a compact, editable starting imprint for a fictional village.",
-        "Distinguish historical origin, stable present world facts, temporary opening conditions, and visual cues.",
-        "A custom idea may describe only an ongoing world condition; leave origin empty rather than inventing a founding event.",
+        "Propose compact, editable details for Day 1 of a fictional village.",
+        "The village begins on Day 1. Distinguish events before the village existed, lasting present world facts, temporary Day 1 conditions, and visual cues.",
+        "Leave origin empty unless the player describes earlier background. Never claim the village was already founded before Day 1.",
+        "An Open beginning has no preset story, but the player's Day 1 description is authoritative.",
         "Treat the player's text and established lore as authoritative. Do not invent named people, relationships, possessions, or completed events.",
         "Offer specific, grounded suggestions without making every resident or venue repeat the same theme.",
         'Return JSON only: {"origin":"","worldFacts":[],"openingConditions":[],"visualCues":[]}.',
@@ -110,6 +111,6 @@ export async function draftScenarioImprint(value: unknown): Promise<{ imprint: V
     debugMode: false,
   });
   const payload = extractJsonObject(completion.content ?? "");
-  if (!payload) throw badRequest("The Scenario draft was incomplete. Retry or write the imprint yourself.");
+  if (!payload) throw badRequest("The starting-details draft was incomplete. Retry or write it yourself.");
   return { imprint: readScenarioImprint(payload) };
 }

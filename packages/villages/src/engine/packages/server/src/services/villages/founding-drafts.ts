@@ -89,7 +89,7 @@ export async function draftFoundingVenueText(
     worldFacts: imprint?.worldFacts ?? coerceWorldFacts(input.worldFacts),
   };
   const setting = imprint ? villageFoundingSetting(context) : villageCurrentSetting(context);
-  if (!setting.trim()) throw badRequest("Write the Setting and Theme first.");
+  if (!setting.trim()) throw badRequest("Describe what the village is like first.");
   const rows = await Promise.all(rowsOf(input.venues).map(withResident));
   const lore = await readVillageLore(
     readSelectedLorebookIds(input.selectedLorebookIds ?? []),
@@ -163,7 +163,7 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
   ]
     .filter(Boolean)
     .join("; ");
-  if (!setting) throw badRequest("Write the Setting and Theme first.");
+  if (!setting) throw badRequest("Describe what the village is like first.");
   const lore = await readVillageVisualLore(
     readSelectedLorebookIds(input.selectedLorebookIds ?? []),
     `${setting}\n${row.name}\n${row.form}\n${row.guidance}`,

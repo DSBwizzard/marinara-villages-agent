@@ -19,7 +19,7 @@ export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 
 export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
   "Create a wide landscape, top-down or three-quarter-view illustrated game navigation map. " +
-  "Use the Setting and Theme for the art style, tone, and surroundings. Show varied, coherent, traversable terrain " +
+  "Use the village description for the surroundings and visual character. Show varied, coherent, traversable terrain " +
   "and natural landmarks. Distribute many visually distinct, usable places for future venue placements " +
   "across the image, with clear separation. These should read as natural clearings, terraces, platforms, " +
   "or other setting-appropriate open spaces, never outlined lots, square plots, zones, or a grid. Avoid clutter and " +
@@ -65,7 +65,7 @@ export function buildTownMapPrompt(
     structure === undefined || structure === null || structure === ""
       ? DEFAULT_TOWN_MAP_LAYOUT_PROMPT
       : readRequiredText(structure, "The DEBUG map layout prompt", MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH);
-  const world = readRequiredText(setting, "Setting and Theme", MAX_SETTING_LENGTH);
+  const world = readRequiredText(setting, "Village description", MAX_SETTING_LENGTH);
   const chosen = readOptions(options);
   const elements = [
     chosen.roads
@@ -78,9 +78,9 @@ export function buildTownMapPrompt(
       ? "Include setting-appropriate water features."
       : "Do not include water, including oceans, rivers, ponds, canals, or waterfalls.",
   ];
-  let base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nSetting and Theme (follow only where consistent with the required map elements): ${world}`;
+  let base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nVillage description (follow only where consistent with the required map elements): ${world}`;
   if (base.length > 4_000)
-    throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or Setting and Theme.");
+    throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or village description.");
   const imprint = coerceScenarioImprint(scenarioImprint);
   const visual = [...(imprint?.worldFacts ?? []), ...(imprint?.visualCues ?? [])].join("; ");
   const visualPrefix = "\nReviewed founding visual context (map controls above always win): ";
