@@ -935,6 +935,7 @@ type RoomView = {
     status: "none" | "pending" | "complete";
     attempts: number;
     error: string;
+    nextRecollection?: number;
     decisions?: RoomMemoryDecision[];
   };
   submissions?: {
@@ -968,6 +969,7 @@ type ArchiveVisitSummary = Pick<
 > & {
   lineCount: number;
   memoryUnits: number;
+  recollectionCount: number;
 };
 
 function currentRoom(session: RoomView): RoomView {
@@ -1054,7 +1056,7 @@ type MemoryLibrary = {
   durable: MemoryDurable[];
   recollections: MemoryRecollection[];
   expiredRecollectionCount: number;
-  archive: { total: number; pendingReviewCount: number; recent: ArchiveVisitSummary[] };
+  archive: { total: number; pendingReviewCount: number; pendingReviewId?: string; recent: ArchiveVisitSummary[] };
 };
 
 /**
@@ -9909,6 +9911,7 @@ function RoomPanel({
   onEnd,
   onLeavePending,
   endFailed,
+  reviewing,
   onRetryGreeting,
   onContinueWithoutGreeting,
   notices,
@@ -9946,6 +9949,7 @@ function RoomPanel({
   onEnd: () => void;
   onLeavePending: () => void;
   endFailed: boolean;
+  reviewing: boolean;
   onRetryGreeting: () => void;
   onContinueWithoutGreeting: () => void;
   notices: RoomRecordEvent[];
@@ -10026,6 +10030,9 @@ function RoomPanel({
     setOpenMemory(null);
     window.requestAnimationFrame(() => memoryTriggerRef.current?.focus());
   }, []);
+  const reviewTotal = new Set(
+    (room.submissions ?? []).flatMap((submission) => (submission.recollections ?? []).map((entry) => entry.id)),
+  ).size;
 
   useEffect(() => {
     if (!openMemory) return;
@@ -10280,13 +10287,14 @@ function RoomPanel({
                 role="menuitem"
                 onClick={() => {
                   setActionsOpen(false);
-                  onEnd();
+                  if (ended && room.memoryPending) onLeavePending();
+                  else onEnd();
                 }}
                 disabled={busy}
               >
-                {ended ? "Return to map" : "End visit now"}
+                {ended && room.memoryPending ? "Leave with memory pending" : ended ? "Return to map" : "End visit now"}
               </button>
-              {endFailed || room.status === "closing" ? (
+              {(endFailed || room.status === "closing" || room.memoryPending) && !ended ? (
                 <button
                   type="button"
                   role="menuitem"
@@ -10637,8 +10645,13 @@ function RoomPanel({
                 <span>Next</span> ›
               </button>
             ) : ended ? (
-              <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
-                Return to map
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-chat-vn-button`}
+                onClick={room.memoryPending ? onLeavePending : onEnd}
+                disabled={busy}
+              >
+                {room.memoryPending ? "Leave with memory pending" : "Return to map"}
               </button>
             ) : null}
           </span>
@@ -10671,9 +10684,19 @@ function RoomPanel({
           </div>
         ) : null}
         {ruling ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
-        {room.status === "closing" ? (
+        {room.status === "closing" || room.memoryPending ? (
           <p className={`${ELEMENT_TAG}-hint`}>
-            The visit is still being remembered. You can leave with memory pending if filing cannot finish.
+            {room.memoryPending
+              ? `Memory review ${reviewing ? "in progress" : "pending"} · ${room.memoryReview?.nextRecollection ?? 0}/${reviewTotal} recollections reviewed. You can leave with memory pending and retry from Memories.`
+              : "Closing this visit…"}
+          </p>
+        ) : null}
+        {ended &&
+        !room.memoryPending &&
+        room.memoryReview?.status === "complete" &&
+        !room.memoryReview.decisions?.some((decision) => decision.action === "promote") ? (
+          <p className={`${ELEMENT_TAG}-hint`} role="status">
+            Review complete. No durable memories were made from this visit.
           </p>
         ) : null}
 
@@ -11670,6 +11693,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * shut is the box the answer is coming to, and that is all that is shut.
    */
   const [roomBusy, setRoomBusy] = useState(false);
+  const [roomReviewingId, setRoomReviewingId] = useState("");
+  const roomReviewInFlightRef = useRef(new Set<string>());
   const leavingRoomPendingRef = useRef(false);
   const roomSubmissionIdRef = useRef<string | null>(null);
   const roomLeaveSubmissionIdRef = useRef<string | null>(null);
@@ -11922,11 +11947,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, []);
 
+  const memoryAutoRetryIdsRef = useRef(new Set<string>());
   const loadMemoryLibrary = useCallback(async (signal?: AbortSignal) => {
     try {
       const response = await request<MemoryLibrary>("/memories", { signal });
       setMemoryLibrary(response);
       setError("");
+      const pendingId = response.archive.pendingReviewId;
+      if (pendingId && !memoryAutoRetryIdsRef.current.has(pendingId) && !signal?.aborted) {
+        memoryAutoRetryIdsRef.current.add(pendingId);
+        window.setTimeout(() => {
+          if (signal?.aborted) return;
+          void request(`/rooms/archive/${encodeURIComponent(pendingId)}/retry-memory`, { method: "POST" })
+            .then(() => request<MemoryLibrary>("/memories"))
+            .then((updated) => {
+              if (!signal?.aborted) setMemoryLibrary(updated);
+            })
+            .catch(() => undefined);
+        }, 0);
+      }
     } catch (cause) {
       if (signal?.aborted) return;
       setMemoryLibrary(null);
@@ -12461,9 +12500,55 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setScreen("home");
   }, []);
 
+  const startRoomReview = useCallback(
+    (session: RoomView) => {
+      if (!session.memoryPending || roomReviewInFlightRef.current.has(session.id)) return;
+      roomReviewInFlightRef.current.add(session.id);
+      setRoomReviewingId(session.id);
+      void request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>(
+        `/rooms/archive/${encodeURIComponent(session.id)}/retry-memory`,
+        { method: "POST" },
+      )
+        .then((answer) => {
+          if (leavingRoomPendingRef.current) return;
+          setRoom((current) => (current?.id === session.id ? currentRoom(answer.session) : current));
+          receiveRoomRecordEvents(answer.recordEvents ?? []);
+        })
+        .catch((cause) => {
+          if (!leavingRoomPendingRef.current)
+            setRoomError(messageFrom(cause, "Memory review is still pending. You can leave and retry from Memories."));
+        })
+        .finally(() => {
+          roomReviewInFlightRef.current.delete(session.id);
+          setRoomReviewingId((current) => (current === session.id ? "" : current));
+        });
+    },
+    [receiveRoomRecordEvents],
+  );
+
+  useEffect(() => {
+    if (!roomReviewingId) return;
+    const timer = window.setInterval(() => {
+      void request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(roomReviewingId)}`)
+        .then(({ visit }) => {
+          if (leavingRoomPendingRef.current || !roomReviewInFlightRef.current.has(roomReviewingId)) return;
+          setRoom((current) =>
+            current?.id === visit.id && current.memoryPending
+              ? { ...current, memoryPending: visit.memoryPending, memoryReview: visit.memoryReview }
+              : current,
+          );
+        })
+        .catch(() => undefined);
+    }, 2_000);
+    return () => window.clearInterval(timer);
+  }, [roomReviewingId]);
+
   /** End an active visit in place; a second press returns the completed scene to the map. */
   const closeRoom = useCallback(async () => {
     if (!room || roomBusy) return;
+    if (room.memoryPending && (room.status === "closed" || roomEnded)) {
+      return;
+    }
     if (!room.id || room.status === "closed" || roomEnded) {
       roomCompletionRef.current = null;
       setRoomOpen(false);
@@ -12490,6 +12575,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoom(currentRoom(answer.session));
       setRoomEnded(true);
       receiveRoomRecordEvents(answer.recordEvents ?? []);
+      startRoomReview(answer.session);
       setRoomDraft("");
       setRoomGreetingNotice("");
       void loadSnapshot();
@@ -12516,7 +12602,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } finally {
       setRoomBusy(false);
     }
-  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomEnded]);
+  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomEnded, startRoomReview]);
 
   const leaveRoom = useCallback(async () => {
     if (!room?.id || room.status !== "active" || roomBusy || roomSendInFlightRef.current) return;
@@ -12535,6 +12621,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoom(currentRoom(answer.session));
       setRoomEnded(true);
       receiveRoomRecordEvents(answer.recordEvents ?? []);
+      startRoomReview(answer.session);
       roomLeaveSubmissionIdRef.current = null;
       setRoomDraft("");
       void loadSnapshot();
@@ -12543,6 +12630,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       if (recovered) {
         setRoom(currentRoom(recovered));
         setRoomEnded(true);
+        startRoomReview(recovered);
         setRoomDraft("");
         setRoomError("");
         setEndFailed(false);
@@ -12571,7 +12659,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } finally {
       setRoomBusy(false);
     }
-  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomDraft]);
+  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomDraft, startRoomReview]);
 
   const leaveRoomPending = useCallback(async () => {
     if (!room?.id || leavingRoomPendingRef.current) return;
@@ -12690,6 +12778,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomEnded(answer.session.status === "closed");
       if (answer.session.status !== "closed") roomCompletionRef.current = null;
       receiveRoomRecordEvents(answer.recordEvents ?? []);
+      if (answer.session.status === "closed") startRoomReview(answer.session);
       if (roomTargetId && !answer.session.activeIds.includes(roomTargetId)) setRoomTargetId("");
       setRoomRuling(answer.verdict?.reason ?? "");
       setRoomMode("chat");
@@ -12701,6 +12790,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       if (recovered) {
         setRoom(currentRoom(recovered));
         setRoomEnded(true);
+        startRoomReview(recovered);
         setRoomError("");
         roomSubmissionIdRef.current = null;
         setRoomGreetingNotice("");
@@ -12730,7 +12820,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       roomSendInFlightRef.current = false;
       setRoomBusy(false);
     }
-  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomDraft, roomEnded, roomMode, roomTargetId]);
+  }, [
+    loadSnapshot,
+    receiveRoomRecordEvents,
+    room,
+    roomBusy,
+    roomDraft,
+    roomEnded,
+    roomMode,
+    roomTargetId,
+    startRoomReview,
+  ]);
 
   /**
    * Everybody the village places in one place at this hour.
@@ -14692,6 +14792,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             onDebugDiscard={() => void discardRoomDebug()}
             onLeavePending={() => void leaveRoomPending()}
             endFailed={endFailed}
+            reviewing={roomReviewingId === room.id}
             onRetryGreeting={() => {
               if (room.id) void greetRoom(room.id);
               else {
@@ -17614,7 +17715,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         {visit.endReason === "inactivity" ? " · Interrupted: Inactivity" : ""}
                         {visit.memoryPending
                           ? visit.memoryReview?.status === "pending"
-                            ? ` · durable review pending · ${visit.memoryReview.attempts} ${visit.memoryReview.attempts === 1 ? "attempt" : "attempts"}`
+                            ? ` · durable review pending · ${visit.memoryReview.nextRecollection ?? 0}/${visit.recollectionCount} recollections reviewed · ${visit.memoryReview.attempts} ${visit.memoryReview.attempts === 1 ? "attempt" : "attempts"}`
                             : ` · legacy memory pending (${visit.memoryProgress?.nextUnit ?? 0}/${visit.memoryUnits} pieces processed)`
                           : ""}
                       </p>
@@ -17726,7 +17827,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                               <summary>{`Durable review · ${openArchivedVisit.memoryReview?.status ?? "none"}`}</summary>
                               <div className={`${ELEMENT_TAG}-agenda-notes-body`}>
                                 <p className={`${ELEMENT_TAG}-story-meta`}>
-                                  {`${openArchivedVisit.memoryReview?.attempts ?? 0} review attempts`}
+                                  {`${openArchivedVisit.memoryReview?.attempts ?? 0} review attempts · ${openArchivedVisit.memoryReview?.nextRecollection ?? 0} recollections reviewed`}
                                   {openArchivedVisit.memoryReview?.error
                                     ? ` · Last error: ${openArchivedVisit.memoryReview.error}`
                                     : ""}

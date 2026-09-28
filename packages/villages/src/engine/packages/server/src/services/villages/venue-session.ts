@@ -149,6 +149,7 @@ type VenueMemoryReview = {
   status: "none" | "pending" | "complete";
   attempts: number;
   error: string;
+  nextRecollection: number;
   decisions: VenueMemoryDecision[];
 };
 export type VenueRecordEvent = {
@@ -459,6 +460,10 @@ function coerceSession(value: unknown): VenueSession {
             ? Math.max(0, Math.floor(review.attempts))
             : 0,
         error: asTrimmedString(review.error).slice(0, 500),
+        nextRecollection:
+          typeof review.nextRecollection === "number" && Number.isFinite(review.nextRecollection)
+            ? Math.max(0, Math.floor(review.nextRecollection))
+            : 0,
         decisions: Array.isArray(review.decisions)
           ? review.decisions.map(coerceMemoryDecision).filter((entry): entry is VenueMemoryDecision => entry !== null)
           : [],
@@ -1179,8 +1184,6 @@ async function interruptInactiveVisit(id: string): Promise<void> {
   });
   if (closed.status !== "closed") return;
   await clearActivePointer(id);
-  if (closed.memoryMode === "tiered" && sessionRecollections(closed).length)
-    await reviewTieredMemories(id, AbortSignal.timeout(90_000));
   if (!closed.lines.some((line) => line.role === "user")) {
     const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
@@ -1325,7 +1328,7 @@ export async function enterVenue(
     memories: null,
     memoryProgress: null,
     memoryPending: false,
-    memoryReview: { status: "none", attempts: 0, error: "", decisions: [] },
+    memoryReview: { status: "none", attempts: 0, error: "", nextRecollection: 0, decisions: [] },
     recap: "",
   };
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => Object.assign(value, session));
@@ -1502,6 +1505,7 @@ export async function sendVenueTurn(input: VenueTurnInput) {
 
 /** Generate a final beat once, then use the ordinary visit filing path. */
 export async function leaveVenueSession(sessionId: string, submissionId: string, message = "") {
+  const started = performance.now();
   const result = await sendVenueTurn({
     sessionId,
     submissionId,
@@ -1509,7 +1513,14 @@ export async function leaveVenueSession(sessionId: string, submissionId: string,
     mode: "leave",
     targetId: "",
   });
-  const ending = await endVenueSessionWithReceipts(sessionId);
+  const farewellMs = Math.round(performance.now() - started);
+  const ending = await closeVenueSessionWithReceipts(sessionId);
+  villagesLogger().debug(
+    "[villages] visit close: farewellMs=%d archiveMs=%d pending=%s",
+    farewellMs,
+    Math.round(performance.now() - started - farewellMs),
+    ending.session.memoryPending,
+  );
   const byId = new Map([...result.recordEvents, ...ending.recordEvents].map((event) => [event.id, event] as const));
   return { ...result, session: ending.session, recordEvents: [...byId.values()] };
 }
@@ -1794,7 +1805,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   let recordEvents = await receiptForTurn(updated, submission);
   let finalSession = updated;
   if (updated.status === "closed") {
-    finalSession = await endVenueSession(updated.id);
+    finalSession = await closeVenueSession(updated.id);
     const byId = new Map([...recordEvents, ...reviewReceipts(finalSession)].map((event) => [event.id, event] as const));
     recordEvents = [...byId.values()];
   }
@@ -2219,7 +2230,26 @@ function memoryReviewMessages(
   session: VenueSession,
   recollections: readonly VenueRecollection[],
   village: VillageState,
+  previous: readonly VenueMemoryDecision[],
+  backgroundLimit: number,
 ): CapabilityLanguageModelMessage[] {
+  const queryWords = new Set(
+    recollections.flatMap((entry) => entry.text.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []),
+  );
+  const relevant = (texts: string[], recentFirst: boolean) =>
+    texts
+      .map((value, index) => ({
+        value,
+        index,
+        score: (value.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []).filter((word) => queryWords.has(word)).length,
+      }))
+      .sort(
+        (left, right) =>
+          right.score - left.score || (recentFirst ? right.index - left.index : left.index - right.index),
+      )
+      .slice(0, backgroundLimit)
+      .sort((left, right) => left.index - right.index)
+      .map((entry) => entry.value);
   const lines = new Map(session.lines.map((line) => [line.id, line]));
   const venue = village.venues.find((entry) => entry.id === session.placeId);
   const worldState = venue
@@ -2234,7 +2264,7 @@ function memoryReviewMessages(
     {
       role: "system",
       content:
-        'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once. Consolidate related recollections when they describe one event. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state. There is NO promotion quota: promote every distinct event that qualifies. Subjects are who the event concerns; knownBy are only residents who heard every cited line. Never broaden the audience. Return JSON only: {"decisions":[{"action":"promote","recollectionIds":["exact id"],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event","subjectCharacterIds":["id"],"knownByCharacterIds":["id"],"lineIds":["exact line id"]},{"action":"reject","recollectionIds":["exact id"],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. A recollection ID must appear in exactly one decision. Do not invent evidence or IDs.',
+        'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once by its batch-local index. Consolidate related recollections when they describe one event, but do not combine recollections whose witnesses did not hear the same evidence. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state or previous promotions. There is NO promotion quota. Return JSON only: {"decisions":[{"action":"promote","indices":[0],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event"},{"action":"reject","indices":[1],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. Every index must appear in exactly one decision. Do not invent evidence or indices.',
     },
     {
       role: "user",
@@ -2242,18 +2272,32 @@ function memoryReviewMessages(
         visitId: session.id,
         venue: session.placeName,
         participants: session.participants,
-        currentWorldState: worldState,
-        existingDurableMemories: village.chronicle
-          .filter((entry) => entry.kind !== "tick")
-          .slice(0, 80)
-          .map((entry) => ({ id: entry.id, text: entry.text })),
-        recollections: recollections.map((entry) => ({
-          ...entry,
+        currentWorldState: relevant(worldState, backgroundLimit),
+        existingDurableMemories: relevant(
+          village.chronicle.filter((entry) => entry.kind !== "tick").map((entry) => entry.text),
+          false,
+        ),
+        previousPromotions: relevant(
+          previous.filter((entry) => entry.action === "promote").map((entry) => entry.text ?? ""),
+          true,
+        ),
+        recollections: recollections.map((entry, index) => ({
+          index,
+          text: entry.text,
+          subjects: entry.subjectCharacterIds,
+          knownBy: entry.knownByCharacterIds,
           evidence: entry.lineIds.map((lineId) => {
             const line = lines.get(lineId);
             return line
-              ? { lineId, speaker: line.name || "Player", text: line.content, heardBy: line.heardBy }
-              : { lineId, missing: true };
+              ? {
+                  speaker: line.name || "Player",
+                  text:
+                    line.content.length <= 1_600
+                      ? line.content
+                      : `${line.content.slice(0, 800)} … ${line.content.slice(-800)}`,
+                  heardBy: line.heardBy,
+                }
+              : { missing: true };
           }),
         })),
       }),
@@ -2267,20 +2311,29 @@ function parseMemoryReview(
   source: readonly VenueRecollection[],
 ): VenueMemoryDecision[] {
   if (raw?.complete !== true || !Array.isArray(raw.decisions)) throw new Error(MEMORY_REVIEW_ERROR);
-  const sourceById = new Map(source.map((entry) => [entry.id, entry]));
-  const participantIds = new Set(session.participants.map((person) => person.characterId));
   const lineById = new Map(session.lines.map((line) => [line.id, line]));
-  const used = new Set<string>();
+  const used = new Set<number>();
   const decisions: VenueMemoryDecision[] = [];
   for (const value of raw.decisions) {
     const row = asRecord(value);
     const action = row.action === "promote" ? "promote" : row.action === "reject" ? "reject" : null;
-    const recollectionIds = Array.isArray(row.recollectionIds)
-      ? [...new Set(row.recollectionIds.filter((id): id is string => typeof id === "string" && sourceById.has(id)))]
-      : [];
-    if (!action || !recollectionIds.length || recollectionIds.some((id) => used.has(id)))
+    const indices =
+      Array.isArray(row.indices) &&
+      row.indices.every(
+        (index) => typeof index === "number" && Number.isInteger(index) && index >= 0 && index < source.length,
+      )
+        ? (row.indices as number[])
+        : [];
+    if (
+      !action ||
+      !indices.length ||
+      indices.length !== new Set(indices).size ||
+      indices.some((index) => used.has(index))
+    )
       throw new Error(MEMORY_REVIEW_ERROR);
-    recollectionIds.forEach((id) => used.add(id));
+    indices.forEach((index) => used.add(index));
+    const entries = indices.map((index) => source[index]!);
+    const recollectionIds = entries.map((entry) => entry.id);
     const reason = asTrimmedString(row.reason).slice(0, 240) || "other";
     if (action === "reject") {
       decisions.push({
@@ -2300,16 +2353,11 @@ function parseMemoryReview(
         ? row.category
         : null;
     const text = asTrimmedString(row.text).slice(0, MAX_CHRONICLE_LENGTH);
-    const ids = (field: unknown) =>
-      Array.isArray(field)
-        ? [...new Set(field.filter((id): id is string => typeof id === "string" && participantIds.has(id)))]
-        : [];
-    const subjectCharacterIds = ids(row.subjectCharacterIds);
-    const knownByCharacterIds = ids(row.knownByCharacterIds);
-    const sourceLineIds = new Set(recollectionIds.flatMap((id) => sourceById.get(id)?.lineIds ?? []));
-    const lineIds = Array.isArray(row.lineIds)
-      ? [...new Set(row.lineIds.filter((id): id is string => typeof id === "string" && sourceLineIds.has(id)))]
-      : [];
+    const subjectCharacterIds = [...new Set(entries.flatMap((entry) => entry.subjectCharacterIds))];
+    const knownByCharacterIds = entries[0]!.knownByCharacterIds.filter((id) =>
+      entries.every((entry) => entry.knownByCharacterIds.includes(id)),
+    );
+    const lineIds = [...new Set(entries.flatMap((entry) => entry.lineIds))];
     if (
       !category ||
       !text ||
@@ -2333,7 +2381,7 @@ function parseMemoryReview(
       lineIds,
     });
   }
-  if (used.size !== source.length || source.some((entry) => !used.has(entry.id))) throw new Error(MEMORY_REVIEW_ERROR);
+  if (used.size !== source.length) throw new Error(MEMORY_REVIEW_ERROR);
   return decisions;
 }
 
@@ -2349,34 +2397,83 @@ async function generateMemoryReview(
   source: readonly VenueRecollection[],
   village: VillageState,
   signal: AbortSignal,
+  saved: readonly VenueMemoryDecision[],
+  nextRecollection: number,
+  checkpoint: (decisions: VenueMemoryDecision[], next: number) => Promise<void>,
 ): Promise<VenueMemoryDecision[]> {
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),
   });
-  const maxTokens = Math.min(model.maxOutputTokens ?? 3_600, 3_600);
-  const fits = (entries: readonly VenueRecollection[]) => {
-    const messages = memoryReviewMessages(session, entries, village);
-    const fitted = model.fitContext(messages, { maxTokens });
-    return fitted.maxTokens === maxTokens && JSON.stringify(fitted.messages) === JSON.stringify(messages);
+  const outputLimit = model.maxOutputTokens ?? 16_384;
+  const outputTokens = (count: number) => Math.min(outputLimit, Math.max(2_048, 512 + count * 160));
+  const maxBatchSize = Math.max(1, Math.floor((outputLimit - 512) / 160));
+  const decisions = [...saved];
+  let fitMs = 0;
+  const fits = (entries: readonly VenueRecollection[], backgroundLimit: number) => {
+    const started = performance.now();
+    const messages = memoryReviewMessages(session, entries, village, decisions, backgroundLimit);
+    const tokens = outputTokens(entries.length);
+    const fitted = model.fitContext(messages, { maxTokens: tokens });
+    fitMs += performance.now() - started;
+    return fitted.maxTokens === tokens && JSON.stringify(fitted.messages) === JSON.stringify(messages);
   };
-  const decisions: VenueMemoryDecision[] = [];
-  let cursor = 0;
-  while (cursor < source.length) {
+
+  const process = async (start: number, end: number, backgroundLimit: number): Promise<void> => {
     signal.throwIfAborted();
-    let end = cursor + 1;
-    if (!fits(source.slice(cursor, end))) throw new Error(MEMORY_REVIEW_ERROR);
-    while (end < source.length && fits(source.slice(cursor, end + 1))) end += 1;
-    const batch = source.slice(cursor, end);
-    const messages = memoryReviewMessages(session, batch, village);
-    const completion = await completeWithRoom(model, messages, maxTokens, {
+    const batch = source.slice(start, end);
+    const selectedBackground = [backgroundLimit, 16, 8, 0].find((limit) => fits(batch, limit));
+    if (selectedBackground === undefined) throw new Error(MEMORY_REVIEW_ERROR);
+    const messages = memoryReviewMessages(session, batch, village, decisions, selectedBackground);
+    const tokens = outputTokens(batch.length);
+    const started = performance.now();
+    const completion = await completeWithRoom(model, messages, tokens, {
       temperature: 0.1,
       reasoningEffort: null,
       verbosity: null,
       debugMode: false,
       signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
     });
-    if (completion.finishReason === "length") throw new Error(MEMORY_REVIEW_ERROR);
-    decisions.push(...parseMemoryReview(extractJsonObject(completion.content ?? ""), session, batch));
+    villagesLogger().debug(
+      "[villages] memory review batch: items=%d outputLimit=%d outputChars=%d finish=%s modelMs=%d fitMs=%d usage=%j",
+      batch.length,
+      tokens,
+      (completion.content ?? "").length,
+      completion.finishReason ?? "unknown",
+      Math.round(performance.now() - started),
+      Math.round(fitMs),
+      completion.usage ?? {},
+    );
+    let fresh: VenueMemoryDecision[];
+    try {
+      if (completion.finishReason === "length") throw new Error(MEMORY_REVIEW_ERROR);
+      fresh = parseMemoryReview(extractJsonObject(completion.content ?? ""), session, batch);
+    } catch (error) {
+      if (end - start === 1) throw error;
+      const middle = start + Math.floor((end - start) / 2);
+      await process(start, middle, backgroundLimit);
+      await process(middle, end, backgroundLimit);
+      return;
+    }
+    decisions.push(...fresh);
+    await checkpoint(decisions, end);
+  };
+
+  let cursor = nextRecollection;
+  while (cursor < source.length) {
+    signal.throwIfAborted();
+    let low = cursor + 1;
+    let high = Math.min(source.length, cursor + maxBatchSize);
+    const backgroundLimit = [32, 16, 8, 0].find((limit) => fits(source.slice(cursor, low), limit));
+    if (backgroundLimit === undefined) throw new Error(MEMORY_REVIEW_ERROR);
+    let end = low;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      if (fits(source.slice(cursor, middle), backgroundLimit)) {
+        end = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    await process(cursor, end, backgroundLimit);
     cursor = end;
   }
   if (!decisionsCover(decisions, source)) throw new Error(MEMORY_REVIEW_ERROR);
@@ -2432,35 +2529,64 @@ async function commitMemoryReview(session: VenueSession, decisions: readonly Ven
 }
 
 async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<VenueSession> {
+  const started = performance.now();
   let session = await readSession(id);
   const source = sessionRecollections(session);
   if (!source.length)
     return changeSession(id, (state) => {
-      state.memoryReview = { status: "complete", attempts: state.memoryReview.attempts, error: "", decisions: [] };
+      state.memoryReview = {
+        status: "complete",
+        attempts: state.memoryReview.attempts,
+        error: "",
+        nextRecollection: 0,
+        decisions: [],
+      };
       state.memoryPending = false;
     });
   try {
     let decisions = session.memoryReview.decisions;
     if (!decisionsCover(decisions, source)) {
+      const next = Math.min(session.memoryReview.nextRecollection, source.length);
+      const resumable = decisionsCover(decisions, source.slice(0, next));
       await changeSession(id, (state) => {
         state.memoryReview.status = "pending";
         state.memoryReview.attempts += 1;
         state.memoryReview.error = "";
-        state.memoryReview.decisions = [];
+        if (!resumable) {
+          state.memoryReview.decisions = [];
+          state.memoryReview.nextRecollection = 0;
+        }
         state.memoryPending = true;
       });
       session = await readSession(id);
-      decisions = await generateMemoryReview(session, source, await readVillageState(), signal);
-      await changeSession(id, (state) => {
-        state.memoryReview.decisions = decisions;
-      });
+      decisions = await generateMemoryReview(
+        session,
+        source,
+        await readVillageState(),
+        signal,
+        session.memoryReview.decisions,
+        session.memoryReview.nextRecollection,
+        async (progress, nextRecollection) => {
+          await changeSession(id, (state) => {
+            state.memoryReview.decisions = [...progress];
+            state.memoryReview.nextRecollection = nextRecollection;
+          });
+        },
+      );
     }
     await commitMemoryReview(await readSession(id), decisions);
-    return changeSession(id, (state) => {
+    const completed = await changeSession(id, (state) => {
       state.memoryReview.status = "complete";
       state.memoryReview.error = "";
       state.memoryPending = false;
     });
+    villagesLogger().debug(
+      "[villages] memory review complete: items=%d decisions=%d elapsedMs=%d",
+      source.length,
+      decisions.length,
+      Math.round(performance.now() - started),
+    );
+    return completed;
   } catch (error) {
     villagesLogger().warn("[villages] memory review remains pending for %s: %s", id, String(error));
     return changeSession(id, (state) => {
@@ -2472,6 +2598,7 @@ async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<Ve
 }
 
 function reviewReceipts(session: VenueSession): VenueRecordEvent[] {
+  if (session.memoryReview.status !== "complete") return [];
   return session.memoryReview.decisions
     .filter((decision) => decision.action === "promote" && !!decision.text)
     .map((decision) => ({
@@ -2634,16 +2761,27 @@ export async function endVenueSession(id: string): Promise<VenueSession> {
   }
 }
 
-/** Close a visit and return only the durable memories its completed review promoted. */
+/** Complete or retry a review and return only committed durable memories. */
 export async function endVenueSessionWithReceipts(id: string) {
   const session = await endVenueSession(id);
+  return { session, recordEvents: reviewReceipts(session) };
+}
+
+/** Close a visit promptly so its final beat can be read before memory review. */
+export async function closeVenueSession(id: string): Promise<VenueSession> {
+  const session = await readSession(id);
+  return session.memoryMode === "tiered" ? closeTieredVenueSession(session) : endVenueSession(id);
+}
+
+export async function closeVenueSessionWithReceipts(id: string) {
+  const session = await closeVenueSession(id);
   return { session, recordEvents: reviewReceipts(session) };
 }
 
 const closingTasks = new Map<string, Promise<VenueSession>>();
 const closingControllers = new Map<string, AbortController>();
 
-async function endTieredVenueSession(session: VenueSession, signal: AbortSignal): Promise<VenueSession> {
+async function closeTieredVenueSession(session: VenueSession): Promise<VenueSession> {
   if (session.status !== "closed") {
     if (isInactive(session)) {
       await interruptInactiveVisit(session.id);
@@ -2662,6 +2800,7 @@ async function endTieredVenueSession(session: VenueSession, signal: AbortSignal)
         status: "complete",
         attempts: state.memoryReview.attempts,
         error: "",
+        nextRecollection: 0,
         decisions: [],
       };
       state.memoryPending = false;
@@ -2671,17 +2810,22 @@ async function endTieredVenueSession(session: VenueSession, signal: AbortSignal)
     }
   });
   await clearActivePointer(session.id);
-  let result = closed;
-  if (source.length && closed.memoryReview.status !== "complete")
-    result = await reviewTieredMemories(session.id, signal);
-  const hasPlayerTurn = result.lines.some((line) => line.role === "user");
-  const hasLeaveSubmission = result.submissions.some((submission) => submission.mode === "leave");
+  const hasPlayerTurn = closed.lines.some((line) => line.role === "user");
+  const hasLeaveSubmission = closed.submissions.some((submission) => submission.mode === "leave");
   if (!hasPlayerTurn && !hasLeaveSubmission) {
     const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${session.id}`);
     if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
   }
   await pruneVenueVisits();
-  return result;
+  return closed;
+}
+
+async function endTieredVenueSession(session: VenueSession, signal: AbortSignal): Promise<VenueSession> {
+  const closed = await closeTieredVenueSession(session);
+  if (!closed.memoryPending) return closed;
+  const reviewed = await reviewTieredMemories(session.id, signal);
+  await pruneVenueVisits();
+  return reviewed;
 }
 
 async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueSession> {
@@ -2875,9 +3019,10 @@ export async function listVenueVisitSummaries(
     participants: VenueParticipant[];
     lineCount: number;
     memoryUnits: number;
+    recollectionCount: number;
     memoryPending: boolean;
     memoryProgress: { nextUnit: number } | null;
-    memoryReview: Pick<VenueMemoryReview, "status" | "attempts" | "error">;
+    memoryReview: Pick<VenueMemoryReview, "status" | "attempts" | "error" | "nextRecollection">;
   }[];
   total: number;
 }> {
@@ -2897,12 +3042,14 @@ export async function listVenueVisitSummaries(
       participants: visit.participants,
       lineCount: visit.lines.length,
       memoryUnits: memoryUnits(visit).length,
+      recollectionCount: sessionRecollections(visit).length,
       memoryPending: visit.memoryPending,
       memoryProgress: visit.memoryProgress ? { nextUnit: visit.memoryProgress.nextUnit } : null,
       memoryReview: {
         status: visit.memoryReview.status,
         attempts: visit.memoryReview.attempts,
         error: visit.memoryReview.error,
+        nextRecollection: visit.memoryReview.nextRecollection,
       },
     })),
   };
