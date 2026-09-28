@@ -142,6 +142,8 @@ export type VillageCompletionOptions = {
   debugMode: boolean;
   signal?: AbortSignal;
   onAttempt?: (completion: CapabilityLanguageModelCompletion, elapsedMs: number, maxTokens: number) => void;
+  /** Scene turns own their two-attempt repair budget; other callers keep the blank retry. */
+  retryEmpty?: boolean;
 };
 
 /**
@@ -194,7 +196,7 @@ export async function completeWithRoom(
   };
 
   const first = await ask(maxTokens);
-  if (answered(first)) return first;
+  if (answered(first) || options.retryEmpty === false) return first;
 
   const ceiling = model.maxOutputTokens ?? RETRY_CEILING;
   const roomier = Math.min(Math.max(maxTokens * 2, RETRY_FLOOR), ceiling);
