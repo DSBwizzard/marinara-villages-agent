@@ -3095,7 +3095,7 @@ const features = [
     // 0.2.x still renders.
     // 0.6.0: continuous device-local time, exact repeating agenda intervals,
     // durable restart reconciliation, bounded story pacing, and return recaps.
-    version: "0.6.64",
+    version: "0.6.65",
     minEngineVersion: "2.4.6",
     maxEngineExclusive: MAX_ENGINE_EXCLUSIVE,
     name: "Villages",

@@ -2567,6 +2567,24 @@ async function main() {
       "",
       "View Venue does not reveal an uninvited Residence interior",
     );
+    await assert.rejects(
+      () => enterVenue("home", "residence", "", "shared"),
+      /invitation/u,
+      "an explicit interior visit cannot silently become an exterior visit",
+    );
+    await assert.rejects(
+      () => enterVenue("home", "residence", "bob", "private"),
+      /invitation/u,
+      "an explicit private visit requires its owner's invitation",
+    );
+    const selectedExterior = await enterVenue("home", "residence", "", "outside");
+    assert.equal(selectedExterior.area, "outside");
+    await assert.rejects(
+      () => enterVenue("home", "residence", "", "shared"),
+      /active Venue area/u,
+      "another selected area cannot reuse an exterior session",
+    );
+    await endVenueSession(selectedExterior.id);
     let outside = await enterVenue("home", "residence");
     assert.equal(outside.area, "outside");
     outside = await greetVenue(outside.id);
@@ -2839,6 +2857,10 @@ async function main() {
     const afterMove = await readVillageState();
     const destination = afterMove.venues.find((place) => place.id === "new-home")!;
     assert.equal(afterMove.venues.find((place) => place.id === "home")?.playerSeenPrivateIds?.includes("bob"), false);
+    assert.equal(
+      afterMove.venues.find((place) => place.id === "home")?.privateSpaces?.some((space) => space.ownerId === "bob"),
+      false,
+    );
     assert.equal(destination.playerSeenPrivateIds?.includes("bob"), false);
     assert.equal(destination.privateSpaces?.find((space) => space.ownerId === "bob")?.image, null);
     assert.ok(!destination.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt);
@@ -2847,6 +2869,9 @@ async function main() {
       /Visit this Residence space/u,
       "a move creates a fresh private room that has not been discovered",
     );
+    const parkExterior = await enterVenue("park", "workplace", "", "outside");
+    assert.equal(parkExterior.area, "outside", "a public Venue also supports an explicit exterior visit");
+    await endVenueSession(parkExterior.id);
     await saveVillageWriting({ styleInstructions: "An old village's style" });
     await resetVillage();
     assert.deepEqual((await readVillageState()).narrationStyle, defaultVillageState().narrationStyle);

@@ -571,7 +571,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading the active venue");
     }
   });
-  app.post<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
+  app.post<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown; entryArea?: unknown } }>(
     "/rooms",
     async (request, reply) => {
       try {
@@ -585,11 +585,21 @@ export async function villagesRoutes(engine: FastifyInstance) {
           spaceClass !== "other"
         )
           throw badRequest("Choose a valid Venue Class space.");
+        const entryArea = request.body?.entryArea;
+        if (
+          entryArea !== undefined &&
+          entryArea !== "outside" &&
+          entryArea !== "shared" &&
+          entryArea !== "private" &&
+          entryArea !== "public"
+        )
+          throw badRequest("Choose a valid Venue area.");
         return {
           session: await enterVenue(
             readPlaceId(request.body?.venueId),
             spaceClass,
             typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+            entryArea,
           ),
         };
       } catch (error) {
