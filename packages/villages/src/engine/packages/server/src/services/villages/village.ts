@@ -34,6 +34,7 @@ import {
 } from "./lorebooks.js";
 import { completedWishFacts } from "./wish-history.js";
 import { selectPromptMemories } from "./memory-selection.js";
+import { readScenarioImprint, readWorldFacts } from "./scenario-imprint.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-image.js";
 import { inspectVillageImage } from "./image-generation.js";
 import {
@@ -122,7 +123,8 @@ import {
   VILLAGES_DEFAULT_KNOWLEDGE,
   VILLAGES_GALLERY_FOLDER_NAME,
   VILLAGES_PROMPT_BOX_MAX_LENGTH,
-  villageNarrativeSetting,
+  villageCurrentSetting,
+  villageFoundingSetting,
   type VillageHomeLine,
 } from "./prompt-preset.js";
 import type {
@@ -357,11 +359,13 @@ function villageSettings(
     foundingReason: village.foundingReason,
     foundingDetails: village.foundingDetails,
     foundingGuidance: village.foundingGuidance,
+    scenarioImprint: village.scenarioImprint,
+    worldFacts: village.worldFacts,
     selectedLorebookIds: village.selectedLorebookIds,
     loreTokenBudget: village.loreTokenBudget,
     loreTokenBudgetMin: MIN_LORE_TOKEN_BUDGET,
     loreTokenBudgetMax: MAX_LORE_TOKEN_BUDGET,
-    foundingDetailsMaxLength: 500,
+    foundingDetailsMaxLength: 2_000,
     foundingGuidanceMaxLength: 500,
     townMapLayoutPrompt: DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
@@ -634,15 +638,23 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
   // states everywhere else: the Engine is the authority on a character's time.
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
+      const agendaSetting =
+        village.foundingPreparation?.status === "pending"
+          ? villageFoundingSetting(village)
+          : villageCurrentSetting(village);
       const agenda = await proposeAgenda({
         village: village.name,
-        setting: villageNarrativeSetting(village),
+        setting: agendaSetting,
+        home: (() => {
+          const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
+          return home ? [home.name, home.form, home.purpose, home.state.condition].filter(Boolean).join("; ") : "";
+        })(),
         completedWishes: villager.completedWishes,
         activeWishes: villager.agenda?.wishes ?? [],
         lore: await readVillageLore(
           village.selectedLorebookIds,
           [
-            villageNarrativeSetting(village),
+            agendaSetting,
             effectiveCard.name,
             effectiveCard.summary,
             effectiveCard.personality,
@@ -969,7 +981,7 @@ async function remapContextFor(
   const lore = await readVillageLore(
     village.selectedLorebookIds,
     [
-      villageNarrativeSetting(village),
+      villageCurrentSetting(village),
       card.name,
       card.summary,
       card.description,
@@ -982,7 +994,7 @@ async function remapContextFor(
   const completed = village.villagers.find((entry) => entry.characterId === card.id)?.completedWishes ?? [];
   return {
     village: village.name,
-    setting: villageNarrativeSetting(village),
+    setting: villageCurrentSetting(village),
     lore,
     completedWishes: completedWishFacts(completed, lore),
     loreKey: remapLoreKey(village, card.id),
@@ -1058,7 +1070,7 @@ function remapSignatureFor(
   wishes: readonly VillageWish[],
 ): string {
   return remapSignature({
-    setting: villageNarrativeSetting(village),
+    setting: villageCurrentSetting(village),
     loreKey: remapLoreKey(village, characterId),
     venues: remapVenues(village.venues),
     wishes,
@@ -1553,7 +1565,7 @@ export async function topUpVillagerWishes(characterId: string, settled: string):
 
     const wish = await proposeNextWish({
       village: village.name,
-      setting: villageNarrativeSetting(village),
+      setting: villageCurrentSetting(village),
       name: card.name,
       summary: card.summary,
       tags: card.tags,
@@ -1564,7 +1576,7 @@ export async function topUpVillagerWishes(characterId: string, settled: string):
       lore: await readVillageLore(
         village.selectedLorebookIds,
         [
-          villageNarrativeSetting(village),
+          villageCurrentSetting(village),
           card.name,
           card.summary,
           card.personality,
@@ -3355,12 +3367,28 @@ function parsePlaces(value: unknown, residents: ReadonlySet<string>, founding: b
  * only ever added, so a player who runs setup again to redraw their map keeps
  * everyone who already lives here.
  */
+export function assertFoundingScenarioLocked(
+  village: Pick<VillageState, "foundingReason" | "foundingDetails" | "foundingGuidance" | "scenarioImprint">,
+  submitted: { foundingReason: string; foundingDetails: string; foundingGuidance: string; scenarioImprint?: unknown },
+): void {
+  if (
+    submitted.foundingReason !== village.foundingReason ||
+    submitted.foundingDetails !== village.foundingDetails ||
+    submitted.foundingGuidance !== village.foundingGuidance ||
+    (submitted.scenarioImprint !== undefined &&
+      JSON.stringify(submitted.scenarioImprint) !== JSON.stringify(village.scenarioImprint))
+  )
+    throw conflict("The founding Scenario is locked. Start a new village to choose another one.");
+}
+
 export async function runVillageSetup(input: {
   name?: unknown;
   setting?: unknown;
   foundingReason?: unknown;
   foundingDetails?: unknown;
   foundingGuidance?: unknown;
+  scenarioImprint?: unknown;
+  worldFacts?: unknown;
   selectedLorebookIds?: unknown;
   loreTokenBudget?: unknown;
   playerPersonaId?: unknown;
@@ -3390,8 +3418,8 @@ export async function runVillageSetup(input: {
   ) {
     throw badRequest("Choose a founding scenario.");
   }
-  if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 500) {
-    throw badRequest("Scenario premise must be text of at most 500 characters.");
+  if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000) {
+    throw badRequest("Scenario premise must be text of at most 2,000 characters.");
   }
   const foundingDetails = input.foundingDetails.trim();
   if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
@@ -3408,6 +3436,23 @@ export async function runVillageSetup(input: {
   if (foundingReason === "none" && (foundingDetails || foundingGuidance)) {
     throw badRequest("No scenario cannot include a premise or narrative direction.");
   }
+  const village = await readVillageState();
+  const founding = !isVillageFounded(village);
+  if (!founding)
+    assertFoundingScenarioLocked(village, {
+      foundingReason,
+      foundingDetails,
+      foundingGuidance,
+      scenarioImprint: input.scenarioImprint,
+    });
+  const scenarioImprint = founding
+    ? foundingReason === "none"
+      ? null
+      : readScenarioImprint(input.scenarioImprint)
+    : village.scenarioImprint;
+  const worldFacts = founding
+    ? (scenarioImprint?.worldFacts ?? [])
+    : readWorldFacts(input.worldFacts ?? village.worldFacts);
   const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView);
   const connections = await readVillageConnectionSettings();
   await validateVillageSetupConnections(connections);
@@ -3416,7 +3461,6 @@ export async function runVillageSetup(input: {
   // link the player never had a chance to notice.
   const persona = await readLinkedPersona(input.playerPersonaId);
   if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
-  const village = await readVillageState();
   const cards = await listVillagerCards();
   const cardNames = new Map(cards.map((card) => [card.id, card.name]));
   // Residents are checked against the library rather than against the village,
@@ -3427,7 +3471,6 @@ export async function runVillageSetup(input: {
   // four houses on the map". Coming back through the wizard over a village that
   // already exists accepts the map as it now stands, so a player who has since
   // added a fifth house is not made to tear it down to save their own village.
-  const founding = !isVillageFounded(village);
   const places = parsePlaces(input.venues, new Set(cardNames.keys()), founding);
   const initialResidentIds = [
     ...new Set(places.flatMap((place) => [place.occupancy.residentCharacterId]).filter(Boolean)),
@@ -3495,11 +3538,17 @@ export async function runVillageSetup(input: {
 
   const addedResidents: VillagerCard[] = [];
   await mutateVillageState((state) => {
+    if (isVillageFounded(state) === founding)
+      throw conflict("The village changed during setup. Reload it before saving.");
+    if (!founding)
+      assertFoundingScenarioLocked(state, { foundingReason, foundingDetails, foundingGuidance, scenarioImprint });
     state.name = name;
     state.setting = setting;
     state.foundingReason = foundingReason;
     state.foundingDetails = foundingDetails;
     state.foundingGuidance = foundingGuidance;
+    state.scenarioImprint = scenarioImprint;
+    state.worldFacts = worldFacts;
     state.selectedLorebookIds = selectedLorebookIds;
     state.loreTokenBudget = loreTokenBudget;
     state.townMapImage = townMap.image;
@@ -3761,7 +3810,7 @@ export async function runVillageBootstrap(): Promise<VillageSnapshot> {
   const setting = village.setting.trim();
   if (setting.length === 0) throw badRequest("Write what the village is like before asking for places.");
 
-  const settingForProposal = villageNarrativeSetting(village);
+  const settingForProposal = villageCurrentSetting(village);
   const proposal = await proposeVillage(settingForProposal, {
     lore: await readVillageLore(village.selectedLorebookIds, settingForProposal, undefined, village.loreTokenBudget),
   });
@@ -3798,11 +3847,9 @@ export async function draftVenueDescriptions(value: unknown): Promise<{ descript
   if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest("Describe the places to draft.");
   const input = value as Record<string, unknown>;
   const village = await readVillageState();
-  const setting = villageNarrativeSetting({
+  const setting = villageCurrentSetting({
     setting: typeof input.setting === "string" ? input.setting.trim() : village.setting,
-    foundingReason: typeof input.foundingReason === "string" ? input.foundingReason : village.foundingReason,
-    foundingDetails: typeof input.foundingDetails === "string" ? input.foundingDetails : village.foundingDetails,
-    foundingGuidance: typeof input.foundingGuidance === "string" ? input.foundingGuidance : village.foundingGuidance,
+    worldFacts: input.worldFacts === undefined ? village.worldFacts : readWorldFacts(input.worldFacts),
   });
   const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? village.selectedLorebookIds);
   const rows = Array.isArray(input.venues) ? input.venues : [];
@@ -4058,11 +4105,12 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
   );
   const context: VillageTickContext = {
     village: village.name,
-    setting: villageNarrativeSetting(village),
+    setting: village.setting,
+    worldFacts: village.worldFacts,
     lore: await readVillageLore(
       village.selectedLorebookIds,
       [
-        villageNarrativeSetting(village),
+        villageCurrentSetting(village),
         opportunity.facts.join(" "),
         village.venues.find((venue) => venue.id === opportunity.venueId)?.name ?? "",
       ].join("\n"),
@@ -4346,7 +4394,7 @@ export async function runVillageReaction(params: {
   const { happenings } = await proposeReaction(
     {
       village: village.name,
-      setting: villageNarrativeSetting(village),
+      setting: villageCurrentSetting(village),
       moment,
       playerName: params.playerName,
       villagerName: params.villagerName,

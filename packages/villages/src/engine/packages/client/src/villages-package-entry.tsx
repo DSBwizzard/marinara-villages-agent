@@ -66,7 +66,7 @@ const FOUNDING_SCENARIOS = [
     description: "Begin again, together.",
     icon: "⌂",
     premise:
-      "In the wake of a devastating upheaval, scattered survivors have chosen this place to begin again. Their early days bring hard choices, shared work, and the trust that grows when people depend on one another.",
+      "After a devastating upheaval, scattered survivors founded this village to begin again. Shared work and mutual dependence shaped its first homes and customs.",
   },
   {
     value: "pioneer",
@@ -74,7 +74,7 @@ const FOUNDING_SCENARIOS = [
     description: "Follow the horizon.",
     icon: "△",
     premise:
-      "Drawn by a distant purpose, a small group has crossed into unfamiliar country. Each journey brings discoveries and risks, while the foothold they establish slowly becomes a home.",
+      "Drawn by a distant purpose, a small group crossed into unfamiliar country and established a foothold. Their first journeys shaped the paths and customs of the village they built.",
   },
   {
     value: "prosper",
@@ -82,12 +82,24 @@ const FOUNDING_SCENARIOS = [
     description: "Make opportunity grow.",
     icon: "▥",
     premise:
-      "A promising crossroads draws makers, merchants, and ambitious newcomers. Workshops open, deals are struck, and the village’s future takes shape through what its people build, exchange, and value.",
+      "Makers, merchants, and newcomers founded this village at a promising crossroads. Its first workshops and exchanges shaped a place built around craft and opportunity.",
   },
-  { value: "custom", label: "Custom", description: "Write your own beginning.", icon: "✦", premise: "" },
+  { value: "custom", label: "Custom", description: "Define your own scenario.", icon: "✦", premise: "" },
   { value: "none", label: "No scenario", description: "Let life unfold.", icon: "∞", premise: "" },
 ] as const;
 type FoundingScenarioId = (typeof FOUNDING_SCENARIOS)[number]["value"];
+type ScenarioImprint = {
+  origin: string;
+  worldFacts: string[];
+  openingConditions: string[];
+  visualCues: string[];
+};
+const emptyScenarioImprint = (): ScenarioImprint => ({
+  origin: "",
+  worldFacts: [],
+  openingConditions: [],
+  visualCues: [],
+});
 const LEGACY_FOUNDING_REASONS: Readonly<Record<string, string>> = {
   "fresh-start": "People founded this village for a fresh start.",
   refuge: "People founded this village as a refuge.",
@@ -111,6 +123,7 @@ const SETUP_STEPS = [
   "Village Identity",
   "Connections & Persona",
   "World & Setting",
+  "Scenario Imprint",
   "Village Map",
   "Build the Village",
   "Review",
@@ -562,6 +575,8 @@ type VillageSettings = {
   foundingReason: string;
   foundingDetails: string;
   foundingGuidance: string;
+  scenarioImprint: ScenarioImprint | null;
+  worldFacts: string[];
   selectedLorebookIds: string[];
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
@@ -10371,6 +10386,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("rebuild");
   const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>(foundingScenario("rebuild").premise);
   const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
+  const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
+  const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
+  const [setupImprintApprovedKey, setSetupImprintApprovedKey] = useState("");
+  const [setupImprintBusy, setSetupImprintBusy] = useState(false);
   const [setupScenarioGuidanceDrafts, setSetupScenarioGuidanceDrafts] = useState<
     Partial<Record<FoundingScenarioId, string>>
   >({});
@@ -10394,8 +10413,28 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupMapSize, setSetupMapSize] = useState<{ width: number; height: number } | null>(null);
   const [setupMapPrompt, setSetupMapPrompt] = useState("");
   const [setupMapNegativePrompt, setSetupMapNegativePrompt] = useState("");
-  const setupMapGenerationKey = JSON.stringify({
+  const setupImprintSourceKey = JSON.stringify({
+    scenario: setupFoundingReason,
+    premise: setupFoundingDetails.trim(),
+    direction: setupFoundingGuidance.trim(),
     setting: setupSetting.trim(),
+    lorebooks: setupLorebookDraft,
+  });
+  const setupImprintSourceKeyRef = useRef(setupImprintSourceKey);
+  useEffect(() => {
+    if (setupImprintSourceKeyRef.current !== setupImprintSourceKey && !snapshot?.isFounded) {
+      setSetupImprint(emptyScenarioImprint());
+      setSetupImprintApprovedKey("");
+      setSetupTextDrafts({});
+      setSetupImageDraft(null);
+    }
+    setupImprintSourceKeyRef.current = setupImprintSourceKey;
+  }, [setupImprintSourceKey, snapshot?.isFounded]);
+  const setupMapGenerationKey = JSON.stringify({
+    source: snapshot?.isFounded ? null : setupImprintSourceKey,
+    setting: setupSetting.trim(),
+    imprint: snapshot?.isFounded ? null : setupImprint,
+    worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
     lorebooks: setupLorebookDraft,
     structure: setupMapPrompt,
     negative: setupMapNegativePrompt,
@@ -11835,6 +11874,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setting: setupSetting,
           options: setupMapOptions,
           selectedLorebookIds: setupLorebookDraft,
+          scenarioImprint: snapshot?.isFounded
+            ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
+            : setupFoundingReason === "none"
+              ? null
+              : setupImprint,
         }),
       });
       const measured = await measureImage(generated.image);
@@ -11858,6 +11902,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupSetting,
     setupMapOptions,
     setupMapGenerationKey,
+    setupImprint,
+    setupWorldFacts,
+    setupFoundingReason,
+    snapshot?.isFounded,
     snapshot?.settings.townMapLayoutPrompt,
     snapshot?.settings.townMapNegativePrompt,
   ]);
@@ -12413,12 +12461,77 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // claiming to exist.
 
   const chooseSetupScenario = (value: FoundingScenarioId) => {
+    if (snapshot?.isFounded) return;
     if (value === setupFoundingReason) return;
     const nextGuidance = setupScenarioGuidanceDrafts[value] ?? "";
     setSetupScenarioGuidanceDrafts((drafts) => ({ ...drafts, [setupFoundingReason]: setupFoundingGuidance }));
     setSetupFoundingReason(value);
     setSetupFoundingDetails(foundingScenario(value).premise);
     setSetupFoundingGuidance(value === "none" ? "" : nextGuidance);
+    setSetupImprint(emptyScenarioImprint());
+    setSetupImprintApprovedKey("");
+    setSetupTextDrafts({});
+    setSetupProblem("");
+  };
+
+  const draftSetupImprint = async () => {
+    const sourceKey = setupImprintSourceKey;
+    setBusy(true);
+    setSetupImprintBusy(true);
+    setSetupProblem("");
+    try {
+      const result = await request<{ imprint: ScenarioImprint }>("/setup/scenario-imprint/draft", {
+        method: "POST",
+        body: JSON.stringify({
+          foundingReason: setupFoundingReason,
+          foundingDetails: setupFoundingDetails,
+          foundingGuidance: setupFoundingGuidance,
+          setting: setupSetting,
+          selectedLorebookIds: setupLorebookDraft,
+          loreTokenBudget: setupLoreTokenBudgetDraft,
+        }),
+      });
+      if (setupImprintSourceKeyRef.current === sourceKey) {
+        setSetupImprint(result.imprint);
+        setSetupImprintApprovedKey("");
+        setSetupTextDrafts({});
+      }
+    } catch (cause) {
+      setSetupProblem(messageFrom(cause, "The Scenario imprint could not be drafted. You can write it yourself."));
+    } finally {
+      setSetupImprintBusy(false);
+      setBusy(false);
+    }
+  };
+
+  const editSetupImprintLines = (key: "worldFacts" | "openingConditions" | "visualCues", value: string) => {
+    setSetupImprint((current) => ({ ...current, [key]: value.split(/\r?\n/u) }));
+    setSetupImprintApprovedKey("");
+  };
+
+  const approveSetupImprint = () => {
+    const imprint: ScenarioImprint = {
+      origin: setupImprint.origin.trim(),
+      worldFacts: setupImprint.worldFacts.map((line) => line.trim()).filter(Boolean),
+      openingConditions: setupImprint.openingConditions.map((line) => line.trim()).filter(Boolean),
+      visualCues: setupImprint.visualCues.map((line) => line.trim()).filter(Boolean),
+    };
+    const lists = [
+      [imprint.worldFacts, 160],
+      [imprint.openingConditions, 160],
+      [imprint.visualCues, 120],
+    ] as const;
+    if (
+      (!imprint.origin && !lists.some(([lines]) => lines.length)) ||
+      imprint.origin.length > 400 ||
+      lists.some(([lines, limit]) => lines.length > 4 || lines.some((line) => line.length > limit))
+    ) {
+      setSetupProblem("Add an origin or starting detail. Use at most four short lines in each list.");
+      return;
+    }
+    setSetupImprint(imprint);
+    setSetupImprintApprovedKey(setupImprintSourceKey);
+    setSetupTextDrafts({});
     setSetupProblem("");
   };
 
@@ -12452,8 +12565,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       const savedDetails = village?.settings.foundingDetails ?? "";
       const legacyPremise = [legacyReason, savedDetails].filter(Boolean).join(" ");
       const legacyOverflow = legacyPremise.length > (village?.settings.foundingDetailsMaxLength ?? 500);
-      const details =
-        storedReason && !isCurrentScenario
+      const details = village?.isFounded
+        ? savedDetails
+        : storedReason && !isCurrentScenario
           ? legacyOverflow
             ? savedDetails
             : legacyPremise
@@ -12462,10 +12576,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             : savedDetails;
       const guidance = fresh
         ? ""
-        : [legacyOverflow ? legacyReason : "", village?.settings.foundingGuidance ?? ""].filter(Boolean).join(" ");
+        : village?.isFounded
+          ? (village.settings.foundingGuidance ?? "")
+          : [legacyOverflow ? legacyReason : "", village?.settings.foundingGuidance ?? ""].filter(Boolean).join(" ");
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
       setSetupFoundingGuidance(reason === "none" ? "" : guidance);
+      setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
+      setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
+      setSetupImprintApprovedKey("");
       setSetupScenarioGuidanceDrafts({ [reason]: guidance });
       setSetupNameSuggestions([]);
       const foundingPlaces =
@@ -12510,12 +12629,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   const gotoSetupStep = useCallback(
     (step: number) => {
+      if (setupFoundingReason === "none" && setupStep === 2 && step === 3) step = 4;
+      if (setupFoundingReason === "none" && setupStep === 4 && step === 3) step = 2;
       if (setupStep === 0 && step > 0) {
         if (setupName.trim().length === 0) {
           setSetupProblem("Give the village a name before continuing.");
           return;
         }
-        if (setupFoundingReason !== "none" && !setupFoundingDetails.trim()) {
+        if (!snapshot?.isFounded && setupFoundingReason !== "none" && !setupFoundingDetails.trim()) {
           setSetupProblem("Write a scenario premise, or choose No scenario.");
           return;
         }
@@ -12540,7 +12661,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
       }
-      if (setupStep === 3 && step > 3) {
+      if (setupStep === 3 && step > 3 && !snapshot?.isFounded && setupFoundingReason !== "none") {
+        if (setupImprintApprovedKey !== setupImprintSourceKey) {
+          setSetupProblem("Review and approve the Scenario imprint before drawing the map.");
+          return;
+        }
+      }
+      if (setupStep === 4 && step > 4) {
         if (setupMapSource !== "none" && !setupMapSrc) {
           setSetupProblem(
             setupMapSource === "generate"
@@ -12550,7 +12677,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
       }
-      if (setupStep === 4 && step > 4) {
+      if (setupStep === 5 && step > 5) {
         const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
         const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
         const villagerHomeCount = villagerHomes.length;
@@ -12590,7 +12717,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // when that step is reached.
       if (step === 1) void loadPersonas();
       if (step === 2) void loadLorebooks();
-      if (step === 4) void loadCatalog();
+      if (step === 5) void loadCatalog();
       setPlacingHome(false);
       setPlacingPublicCenter(false);
       setMovingSetupVenueId(null);
@@ -12608,6 +12735,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupName,
       setupFoundingReason,
       setupFoundingDetails,
+      setupImprintApprovedKey,
+      setupImprintSourceKey,
+      snapshot?.isFounded,
       setupSetting,
       setupStep,
     ],
@@ -12645,6 +12775,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   const generateSetupText = async (venues: SetupVenueDraft[]) => {
     if (!venues.length || setupVenueBusy) return;
+    const sourceKey = setupImprintSourceKey;
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -12655,12 +12786,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           foundingReason: setupFoundingReason,
           foundingDetails: setupFoundingDetails,
           foundingGuidance: setupFoundingGuidance,
+          scenarioImprint: snapshot?.isFounded || setupFoundingReason === "none" ? null : setupImprint,
+          worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           venues: venues.map(setupDraftRow),
         }),
       });
-      setSetupTextDrafts((current) => ({ ...current, ...result.drafts }));
+      if (setupImprintSourceKeyRef.current === sourceKey)
+        setSetupTextDrafts((current) => ({ ...current, ...result.drafts }));
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Venue text could not be drafted."));
     } finally {
@@ -12724,6 +12858,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   const generateSetupImage = async (venue: SetupVenueDraft, area: "exterior" | "interior") => {
     if (setupVenueBusy) return;
+    const sourceKey = setupImprintSourceKey;
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -12734,10 +12869,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           area,
           villageName: setupName,
           setting: setupSetting,
+          scenarioImprint: snapshot?.isFounded || setupFoundingReason === "none" ? null : setupImprint,
+          worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
         }),
       });
-      setSetupImageDraft({ venueId: venue.id, area, image });
+      if (setupImprintSourceKeyRef.current === sourceKey) setSetupImageDraft({ venueId: venue.id, area, image });
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Venue art could not be generated."));
     } finally {
@@ -12786,7 +12923,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const setupBlocker = useCallback((): string => {
     if (setupName.trim().length === 0) return "Give the village a name.";
     if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
-    if (setupFoundingReason !== "none" && !setupFoundingDetails.trim()) return "Write a scenario premise.";
+    if (!snapshot?.isFounded && setupFoundingReason !== "none" && !setupFoundingDetails.trim())
+      return "Write a scenario premise.";
+    const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
+    if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
+      return "Use at most four current world facts of 160 characters each.";
+    if (!snapshot?.isFounded && setupFoundingReason !== "none" && setupImprintApprovedKey !== setupImprintSourceKey)
+      return "Review and approve the Scenario imprint.";
     if (setupSetting.trim().length === 0) return "Write the Setting and Theme.";
     if (setupMapSource !== "none" && !setupMapSrc) return "Choose, generate, or upload the village map.";
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
@@ -12804,7 +12947,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.spaces?.[0]?.description.trim(),
       )
     )
-      return "Give every venue a name, Form, exterior description, and scene description in Step 5.";
+      return "Give every venue a name, Form, exterior description, and scene description in Step 6.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -12821,6 +12964,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupName,
     setupFoundingReason,
     setupFoundingDetails,
+    setupImprintApprovedKey,
+    setupImprintSourceKey,
+    snapshot?.isFounded,
+    setupWorldFacts,
     setupSetting,
   ]);
 
@@ -12838,9 +12985,19 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         body: JSON.stringify({
           name: setupName.trim(),
           setting: setupSetting.trim(),
-          foundingReason: setupFoundingReason,
-          foundingDetails: setupFoundingDetails.trim(),
-          foundingGuidance: setupFoundingGuidance.trim(),
+          foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
+          foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
+          foundingGuidance: snapshot?.isFounded ? snapshot.settings.foundingGuidance : setupFoundingGuidance.trim(),
+          scenarioImprint: snapshot?.isFounded
+            ? snapshot.settings.scenarioImprint
+            : setupFoundingReason === "none"
+              ? null
+              : setupImprint,
+          worldFacts: snapshot?.isFounded
+            ? setupWorldFacts.map((line) => line.trim()).filter(Boolean)
+            : setupFoundingReason === "none"
+              ? []
+              : setupImprint.worldFacts,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
@@ -12867,6 +13024,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, [
     snapshot?.isFounded,
+    snapshot?.settings.foundingReason,
+    snapshot?.settings.foundingDetails,
+    snapshot?.settings.foundingGuidance,
+    snapshot?.settings.scenarioImprint,
     setupVenues,
     personaDraft,
     savedTownMapView,
@@ -12877,6 +13038,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupFoundingReason,
     setupFoundingDetails,
     setupFoundingGuidance,
+    setupImprint,
+    setupWorldFacts,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupSetting,
@@ -16886,7 +17049,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             type="radio"
                             name={`${ELEMENT_TAG}-founding-scenario`}
                             checked={setupFoundingReason === scenario.value}
-                            disabled={busy}
+                            disabled={busy || snapshot?.isFounded}
                             onChange={() => chooseSetupScenario(scenario.value)}
                           />
                           <span className={`${ELEMENT_TAG}-scenario-icon`} aria-hidden="true">
@@ -16906,15 +17069,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     <>
                       <div className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-premise`}>
                         <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
-                          Scenario premise (required)
+                          Scenario starting idea (required)
                         </label>
                         <textarea
                           id={`${ELEMENT_TAG}-founding-details`}
                           className={`${ELEMENT_TAG}-textarea`}
                           value={setupFoundingDetails}
-                          maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 500}
-                          placeholder="What brings people here, and what might shape their lives?"
-                          disabled={busy}
+                          maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
+                          placeholder="Describe a founding event, a world condition, a starting situation, or anything else."
+                          disabled={busy || snapshot?.isFounded}
                           onChange={(event) => {
                             const details = event.target.value;
                             setSetupFoundingDetails(details);
@@ -16928,15 +17091,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       </div>
                       <div className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-guidance`}>
                         <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-guidance`}>
-                          Narrative direction (optional)
+                          Founding direction (optional)
                         </label>
                         <textarea
                           id={`${ELEMENT_TAG}-founding-guidance`}
                           className={`${ELEMENT_TAG}-textarea`}
                           value={setupFoundingGuidance}
                           maxLength={snapshot?.settings.foundingGuidanceMaxLength ?? 500}
-                          placeholder="Which themes, tensions, or pace should stories favor?"
-                          disabled={busy}
+                          placeholder="What should the village's beginning feel like?"
+                          disabled={busy || snapshot?.isFounded}
                           onChange={(event) => {
                             const guidance = event.target.value;
                             setSetupFoundingGuidance(guidance);
@@ -16947,8 +17110,53 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           }}
                         />
                       </div>
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        This guidance shapes the opening village. Later stories follow what actually happens there.
+                      </p>
+                      {snapshot?.isFounded ? (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          The founding Scenario is locked. Start a new village to choose another.
+                        </p>
+                      ) : null}
                     </>
                   )}
+                  {snapshot?.isFounded && snapshot.settings.foundingReason !== "none" ? (
+                    <div className={`${ELEMENT_TAG}-field`}>
+                      <strong>Founding record</strong>
+                      {snapshot.settings.scenarioImprint ? (
+                        <>
+                          {snapshot.settings.scenarioImprint.origin ? (
+                            <p className={`${ELEMENT_TAG}-hint`}>
+                              <strong>Origin:</strong> {snapshot.settings.scenarioImprint.origin}
+                            </p>
+                          ) : null}
+                          {snapshot.settings.scenarioImprint.worldFacts.length ? (
+                            <p className={`${ELEMENT_TAG}-hint`}>
+                              <strong>World facts at founding:</strong>{" "}
+                              {snapshot.settings.scenarioImprint.worldFacts.join("; ")}
+                            </p>
+                          ) : null}
+                          {snapshot.settings.scenarioImprint.openingConditions.length ? (
+                            <p className={`${ELEMENT_TAG}-hint`}>
+                              <strong>Opening conditions:</strong>{" "}
+                              {snapshot.settings.scenarioImprint.openingConditions.join("; ")}
+                            </p>
+                          ) : null}
+                          {snapshot.settings.scenarioImprint.visualCues.length ? (
+                            <p className={`${ELEMENT_TAG}-hint`}>
+                              <strong>Opening visual cues:</strong>{" "}
+                              {snapshot.settings.scenarioImprint.visualCues.join("; ")}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          This village predates founding imprints. Its original Scenario text is preserved above as
+                          history.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </>
               ) : null}
 
@@ -17027,6 +17235,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       Required. Define the world, its atmosphere, and the village&apos;s visual character.
                     </span>
                   </div>
+                  {snapshot?.isFounded ? (
+                    <div className={`${ELEMENT_TAG}-field`}>
+                      <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-world-facts`}>
+                        Current world facts
+                      </label>
+                      <textarea
+                        id={`${ELEMENT_TAG}-world-facts`}
+                        className={`${ELEMENT_TAG}-textarea`}
+                        value={setupWorldFacts.join("\n")}
+                        disabled={busy}
+                        placeholder="One stable fact per line, up to four."
+                        onChange={(event) => setSetupWorldFacts(event.target.value.split(/\r?\n/u))}
+                      />
+                      <span className={`${ELEMENT_TAG}-hint`}>
+                        Edit these when the village changes. They are current facts, separate from its locked origin.
+                      </span>
+                    </div>
+                  ) : null}
                   <VillageLorebookPicker
                     books={lorebooks}
                     error={lorebooksError}
@@ -17060,6 +17286,111 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               ) : null}
 
               {setupStep === 3 ? (
+                <>
+                  {snapshot?.isFounded ? (
+                    <>
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        The founding Scenario is part of this village&apos;s history and is locked. Current world facts
+                        can be edited in World &amp; Setting.
+                      </p>
+                      {snapshot.settings.scenarioImprint?.origin ? (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          <strong>Origin:</strong> {snapshot.settings.scenarioImprint.origin}
+                        </p>
+                      ) : (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          {snapshot.settings.foundingDetails || "No founding story was chosen."}
+                        </p>
+                      )}
+                    </>
+                  ) : setupFoundingReason === "none" ? (
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      No Scenario was chosen. The world and villagers can develop without a founding imprint.
+                    </p>
+                  ) : (
+                    <>
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        Review what this Scenario establishes. Origin is history; opening conditions and visual cues
+                        guide founding only. Stable world facts remain editable as the village changes.
+                      </p>
+                      <div className={`${ELEMENT_TAG}-row`}>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          disabled={busy}
+                          onClick={() => void draftSetupImprint()}
+                        >
+                          {setupImprintBusy ? "Drafting…" : "Draft imprint"}
+                        </button>
+                        <span className={`${ELEMENT_TAG}-hint`}>You can write or revise every field yourself.</span>
+                      </div>
+                      <div className={`${ELEMENT_TAG}-field`}>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-imprint-origin`}>
+                          Founding history (optional)
+                        </label>
+                        <textarea
+                          id={`${ELEMENT_TAG}-imprint-origin`}
+                          className={`${ELEMENT_TAG}-textarea`}
+                          value={setupImprint.origin}
+                          maxLength={400}
+                          disabled={busy}
+                          placeholder="Leave blank if your idea has no founding event."
+                          onChange={(event) => {
+                            setSetupImprint((current) => ({ ...current, origin: event.target.value }));
+                            setSetupImprintApprovedKey("");
+                          }}
+                        />
+                      </div>
+                      {(
+                        [
+                          ["worldFacts", "Stable world facts", "Only truths that should still hold today.", 160],
+                          [
+                            "openingConditions",
+                            "Opening conditions",
+                            "Starting pressures or opportunities, not permanent facts.",
+                            160,
+                          ],
+                          ["visualCues", "Founding visual cues", "Details for the initial map and venue art.", 120],
+                        ] as const
+                      ).map(([key, label, hint, limit]) => (
+                        <div className={`${ELEMENT_TAG}-field`} key={key}>
+                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-imprint-${key}`}>
+                            {label}
+                          </label>
+                          <textarea
+                            id={`${ELEMENT_TAG}-imprint-${key}`}
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={setupImprint[key].join("\n")}
+                            disabled={busy}
+                            placeholder="One detail per line, up to four."
+                            onChange={(event) => editSetupImprintLines(key, event.target.value)}
+                          />
+                          <span className={`${ELEMENT_TAG}-hint`}>
+                            {hint} Up to four lines, {limit} characters each.
+                          </span>
+                        </div>
+                      ))}
+                      <div className={`${ELEMENT_TAG}-row`}>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          disabled={busy}
+                          onClick={approveSetupImprint}
+                        >
+                          Approve imprint
+                        </button>
+                        {setupImprintApprovedKey === setupImprintSourceKey ? (
+                          <span className={`${ELEMENT_TAG}-hint`}>Approved for this founding.</span>
+                        ) : (
+                          <span className={`${ELEMENT_TAG}-hint`}>Approval is needed before the map step.</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : null}
+
+              {setupStep === 4 ? (
                 <>
                   <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="Village map image source">
                     <button
@@ -17242,7 +17573,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 4 ? (
+              {setupStep === 5 ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
                     Place your Residence, one to three villager Residences, and one Gathering Place. Select a photograph
@@ -17776,10 +18107,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 5 ? (
+              {setupStep === 6 ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
-                    Review your village before opening its gates. Return to Step 5 to change a venue.
+                    Review your village before opening its gates. Return to Step 6 to change a venue.
                   </p>
                   <p className={`${ELEMENT_TAG}-hint`}>
                     {setupName.trim()} · {setupSetting.trim()} ·{" "}
@@ -17803,6 +18134,47 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         </p>
                       ) : null}
                     </>
+                  ) : null}
+                  {(
+                    snapshot?.isFounded
+                      ? snapshot.settings.scenarioImprint
+                      : setupFoundingReason === "none"
+                        ? null
+                        : setupImprint
+                  ) ? (
+                    <div className={`${ELEMENT_TAG}-field`}>
+                      <strong>Reviewed founding imprint</strong>
+                      {(
+                        [
+                          ["Origin", (snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint)?.origin],
+                          [
+                            "Stable world facts",
+                            (snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint)?.worldFacts.join(
+                              "; ",
+                            ),
+                          ],
+                          [
+                            "Opening conditions",
+                            (snapshot?.isFounded
+                              ? snapshot.settings.scenarioImprint
+                              : setupImprint
+                            )?.openingConditions.join("; "),
+                          ],
+                          [
+                            "Visual cues",
+                            (snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint)?.visualCues.join(
+                              "; ",
+                            ),
+                          ],
+                        ] as const
+                      )
+                        .filter(([, value]) => value)
+                        .map(([label, value]) => (
+                          <p className={`${ELEMENT_TAG}-hint`} key={label}>
+                            <strong>{label}:</strong> {value}
+                          </p>
+                        ))}
+                    </div>
                   ) : null}
                   <p className={`${ELEMENT_TAG}-hint`}>
                     <strong>Map:</strong> {setupMapSource === "none" ? "Logical map" : "Chosen picture"}
@@ -17951,14 +18323,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <MapStage
                   src={setupMapSrc}
                   alt={`A map of ${setupName.trim() || "your new village"}.`}
-                  pins={setupStep < 4 ? [] : draftPins}
-                  placing={setupStep === 4 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
+                  pins={setupStep < 5 ? [] : draftPins}
+                  placing={setupStep === 5 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
                   view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
                   shape={setupMapShape}
-                  onPlace={setupStep === 4 ? placeSetupPin : undefined}
-                  compact={setupStep < 3}
-                  mobile={mobile && setupStep >= 3}
-                  photoPins={setupStep >= 4}
+                  onPlace={setupStep === 5 ? placeSetupPin : undefined}
+                  compact={setupStep < 4}
+                  mobile={mobile && setupStep >= 4}
+                  photoPins={setupStep >= 5}
                 />
               </div>
             </div>

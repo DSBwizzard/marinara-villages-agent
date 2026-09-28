@@ -504,26 +504,76 @@ const FOUNDING_REASONS: Readonly<Record<string, string>> = {
   homecoming: "People founded this village as a homecoming.",
   "something-else": "People founded this village for another reason.",
 };
-const SCENARIO_NAMES: Readonly<Record<string, string>> = {
-  rebuild: "Rebuild",
-  pioneer: "Pioneer",
-  prosper: "Prosper",
-};
+export function villageCurrentSetting(village: { setting: string; worldFacts?: readonly string[] }): string {
+  const facts = village.worldFacts?.filter(Boolean) ?? [];
+  return [
+    village.setting.trim(),
+    facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
-export function villageNarrativeSetting(village: {
+/** This context is used only while preparing the first village, never as a recurring plot instruction. */
+export function villageFoundingSetting(village: {
   setting: string;
+  worldFacts?: readonly string[];
   foundingReason: string;
   foundingDetails: string;
   foundingGuidance?: string;
+  scenarioImprint?: {
+    origin: string;
+    openingConditions: readonly string[];
+    visualCues: readonly string[];
+  } | null;
 }): string {
-  if (village.foundingReason === "none") return village.setting;
+  const imprint = village.scenarioImprint;
+  const origin = imprint?.origin || (!imprint ? village.foundingDetails.trim() : "");
+  return [
+    villageCurrentSetting(village),
+    origin ? `Founding history (past, not a standing condition): ${origin}` : "",
+    imprint?.openingConditions.length
+      ? `Opening conditions (at founding only): ${imprint.openingConditions.join("; ")}`
+      : "",
+    imprint?.visualCues.length ? `Founding visual cues: ${imprint.visualCues.join("; ")}` : "",
+    village.foundingGuidance?.trim() ? `Founding narrative direction: ${village.foundingGuidance.trim()}` : "",
+    "Use founding details selectively where they fit this person or place. The resident's card, assigned home, and verified village facts take precedence. Do not repeat the Scenario everywhere.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Historical context is recalled only for a question about origins or a distinctive founding detail. */
+export function villageRelevantOrigin(
+  village: { foundingReason: string; foundingDetails: string; scenarioImprint?: { origin: string } | null },
+  query: string,
+): string {
+  const origin = village.scenarioImprint?.origin.trim() || village.foundingDetails.trim();
+  if (!origin || village.foundingReason === "none") return "";
+  const q = query.toLowerCase();
+  const asksHistory = /\b(found|founded|founding|origin|history|began|beginning|started|settled|first came)\b/u.test(q);
+  const ordinaryWords = new Set([
+    "village",
+    "people",
+    "their",
+    "there",
+    "before",
+    "became",
+    "within",
+    "around",
+    "through",
+    "settled",
+    "started",
+  ]);
+  const queryWords = new Set(q.match(/[a-z]{6,}/gu) ?? []);
+  const distinctive = [...new Set(origin.toLowerCase().match(/[a-z]{6,}/gu) ?? [])].some(
+    (word) => !ordinaryWords.has(word) && queryWords.has(word),
+  );
+  if (!asksHistory && !distinctive) return "";
   const reason = FOUNDING_REASONS[village.foundingReason];
-  const detail = village.foundingDetails.trim();
-  const guidance = village.foundingGuidance?.trim();
-  if (!reason && !detail) return village.setting;
-  const premise = reason ? `${reason}${detail ? ` ${detail}` : ""}` : detail;
-  const scenario = SCENARIO_NAMES[village.foundingReason];
-  return `${village.setting}${scenario ? `\nScenario: ${scenario}` : ""}\nFounding premise: ${premise}${guidance ? `\nNarrative direction: ${guidance}` : ""}`;
+  return village.scenarioImprint?.origin
+    ? `Village founding history: ${origin} Current verified world and venue state takes precedence.`
+    : `Original Scenario description (historical context, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} Current verified world and venue state takes precedence.`;
 }
 
 /**

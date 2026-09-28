@@ -1001,6 +1001,17 @@ export type VillageChronicleEntryView = VillageChronicleEntry & {
  * read. Adding a stored clock would mean migrating it on every upgrade that
  * changed the shape of a day, which is work the derivation never has to do.
  */
+export type VillageScenarioImprint = {
+  /** A past event, if the scenario actually describes one. */
+  origin: string;
+  /** Stable facts approved for the present world at founding. */
+  worldFacts: string[];
+  /** Conditions offered to founding drafts and initial agendas only. */
+  openingConditions: string[];
+  /** Visual guidance for founding map and venue art only. */
+  visualCues: string[];
+};
+
 export type VillageState = {
   version: 2;
   name: string;
@@ -1016,6 +1027,10 @@ export type VillageState = {
   foundingReason: string;
   foundingDetails: string;
   foundingGuidance: string;
+  /** The reviewed starting point. Historical after setup; never a live plot instruction. */
+  scenarioImprint: VillageScenarioImprint | null;
+  /** Editable facts that still hold in the present village. */
+  worldFacts: string[];
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   loreTokenBudget: number;
@@ -1464,6 +1479,8 @@ export type VillageSettingsView = {
   foundingReason: string;
   foundingDetails: string;
   foundingGuidance: string;
+  scenarioImprint: VillageScenarioImprint | null;
+  worldFacts: string[];
   selectedLorebookIds: string[];
   loreTokenBudget: number;
   loreTokenBudgetMin: number;

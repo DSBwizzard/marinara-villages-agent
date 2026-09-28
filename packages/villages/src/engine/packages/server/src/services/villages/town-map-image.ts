@@ -5,6 +5,7 @@
 import { badRequest } from "./errors.js";
 import { generateVillageImage, inspectVillageImage } from "./image-generation.js";
 import { readSelectedLorebookIds, readVillageVisualLore } from "./lorebooks.js";
+import { coerceScenarioImprint } from "./scenario-imprint.js";
 import {
   MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
@@ -53,7 +54,13 @@ function readRequiredText(value: unknown, label: string, maxLength: number): str
   return text;
 }
 
-export function buildTownMapPrompt(structure: unknown, setting: unknown, options?: unknown, lore = ""): string {
+export function buildTownMapPrompt(
+  structure: unknown,
+  setting: unknown,
+  options?: unknown,
+  lore = "",
+  scenarioImprint?: unknown,
+): string {
   const rules =
     structure === undefined || structure === null || structure === ""
       ? DEFAULT_TOWN_MAP_LAYOUT_PROMPT
@@ -71,9 +78,14 @@ export function buildTownMapPrompt(structure: unknown, setting: unknown, options
       ? "Include setting-appropriate water features."
       : "Do not include water, including oceans, rivers, ponds, canals, or waterfalls.",
   ];
-  const base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nSetting and Theme (follow only where consistent with the required map elements): ${world}`;
+  let base = `${rules}\n\nRequired map elements:\n${elements.join("\n")}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nSetting and Theme (follow only where consistent with the required map elements): ${world}`;
   if (base.length > 4_000)
     throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or Setting and Theme.");
+  const imprint = coerceScenarioImprint(scenarioImprint);
+  const visual = [...(imprint?.worldFacts ?? []), ...(imprint?.visualCues ?? [])].join("; ");
+  const visualPrefix = "\nReviewed founding visual context (map controls above always win): ";
+  if (visual && base.length + visualPrefix.length < 4_000)
+    base += visualPrefix + visual.slice(0, 4_000 - base.length - visualPrefix.length);
   const lorePrefix =
     "\nVisual details from selected lore (follow only where consistent with the setting and map controls): ";
   const room = 4_000 - base.length - lorePrefix.length;
@@ -109,10 +121,11 @@ export async function generateVillageTownMap(input: {
   negative?: unknown;
   connectionId?: unknown;
   selectedLorebookIds?: unknown;
+  scenarioImprint?: unknown;
 }): Promise<{ image: string; width: number; height: number }> {
   const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
   const lore = await readVillageVisualLore(ids, typeof input.setting === "string" ? input.setting : "", 260);
-  const prompt = buildTownMapPrompt(input.structure, input.setting, input.options, lore);
+  const prompt = buildTownMapPrompt(input.structure, input.setting, input.options, lore, input.scenarioImprint);
   const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const generated = await generateVillageImage({
     connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,

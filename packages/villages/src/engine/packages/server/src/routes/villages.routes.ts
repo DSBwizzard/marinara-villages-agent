@@ -40,6 +40,7 @@ import {
   storeVillageVenueImage,
 } from "../services/villages/location-image.js";
 import { generateVillageTownMap } from "../services/villages/town-map-image.js";
+import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
 import {
   draftFoundingVenueText,
   generateFoundingVenueImage,
@@ -847,6 +848,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
       setting?: unknown;
       foundingReason?: unknown;
       foundingDetails?: unknown;
+      foundingGuidance?: unknown;
+      scenarioImprint?: unknown;
+      worldFacts?: unknown;
       selectedLorebookIds?: unknown;
       loreTokenBudget?: unknown;
       playerPersonaId?: unknown;
@@ -863,6 +867,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
         setting: body.setting,
         foundingReason: body.foundingReason,
         foundingDetails: body.foundingDetails,
+        foundingGuidance: body.foundingGuidance,
+        scenarioImprint: body.scenarioImprint,
+        worldFacts: body.worldFacts,
         selectedLorebookIds: body.selectedLorebookIds,
         loreTokenBudget: body.loreTokenBudget,
         playerPersonaId: body.playerPersonaId,
@@ -873,6 +880,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
       });
     } catch (error) {
       return fail(reply, error, "setting the village up");
+    }
+  });
+
+  app.post<{ Body: unknown }>("/setup/scenario-imprint/draft", async (request, reply) => {
+    try {
+      return await draftScenarioImprint(request.body);
+    } catch (error) {
+      return fail(reply, error, "drafting the Scenario imprint");
     }
   });
 
@@ -887,6 +902,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       options?: unknown;
       connectionId?: unknown;
       selectedLorebookIds?: unknown;
+      scenarioImprint?: unknown;
     };
   }>("/setup/town-map/generate", async (request, reply) => {
     try {

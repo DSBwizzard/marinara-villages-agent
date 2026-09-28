@@ -10,6 +10,7 @@ import { completeAgendaWeek, legacyAgendaWeek, workingAgendaWeek } from "./agend
 import { asFraction, asInstant, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "./coerce.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "./lorebooks.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "./narration-style.js";
+import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "./native-remap.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./package-runtime.js";
 import { defaultVenueSpace, validVenueClasses, validVenueImprovements } from "./venue-model.js";
@@ -145,6 +146,8 @@ export function defaultVillageState(): VillageState {
     foundingReason: "",
     foundingDetails: "",
     foundingGuidance: "",
+    scenarioImprint: null,
+    worldFacts: [],
     selectedLorebookIds: [],
     loreTokenBudget: DEFAULT_LORE_TOKEN_BUDGET,
     // No place in the village yet, and no home on the map: the founding flow
@@ -1727,8 +1730,10 @@ export function coerceVillageState(value: unknown): VillageState {
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     foundingReason: boundText(raw.foundingReason, 40),
-    foundingDetails: boundText(raw.foundingDetails, 500),
+    foundingDetails: boundText(raw.foundingDetails, 2_000),
     foundingGuidance: boundText(raw.foundingGuidance, 500),
+    scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
+    worldFacts: coerceWorldFacts(raw.worldFacts),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),
     venues,

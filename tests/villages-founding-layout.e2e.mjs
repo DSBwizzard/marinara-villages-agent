@@ -25,12 +25,14 @@ const snapshot = {
     foundingReason: "",
     foundingDetails: "",
     foundingGuidance: "",
+    scenarioImprint: null,
+    worldFacts: [],
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     townMapImageSetAt: "",
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     villageNameMaxLength: 80,
-    foundingDetailsMaxLength: 500,
+    foundingDetailsMaxLength: 2000,
     foundingGuidanceMaxLength: 500,
   },
 };
@@ -106,10 +108,7 @@ try {
         return { panel: element.scrollTop, page: window.scrollY };
       });
       assert.deepEqual(scrollPosition, { panel: 0, page: 0 }, "the desktop page cannot scroll");
-      const controls = [
-        root.getByLabel("Narrative direction (optional)"),
-        root.getByRole("button", { name: "Next →" }),
-      ];
+      const controls = [root.getByLabel("Founding direction (optional)"), root.getByRole("button", { name: "Next →" })];
       for (const control of controls) {
         const bounds = await control.boundingBox();
         assert.ok(
@@ -119,8 +118,8 @@ try {
       }
     }
 
-    const premise = root.getByLabel("Scenario premise (required)");
-    const direction = root.getByLabel("Narrative direction (optional)");
+    const premise = root.getByLabel("Scenario starting idea (required)");
+    const direction = root.getByLabel("Founding direction (optional)");
     const original = await premise.inputValue();
     await premise.fill("My edited premise");
     await direction.fill("Keep the story hopeful");

@@ -17,7 +17,12 @@ import {
   villagesLogger,
   villagesDebugAgentsEnabled,
 } from "./package-runtime.js";
-import { MAX_CHRONICLE_LENGTH, prependHappenings, villageNarrativeSetting } from "./prompt-preset.js";
+import {
+  MAX_CHRONICLE_LENGTH,
+  prependHappenings,
+  villageCurrentSetting,
+  villageRelevantOrigin,
+} from "./prompt-preset.js";
 import type { VillageChronicleEntry, VillageMemoryCategory, VillageRecollection, VillageState } from "./types.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
@@ -590,7 +595,7 @@ async function generate(
   const loreStarted = performance.now();
   const lorePromise = readVillageLore(
     village.selectedLorebookIds,
-    [villageNarrativeSetting(village), session.placeName, active.map((person) => person.name).join(", "), message].join(
+    [villageCurrentSetting(village), session.placeName, active.map((person) => person.name).join(", "), message].join(
       "\n",
     ),
     signal,
@@ -609,7 +614,7 @@ async function generate(
   const [lore, model] = await Promise.all([lorePromise, modelPromise]);
   signal?.throwIfAborted();
   const system = [
-    `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageNarrativeSetting(village)}`,
+    `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
     `The player is ${player.name}. ${player.description}`,
     `The venue: ${place?.purpose ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
       place?.state.traces
@@ -632,7 +637,7 @@ async function generate(
     }. A villager may freely approve or deny their own pending request in spoken dialogue. Never infer consent from silence or a different speaker.`,
     `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
     `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
-    `Relevant world lore: ${lore.join("\n") || "none"}`,
+    `Relevant world lore: ${[...lore, villageRelevantOrigin(village, message)].filter(Boolean).join("\n") || "none"}`,
     effectiveVillagerReplyGuidance(village.narrationStyle),
     venueWritingDirection(village.narrationStyle, player.name),
     `The residents currently here are: ${audience.join(", ")}. Nobody joins mid-visit. A resident may leave after a clear spoken departure, and the scene ends when the last one leaves. Do not force a departure merely because time passed.`,
@@ -1454,7 +1459,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() });
     const judged = await proposeWishVerdict({
       village: village.name,
-      setting: villageNarrativeSetting(village),
+      setting: villageCurrentSetting(village),
       moment,
       card: readEffectiveVillagerCard(resident),
       playerName: player.name,
