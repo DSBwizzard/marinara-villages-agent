@@ -1,5 +1,9 @@
 # Villages
 
+## UI direction
+
+The View Venue design is the current standard for new Villages UI work: deep navy backgrounds, layered blue panels, violet active states, large place imagery, clear area navigation, and readable details. Keep controls usable at desktop and phone sizes. Several selectable UI themes are planned for later; this language is the default until that work is designed and implemented.
+
 Villages is a text-first slice-of-life sim for Home: a small village that follows device-local time, a handful of characters who go about exact daily schedules, and a noticeboard you can read when you stop in. You are a visitor rather than an avatar. When Marinara reopens, the village reconciles from its last saved instant and reconstructs the elapsed life you missed.
 
 Current venue visits stay live for 30 minutes after the last deliberate input. Refresh restores a live visit; after inactivity the scene ends as **Interrupted: Inactivity** and Villages returns to the current map. Completed exchanges and verified effects remain in history, while a greeting-only visit is dropped. A reply may capture quiet, evidence-linked recollections for 24-hour continuity. When a played visit closes, one low-temperature System review adjudicates every recollection and promotes every distinct commitment, stable truth, meaningful preference or boundary, relationship change, or significant shared experience that deserves to last. There is no per-character or per-visit memory quota. A failed review never holds the room: the exact transcript stays archived and the review remains visibly retryable. Meaningful confirmed changes and newly durable memories appear once as dismissible star notices inside the venue scene. **DEBUG: Discard Visit** removes the active transcript without running durable review; already committed effects and passing recollections remain intact.
@@ -38,6 +42,8 @@ Conversation memories are event-centric. A promise heard by four residents is on
 A played tiered visit is closed and releases the active-room pointer before review. No recollections means no review call. A failed or interrupted review leaves `memoryPending` with its transcript and decisions safely retryable; automatic retention skips it. Opening **Villagers → Memories** retries one pending review and shows passing context, durable history, archive health, and exact cited lines. Existing legacy chronicle entries remain untouched and use their older scope/actor fallback.
 
 ## What this release contains
+
+0.6.65 gives View Venue a zone sidebar and one area at a time, with locked previews for spaces not yet entered. The area button now enters the selected exterior, shared, public, or invited private space. Private tabs follow the current residents, and the navy and violet design is the Villages UI default until future themes are added.
 
 0.6.62 gives venue replies role-explicit recent context and a looser scene cadence. Before saving a turn, Villages checks for copied player speech and a resident question repeated after the player's answer. A rejected reply gets one targeted retry; if it still fails, the draft and scene state remain intact for another send.
 

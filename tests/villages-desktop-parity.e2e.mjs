@@ -123,6 +123,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let lastTurn = null;
+    let lastEntry = null;
     let lastLeave = null;
     let session = {
       version: 1,
@@ -167,13 +168,14 @@ try {
         };
       else if (path.endsWith("/rooms/activity")) value = { session };
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
-        const visited = snapshot.settings.venues.find((venue) => venue.id === route.request().postDataJSON().venueId);
+        lastEntry = route.request().postDataJSON();
+        const visited = snapshot.settings.venues.find((venue) => venue.id === lastEntry.venueId);
         session = {
           ...session,
           placeId: visited.id,
           placeName: visited.name,
-          spaceClass: visited.classes[0],
-          area: "public",
+          spaceClass: lastEntry.spaceClass ?? visited.classes[0],
+          area: lastEntry.entryArea ?? "public",
         };
         value = { session };
       } else if (path.endsWith("/rooms/turn")) {
@@ -304,21 +306,24 @@ try {
     }
     await doors.getByRole("button", { name: /View venue/i }).click();
     await expect(page.getByText("Nobody is here right now")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Visit Venue" })).toBeVisible();
+    const zoneNav = page.getByRole("navigation", { name: "Venue zones" });
+    await expect(zoneNav.getByRole("button", { name: /Exterior/u })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Visit this area →" })).toBeVisible();
     await expect(page.getByRole("button", { name: "About" })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
         path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-${width}x${height}.png`),
       });
     }
-    if (!mobile) {
-      await page.getByRole("button", { name: "Visit Venue" }).click();
-      await expect(page.getByText("Choose a space")).toBeVisible();
-      await expect(page.getByRole("button", { name: "Workplace space" })).toBeVisible();
-    }
+    await zoneNav
+      .getByRole("button", { name: /interior/iu })
+      .first()
+      .click();
+    await expect(page.getByText("Area not discovered yet")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Visit this area →" })).toBeEnabled();
     await page.getByRole("button", { name: "Edit Venue" }).click();
     await expect(page.getByRole("button", { name: "Close Editor" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Visit Venue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Visit this area →" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Propose Change" })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
@@ -335,7 +340,7 @@ try {
     await page.getByRole("button", { name: "Propose Change" }).click();
     await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit Venue" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Visit Venue" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Visit this area →" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
@@ -348,10 +353,9 @@ try {
     await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Exit Change Proposal" }).click();
-    await page.getByRole("button", { name: "Back to map" }).click();
-    await pin.focus();
-    await page.keyboard.press("Enter");
-    await doors.getByRole("button", { name: "Visit" }).click();
+    await page.getByRole("button", { name: "Visit this area →" }).click();
+    assert.equal(lastEntry?.entryArea, "public", "zone visit enters the selected interior");
+    assert.equal(lastEntry?.spaceClass, mobile ? "other" : "workplace");
     const composer = page.getByRole("textbox", { name: mobile ? "Message at The Market" : "Message at The Mill" });
     const dock = page.locator(".marinara-capability-villages-chat-vn");
     const stage = page.locator(".marinara-capability-villages-chat-stage");
@@ -459,7 +463,8 @@ try {
       "a new speaker does not rearrange the four cast slots",
     );
     await expect(page.getByRole("button", { name: "Compose" })).toHaveCount(0);
-    await page.getByRole("button", { name: "1 village notice" }).click();
+    const noticeTrigger = page.getByRole("button", { name: "1 village notice" });
+    if ((await noticeTrigger.getAttribute("aria-expanded")) === "false") await noticeTrigger.click();
     const memoryTrigger = page.getByRole("button", { name: "View memory: The village remembered this exchange." });
     await memoryTrigger.click();
     await expect(page.getByRole("dialog", { name: "The village remembered this exchange." })).toContainText(

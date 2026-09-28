@@ -3752,6 +3752,107 @@ const VILLAGES_STYLES = `
   .${ELEMENT_TAG}-venue-editor-page .${ELEMENT_TAG}-button,
   .${ELEMENT_TAG}-venue-proposal-page .${ELEMENT_TAG}-button { min-height: 2.5rem; }
 }
+/* Villages' current UI language: dark navy, blue glass surfaces, violet focus.
+   These scoped values can become a selectable theme palette in a later release. */
+.${ELEMENT_TAG}-root[data-venue-view="true"] {
+  --venue-bg: #091431;
+  --venue-panel: #132653;
+  --venue-border: #2d4a91;
+  --venue-text: #f3f4ff;
+  --venue-muted: #c0c9ee;
+  --venue-accent: #7545fb;
+  display: grid; grid-template-columns: clamp(13rem, 18cqw, 16rem) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr); gap: 0; padding: 0;
+  background: radial-gradient(circle at 78% 25%, #172d61 0, transparent 52%), linear-gradient(120deg, #09132f, #0e1e43);
+  color: var(--venue-text);
+}
+.${ELEMENT_TAG}-root[data-venue-view="true"] > .${ELEMENT_TAG}-header {
+  grid-column: 2; grid-row: 1; align-items: center; padding: 1.25rem 1.5rem .75rem;
+}
+.${ELEMENT_TAG}-root[data-venue-view="true"] .${ELEMENT_TAG}-title { font-size: clamp(1.35rem, 2.4cqw, 2rem); font-weight: 700; }
+.${ELEMENT_TAG}-root[data-venue-view="true"] .${ELEMENT_TAG}-subtitle { color: var(--venue-muted); font-size: .88rem; }
+.${ELEMENT_TAG}-root[data-venue-view="true"] .${ELEMENT_TAG}-header .${ELEMENT_TAG}-button,
+.${ELEMENT_TAG}-venue-back {
+  border: 1px solid #6478c1; border-radius: .7rem; background: #142653;
+  color: var(--venue-text); padding: .65rem .9rem; font: inherit; cursor: pointer;
+}
+.${ELEMENT_TAG}-root[data-venue-view="true"] .${ELEMENT_TAG}-header .${ELEMENT_TAG}-button:hover,
+.${ELEMENT_TAG}-venue-back:hover { border-color: #aa92ff; background: #203774; }
+.${ELEMENT_TAG}-root[data-venue-view="true"] > .${ELEMENT_TAG}-venue-page { display: contents; }
+.${ELEMENT_TAG}-venue-zones {
+  grid-column: 1; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: .65rem;
+  min-height: 0; overflow-y: auto; padding: 1rem .65rem;
+  border-right: 1px solid #314782;
+  background: radial-gradient(circle at 30% 85%, #274588, transparent 65%), linear-gradient(#10214a, #142a5b);
+}
+.${ELEMENT_TAG}-venue-back { min-height: 2.7rem; margin: 0 .1rem 1rem; }
+.${ELEMENT_TAG}-venue-zone-tab {
+  display: flex; align-items: center; gap: .65rem; min-width: 0; width: 100%;
+  border: 1px solid transparent; border-radius: .72rem; padding: .45rem;
+  background: transparent; color: var(--venue-text); text-align: left; font: inherit; cursor: pointer;
+}
+.${ELEMENT_TAG}-venue-zone-tab:hover { background: #253b75; }
+.${ELEMENT_TAG}-venue-zone-tab[data-active="true"] {
+  border-color: #8060ff; background: linear-gradient(105deg, #5139b4, #253c8d);
+  box-shadow: 0 0 0 2px #8756ff, 0 0 1.1rem #683cf977;
+}
+.${ELEMENT_TAG}-venue-zone-tab:focus-visible, .${ELEMENT_TAG}-venue-back:focus-visible,
+.${ELEMENT_TAG}-venue-visit:focus-visible { outline: 3px solid #b6a2ff; outline-offset: 2px; }
+.${ELEMENT_TAG}-venue-zone-thumb {
+  flex: 0 0 3.4rem; display: grid; place-items: center; width: 3.4rem; height: 3.4rem;
+  overflow: hidden; border: 1px solid #5570b0; border-radius: .42rem; background: #18254d;
+}
+.${ELEMENT_TAG}-venue-zone-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.${ELEMENT_TAG}-venue-zone-thumb > span { font-size: 1.5rem; color: #b5c3ec; }
+.${ELEMENT_TAG}-venue-zone-copy { min-width: 0; }
+.${ELEMENT_TAG}-venue-zone-copy strong, .${ELEMENT_TAG}-venue-zone-copy small { display: block; overflow-wrap: anywhere; }
+.${ELEMENT_TAG}-venue-zone-copy strong { font-size: .78rem; line-height: 1.3; }
+.${ELEMENT_TAG}-venue-zone-copy small { color: var(--venue-muted); font-size: .68rem; line-height: 1.35; }
+.${ELEMENT_TAG}-venue-zone-content {
+  grid-column: 2; grid-row: 2; display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 1fr);
+  align-items: start; gap: 1rem; min-width: 0; padding: .75rem 1.5rem 1.5rem;
+}
+.${ELEMENT_TAG}-venue-zone-main { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.${ELEMENT_TAG}-venue-artwork { overflow: hidden; border: 1px solid var(--venue-border); border-radius: .85rem; background: #0c1732; }
+.${ELEMENT_TAG}-venue-artwork img, .${ELEMENT_TAG}-venue-artwork-empty {
+  display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover;
+}
+.${ELEMENT_TAG}-venue-artwork-empty { display: grid; place-items: center; color: var(--venue-muted); text-align: center; }
+.${ELEMENT_TAG}-venue-about, .${ELEMENT_TAG}-venue-zone-context {
+  min-width: 0; border: 1px solid var(--venue-border); border-radius: .8rem;
+  background: linear-gradient(145deg, #142753, #101e42); padding: 1rem 1.15rem;
+}
+.${ELEMENT_TAG}-venue-about h2, .${ELEMENT_TAG}-venue-zone-context h2 { margin: 0 0 .55rem; font-size: 1.2rem; }
+.${ELEMENT_TAG}-venue-about p, .${ELEMENT_TAG}-venue-zone-context p { margin: 0; color: var(--venue-muted); line-height: 1.6; }
+.${ELEMENT_TAG}-venue-more { margin-top: 1rem; border: 1px solid var(--venue-border); border-radius: .6rem; padding: .7rem .9rem; }
+.${ELEMENT_TAG}-venue-more summary { cursor: pointer; }
+.${ELEMENT_TAG}-venue-more p { margin-top: .65rem; }
+.${ELEMENT_TAG}-venue-zone-context { display: flex; flex-direction: column; min-height: min(31rem, 63cqh); }
+.${ELEMENT_TAG}-venue-kicker { color: #b9c5ff; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+.${ELEMENT_TAG}-venue-zone-stat { display: flex; justify-content: space-between; gap: .65rem; border-top: 1px solid #29447f; margin-top: 1.1rem; padding: 1rem 0 0; }
+.${ELEMENT_TAG}-venue-zone-stat span { color: var(--venue-muted); }
+.${ELEMENT_TAG}-venue-zone-stat strong { font-weight: 500; text-align: right; }
+.${ELEMENT_TAG}-venue-zone-guidance { margin-top: 1rem !important; font-size: .85rem; }
+.${ELEMENT_TAG}-venue-visit {
+  width: 100%; min-height: 3.25rem; margin-top: auto; border: 0; border-radius: .55rem;
+  background: linear-gradient(100deg, #3156e8, var(--venue-accent));
+  color: white; font: inherit; font-size: 1rem; font-weight: 700; cursor: pointer;
+}
+.${ELEMENT_TAG}-venue-visit:disabled { opacity: .48; cursor: default; }
+.${ELEMENT_TAG}-venue-zone-content > .${ELEMENT_TAG}-button { grid-column: 2; justify-self: start; border-color: var(--venue-border); background: var(--venue-panel); color: var(--venue-text); }
+.${ELEMENT_TAG}-venue-zone-content > .${ELEMENT_TAG}-error { grid-column: 1 / -1; }
+@container (max-width: 48rem) {
+  .${ELEMENT_TAG}-root[data-venue-view="true"] { display: flex; flex-direction: column; }
+  .${ELEMENT_TAG}-root[data-venue-view="true"] > .${ELEMENT_TAG}-header { order: 0; padding: 1rem; }
+  .${ELEMENT_TAG}-root[data-venue-view="true"] > .${ELEMENT_TAG}-venue-page { order: 1; display: flex; flex-direction: column; margin: 0; }
+  .${ELEMENT_TAG}-venue-zones { order: 0; flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: .7rem; border-right: 0; border-bottom: 1px solid #314782; }
+  .${ELEMENT_TAG}-venue-back { flex: 0 0 auto; margin: 0; }
+  .${ELEMENT_TAG}-venue-zone-tab { flex: 0 0 11rem; }
+  .${ELEMENT_TAG}-venue-zone-content { order: 2; display: flex; flex-direction: column; width: 100%; box-sizing: border-box; padding: 1rem; }
+  .${ELEMENT_TAG}-venue-zone-main, .${ELEMENT_TAG}-venue-zone-context { width: 100%; box-sizing: border-box; }
+  .${ELEMENT_TAG}-venue-zone-context { min-height: 0; gap: .25rem; }
+  .${ELEMENT_TAG}-venue-visit { margin-top: 1rem; }
+}
 /*
   The village story. A flat list under a date heading, scrolled by the overlay
   it sits in, with a monospaced stamp on the memories that carry one. The max
@@ -6040,6 +6141,21 @@ function isHouse(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
 }
 
 type VenueClass = NonNullable<VillageVenue["classes"]>[number];
+type VenueViewZone = {
+  key: string;
+  label: string;
+  subtitle: string;
+  area: "outside" | "shared" | "private" | "public";
+  spaceClass: VenueClass;
+  ownerId: string;
+  image: VillageVenueImage | null;
+  description: string;
+  state?: NonNullable<VillageVenue["spaces"]>[number]["state"];
+  locked: boolean;
+  canEnter: boolean;
+  accessLabel: string;
+  adaptationPending?: boolean;
+};
 const VENUE_CLASS_CHOICES: VenueClass[] = ["residence", "workplace", "gathering", "other"];
 
 function venueClassesFor(place: VillageVenue): VenueClass[] {
@@ -10140,8 +10256,9 @@ function RoomPanel({
       </div>
       {room.area === "outside" ? (
         <p className={`${ELEMENT_TAG}-hint`} role="status">
-          You’re outside this Residence. A resident needs to invite you in. You can speak in your own words, or leave
-          whenever you like.
+          {room.spaceClass === "residence"
+            ? "You’re outside this Residence. A resident needs to invite you in. You can speak in your own words, or leave whenever you like."
+            : "You’re outside this Venue. You can speak in your own words, or leave whenever you like."}
         </p>
       ) : null}
       {notices.length > 0 ? (
@@ -10737,7 +10854,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    */
   const [venueId, setVenueId] = useState<string | null>(null);
   const [venuePage, setVenuePage] = useState<"view" | "edit" | "proposal">("view");
-  const [venueVisitPickerOpen, setVenueVisitPickerOpen] = useState(false);
+  const [venueZoneKey, setVenueZoneKey] = useState("exterior");
+  useEffect(() => {
+    if (venueZoneKey === "exterior") return;
+    const venue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
+    const available = venueZoneKey.startsWith("class:")
+      ? Boolean(venue && venueClassesFor(venue).includes(venueZoneKey.slice(6) as VenueClass))
+      : Boolean(
+          venue &&
+          venueZoneKey.startsWith("private:") &&
+          (
+            venue.residentIds ?? (venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [])
+          ).includes(venueZoneKey.slice(8)) &&
+          venue.privateSpaces?.some((space) => space.ownerId === venueZoneKey.slice(8)),
+        );
+    if (!available) setVenueZoneKey("exterior");
+  }, [snapshot, venueId, venueZoneKey]);
   const [venueEditDraft, setVenueEditDraft] = useState<VillageVenue | null>(null);
   const [venueProposalDraft, setVenueProposalDraft] = useState<{
     classes: VenueClass[];
@@ -12118,7 +12250,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setPlacesOpen(false);
     setVenueId(place.id);
     setVenuePage("view");
-    setVenueVisitPickerOpen(false);
+    setVenueZoneKey("exterior");
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setScreen("venue");
@@ -12170,7 +12302,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   /** Visit starts one venue session with a fixed cast, including when the venue is empty. */
   const openRoom = useCallback(
-    async (place: VillageVenue, spaceClass?: VenueClass, privateOwnerId = "") => {
+    async (
+      place: VillageVenue,
+      spaceClass?: VenueClass,
+      privateOwnerId = "",
+      entryArea?: "outside" | "shared" | "private" | "public",
+    ) => {
       leavingRoomPendingRef.current = false;
       roomCompletionRef.current = null;
       setOpenPlaceId(null);
@@ -12200,7 +12337,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       try {
         const { session } = await request<{ session: RoomView }>("/rooms", {
           method: "POST",
-          body: JSON.stringify({ venueId: place.id, spaceClass, privateOwnerId }),
+          body: JSON.stringify({ venueId: place.id, spaceClass, privateOwnerId, entryArea }),
           signal: AbortSignal.timeout(20_000),
         });
         setRoom(currentRoom(session));
@@ -12247,7 +12384,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const leaveVenue = useCallback(() => {
     setVenueId(null);
     setVenuePage("view");
-    setVenueVisitPickerOpen(false);
+    setVenueZoneKey("exterior");
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setOpenPlaceId(null);
@@ -14205,29 +14342,87 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const occupant = place.occupancy.playerHome
       ? playerDisplayName(snapshot)
       : nameOfCharacter(place.occupancy.residentCharacterId);
-    const occupiedResidence = classes.includes("residence") && (place.residentIds?.length ?? 0) > 0;
+    const residentIds =
+      place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []);
+    const occupiedResidence = classes.includes("residence") && residentIds.length > 0;
     const liveShared = room?.placeId === place.id && (room.area === "shared" || room.area === "private");
     const livePrivateOwner = room?.placeId === place.id && room.area === "private" ? room.privateOwnerId : "";
     const canViewShared = place.occupancy.playerHome || place.playerSeenShared || liveShared;
     const privateSpaces = (place.privateSpaces ?? []).filter(
       (space) => place.playerSeenPrivateIds?.includes(space.ownerId) || space.ownerId === livePrivateOwner,
     );
-    const visitOptions = [
-      ...classes.map((item) => ({
-        key: item,
-        label: `${item[0]!.toUpperCase()}${item.slice(1)} space`,
-        spaceClass: item,
+    const activeRoom = room?.status !== "closed" && room?.id ? room : null;
+    const sharedInvitation = (place.playerInvitations ?? []).some((entry) => residentIds.includes(entry.residentId));
+    const zones: VenueViewZone[] = [
+      {
+        key: "exterior",
+        label: "Exterior",
+        subtitle: "Outside the building",
+        area: "outside",
+        spaceClass: classes[0]!,
         ownerId: "",
-      })),
-      ...(place.playerInvitations ?? [])
-        .filter((invitation) => invitation.scope === "private" && invitation.ownerId)
-        .map((invitation) => ({
-          key: `private:${invitation.ownerId}`,
-          label: `${nameOfCharacter(invitation.ownerId ?? "")}'s private space`,
-          spaceClass: "residence" as VenueClass,
-          ownerId: invitation.ownerId ?? "",
-        })),
+        image: place.presentation.image,
+        description: place.form || building || `The outside of ${place.name}.`,
+        state: place.exteriorState,
+        locked: false,
+        canEnter: true,
+        accessLabel: "Open (no restrictions)",
+      },
+      ...classes.map((item): VenueViewZone => {
+        const space = venueSpaceFor(place, item);
+        const residence = item === "residence";
+        const locked = residence
+          ? !canViewShared
+          : !place.playerSeenPublic && !(activeRoom?.placeId === place.id && activeRoom.area === "public");
+        const canEnter = !residence || !occupiedResidence || place.occupancy.playerHome || sharedInvitation;
+        return {
+          key: `class:${item}`,
+          label: classes.length === 1 ? "Interior" : `${item[0]!.toUpperCase()}${item.slice(1)} interior`,
+          subtitle: residence ? "Shared living space" : `${item[0]!.toUpperCase()}${item.slice(1)} space`,
+          area: residence ? "shared" : "public",
+          spaceClass: item,
+          ownerId: "",
+          image: locked ? null : space.image,
+          description: locked ? "" : space.description,
+          state: locked ? undefined : space.state,
+          locked,
+          canEnter,
+          accessLabel: canEnter ? "Open to visit" : "Resident invitation required",
+        };
+      }),
+      ...(place.privateSpaces ?? [])
+        .filter((space) => residentIds.includes(space.ownerId))
+        .map((space): VenueViewZone => {
+          const ownerName = nameOfCharacter(space.ownerId);
+          const locked = !place.playerSeenPrivateIds?.includes(space.ownerId) && space.ownerId !== livePrivateOwner;
+          const canEnter = (place.playerInvitations ?? []).some(
+            (entry) =>
+              entry.scope === "private" && entry.ownerId === space.ownerId && entry.residentId === space.ownerId,
+          );
+          return {
+            key: `private:${space.ownerId}`,
+            label: `${ownerName}'s Private Space`,
+            subtitle: "Restricted area",
+            area: "private",
+            spaceClass: "residence",
+            ownerId: space.ownerId,
+            image: locked ? null : space.image,
+            description: locked ? "" : space.description,
+            state: locked ? undefined : space.state,
+            locked,
+            canEnter,
+            accessLabel: canEnter ? "Owner's invitation available" : "Owner's invitation required",
+            adaptationPending: !locked && space.adaptationPending,
+          };
+        }),
     ];
+    const selectedZone = zones.find((zone) => zone.key === venueZoneKey) ?? zones[0]!;
+    const activeZoneIsSelected = Boolean(
+      activeRoom?.placeId === place.id &&
+      activeRoom.area === selectedZone.area &&
+      (selectedZone.area === "outside" || activeRoom.spaceClass === selectedZone.spaceClass) &&
+      (selectedZone.area !== "private" || activeRoom.privateOwnerId === selectedZone.ownerId),
+    );
     const imagePanel = (label: string, image: VillageVenueImage | null, spaceClass?: VenueClass, ownerId = "") => (
       <section className={`${ELEMENT_TAG}-venue-card`} key={ownerId || spaceClass || "exterior"}>
         <h3 className={`${ELEMENT_TAG}-panel-title`}>{label}</h3>
@@ -14408,7 +14603,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     };
     const title = venueTitle(place, occupant);
     return (
-      <div className={`${ELEMENT_TAG}-root`}>
+      <div className={`${ELEMENT_TAG}-root`} data-venue-view={venuePage === "view" ? "true" : undefined}>
         <header className={`${ELEMENT_TAG}-header`}>
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>
@@ -14416,9 +14611,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             </h1>
             <p className={`${ELEMENT_TAG}-subtitle`}>
               {venuePage === "view"
-                ? here.length === 0
-                  ? "Nobody is here right now"
-                  : `Villagers here: ${here.map((villager) => villager.name).join(", ")}`
+                ? place.form ||
+                  building ||
+                  (here.length === 0
+                    ? "Nobody is here right now"
+                    : `Villagers here: ${here.map((villager) => villager.name).join(", ")}`)
                 : venuePage === "edit"
                   ? "Pictures and venue details"
                   : "Review a structural change"}
@@ -14458,15 +14655,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 >
                   Propose Change
                 </button>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  onClick={
-                    room?.placeId === place.id && room.status !== "closed" ? () => setScreen("room") : leaveVenue
-                  }
-                >
-                  {room?.placeId === place.id && room.status !== "closed" ? "Return to scene" : "Back to map"}
-                </button>
+                {activeRoom?.placeId === place.id ? (
+                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setScreen("room")}>
+                    Return to scene
+                  </button>
+                ) : null}
               </>
             ) : (
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={exitPage}>
@@ -14476,161 +14669,166 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </div>
         </header>
         {venuePage === "view" ? (
-          <main className={`${ELEMENT_TAG}-venue-page`}>
-            <section className={`${ELEMENT_TAG}-venue-hero`}>
-              {place.presentation.image ? (
-                <img
-                  className={`${ELEMENT_TAG}-venue-picture`}
-                  src={place.presentation.image.url}
-                  alt={`Exterior of ${place.name}`}
-                />
-              ) : (
-                <div className={`${ELEMENT_TAG}-venue-image-empty`}>Exterior image not drawn yet</div>
-              )}
-              <div className={`${ELEMENT_TAG}-venue-context`}>
-                <span className={`${ELEMENT_TAG}-label`}>The place</span>
-                {place.form || building ? <p>{place.form || building}</p> : null}
-                {snapshot.village.setting ? <p className={`${ELEMENT_TAG}-hint`}>{snapshot.village.setting}</p> : null}
-                {classes.includes("residence") ? (
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    {venueAssignedCountFor(place)} / {venueCapacityFor(place)} residents
-                  </p>
-                ) : null}
-                <div className={`${ELEMENT_TAG}-row`}>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={roomBusy}
-                    aria-expanded={visitOptions.length > 1 ? venueVisitPickerOpen : undefined}
-                    onClick={() => {
-                      if (visitOptions.length === 1) {
-                        const choice = visitOptions[0]!;
-                        void openRoom(place, choice.spaceClass, choice.ownerId);
-                      } else setVenueVisitPickerOpen((open) => !open);
-                    }}
-                  >
-                    {roomBusy ? "Opening visit…" : "Visit Venue"}
-                  </button>
-                </div>
-                {venueVisitPickerOpen && visitOptions.length > 1 ? (
-                  <div className={`${ELEMENT_TAG}-venue-visit-picker`}>
-                    <span className={`${ELEMENT_TAG}-label`}>Choose a space</span>
-                    {visitOptions.map((choice) => (
-                      <button
-                        key={choice.key}
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        disabled={roomBusy}
-                        onClick={() => {
-                          setVenueVisitPickerOpen(false);
-                          void openRoom(place, choice.spaceClass, choice.ownerId);
-                        }}
-                      >
-                        {choice.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {classes.includes("residence") && !place.occupancy.playerHome ? (
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    You can speak from outside. Entering a resident's home requires an invitation.
-                  </p>
-                ) : null}
-              </div>
-            </section>
-            {classes.includes("residence") && !canViewShared ? (
-              <p className={`${ELEMENT_TAG}-hint`}>
-                The shared Residence space appears after you enter with an invitation.
-              </p>
-            ) : null}
-            <div className={`${ELEMENT_TAG}-venue-space-grid`}>
-              {classes
-                .filter((item) => item !== "residence" || canViewShared)
-                .map((item) => {
-                  const space = venueSpaceFor(place, item);
-                  return (
-                    <section className={`${ELEMENT_TAG}-venue-card`} key={item}>
-                      <h2 className={`${ELEMENT_TAG}-panel-title`}>
-                        {item === "residence"
-                          ? "Shared Residence space"
-                          : `${item[0]!.toUpperCase()}${item.slice(1)} space`}
-                      </h2>
-                      {space.image ? (
-                        <img
-                          className={`${ELEMENT_TAG}-venue-space-picture`}
-                          src={space.image.url}
-                          alt={`${item} space at ${place.name}`}
-                        />
-                      ) : (
-                        <div className={`${ELEMENT_TAG}-venue-image-empty`}>Image not drawn yet</div>
-                      )}
-                      {space.description ? <p className={`${ELEMENT_TAG}-venue-beat`}>{space.description}</p> : null}
-                      {space.state.condition ? (
-                        <p className={`${ELEMENT_TAG}-hint`}>Condition now: {space.state.condition}</p>
-                      ) : null}
-                      {space.state.items.length ? (
-                        <p className={`${ELEMENT_TAG}-hint`}>Present items: {space.state.items.join(", ")}</p>
-                      ) : null}
-                      {space.state.publicFacts.length ? (
-                        <p className={`${ELEMENT_TAG}-hint`}>
-                          Established facts: {space.state.publicFacts.join(" · ")}
-                        </p>
-                      ) : null}
-                      {space.state.features.length ? (
-                        <p className={`${ELEMENT_TAG}-hint`}>
-                          Defining features: {space.state.features.map((feature) => feature.text).join(" · ")}
-                        </p>
-                      ) : null}
-                    </section>
-                  );
-                })}
-              {privateSpaces.map((space) => (
-                <section className={`${ELEMENT_TAG}-venue-card`} key={space.ownerId}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>{nameOfCharacter(space.ownerId)}'s private space</h2>
-                  {space.image ? (
-                    <img
-                      className={`${ELEMENT_TAG}-venue-space-picture`}
-                      src={space.image.url}
-                      alt={`${nameOfCharacter(space.ownerId)}'s private space`}
-                    />
+          <main className={ELEMENT_TAG + "-venue-page"} aria-label="View Venue">
+            <nav className={ELEMENT_TAG + "-venue-zones"} aria-label="Venue zones">
+              <button type="button" className={ELEMENT_TAG + "-venue-back"} onClick={leaveVenue}>
+                ← Back to map
+              </button>
+              {zones.map((zone) => (
+                <button
+                  key={zone.key}
+                  type="button"
+                  className={ELEMENT_TAG + "-venue-zone-tab"}
+                  data-active={selectedZone.key === zone.key ? "true" : "false"}
+                  aria-current={selectedZone.key === zone.key ? "page" : undefined}
+                  onClick={() => setVenueZoneKey(zone.key)}
+                >
+                  <span className={ELEMENT_TAG + "-venue-zone-thumb"}>
+                    {zone.image && !zone.locked ? (
+                      <img src={zone.image.url} alt="" />
+                    ) : (
+                      <span aria-hidden="true">{zone.locked ? "◈" : "⌂"}</span>
+                    )}
+                  </span>
+                  <span className={ELEMENT_TAG + "-venue-zone-copy"}>
+                    <strong>{zone.label}</strong>
+                    <small>{zone.subtitle}</small>
+                  </span>
+                </button>
+              ))}
+            </nav>
+            <div className={ELEMENT_TAG + "-venue-zone-content"}>
+              <section className={ELEMENT_TAG + "-venue-zone-main"} aria-label={selectedZone.label}>
+                <div className={ELEMENT_TAG + "-venue-artwork"}>
+                  {selectedZone.image && !selectedZone.locked ? (
+                    <img src={selectedZone.image.url} alt={selectedZone.label + " at " + place.name} />
                   ) : (
-                    <div className={`${ELEMENT_TAG}-venue-image-empty`}>Image not drawn yet</div>
+                    <div className={ELEMENT_TAG + "-venue-artwork-empty"}>
+                      {selectedZone.locked ? "Area not discovered yet" : "No image for this area yet"}
+                    </div>
                   )}
-                  {space.description ? <p className={`${ELEMENT_TAG}-venue-beat`}>{space.description}</p> : null}
-                  {space.adaptationPending ? (
-                    <p className={`${ELEMENT_TAG}-hint`}>This room is still being adapted after a move.</p>
+                </div>
+                <section className={ELEMENT_TAG + "-venue-about"}>
+                  <h2>About this area</h2>
+                  {selectedZone.locked ? (
+                    <p>This area has not been discovered yet.</p>
+                  ) : (
+                    <p>{selectedZone.description || "No description has been added for this area yet."}</p>
+                  )}
+                  {selectedZone.adaptationPending ? <p>This room is still being adapted after a move.</p> : null}
+                  {!selectedZone.locked ? (
+                    <details className={ELEMENT_TAG + "-venue-more"}>
+                      <summary>Show more details</summary>
+                      {selectedZone.state?.condition ? (
+                        <p>
+                          <strong>Condition:</strong> {selectedZone.state.condition}
+                        </p>
+                      ) : null}
+                      {selectedZone.state?.items.length ? (
+                        <p>
+                          <strong>Present items:</strong> {selectedZone.state.items.join(", ")}
+                        </p>
+                      ) : null}
+                      {selectedZone.state?.publicFacts.length ? (
+                        <p>
+                          <strong>Established facts:</strong> {selectedZone.state.publicFacts.join(" · ")}
+                        </p>
+                      ) : null}
+                      {selectedZone.state?.features.length ? (
+                        <p>
+                          <strong>Defining features:</strong>{" "}
+                          {selectedZone.state.features.map((feature) => feature.text).join(" · ")}
+                        </p>
+                      ) : null}
+                      {selectedZone.area === "outside" && snapshot.village.setting ? (
+                        <p>
+                          <strong>Village:</strong> {snapshot.village.setting}
+                        </p>
+                      ) : null}
+                      {(place.editProposals ?? [])
+                        .filter((proposal) =>
+                          selectedZone.area === "shared"
+                            ? proposal.target === "shared"
+                            : selectedZone.area === "private" &&
+                              proposal.target === "private" &&
+                              proposal.ownerId === selectedZone.ownerId,
+                        )
+                        .map((proposal) => (
+                          <p key={proposal.id}>
+                            <strong>Proposed room edit:</strong>{" "}
+                            {proposal.declined
+                              ? "declined or stale"
+                              : "approved by " +
+                                proposal.approvedIds.length +
+                                " of " +
+                                proposal.requiredIds.length +
+                                " residents"}
+                          </p>
+                        ))}
+                    </details>
                   ) : null}
                 </section>
-              ))}
+              </section>
+              <aside className={ELEMENT_TAG + "-venue-zone-context"}>
+                <span className={ELEMENT_TAG + "-venue-kicker"}>Zone</span>
+                <h2>{selectedZone.label}</h2>
+                <p>{selectedZone.subtitle}</p>
+                <div className={ELEMENT_TAG + "-venue-zone-stat"}>
+                  <span>Occupancy</span>
+                  <strong>
+                    {classes.includes("residence")
+                      ? venueAssignedCountFor(place) + " / " + venueCapacityFor(place) + " residents"
+                      : here.length + " here now"}
+                  </strong>
+                </div>
+                <div className={ELEMENT_TAG + "-venue-zone-stat"}>
+                  <span>Accessibility</span>
+                  <strong>{selectedZone.accessLabel}</strong>
+                </div>
+                {selectedZone.locked && !selectedZone.canEnter ? (
+                  <p className={ELEMENT_TAG + "-venue-zone-guidance"}>
+                    Visit the exterior and ask the resident for an invitation.
+                  </p>
+                ) : null}
+                {activeRoom && !activeZoneIsSelected ? (
+                  <p className={ELEMENT_TAG + "-venue-zone-guidance"}>
+                    Finish the active visit before entering another area.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className={ELEMENT_TAG + "-venue-visit"}
+                  disabled={roomBusy || (!activeZoneIsSelected && (Boolean(activeRoom) || !selectedZone.canEnter))}
+                  onClick={() =>
+                    activeZoneIsSelected
+                      ? setScreen("room")
+                      : void openRoom(place, selectedZone.spaceClass, selectedZone.ownerId, selectedZone.area)
+                  }
+                >
+                  {roomBusy ? "Opening visit…" : activeZoneIsSelected ? "Return to scene →" : "Visit this area →"}
+                </button>
+              </aside>
+              {selectedZone.area === "outside" && classes.includes("residence") && !place.occupancy.playerHome ? (
+                <button
+                  type="button"
+                  className={ELEMENT_TAG + "-button"}
+                  onClick={() => {
+                    void request<VillageSnapshot>("/locations/venue/" + encodeURIComponent(place.id) + "/player-move", {
+                      method: "POST",
+                    })
+                      .then(setSnapshot)
+                      .catch((cause) => setVenueEditError(messageFrom(cause, "The move could not be requested.")));
+                  }}
+                >
+                  Request to live here
+                </button>
+              ) : null}
+              {venueEditError ? (
+                <p className={ELEMENT_TAG + "-error"} role="alert">
+                  {venueEditError}
+                </p>
+              ) : null}
             </div>
-            {(place.editProposals ?? []).map((proposal) => (
-              <p className={`${ELEMENT_TAG}-hint`} key={proposal.id}>
-                Proposed {proposal.target} room edit:{" "}
-                {proposal.declined
-                  ? "declined or stale"
-                  : `approved by ${proposal.approvedIds.length} of ${proposal.requiredIds.length} residents`}
-              </p>
-            ))}
-            {classes.includes("residence") && !place.occupancy.playerHome ? (
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                onClick={() => {
-                  void request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}/player-move`, {
-                    method: "POST",
-                  })
-                    .then(setSnapshot)
-                    .catch((cause) => setVenueEditError(messageFrom(cause, "The move could not be requested.")));
-                }}
-              >
-                Request to live here
-              </button>
-            ) : null}
-            {venueEditError ? (
-              <p className={`${ELEMENT_TAG}-error`} role="alert">
-                {venueEditError}
-              </p>
-            ) : null}
           </main>
         ) : venuePage === "edit" ? (
           <main className={`${ELEMENT_TAG}-venue-editor-page`}>

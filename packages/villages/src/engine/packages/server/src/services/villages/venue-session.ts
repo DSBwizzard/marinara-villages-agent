@@ -666,7 +666,9 @@ async function generateOnce(
     venueWritingDirection(village.narrationStyle, player.name),
     `The residents currently here are: ${audience.join(", ")}. Nobody joins mid-visit. A resident may leave after a clear spoken departure, and the scene ends when the last one leaves. Do not force a departure merely because time passed.`,
     session.area === "outside"
-      ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the shared area or a private space without validated permission. Do not expose unseen interior details."
+      ? session.spaceClass === "residence"
+        ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the shared area or a private space without validated permission. Do not expose unseen interior details."
+        : "The player is outside this Venue. Show only what they can observe from outside; do not describe them entering an interior."
       : active.length
         ? "Write as the named residents, preserving their separate voices and knowledge. Do not disclose one resident's private knowledge through another. The room has a life beyond the player's arrival: residents may be occupied or talking with each other. When the player addresses someone, engage with what they said; speech is usually natural, but a grounded action, hesitation, or lack of response can carry the moment. Do not use silence as a default way around a question. Never imply consent from silence. Quoted dialogue is not required because each segment has an explicit kind."
         : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
@@ -727,7 +729,9 @@ async function generateOnce(
       content:
         mode === "greet"
           ? session.area === "outside"
-            ? "The player arrives outside this Residence. Show a brief moment already underway from outside."
+            ? session.spaceClass === "residence"
+              ? "The player arrives outside this Residence. Show a brief moment already underway from outside."
+              : "The player arrives outside this Venue. Show a brief moment already underway from outside."
             : "The player enters this space. Show a brief moment already underway here."
           : mode === "leave" && !message.trim()
             ? "The player leaves without saying anything."
@@ -1173,6 +1177,7 @@ export async function enterVenue(
   placeId: string,
   requestedClass?: VillageVenueClass,
   privateOwnerId = "",
+  entryArea?: VenueSession["area"],
 ): Promise<VenueSession> {
   await rollActiveAgendas(new Date());
   const village = await readVillageState();
@@ -1181,16 +1186,34 @@ export async function enterVenue(
   const classes = venueClasses(place);
   const spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
   if (!classes.includes(spaceClass)) throw badRequest("That Venue has no such space.");
+  if (
+    (entryArea === "shared" || entryArea === "private") !== (spaceClass === "residence") &&
+    entryArea !== undefined &&
+    entryArea !== "outside"
+  )
+    throw badRequest("That area does not belong to this Venue space.");
+  if (entryArea === "private" && (!privateOwnerId || !venueResidentIds(place).includes(privateOwnerId)))
+    throw badRequest("That resident has no private space here.");
   const existing = await activeVenueSession();
   if (existing) {
     if (existing.placeId !== placeId) throw conflict(`Finish the conversation in ${existing.placeName} first.`);
     if (existing.spaceClass && existing.spaceClass !== spaceClass)
       throw conflict("Finish the active Venue space visit first.");
+    if (
+      entryArea &&
+      (existing.area !== entryArea || (entryArea === "private" && existing.privateOwnerId !== privateOwnerId))
+    )
+      throw conflict("Finish the active Venue area visit first.");
     return existing;
   }
-  let area: VenueSession["area"] = spaceClass === "residence" ? "shared" : "public";
+  let area: VenueSession["area"] = entryArea ?? (spaceClass === "residence" ? "shared" : "public");
   let privateAccessOwnerId = "";
-  if (spaceClass === "residence" && !place.occupancy.playerHome && venueResidentIds(place).length > 0) {
+  if (
+    spaceClass === "residence" &&
+    entryArea !== "outside" &&
+    ((entryArea === "private" && venueResidentIds(place).length > 0) ||
+      (!place.occupancy.playerHome && venueResidentIds(place).length > 0))
+  ) {
     area = "outside";
     await mutateVillageState((state) => {
       const current = state.venues.find((entry) => entry.id === placeId);
@@ -1217,6 +1240,7 @@ export async function enterVenue(
           current.playerSeenShared = true;
         }
       }
+      if (entryArea && area !== entryArea) throw conflict("This area needs a resident's invitation.");
     });
   }
   const participants = castAtEntry(village, placeId, new Date());

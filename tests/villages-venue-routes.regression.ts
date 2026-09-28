@@ -72,8 +72,8 @@ assert.match(ui, /className=\{`\$\{ELEMENT_TAG\}-room-mode-menu`\}/u, "visit mod
 assert.match(ui, /Use… Mailbox/u, "the player can open Mailbox while visiting home");
 assert.match(ui, /<VenueDraftFields/u, "Venues use the shared editor");
 assert.match(ui, /Search Venues/u, "the Venue index is searchable");
-assert.match(ui, /Retry greeting/u);
-assert.match(ui, /Continue without greeting/u);
+assert.match(ui, /Retry opening/u);
+assert.match(ui, /Continue without opening/u);
 assert.match(ui, /That line could not be sent/u, "failed turns keep a visible error");
 assert.match(ui, /Leave with memory pending/u);
 assert.match(ui, /Open transcript/u);
