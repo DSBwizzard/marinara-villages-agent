@@ -43,7 +43,13 @@ const venue = (name: string): VillageVenue => {
 };
 const state = defaultVillageState();
 state.foundedAt = at;
-state.villagers.push({ characterId: "rosa", cardSnapshot: { name: "Rosa" } } as VillageVillager);
+state.villagers.push({
+  characterId: "rosa",
+  cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
+  agenda: null,
+  addedAt: at,
+  completedWishes: [],
+} as VillageVillager);
 state.noticeboard.push({ author: "Rosa", text: "Could we have somewhere to grow herbs?" });
 
 assert.deepEqual(readVenueRequestCore({ name: "", classes: ["gathering"] }), null);
@@ -143,21 +149,29 @@ assert.equal(persisted.pendingDecisions[0]?.id, id, "removing a note does not di
 
 applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse for herbs.", new Date(at));
 assert.equal(persisted.pendingDecisions[0]?.status, "approved");
-assert.deepEqual(persisted.venues[0]?.classes, ["gathering"]);
-assert.equal(persisted.venues[0]?.description, "A shared glasshouse for herbs.");
-assert.equal(remapVenues(persisted.venues)[0]?.name, core.name);
-assert.match(persisted.chronicle[0]?.text ?? "", /approved Rosa's request/u);
+assert.equal(persisted.venues.length, 0, "approval begins planning without creating a venue");
+assert.equal(persisted.projects[0]?.kind, "build-venue");
+assert.equal(persisted.projects[0]?.status, "draft");
+assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["gathering"]);
+assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
+assert.match(persisted.chronicle[0]?.text ?? "", /accepted Rosa's request to plan/u);
 assert.throws(() => applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse.", new Date(at)));
-assert.throws(() => addVillageVenue(persisted, venue(core.name)), /already exists/u);
+assert.equal(coerceVillageState(persisted).projects[0]?.venueDraft?.name, core.name, "the project survives reload");
 
 const denied = persisted.pendingDecisions.find((decision) => decision.venueDraft?.name === "The Mill")!;
 applyVillageVenueDecision(persisted, denied.id, false, null, "", new Date(at));
 assert.equal(denied.status, "denied");
-assert.equal(persisted.venues.length, 1, "denial must leave the map unchanged");
+assert.equal(persisted.venues.length, 0, "denial must leave the map unchanged");
 assert.match(persisted.chronicle[0]?.text ?? "", /declined Rosa's request/u);
 
 const competing = defaultVillageState();
-competing.villagers.push({ characterId: "rosa", cardSnapshot: { name: "Rosa" } } as VillageVillager);
+competing.villagers.push({
+  characterId: "rosa",
+  cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
+  agenda: null,
+  addedAt: at,
+  completedWishes: [],
+} as VillageVillager);
 queueVillageVenueRequest(competing, core, "rosa", "chat", "chat-competing", at);
 addVillageVenue(competing, venue(core.name));
 assert.equal(competing.venues.length, 1, "direct creation adds an ordinary map venue");
@@ -171,7 +185,7 @@ assert.throws(
       "A shared glasshouse.",
       new Date(at),
     ),
-  /already exists/u,
+  /already in use/u,
   "approval rechecks names after a player creates a competing venue",
 );
 assert.equal(competing.pendingDecisions[0]?.status, "pending", "a failed approval remains reviewable");

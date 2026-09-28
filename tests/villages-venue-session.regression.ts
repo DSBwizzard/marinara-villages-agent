@@ -13,6 +13,7 @@ import { generateFirstPrivateSpaceImage } from "../packages/villages/src/engine/
 import {
   decideVillagerVenueImprovement,
   proposeVenueChange,
+  queueVenueCounteroffer,
   recordVillagerVenueImprovement,
   respondDueVenueMail,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-mailbox.js";
@@ -38,6 +39,7 @@ import {
   listVenueVisits,
   listVenueVisitSummaries,
   readVenueVisit,
+  readProjectTurnEvidence,
   pruneVenueVisits,
   setVenueVisitRetention,
   backfillVenueMemories,
@@ -217,6 +219,17 @@ const release = configureVillagesRuntime({
               }),
               finishReason: "stop",
             };
+          if (user === "What new venue do we need?") {
+            const quote = "Could we build a Power Plant for reliable light?";
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob"],
+                segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
+                venueRequest: { speakerId: "bob", name: "Power Plant", classes: ["workplace"], quote },
+              }),
+              finishReason: "stop",
+            };
+          }
           if (user === "Come visit tomorrow") {
             const quote = "You may come into our shared space on your next visit.";
             return {
@@ -1043,27 +1056,37 @@ async function main() {
       text: `Feature ${index + 1}`,
       locked: index === 0 || index === 1,
     }));
-    await updateVillageVenue("park", { workerIds: ["bob"], state: { features } });
+    await mutateVillageState((state) => {
+      const park = state.venues.find((place) => place.id === "park")!;
+      park.workerIds = ["bob"];
+      park.state.features = features;
+    });
     let park = (await readVillageState()).venues.find((place) => place.id === "park")!;
     assert.equal(park.state.features?.length, 5);
     assert.deepEqual(park.state.furniture, ["old armchair"], "ordinary furniture is never squeezed into feature slots");
     assert.deepEqual(park.workerIds, ["bob"]);
     await assert.rejects(
       () => updateVillageVenue("park", { state: { features: [...features, { text: "Sixth" }] } }),
-      /at most five features/u,
+      /only name and description/u,
     );
-    await assert.rejects(() => updateVillageVenue("park", { workerIds: ["outsider"] }), /Assign only villagers/u);
+    await assert.rejects(() => updateVillageVenue("park", { workerIds: ["outsider"] }), /only name and description/u);
     const lockedId = park.state.features![0]!.id;
-    await updateVillageVenue("park", {
-      state: {
-        features: park.state.features?.map((feature) =>
-          feature.id === lockedId ? { ...feature, text: "Player replaced the first feature", locked: false } : feature,
-        ),
-      },
-    });
+    await assert.rejects(
+      () =>
+        updateVillageVenue("park", {
+          state: {
+            features: park.state.features?.map((feature) =>
+              feature.id === lockedId
+                ? { ...feature, text: "Player replaced the first feature", locked: false }
+                : feature,
+            ),
+          },
+        }),
+      /only name and description/u,
+    );
     park = (await readVillageState()).venues.find((place) => place.id === "park")!;
-    assert.equal(park.state.features?.[0]?.id, lockedId, "player edits keep a feature's stable identity");
-    assert.equal(park.state.features?.[0]?.locked, false, "player may unlock a feature");
+    assert.equal(park.state.features?.[0]?.id, lockedId, "blocked edits keep a feature's stable identity");
+    assert.equal(park.state.features?.[0]?.locked, true, "the editor cannot unlock a physical feature");
     const empty = await enterVenue("empty");
     assert.equal(empty.status, "active", "an empty visit has a durable session");
     assert.deepEqual(empty.participants, []);
@@ -1169,6 +1192,21 @@ async function main() {
     await assert.rejects(() => resetVenueSessions(), /Finish the active venue conversation/u);
     assert.deepEqual(group.activeIds, ["bob", "tina"]);
     assert.equal(calls, callsAfterEmpty + 1, "one opening call writes one shared scene");
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "What new venue do we need?",
+      mode: "chat",
+      targetId: "",
+      submissionId: "spoken-power-plant-request",
+    });
+    const requestedPlant = (await readVillageState()).pendingDecisions.find(
+      (entry) => entry.kind === "venue" && entry.venueDraft?.name === "Power Plant",
+    );
+    assert.equal(requestedPlant?.requesterCharacterId, "bob", "a quoted live request is durable");
+    assert.equal(
+      (await readVillageState()).venues.some((venue) => venue.name === "Power Plant"),
+      false,
+    );
     assert.equal((await activeVenueSession())?.id, group.id, "reload restores the same active visit");
     await assert.rejects(() => enterVenue("empty"), /Finish the conversation/u);
 
@@ -1401,6 +1439,9 @@ async function main() {
       submissionId: "group-action",
     });
     assert.equal(action.action?.happened, true);
+    const projectActionEvidence = await readProjectTurnEvidence(group.id, "group-action");
+    assert.ok(Number.isFinite(Date.parse(projectActionEvidence.at)), "live Act evidence keeps its timestamp");
+    assert.equal(projectActionEvidence.action?.happened, true);
     assert.equal(calls - beforeAction, 2, "an action with villagers uses a check and one shared reply");
     assert.ok(
       (await activeVenueSession())?.lines.some((line) => line.content === "The player sets down a cup."),
@@ -2535,6 +2576,28 @@ async function main() {
     mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "approved");
     assert.deepEqual((await readVillageState()).venues[0]!.classes, ["workplace", "gathering"]);
+    await mutateVillageState((state) => {
+      const request = state.pendingDecisions.find((entry) => entry.venueDraft?.name === "Power Plant")!;
+      queueVenueCounteroffer(
+        state,
+        request.id,
+        { name: "Hydro Station", classes: ["workplace"] },
+        "A river station that brings light to the village.",
+        new Date(),
+      );
+      state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1_000).toISOString();
+    });
+    await respondDueVenueMail();
+    const acceptedCounteroffer = await readVillageState();
+    assert.equal(acceptedCounteroffer.venueMail.at(-1)?.status, "approved");
+    assert.equal(
+      acceptedCounteroffer.projects.find((entry) => entry.venueDraft?.name === "Hydro Station")?.status,
+      "draft",
+    );
+    assert.equal(
+      acceptedCounteroffer.venues.some((venue) => venue.name === "Hydro Station"),
+      false,
+    );
     mailboxAccept = false;
     await proposeVenueChange("park", { capacity: 2, title: "Make more room", detail: "Add another cot." });
     await mutateVillageState((state) => {
@@ -2619,14 +2682,18 @@ async function main() {
     const roomBefore = (await readVillageState()).venues
       .find((place) => place.id === "home")!
       .spaces!.find((space) => space.venueClass === "residence")!;
-    await assert.rejects(() => updateVillageVenue("home", { description: "Player redecorated it." }), /approval/u);
+    await updateVillageVenue("home", { description: "A quiet exterior." });
+    assert.equal(
+      (await readVillageState()).venues.find((place) => place.id === "home")?.description,
+      "A quiet exterior.",
+    );
     const proposed = await proposeResidenceSpaceEdit("home", {
       target: "shared",
       description: "A warm shared room.",
       state: { condition: "warm", items: ["cup"] },
     });
     assert.equal(proposed.settings.venues.find((place) => place.id === "home")?.editProposals?.length, 1);
-    await updateVillageVenue("home", { form: "A quiet home." });
+    await assert.rejects(() => updateVillageVenue("home", { form: "A quiet home." }), /only name and description/u);
     await sendVenueTurn({
       sessionId: outside.id,
       message: "Bob approves the edit",

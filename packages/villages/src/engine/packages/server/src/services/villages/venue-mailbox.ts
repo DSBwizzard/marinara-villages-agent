@@ -21,9 +21,9 @@ import type {
 import { hashString, randomVillageSeed } from "./village-clock.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 import { extractJsonObject } from "./village-bootstrap.js";
+import { draftBuildProject } from "./build-projects.js";
 import type { VenueRequestCore } from "./venue-requests.js";
 import {
-  defaultVenueSpace,
   hasVenueClass,
   venueAssignedCount,
   venueCapacity,
@@ -109,6 +109,7 @@ function validateMail(state: VillageState, mail: VillageVenueMail): VillageVenue
   }
   const venue = state.venues.find((entry) => entry.id === mail.venueId);
   if (!venue) throw notFound("That Venue no longer exists.");
+  if (venue.constructionStatus === "worksite") throw conflict("The build project governs this unfinished site.");
   if (mail.kind === "player-move") {
     if (!hasVenueClass(venue, "residence")) throw conflict("The destination is no longer a Residence.");
     if (venue.occupancy.playerHome) throw conflict("You already live here.");
@@ -145,23 +146,12 @@ function applyMail(state: VillageState, mail: VillageVenueMail, at: string): voi
   if (mail.kind === "counteroffer") {
     const draft = mail.counterofferDraft!;
     const request = state.pendingDecisions.find((entry) => entry.id === mail.counterofferRequestId)!;
-    state.venues.push({
-      id: randomVillageSeed(),
-      name: draft.name,
-      form: "",
-      spaces: draft.classes.map((venueClass) => defaultVenueSpace(venueClass, draft.description)),
-      residenceCapacity: 1,
-      residentIds: [],
-      improvements: [null, null],
-      classes: draft.classes,
-      description: draft.description,
-      category: "",
-      presentation: { image: null, x: null, y: null },
-      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      capabilities: [],
-      workerIds: [],
-      state: { condition: "", upgrades: [], furniture: [], publicFacts: [], features: [], traces: [], updatedAt: at },
-    });
+    draftBuildProject(
+      state,
+      { ...draft, requestQuote: request.requestQuote },
+      request.requesterCharacterId,
+      `request:${request.id}`,
+    );
     request.status = "approved";
   } else if (mail.kind === "villager-move") {
     const residence = state.residences.find(

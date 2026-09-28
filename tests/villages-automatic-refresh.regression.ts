@@ -406,7 +406,10 @@ async function main() {
         },
       ];
     });
-    await assert.rejects(() => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }), /occupied/u);
+    await assert.rejects(
+      () => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }),
+      /only name and description/u,
+    );
     await requestVillageHomeUpgrade("housing-resident", "rosa-home");
     const upgrade = (await readVillageState()).pendingDecisions.find((entry) => entry.kind === "venue-upgrade")!;
     await decideVillageHomeUpgrade(upgrade.id, true);

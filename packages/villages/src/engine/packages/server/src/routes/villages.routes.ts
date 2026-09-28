@@ -33,6 +33,17 @@ import { readVillageConnectionSettings, saveVillageConnections } from "../servic
 import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
 import { badRequest, notFound, statusCodeOf } from "../services/villages/errors.js";
 import { VENUE_CLASSES } from "../services/villages/venue-model.js";
+import {
+  proposeBuildProject,
+  addBuildSource,
+  setBuildSite,
+  agreeBuildProject,
+  promiseBuildSource,
+  acquireBuildSource,
+  commitBuildSupply,
+  recruitBuildWorker,
+  startBuildWork,
+} from "../services/villages/build-projects.js";
 import type { VillageVenueClass } from "../services/villages/types.js";
 import { listVillageLorebooks } from "../services/villages/lorebooks.js";
 import {
@@ -1098,6 +1109,37 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "creating a place");
     }
   });
+
+  app.post<{ Body: unknown }>("/projects", async (request, reply) => {
+    try {
+      await proposeBuildProject(request.body);
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "proposing a build project");
+    }
+  });
+
+  const projectAction = (suffix: string, action: (projectId: string, body: unknown) => Promise<void>) => {
+    app.post<{ Params: { projectId: string }; Body: unknown }>(
+      `/projects/:projectId/${suffix}`,
+      async (request, reply) => {
+        try {
+          await action(readVenueId(request.params.projectId), request.body);
+          return await buildVillageSnapshot();
+        } catch (error) {
+          return fail(reply, error, `${suffix} build project`);
+        }
+      },
+    );
+  };
+  projectAction("routes", addBuildSource);
+  projectAction("site", setBuildSite);
+  projectAction("agree", (projectId) => agreeBuildProject(projectId));
+  projectAction("promise", promiseBuildSource);
+  projectAction("acquire", acquireBuildSource);
+  projectAction("commit", commitBuildSupply);
+  projectAction("recruit", recruitBuildWorker);
+  projectAction("start", (projectId) => startBuildWork(projectId));
 
   app.post<{ Params: { requestId: string }; Body: unknown }>(
     "/venue-requests/:requestId/approve",

@@ -33,6 +33,7 @@ import {
   proposeVillageResidence,
   readPlayerIdentity,
   rollActiveAgendas,
+  queueVillageVenueRequest,
   villagerPlaceView,
 } from "./village.js";
 import { proposeWishVerdict } from "./wishes.js";
@@ -42,6 +43,7 @@ import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } fr
 import { venueReplyIntegrity, venueSceneHistory } from "./venue-turn-integrity.js";
 import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
 import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
+import { readVenueRequestCore } from "./venue-requests.js";
 import type { VillageVenueClass } from "./types.js";
 
 export type VenueLine = {
@@ -60,6 +62,26 @@ export type VenueLine = {
 };
 
 export type VenueParticipant = { characterId: string; name: string; doing: string };
+/** Immutable room evidence for project accounting; a model verdict alone is never a receipt. */
+export async function readProjectTurnEvidence(sessionId: string, submissionId: string) {
+  const session = await readSession(sessionId);
+  const submission = session.submissions.find((entry) => entry.id === submissionId);
+  if (!submission) throw notFound("That roleplay turn was not recorded.");
+  return {
+    venueId: session.placeId,
+    submissionId,
+    mode: submission.mode,
+    message: submission.message,
+    at: submission.at ?? "",
+    action: submission.action ?? null,
+    lines: session.lines.filter(
+      (line) =>
+        line.at === submission.at &&
+        line.role === "assistant" &&
+        session.participants.some((participant) => participant.characterId === line.speakerId),
+    ),
+  };
+}
 type VenueSubmission = {
   id: string;
   message: string;
@@ -75,6 +97,13 @@ type VenueSubmission = {
   sceneChange?: VenueSceneChange;
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
   upgradeSignal?: { characterId: string; venueId: string; quote: string };
+  venueRequestSignal?: {
+    characterId: string;
+    name: string;
+    classes: VillageVenueClass[];
+    quote: string;
+    sourceLineId?: string;
+  };
   invitationSignal?: {
     residentId: string;
     venueId: string;
@@ -366,6 +395,9 @@ function coerceSession(value: unknown): VenueSession {
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
                 : {}),
               ...(row.upgradeSignal ? { upgradeSignal: row.upgradeSignal as VenueSubmission["upgradeSignal"] } : {}),
+              ...(row.venueRequestSignal
+                ? { venueRequestSignal: row.venueRequestSignal as VenueSubmission["venueRequestSignal"] }
+                : {}),
               ...(row.invitationSignal
                 ? { invitationSignal: row.invitationSignal as VenueSubmission["invitationSignal"] }
                 : {}),
@@ -647,9 +679,17 @@ async function generateOnce(
         .join("; ") || "none"
     }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines and happenings.`,
     `Approved room description: ${place?.description || "none"}.`,
+    place?.constructionStatus === "worksite"
+      ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
+      : "",
     `Available venues for a requested move: ${
       village.venues
-        .filter((venue) => !venue.occupancy.playerHome && !venue.occupancy.residentCharacterId)
+        .filter(
+          (venue) =>
+            venue.constructionStatus !== "worksite" &&
+            !venue.occupancy.playerHome &&
+            !venue.occupancy.residentCharacterId,
+        )
         .map((venue) => `${venue.id}: ${venue.name}`)
         .join("; ") || "none"
     }.`,
@@ -710,6 +750,9 @@ async function generateOnce(
       : "",
     mode === "chat" || mode === "ask"
       ? "If a resident explicitly asks to move to an available Residence, return residenceRequest with speakerId, venueId and an exact quote from that resident's dialogue. If a resident explicitly accepts or refuses a pending player move request, return residenceDecision with speakerId, approved boolean and an exact quote from that resident's dialogue. If a resident or worker suggests one concrete structural improvement to this Venue, return upgradeRequest with speakerId and an exact quote. Omit all three unless the corresponding speech actually occurs. A player request alone is never consent."
+      : "",
+    mode === "chat" || mode === "ask"
+      ? "If a resident explicitly asks for a NEW public venue, return venueRequest with speakerId, name, classes (one or two of workplace, gathering, other), and an exact quote from their spoken dialogue. Omit it if the request is only the player's claim, a hypothetical, or an upgrade to this venue. Approval starts planning, not instant construction."
       : "",
     session.lines.length >= 12
       ? "Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state."
@@ -786,6 +829,7 @@ async function generateOnce(
   const request = readSpeechSignal(raw?.residenceRequest);
   const decision = readSpeechSignal(raw?.residenceDecision);
   const upgrade = readSpeechSignal(raw?.upgradeRequest);
+  const venueRequest = readSpeechSignal(raw?.venueRequest);
   const invitation = readSpeechSignal(raw?.invitation);
   const editApproval = readSpeechSignal(raw?.editApproval);
   const departures = Array.isArray(raw?.departures)
@@ -892,6 +936,14 @@ async function generateOnce(
       upgrade &&
       (place?.residentIds?.includes(upgrade.speakerId) || place?.workerIds?.includes(upgrade.speakerId))
         ? { characterId: upgrade.speakerId, venueId: place.id, quote: asTrimmedString(upgrade.entry.quote) }
+        : null,
+    venueRequestSignal:
+      (mode === "chat" || mode === "ask") && venueRequest && readVenueRequestCore(venueRequest.entry)
+        ? {
+            characterId: venueRequest.speakerId,
+            ...readVenueRequestCore(venueRequest.entry)!,
+            quote: asTrimmedString(venueRequest.entry.quote),
+          }
         : null,
     invitationSignal:
       invitation &&
@@ -1183,6 +1235,8 @@ export async function enterVenue(
   const village = await readVillageState();
   const place = village.venues.find((entry) => entry.id === placeId);
   if (!place) throw notFound("That place is not in this village.");
+  if (place.constructionStatus === "worksite" && entryArea && entryArea !== "outside")
+    throw conflict("This worksite can only be visited from outside until construction finishes.");
   const classes = venueClasses(place);
   const spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
   if (!classes.includes(spaceClass)) throw badRequest("That Venue has no such space.");
@@ -1206,7 +1260,10 @@ export async function enterVenue(
       throw conflict("Finish the active Venue area visit first.");
     return existing;
   }
-  let area: VenueSession["area"] = entryArea ?? (spaceClass === "residence" ? "shared" : "public");
+  let area: VenueSession["area"] =
+    place.constructionStatus === "worksite"
+      ? "outside"
+      : (entryArea ?? (spaceClass === "residence" ? "shared" : "public"));
   let privateAccessOwnerId = "";
   if (
     spaceClass === "residence" &&
@@ -1669,6 +1726,20 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
+      ...(reply.venueRequestSignal
+        ? {
+            venueRequestSignal: {
+              ...reply.venueRequestSignal,
+              sourceLineId: reply.lines
+                .map((line, index) => ({ line, id: replyLineIds[index] }))
+                .find(
+                  ({ line }) =>
+                    line.speakerId === reply.venueRequestSignal?.characterId &&
+                    line.content.toLowerCase().includes(reply.venueRequestSignal.quote.toLowerCase()),
+                )?.id,
+            },
+          }
+        : {}),
       ...(reply.invitationSignal
         ? {
             invitationSignal: {
@@ -1780,6 +1851,27 @@ async function markResidenceSeen(session: VenueSession): Promise<void> {
 }
 
 async function applyVenueRequests(session: VenueSession, submission: VenueSubmission): Promise<void> {
+  if (submission.venueRequestSignal) {
+    const signal = submission.venueRequestSignal;
+    const spoken = session.lines.find(
+      (line) =>
+        line.id === signal.sourceLineId &&
+        line.speakerId === signal.characterId &&
+        line.content.toLowerCase().includes(signal.quote.toLowerCase()),
+    );
+    if (spoken)
+      await mutateVillageState((state) =>
+        queueVillageVenueRequest(
+          state,
+          { name: signal.name, classes: signal.classes },
+          signal.characterId,
+          "chat",
+          `venue-request:${submission.id}`,
+          submission.at ?? new Date().toISOString(),
+          signal.quote,
+        ),
+      );
+  }
   if (submission.editApprovalSignal) {
     const signal = submission.editApprovalSignal;
     const quote = signal.quote.replace(/\s+/gu, " ").toLowerCase();
@@ -1830,6 +1922,7 @@ async function applyVenueTurnChange(session: VenueSession, submission: VenueSubm
   const privateOwnerId = submission.privateOwnerIdAtTurn ?? session.privateOwnerId;
   const id = `venue-chat:${session.id}:${submission.id}`;
   await mutateVillageState((state) => {
+    if (state.venues.some((venue) => venue.id === session.placeId && venue.constructionStatus === "worksite")) return;
     if (
       area === "shared" &&
       state.venues.some((venue) => venue.id === session.placeId && venueResidentIds(venue).length > 0)
@@ -1844,6 +1937,22 @@ async function applyVenueTurnChange(session: VenueSession, submission: VenueSubm
       })(),
     );
     if (!change) return;
+    if (
+      change.removeItem &&
+      state.projects.some(
+        (project) =>
+          project.kind === "build-venue" &&
+          project.status !== "complete" &&
+          project.plan?.sources.some(
+            (source) =>
+              source.kind === "existing-item" &&
+              source.venueId === session.placeId &&
+              source.itemName === change.removeItem &&
+              source.remaining > 0,
+          ),
+      )
+    )
+      return; // A project receipt, not a scene edit, must debit this recorded item.
     const at = submission.at || new Date().toISOString();
     applyVenueSceneChange(state, session.placeId, change, submission.id, at, session.spaceClass, area, privateOwnerId);
     const venue = state.venues.find((place) => place.id === session.placeId)!;
@@ -2711,6 +2820,7 @@ export async function recordVenueAction(
       wishId: "",
       wishMemory: "",
       action: result,
+      at,
     });
   });
 }

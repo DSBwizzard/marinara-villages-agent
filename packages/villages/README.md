@@ -12,6 +12,12 @@ Find the package in **Agents → Download Agents**. Installation requires a rest
 
 Villages is a first-class downloadable agent in the normal catalog channels. It remains under active development while this release is exercised.
 
+## Venue projects
+
+After founding, a new public venue starts as a project. A resident can ask for one during a visit, or the player can propose one from **Projects**. Approving a request creates a planning draft. Agree to its site and requirements, then use Chat at the listed source venue to get a resident's explicit offer and handoff. Projects records promises, acquired supplies, committed supplies, and installed work separately. Existing recorded items are debited by the project when handed over; ordinary scene props do not count as stock. Alternative routes create a new plan revision without erasing completed work.
+
+Once the supplies and site permission are ready, a resident must agree to build. Starting their shift creates an exterior-only worksite. The existing device-local clock finishes a continuous four-hour work order even after a restart; if the builder leaves, the shell remains and the project waits for reassignment. Only completion opens the interior and grants the recorded village capability. Chat narration and Fulfill verdicts alone, scene edits, memories, and DEBUG controls cannot grant project receipts or complete the worksite.
+
 ## Villager sprites
 
 Open **Villagers → Sprites** beside any resident to use their sprite studio. **Facing you** holds front-facing art; **Facing villagers** holds one right-facing side profile that the scene mirrors when the resident looks left. Start with a front neutral sprite, then a side neutral. Add only the expressions you want in either view. Each generated candidate is one requested image, shown for review before approval; uploading, approval, mirroring, and sheet export do not call an image model. The Engine may try its configured fallback image connection if the first attempt fails.
@@ -20,7 +26,7 @@ Approved images belong to this Village. The scene uses the expression and gaze c
 
 ## Venue editing and resident authority
 
-**View Venue → Edit Venue** edits venue details and pictures. An occupied villager Residence requires an invitation to enter its shared or private space. Once the player has entered, that space remains visible and its picture can be drawn, uploaded, replaced, or removed by the player. Edits to an occupied room's description or physical state become exact proposals. Every current resident approves a shared proposal; the owner approves a private proposal through evidenced spoken approval.
+**View Venue → Edit Venue** edits an existing venue's name, description, and pictures. New venues and map moves cannot be made through that editor after founding. An occupied villager Residence requires an invitation to enter its shared or private space. Once the player has entered, that space remains visible and its picture can be drawn, uploaded, replaced, or removed by the player. Edits to an occupied room's description or physical state become exact proposals. Every current resident approves a shared proposal; the owner approves a private proposal through evidenced spoken approval.
 
 View Venue shows the exterior, class spaces, and private spaces the player has entered. Image controls live in Edit Venue. Exterior art appears on the map and outside scenes; an entered space uses its own image. The first visit to a private space starts one background image draw, while subsequent image actions are explicit player choices. A failed first draw never retries automatically.
 
