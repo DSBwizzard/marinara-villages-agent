@@ -4431,8 +4431,8 @@ const VILLAGES_STYLES = `
   color: #f3f3ff;
 }
 .${ELEMENT_TAG}-setup-body { flex-wrap: nowrap; align-items: stretch; }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) { flex: 1 1 auto; min-height: 0; }
-.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) { overflow: hidden; }
+.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) { flex: 0 0 auto; min-height: 0; }
+.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) { overflow-x: hidden; overflow-y: auto; }
 .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side { flex: 1 1 34rem; }
 .${ELEMENT_TAG}-setup-visual {
   display: flex; flex-direction: column; gap: .6rem; flex: 1 1 19rem; min-width: 0; min-height: 0;
@@ -4466,7 +4466,7 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) {
   --background: #151d3b; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
-  gap: .75rem; align-items: flex-start; color: var(--foreground);
+  gap: .75rem; align-items: stretch; color: var(--foreground);
 }
 .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) > .${ELEMENT_TAG}-side { flex-basis: 35rem; min-height: 0; }
 .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-overlay {
