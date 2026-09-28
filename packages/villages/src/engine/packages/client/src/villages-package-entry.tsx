@@ -5307,8 +5307,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 @media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-pin-photo-card { transition: none; } }
 .${ELEMENT_TAG}-setup-venue-card strong, .${ELEMENT_TAG}-setup-venue-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .${ELEMENT_TAG}-setup-venue-editor { display: grid; gap: .65rem; border-top: 1px solid var(--border); padding-top: .75rem; }
-.${ELEMENT_TAG}-setup-image-preview { display: block; width: min(100%, 18rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; background: #31291f; }
-.${ELEMENT_TAG}-setup-image-preview-placeholder { display: grid; place-items: center; color: #eee5d5; font-size: 1.5rem; }
+.${ELEMENT_TAG}-setup-image-preview { display: block; width: min(100%, 18rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; }
 .${ELEMENT_TAG}-preparing { display: grid; place-items: center; min-height: 100%; padding: 2rem; text-align: center; background: radial-gradient(circle at 50% 65%, #584a2e, #241e24 70%); color: #fff4dd; }
 .${ELEMENT_TAG}-preparing-house { font-size: clamp(4rem, 13vw, 7rem); animation: ${ELEMENT_TAG}-settle 2.5s ease-in-out infinite; }
 @keyframes ${ELEMENT_TAG}-settle { 50% { transform: translateY(-.35rem) rotate(2deg); } }
@@ -7936,21 +7935,6 @@ type IdentityPreview = IdentityChoice & {
   details: { label: string; text: string }[];
   context: string;
 };
-
-function FoundingImagePreview({ src, alt }: { src?: string; alt: string }) {
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  return src && failedSrc !== src ? (
-    <img className={`${ELEMENT_TAG}-setup-image-preview`} src={src} alt={alt} onError={() => setFailedSrc(src)} />
-  ) : (
-    <span
-      className={`${ELEMENT_TAG}-setup-image-preview ${ELEMENT_TAG}-setup-image-preview-placeholder`}
-      role="img"
-      aria-label={`${alt}: no image available`}
-    >
-      ⌂
-    </span>
-  );
-}
 
 /** Shared visual selection pattern; callers supply their own identity and status data. */
 function IdentityChoiceStrip({
@@ -18387,7 +18371,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             <span className={`${ELEMENT_TAG}-label`}>
                               {area === "exterior" ? "Exterior photograph" : "Interior photograph"} · optional
                             </span>
-                            <FoundingImagePreview src={image?.url} alt={`${area} of ${selectedSetupVenue.name}`} />
+                            {image ? (
+                              <img
+                                className={`${ELEMENT_TAG}-setup-image-preview`}
+                                src={image.url}
+                                alt={`${area} of ${selectedSetupVenue.name}`}
+                              />
+                            ) : (
+                              <p className={`${ELEMENT_TAG}-hint`}>No image yet. A placeholder will be used.</p>
+                            )}
                             <div className={`${ELEMENT_TAG}-row`}>
                               <button
                                 type="button"
