@@ -380,7 +380,8 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
-          if (system.startsWith("Write a brief visual Events update"))
+          if (system.startsWith("Write a brief visual Events update")) {
+            assert.match(system, /Do not give them a new turn in an Event/u);
             return {
               content: JSON.stringify({
                 happenings: [
@@ -398,7 +399,10 @@ const release = configureVillagesRuntime({
               }),
               finishReason: "stop",
             };
+          }
           if (system.includes("You narrate one action")) {
+            assert.match(system, /The submitted action is the full extent of the player's choice/u);
+            assert.match(system, /Do not invent their dialogue, a follow-up action or decision/u);
             const failed = user.includes("tries to: Fail to lift the wall");
             const lantern = user.includes("tries to: Set down a lantern");
             const note = user.includes("tries to: Leave a note for Tina");
@@ -1028,7 +1032,11 @@ async function main() {
       submissionId: "lively-1",
     });
     assert.match(lastVenueSystem, /Use "I" for the player in scene prose/u);
-    assert.match(lastVenueSystem, /Do not invent the player's spoken words, decisions, private thoughts/u);
+    assert.match(
+      lastVenueSystem,
+      /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u,
+    );
+    assert.match(lastVenueSystem, /Narrate only an action the player explicitly submitted/u);
     await saveVillageWriting({ person: "second" });
     const aside = lively.session.lines.find((line) => line.kind === "side")!;
     const main = lively.session.lines.find((line) => line.id === aside.asideFor)!;

@@ -411,13 +411,14 @@ function narrationTurn(
     parts.mode === "chat" &&
     parts.settled === null &&
     parts.direction.trim().length === 0 &&
-    mayEndVillagerConversation(parts.history);
+    parts.history.filter((entry) => entry.role === "user").length >= 2;
   const turnBlock = [
     // First, because it is the one part of the block that is not about THIS turn:
     // it is a standing note about how a line is marked, and the mode, the ruling
     // and the direction are all statements about the turn in hand. See
     // `sideLineDirection` for why it is here rather than in the preset.
     sideLineDirection(village.playerName),
+    "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Never write or imply a new player response. You may refer only to what the player explicitly said or chose in the supplied turn or what the village has already verified. Leave the player's next response to them.",
     spriteExpressionDirection(village, card.id),
     narration.voiceGuidance,
     renderModeBlock(parts.mode, isCommittedStatus(agendaAt(context.agenda, context.moment.minuteOfDay)?.status ?? "")),
@@ -578,7 +579,7 @@ export function buildVillagerMessages(
  */
 const LEAVING_DIRECTION = [
   "## Right now",
-  "The visit is over. They have said they are going, and they are getting ready to leave.",
+  "The player has chosen to end the visit. They are getting ready to leave; do not invent anything they said or did while leaving.",
   "Say goodbye the way you actually would: a line or two, in your own voice, about them going or about the rest of your own day. Do not ask them to stay, do not open a new subject, and do not answer as though the conversation were still going — this is the last thing you say to them.",
 ].join("\n");
 
