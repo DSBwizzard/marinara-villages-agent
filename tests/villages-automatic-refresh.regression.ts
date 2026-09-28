@@ -230,7 +230,6 @@ async function main() {
         {
           id: "square",
           name: "Village Square",
-          purpose: "A public meeting place.",
           category: "public",
           presentation: { image: null, x: null, y: null },
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },

@@ -42,11 +42,7 @@ import {
 } from "../services/villages/location-image.js";
 import { generateVillageTownMap } from "../services/villages/town-map-image.js";
 import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
-import {
-  draftFoundingVenueText,
-  generateFoundingVenueImage,
-  uploadFoundingVenueImage,
-} from "../services/villages/founding-drafts.js";
+import { generateFoundingVenueImage, uploadFoundingVenueImage } from "../services/villages/founding-drafts.js";
 import {
   approveResidentSprite,
   generateResidentSprite,
@@ -977,14 +973,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return await draftVenueDescriptions(request.body);
     } catch (error) {
       return fail(reply, error, "drafting venue descriptions");
-    }
-  });
-
-  app.post<{ Body: unknown }>("/setup/venues/draft", async (request, reply) => {
-    try {
-      return await draftFoundingVenueText(request.body);
-    } catch (error) {
-      return fail(reply, error, "drafting founding venues");
     }
   });
 

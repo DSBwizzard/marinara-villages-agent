@@ -983,7 +983,7 @@ export function renderVenuesBlock(venues: readonly VillageVenue[]): string {
   return [
     "Places in the village:",
     ...venues.map((venue) => {
-      const description = [venue.purpose, venue.state.condition].filter(Boolean).join("; ");
+      const description = [venue.classes?.join(" / "), venue.form, venue.state.condition].filter(Boolean).join("; ");
       return description.length > 0 ? `- ${venue.name} — ${description}` : `- ${venue.name}`;
     }),
   ].join("\n");

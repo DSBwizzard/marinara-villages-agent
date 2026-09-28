@@ -12,7 +12,6 @@ const venues = [
   {
     id: "square",
     name: "Village square",
-    purpose: "meeting neighbors",
     occupancy: { playerHome: false, residentCharacterId: null },
     state: { condition: "well kept", publicFacts: [] },
   },

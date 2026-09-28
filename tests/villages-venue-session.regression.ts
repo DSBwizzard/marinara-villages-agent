@@ -769,7 +769,7 @@ const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
 const venue = (id: string) => ({
   id,
   name: id,
-  purpose: "meeting",
+  form: "a shared meeting place",
   description: `A quiet meeting place in ${id}.`,
   category: "public",
   presentation: { image: null, x: 0.5, y: 0.5 },
@@ -836,6 +836,10 @@ async function main() {
       state.setting = "A quiet village";
       state.venues = [venue("park"), venue("empty")];
       state.venues[0]!.classes = ["workplace"];
+      state.venues[0]!.state.publicFacts = ["The old gate opens at sunrise."];
+      state.venues[0]!.state.features = [
+        { id: "old-gate", text: "A weathered iron gate", sourceCharacterId: "", locked: false, updatedAt: "" },
+      ];
       state.venues[1]!.classes = ["residence"];
       state.villagers = [
         {
@@ -942,8 +946,16 @@ async function main() {
       });
       state.noticeboard.push({ author: "Buster", text: "LEGACY_EVENT_POISON notice" });
     });
+    const undiscoveredPark = (await buildVillageSnapshot()).settings.venues.find((place) => place.id === "park")!;
+    assert.equal(undiscoveredPark.state.condition, "", "initial condition stays hidden before a public visit");
+    assert.deepEqual(undiscoveredPark.state.publicFacts, []);
+    assert.deepEqual(undiscoveredPark.state.features, []);
     const callsAfterEmpty = calls;
     let group = (await enterVenue("park"))!;
+    const discoveredPark = (await buildVillageSnapshot()).settings.venues.find((place) => place.id === "park")!;
+    assert.equal(discoveredPark.state.condition, "quiet", "the first public visit reveals initial condition");
+    assert.deepEqual(discoveredPark.state.publicFacts, ["The old gate opens at sunrise."]);
+    assert.ok(discoveredPark.state.features?.[0]?.text, "the first public visit reveals features");
     assert.equal(group.status, "opening", "Go inside returns the venue before greeting generation");
     assert.equal(calls, callsAfterEmpty, "entry itself spends no model call");
     assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
@@ -2303,7 +2315,7 @@ async function main() {
       state: { condition: "warm", items: ["cup"] },
     });
     assert.equal(proposed.settings.venues.find((place) => place.id === "home")?.editProposals?.length, 1);
-    await updateVillageVenue("home", { purpose: "A quiet home." });
+    await updateVillageVenue("home", { form: "A quiet home." });
     await sendVenueTurn({
       sessionId: outside.id,
       message: "Bob approves the edit",

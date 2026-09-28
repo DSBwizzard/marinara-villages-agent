@@ -1,26 +1,19 @@
-import { boundText, MAX_VENUE_NAME_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
+import { boundText, MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import type { VillageChatMessage, VillageVenueDraft } from "./types.js";
 
-export type VenueRequestCore = Pick<VillageVenueDraft, "name" | "purpose" | "category">;
+export type VenueRequestCore = Pick<VillageVenueDraft, "name" | "classes">;
 
 /** Model output is optional. Refuse malformed requests rather than inventing a place. */
 export function readVenueRequestCore(value: unknown): VenueRequestCore | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
-  if (typeof raw.name !== "string" || typeof raw.purpose !== "string") return null;
-  if (raw.category !== undefined && typeof raw.category !== "string") return null;
+  if (typeof raw.name !== "string" || !Array.isArray(raw.classes)) return null;
   const name = raw.name.trim();
-  const purpose = raw.purpose.trim();
-  const category = typeof raw.category === "string" ? raw.category.trim() : "";
-  if (
-    !name ||
-    !purpose ||
-    name.length > MAX_VENUE_NAME_LENGTH ||
-    purpose.length > MAX_VENUE_NOTE_LENGTH ||
-    category.length > MAX_VENUE_NOTE_LENGTH
-  )
-    return null;
-  return { name: boundText(name, MAX_VENUE_NAME_LENGTH), purpose: boundText(purpose, MAX_VENUE_NOTE_LENGTH), category };
+  const validClasses = ["residence", "gathering", "workplace", "other"];
+  if (!name || name.length > MAX_VENUE_NAME_LENGTH || raw.classes.length < 1 || raw.classes.length > 2) return null;
+  if (raw.classes.some((value) => typeof value !== "string" || !validClasses.includes(value))) return null;
+  if (new Set(raw.classes).size !== raw.classes.length) return null;
+  return { name: boundText(name, MAX_VENUE_NAME_LENGTH), classes: raw.classes as VillageVenueDraft["classes"] };
 }
 
 /** A chat request needs a verbatim piece of this villager's own speech as evidence. */
@@ -46,6 +39,7 @@ export function readConversationVenueRequest(
 export function venueRequestDraft(core: VenueRequestCore): VillageVenueDraft {
   return {
     ...core,
+    category: "",
     description: "",
     position: { x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },

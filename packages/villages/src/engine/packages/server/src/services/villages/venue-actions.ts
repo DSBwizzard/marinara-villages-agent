@@ -93,7 +93,7 @@ function actionMessages(
         "When the action physically adds an item, put its short name in addItem. When it removes an item, copy that item exactly from the listed furniture and items into removeItem. Otherwise use empty strings. Do not change a venue item for inspection or conversation.",
         "An active trace is a small ongoing change that can be resolved later, such as a note, stain, open window, wet footprints, or dropped object. For a new trace use a short lowercase traceKind and descriptive traceText. A note needs the intended resident's ID in recipientId. To resolve an existing trace, copy its ID into resolveTraceId. Never alter a locked defining feature.",
         `Village setting: ${setting || "A small village."}`,
-        `Place: ${place.name}. Purpose: ${place.purpose || "unspecified"}. Category: ${place.category || "unspecified"}.`,
+        `Place: ${place.name}. Classes: ${place.classes?.join(", ") || "other"}. Form: ${place.form || "unspecified"}.`,
         `People present: ${people || "none"}. Do not invent words or consent from them.`,
         `Village residents: ${residents || "none"}.`,
         `Condition: ${place.state.condition || "unspecified"}. Furniture and items: ${place.state.furniture.join(", ") || "none listed"}. Defining features: ${place.state.features?.map((item) => item.text).join("; ") || "none"}. Active traces: ${place.state.traces?.map((trace) => `${trace.id}: ${trace.text}`).join("; ") || "none"}. Public facts: ${place.state.publicFacts.join("; ") || "none"}.`,

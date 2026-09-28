@@ -97,12 +97,11 @@ const BOOTSTRAP_SYSTEM_PROMPT = [
   '"""',
   "",
   "Answer with JSON only, in exactly this shape and nothing else:",
-  '{"venues":[{"name":"...","purpose":"..."}]}',
+  '{"venues":[{"name":"..."}]}',
   "",
   "Rules:",
   `- Propose exactly ${MAX_PROPOSED_VENUES} public places.`,
   "- A place name is two or three words, the kind of name locals would actually use.",
-  `- A note is one short sentence (under ${MAX_VENUE_NOTE_LENGTH} characters) saying what happens there, written so that almost any villager could be found doing it.`,
   "- Stay inside the description. Do not add trains, airports or technology the description does not imply.",
   "- Do not name a real town, country, company, person or existing fictional setting.",
   "- Plain prose only. No markdown, no numbering, no commentary outside the JSON.",
@@ -178,7 +177,8 @@ function coerceProposal(payload: Record<string, unknown>): { venues: VillageVenu
     venues.push({
       id: randomVillageSeed(),
       name,
-      purpose: boundText(record.purpose, MAX_VENUE_NOTE_LENGTH),
+      form: "",
+      classes: ["gathering"],
       description: "",
       category: "",
       presentation: { image: null, x: null, y: null },
@@ -200,7 +200,7 @@ function coerceProposal(payload: Record<string, unknown>): { venues: VillageVenu
 /** Draft descriptions are returned to the player; the model never approves or stores them. */
 export async function draftVillageVenueDescriptions(
   setting: string,
-  venues: readonly { id: string; name: string; purpose: string; homeKind?: string | null }[],
+  venues: readonly { id: string; name: string; classes: readonly string[]; homeKind?: string | null }[],
   lore: readonly string[] = [],
 ): Promise<Record<string, string>> {
   if (!setting.trim() || venues.length === 0 || venues.length > 12)
@@ -208,7 +208,7 @@ export async function draftVillageVenueDescriptions(
   const rows = venues.map((venue) => ({
     id: boundText(venue.id, 100),
     name: boundText(venue.name, MAX_VENUE_NAME_LENGTH),
-    purpose: boundText(venue.purpose, MAX_VENUE_NOTE_LENGTH),
+    classes: venue.classes,
     homeKind: boundText(venue.homeKind, 60),
   }));
   if (rows.some((row) => !row.id || !row.name)) throw badRequest("Each place needs a name before describing it.");
@@ -825,8 +825,8 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
     [
       "Answer with JSON only, in exactly this shape and nothing else:",
       wishesSomewhere
-        ? '{"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"memory":[{"text":"...","who":[],"private":false}],"notices":[{"author":"...","text":"..."}],"lapsed":[{"who":"...","wish":"..."}],"venueRequests":[{"who":"...","name":"...","purpose":"...","category":"..."}],"featureEdits":[{"who":"...","venueId":"...","featureId":"...","text":"..."}]}'
-        : '{"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"memory":[{"text":"...","who":[],"private":false}],"notices":[{"author":"...","text":"..."}],"venueRequests":[{"who":"...","name":"...","purpose":"...","category":"..."}],"featureEdits":[{"who":"...","venueId":"...","featureId":"...","text":"..."}]}',
+        ? '{"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"memory":[{"text":"...","who":[],"private":false}],"notices":[{"author":"...","text":"..."}],"lapsed":[{"who":"...","wish":"..."}],"venueRequests":[{"who":"...","name":"...","classes":["gathering"]}],"featureEdits":[{"who":"...","venueId":"...","featureId":"...","text":"..."}]}'
+        : '{"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"memory":[{"text":"...","who":[],"private":false}],"notices":[{"author":"...","text":"..."}],"venueRequests":[{"who":"...","name":"...","classes":["gathering"]}],"featureEdits":[{"who":"...","venueId":"...","featureId":"...","text":"..."}]}',
     ].join("\n"),
     [
       "Rules:",
@@ -869,7 +869,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
       residents.length > 0
         ? '- "author" must be exactly one of the names listed above. An empty notices list is a perfectly good answer.'
         : "",
-      '- "venueRequests" is usually empty. Include at most one only when a named resident has a concrete reason to ask the player for a new shared place. This is a proposal, not a place that already exists. Use that resident\'s exact name in "who", a short place name, a purpose saying what happens there, and an optional category. Do not turn a private wish into a request or repeat an existing place. A request may also appear as an ordinary notice, but the notice and request are separate.',
+      '- "venueRequests" is usually empty. Include at most one only when a named resident has a concrete reason to ask the player for a new shared place. This is a proposal, not a place that already exists. Use that resident\'s exact name in "who", a short place name, a Class such as gathering or workplace. Do not turn a private wish into a request or repeat an existing place. A request may also appear as an ordinary notice, but the notice and request are separate.',
       '- "featureEdits" is usually empty. Include at most one only when an eligible resident is physically at that venue and this opportunity describes them changing it. Use their exact name and venue ID. Use an unlocked feature ID to replace or remove it (empty text removes), or an empty featureId to add a new feature if fewer than five exist. Never touch a locked feature.',
       context.memory.length > 0
         ? "- The village's own memories are listed above. Do not write one of them again as news, and do not write anything that contradicts one."
@@ -1506,7 +1506,12 @@ function buildAgendaMessages(context: VillageAgendaContext): CapabilityLanguageM
     description.length > 0 ? `Description:\n${description}` : "",
   ].filter((line) => line.length > 0);
   const places = context.venues.map((venue, index) => {
-    const description = [venue.purpose.trim(), venue.state.condition.trim(), ...venue.state.publicFacts.slice(0, 4)]
+    const description = [
+      venue.classes?.join(" / ") ?? "",
+      venue.form?.trim() ?? "",
+      venue.state.condition.trim(),
+      ...venue.state.publicFacts.slice(0, 4),
+    ]
       .filter(Boolean)
       .map((part) => condense(part, 160))
       .join("; ");
@@ -1548,7 +1553,12 @@ function buildAgendaDayMessages(
   const places = context.venues
     .map(
       (venue, index) =>
-        `${index + 1}. ${venue.name}: ${[venue.purpose, venue.state.condition, ...venue.state.publicFacts.slice(0, 4)]
+        `${index + 1}. ${venue.name}: ${[
+          venue.classes?.join(" / "),
+          venue.form,
+          venue.state.condition,
+          ...venue.state.publicFacts.slice(0, 4),
+        ]
           .filter(Boolean)
           .map((part) => condense(part, 160))
           .join("; ")}`,

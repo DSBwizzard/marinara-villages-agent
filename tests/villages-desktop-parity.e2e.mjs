@@ -37,7 +37,6 @@ const place = (id, x, y) => ({
   id,
   name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
   classes: id === "mill" ? ["workplace", "gathering"] : ["other"],
-  purpose: "A place to visit.",
   category: "destination",
   description: "A village place.",
   capabilities: [],

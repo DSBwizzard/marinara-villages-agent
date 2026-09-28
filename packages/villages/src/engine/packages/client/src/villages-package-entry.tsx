@@ -129,6 +129,22 @@ const SETUP_STEPS = [
 ] as const;
 const SETUP_MIN_VILLAGER_COUNT = 1;
 const SETUP_MAX_VILLAGER_COUNT = 3;
+const FOUNDING_FORM_EXAMPLES = {
+  residence: [
+    "A modest stone home, with ivy growing on the walls",
+    "A tent and hammock pitched in the shade between two pine trees",
+    "A mighty castle, with imposing obsidian pillars and multiple dungeons",
+    "A dumpster behind the supermarket",
+    "An armored cash transport car, converted into a mobile home",
+  ],
+  gathering: [
+    "A communal fire pit, with logs and stumps arranged around it in a semicircle",
+    "A decommissioned pizzeria, complete with inert animatronic performers",
+    "The situation room, with a round table bearing strategic maps",
+    "The hardy Brandythrone tavern, where ale and fistfights are plentiful",
+    "A meticulously-landscaped public park, where trampling the roses is punishable by fine",
+  ],
+} as const;
 const VILLAGES_IMAGE_CONNECTION_DISABLED = "__villages_image_disabled__";
 type SetupMapSource = "existing" | "generate" | "upload" | "none";
 
@@ -302,7 +318,7 @@ type VenueRequest = {
   requesterName?: string;
   source?: "chat" | "background";
   proposedAt: string;
-  venueDraft: Pick<VillageVenue, "name" | "purpose" | "category" | "description">;
+  venueDraft: { name: string; classes: Array<"residence" | "workplace" | "gathering" | "other">; description: string };
 };
 
 /**
@@ -340,19 +356,7 @@ type HomeDraft = {
   characterId: string | null;
 };
 
-type SetupTextDraft = {
-  name: string;
-  form: string;
-  purpose: string;
-  description: string;
-  spaceDescription: string;
-  condition: string;
-  items: string[];
-  publicFacts: string[];
-  features: string[];
-};
-
-type SetupVenueDraft = VillageVenue & { guidance: string };
+type SetupVenueDraft = VillageVenue;
 
 function newSetupVenue(
   id: string,
@@ -373,20 +377,18 @@ function newSetupVenue(
   return {
     id,
     name,
-    form: venueClass === "gathering" ? "Gathering place" : "Home",
+    form: "",
     classes: [venueClass],
     spaces: [space],
     residenceCapacity: 1,
     residentIds: [],
     improvements: [null, null],
-    purpose: "",
     description: "",
     category: venueClass === "gathering" ? "public-center" : "",
     presentation: { image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
     state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-    guidance: "",
   };
 }
 
@@ -480,6 +482,7 @@ type VillageVenue = {
     declined: boolean;
   }>;
   playerSeenShared?: boolean;
+  playerSeenPublic?: boolean;
   playerSeenPrivateIds?: string[];
   improvements?: Array<{
     id: string;
@@ -489,7 +492,6 @@ type VillageVenue = {
     extraBeds: number;
     approvedAt: string;
   } | null>;
-  purpose: string;
   description: string;
   category: string;
   presentation: {
@@ -4484,6 +4486,12 @@ const VILLAGES_STYLES = `
   background: #1c254a; border-color: #7082cf; color: #f2f4ff;
 }
 .${ELEMENT_TAG}-setup-beginning-textarea { min-height: 4.5rem; }
+.${ELEMENT_TAG}-setup-form-field { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr); gap: .35rem .6rem; align-items: start; }
+.${ELEMENT_TAG}-setup-form-field > .${ELEMENT_TAG}-label { padding-top: .55rem; }
+.${ELEMENT_TAG}-setup-form-field > .${ELEMENT_TAG}-hint { grid-column: 2; }
+.${ELEMENT_TAG}-setup-place-spaces { display: grid; gap: .65rem; }
+.${ELEMENT_TAG}-setup-place-space { display: grid; gap: .4rem; border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b; padding: .7rem; }
+.${ELEMENT_TAG}-setup-place-space h4 { margin: 0; color: #f5f5ff; font-size: 1rem; }
 .${ELEMENT_TAG}-setup-advanced {
   border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b; padding: .55rem .65rem;
 }
@@ -4642,6 +4650,8 @@ const VILLAGES_STYLES = `
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .${ELEMENT_TAG}-setup-advanced .${ELEMENT_TAG}-reason-options { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-art-panel { flex: none; height: 18rem; }
+  .${ELEMENT_TAG}-setup-form-field { grid-template-columns: 1fr; }
+  .${ELEMENT_TAG}-setup-form-field > .${ELEMENT_TAG}-hint { grid-column: 1; }
 }
 .${ELEMENT_TAG}-steps { display: flex; flex-wrap: wrap; gap: .375rem; }
 /*
@@ -6100,16 +6110,6 @@ function VenueDraftFields({
           placeholder="A converted truck, a sleeping pod, an old diner…"
         />
       </label>
-      <label className={`${ELEMENT_TAG}-label`}>
-        Purpose
-        <input
-          className={`${ELEMENT_TAG}-notice-input`}
-          value={draft.purpose}
-          maxLength={200}
-          onChange={(event) => onChange({ ...draft, purpose: event.target.value })}
-          placeholder="What happens here?"
-        />
-      </label>
       <fieldset className={`${ELEMENT_TAG}-field`}>
         <legend className={`${ELEMENT_TAG}-label`}>Map pin · optional</legend>
         <p className={`${ELEMENT_TAG}-hint`}>Use a fraction from 0 to 1 across the map and down the map.</p>
@@ -6414,7 +6414,6 @@ function withHouseDraft(stored: readonly VillageVenue[], houses: readonly HomeDr
               id: house.id,
               name: house.name,
               description: house.description,
-              purpose: "",
               category: "",
               presentation: { image: null, x: house.x, y: house.y },
               occupancy: { playerHome: house.isPlayerHome, residentCharacterId: house.characterId, homeKind: null },
@@ -6429,7 +6428,6 @@ function withHouseDraft(stored: readonly VillageVenue[], houses: readonly HomeDr
       residenceCapacity: place?.residenceCapacity ?? 1,
       residentIds: house.characterId ? [house.characterId] : [],
       improvements: place?.improvements ?? [null, null],
-      purpose: place?.purpose ?? "",
       description: house.description,
       category: place?.category ?? "",
       presentation: {
@@ -10739,9 +10737,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [placesOpen, setPlacesOpen] = useState(false);
   const [menuTab, setMenuTab] = useState<MenuTab>("village");
   const [menuSection, setMenuSection] = useState<"index" | "general" | "village" | "debug" | "noticeboard">("index");
-  const [requestEdits, setRequestEdits] = useState<
-    Record<string, Pick<VillageVenue, "name" | "purpose" | "category" | "description">>
-  >({});
+  const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
   const [spriteEditorId, setSpriteEditorId] = useState<string | null>(null);
   /**
    * Portraits, by character id, as the Engine has been willing to hand them over.
@@ -10826,8 +10822,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupNameSuggestions, setSetupNameSuggestions] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
   const [selectedSetupVenueId, setSelectedSetupVenueId] = useState<string | null>(null);
+  const [setupFormHintIndex, setSetupFormHintIndex] = useState(0);
+  const [setupFormFocused, setSetupFormFocused] = useState(false);
   const [movingSetupVenueId, setMovingSetupVenueId] = useState<string | null>(null);
-  const [setupTextDrafts, setSetupTextDrafts] = useState<Record<string, SetupTextDraft>>({});
   const [setupImageDraft, setSetupImageDraft] = useState<{
     venueId: string;
     area: "exterior" | "interior";
@@ -10854,7 +10851,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const setupBeginningSourceKeyRef = useRef(setupBeginningSourceKey);
   useEffect(() => {
     if (setupBeginningSourceKeyRef.current !== setupBeginningSourceKey && !snapshot?.isFounded) {
-      setSetupTextDrafts({});
       setSetupImageDraft(null);
     }
     setupBeginningSourceKeyRef.current = setupBeginningSourceKey;
@@ -12293,7 +12289,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setBusy(true);
     setSettingsError("");
     try {
-      const next = await request<{ places: Array<{ name: string; purpose: string }> }>("/bootstrap", {
+      const next = await request<{ places: Array<{ name: string }> }>("/bootstrap", {
         method: "POST",
       });
       // Suggestions stay in the editor until each description has been reviewed and saved.
@@ -12301,7 +12297,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         next.places.map((place): VillageVenue => ({
           id: freshRowKey(),
           name: place.name,
-          purpose: place.purpose,
           description: "",
           category: "public",
           presentation: { image: null, x: null, y: null },
@@ -12795,11 +12790,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       return kept;
     });
     setSelectedSetupVenueId((current) => (current === id ? null : current));
-    setSetupTextDrafts((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
   }, []);
 
   /**
@@ -12897,7 +12887,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {
               id: home.id,
               name,
-              purpose: home.isPlayerHome ? "Player residence" : resident ? `Home of ${resident}` : "Available home",
               homeKind: home.building,
             },
           ],
@@ -12923,7 +12912,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setSetupFoundingReason(value);
     if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
     setSetupFoundingGuidance("");
-    setSetupTextDrafts({});
     setSetupProblem("");
   };
 
@@ -12983,10 +12971,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           : village.settings.venues.filter(
               (venue) => venue.classes?.includes("residence") || venue.category === "public-center",
             );
-      setSetupVenues(foundingPlaces.map((venue) => ({ ...venue, guidance: "" })));
+      setSetupVenues(foundingPlaces);
       setSelectedSetupVenueId(foundingPlaces[0]?.id ?? null);
       setMovingSetupVenueId(null);
-      setSetupTextDrafts({});
       setSetupImageDraft(null);
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
@@ -13081,16 +13068,29 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setSetupProblem("Assign a different villager to each villager Residence before review.");
           return;
         }
-        if (
-          setupVenues.some(
-            (venue) =>
-              !venue.name.trim() ||
-              !venue.form?.trim() ||
-              !venue.description.trim() ||
-              !venue.spaces?.[0]?.description.trim(),
-          )
-        ) {
-          setSetupProblem("Review the place descriptions, or retry the draft, before continuing.");
+        const incomplete = setupVenues
+          .map((venue) => ({
+            venue,
+            field: !venue.name.trim()
+              ? "venue-name"
+              : !venue.form?.trim()
+                ? "form"
+                : !venue.description.trim()
+                  ? "exterior-description"
+                  : !venue.spaces?.[0]?.description.trim()
+                    ? "interior-description"
+                    : "",
+          }))
+          .find(({ field }) => field);
+        if (incomplete) {
+          setSelectedSetupVenueId(incomplete.venue.id);
+          setSetupProblem(
+            `Complete ${incomplete.field.replaceAll("-", " ")} for ${incomplete.venue.name || "this venue"} before continuing.`,
+          );
+          window.setTimeout(
+            () => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${incomplete.field}`)?.focus(),
+            0,
+          );
           return;
         }
       }
@@ -13122,6 +13122,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       snapshot?.isFounded,
       setupSetting,
       setupStep,
+      element,
     ],
   );
 
@@ -13139,6 +13140,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   const selectedSetupVenue = setupVenues.find((venue) => venue.id === selectedSetupVenueId) ?? null;
+  const setupFormClass = selectedSetupVenue?.classes?.includes("gathering") ? "gathering" : "residence";
+  useEffect(() => {
+    setSetupFormHintIndex(0);
+    setSetupFormFocused(false);
+  }, [selectedSetupVenueId, setupFormClass]);
+  useEffect(() => {
+    if (!selectedSetupVenueId || selectedSetupVenue?.form?.trim() || setupFormFocused) return;
+    const timer = window.setInterval(() => setSetupFormHintIndex((index) => (index + 1) % 5), 4000);
+    return () => window.clearInterval(timer);
+  }, [selectedSetupVenueId, selectedSetupVenue?.form, setupFormFocused]);
   const selectedSetupSpace = selectedSetupVenue
     ? venueSpaceFor(selectedSetupVenue, selectedSetupVenue.category === "public-center" ? "gathering" : "residence")
     : null;
@@ -13147,130 +13158,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     id: venue.id,
     name: venue.name,
     form: venue.form ?? "",
-    purpose: venue.purpose,
     description: venue.description,
     spaceDescription: venue.spaces?.[0]?.description ?? "",
     venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
     residentCharacterId: venue.occupancy.residentCharacterId ?? "",
-    guidance: venue.guidance,
   });
-
-  const generateSetupText = async (venues: SetupVenueDraft[], applyToEmptyFields = false) => {
-    if (!venues.length || setupVenueBusy) return;
-    const sourceKey = setupBeginningSourceKey;
-    setSetupVenueBusy(true);
-    setSetupProblem("");
-    try {
-      const result = await request<{ drafts: Record<string, SetupTextDraft> }>("/setup/venues/draft", {
-        method: "POST",
-        body: JSON.stringify({
-          setting: setupSetting,
-          foundingReason: setupFoundingReason,
-          foundingDetails: setupFoundingDetails,
-          foundingGuidance: setupFoundingGuidance,
-          scenarioImprint: snapshot?.isFounded ? setupImprint : null,
-          worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
-          selectedLorebookIds: setupLorebookDraft,
-          loreTokenBudget: setupLoreTokenBudgetDraft,
-          venues: venues.map(setupDraftRow),
-        }),
-      });
-      if (setupBeginningSourceKeyRef.current === sourceKey) {
-        if (applyToEmptyFields) {
-          for (const venue of venues) applySetupText(venue.id, false, result.drafts[venue.id]);
-          setSetupProblem("");
-        } else {
-          setSetupTextDrafts((current) => ({ ...current, ...result.drafts }));
-        }
-      }
-    } catch (cause) {
-      if (applyToEmptyFields) {
-        for (const venue of venues) {
-          const gathering = venue.category === "public-center";
-          applySetupText(venue.id, false, {
-            name: venue.name,
-            form: venue.form || (gathering ? "Gathering place" : "Home"),
-            purpose: venue.purpose || (gathering ? "A place for neighbors to meet." : "A place to live."),
-            description: gathering
-              ? `${venue.name} stands ready as a shared meeting place in ${setupName}.`
-              : `${venue.name} is a modest home in ${setupName}.`,
-            spaceDescription: gathering
-              ? "A simple shared room awaits its first gatherings."
-              : "A simple living space ready for its resident.",
-            condition: "",
-            items: [],
-            publicFacts: [],
-            features: [],
-          });
-        }
-        setSetupProblem(
-          messageFrom(cause, "The text draft was unavailable.") +
-            " Simple editable place descriptions were filled in. Review them or retry.",
-        );
-      } else {
-        setSetupProblem(messageFrom(cause, "Venue text could not be drafted."));
-      }
-    } finally {
-      setSetupVenueBusy(false);
-    }
-  };
-
-  function applySetupText(id: string, replace: boolean, offered?: SetupTextDraft) {
-    const draft = offered ?? setupTextDrafts[id];
-    if (!draft) return;
-    patchSetupVenue(id, (venue) => {
-      const fill = (before: string, after: string, placeholder = "") =>
-        replace || !before.trim() || before === placeholder ? after || before : before;
-      const space = venueSpaceFor(venue, venue.classes?.includes("gathering") ? "gathering" : "residence");
-      const items = (before: string[], after: string[]) =>
-        replace || before.length === 0 ? (after ?? before) : before;
-      return {
-        ...venue,
-        name: fill(
-          venue.name,
-          draft.name,
-          venue.category === "public-center"
-            ? "Gathering Place"
-            : venue.occupancy.playerHome
-              ? "Your residence"
-              : `Residence ${setupVenues.filter((entry) => entry.classes?.includes("residence")).findIndex((entry) => entry.id === venue.id) + 1}`,
-        ),
-        form: fill(venue.form ?? "", draft.form, venue.category === "public-center" ? "Gathering place" : "Home"),
-        purpose: fill(venue.purpose, draft.purpose),
-        description: fill(venue.description, draft.description),
-        spaces: [
-          {
-            ...space,
-            description: fill(space.description, draft.spaceDescription),
-            state: {
-              ...space.state,
-              condition: fill(space.state.condition, draft.condition),
-              items: items(space.state.items, draft.items),
-              publicFacts: items(space.state.publicFacts, draft.publicFacts),
-              features: items(
-                space.state.features.map((feature) => feature.text),
-                draft.features,
-              ).map((text, index) => ({
-                id: space.state.features[index]?.id ?? freshRowKey(),
-                text,
-                sourceCharacterId: "",
-                locked: space.state.features[index]?.locked ?? false,
-                updatedAt: "",
-              })),
-            },
-          },
-        ],
-      };
-    });
-    setSetupTextDrafts((current) => {
-      const next = { ...current };
-      delete next[id];
-      return next;
-    });
-  }
 
   const generateSetupImage = async (venue: SetupVenueDraft, area: "exterior" | "interior") => {
     if (setupVenueBusy) return;
+    const description = area === "exterior" ? venue.description : (venue.spaces?.[0]?.description ?? "");
+    if (!description.trim()) {
+      setSelectedSetupVenueId(venue.id);
+      setSetupProblem(`Add an ${area} description before generating its image.`);
+      window.setTimeout(
+        () => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${area}-description`)?.focus(),
+        0,
+      );
+      return;
+    }
     const sourceKey = setupBeginningSourceKey;
     setSetupVenueBusy(true);
     setSetupProblem("");
@@ -13282,6 +13187,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           area,
           villageName: setupName,
           setting: setupSetting,
+          foundingDetails: setupFoundingDetails,
           scenarioImprint: snapshot?.isFounded ? setupImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
@@ -13357,7 +13263,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.spaces?.[0]?.description.trim(),
       )
     )
-      return "Review the starting place descriptions in Step 4.";
+      return "Complete each venue's Form, Exterior Description, and Interior Description in Step 4.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -13381,6 +13287,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const foundVillage = useCallback(async () => {
     const blocker = setupBlocker();
     if (blocker) {
+      const incomplete = setupVenues.find(
+        (venue) =>
+          !venue.name.trim() ||
+          !venue.form?.trim() ||
+          !venue.description.trim() ||
+          !venue.spaces?.[0]?.description.trim(),
+      );
+      if (incomplete) {
+        const field = !incomplete.name.trim()
+          ? "venue-name"
+          : !incomplete.form?.trim()
+            ? "form"
+            : !incomplete.description.trim()
+              ? "exterior-description"
+              : "interior-description";
+        setSelectedSetupVenueId(incomplete.id);
+        setSetupStep(3);
+        window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
+      }
       setSetupProblem(blocker);
       return;
     }
@@ -13422,12 +13347,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setBusy(false);
     }
   }, [
+    element,
+    setupVenues,
     snapshot?.isFounded,
     snapshot?.settings.foundingReason,
     snapshot?.settings.foundingDetails,
     snapshot?.settings.foundingGuidance,
     snapshot?.settings.scenarioImprint,
-    setupVenues,
     personaDraft,
     savedTownMapView,
     setupBlocker,
@@ -13511,7 +13437,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   //
   // It edits the places you can be sent to and not the houses, because the two
   // are edited in different places for good reasons: a house is a spot on a map
-  // and a destination has a name, purpose, and category. Each row saves by its
+  // and a destination has a name and Class. Each row saves by its
   // own id, so an older panel cannot replace a newly approved destination.
   const addVenue = useCallback(() => {
     setVenueEditDraft({
@@ -13523,7 +13449,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       residenceCapacity: 1,
       residentIds: [],
       improvements: [null, null],
-      purpose: "",
       description: "",
       category: "",
       presentation: { image: null, x: null, y: null },
@@ -13552,7 +13477,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               spaces,
               workerIds: draft.workerIds ?? [],
               presentation: { x: draft.presentation.x, y: draft.presentation.y },
-              purpose: draft.purpose,
               category: draft.category,
               description: spaces[0]?.description ?? draft.description,
               state: {
@@ -14135,7 +14059,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     <strong>
                       {entry.requesterName || "A villager"} suggests {entry.venueDraft.name}
                     </strong>
-                    <p>{entry.venueDraft.purpose}</p>
+                    <p>
+                      {entry.venueDraft.classes
+                        .map((venueClass) => venueClass[0].toUpperCase() + venueClass.slice(1))
+                        .join(" / ")}
+                    </p>
                     <button
                       type="button"
                       className={`${ELEMENT_TAG}-button`}
@@ -14262,7 +14190,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const editableFields = (venue: VillageVenue) => ({
       name: venue.name,
       form: venue.form,
-      purpose: venue.purpose,
       workerIds: venue.workerIds,
       position: { x: venue.presentation.x, y: venue.presentation.y },
       spaces: classes.map((item) => {
@@ -14337,7 +14264,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           body: JSON.stringify({
             name: venueEditDraft.name,
             form: venueEditDraft.form,
-            purpose: venueEditDraft.purpose,
             description: occupiedResidence ? place.description : (first?.description ?? venueEditDraft.description),
             spaces,
             workerIds: venueEditDraft.workerIds ?? [],
@@ -14480,7 +14406,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               )}
               <div className={`${ELEMENT_TAG}-venue-context`}>
                 <span className={`${ELEMENT_TAG}-label`}>The place</span>
-                {place.purpose ? <p className={`${ELEMENT_TAG}-venue-beat`}>{place.purpose}</p> : null}
                 {place.form || building ? <p>{place.form || building}</p> : null}
                 {snapshot.village.setting ? <p className={`${ELEMENT_TAG}-hint`}>{snapshot.village.setting}</p> : null}
                 {classes.includes("residence") ? (
@@ -14566,6 +14491,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       {space.state.publicFacts.length ? (
                         <p className={`${ELEMENT_TAG}-hint`}>
                           Established facts: {space.state.publicFacts.join(" · ")}
+                        </p>
+                      ) : null}
+                      {space.state.features.length ? (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          Defining features: {space.state.features.map((feature) => feature.text).join(" · ")}
                         </p>
                       ) : null}
                     </section>
@@ -15744,7 +15674,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     .map((venue) => (
                       <div className={`${ELEMENT_TAG}-notice-row`} key={venue.id}>
                         <strong>{venue.name}</strong>
-                        <span className={`${ELEMENT_TAG}-hint`}>{venue.purpose}</span>
+                        <span className={`${ELEMENT_TAG}-hint`}>{venue.form}</span>
                         <button
                           type="button"
                           className={`${ELEMENT_TAG}-button`}
@@ -16165,21 +16095,19 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                               aria-label={`Requested place name from ${entry.requesterName || "villager"}`}
                               onChange={(event) => edit({ name: event.target.value })}
                             />
-                            <input
+                            <select
                               className={`${ELEMENT_TAG}-notice-input`}
-                              value={draft.purpose}
-                              maxLength={snapshot.settings.maxVenueNoteLength}
-                              aria-label={`Requested place purpose from ${entry.requesterName || "villager"}`}
-                              onChange={(event) => edit({ purpose: event.target.value })}
-                            />
-                            <input
-                              className={`${ELEMENT_TAG}-notice-input`}
-                              value={draft.category}
-                              maxLength={snapshot.settings.maxVenueNoteLength}
-                              placeholder="Category (optional)"
-                              aria-label={`Requested place category from ${entry.requesterName || "villager"}`}
-                              onChange={(event) => edit({ category: event.target.value })}
-                            />
+                              value={draft.classes[0] ?? "gathering"}
+                              aria-label={`Requested place class from ${entry.requesterName || "villager"}`}
+                              onChange={(event) =>
+                                edit({ classes: [event.target.value as (typeof draft.classes)[number]] })
+                              }
+                            >
+                              <option value="residence">Residence</option>
+                              <option value="gathering">Gathering</option>
+                              <option value="workplace">Workplace</option>
+                              <option value="other">Other</option>
+                            </select>
                             <textarea
                               className={`${ELEMENT_TAG}-textarea`}
                               value={draft.description ?? ""}
@@ -16199,7 +16127,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   {
                                     method: "POST",
                                     body: JSON.stringify({
-                                      venues: [{ id: entry.id, name: draft.name, purpose: draft.purpose }],
+                                      venues: [{ id: entry.id, name: draft.name, classes: draft.classes }],
                                     }),
                                   },
                                 )
@@ -16219,13 +16147,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 type="button"
                                 className={`${ELEMENT_TAG}-button`}
                                 disabled={
-                                  busy || !draft.name.trim() || !draft.purpose.trim() || !draft.description?.trim()
+                                  busy || !draft.name.trim() || draft.classes.length === 0 || !draft.description?.trim()
                                 }
                                 onClick={() => void decideVenueRequest(entry, true)}
                               >
                                 {draft.name !== entry.venueDraft.name ||
-                                draft.purpose !== entry.venueDraft.purpose ||
-                                draft.category !== entry.venueDraft.category
+                                JSON.stringify(draft.classes) !== JSON.stringify(entry.venueDraft.classes)
                                   ? "Send counteroffer"
                                   : "Approve exact request"}
                               </button>
@@ -17938,7 +17865,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       onClick={() => {
                         setSetupVenues([]);
                         setSelectedSetupVenueId(null);
-                        setSetupTextDrafts({});
                         setSetupImageDraft(null);
                         setMovingSetupVenueId(null);
                         setPlacingHome(false);
@@ -17953,25 +17879,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       {setupPlacementError}
                     </p>
                   ) : null}
-                  <div className={`${ELEMENT_TAG}-row`}>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy || setupVenueBusy || !setupVenues.length}
-                      onClick={() => void generateSetupText(setupVenues)}
-                    >
-                      Draft all venue text
-                    </button>
-                    {Object.keys(setupTextDrafts).length > 1 ? (
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        onClick={() => Object.keys(setupTextDrafts).forEach((id) => applySetupText(id, false))}
-                      >
-                        Use all drafts in empty fields
-                      </button>
-                    ) : null}
-                  </div>
                   <div className={`${ELEMENT_TAG}-setup-venue-list`}>
                     {setupVenues.map((venue) => (
                       <button
@@ -18029,6 +17936,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       <label className={`${ELEMENT_TAG}-label`}>
                         Name
                         <input
+                          id={`${ELEMENT_TAG}-setup-venue-name`}
                           className={`${ELEMENT_TAG}-notice-input`}
                           value={selectedSetupVenue.name}
                           maxLength={100}
@@ -18059,17 +17967,29 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           ))}
                         </div>
                       ) : null}
-                      <label className={`${ELEMENT_TAG}-label`}>
-                        Form · what is it?
-                        <input
-                          className={`${ELEMENT_TAG}-notice-input`}
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        Class: {setupFormClass === "gathering" ? "Gathering" : "Residence"}
+                      </p>
+                      <div className={`${ELEMENT_TAG}-setup-form-field`}>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-form`}>
+                          Form
+                        </label>
+                        <textarea
+                          id={`${ELEMENT_TAG}-setup-form`}
+                          className={`${ELEMENT_TAG}-textarea`}
+                          rows={2}
                           value={selectedSetupVenue.form ?? ""}
                           maxLength={240}
-                          onChange={(event) =>
-                            patchSetupVenue(selectedSetupVenue.id, (venue) => ({ ...venue, form: event.target.value }))
-                          }
+                          placeholder={FOUNDING_FORM_EXAMPLES[setupFormClass][setupFormHintIndex]}
+                          onFocus={() => setSetupFormFocused(true)}
+                          onBlur={() => setSetupFormFocused(false)}
+                          onChange={(event) => {
+                            patchSetupVenue(selectedSetupVenue.id, (venue) => ({ ...venue, form: event.target.value }));
+                            setSetupProblem("");
+                          }}
                         />
-                      </label>
+                        <small className={`${ELEMENT_TAG}-hint`}>What the Venue actually is</small>
+                      </div>
                       {selectedSetupVenue.category !== "public-center" ? (
                         <label className={`${ELEMENT_TAG}-label`}>
                           Resident
@@ -18104,155 +18024,45 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           </select>
                         </label>
                       ) : null}
-                      <p className={`${ELEMENT_TAG}-hint`}>
-                        <strong>Exterior:</strong> {selectedSetupVenue.description || "Ready to draft"} ·{" "}
-                        <strong>Scene:</strong> {selectedSetupSpace.description || "Ready to draft"}
-                      </p>
-                      <details className={`${ELEMENT_TAG}-setup-advanced`}>
-                        <summary className={`${ELEMENT_TAG}-label`}>Edit place details and art</summary>
-                        <label className={`${ELEMENT_TAG}-label`}>
-                          Purpose
-                          <input
-                            className={`${ELEMENT_TAG}-notice-input`}
-                            value={selectedSetupVenue.purpose}
-                            maxLength={240}
-                            onChange={(event) =>
-                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                                ...venue,
-                                purpose: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                        <label className={`${ELEMENT_TAG}-label`}>
-                          Guidance for AI text and art
-                          <textarea
-                            className={`${ELEMENT_TAG}-textarea`}
-                            value={selectedSetupVenue.guidance}
-                            maxLength={1000}
-                            placeholder="Mood, materials, details to include or avoid…"
-                            onChange={(event) =>
-                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                                ...venue,
-                                guidance: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={setupVenueBusy}
-                          onClick={() => void generateSetupText([selectedSetupVenue])}
-                        >
-                          Generate text draft
-                        </button>
-                        {setupTextDrafts[selectedSetupVenue.id] ? (
-                          <div className={`${ELEMENT_TAG}-overlay`}>
-                            <strong>Suggested venue text</strong>
-                            <p>
-                              {setupTextDrafts[selectedSetupVenue.id]?.name} ·{" "}
-                              {setupTextDrafts[selectedSetupVenue.id]?.form}
-                            </p>
-                            <p>
-                              <strong>Purpose:</strong> {setupTextDrafts[selectedSetupVenue.id]?.purpose}
-                            </p>
-                            <p>
-                              <strong>Exterior:</strong> {setupTextDrafts[selectedSetupVenue.id]?.description}
-                            </p>
-                            <p>
-                              <strong>Scene:</strong> {setupTextDrafts[selectedSetupVenue.id]?.spaceDescription}
-                            </p>
-                            <p>
-                              <strong>Initial condition:</strong> {setupTextDrafts[selectedSetupVenue.id]?.condition}
-                            </p>
-                            <p>
-                              <strong>Items:</strong>{" "}
-                              {setupTextDrafts[selectedSetupVenue.id]?.items.join(", ") || "None"}
-                            </p>
-                            <p>
-                              <strong>Public facts:</strong>{" "}
-                              {setupTextDrafts[selectedSetupVenue.id]?.publicFacts.join(", ") || "None"}
-                            </p>
-                            <p>
-                              <strong>Features:</strong>{" "}
-                              {setupTextDrafts[selectedSetupVenue.id]?.features.join(", ") || "None"}
-                            </p>
-                            <div className={`${ELEMENT_TAG}-row`}>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() => applySetupText(selectedSetupVenue.id, false)}
-                              >
-                                Use in empty fields
-                              </button>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() => applySetupText(selectedSetupVenue.id, true)}
-                              >
-                                Replace text with this draft
-                              </button>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() =>
-                                  setSetupTextDrafts((current) => {
-                                    const next = { ...current };
-                                    delete next[selectedSetupVenue.id];
-                                    return next;
-                                  })
-                                }
-                              >
-                                Discard draft
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                        <label className={`${ELEMENT_TAG}-label`}>
-                          Exterior description
-                          <textarea
-                            className={`${ELEMENT_TAG}-textarea`}
-                            value={selectedSetupVenue.description}
-                            maxLength={1000}
-                            onChange={(event) =>
-                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                                ...venue,
-                                description: event.target.value,
-                              }))
-                            }
-                          />
-                        </label>
-                        <label className={`${ELEMENT_TAG}-label`}>
-                          Scene description
-                          <textarea
-                            className={`${ELEMENT_TAG}-textarea`}
-                            value={selectedSetupSpace.description}
-                            maxLength={1000}
-                            onChange={(event) =>
-                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                                ...venue,
-                                spaces: [
-                                  {
-                                    ...venueSpaceFor(
-                                      venue,
-                                      venue.category === "public-center" ? "gathering" : "residence",
-                                    ),
-                                    description: event.target.value,
-                                  },
-                                ],
-                              }))
-                            }
-                          />
-                        </label>
+                      <div className={`${ELEMENT_TAG}-setup-place-spaces`}>
                         {(["exterior", "interior"] as const).map((area) => {
-                          const image =
-                            area === "exterior" ? selectedSetupVenue.presentation.image : selectedSetupSpace.image;
+                          const exterior = area === "exterior";
+                          const label = exterior ? "Exterior" : "Interior";
+                          const image = exterior ? selectedSetupVenue.presentation.image : selectedSetupSpace.image;
                           return (
-                            <section key={area} className={`${ELEMENT_TAG}-field`}>
-                              <span className={`${ELEMENT_TAG}-label`}>
-                                {area === "exterior" ? "Exterior photograph" : "Interior photograph"} · optional
-                              </span>
+                            <section key={area} className={`${ELEMENT_TAG}-setup-place-space`}>
+                              <h4>{label}</h4>
+                              <label
+                                className={`${ELEMENT_TAG}-label`}
+                                htmlFor={`${ELEMENT_TAG}-setup-${area}-description`}
+                              >
+                                {label} Description · required
+                              </label>
+                              <textarea
+                                id={`${ELEMENT_TAG}-setup-${area}-description`}
+                                className={`${ELEMENT_TAG}-textarea`}
+                                value={exterior ? selectedSetupVenue.description : selectedSetupSpace.description}
+                                maxLength={1000}
+                                onChange={(event) => {
+                                  const description = event.target.value;
+                                  patchSetupVenue(selectedSetupVenue.id, (venue) =>
+                                    exterior
+                                      ? { ...venue, description }
+                                      : {
+                                          ...venue,
+                                          spaces: [
+                                            {
+                                              ...venueSpaceFor(venue, setupFormClass),
+                                              description,
+                                            },
+                                          ],
+                                        },
+                                  );
+                                  setSetupProblem("");
+                                  setSetupImageDraft(null);
+                                }}
+                              />
+                              <span className={`${ELEMENT_TAG}-label`}>{label} Image · optional</span>
                               {image ? (
                                 <img
                                   className={`${ELEMENT_TAG}-setup-image-preview`}
@@ -18269,7 +18079,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   disabled={setupVenueBusy}
                                   onClick={() => void generateSetupImage(selectedSetupVenue, area)}
                                 >
-                                  {image ? "Regenerate image" : "Generate image"}
+                                  {image ? `Regenerate ${label} Image` : `Generate ${label} Image`}
                                 </button>
                                 <input
                                   className={`${ELEMENT_TAG}-file`}
@@ -18289,19 +18099,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                     className={`${ELEMENT_TAG}-button`}
                                     onClick={() =>
                                       patchSetupVenue(selectedSetupVenue.id, (venue) =>
-                                        area === "exterior"
+                                        exterior
                                           ? { ...venue, presentation: { ...venue.presentation, image: null } }
                                           : {
                                               ...venue,
-                                              spaces: [
-                                                {
-                                                  ...venueSpaceFor(
-                                                    venue,
-                                                    venue.category === "public-center" ? "gathering" : "residence",
-                                                  ),
-                                                  image: null,
-                                                },
-                                              ],
+                                              spaces: [{ ...venueSpaceFor(venue, setupFormClass), image: null }],
                                             },
                                       )
                                     }
@@ -18315,10 +18117,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   <img
                                     className={`${ELEMENT_TAG}-setup-image-preview`}
                                     src={setupImageDraft.image.url}
-                                    alt="New image preview"
+                                    alt={`New ${area} image preview`}
                                   />
                                   <button type="button" className={`${ELEMENT_TAG}-button`} onClick={useSetupImage}>
-                                    Use this photograph
+                                    Use this image
                                   </button>
                                   <button
                                     type="button"
@@ -18332,101 +18134,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             </section>
                           );
                         })}
-                        <details>
-                          <summary>Advanced venue details</summary>
-                          <div className={`${ELEMENT_TAG}-setup-venue-editor`}>
-                            <label className={`${ELEMENT_TAG}-label`}>
-                              Initial condition
-                              <input
-                                className={`${ELEMENT_TAG}-notice-input`}
-                                value={selectedSetupSpace.state.condition}
-                                onChange={(event) =>
-                                  patchSetupVenue(selectedSetupVenue.id, (venue) => {
-                                    const space = venueSpaceFor(
-                                      venue,
-                                      venue.category === "public-center" ? "gathering" : "residence",
-                                    );
-                                    return {
-                                      ...venue,
-                                      spaces: [{ ...space, state: { ...space.state, condition: event.target.value } }],
-                                    };
-                                  })
-                                }
-                              />
-                            </label>
-                            {(["items", "publicFacts"] as const).map((key) => (
-                              <label key={key} className={`${ELEMENT_TAG}-label`}>
-                                {key === "items" ? "Notable items · one per line" : "Public facts · one per line"}
-                                <textarea
-                                  className={`${ELEMENT_TAG}-textarea`}
-                                  value={selectedSetupSpace.state[key].join("\n")}
-                                  onChange={(event) =>
-                                    patchSetupVenue(selectedSetupVenue.id, (venue) => {
-                                      const space = venueSpaceFor(
-                                        venue,
-                                        venue.category === "public-center" ? "gathering" : "residence",
-                                      );
-                                      return {
-                                        ...venue,
-                                        spaces: [
-                                          {
-                                            ...space,
-                                            state: {
-                                              ...space.state,
-                                              [key]: event.target.value
-                                                .split("\n")
-                                                .map((line) => line.trim())
-                                                .filter(Boolean),
-                                            },
-                                          },
-                                        ],
-                                      };
-                                    })
-                                  }
-                                />
-                              </label>
-                            ))}
-                            <label className={`${ELEMENT_TAG}-label`}>
-                              Features · one per line
-                              <textarea
-                                className={`${ELEMENT_TAG}-textarea`}
-                                value={selectedSetupSpace.state.features.map((feature) => feature.text).join("\n")}
-                                onChange={(event) =>
-                                  patchSetupVenue(selectedSetupVenue.id, (venue) => {
-                                    const space = venueSpaceFor(
-                                      venue,
-                                      venue.category === "public-center" ? "gathering" : "residence",
-                                    );
-                                    return {
-                                      ...venue,
-                                      spaces: [
-                                        {
-                                          ...space,
-                                          state: {
-                                            ...space.state,
-                                            features: event.target.value
-                                              .split("\n")
-                                              .map((line) => line.trim())
-                                              .filter(Boolean)
-                                              .slice(0, 5)
-                                              .map((text, index) => ({
-                                                id: space.state.features[index]?.id ?? freshRowKey(),
-                                                text,
-                                                sourceCharacterId: "",
-                                                locked: false,
-                                                updatedAt: "",
-                                              })),
-                                          },
-                                        },
-                                      ],
-                                    };
-                                  })
-                                }
-                              />
-                            </label>
-                          </div>
-                        </details>
-                      </details>
+                      </div>
                     </div>
                   ) : (
                     <p className={`${ELEMENT_TAG}-hint`}>Place or select a venue to edit it.</p>
@@ -18569,34 +18277,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   type="button"
                   className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
                   disabled={busy || setupMapBusy || setupVenueBusy}
-                  onClick={() => {
-                    if (
-                      setupStep === 3 &&
-                      !snapshot?.isFounded &&
-                      setupVenues.some((venue) => !venue.description.trim() || !venue.spaces?.[0]?.description.trim())
-                    ) {
-                      const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
-                      const residents = residences.filter((venue) => !venue.occupancy.playerHome);
-                      if (
-                        residences.some((venue) => venue.occupancy.playerHome) &&
-                        residents.length >= SETUP_MIN_VILLAGER_COUNT &&
-                        residents.length <= SETUP_MAX_VILLAGER_COUNT &&
-                        setupVenues.some((venue) => venue.category === "public-center") &&
-                        residents.every((venue) => !!venue.occupancy.residentCharacterId) &&
-                        new Set(residents.map((venue) => venue.occupancy.residentCharacterId)).size === residents.length
-                      ) {
-                        void generateSetupText(setupVenues, true);
-                        return;
-                      }
-                    }
-                    gotoSetupStep(setupStep + 1);
-                  }}
+                  onClick={() => gotoSetupStep(setupStep + 1)}
                 >
-                  {setupStep === 3 &&
-                  !snapshot?.isFounded &&
-                  setupVenues.some((venue) => !venue.description.trim() || !venue.spaces?.[0]?.description.trim())
-                    ? "Draft places →"
-                    : "Next →"}
+                  Next →
                 </button>
               ) : (
                 <button

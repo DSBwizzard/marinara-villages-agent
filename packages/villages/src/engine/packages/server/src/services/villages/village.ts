@@ -66,6 +66,7 @@ import {
   villagesLogger,
 } from "./package-runtime.js";
 import { extractJsonObject } from "./village-bootstrap.js";
+import { seedFoundingVenueDetails } from "./founding-drafts.js";
 import {
   defaultVenueSpace,
   hasVenueClass,
@@ -377,7 +378,15 @@ function villageSettings(
     townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     settingMaxLength: MAX_SETTING_LENGTH,
     venues: village.venues.map((venue) => {
-      if (!hasVenueClass(venue, "residence")) return venue;
+      if (!hasVenueClass(venue, "residence")) {
+        if (venue.playerSeenPublic) return venue;
+        const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
+        return {
+          ...venue,
+          state: { ...venue.state, condition: "", furniture: [], publicFacts: [], features: [], traces: [] },
+          spaces: venueSpaces(venue).map((space) => ({ ...space, state: blankState })),
+        };
+      }
       const inside =
         venue.occupancy.playerHome ||
         venue.playerSeenShared === true ||
@@ -389,7 +398,7 @@ function villageSettings(
       const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
       return {
         ...venue,
-        description: inside ? venue.description : "",
+        description: venue.description,
         state: inside
           ? venue.state
           : { ...venue.state, condition: "", furniture: [], publicFacts: [], features: [], traces: [] },
@@ -674,7 +683,7 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
         setting: agendaSetting,
         home: (() => {
           const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
-          return home ? [home.name, home.form, home.purpose, home.state.condition].filter(Boolean).join("; ") : "";
+          return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
         })(),
         completedWishes: villager.completedWishes,
         activeWishes: villager.agenda?.wishes ?? [],
@@ -2063,6 +2072,7 @@ export async function setVillageVenues(value: unknown, scope: "all" | "homes" = 
       archivedPrivateSpaces: prior?.archivedPrivateSpaces,
       editProposals: prior?.editProposals,
       playerSeenShared: prior?.playerSeenShared,
+      playerSeenPublic: prior?.playerSeenPublic,
       playerSeenPrivateIds: prior?.playerSeenPrivateIds,
       improvements: prior?.improvements ?? [null, null],
       description: prior?.description ?? place.description,
@@ -2100,6 +2110,7 @@ export async function setVillageVenues(value: unknown, scope: "all" | "homes" = 
             editProposals: latest.editProposals,
             playerInvitations: latest.playerInvitations,
             playerSeenShared: latest.playerSeenShared,
+            playerSeenPublic: latest.playerSeenPublic,
             playerSeenPrivateIds: latest.playerSeenPrivateIds,
             presentation: { ...place.presentation, image: latest.presentation.image },
           }
@@ -2272,7 +2283,6 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
   const record = value as Record<string, unknown>;
   const name = venueFieldText(record.name, existing?.name ?? "", MAX_VENUE_NAME_LENGTH).trim();
   if (name.length === 0 && !existing?.occupancy.homeKind) throw badRequest("Every venue needs a name.");
-  const purpose = venueFieldText(record.purpose, existing?.purpose ?? "", MAX_VENUE_NOTE_LENGTH).trim();
   const description = venueFieldText(
     record.description,
     existing?.description ?? "",
@@ -2364,9 +2374,9 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     archivedPrivateSpaces: existing?.archivedPrivateSpaces,
     editProposals: existing?.editProposals,
     playerSeenShared: existing?.playerSeenShared,
+    playerSeenPublic: existing?.playerSeenPublic,
     playerSeenPrivateIds: existing?.playerSeenPrivateIds,
     improvements: existing?.improvements ?? [null, null],
-    purpose,
     description,
     category,
     presentation: {
@@ -2505,7 +2515,7 @@ export function queueVillageVenueRequest(
     id: randomVillageSeed(),
     kind: "venue",
     title: core.name,
-    detail: core.purpose,
+    detail: core.classes.join(" / "),
     proposedAt: at,
     sourceOpportunityId: source === "background" ? sourceKey : "",
     status: "pending",
@@ -2541,7 +2551,7 @@ export async function decideVillageVenueRequest(
   const description = approved
     ? boundText((value as Record<string, unknown>)?.description, MAX_VENUE_DESCRIPTION_LENGTH)
     : "";
-  if (approved && !edits) throw badRequest("A venue request needs a name and purpose.");
+  if (approved && !edits) throw badRequest("A venue request needs a name and Class.");
   if (approved && !description) throw badRequest("Approve a description before creating this venue.");
   await mutateVillageState((state) => {
     applyVillageVenueDecision(state, requestId, approved, edits, description, new Date());
@@ -2629,8 +2639,7 @@ export function applyVillageVenueDecision(
     approved &&
     edits &&
     (edits.name !== decision.venueDraft.name ||
-      edits.purpose !== decision.venueDraft.purpose ||
-      edits.category !== decision.venueDraft.category)
+      JSON.stringify(edits.classes) !== JSON.stringify(decision.venueDraft.classes))
   ) {
     queueVenueCounteroffer(state, requestId, edits, description, now);
     return;
@@ -3110,7 +3119,6 @@ type ParsedPlace = {
   residenceCapacity: number;
   residentIds: string[];
   improvements: NonNullable<VillageVenue["improvements"]>;
-  purpose: string;
   description: string;
   category: string;
   presentation: VillageVenue["presentation"];
@@ -3170,48 +3178,18 @@ function foundingImage(value: unknown): VillageVenueImage | null {
   return { ref, id, url };
 }
 
-function foundingLines(value: unknown, label: string): string[] {
-  if (value === undefined) return [];
-  if (
-    !Array.isArray(value) ||
-    value.length > 20 ||
-    value.some((item) => typeof item !== "string" || item.length > 300)
-  ) {
-    throw badRequest(`${label} must be a short list of text.`);
-  }
-  return value.map((item: string) => item.trim()).filter(Boolean);
-}
-
 function foundingSpace(
   value: unknown,
   venueClass: VillageVenueClass,
   description: string,
 ): NonNullable<VillageVenue["spaces"]>[number] {
   const row = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  const rawState =
-    row.state && typeof row.state === "object" && !Array.isArray(row.state)
-      ? (row.state as Record<string, unknown>)
-      : {};
-  const features = Array.isArray(rawState.features) ? rawState.features : [];
-  if (features.length > 5) throw badRequest("A founding space can have at most five features.");
+  const spaceDescription = boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+  if (!spaceDescription) throw badRequest("Describe the interior before founding the village.");
   return {
     ...defaultVenueSpace(venueClass, description),
-    description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH).trim() || description,
+    description: spaceDescription,
     image: foundingImage(row.image),
-    state: {
-      condition: boundText(rawState.condition, 300).trim(),
-      items: foundingLines(rawState.items, "Initial items"),
-      publicFacts: foundingLines(rawState.publicFacts, "Initial facts"),
-      features: features.map((entry) => {
-        const feature =
-          entry && typeof entry === "object" && !Array.isArray(entry) ? (entry as Record<string, unknown>) : {};
-        const text = boundText(feature.text, 300).trim();
-        if (!text) throw badRequest("A founding feature needs text.");
-        return { id: randomVillageSeed(), text, sourceCharacterId: "", locked: feature.locked === true, updatedAt: "" };
-      }),
-      traces: [],
-      updatedAt: "",
-    },
   };
 }
 
@@ -3255,12 +3233,10 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
   if (name.length > MAX_VENUE_NAME_LENGTH) {
     throw badRequest(`A place name can be at most ${MAX_VENUE_NAME_LENGTH} characters.`);
   }
-  if (record.purpose !== undefined && typeof record.purpose !== "string") {
-    throw badRequest("A venue purpose must be text.");
-  }
-  const purpose = typeof record.purpose === "string" ? record.purpose.trim() : "";
   const description = typeof record.description === "string" ? record.description.trim() : "";
   const form = boundText(record.form, MAX_VENUE_NOTE_LENGTH).trim();
+  if (founding && !form) throw badRequest("Describe what each venue actually is in Form before founding.");
+  if (founding && !description) throw badRequest("Describe the exterior of each venue before founding.");
   const classes: VillageVenueClass[] = validVenueClasses(record.classes)
     ? record.classes
     : playerHome || characterId
@@ -3274,9 +3250,6 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     Number(record.residenceCapacity) <= 4
       ? Number(record.residenceCapacity)
       : 1;
-  if (purpose.length > MAX_VENUE_NOTE_LENGTH) {
-    throw badRequest(`A venue purpose can be at most ${MAX_VENUE_NOTE_LENGTH} characters.`);
-  }
   if (description.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("A venue description is too long.");
   const presentationRecord =
     record.presentation && typeof record.presentation === "object" && !Array.isArray(record.presentation)
@@ -3308,7 +3281,6 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     residenceCapacity: capacity,
     residentIds: characterId ? [characterId] : [],
     improvements: [null, null],
-    purpose,
     description,
     category: typeof record.category === "string" ? record.category.trim() : "",
     presentation: { image: founding ? foundingImage(presentationRecord.image) : null, x, y },
@@ -3565,6 +3537,8 @@ export async function runVillageSetup(input: {
       improvements: prior?.improvements ?? [null, null],
       capabilities: prior?.capabilities ?? place.capabilities,
       workerIds: prior?.workerIds ?? [],
+      playerSeenPublic: prior?.playerSeenPublic,
+      playerSeenShared: prior?.playerSeenShared,
       state: prior?.state ?? place.state,
       presentation: {
         ...place.presentation,
@@ -3625,7 +3599,14 @@ export async function runVillageSetup(input: {
     // The stamp that closes the wizard. Written here and nowhere else, so a
     // village can only become founded by coming through this flow.
     state.setupAt = new Date().toISOString();
-    if (founding) state.foundingPreparation = { status: "pending", completedIds: [], currentId: "", error: "" };
+    if (founding)
+      state.foundingPreparation = {
+        status: "pending",
+        completedIds: [],
+        venueDetailsSeeded: false,
+        currentId: "",
+        error: "",
+      };
     // Only a village with nowhere to send anybody needs places invented; a
     // second run must not throw away places the player has since renamed or
     // added by hand. The houses do not count — see `remapVenues`.
@@ -3687,6 +3668,47 @@ export function prepareFoundedVillage(): Promise<void> {
   foundingWork = (async () => {
     const initial = await readVillageState();
     if (initial.foundingPreparation?.status !== "pending") return;
+    if (!initial.foundingPreparation.venueDetailsSeeded) {
+      try {
+        const details = await seedFoundingVenueDetails(initial);
+        await mutateVillageState((state) => {
+          if (state.foundingPreparation?.status !== "pending" || state.foundingPreparation.venueDetailsSeeded) return;
+          for (const venue of state.venues) {
+            const seed = details[venue.id];
+            if (!seed) continue;
+            const space = venue.spaces?.[0];
+            if (!space) continue;
+            const features = seed.features.map((text) => ({
+              id: randomVillageSeed(),
+              text,
+              sourceCharacterId: "",
+              locked: false,
+              updatedAt: "",
+            }));
+            space.state = {
+              ...space.state,
+              condition: seed.condition,
+              items: seed.items,
+              publicFacts: seed.publicFacts,
+              features,
+            };
+            venue.state = {
+              ...venue.state,
+              condition: seed.condition,
+              furniture: seed.items,
+              publicFacts: seed.publicFacts,
+              features,
+            };
+          }
+          state.foundingPreparation.venueDetailsSeeded = true;
+        });
+      } catch (error) {
+        villagesLogger().warn("[villages] initial venue details unavailable: %s", String(error));
+        await mutateVillageState((state) => {
+          if (state.foundingPreparation?.status === "pending") state.foundingPreparation.venueDetailsSeeded = true;
+        });
+      }
+    }
     let weeks: Map<string, NativeWeekSchedule> | null = null;
     for (const villager of initial.villagers) {
       const id = villager.characterId;
@@ -3783,9 +3805,7 @@ export function prepareFoundedVillage(): Promise<void> {
               lore,
               home: (() => {
                 const home = currentState.venues.find((venue) => venue.occupancy.residentCharacterId === id);
-                return home
-                  ? [home.name, home.form, home.purpose, home.state.condition].filter(Boolean).join("; ")
-                  : "";
+                return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
               })(),
               completedWishes: current.completedWishes,
               activeWishes: current.agenda?.generatedAt ? current.agenda.wishes : [],
@@ -4034,7 +4054,7 @@ export async function suggestFoundingPlaces(settingValue: unknown, idsValue: unk
   const ids = readSelectedLorebookIds(idsValue ?? []);
   const budget = budgetValue === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(budgetValue);
   const proposal = await proposeVillage(setting, { lore: await readVillageLore(ids, setting, undefined, budget) });
-  return { places: proposal.venues.map((venue) => ({ name: venue.name, purpose: venue.purpose })) };
+  return { places: proposal.venues.map((venue) => ({ name: venue.name })) };
 }
 
 export async function suggestFoundingVenueNames(settingValue: unknown, idsValue: unknown, budgetValue?: unknown) {
@@ -4060,13 +4080,13 @@ export async function draftVenueDescriptions(value: unknown): Promise<{ descript
     return {
       id: asTrimmedString(raw.id),
       name: asTrimmedString(raw.name),
-      purpose: asTrimmedString(raw.purpose),
+      classes: validVenueClasses(raw.classes) ? raw.classes : ["other"],
       homeKind: asTrimmedString(raw.homeKind),
     };
   });
   const lore = await readVillageLore(
     ids,
-    [setting, ...venues.map((venue) => `${venue.name} ${venue.purpose}`)].join("\n"),
+    [setting, ...venues.map((venue) => venue.name)].join("\n"),
     undefined,
     input.loreTokenBudget === undefined ? village.loreTokenBudget : readLoreTokenBudget(input.loreTokenBudget),
   );

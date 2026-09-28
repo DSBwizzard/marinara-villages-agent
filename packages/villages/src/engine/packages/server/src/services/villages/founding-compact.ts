@@ -200,7 +200,7 @@ export async function proposeCompactFounding(
   const native = foundingNativeActivities(context.schedule);
   const places = context.venues.map(
     (venue, index) =>
-      `${index + 1}. ${venue.name}: ${[venue.purpose, venue.state.condition, ...venue.state.publicFacts.slice(0, 2)].filter(Boolean).join("; ").slice(0, 240)}`,
+      `${index + 1}. ${venue.name}: ${[venue.classes?.join(" / "), venue.form, venue.state.condition, ...venue.state.publicFacts.slice(0, 2)].filter(Boolean).join("; ").slice(0, 240)}`,
   );
   const prompt = [
     `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,

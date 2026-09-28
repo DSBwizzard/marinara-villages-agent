@@ -26,13 +26,13 @@ import type {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
 
 const at = "2026-09-22T12:00:00.000Z";
-const core = { name: "The Glasshouse", purpose: "Neighbours grow herbs together.", category: "garden" };
+const core = { name: "The Glasshouse", classes: ["gathering"] as ["gathering"] };
 const venue = (name: string): VillageVenue => {
   const draft = venueRequestDraft({ ...core, name });
   return {
     id: `draft-${name}`,
     name: draft.name,
-    purpose: draft.purpose,
+    classes: draft.classes,
     description: "A glasshouse where neighbours grow herbs together.",
     category: draft.category,
     presentation: { image: null, x: null, y: null },
@@ -46,14 +46,20 @@ state.foundedAt = at;
 state.villagers.push({ characterId: "rosa", cardSnapshot: { name: "Rosa" } } as VillageVillager);
 state.noticeboard.push({ author: "Rosa", text: "Could we have somewhere to grow herbs?" });
 
-assert.deepEqual(readVenueRequestCore({ name: "", purpose: "Grow herbs." }), null);
-assert.deepEqual(readVenueRequestCore({ name: "Glasshouse", purpose: 7 }), null);
+assert.deepEqual(readVenueRequestCore({ name: "", classes: ["gathering"] }), null);
+assert.deepEqual(readVenueRequestCore({ name: "Glasshouse", classes: ["unknown"] }), null);
 assert.deepEqual(readVenueRequestCore(core), core);
 assert.deepEqual(normalizeVillageSnapshot({ settings: { venues: [] }, venueRequests: undefined }).venueRequests, []);
 assert.deepEqual(
   normalizeVillageSnapshot({ settings: { venues: [] }, venueRequests: [{ id: "bad", venueDraft: null }] })
     .venueRequests,
   [],
+);
+const classOnlyRequest = { id: "glasshouse-request", venueDraft: { ...core, category: "destination" } };
+assert.deepEqual(
+  normalizeVillageSnapshot({ settings: { venues: [] }, venueRequests: [classOnlyRequest] }).venueRequests,
+  [classOnlyRequest],
+  "a request without a Purpose remains visible in the client snapshot",
 );
 const quoted = { ...core, quote: "Could we have a glasshouse for herbs?" };
 assert.deepEqual(
@@ -137,7 +143,7 @@ assert.equal(persisted.pendingDecisions[0]?.id, id, "removing a note does not di
 
 applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse for herbs.", new Date(at));
 assert.equal(persisted.pendingDecisions[0]?.status, "approved");
-assert.equal(persisted.venues[0]?.category, "garden");
+assert.deepEqual(persisted.venues[0]?.classes, ["gathering"]);
 assert.equal(persisted.venues[0]?.description, "A shared glasshouse for herbs.");
 assert.equal(remapVenues(persisted.venues)[0]?.name, core.name);
 assert.match(persisted.chronicle[0]?.text ?? "", /approved Rosa's request/u);

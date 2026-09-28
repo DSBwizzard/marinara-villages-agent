@@ -620,13 +620,12 @@ export type VillageVenue = {
   exteriorState?: VillageVenueSpace["state"];
   privateSpaces?: VillagePrivateSpace[];
   playerSeenShared?: boolean;
+  playerSeenPublic?: boolean;
   playerSeenPrivateIds?: string[];
   archivedPrivateSpaces?: { ownerId: string; archivedAt: string; space: VillagePrivateSpace }[];
   editProposals?: VillageVenueEditProposal[];
   improvements?: (VillageVenueImprovement | null)[];
-  /** Optional category/purpose metadata; never used as a location identity. */
-  purpose: string;
-  /** Player-approved visual and spatial description, distinct from the short purpose. */
+  /** Player-approved exterior description. */
   description: string;
   category: string;
   /** Presentation data is separate from physical venue state. */
@@ -671,7 +670,7 @@ export type VillageVenueMail = {
   requesterCharacterId: string;
   movingCharacterId?: string;
   counterofferRequestId?: string;
-  counterofferDraft?: { name: string; purpose: string; category: string; description: string };
+  counterofferDraft?: { name: string; classes: VillageVenueClass[]; description: string };
   /** Exact reviewed terms; retained alongside the outcome for future relationship use. */
   proposedClasses?: VillageVenueClass[];
   proposedCapacity?: number;
@@ -720,7 +719,6 @@ export type VillageVenueView = {
   name: string;
   image: VillageVenueImage | null;
   position: VillageVenuePosition;
-  purpose: string;
   condition: string;
   residentCharacterId: string | null;
   playerHome: boolean;
@@ -733,7 +731,7 @@ export type VillageVenueView = {
  */
 export type VillageVenueDraft = {
   name: string;
-  purpose: string;
+  classes: VillageVenueClass[];
   description: string;
   category: string;
   position: VillageVenuePosition;
@@ -1072,6 +1070,7 @@ export type VillageState = {
   foundingPreparation?: {
     status: "pending" | "failed" | "ready";
     completedIds: string[];
+    venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;
     stage?: "reading" | "lore" | "resolving" | "model" | "applying" | "saving";

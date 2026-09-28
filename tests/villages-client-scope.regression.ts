@@ -89,7 +89,6 @@ assert.doesNotMatch(
 const validVenue = {
   id: "library",
   name: "Library",
-  purpose: "Read.",
   category: "destination",
   presentation: { image: null, x: 0.4, y: 0.6 },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
