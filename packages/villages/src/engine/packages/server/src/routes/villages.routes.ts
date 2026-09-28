@@ -11,8 +11,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   activeVenueSession,
   continueVenueWithoutGreeting,
-  endVenueSession,
   endVenueSessionWithReceipts,
+  closeVenueSessionWithReceipts,
   leaveVenueSession,
   enterResidencePrivateSpace,
   leaveVenueMemoryPending,
@@ -696,7 +696,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/end", async (request, reply) => {
     try {
-      return await endVenueSessionWithReceipts(readChatId(request.body?.sessionId));
+      return await closeVenueSessionWithReceipts(readChatId(request.body?.sessionId));
     } catch (error) {
       return fail(reply, error, "ending a venue conversation");
     }
@@ -733,7 +733,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   });
   app.post<{ Params: { id: string } }>("/rooms/archive/:id/retry-memory", async (request, reply) => {
     try {
-      return { session: await endVenueSession(request.params.id) };
+      return await endVenueSessionWithReceipts(request.params.id);
     } catch (error) {
       return fail(reply, error, "retrying venue memory");
     }
@@ -1342,24 +1342,13 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // ── Player-facing memory library ──────────────────────────────────────────
   app.get("/memories", async (_request, reply) => {
     try {
-      // Returning to the library gives one pending visit a best-effort retry.
-      // The visit is already closed and archived, so a failing model never
-      // holds the room or prevents this read from succeeding.
-      let archive = await listVenueVisitSummaries({ limit: 100 });
-      const pending = archive.visits.find((visit) => visit.memoryPending);
-      if (pending) {
-        try {
-          await endVenueSession(pending.id);
-        } catch (error) {
-          villagesLogger().warn("[villages] pending memory retry failed for %s: %s", pending.id, String(error));
-        }
-        archive = await listVenueVisitSummaries({ limit: 100 });
-      }
+      const archive = await listVenueVisitSummaries({ limit: 100 });
       return {
         ...(await buildVillageMemories()),
         archive: {
           total: archive.total,
           pendingReviewCount: archive.visits.filter((visit) => visit.memoryPending).length,
+          pendingReviewId: archive.visits.find((visit) => visit.memoryPending)?.id ?? "",
           recent: archive.visits.slice(0, 6),
         },
       };

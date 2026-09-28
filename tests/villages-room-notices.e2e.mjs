@@ -93,11 +93,45 @@ const snapshot = {
 };
 let turn = 0;
 let serverExpired = false;
+let releaseReview = null;
 await page.route("**/api/villages**", async (route) => {
   const path = new URL(route.request().url()).pathname;
   let value = snapshot;
   if (path.endsWith("/rooms/active")) value = { session: serverExpired ? null : session, debugDiscardEnabled: true };
-  else if (path.endsWith(`/rooms/archive/${session.id}`))
+  else if (path.endsWith(`/rooms/archive/${session.id}/retry-memory`)) {
+    if (session.id !== "visit-pending") {
+      await new Promise((resolve) => {
+        releaseReview = resolve;
+      });
+      session = {
+        ...session,
+        memoryPending: false,
+        memoryReview: {
+          status: "complete",
+          attempts: 1,
+          error: "",
+          nextRecollection: 1,
+          decisions:
+            session.id === "visit-none"
+              ? []
+              : [
+                  {
+                    id: `${session.id}-decision`,
+                    action: "promote",
+                    recollectionIds: ["memory-source"],
+                    reason: "commitment",
+                  },
+                ],
+        },
+      };
+    }
+    const event =
+      session.id === "visit-natural" ? naturalMemory : session.id === "visit-leave" ? leaveMemory : endMemory;
+    value = {
+      session,
+      recordEvents: session.id === "visit-pending" || session.id === "visit-none" ? [] : [event, event],
+    };
+  } else if (path.endsWith(`/rooms/archive/${session.id}`))
     value = { visit: { ...session, status: "closed", endReason: "inactivity" } };
   else if (path.endsWith("/rooms/activity")) value = { session };
   else if (path.endsWith("/rooms/turn")) {
@@ -121,12 +155,12 @@ await page.route("**/api/villages**", async (route) => {
       ],
     };
     if (body.message === "Natural ending")
-      session = { ...session, status: "closed", activeIds: [], endedAt: now, endReason: "scene" };
+      session = { ...session, status: "closed", activeIds: [], endedAt: now, endReason: "scene", memoryPending: true };
     value = {
       session,
       verdict: null,
       action: null,
-      recordEvents: body.message === "Natural ending" ? [naturalMemory, naturalMemory] : [],
+      recordEvents: [],
     };
   } else if (path.endsWith("/rooms/leave")) {
     session = {
@@ -135,6 +169,7 @@ await page.route("**/api/villages**", async (route) => {
       activeIds: [],
       endedAt: now,
       endReason: "player",
+      memoryPending: true,
       lines: [
         ...session.lines,
         {
@@ -149,7 +184,7 @@ await page.route("**/api/villages**", async (route) => {
         },
       ],
     };
-    value = { session, verdict: null, action: null, recordEvents: [leaveMemory] };
+    value = { session, verdict: null, action: null, recordEvents: [] };
   } else if (path.endsWith("/rooms/end")) {
     session = {
       ...session,
@@ -157,9 +192,11 @@ await page.route("**/api/villages**", async (route) => {
       activeIds: [],
       endedAt: now,
       endReason: "player",
-      ...(session.id === "visit-pending" ? { memoryPending: true } : {}),
+      memoryPending: true,
     };
-    value = { session, recordEvents: session.id === "visit-end" ? [endMemory] : [] };
+    value = { session, recordEvents: [] };
+  } else if (path.endsWith("/rooms/leave-pending")) {
+    value = { session };
   } else if (path.endsWith("/catalog")) value = { characters: [] };
   await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
 });
@@ -175,6 +212,7 @@ try {
   const mountVisit = async (id) => {
     session = newSession(id);
     serverExpired = false;
+    releaseReview = null;
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   };
@@ -184,6 +222,11 @@ try {
   const returnToMap = async () => {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Return to map" }).click();
+  };
+  const completeReview = async () => {
+    await expect.poll(() => releaseReview !== null).toBe(true);
+    releaseReview();
+    releaseReview = null;
   };
   const expectMemory = async (memory) => {
     await expect(stack).toContainText(memory.text);
@@ -209,6 +252,9 @@ try {
   await send("Ordinary chat");
   await expect(tray).toHaveCount(0, "ordinary chat-time recollections stay silent");
   await send("Natural ending");
+  await expect(page.getByText(/Memory review in progress/u)).toBeVisible();
+  await expect(tray).toHaveCount(0, "the farewell is readable before review finishes");
+  await completeReview();
   await expectMemory(naturalMemory);
   await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(
     1,
@@ -244,6 +290,9 @@ try {
     page.waitForResponse((response) => response.url().endsWith("/rooms/leave")),
     page.getByRole("button", { name: "Send" }).click(),
   ]);
+  await expect(page.getByText("Come back safely.")).toBeVisible();
+  await expect(tray).toHaveCount(0, "the saved farewell appears before its durable notice");
+  await completeReview();
   await expectMemory(leaveMemory);
   await returnToMap();
 
@@ -254,11 +303,23 @@ try {
     page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
     page.getByRole("menuitem", { name: "End visit now" }).click(),
   ]);
+  await completeReview();
   await expectMemory(endMemory);
   await expect(composer).toHaveCount(
     0,
     "an ended visit stays on its completed reading instead of returning immediately",
   );
+  await returnToMap();
+
+  await mountVisit("visit-none");
+  await composer.waitFor();
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
+    page.getByRole("menuitem", { name: "End visit now" }).click(),
+  ]);
+  await completeReview();
+  await expect(page.getByText("Review complete. No durable memories were made from this visit.")).toBeVisible();
   await returnToMap();
 
   await mountVisit("visit-pending");
@@ -269,7 +330,8 @@ try {
     page.getByRole("menuitem", { name: "End visit now" }).click(),
   ]);
   await expect(tray).toHaveCount(0, "a pending review creates no false durable-memory star");
-  await returnToMap();
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await page.getByRole("menuitem", { name: "Leave with memory pending" }).click();
 
   // A second device ends this scene while its old desktop tab is left open.
   await mountVisit("visit-stale");

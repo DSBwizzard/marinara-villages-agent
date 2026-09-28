@@ -31,6 +31,7 @@ import {
   continueVenueWithoutGreeting,
   endVenueSession,
   endVenueSessionWithReceipts,
+  closeVenueSessionWithReceipts,
   leaveVenueMemoryPending,
   enterVenue,
   enterResidencePrivateSpace,
@@ -107,6 +108,10 @@ let debugEnabled = false;
 let memoryCalls = 0;
 let reviewCalls = 0;
 let failReviewOnce = false;
+let failReviewAtCall = -1;
+let reviewFailureMessage = "review unavailable";
+const reviewResponseModes: ("length" | "malformed")[] = [];
+const reviewBatches: { firstText: string; count: number; outputLimit: number }[] = [];
 let failMemoryOnce = false;
 let failMemoryAtCall = -1;
 let saturateMemoryOnce = false;
@@ -114,6 +119,7 @@ let misattributeMemoryOnce = false;
 let holdMemoryOnce = false;
 let signalMemoryStarted: (() => void) | null = null;
 let fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
+let reviewContextRejects = 0;
 let memoryInputChars = 0;
 let memoryOutputChars = 0;
 let wishScanCalls = 0;
@@ -156,6 +162,7 @@ const release = configureVillagesRuntime({
         maxOutputTokens: 4096,
         fitContext(messages: any[], options: any) {
           const inputChars = messages.reduce((size, message) => size + String(message.content ?? "").length, 0);
+          if (inputChars > fitAnswerBudgetChars) reviewContextRejects += 1;
           return {
             messages,
             maxTokens: inputChars > fitAnswerBudgetChars ? options.maxTokens - 1 : options.maxTokens,
@@ -350,11 +357,20 @@ const release = configureVillagesRuntime({
           }
           if (system.includes("You adjudicate short-term conversational recollections")) {
             reviewCalls += 1;
+            const input = JSON.parse(user);
+            reviewBatches.push({
+              firstText: input.recollections[0]?.text ?? "",
+              count: input.recollections.length,
+              outputLimit: options.maxTokens,
+            });
+            if (reviewCalls === failReviewAtCall) throw new Error(reviewFailureMessage);
             if (failReviewOnce) {
               failReviewOnce = false;
               throw new Error("review unavailable");
             }
-            const input = JSON.parse(user);
+            const responseMode = reviewResponseModes.shift();
+            if (responseMode === "length") return { content: "{", finishReason: "length" };
+            if (responseMode === "malformed") return { content: "{bad", finishReason: "stop" };
             return {
               content: JSON.stringify({
                 decisions: input.recollections.map((recollection: any) => ({
@@ -362,7 +378,7 @@ const release = configureVillagesRuntime({
                     recollection.text.includes("promised") || recollection.text.includes("kissed")
                       ? "promote"
                       : "reject",
-                  recollectionIds: [recollection.id],
+                  indices: [recollection.index],
                   reason:
                     recollection.text.includes("promised") || recollection.text.includes("kissed")
                       ? "A distinct lasting event."
@@ -371,9 +387,6 @@ const release = configureVillagesRuntime({
                     ? {
                         category: recollection.text.includes("promised") ? "commitment" : "shared-experience",
                         text: recollection.text,
-                        subjectCharacterIds: recollection.subjectCharacterIds,
-                        knownByCharacterIds: recollection.knownByCharacterIds,
-                        lineIds: recollection.evidence.map((line: any) => line.lineId),
                       }
                     : {}),
                 })),
@@ -2336,8 +2349,11 @@ async function main() {
     assert.equal(departedTina.session.endReason, "scene");
     assert.equal(await activeVenueSession(), null);
     assert.equal(memoryCalls, beforeTurnMemory, "tiered visits do not run the retired transcript distiller");
+    assert.equal(reviewCalls, 0, "the completed farewell returns before durable review starts");
+    assert.equal(departedTina.session.memoryPending, true);
+    const reviewedDeparture = await endVenueSessionWithReceipts(current.id);
     assert.equal(reviewCalls, 1, "one compact System review closes an ordinary played visit");
-    assert.equal(departedTina.recordEvents.filter((event) => event.kind === "memory").length, 1);
+    assert.equal(reviewedDeparture.recordEvents.filter((event) => event.kind === "memory").length, 1);
     const durable = (await readVillageState()).chronicle.find((entry) =>
       entry.sourceRecollectionIds?.includes(recollectionId),
     );
@@ -2417,6 +2433,91 @@ async function main() {
       1,
       "replaying a completed review preserves its deterministic memory ID",
     );
+
+    for (const paragraphCount of [10, 97, 125]) {
+      const synthetic = await enterVenue("park");
+      const record = records.get(key("villages", `villages-venue-visit-${synthetic.id}`));
+      record.data.status = "active";
+      record.data.participants = [{ characterId: "bob", name: "Bob", doing: "listening" }];
+      record.data.activeIds = ["bob"];
+      record.data.lines = Array.from({ length: paragraphCount }, (_, index) => ({
+        id: `synthetic-${paragraphCount}-line-${index}`,
+        speakerId: "",
+        name: "Player",
+        role: "user",
+        content:
+          paragraphCount === 125 && index === 0
+            ? `${"A long exchange about ordinary things. ".repeat(600)} The player promised to help with task 0 in visit 125.`
+            : `The player promised to help with task ${index} in visit ${paragraphCount}.`,
+        at: now.toISOString(),
+        heardBy: ["bob"],
+      }));
+      record.data.heardHistory = [{ characterId: "bob", lineIds: record.data.lines.map((line: any) => line.id) }];
+      record.data.submissions = [
+        {
+          id: `synthetic-${paragraphCount}`,
+          recollections: record.data.lines.map((line: any, index: number) => ({
+            id: `synthetic-${paragraphCount}-recollection-${index}`,
+            text: `Bob heard the player promised to help with task ${index} in visit ${paragraphCount}.`,
+            subjectCharacterIds: ["bob"],
+            knownByCharacterIds: ["bob"],
+            lineIds: [line.id],
+          })),
+        },
+      ];
+      const beforeCloseCalls = reviewCalls;
+      const closedFirst = await closeVenueSessionWithReceipts(synthetic.id);
+      assert.equal(closedFirst.session.status, "closed");
+      assert.equal(closedFirst.session.memoryPending, true);
+      assert.equal(reviewCalls, beforeCloseCalls, "farewell and archive are visible before review starts");
+      assert.deepEqual(closedFirst.recordEvents, []);
+      if (paragraphCount === 97) {
+        fitAnswerBudgetChars = 14_000;
+        reviewResponseModes.push("length", "malformed");
+      }
+      if (paragraphCount === 125) {
+        fitAnswerBudgetChars = 10_000;
+        failReviewAtCall = reviewCalls + 3;
+        reviewFailureMessage = "review timed out";
+      }
+      const startedReview = performance.now();
+      let reviewed = await endVenueSessionWithReceipts(synthetic.id);
+      if (paragraphCount === 125) {
+        assert.equal(reviewed.session.memoryPending, true, "a mid-review timeout keeps the archive pending");
+        const checkpoint = reviewed.session.memoryReview.nextRecollection;
+        assert.ok(checkpoint > 0 && checkpoint < paragraphCount, "successful batches are saved before failure");
+        assert.equal(reviewed.session.memoryReview.decisions.length, checkpoint);
+        assert.deepEqual(reviewed.recordEvents, [], "partial review produces no premature notices");
+        failReviewAtCall = -1;
+        const beforeRetryBatches = reviewBatches.length;
+        reviewed = await endVenueSessionWithReceipts(synthetic.id);
+        assert.match(reviewBatches[beforeRetryBatches]!.firstText, new RegExp(`task ${checkpoint} in visit 125`));
+      }
+      fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
+      assert.equal(reviewed.session.memoryPending, false);
+      assert.equal(reviewed.session.memoryReview.nextRecollection, paragraphCount);
+      assert.equal(reviewed.session.memoryReview.decisions.length, paragraphCount);
+      assert.equal(reviewed.recordEvents.length, paragraphCount, "every qualifying recollection gets a notice");
+      assert.equal(
+        (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === synthetic.id).length,
+        paragraphCount,
+        "each qualifying recollection becomes one durable memory",
+      );
+      await endVenueSession(synthetic.id);
+      assert.equal(
+        (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === synthetic.id).length,
+        paragraphCount,
+        "completed review retries never duplicate durable memories",
+      );
+      console.log(
+        `tiered review ${paragraphCount} paragraphs: ${reviewCalls - beforeCloseCalls} calls, ${Math.round(performance.now() - startedReview)}ms`,
+      );
+    }
+    assert.ok(
+      reviewBatches.some((batch) => batch.outputLimit > 3_600),
+      "large batches reserve more than 3,600 output tokens",
+    );
+    assert.ok(reviewContextRejects > 0, "review batches shrink when their input and reserved output cannot fit");
 
     const natural = await greetVenue((await enterVenue("park")).id);
     const naturalEnding = await sendVenueTurn({
