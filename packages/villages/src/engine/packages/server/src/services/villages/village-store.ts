@@ -198,6 +198,9 @@ export function defaultVillageState(): VillageState {
     scheduledEvents: [],
     relationships: [],
     projects: [],
+    narrativeItems: [],
+    projectSourceClaims: [],
+    villageCapabilities: [],
     pendingDecisions: [],
     venueMail: [],
     villagers: [],
@@ -477,6 +480,19 @@ function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: str
     // time on it that the debug tab would then show as fact.
     generatedAt: asIsoString(raw.generatedAt) ?? "",
   };
+  const projectWork = asRecord(raw.projectWork);
+  if (
+    asTrimmedString(projectWork.projectId) &&
+    asTrimmedString(projectWork.venueId) &&
+    asIsoString(projectWork.startsAt) &&
+    asIsoString(projectWork.endsAt)
+  )
+    agenda.projectWork = {
+      projectId: asTrimmedString(projectWork.projectId),
+      venueId: asTrimmedString(projectWork.venueId),
+      startsAt: asIsoString(projectWork.startsAt)!,
+      endsAt: asIsoString(projectWork.endsAt)!,
+    };
   const fallback = workingAgendaWeek(venues, name);
   agenda.week = legacyAgendaWeek({ ...agenda, week: raw.week as VillageAgenda["week"] }, fallback);
   agenda.scheduleWeek = raw.scheduleWeek ? completeAgendaWeek(raw.scheduleWeek, agenda.week) : null;
@@ -768,6 +784,11 @@ function coerceVenue(value: unknown): VillageVenue | null {
   }
   return {
     id: asTrimmedString(raw.id),
+    buildProjectId: asTrimmedString(raw.buildProjectId) || undefined,
+    constructionStatus:
+      raw.constructionStatus === "worksite" || raw.constructionStatus === "complete"
+        ? raw.constructionStatus
+        : undefined,
     name,
     form: boundText(raw.form, MAX_VENUE_NOTE_LENGTH),
     classes,
@@ -1537,33 +1558,174 @@ function coerceRelationships(value: unknown): VillageRelationship[] {
 
 function coerceProjects(value: unknown): VillageProject[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const id = asTrimmedString(raw.id);
-      const title = boundText(raw.title, MAX_NOTICE_LENGTH);
-      if (!id || !title) return [];
-      const progress =
-        typeof raw.progress === "number" && Number.isFinite(raw.progress)
-          ? Math.max(0, Math.min(100, Math.trunc(raw.progress)))
-          : 0;
-      return [
-        {
-          id,
-          title,
-          venueId: asTrimmedString(raw.venueId),
-          participantIds: asStringArray(raw.participantIds)
-            .map((actor) => actor.trim())
-            .filter(Boolean)
-            .slice(0, 16),
-          progress,
-          status:
-            raw.status === "blocked" ? "blocked" : raw.status === "complete" || progress >= 100 ? "complete" : "active",
-          updatedAt: asIsoString(raw.updatedAt) ?? "",
-        },
-      ];
-    })
-    .slice(0, MAX_SIMULATION_RECORDS);
+  return value.flatMap((entry) => {
+    const raw = asRecord(entry);
+    const id = asTrimmedString(raw.id);
+    const title = boundText(raw.title, MAX_NOTICE_LENGTH);
+    if (!id || !title) return [];
+    const progress =
+      typeof raw.progress === "number" && Number.isFinite(raw.progress)
+        ? Math.max(0, Math.min(100, Math.trunc(raw.progress)))
+        : 0;
+    const planRaw = asRecord(raw.plan);
+    const draftRaw = asRecord(raw.venueDraft);
+    const requirements = Array.isArray(planRaw.requirements)
+      ? planRaw.requirements.flatMap((value) => {
+          const item = asRecord(value);
+          const id = asTrimmedString(item.id);
+          return id
+            ? [{ id, title: boundText(item.title, MAX_NOTICE_LENGTH), routeIds: asStringArray(item.routeIds) }]
+            : [];
+        })
+      : [];
+    const sources = Array.isArray(planRaw.sources)
+      ? planRaw.sources.flatMap((value) => {
+          const item = asRecord(value);
+          const sourceId = asTrimmedString(item.id);
+          const requirementId = asTrimmedString(item.requirementId);
+          if (!sourceId || !requirementId) return [];
+          return [
+            {
+              id: sourceId,
+              requirementId,
+              kind: item.kind === "existing-item" ? ("existing-item" as const) : ("limited-opportunity" as const),
+              venueId: asTrimmedString(item.venueId),
+              itemName: boundText(item.itemName, MAX_VENUE_NOTE_LENGTH),
+              supplierId: asTrimmedString(item.supplierId),
+              remaining: Number.isInteger(item.remaining) ? Math.max(0, Math.min(16, Number(item.remaining))) : 0,
+              cost: boundText(item.cost, MAX_VENUE_NOTE_LENGTH),
+              prerequisite: boundText(item.prerequisite, MAX_VENUE_NOTE_LENGTH),
+              magic: item.magic === true,
+              loreEvidence: boundText(item.loreEvidence, MAX_VENUE_NOTE_LENGTH),
+            },
+          ];
+        })
+      : [];
+    const receipts = Array.isArray(planRaw.receipts)
+      ? planRaw.receipts.flatMap((value) => {
+          const item = asRecord(value);
+          const receiptId = asTrimmedString(item.id);
+          const submissionId = asTrimmedString(item.submissionId);
+          const kinds = ["promise", "acquired", "committed", "released", "installed", "builder-agreement"] as const;
+          if (!receiptId || !submissionId || !kinds.includes(item.kind as (typeof kinds)[number])) return [];
+          return [
+            {
+              id: receiptId,
+              submissionId,
+              kind: item.kind as (typeof kinds)[number],
+              requirementId: asTrimmedString(item.requirementId),
+              sourceId: asTrimmedString(item.sourceId),
+              residentId: asTrimmedString(item.residentId),
+              sourceLineId: asTrimmedString(item.sourceLineId),
+              quote: boundText(item.quote, MAX_VENUE_NOTE_LENGTH),
+              at: asIsoString(item.at) ?? "",
+              planRevision: Number.isInteger(item.planRevision) ? Math.max(0, Number(item.planRevision)) : 0,
+            },
+          ];
+        })
+      : [];
+    const orderRaw = asRecord(planRaw.workOrder);
+    const plan =
+      raw.kind === "build-venue" && Number.isInteger(planRaw.revision)
+        ? {
+            revision: Math.max(0, Number(planRaw.revision)),
+            agreedAt: asIsoString(planRaw.agreedAt) ?? "",
+            need: boundText(planRaw.need, MAX_VENUE_NOTE_LENGTH),
+            revisions: Array.isArray(planRaw.revisions)
+              ? planRaw.revisions.flatMap((value) => {
+                  const item = asRecord(value);
+                  const agreedAt = asIsoString(item.agreedAt);
+                  return Number.isInteger(item.revision) && agreedAt
+                    ? [
+                        {
+                          revision: Math.max(1, Number(item.revision)),
+                          agreedAt,
+                          sourceIds: asStringArray(item.sourceIds),
+                        },
+                      ]
+                    : [];
+                })
+              : [],
+            requirements,
+            sources,
+            recordedItems: Array.isArray(planRaw.recordedItems)
+              ? planRaw.recordedItems.flatMap((value) => {
+                  const item = asRecord(value);
+                  const venueId = asTrimmedString(item.venueId);
+                  const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
+                  return venueId && itemName ? [{ venueId, itemName }] : [];
+                })
+              : [],
+            receipts,
+            builderId: asTrimmedString(planRaw.builderId),
+            workOrder:
+              asIsoString(orderRaw.startsAt) && asIsoString(orderRaw.completesAt)
+                ? {
+                    startsAt: asIsoString(orderRaw.startsAt)!,
+                    completesAt: asIsoString(orderRaw.completesAt)!,
+                    pausedAt: asIsoString(orderRaw.pausedAt) ?? "",
+                  }
+                : null,
+            outcomeAt: asIsoString(planRaw.outcomeAt) ?? "",
+            capability: boundText(planRaw.capability, MAX_VENUE_NOTE_LENGTH),
+            siteVenueId: asTrimmedString(planRaw.siteVenueId),
+            blockedReason: boundText(planRaw.blockedReason, MAX_VENUE_NOTE_LENGTH),
+          }
+        : undefined;
+    return [
+      {
+        id,
+        title,
+        venueId: asTrimmedString(raw.venueId),
+        participantIds: asStringArray(raw.participantIds)
+          .map((actor) => actor.trim())
+          .filter(Boolean)
+          .slice(0, 16),
+        progress,
+        status:
+          raw.status === "draft" && raw.kind === "build-venue"
+            ? "draft"
+            : raw.status === "building" && raw.kind === "build-venue"
+              ? "building"
+              : raw.status === "blocked"
+                ? "blocked"
+                : raw.status === "complete" || progress >= 100
+                  ? "complete"
+                  : "active",
+        updatedAt: asIsoString(raw.updatedAt) ?? "",
+        ...(raw.kind === "build-venue"
+          ? {
+              kind: "build-venue" as const,
+              requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
+              venueDraft: {
+                name: boundText(draftRaw.name, MAX_VENUE_NAME_LENGTH),
+                classes: validVenueClasses(draftRaw.classes) ? draftRaw.classes : ["other" as const],
+                description: boundText(draftRaw.description, MAX_VENUE_DESCRIPTION_LENGTH),
+                category: "",
+                position: {
+                  x:
+                    typeof asRecord(draftRaw.position).x === "number" &&
+                    Number(asRecord(draftRaw.position).x) >= 0 &&
+                    Number(asRecord(draftRaw.position).x) <= 1
+                      ? Number(asRecord(draftRaw.position).x)
+                      : null,
+                  y:
+                    typeof asRecord(draftRaw.position).y === "number" &&
+                    Number(asRecord(draftRaw.position).y) >= 0 &&
+                    Number(asRecord(draftRaw.position).y) <= 1
+                      ? Number(asRecord(draftRaw.position).y)
+                      : null,
+                },
+                occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+                capabilities: [],
+                state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+              },
+              ...(plan ? { plan } : {}),
+            }
+          : {}),
+      },
+    ];
+  });
 }
 
 function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
@@ -1618,6 +1780,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
           venueId: asTrimmedString(raw.venueId),
           proposedHomeKind: isHomeBuildingKind(raw.proposedHomeKind) ? raw.proposedHomeKind : undefined,
           requesterName: boundText(raw.requesterName, MAX_NOTICE_AUTHOR_LENGTH),
+          requestQuote: boundText(raw.requestQuote, MAX_VENUE_NOTE_LENGTH),
           source: raw.source === "chat" ? ("chat" as const) : ("background" as const),
           sourceKey: asTrimmedString(raw.sourceKey),
         } satisfies VillagePendingDecision,
@@ -1812,6 +1975,31 @@ export function coerceVillageState(value: unknown): VillageState {
     scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
     relationships: coerceRelationships(raw.relationships),
     projects: coerceProjects(raw.projects),
+    narrativeItems: Array.isArray(raw.narrativeItems)
+      ? raw.narrativeItems.flatMap((value) => {
+          const item = asRecord(value);
+          const venueId = asTrimmedString(item.venueId);
+          const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
+          return venueId && itemName ? [{ venueId, itemName }] : [];
+        })
+      : [],
+    projectSourceClaims: Array.isArray(raw.projectSourceClaims)
+      ? raw.projectSourceClaims.flatMap((value) => {
+          const item = asRecord(value);
+          const key = asTrimmedString(item.key);
+          const projectId = asTrimmedString(item.projectId);
+          const sourceId = asTrimmedString(item.sourceId);
+          const submissionId = asTrimmedString(item.submissionId);
+          return key && projectId && sourceId && submissionId ? [{ key, projectId, sourceId, submissionId }] : [];
+        })
+      : [],
+    villageCapabilities: [
+      ...new Set(
+        asStringArray(raw.villageCapabilities)
+          .map((item) => boundText(item, MAX_VENUE_NOTE_LENGTH))
+          .filter(Boolean),
+      ),
+    ],
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
     venueMail: coerceVenueMail(raw.venueMail),
     villagers: villagers

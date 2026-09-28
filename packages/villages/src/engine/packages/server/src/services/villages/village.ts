@@ -67,6 +67,7 @@ import {
 } from "./package-runtime.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import { seedFoundingVenueDetails } from "./founding-drafts.js";
+import { draftBuildProject, reconcileBuildProjects } from "./build-projects.js";
 import {
   defaultVenueSpace,
   hasVenueClass,
@@ -587,6 +588,8 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
         decision.status !== "countered" &&
         decision.venueDraft,
     ),
+    projects: village.projects,
+    villageCapabilities: village.villageCapabilities,
     upgradeRequests: village.pendingDecisions.filter(
       (decision) => decision.kind === "venue-upgrade" && decision.status === "pending",
     ),
@@ -1763,6 +1766,19 @@ export async function removeVillager(characterId: string): Promise<void> {
   await mutateVillageState((state) => {
     const remaining = state.villagers.filter((villager) => villager.characterId !== characterId);
     removed = remaining.length !== state.villagers.length;
+    if (removed)
+      for (const project of state.projects) {
+        if (
+          project.kind !== "build-venue" ||
+          !project.plan ||
+          project.plan.builderId !== characterId ||
+          project.status === "complete"
+        )
+          continue;
+        project.status = "blocked";
+        project.plan.blockedReason = "The builder left; recruit a new resident to continue.";
+        if (project.plan.workOrder) project.plan.workOrder.pausedAt = new Date().toISOString();
+      }
     state.villagers = remaining;
   });
   if (!removed) throw notFound("That villager does not live here.");
@@ -1824,7 +1840,9 @@ export function villagerPlaceView(
       ? village.venues.find(
           (entry) =>
             entry.id === venueId &&
-            (!isHousePlace(entry) || (entry.classes?.some((item) => item !== "residence") ?? false)),
+            (entry.constructionStatus === "worksite" ||
+              !isHousePlace(entry) ||
+              (entry.classes?.some((item) => item !== "residence") ?? false)),
         )
       : undefined;
   if (venue) {
@@ -2114,6 +2132,33 @@ export async function setVillageVenues(value: unknown, scope: "all" | "homes" = 
   }
 
   await mutateVillageState((state) => {
+    if (isVillageFounded(state)) {
+      const target = scope === "homes" ? state.venues.filter(isHousePlace) : state.venues;
+      if (places.length !== target.length || places.some((place) => !target.some((entry) => entry.id === place.id)))
+        throw conflict("After founding, new venues begin as projects; the settings list cannot add or remove them.");
+      for (const place of places) {
+        const current = state.venues.find((entry) => entry.id === place.id)!;
+        if (place.presentation.x !== current.presentation.x || place.presentation.y !== current.presentation.y)
+          throw conflict("Moving a map pin needs a later project type.");
+        if (current.constructionStatus === "worksite") {
+          if (place.name !== current.name || place.description !== current.description)
+            throw conflict("A worksite's identity belongs to its active project.");
+          continue;
+        }
+        if (
+          state.projects.some(
+            (project) =>
+              project.kind === "build-venue" &&
+              project.status !== "complete" &&
+              project.venueDraft?.name.toLowerCase() === place.name.toLowerCase(),
+          )
+        )
+          throw conflict("That name is reserved by a build project.");
+        current.name = place.name;
+        current.description = place.description;
+      }
+      return;
+    }
     const next =
       scope === "homes"
         ? [...places.filter(isHousePlace), ...state.venues.filter((place) => !isHousePlace(place))]
@@ -2491,6 +2536,7 @@ export async function createVillageVenue(value: unknown): Promise<VillageSnapsho
   const draft = venueDraft(value, null);
   if (!draft.description) throw badRequest("Approve a description before creating this venue.");
   await mutateVillageState((state) => {
+    if (isVillageFounded(state)) throw conflict("After founding, propose a venue project instead.");
     addVillageVenue(state, draft);
   });
   return buildVillageSnapshot();
@@ -2521,6 +2567,7 @@ export function queueVillageVenueRequest(
   source: "chat" | "background",
   sourceKey: string,
   at: string,
+  requestQuote = "",
 ): void {
   const requester = state.villagers.find((villager) => villager.characterId === requesterCharacterId);
   if (!requester || !sourceKey) return;
@@ -2532,6 +2579,12 @@ export function queueVillageVenueRequest(
   const key = core.name.trim().toLowerCase();
   if (
     state.venues.some((venue) => venue.name.trim().toLowerCase() === key) ||
+    state.projects.some(
+      (project) =>
+        project.kind === "build-venue" &&
+        project.status !== "complete" &&
+        project.venueDraft?.name.trim().toLowerCase() === key,
+    ) ||
     state.pendingDecisions.some(
       (decision) =>
         decision.sourceKey === sourceKey ||
@@ -2552,6 +2605,7 @@ export function queueVillageVenueRequest(
     venueDraft: venueRequestDraft(core),
     requesterCharacterId,
     requesterName: requester.cardSnapshot.name,
+    requestQuote: boundText(requestQuote, MAX_VENUE_NOTE_LENGTH),
     source,
     sourceKey,
   };
@@ -2675,14 +2729,18 @@ export function applyVillageVenueDecision(
     return;
   }
   if (approved) {
-    const draft = venueDraft({ ...core, description }, null);
-    addVillageVenue(state, draft);
+    draftBuildProject(
+      state,
+      { ...core, description, requestQuote: decision.requestQuote },
+      decision.requesterCharacterId,
+      `request:${requestId}`,
+    );
   }
   decision.status = approved ? "approved" : "denied";
   const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });
   const who = decision.requesterName || "A villager";
   const text = approved
-    ? `The player approved ${who}'s request for ${core.name}.`
+    ? `The player accepted ${who}'s request to plan ${core.name}. Construction has not begun.`
     : `The player declined ${who}'s request for ${decision.venueDraft.name}.`;
   state.chronicle = [
     {
@@ -2704,51 +2762,31 @@ export async function updateVillageVenue(venueId: string, value: unknown): Promi
   await mutateVillageState((state) => {
     const index = state.venues.findIndex((venue) => venue.id === venueId);
     if (index < 0) throw notFound("That place is no longer in the village.");
-    const draft = venueDraft(value, state.venues[index] ?? null);
-    const old = state.venues[index]!;
-    if (hasVenueClass(old, "residence") && venueResidentIds(old).length > 0) {
-      const sharedBefore = venueSpaces(old).find((space) => space.venueClass === "residence");
-      const sharedAfter = venueSpaces(draft).find((space) => space.venueClass === "residence");
-      const comparable = (space: typeof sharedBefore) =>
-        space && {
-          description: space.description,
-          condition: space.state.condition,
-          items: space.state.items,
-          publicFacts: space.state.publicFacts,
-          features: space.state.features.map(({ id, text, locked }) => ({ id, text, locked })),
-        };
-      if (
-        JSON.stringify(comparable(sharedBefore)) !== JSON.stringify(comparable(sharedAfter)) ||
-        draft.description !== old.description ||
-        JSON.stringify(draft.state.furniture) !== JSON.stringify(old.state.furniture) ||
-        draft.state.condition !== old.state.condition ||
-        JSON.stringify(draft.state.publicFacts) !== JSON.stringify(old.state.publicFacts)
-      )
-        throw conflict(
-          "Changes to a shared Residence need every current resident's approval. Propose the exact room edit first.",
-        );
-    }
+    const posted =
+      value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    const disallowed = Object.keys(posted).filter((key) => !["id", "name", "description"].includes(key));
+    if (disallowed.length)
+      throw badRequest(
+        "Edit Venue may change only name and description. Physical changes need their own earned route.",
+      );
+    const current = state.venues[index]!;
+    if (current.constructionStatus === "worksite") throw conflict("The worksite is governed by its build project.");
+    const name = boundText(posted.name ?? current.name, MAX_VENUE_NAME_LENGTH);
+    const description = boundText(posted.description ?? current.description, MAX_VENUE_DESCRIPTION_LENGTH);
+    if (!name || !description) throw badRequest("A venue needs a name and description.");
+    if (state.venues.some((venue) => venue.id !== venueId && venue.name.toLowerCase() === name.toLowerCase()))
+      throw conflict("A venue with that name already exists.");
     if (
-      venueAssignedCount(old) > 0 &&
-      (old.presentation.x !== draft.presentation.x || old.presentation.y !== draft.presentation.y)
+      state.projects.some(
+        (project) =>
+          project.kind === "build-venue" &&
+          project.status !== "complete" &&
+          project.venueDraft?.name.toLowerCase() === name.toLowerCase(),
+      )
     )
-      throw conflict("This home is occupied. Its resident must approve a move first.");
-    if (JSON.stringify(draft.state.upgrades) !== JSON.stringify(old.state.upgrades))
-      throw badRequest("Structural upgrades require a villager request and player approval.");
-    if (draft.workerIds?.some((id) => !state.villagers.some((villager) => villager.characterId === id)))
-      throw badRequest("Assign only villagers who live here as venue workers.");
-    if (draft.workerIds?.length && !hasVenueClass(draft, "workplace"))
-      throw badRequest("Only a Workplace may have assigned workers.");
-    if (hasVenueClass(draft, "residence") && venueAssignedCount(draft) > venueCapacity(draft))
-      throw conflict("This Residence does not have enough capacity for its assigned residents.");
-    if (
-      state.venues.some(
-        (venue, candidateIndex) => candidateIndex !== index && venue.name.toLowerCase() === draft.name.toLowerCase(),
-      )
-    ) {
-      throw badRequest("A venue with that name already exists.");
-    }
-    state.venues[index] = draft;
+      throw conflict("That name is reserved by a build project.");
+    current.name = name;
+    current.description = description;
   });
   return buildVillageSnapshot();
 }
@@ -2875,6 +2913,7 @@ export async function deleteVillageVenue(venueId: string, confirmed: boolean): P
   await mutateVillageState((state) => {
     const current = state.venues.find((venue) => venue.id === venueId);
     if (!current) throw notFound("That Venue no longer exists.");
+    if (current.buildProjectId) throw conflict("A project-built venue requires an explicit future demolition project.");
     if (hasVenueClass(current, "residence") && venueAssignedCount(current) > 0)
       throw conflict("Move every resident before deleting this Residence.");
     if (
@@ -4260,6 +4299,7 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
     }
   }
   if (completedMove) recorded = await readVillageState();
+  await mutateVillageState((state) => reconcileBuildProjects(state, now));
   await respondDueVenueMail(now);
   recorded = await readVillageState();
   const moment = deriveVillageMoment({ foundedAt: recorded.foundedAt, seed: recorded.seed, now });

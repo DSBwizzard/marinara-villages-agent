@@ -66,6 +66,8 @@ const snapshot = {
   },
   noticeboard: [{ id: "note-1", text: "Market today", author: "Mara", at: now }],
   venueRequests: [],
+  projects: [],
+  villageCapabilities: [],
   upgradeRequests: [],
   residences: [],
   happenings: [],
@@ -427,6 +429,10 @@ try {
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
     await historyButton.click();
     await expect(composer).toBeVisible();
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Projects", level: 2 })).toBeVisible();
+    await page.getByRole("button", { name: "Return to current visit" }).click();
+    await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(page.getByRole("menuitem", { name: /Leave Scene/u })).toHaveCount(0);
@@ -459,6 +465,7 @@ try {
     await expect(composer).toBeVisible();
     await modeButton().click();
     await expect(page.getByRole("menuitemradio", { name: "Conclude" })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Act" })).toHaveCount(0);
     await historyButton.focus();
     await expect(page.getByRole("menu", { name: "Visit mode" })).toHaveCount(0);
     await modeButton().click();

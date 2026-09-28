@@ -291,8 +291,10 @@ export const MAX_VENUES = 24;
  * named buildings into a list whose uniqueness is enforced by name.
  */
 export function remapVenues(venues: readonly VillageVenue[]): VillageVenue[] {
-  return venues.filter((venue) =>
-    venue.classes?.length ? venue.classes.some((venueClass) => venueClass !== "residence") : !isHousePlace(venue),
+  return venues.filter(
+    (venue) =>
+      venue.constructionStatus !== "worksite" &&
+      (venue.classes?.length ? venue.classes.some((venueClass) => venueClass !== "residence") : !isHousePlace(venue)),
   );
 }
 
@@ -504,11 +506,28 @@ const FOUNDING_REASONS: Readonly<Record<string, string>> = {
   homecoming: "People founded this village as a homecoming.",
   "something-else": "People founded this village for another reason.",
 };
-export function villageCurrentSetting(village: { setting: string; worldFacts?: readonly string[] }): string {
+export function villageCurrentSetting(village: {
+  setting: string;
+  worldFacts?: readonly string[];
+  villageCapabilities?: readonly string[];
+  projects?: readonly {
+    kind?: string;
+    title: string;
+    status: string;
+    plan?: { blockedReason: string; need: string };
+  }[];
+}): string {
   const facts = village.worldFacts?.filter(Boolean) ?? [];
+  const builds = (village.projects ?? []).filter((project) => project.kind === "build-venue").slice(-8);
   return [
     village.setting.trim(),
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
+    village.villageCapabilities?.length
+      ? `Completed village capabilities: ${village.villageCapabilities.join(", ")}.`
+      : "",
+    builds.length
+      ? `Current build-project ledger (authoritative over older lore, memory, and scene prose):\n${builds.map((project) => `- ${project.title}: ${project.status}; need: ${project.plan?.need ?? "unspecified"}${project.plan?.blockedReason ? ` (${project.plan.blockedReason})` : ""}`).join("\n")}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");

@@ -123,6 +123,8 @@ export type VillageAgenda = {
   scheduleWeek?: Record<string, VillageAgendaBlock[]> | null;
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
+  /** A single agreed construction shift overrides the ordinary plan while it runs. */
+  projectWork?: { projectId: string; venueId: string; startsAt: string; endsAt: string };
   /** A failed model call leaves the working week in place and retries later. */
   personalizationPending?: boolean;
   /** Latest actionable generation failure; empty while work is queued or successful. */
@@ -600,6 +602,9 @@ export type VillageVenueImprovement = {
 export type VillageVenue = {
   /** Stable within one village; every literal location reference uses this id. */
   id: string;
+  /** Only a completed project may expose this venue's interior and capabilities. */
+  buildProjectId?: string;
+  constructionStatus?: "worksite" | "complete";
   name: string;
   /** The literal form of this unique place, such as sleeping pod or converted diner. */
   form?: string;
@@ -935,14 +940,70 @@ export type VillageRelationship = {
   updatedAt: string;
 };
 
+export type VillageBuildRequirement = {
+  id: string;
+  title: string;
+  routeIds: string[];
+};
+
+export type VillageBuildSource = {
+  id: string;
+  requirementId: string;
+  kind: "existing-item" | "limited-opportunity";
+  venueId: string;
+  itemName: string;
+  supplierId: string;
+  remaining: number;
+  /** A visible social or physical cost, never a claim of owned stock. */
+  cost: string;
+  prerequisite: string;
+  magic: boolean;
+  loreEvidence?: string;
+};
+
+export type VillageBuildReceipt = {
+  id: string;
+  submissionId: string;
+  kind: "promise" | "acquired" | "committed" | "released" | "installed" | "builder-agreement";
+  requirementId: string;
+  sourceId: string;
+  residentId: string;
+  sourceLineId: string;
+  quote: string;
+  at: string;
+  planRevision: number;
+};
+
+export type VillageBuildPlan = {
+  revision: number;
+  agreedAt: string;
+  need: string;
+  revisions: { revision: number; agreedAt: string; sourceIds: string[] }[];
+  requirements: VillageBuildRequirement[];
+  sources: VillageBuildSource[];
+  /** Literal furniture available when this project was drafted, before later scene claims. */
+  recordedItems: { venueId: string; itemName: string }[];
+  receipts: VillageBuildReceipt[];
+  builderId: string;
+  workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
+  outcomeAt: string;
+  capability: string;
+  siteVenueId: string;
+  blockedReason: string;
+};
+
 export type VillageProject = {
   id: string;
   title: string;
   venueId: string;
   participantIds: string[];
   progress: number;
-  status: "active" | "blocked" | "complete";
+  status: "draft" | "active" | "building" | "blocked" | "complete";
   updatedAt: string;
+  kind?: "build-venue";
+  venueDraft?: VillageVenueDraft;
+  requesterCharacterId?: string;
+  plan?: VillageBuildPlan;
 };
 
 export type VillagePendingDecision = {
@@ -958,6 +1019,7 @@ export type VillagePendingDecision = {
   proposedHomeKind?: HomeBuildingKind;
   requesterCharacterId?: string;
   requesterName?: string;
+  requestQuote?: string;
   source?: "chat" | "background";
   sourceKey?: string;
 };
@@ -1122,6 +1184,12 @@ export type VillageState = {
   scheduledEvents: VillageScheduledEvent[];
   relationships: VillageRelationship[];
   projects: VillageProject[];
+  /** Ordinary scene props are visible but cannot become project stock. */
+  narrativeItems: { venueId: string; itemName: string }[];
+  /** Finite resident source yields already transferred into a project. */
+  projectSourceClaims: { key: string; projectId: string; sourceId: string; submissionId: string }[];
+  /** Outcomes established by completed projects, independently of narration and lore. */
+  villageCapabilities: string[];
   pendingDecisions: VillagePendingDecision[];
   venueMail: VillageVenueMail[];
   villagers: VillageVillager[];
@@ -1614,6 +1682,8 @@ export type VillageSnapshot = {
   foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];
+  projects: VillageProject[];
+  villageCapabilities: string[];
   upgradeRequests: VillagePendingDecision[];
   residences: VillageResidence[];
   venueMail: VillageVenueMail[];

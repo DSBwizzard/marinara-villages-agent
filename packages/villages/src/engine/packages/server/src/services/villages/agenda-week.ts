@@ -232,11 +232,38 @@ export function scheduleInformedWeek(
 
 export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
-  if (agenda.activeDay?.dateKey === key) return agenda.activeDay.blocks;
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
-  return (
-    (ingestSchedule ? agenda.scheduleWeek?.[weekday] : undefined) ??
-    agenda.week?.[weekday] ??
-    agenda.day.map((entry) => block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity))
-  );
+  const ordinary =
+    agenda.activeDay?.dateKey === key
+      ? agenda.activeDay.blocks
+      : ((ingestSchedule ? agenda.scheduleWeek?.[weekday] : undefined) ??
+        agenda.week?.[weekday] ??
+        agenda.day.map((entry) => block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity)));
+  const work = agenda.projectWork;
+  if (!work) return ordinary;
+  const dayStart = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+  const dayEnd = new Date(at.getFullYear(), at.getMonth(), at.getDate() + 1).getTime();
+  const start = Math.max(dayStart, Date.parse(work.startsAt));
+  const end = Math.min(dayEnd, Date.parse(work.endsAt));
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return ordinary;
+  const from = Math.max(0, Math.floor((start - dayStart) / 60_000));
+  const through = Math.min(1440, Math.ceil((end - dayStart) / 60_000));
+  const remaining = ordinary.flatMap((entry) => {
+    if (entry.endMinute <= from || entry.startMinute >= through) return [entry];
+    return [
+      ...(entry.startMinute < from ? [{ ...entry, endMinute: from }] : []),
+      ...(entry.endMinute > through ? [{ ...entry, startMinute: through }] : []),
+    ];
+  });
+  return [
+    ...remaining,
+    {
+      startMinute: from,
+      endMinute: through,
+      venueId: work.venueId,
+      activity: "Build the agreed venue",
+      reason: "Committed project work order",
+      status: "online" as const,
+    },
+  ].sort((left, right) => left.startMinute - right.startMinute);
 }

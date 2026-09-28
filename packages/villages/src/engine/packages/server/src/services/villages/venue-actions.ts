@@ -123,6 +123,8 @@ export async function actAtVenue(
   }
   const storedPlace = village.venues.find((entry) => entry.id === placeId);
   if (!storedPlace) throw notFound("That place is not in this village.");
+  if (storedPlace.constructionStatus === "worksite")
+    throw badRequest("The builder's work order governs this site; roleplay here cannot finish construction.");
   const active = await activeVenueSession();
   if (!active || active.placeId !== placeId || active.status !== "active")
     throw badRequest("Visit this venue before acting here.");
@@ -206,6 +208,7 @@ export async function actAtVenue(
       if (result.addItem && !current.state.furniture.includes(result.addItem)) {
         if (current.state.furniture.length >= 24) throw badRequest("There is no room for another item here.");
         current.state.furniture.push(result.addItem);
+        state.narrativeItems.push({ venueId: placeId, itemName: result.addItem });
       }
       if (result.resolveTraceId) {
         current.state.traces = (current.state.traces ?? []).filter((trace) => trace.id !== result.resolveTraceId);

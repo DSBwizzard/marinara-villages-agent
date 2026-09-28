@@ -140,6 +140,7 @@ export function applyVenueSceneChange(
   if (change.addItem && !venue.state.furniture.includes(change.addItem)) {
     if (venue.state.furniture.length >= 24) throw conflict("There is no room for another item here.");
     venue.state.furniture.push(change.addItem);
+    state.narrativeItems.push({ venueId: placeId, itemName: change.addItem });
   }
   if (change.sceneNote) {
     const notes = (venue.state.traces ?? []).filter((trace) => trace.kind === "scene-note");
