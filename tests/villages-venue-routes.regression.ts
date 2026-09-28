@@ -56,14 +56,25 @@ for (const retired of [
 
 assert.match(routes, /await resetVenueSessions\(\);\s*return await resetVillage\(\)/u);
 assert.match(routes, /mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act"/u);
+assert.match(
+  routes,
+  /"\/rooms\/end"[\s\S]*return await endVenueSessionWithReceipts/u,
+  "direct visit endings return durable-memory receipts",
+);
 assert.ok(ui.includes('"/rooms/turn"'), "one composer sends all visit modes");
+assert.match(ui, /const receiveRoomRecordEvents = useCallback/u, "all visit endings share receipt ingestion");
+assert.doesNotMatch(
+  ui,
+  /answer\.session\.status === "closed"\) \{\s*setRoomNotices\(\[\]\)/u,
+  "natural endings do not erase their durable-memory receipts",
+);
 assert.match(ui, /className=\{`\$\{ELEMENT_TAG\}-room-mode-menu`\}/u, "visit modes have a visible menu");
 assert.match(ui, /Use… Mailbox/u, "the player can open Mailbox while visiting home");
 assert.match(ui, /<VenueDraftFields/u, "Venues use the shared editor");
 assert.match(ui, /Search Venues/u, "the Venue index is searchable");
 assert.match(ui, /Retry greeting/u);
 assert.match(ui, /Continue without greeting/u);
-assert.match(ui, /Retry message/u);
+assert.match(ui, /That line could not be sent/u, "failed turns keep a visible error");
 assert.match(ui, /Leave with memory pending/u);
 assert.match(ui, /Open transcript/u);
 assert.match(session, /const ACTIVE_ID = "villages-active-venue"/u);

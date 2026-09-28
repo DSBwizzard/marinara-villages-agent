@@ -9655,6 +9655,17 @@ function RoomPanel({
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
+  const previousNoticeIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    const nextIds = new Set(notices.map((notice) => notice.id));
+    const hasNewMemory = notices.some(
+      (notice) => notice.kind === "memory" && !previousNoticeIds.current.has(notice.id),
+    );
+    previousNoticeIds.current = nextIds;
+    if (hasNewMemory) setNoticesOpen(true);
+    else if (notices.length === 0) setNoticesOpen(false);
+  }, [notices, room.id]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -10865,6 +10876,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const leavingRoomPendingRef = useRef(false);
   const roomSubmissionIdRef = useRef<string | null>(null);
   const roomLeaveSubmissionIdRef = useRef<string | null>(null);
+
+  /** Accept each server receipt once, regardless of which visit-ending path returned it. */
+  const receiveRoomRecordEvents = useCallback((events: readonly RoomRecordEvent[]) => {
+    const fresh: RoomRecordEvent[] = [];
+    for (const event of events) {
+      if (seenRoomEventIdsRef.current.has(event.id)) continue;
+      seenRoomEventIdsRef.current.add(event.id);
+      fresh.push(event);
+    }
+    if (fresh.length > 0) setRoomNotices((current) => [...current, ...fresh]);
+  }, []);
   const roomSendInFlightRef = useRef(false);
   /** What the room's last attempt had to say, and empty when it has nothing to. */
   const [roomError, setRoomError] = useState("");
@@ -11637,16 +11659,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setScreen("home");
   }, []);
 
-  /** End the active visit, or leave an empty venue, before returning to the map. */
+  /** End an active visit in place; a second press returns the completed scene to the map. */
   const closeRoom = useCallback(async () => {
     if (!room || roomBusy) return;
-    setRoomBusy(true);
-    setRoomError("");
-    setEndFailed(false);
-    setRoom({ ...room, status: "closing" });
-    try {
-      if (room.id) await request("/rooms/end", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
-      if (leavingRoomPendingRef.current) return;
+    if (!room.id || room.status === "closed" || roomEnded) {
       setRoomOpen(false);
       setRoom(null);
       setRoomNotices([]);
@@ -11654,6 +11670,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomDraft("");
       setRoomGreetingNotice("");
       setScreen("home");
+      void loadSnapshot();
+      return;
+    }
+    setRoomBusy(true);
+    setRoomError("");
+    setEndFailed(false);
+    setRoom({ ...room, status: "closing" });
+    try {
+      const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/end", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: room.id }),
+      });
+      if (leavingRoomPendingRef.current) return;
+      setRoom(currentRoom(answer.session));
+      setRoomEnded(true);
+      receiveRoomRecordEvents(answer.recordEvents ?? []);
+      setRoomDraft("");
+      setRoomGreetingNotice("");
       void loadSnapshot();
     } catch (cause) {
       if (leavingRoomPendingRef.current) return;
@@ -11677,7 +11711,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } finally {
       setRoomBusy(false);
     }
-  }, [loadSnapshot, room, roomBusy]);
+  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomEnded]);
 
   const leaveRoom = useCallback(async () => {
     if (!room?.id || room.status !== "active" || roomBusy || roomSendInFlightRef.current) return;
@@ -11695,11 +11729,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoom(currentRoom(answer.session));
       void loadSnapshot();
       setRoomEnded(true);
-      for (const event of answer.recordEvents ?? []) {
-        if (seenRoomEventIdsRef.current.has(event.id)) continue;
-        seenRoomEventIdsRef.current.add(event.id);
-        setRoomNotices((current) => [...current, event]);
-      }
+      receiveRoomRecordEvents(answer.recordEvents ?? []);
       roomLeaveSubmissionIdRef.current = null;
       void loadSnapshot();
     } catch (cause) {
@@ -11708,7 +11738,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } finally {
       setRoomBusy(false);
     }
-  }, [loadSnapshot, room, roomBusy, roomDraft]);
+  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomDraft]);
 
   const leaveRoomPending = useCallback(async () => {
     if (!room?.id || leavingRoomPendingRef.current) return;
@@ -11823,15 +11853,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       });
       setRoom(currentRoom(answer.session));
       setRoomEnded(answer.session.status === "closed");
-      if (answer.session.status === "closed") {
-        setRoomNotices([]);
-        seenRoomEventIdsRef.current.clear();
-      } else
-        for (const event of answer.recordEvents ?? []) {
-          if (seenRoomEventIdsRef.current.has(event.id)) continue;
-          seenRoomEventIdsRef.current.add(event.id);
-          setRoomNotices((current) => [...current, event]);
-        }
+      receiveRoomRecordEvents(answer.recordEvents ?? []);
       if (roomTargetId && !answer.session.activeIds.includes(roomTargetId)) setRoomTargetId("");
       setRoomRuling(answer.verdict?.reason ?? "");
       setRoomMode("chat");
@@ -11861,7 +11883,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       roomSendInFlightRef.current = false;
       setRoomBusy(false);
     }
-  }, [loadSnapshot, room, roomBusy, roomDraft, roomEnded, roomMode, roomTargetId]);
+  }, [loadSnapshot, receiveRoomRecordEvents, room, roomBusy, roomDraft, roomEnded, roomMode, roomTargetId]);
 
   /**
    * Everybody the village places in one place at this hour.

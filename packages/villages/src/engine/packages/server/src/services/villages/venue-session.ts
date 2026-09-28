@@ -1348,9 +1348,9 @@ export async function leaveVenueSession(sessionId: string, submissionId: string,
     mode: "leave",
     targetId: "",
   });
-  const session = await endVenueSession(sessionId);
-  const byId = new Map([...result.recordEvents, ...reviewReceipts(session)].map((event) => [event.id, event] as const));
-  return { ...result, session, recordEvents: [...byId.values()] };
+  const ending = await endVenueSessionWithReceipts(sessionId);
+  const byId = new Map([...result.recordEvents, ...ending.recordEvents].map((event) => [event.id, event] as const));
+  return { ...result, session: ending.session, recordEvents: [...byId.values()] };
 }
 
 async function finishActReply(
@@ -2445,6 +2445,12 @@ export async function endVenueSession(id: string): Promise<VenueSession> {
     closingTasks.delete(id);
     closingControllers.delete(id);
   }
+}
+
+/** Close a visit and return only the durable memories its completed review promoted. */
+export async function endVenueSessionWithReceipts(id: string) {
+  const session = await endVenueSession(id);
+  return { session, recordEvents: reviewReceipts(session) };
 }
 
 const closingTasks = new Map<string, Promise<VenueSession>>();

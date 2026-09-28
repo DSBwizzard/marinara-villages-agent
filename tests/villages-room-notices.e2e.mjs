@@ -13,9 +13,9 @@ const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const now = new Date().toISOString();
-let session = {
+const newSession = (id) => ({
   version: 1,
-  id: "visit-1",
+  id,
   placeId: "park",
   placeName: "The Park",
   startedAt: now,
@@ -27,7 +27,7 @@ let session = {
   participants: [{ characterId: "bob", name: "Bob", doing: "sitting" }],
   lines: [
     {
-      id: "hello",
+      id: `${id}-hello`,
       role: "assistant",
       speakerId: "bob",
       name: "Bob",
@@ -37,7 +37,24 @@ let session = {
       at: now,
     },
   ],
-};
+});
+const memoryEvent = (id, text, detail) => ({ id, kind: "memory", text, detail });
+const naturalMemory = memoryEvent(
+  "memory-natural",
+  "Bob remembered the closing exchange.",
+  "The player promised Bob to repair the bridge.",
+);
+const leaveMemory = memoryEvent(
+  "memory-leave",
+  "Bob remembered the farewell.",
+  "The player said they would return after sunrise.",
+);
+const endMemory = memoryEvent(
+  "memory-end",
+  "Bob remembered the completed visit.",
+  "The player entrusted Bob with the brass key.",
+);
+let session = newSession("visit-natural");
 const snapshot = {
   status: "ready",
   isFounded: true,
@@ -103,26 +120,46 @@ await page.route("**/api/villages**", async (route) => {
         },
       ],
     };
-    const event =
-      body.message === "First memory" || body.message === "Repeat receipt"
-        ? {
-            id: "memory-1",
-            kind: "memory",
-            text: "Bob remembered the first exchange.",
-            detail: "The player promised Bob to repair the bridge.",
-          }
-        : body.message === "Second memory"
-          ? {
-              id: "memory-2",
-              kind: "memory",
-              text: "Bob remembered the second exchange.",
-              detail: "Bob learned that the market opens before sunrise.",
-            }
-          : null;
-    value = { session, verdict: null, action: null, recordEvents: event ? [event] : [] };
+    if (body.message === "Natural ending")
+      session = { ...session, status: "closed", activeIds: [], endedAt: now, endReason: "scene" };
+    value = {
+      session,
+      verdict: null,
+      action: null,
+      recordEvents: body.message === "Natural ending" ? [naturalMemory, naturalMemory] : [],
+    };
+  } else if (path.endsWith("/rooms/leave")) {
+    session = {
+      ...session,
+      status: "closed",
+      activeIds: [],
+      endedAt: now,
+      endReason: "player",
+      lines: [
+        ...session.lines,
+        {
+          id: `${session.id}-farewell`,
+          role: "assistant",
+          speakerId: "bob",
+          name: "Bob",
+          content: "Come back safely.",
+          kind: "dialogue",
+          heardBy: ["bob"],
+          at: now,
+        },
+      ],
+    };
+    value = { session, verdict: null, action: null, recordEvents: [leaveMemory] };
   } else if (path.endsWith("/rooms/end")) {
-    session = { ...session, status: "closed", endedAt: now, endReason: "player" };
-    value = { session };
+    session = {
+      ...session,
+      status: "closed",
+      activeIds: [],
+      endedAt: now,
+      endReason: "player",
+      ...(session.id === "visit-pending" ? { memoryPending: true } : {}),
+    };
+    value = { session, recordEvents: session.id === "visit-end" ? [endMemory] : [] };
   } else if (path.endsWith("/catalog")) value = { characters: [] };
   await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
 });
@@ -135,10 +172,32 @@ await page.route("http://villages.test/", (route) =>
 );
 
 try {
-  await page.goto("http://villages.test/");
-  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  const mountVisit = async (id) => {
+    session = newSession(id);
+    serverExpired = false;
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  };
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
   const stack = page.locator("[aria-label='Village events']");
+  const tray = page.getByRole("button", { name: /village notice/u });
+  const returnToMap = async () => {
+    await page.getByRole("button", { name: "Venue actions" }).click();
+    await page.getByRole("menuitem", { name: "Return to map" }).click();
+  };
+  const expectMemory = async (memory) => {
+    await expect(stack).toContainText(memory.text);
+    await expect(tray).toHaveAttribute("aria-expanded", "true");
+    const memoryTrigger = page.getByRole("button", { name: `View memory: ${memory.text}` });
+    await memoryTrigger.click();
+    const memoryDialog = page.getByRole("dialog", { name: memory.text });
+    await expect(memoryDialog).toContainText(memory.detail);
+    await expect(page.getByRole("button", { name: "Close memory" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(memoryDialog).toHaveCount(0);
+    await expect(memoryTrigger).toBeFocused();
+  };
+  await mountVisit("visit-natural");
   await composer.waitFor();
   const send = async (message) => {
     await composer.fill(message);
@@ -148,49 +207,72 @@ try {
     ]);
   };
   await send("Ordinary chat");
-  await expect(stack).toHaveCount(0);
-  await send("First memory");
-  await expect(stack).toContainText("Bob remembered the first exchange.");
+  await expect(tray).toHaveCount(0, "ordinary chat-time recollections stay silent");
+  await send("Natural ending");
+  await expectMemory(naturalMemory);
+  await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(
+    1,
+    "duplicate deterministic receipt IDs render once",
+  );
   const stackBox = await stack.boundingBox();
   const controlsBox = await page.locator(".marinara-capability-villages-chat-head").boundingBox();
   assert.ok(stackBox && controlsBox);
   assert.ok(stackBox.x >= 0 && stackBox.x + stackBox.width <= 375, "notice fits a phone viewport");
   assert.ok(stackBox.y >= controlsBox.y + controlsBox.height, "notice sits below venue controls");
-  assert.ok(stackBox.width <= 240, "mobile memory notice stays a compact toast");
+  assert.ok(stackBox.width <= 375 - 24, "mobile memory notice keeps the scene's side margins");
   assert.ok(stackBox.height <= 148, "mobile memory stack stays under twenty percent of the viewport");
-  const memoryTrigger = page.getByRole("button", { name: "View memory: Bob remembered the first exchange." });
-  await memoryTrigger.click();
-  const memoryDialog = page.getByRole("dialog", { name: "Bob remembered the first exchange." });
-  await expect(memoryDialog).toContainText("The player promised Bob to repair the bridge.");
+  await tray.click();
+  await expect(stack).toHaveCount(0, "the compact star control can collapse the cards");
+  await tray.click();
+  await expect(stack).toContainText(naturalMemory.text, "the compact star control can reopen the cards");
+  const naturalTrigger = page.getByRole("button", { name: `View memory: ${naturalMemory.text}` });
+  await naturalTrigger.click();
+  const memoryDialog = page.getByRole("dialog", { name: naturalMemory.text });
   const dialogBox = await memoryDialog.boundingBox();
   assert.ok(dialogBox && dialogBox.x >= 0 && dialogBox.x + dialogBox.width <= 375, "memory dialog fits a phone");
-  await expect(page.getByRole("button", { name: "Close memory" })).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(memoryDialog).toHaveCount(0);
-  await expect(memoryTrigger).toBeFocused();
-  await memoryTrigger.click();
   await page.locator(".marinara-capability-villages-memory-backdrop").click({ position: { x: 4, y: 4 } });
   await expect(memoryDialog).toHaveCount(0);
-  await page.getByRole("button", { name: "Dismiss Bob remembered the first exchange." }).click();
-  await expect(stack).toHaveCount(0);
-  await send("Repeat receipt");
-  await expect(stack).toHaveCount(0, "dismissed event ID stays dismissed");
-  await send("Second memory");
-  await expect(stack).toContainText("Bob remembered the second exchange.");
-  await page.getByRole("button", { name: "End visit and leave" }).click();
-  await expect(stack).toHaveCount(0, "notices clear on scene exit");
+  await page.getByRole("button", { name: `Dismiss ${naturalMemory.text}` }).click();
+  await expect(tray).toHaveCount(0, "dismissed durable-memory cards leave no empty tray");
+  await returnToMap();
+
+  await mountVisit("visit-leave");
+  await composer.waitFor();
+  await page.getByRole("button", { name: /Mode: Chat/u }).click();
+  await page.getByRole("menuitemradio", { name: "Conclude" }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/rooms/leave")),
+    page.getByRole("button", { name: "Send" }).click(),
+  ]);
+  await expectMemory(leaveMemory);
+  await returnToMap();
+
+  await mountVisit("visit-end");
+  await composer.waitFor();
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
+    page.getByRole("menuitem", { name: "End visit now" }).click(),
+  ]);
+  await expectMemory(endMemory);
+  await expect(composer).toHaveCount(
+    0,
+    "an ended visit stays on its completed reading instead of returning immediately",
+  );
+  await returnToMap();
+
+  await mountVisit("visit-pending");
+  await composer.waitFor();
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
+    page.getByRole("menuitem", { name: "End visit now" }).click(),
+  ]);
+  await expect(tray).toHaveCount(0, "a pending review creates no false durable-memory star");
+  await returnToMap();
 
   // A second device ends this scene while its old desktop tab is left open.
-  session = {
-    ...session,
-    id: "visit-2",
-    status: "active",
-    endedAt: "",
-    endReason: "",
-    lines: session.lines.slice(0, 1),
-  };
-  await page.reload();
-  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await mountVisit("visit-stale");
   await composer.waitFor();
   await composer.focus();
   serverExpired = true;
@@ -201,12 +283,12 @@ try {
   await page.keyboard.type("X");
   await expect(composer).toHaveCount(0, "stale composer stops accepting input");
   await expect(page.getByText(/Interrupted: Inactivity/u)).toBeVisible();
-  assert.equal(turn, 4, "stale input never becomes a turn");
+  assert.equal(turn, 2, "stale input never becomes a turn");
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect(composer).toHaveCount(0, "a phone refresh after expiry opens on the map");
   assert.deepEqual(errors, []);
-  console.log("villages-room-notices: mobile notices, dismissal, exit clearing, stale input and refresh ok");
+  console.log("villages-room-notices: durable ending receipts, popup controls, pending review and stale input ok");
 } finally {
   await browser.close();
 }

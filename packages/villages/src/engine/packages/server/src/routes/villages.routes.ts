@@ -12,6 +12,7 @@ import {
   activeVenueSession,
   continueVenueWithoutGreeting,
   endVenueSession,
+  endVenueSessionWithReceipts,
   leaveVenueSession,
   enterResidencePrivateSpace,
   leaveVenueMemoryPending,
@@ -677,7 +678,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/end", async (request, reply) => {
     try {
-      return { session: await endVenueSession(readChatId(request.body?.sessionId)) };
+      return await endVenueSessionWithReceipts(readChatId(request.body?.sessionId));
     } catch (error) {
       return fail(reply, error, "ending a venue conversation");
     }
