@@ -59,6 +59,18 @@ async function main() {
   };
   assert.match(villageFoundingSetting(openBeginning), /Day 1.*Friends gather with tools/);
   assert.doesNotMatch(villageCurrentSetting(openBeginning), /temporary camp|Friends gather/);
+  const freshBeginning = {
+    setting: "A fishing village above the sea",
+    worldFacts: [],
+    foundingReason: "none",
+    foundingDetails: "On Day 1, storm-damaged boats reach the cove.",
+    foundingGuidance: "",
+    scenarioImprint: null,
+  };
+  assert.match(villageFoundingSetting(freshBeginning), /description of Day 1.*storm-damaged boats/);
+  assert.doesNotMatch(villageFoundingSetting(freshBeginning), /Before the village began/);
+  assert.doesNotMatch(villageCurrentSetting(freshBeginning), /storm-damaged/);
+  assert.match(villageRelevantOrigin(freshBeginning, "How did this village begin?"), /storm-damaged boats/);
   assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
   assert.match(
     villageRelevantOrigin(founded, "Who founded this village?"),
@@ -117,10 +129,20 @@ async function main() {
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /never outlined lots, square plots, zones, or a grid/);
   const defaultPrompt = buildTownMapPrompt(undefined, "cozy forest village");
   assert.ok(defaultPrompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
-  assert.match(defaultPrompt, /connecting usable areas/);
-  assert.match(defaultPrompt, /Do not include buildings/);
-  assert.match(defaultPrompt, /Do not include water/);
+  assert.match(defaultPrompt, /Follow the village description for water, paths, and existing structures/);
+  assert.doesNotMatch(defaultPrompt, /Do not include (buildings|water|streets)/);
   assert.match(defaultPrompt, /without any writing, numerals/);
+  const coastalPrompt = buildTownMapPrompt(undefined, "A fishing village on sea cliffs");
+  assert.match(coastalPrompt, /A fishing village on sea cliffs/);
+  assert.doesNotMatch(coastalPrompt, /Do not include water/);
+  assert.match(
+    buildTownMapPrompt(undefined, "A fishing village on sea cliffs", {
+      roads: "auto",
+      structures: "auto",
+      water: "exclude",
+    }),
+    /Do not include water/,
+  );
   const imprintMap = buildTownMapPrompt(
     undefined,
     "Misty cliffs",
@@ -132,10 +154,7 @@ async function main() {
   assert.match(imprintMap, /Do not include water/);
   assert.match(imprintMap, /Do not include buildings/);
   assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, digits, numbers, labels/);
-  assert.equal(
-    buildTownMapNegativePrompt(),
-    `${DEFAULT_TOWN_MAP_NEGATIVE_PROMPT}, buildings, decorative structures, ocean, sea, lake, river, pond, canal, waterfall, water`,
-  );
+  assert.equal(buildTownMapNegativePrompt(), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
   assert.match(
     buildTownMapNegativePrompt({ roads: true, structures: true, water: true }, "foggy artifacts"),
     /writing, numerals.*foggy artifacts/,
@@ -160,7 +179,7 @@ async function main() {
   assert.throws(() => buildTownMapPrompt("x".repeat(MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH + 1), "forest"), /at most/);
   assert.throws(
     () => buildTownMapPrompt(undefined, "forest", { roads: "yes", structures: false, water: false }),
-    /must be true or false/,
+    /must be Auto, Include, or Exclude/,
   );
   const png = new Uint8Array(24);
   png.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
@@ -183,14 +202,7 @@ async function main() {
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  for (const step of [
-    "Village Identity",
-    "Connections & Persona",
-    "World & First Day",
-    "Village Map",
-    "Build the Village",
-    "Review",
-  ]) {
+  for (const step of ["Village Beginning", "Connections & Persona", "Village Map", "Build the Village", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/setup/town-map/generate"'));
@@ -198,7 +210,7 @@ async function main() {
   assert.ok(client.includes("className={`${ELEMENT_TAG}-debug-label`}>DEBUG"));
   assert.ok(client.includes("setupMapOptions"));
   assert.equal(client.includes("Fit entire map"), false);
-  assert.ok(client.includes("mobile={mobile && setupStep >= 3}"));
+  assert.ok(client.includes("mobile={mobile && setupStep >= 2}"));
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   assert.ok(client.includes("lorebooks: setupLorebookDraft"));
   assert.ok(client.includes("setting: setupSetting.trim()"));

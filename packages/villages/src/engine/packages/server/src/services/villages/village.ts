@@ -3496,7 +3496,11 @@ export async function runVillageSetup(input: {
       foundingGuidance,
       scenarioImprint: input.scenarioImprint,
     });
-  const scenarioImprint = founding ? readScenarioImprint(input.scenarioImprint) : village.scenarioImprint;
+  const scenarioImprint = founding
+    ? input.scenarioImprint == null
+      ? null
+      : readScenarioImprint(input.scenarioImprint)
+    : village.scenarioImprint;
   const worldFacts = founding
     ? (scenarioImprint?.worldFacts ?? [])
     : readWorldFacts(input.worldFacts ?? village.worldFacts);

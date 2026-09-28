@@ -13,7 +13,7 @@ import {
 } from "./lorebooks.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
-import { MAX_VENUE_IMAGE_BYTES, villageCurrentSetting, villageFoundingSetting } from "./prompt-preset.js";
+import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "./prompt-preset.js";
 import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VillageVenueImage } from "./types.js";
@@ -88,7 +88,7 @@ export async function draftFoundingVenueText(
     scenarioImprint: imprint,
     worldFacts: imprint?.worldFacts ?? coerceWorldFacts(input.worldFacts),
   };
-  const setting = imprint ? villageFoundingSetting(context) : villageCurrentSetting(context);
+  const setting = villageFoundingSetting(context);
   if (!setting.trim()) throw badRequest("Describe what the village is like first.");
   const rows = await Promise.all(rowsOf(input.venues).map(withResident));
   const lore = await readVillageLore(
@@ -107,7 +107,7 @@ export async function draftFoundingVenueText(
         "Draft vivid but grounded founding Venue details for a small fictional village.",
         "Use the supplied setting, selected lore, resident card, and player guidance. Do not contradict supplied facts or invent named people.",
         "A Residence belongs to its assigned person; a Gathering Place serves the community.",
-        "Use reviewed opening conditions selectively in plausible initial conditions and public facts. Do not place every Scenario detail in every venue.",
+        "Use the player's Day 1 account selectively for plausible initial conditions. Keep lasting place descriptions grounded in the village setting. Do not repeat the same founding detail in every venue.",
         'Return JSON only: {"venues":[{"id":"...","name":"...","form":"...","purpose":"...","description":"...","spaceDescription":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
         "Keep names under 100 characters; each description under 1000 characters; items, facts and features short and concrete.",
       ].join("\n"),

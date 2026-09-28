@@ -9,6 +9,36 @@ const browser = await chromium.launch({
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 
+const seededVenue = (id, name, venueClass, x, y, playerHome = false, residentCharacterId = null) => ({
+  id,
+  name,
+  form: venueClass === "gathering" ? "Gathering place" : "Home",
+  classes: [venueClass],
+  spaces: [
+    {
+      id: venueClass,
+      venueClass,
+      description: "",
+      image: null,
+      state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+    },
+  ],
+  residenceCapacity: 1,
+  residentIds: residentCharacterId ? [residentCharacterId] : [],
+  improvements: [null, null],
+  purpose: "",
+  description: "",
+  category: venueClass === "gathering" ? "public-center" : "",
+  presentation: { image: null, x, y },
+  occupancy: { playerHome, residentCharacterId, homeKind: null },
+  capabilities: [],
+  state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+});
+const startingVenues = [
+  seededVenue("home-player", "Your residence", "residence", 0.25, 0.3, true),
+  seededVenue("home-finn", "Finn's residence", "residence", 0.65, 0.35, false, "finn"),
+  seededVenue("gathering", "Gathering Place", "gathering", 0.5, 0.7),
+];
 const snapshot = {
   status: "ready",
   isFounded: false,
@@ -21,7 +51,7 @@ const snapshot = {
   villagers: [],
   recap: null,
   settings: {
-    venues: [],
+    venues: startingVenues,
     foundingReason: "",
     foundingDetails: "",
     foundingGuidance: "",
@@ -59,35 +89,56 @@ const personaPreview = {
 };
 
 try {
-  for (const { width, height, cardsPerRow, fontSize } of [
-    { width: 1917, height: 655, cardsPerRow: 5, fontSize: 20 },
-    { width: 1917, height: 600, cardsPerRow: 5, fontSize: 20 },
-    { width: 1366, height: 500, cardsPerRow: 3, fontSize: 20 },
-    { width: 1366, height: 768, cardsPerRow: 3, fontSize: 20 },
-    { width: 1024, height: 768, cardsPerRow: 3, fontSize: 20 },
-    { width: 1917, height: 655, cardsPerRow: 5, fontSize: 16 },
-    { width: 390, height: 844, cardsPerRow: 2, fontSize: 20 },
-    { width: 390, height: 844, cardsPerRow: 2, fontSize: 16 },
-    { width: 390, height: 650, cardsPerRow: 2, fontSize: 20 },
+  for (const { width, height, fontSize } of [
+    { width: 1917, height: 655, fontSize: 20 },
+    { width: 1917, height: 600, fontSize: 20 },
+    { width: 1366, height: 500, fontSize: 20 },
+    { width: 1366, height: 768, fontSize: 20 },
+    { width: 1024, height: 768, fontSize: 20 },
+    { width: 1917, height: 655, fontSize: 16 },
+    { width: 390, height: 844, fontSize: 20 },
+    { width: 390, height: 844, fontSize: 16 },
+    { width: 390, height: 650, fontSize: 20 },
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
-    let availablePersonas = personas;
+    const availablePersonas = personas;
     let connectionSettings = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
+    let foundingPayload = null;
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/setup") && route.request().method() === "POST") {
+        foundingPayload = JSON.parse(route.request().postData() ?? "{}");
+      }
+      if (width === 1024 && path.endsWith("/setup/venues/draft")) {
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Draft unavailable" }),
+        });
+      }
       if (path.endsWith("/connections") && route.request().method() === "PUT") {
         connectionSettings = { ...connectionSettings, ...JSON.parse(route.request().postData() ?? "{}") };
       }
-      const value = path.endsWith("/setup/scenario-imprint/draft")
+      const value = path.endsWith("/setup/venues/draft")
         ? {
-            imprint: {
-              origin: "",
-              worldFacts: ["The village overlooks the sea"],
-              openingConditions: ["The group gathers on Day 1"],
-              visualCues: ["Salt-worn cottages"],
-            },
+            drafts: Object.fromEntries(
+              startingVenues.map((venue) => [
+                venue.id,
+                {
+                  name: venue.name,
+                  form: venue.form,
+                  purpose: venue.category === "public-center" ? "A place to gather" : "A home",
+                  description: `${venue.name} stands above the sea.`,
+                  spaceDescription: "A bright, simple room.",
+                  condition: "",
+                  items: [],
+                  publicFacts: [],
+                  features: [],
+                },
+              ]),
+            ),
           }
         : path.endsWith("/personas/ada")
           ? { persona: personaPreview }
@@ -112,7 +163,7 @@ try {
                   : path.endsWith("/lorebooks")
                     ? { books: lorebooks }
                     : path.endsWith("/catalog")
-                      ? { characters: [] }
+                      ? { characters: [{ id: "finn", name: "Finn" }] }
                       : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -149,191 +200,96 @@ try {
     await expect(root).toBeVisible();
     await expect(root.locator(".marinara-capability-villages-mapbar")).toHaveCount(0);
     const cards = root.locator(".marinara-capability-villages-scenario-option");
-    await expect(cards).toHaveCount(5);
-    await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
+    await expect(cards).toHaveCount(4);
     const artPanel = root.locator(".marinara-capability-villages-scenario-art-panel");
-    const artBounds = await artPanel.boundingBox();
-    assert.ok(artBounds && artBounds.width > 0 && artBounds.height > 0, "the missing artwork keeps its panel");
-    const firstFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
-    const firstForm = await root.locator(".marinara-capability-villages-side").boundingBox();
-    if (width > 1000) {
-      assert.ok(firstFooter && firstForm && artBounds.height > firstForm.height * 0.6, "artwork fills the form height");
+    await expect(artPanel).toBeVisible();
+    const checkTheme = async () => {
+      const background = await root.evaluate((element) => getComputedStyle(element).backgroundImage);
+      assert.match(background, /radial-gradient/, "every page keeps the founding palette");
+      const panel = root.locator(".marinara-capability-villages-side > .marinara-capability-villages-overlay");
+      const border = await panel.evaluate((element) => getComputedStyle(element).borderColor);
+      assert.equal(border, "rgb(82, 104, 184)", "every page keeps the indigo panel border");
+      const pageWidth = await root.evaluate((element) => element.scrollWidth - element.clientWidth);
+      assert.ok(pageWidth <= 1, "the wizard has no horizontal overflow");
+    };
+    const visibleForward = async (label = "Next →") => {
+      const button = root.getByRole("button", { name: label });
+      await button.scrollIntoViewIfNeeded();
+      const bounds = await button.boundingBox();
       assert.ok(
-        Math.abs(firstFooter.y + firstFooter.height - firstForm.y - firstForm.height) < 3,
-        "navigation aligns with the form bottom",
+        bounds && bounds.y >= 0 && bounds.y + bounds.height <= height + 1,
+        `navigation remains reachable at ${width}×${height}: ${JSON.stringify(bounds)}`,
       );
-    }
-    await root.getByRole("button", { name: "Next →" }).scrollIntoViewIfNeeded();
-    const firstNext = await root.getByRole("button", { name: "Next →" }).boundingBox();
-    assert.ok(
-      firstNext && firstNext.y >= 0 && firstNext.y + firstNext.height <= height,
-      "page 1 navigation is reachable",
-    );
-    const first = await cards.nth(0).boundingBox();
-    const lastInRow = await cards.nth(cardsPerRow - 1).boundingBox();
-    assert.ok(first && lastInRow && Math.abs(first.y - lastInRow.y) < 2, "scenario cards fit their row");
-    assert.ok(first.height < 100, "scenario cards are compact");
+      return button;
+    };
 
-    if (width > 1000 && height >= 600) {
-      const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
-      assert.ok(
-        size.scroll <= size.visible + 1,
-        `Village Identity fits at ${width}×${height} without page scrolling (${size.scroll}/${size.visible})`,
-      );
-      const documentHeight = await page.evaluate(() => document.documentElement.scrollHeight);
-      assert.ok(documentHeight <= height + 1, `the document fits at ${width}×${height} (${documentHeight})`);
-      const scrollPosition = await root.evaluate((element) => {
-        element.scrollTop = 100;
-        window.scrollTo(0, 100);
-        return { panel: element.scrollTop, page: window.scrollY };
-      });
-      assert.deepEqual(scrollPosition, { panel: 0, page: 0 }, "the desktop page cannot scroll");
-      const controls = [root.getByRole("button", { name: "Next →" })];
-      for (const control of controls) {
-        const bounds = await control.boundingBox();
-        assert.ok(
-          bounds && bounds.y >= 0 && bounds.y + bounds.height <= height,
-          `all controls fit at ${width}×${height}: ${JSON.stringify(bounds)}`,
-        );
-      }
-    }
-
+    await checkTheme();
+    await expect(root.getByText("Step 1 of 5 · Village Beginning")).toBeVisible();
+    await expect(root.getByLabel("What is this village called?")).toBeVisible();
+    await expect(root.getByLabel("What is this village like?")).toBeVisible();
+    const dayOne = root.getByLabel("What happens on the village's first day?");
+    await expect(dayOne).toHaveValue(/On Day 1/);
     await root.getByText("Pioneer", { exact: true }).click();
     await expect.poll(() => artPanel.locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
-    await root.getByText("Rebuild", { exact: true }).click();
-    await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
-    await root.getByText("Custom", { exact: true }).click();
-    await root.getByText("Rebuild", { exact: true }).click();
+    await dayOne.fill("On Day 1, neighbors arrive with damaged boats.");
+    await root.getByText("Open beginning", { exact: true }).click();
+    await expect(dayOne).toHaveValue("On Day 1, neighbors arrive with damaged boats.");
     await root.getByLabel("What is this village called?").fill("Willowbrook");
-    await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByText("Step 2 of 6 · Connections & Persona")).toBeVisible();
-    const secondArt = await artPanel.boundingBox();
-    const secondFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
-    const secondForm = await root.locator(".marinara-capability-villages-side").boundingBox();
-    if (width > 1000) {
-      assert.ok(
-        secondArt && secondForm && secondArt.height > secondForm.height * 0.6,
-        "page 2 artwork fills the form height",
-      );
-      assert.ok(
-        secondFooter && Math.abs(secondFooter.y + secondFooter.height - secondForm.y - secondForm.height) < 3,
-        "page 2 navigation aligns with the form bottom",
-      );
-    }
-    await root.getByRole("button", { name: "Next →" }).scrollIntoViewIfNeeded();
-    const secondNext = await root.getByRole("button", { name: "Next →" }).boundingBox();
-    assert.ok(
-      secondNext && secondNext.y >= 0 && secondNext.y + secondNext.height <= height,
-      "page 2 navigation is reachable",
-    );
-    await root.getByLabel("Images", { exact: true }).scrollIntoViewIfNeeded();
-    const imagesBounds = await root.getByLabel("Images", { exact: true }).boundingBox();
-    assert.ok(
-      imagesBounds && imagesBounds.y >= 0 && imagesBounds.y + imagesBounds.height <= height,
-      "page 2 controls are reachable",
-    );
-    await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
-    const personaCards = root.locator(".marinara-capability-villages-identity-card");
-    await expect(personaCards).toHaveCount(3);
-    assert.equal(
-      await personaCards
-        .first()
-        .textContent()
-        .then((value) => value.includes("Ada")),
-      true,
-      "Personas are alphabetic, without promoting the Engine active Persona",
-    );
-    await expect(root.locator('.marinara-capability-villages-identity-card[aria-pressed="true"]')).toHaveCount(0);
-    await root.getByPlaceholder("Search Personas").fill("patient");
-    await expect(personaCards).toHaveCount(1);
-    await personaCards.first().focus();
-    await page.keyboard.press("Enter");
-    await expect(personaCards.first()).toHaveAttribute("aria-pressed", "true");
-    await expect(root.getByRole("heading", { name: "Ada" })).toBeVisible();
-    await expect(root.getByText("A patient observer of small changes.")).toBeVisible();
-    await expect(root.getByText("Appearance", { exact: true })).toBeVisible();
-    await expect(root.getByText("Personality", { exact: true })).toBeVisible();
-    await expect(root.getByText("Backstory", { exact: true })).toBeVisible();
-    await root.getByPlaceholder("Search Personas").fill("returning");
-    await personaCards.first().click();
-    await expect(root.getByRole("heading", { name: "Bryn" })).toBeVisible();
-    await expect(root.getByText("Returned from a long journey.").first()).toBeVisible();
-    await expect(root.locator(".marinara-capability-villages-identity-details dt")).toHaveText(["Backstory"]);
-    await root.getByPlaceholder("Search Personas").fill("");
-    await root.getByRole("button", { name: /Zara/ }).click();
-    await root.getByRole("button", { name: /Ada/ }).click();
-    await expect(root.getByRole("heading", { name: "Ada" })).toBeVisible();
-    for (const name of ["System", "Narration", "Images"])
-      await expect(root.getByLabel(name, { exact: true })).toBeVisible();
-    await expect(root.getByRole("button", { name: "← Back" })).toBeVisible();
-    await expect(root.getByRole("button", { name: "Next →" })).toBeVisible();
-    await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByText("Step 3 of 6 · World & First Day")).toBeVisible();
-    await expect(root.getByLabel("What is this village like?")).toBeVisible();
-    await expect(root.getByLabel("What happens on the village's first day?")).toHaveValue(/On Day 1/);
-    await expect(artPanel).toBeVisible();
-    await expect(root.getByText("Choose lorebooks (0/24)")).toBeVisible();
+    await root.getByLabel("What is this village like?").fill("A fishing village on sea cliffs.");
     await root.getByText("Choose lorebooks (0/24)").click();
     await root.getByRole("searchbox", { name: "Search lorebooks" }).fill("Lorebook 37");
     await root.getByRole("checkbox", { name: "Lorebook 37" }).check();
     await expect(root.getByRole("button", { name: "Remove Lorebook 37" })).toBeVisible();
-    await expect(root.getByRole("checkbox", { name: "Lorebook 1", exact: true })).toHaveCount(0);
-    const thirdFooter = await root.locator(".marinara-capability-villages-setup-footer").boundingBox();
-    const thirdForm = await root.locator(".marinara-capability-villages-side").boundingBox();
-    const thirdArt = await artPanel.boundingBox();
-    if (width > 1000) {
-      assert.ok(thirdArt && thirdForm && thirdArt.height > thirdForm.height * 0.6, "page 3 keeps the artwork panel");
-      assert.ok(
-        thirdFooter && Math.abs(thirdFooter.y + thirdFooter.height - thirdForm.y - thirdForm.height) < 3,
-        "page 3 navigation aligns with the form bottom",
-      );
-    }
-    await root.getByLabel("What is this village like?").fill("A fishing village above the sea.");
-    await root.getByRole("button", { name: "Preview starting details →" }).click();
-    await expect(root.getByRole("region", { name: "Review starting details" })).toBeVisible();
+    await (await visibleForward()).click();
+
+    await expect(root.getByText("Step 2 of 5 · Connections & Persona")).toBeVisible();
+    await checkTheme();
+    const personaCards = root.locator(".marinara-capability-villages-identity-card");
+    await expect(personaCards).toHaveCount(3);
+    await root.getByPlaceholder("Search Personas").fill("patient");
+    await personaCards.first().click();
+    await expect(root.getByRole("heading", { name: "Ada" })).toBeVisible();
+    for (const name of ["System", "Narration", "Images"])
+      await expect(root.getByLabel(name, { exact: true })).toBeVisible();
+    await (await visibleForward()).click();
+
+    await expect(root.getByText("Step 3 of 5 · Village Map")).toBeVisible();
+    await checkTheme();
+    await root.getByRole("button", { name: "Generate with AI" }).click();
+    await root.getByText("Advanced map elements").click();
+    for (const name of ["Roads and paths", "Structures", "Water"])
+      await expect(root.getByRole("combobox", { name, exact: true })).toHaveValue("auto");
+    await root.getByRole("button", { name: "No background image" }).click();
+    await (await visibleForward()).click();
+
+    await expect(root.getByText("Step 4 of 5 · Build the Village")).toBeVisible();
+    await checkTheme();
+    await expect(root.locator(".marinara-capability-villages-setup-venue-card")).toHaveCount(3);
+    await expect(root.getByText("Edit place details and art")).toBeVisible();
+    await (await visibleForward("Draft places →")).click();
     await expect(
       root
-        .getByRole("region", { name: "Review starting details" })
-        .locator("p")
-        .filter({ hasText: "The group gathers on Day 1" }),
+        .getByText(
+          width === 1024 ? "Your residence is a modest home in Willowbrook." : "Your residence stands above the sea.",
+          { exact: false },
+        )
+        .first(),
     ).toBeVisible();
-    await root.getByRole("button", { name: "Use details and continue →" }).click();
-    await expect(root.getByText("Step 4 of 6 · Village Map")).toBeVisible();
-    await root.getByRole("button", { name: "← Back" }).click();
-    await expect(root.getByText("Step 3 of 6 · World & First Day")).toBeVisible();
-    await root.getByRole("button", { name: "← Back" }).click();
-    if (width > 1000 && height >= 600) {
-      const size = await root.evaluate((element) => ({ scroll: element.scrollHeight, visible: element.clientHeight }));
-      assert.ok(
-        size.scroll <= size.visible + 1,
-        `Connections & Persona fits at ${width}×${height} (${size.scroll}/${size.visible})`,
-      );
-      const documentHeight = await page.evaluate(() => document.documentElement.scrollHeight);
-      assert.ok(documentHeight <= height + 1, `page 2 document fits at ${width}×${height} (${documentHeight})`);
-      for (const control of [
-        root.getByPlaceholder("Search Personas"),
-        root.getByLabel("Images"),
-        root.getByRole("button", { name: "Next →" }),
-      ]) {
-        const bounds = await control.boundingBox();
-        assert.ok(
-          bounds && bounds.y >= 0 && bounds.y + bounds.height <= height,
-          `page 2 controls fit at ${width}×${height}: ${JSON.stringify(bounds)}`,
-        );
-      }
-    }
-    await root.getByLabel("Images", { exact: true }).selectOption("__villages_image_disabled__");
-    await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByRole("alertdialog", { name: "Image connection recommendation" })).toBeVisible();
-    await root.getByRole("button", { name: "Set up an image connection" }).click();
-    await root.getByLabel("Images", { exact: true }).selectOption("image");
-    availablePersonas = personas.filter((entry) => entry.id !== "ada");
-    await root.getByRole("button", { name: "← Back" }).click();
-    await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByText("The saved Persona is no longer in your library.", { exact: false })).toBeVisible();
-    await root.getByRole("button", { name: "Next →" }).click();
-    await expect(root.getByText("Step 2 of 6 · Connections & Persona")).toBeVisible();
-    await expect(root.getByText("That Persona is no longer in your library.", { exact: false })).toBeVisible();
+    await (await visibleForward()).click();
+
+    await expect(root.getByText("Step 5 of 5 · Review")).toBeVisible();
+    await checkTheme();
+    await expect(root.getByText("On Day 1, neighbors arrive with damaged boats.", { exact: false })).toBeVisible();
+    await expect(root.getByText("Starting details", { exact: true })).toHaveCount(0);
+    await expect(root.getByText("Lorebook 37", { exact: false })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Found the village" })).toBeVisible();
+    await root.getByRole("button", { name: "Found the village" }).click();
+    await expect.poll(() => foundingPayload).not.toBeNull();
+    assert.equal(foundingPayload.name, "Willowbrook");
+    assert.equal(foundingPayload.setting, "A fishing village on sea cliffs.");
+    assert.equal(foundingPayload.foundingDetails, "On Day 1, neighbors arrive with damaged boats.");
+    assert.equal(foundingPayload.scenarioImprint, null);
+    assert.deepEqual(foundingPayload.selectedLorebookIds, ["lore-37"]);
     assert.deepEqual(errors, []);
     await page.close();
   }

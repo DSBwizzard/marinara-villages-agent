@@ -112,17 +112,17 @@ const foundingScenario = (value: FoundingScenarioId) =>
   FOUNDING_SCENARIOS.find((scenario) => scenario.value === value)!;
 const foundingScenarioArt = (value: FoundingScenarioId) =>
   `/api/capability-packages/villages/assets/founding-${value}.jpg`;
-type TownMapOptions = { roads: boolean; structures: boolean; water: boolean };
-const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: true, structures: false, water: false };
+type MapElementChoice = "auto" | "include" | "exclude";
+type TownMapOptions = { roads: MapElementChoice; structures: MapElementChoice; water: MapElementChoice };
+const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "auto", water: "auto" };
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
 const SETUP_STEPS = [
-  "Village Identity",
+  "Village Beginning",
   "Connections & Persona",
-  "World & First Day",
   "Village Map",
   "Build the Village",
   "Review",
@@ -4422,16 +4422,15 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-overlay-head > .${ELEMENT_TAG}-panel-title { flex: 1 1 auto; margin: 0; }
 
 /* The founding wizard. */
-.${ELEMENT_TAG}-setup-root { box-sizing: border-box; container-type: inline-size; }
-.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) {
+.${ELEMENT_TAG}-setup-root {
+  box-sizing: border-box; container-type: inline-size; overflow-x: hidden; overflow-y: auto;
   --background: #121936; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
   background: radial-gradient(circle at 12% 95%, #263978, #111832 50%, #0e1430);
   color: #f3f3ff;
 }
 .${ELEMENT_TAG}-setup-body { flex-wrap: nowrap; align-items: stretch; }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) { flex: 0 0 auto; min-height: 0; }
-.${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) { overflow-x: hidden; overflow-y: auto; }
+.${ELEMENT_TAG}-setup-body { flex: 0 0 auto; min-height: 0; }
 .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side { flex: 1 1 34rem; }
 .${ELEMENT_TAG}-setup-visual {
   display: flex; flex-direction: column; gap: .6rem; flex: 1 1 19rem; min-width: 0; min-height: 0;
@@ -4462,30 +4461,56 @@ const VILLAGES_STYLES = `
   box-shadow: 0 0 .85rem #9878f1a8; color: #fff;
 }
 .${ELEMENT_TAG}-setup-kicker { margin: 0; color: var(--muted-foreground); font-size: .78rem; }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) {
+.${ELEMENT_TAG}-setup-body {
   --background: #151d3b; --popover: #141b39; --foreground: #f3f3ff;
   --muted-foreground: #b3bee8; --border: #566ab1; --primary: #b49aff;
   gap: .75rem; align-items: stretch; color: var(--foreground);
 }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) > .${ELEMENT_TAG}-side { flex-basis: 35rem; min-height: 0; }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-overlay {
+.${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side { flex-basis: 35rem; min-height: 0; }
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-overlay {
   gap: .2rem; padding: .65rem .8rem; border-color: #5268b8; border-radius: 1rem;
   background: linear-gradient(145deg, #182044, #101831);
   box-shadow: inset 0 0 2rem #27347866;
 }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-panel-title {
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-panel-title {
   font-size: clamp(1.25rem, 1.8vw, 1.65rem); color: #f5f5ff;
 }
-.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) .${ELEMENT_TAG}-field { margin-top: .15rem; }
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-field { margin-top: .15rem; }
 .${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-overlay { height: 100%; min-height: 0; overflow: hidden; }
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-search,
-.${ELEMENT_TAG}-setup-body[data-step="0"] .${ELEMENT_TAG}-textarea,
-.${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-search,
-.${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-select,
-.${ELEMENT_TAG}-setup-body[data-step="2"] .${ELEMENT_TAG}-search,
-.${ELEMENT_TAG}-setup-body[data-step="2"] .${ELEMENT_TAG}-textarea,
-.${ELEMENT_TAG}-setup-body[data-step="2"] .${ELEMENT_TAG}-notice-input {
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-search,
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-textarea,
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-select,
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-notice-input {
   background: #1c254a; border-color: #7082cf; color: #f2f4ff;
+}
+.${ELEMENT_TAG}-setup-beginning-textarea { min-height: 4.5rem; }
+.${ELEMENT_TAG}-setup-advanced {
+  border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b; padding: .55rem .65rem;
+}
+.${ELEMENT_TAG}-setup-advanced > summary { cursor: pointer; }
+.${ELEMENT_TAG}-setup-advanced .${ELEMENT_TAG}-reason-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+.${ELEMENT_TAG}-setup-advanced .${ELEMENT_TAG}-label { min-width: 0; }
+.${ELEMENT_TAG}-setup-review-card {
+  display: grid; gap: .3rem; border: 1px solid #5265ac; border-radius: .85rem;
+  background: #1c254b; padding: .65rem;
+}
+.${ELEMENT_TAG}-setup-review-card h3 { margin: 0; color: #f5f5ff; font-size: .9rem; }
+.${ELEMENT_TAG}-setup-review-card p { margin: 0; }
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-setup-venue-card {
+  border-color: #5265ac; border-radius: .85rem; background: #1c254b; color: #f0f2ff;
+}
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-setup-venue-card[data-selected="true"] {
+  border-color: #dac8ff; box-shadow: 0 0 0 2px #9a78ff;
+}
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-setup-map-shell {
+  overflow: hidden; border: 1px solid #6684d4; border-radius: 1.2rem; background: #162550;
+}
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-step[data-clickable="true"] {
+  border-color: #5265ac; border-radius: .65rem; background: #1c254b; color: #d3ddfa; padding: .4rem .7rem;
+}
+.${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-step[data-active="true"] {
+  border-color: #dac8ff; background: linear-gradient(165deg, #303d85, #202754);
+  box-shadow: 0 0 0 2px #9a78ff; color: #f5f5ff;
 }
 .${ELEMENT_TAG}-scenario-options {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .4rem; margin-top: .15rem;
@@ -4532,7 +4557,7 @@ const VILLAGES_STYLES = `
 }
 .${ELEMENT_TAG}-scenario-art-content strong { font-weight: 500; }
 /* World setup uses the same indigo panels and borders as Identity and Persona. */
-.${ELEMENT_TAG}-lore-picker, .${ELEMENT_TAG}-starting-preview {
+.${ELEMENT_TAG}-lore-picker {
   border: 1px solid #5265ac; border-radius: .85rem; background: #1c254b; padding: .65rem;
 }
 .${ELEMENT_TAG}-lore-selected { display: flex; flex-wrap: wrap; gap: .35rem; max-height: 5rem; overflow-y: auto; margin: .4rem 0; }
@@ -4546,11 +4571,6 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-lore-options > summary { cursor: pointer; list-style-position: inside; }
 .${ELEMENT_TAG}-lore-options > .${ELEMENT_TAG}-search { width: 100%; box-sizing: border-box; margin: .5rem 0; }
 .${ELEMENT_TAG}-lore-results { display: grid; gap: .15rem; max-height: 12rem; overflow-y: auto; }
-.${ELEMENT_TAG}-starting-preview { display: grid; gap: .35rem; }
-.${ELEMENT_TAG}-starting-preview h3 { margin: 0; font-size: .92rem; }
-.${ELEMENT_TAG}-starting-preview p { margin: 0; }
-.${ELEMENT_TAG}-starting-preview details { border-top: 1px solid #5265ac; padding-top: .4rem; }
-.${ELEMENT_TAG}-starting-preview summary { cursor: pointer; color: #d3ddfa; }
 /* Compact, role-neutral identity chooser used by Founding's Persona adapter. */
 .${ELEMENT_TAG}-founding-persona { display: flex; flex-direction: column; gap: .3rem; min-height: 0; }
 .${ELEMENT_TAG}-identity-picker-head { display: flex; align-items: center; gap: .75rem; }
@@ -4599,7 +4619,7 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-connections-grid .${ELEMENT_TAG}-select { width: 100%; }
 .${ELEMENT_TAG}-connections-grid .${ELEMENT_TAG}-hint { line-height: 1.25; }
 @container (min-width: 80rem) {
-  .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @container (max-width: 70rem) {
   .${ELEMENT_TAG}-setup-body { flex-wrap: wrap; }
@@ -4609,18 +4629,18 @@ const VILLAGES_STYLES = `
   .${ELEMENT_TAG}-setup-rail-step { flex: 0 0 auto; }
 }
 @container (min-width: 42.01rem) and (max-width: 70rem) {
-  .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) > .${ELEMENT_TAG}-side { flex-basis: 25rem; }
+  .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side { flex-basis: 25rem; }
   .${ELEMENT_TAG}-setup-visual { flex-basis: 14rem; }
 }
 @container (max-width: 42rem) {
-  .${ELEMENT_TAG}-setup-root:has(.${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"])) { overflow-y: auto; }
-  .${ELEMENT_TAG}-setup-body:is([data-step="0"], [data-step="1"]) { flex: none; }
+  .${ELEMENT_TAG}-setup-body { flex: none; }
   .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side,
   .${ELEMENT_TAG}-setup-visual { flex: 1 1 100%; }
   .${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-overlay { height: auto; overflow: visible; }
   .${ELEMENT_TAG}-identity-preview { max-height: none; }
   .${ELEMENT_TAG}-connections-grid { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .${ELEMENT_TAG}-setup-advanced .${ELEMENT_TAG}-reason-options { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-art-panel { flex: none; height: 18rem; }
 }
 .${ELEMENT_TAG}-steps { display: flex; flex-wrap: wrap; gap: .375rem; }
@@ -10803,9 +10823,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
   const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
   const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
-  const [setupImprintApprovedKey, setSetupImprintApprovedKey] = useState("");
-  const [setupImprintPreviewReady, setSetupImprintPreviewReady] = useState(false);
-  const [setupImprintBusy, setSetupImprintBusy] = useState(false);
   const [setupNameSuggestions, setSetupNameSuggestions] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
   const [selectedSetupVenueId, setSelectedSetupVenueId] = useState<string | null>(null);
@@ -10826,7 +10843,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupMapSize, setSetupMapSize] = useState<{ width: number; height: number } | null>(null);
   const [setupMapPrompt, setSetupMapPrompt] = useState("");
   const [setupMapNegativePrompt, setSetupMapNegativePrompt] = useState("");
-  const setupImprintSourceKey = JSON.stringify({
+  const setupBeginningSourceKey = JSON.stringify({
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
     direction: setupFoundingGuidance.trim(),
@@ -10834,21 +10851,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,
   });
-  const setupImprintSourceKeyRef = useRef(setupImprintSourceKey);
+  const setupBeginningSourceKeyRef = useRef(setupBeginningSourceKey);
   useEffect(() => {
-    if (setupImprintSourceKeyRef.current !== setupImprintSourceKey && !snapshot?.isFounded) {
-      setSetupImprint(emptyScenarioImprint());
-      setSetupImprintApprovedKey("");
-      setSetupImprintPreviewReady(false);
+    if (setupBeginningSourceKeyRef.current !== setupBeginningSourceKey && !snapshot?.isFounded) {
       setSetupTextDrafts({});
       setSetupImageDraft(null);
     }
-    setupImprintSourceKeyRef.current = setupImprintSourceKey;
-  }, [setupImprintSourceKey, snapshot?.isFounded]);
+    setupBeginningSourceKeyRef.current = setupBeginningSourceKey;
+  }, [setupBeginningSourceKey, snapshot?.isFounded]);
   const setupMapGenerationKey = JSON.stringify({
-    source: snapshot?.isFounded ? null : setupImprintSourceKey,
     setting: setupSetting.trim(),
-    imprint: snapshot?.isFounded ? null : setupImprint,
     worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
     lorebooks: setupLorebookDraft,
     structure: setupMapPrompt,
@@ -12311,10 +12323,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupProblem("Describe what the village is like before generating its map.");
       return;
     }
-    if (setupMapPrompt.trim().length === 0) {
-      setSetupProblem("The DEBUG map layout prompt cannot be blank.");
-      return;
-    }
     setSetupMapBusy(true);
     setSetupProblem("");
     try {
@@ -12329,7 +12337,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           selectedLorebookIds: setupLorebookDraft,
           scenarioImprint: snapshot?.isFounded
             ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
-            : setupImprint,
+            : null,
         }),
       });
       const measured = await measureImage(generated.image);
@@ -12353,7 +12361,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupSetting,
     setupMapOptions,
     setupMapGenerationKey,
-    setupImprint,
     setupWorldFacts,
     snapshot?.isFounded,
     snapshot?.settings.townMapLayoutPrompt,
@@ -12911,88 +12918,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const chooseSetupScenario = (value: FoundingScenarioId) => {
     if (snapshot?.isFounded) return;
     if (value === setupFoundingReason) return;
+    const previousStarter = foundingScenario(setupFoundingReason).premise;
+    const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
     setSetupFoundingReason(value);
-    setSetupFoundingDetails(foundingScenario(value).premise);
+    if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
     setSetupFoundingGuidance("");
-    setSetupImprint(emptyScenarioImprint());
-    setSetupImprintApprovedKey("");
-    setSetupImprintPreviewReady(false);
     setSetupTextDrafts({});
     setSetupProblem("");
-  };
-
-  const draftSetupImprint = async () => {
-    if (!setupSetting.trim() || !setupFoundingDetails.trim()) {
-      setSetupProblem("Describe the village and its first day before continuing.");
-      return;
-    }
-    const sourceKey = setupImprintSourceKey;
-    setBusy(true);
-    setSetupImprintBusy(true);
-    setSetupProblem("");
-    try {
-      const result = await request<{ imprint: ScenarioImprint }>("/setup/scenario-imprint/draft", {
-        method: "POST",
-        body: JSON.stringify({
-          foundingReason: setupFoundingReason,
-          foundingDetails: setupFoundingDetails,
-          foundingGuidance: setupFoundingGuidance,
-          setting: setupSetting,
-          selectedLorebookIds: setupLorebookDraft,
-          loreTokenBudget: setupLoreTokenBudgetDraft,
-        }),
-      });
-      if (setupImprintSourceKeyRef.current === sourceKey) {
-        setSetupImprint(result.imprint);
-        setSetupImprintApprovedKey("");
-        setSetupImprintPreviewReady(true);
-        setSetupTextDrafts({});
-      }
-    } catch (cause) {
-      if (setupImprintSourceKeyRef.current === sourceKey) {
-        setSetupImprintPreviewReady(true);
-        setSetupProblem(messageFrom(cause, "Starting details could not be drafted. Retry or write them yourself."));
-      }
-    } finally {
-      setSetupImprintBusy(false);
-      setBusy(false);
-    }
-  };
-
-  const editSetupImprintLines = (key: "worldFacts" | "openingConditions" | "visualCues", value: string) => {
-    setSetupImprint((current) => ({ ...current, [key]: value.split(/\r?\n/u) }));
-    setSetupImprintApprovedKey("");
-  };
-
-  const approveSetupImprint = () => {
-    if (!setupSetting.trim() || !setupFoundingDetails.trim()) {
-      setSetupProblem("Describe the village and its first day before continuing.");
-      return;
-    }
-    const imprint: ScenarioImprint = {
-      origin: setupImprint.origin.trim(),
-      worldFacts: setupImprint.worldFacts.map((line) => line.trim()).filter(Boolean),
-      openingConditions: setupImprint.openingConditions.map((line) => line.trim()).filter(Boolean),
-      visualCues: setupImprint.visualCues.map((line) => line.trim()).filter(Boolean),
-    };
-    const lists = [
-      [imprint.worldFacts, 160],
-      [imprint.openingConditions, 160],
-      [imprint.visualCues, 120],
-    ] as const;
-    if (
-      (!imprint.origin && !lists.some(([lines]) => lines.length)) ||
-      imprint.origin.length > 400 ||
-      lists.some(([lines, limit]) => lines.length > 4 || lines.some((line) => line.length > limit))
-    ) {
-      setSetupProblem("Add a starting detail. Use at most four short lines in each list.");
-      return;
-    }
-    setSetupImprint(imprint);
-    setSetupImprintApprovedKey(setupImprintSourceKey);
-    setSetupTextDrafts({});
-    setSetupProblem("");
-    setSetupStep(3);
   };
 
   /**
@@ -13044,8 +12976,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupFoundingGuidance(reason === "none" ? "" : guidance);
       setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
-      setSetupImprintApprovedKey("");
-      setSetupImprintPreviewReady(false);
       setSetupNameSuggestions([]);
       const foundingPlaces =
         fresh || !village
@@ -13094,6 +13024,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           setSetupProblem("Give the village a name before continuing.");
           return;
         }
+        if (setupSetting.trim().length === 0) {
+          setSetupProblem("Describe what the village is like before continuing.");
+          return;
+        }
+        if (!snapshot?.isFounded && !setupFoundingDetails.trim()) {
+          setSetupProblem("Describe the village's first day before continuing.");
+          return;
+        }
       }
       if (setupStep === 1 && step > 1) {
         if (!personaDraft.trim()) {
@@ -13114,20 +13052,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         }
       }
       if (setupStep === 2 && step > 2) {
-        if (setupSetting.trim().length === 0) {
-          setSetupProblem("Describe what the village is like before continuing.");
-          return;
-        }
-        if (!snapshot?.isFounded && !setupFoundingDetails.trim()) {
-          setSetupProblem("Describe the village's first day before continuing.");
-          return;
-        }
-        if (!snapshot?.isFounded && setupImprintApprovedKey !== setupImprintSourceKey) {
-          setSetupProblem("Review the starting details before drawing the map.");
-          return;
-        }
-      }
-      if (setupStep === 3 && step > 3) {
         if (setupMapSource !== "none" && !setupMapSrc) {
           setSetupProblem(
             setupMapSource === "generate"
@@ -13137,7 +13061,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
       }
-      if (setupStep === 4 && step > 4) {
+      if (setupStep === 3 && step > 3) {
         const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
         const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
         const villagerHomeCount = villagerHomes.length;
@@ -13152,6 +13076,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           );
           return;
         }
+        const assigned = villagerHomes.map((venue) => venue.occupancy.residentCharacterId).filter(Boolean);
+        if (assigned.length !== villagerHomes.length || new Set(assigned).size !== assigned.length) {
+          setSetupProblem("Assign a different villager to each villager Residence before review.");
+          return;
+        }
         if (
           setupVenues.some(
             (venue) =>
@@ -13161,12 +13090,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               !venue.spaces?.[0]?.description.trim(),
           )
         ) {
-          setSetupProblem("Give every venue a name, form, exterior description, and scene description before review.");
-          return;
-        }
-        const assigned = villagerHomes.map((venue) => venue.occupancy.residentCharacterId).filter(Boolean);
-        if (assigned.length !== villagerHomes.length || new Set(assigned).size !== assigned.length) {
-          setSetupProblem("Assign a different villager to each villager Residence before review.");
+          setSetupProblem("Review the place descriptions, or retry the draft, before continuing.");
           return;
         }
       }
@@ -13176,8 +13100,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // The build step assigns homes from the library, so the library is only read
       // when that step is reached.
       if (step === 1) void loadPersonas();
-      if (step === 2) void loadLorebooks();
-      if (step === 4) void loadCatalog();
+      if (step === 0) void loadLorebooks();
+      if (step === 3) void loadCatalog();
       setPlacingHome(false);
       setPlacingPublicCenter(false);
       setMovingSetupVenueId(null);
@@ -13195,8 +13119,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupMapSrc,
       setupName,
       setupFoundingDetails,
-      setupImprintApprovedKey,
-      setupImprintSourceKey,
       snapshot?.isFounded,
       setupSetting,
       setupStep,
@@ -13233,9 +13155,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     guidance: venue.guidance,
   });
 
-  const generateSetupText = async (venues: SetupVenueDraft[]) => {
+  const generateSetupText = async (venues: SetupVenueDraft[], applyToEmptyFields = false) => {
     if (!venues.length || setupVenueBusy) return;
-    const sourceKey = setupImprintSourceKey;
+    const sourceKey = setupBeginningSourceKey;
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -13246,24 +13168,55 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           foundingReason: setupFoundingReason,
           foundingDetails: setupFoundingDetails,
           foundingGuidance: setupFoundingGuidance,
-          scenarioImprint: snapshot?.isFounded ? null : setupImprint,
+          scenarioImprint: snapshot?.isFounded ? setupImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           venues: venues.map(setupDraftRow),
         }),
       });
-      if (setupImprintSourceKeyRef.current === sourceKey)
-        setSetupTextDrafts((current) => ({ ...current, ...result.drafts }));
+      if (setupBeginningSourceKeyRef.current === sourceKey) {
+        if (applyToEmptyFields) {
+          for (const venue of venues) applySetupText(venue.id, false, result.drafts[venue.id]);
+          setSetupProblem("");
+        } else {
+          setSetupTextDrafts((current) => ({ ...current, ...result.drafts }));
+        }
+      }
     } catch (cause) {
-      setSetupProblem(messageFrom(cause, "Venue text could not be drafted."));
+      if (applyToEmptyFields) {
+        for (const venue of venues) {
+          const gathering = venue.category === "public-center";
+          applySetupText(venue.id, false, {
+            name: venue.name,
+            form: venue.form || (gathering ? "Gathering place" : "Home"),
+            purpose: venue.purpose || (gathering ? "A place for neighbors to meet." : "A place to live."),
+            description: gathering
+              ? `${venue.name} stands ready as a shared meeting place in ${setupName}.`
+              : `${venue.name} is a modest home in ${setupName}.`,
+            spaceDescription: gathering
+              ? "A simple shared room awaits its first gatherings."
+              : "A simple living space ready for its resident.",
+            condition: "",
+            items: [],
+            publicFacts: [],
+            features: [],
+          });
+        }
+        setSetupProblem(
+          messageFrom(cause, "The text draft was unavailable.") +
+            " Simple editable place descriptions were filled in. Review them or retry.",
+        );
+      } else {
+        setSetupProblem(messageFrom(cause, "Venue text could not be drafted."));
+      }
     } finally {
       setSetupVenueBusy(false);
     }
   };
 
-  const applySetupText = (id: string, replace: boolean) => {
-    const draft = setupTextDrafts[id];
+  function applySetupText(id: string, replace: boolean, offered?: SetupTextDraft) {
+    const draft = offered ?? setupTextDrafts[id];
     if (!draft) return;
     patchSetupVenue(id, (venue) => {
       const fill = (before: string, after: string, placeholder = "") =>
@@ -13314,11 +13267,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       delete next[id];
       return next;
     });
-  };
+  }
 
   const generateSetupImage = async (venue: SetupVenueDraft, area: "exterior" | "interior") => {
     if (setupVenueBusy) return;
-    const sourceKey = setupImprintSourceKey;
+    const sourceKey = setupBeginningSourceKey;
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -13329,12 +13282,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           area,
           villageName: setupName,
           setting: setupSetting,
-          scenarioImprint: snapshot?.isFounded ? null : setupImprint,
+          scenarioImprint: snapshot?.isFounded ? setupImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
           selectedLorebookIds: setupLorebookDraft,
         }),
       });
-      if (setupImprintSourceKeyRef.current === sourceKey) setSetupImageDraft({ venueId: venue.id, area, image });
+      if (setupBeginningSourceKeyRef.current === sourceKey) setSetupImageDraft({ venueId: venue.id, area, image });
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Venue art could not be generated."));
     } finally {
@@ -13387,8 +13340,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
     if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
       return "Use at most four current world facts of 160 characters each.";
-    if (!snapshot?.isFounded && setupImprintApprovedKey !== setupImprintSourceKey)
-      return "Review the starting details.";
     if (setupSetting.trim().length === 0) return "Describe what the village is like.";
     if (setupMapSource !== "none" && !setupMapSrc) return "Choose, generate, or upload the village map.";
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
@@ -13406,7 +13357,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.spaces?.[0]?.description.trim(),
       )
     )
-      return "Give every venue a name, Form, exterior description, and scene description in Step 5.";
+      return "Review the starting place descriptions in Step 4.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -13422,8 +13373,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupMapSrc,
     setupName,
     setupFoundingDetails,
-    setupImprintApprovedKey,
-    setupImprintSourceKey,
     snapshot?.isFounded,
     setupWorldFacts,
     setupSetting,
@@ -13446,10 +13395,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
           foundingGuidance: snapshot?.isFounded ? snapshot.settings.foundingGuidance : setupFoundingGuidance.trim(),
-          scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint,
-          worldFacts: snapshot?.isFounded
-            ? setupWorldFacts.map((line) => line.trim()).filter(Boolean)
-            : setupImprint.worldFacts,
+          scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
+          worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
@@ -13490,7 +13437,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupFoundingReason,
     setupFoundingDetails,
     setupFoundingGuidance,
-    setupImprint,
     setupWorldFacts,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -17570,7 +17516,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   <fieldset className={`${ELEMENT_TAG}-field`}>
                     <legend className={`${ELEMENT_TAG}-label`}>Choose a scenario</legend>
                     <div className={`${ELEMENT_TAG}-scenario-options`}>
-                      {FOUNDING_SCENARIOS.map((scenario) => (
+                      {FOUNDING_SCENARIOS.filter(
+                        (scenario) =>
+                          scenario.value !== "custom" || (snapshot?.isFounded && setupFoundingReason === "custom"),
+                      ).map((scenario) => (
                         <label key={scenario.value} className={`${ELEMENT_TAG}-scenario-option`}>
                           <input
                             type="radio"
@@ -17588,12 +17537,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       ))}
                     </div>
                   </fieldset>
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    On Day 1 you will describe what the village is like and what happens as it begins.
-                  </p>
                   {snapshot?.isFounded ? (
                     <p className={`${ELEMENT_TAG}-hint`}>
-                      This village&apos;s founding choice is locked. Its first-day record appears on the next page.
+                      The founding choice and Day 1 record are part of this village&apos;s history.
                     </p>
                   ) : null}
                 </>
@@ -17649,7 +17595,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 2 ? (
+              {setupStep === 0 ? (
                 <>
                   <div className={`${ELEMENT_TAG}-field`}>
                     <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-setting`}>
@@ -17657,7 +17603,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </label>
                     <textarea
                       id={`${ELEMENT_TAG}-setup-setting`}
-                      className={`${ELEMENT_TAG}-textarea`}
+                      className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
                       value={setupSetting}
                       maxLength={snapshot?.settings.settingMaxLength}
                       placeholder="A fishing village on steep sea cliffs, with salt-worn cottages, rope bridges, and foggy mornings."
@@ -17689,7 +17635,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       </label>
                       <textarea
                         id={`${ELEMENT_TAG}-founding-details`}
-                        className={`${ELEMENT_TAG}-textarea`}
+                        className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
                         value={setupFoundingDetails}
                         maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
                         placeholder="The group arrives with tools and supplies, chooses a place to gather, and begins building together."
@@ -17750,101 +17696,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       Maximum approximate lore tokens for village text, wishes, and agendas.
                     </p>
                   </details>
-                  {!snapshot?.isFounded && setupImprintPreviewReady ? (
-                    <section className={`${ELEMENT_TAG}-starting-preview`} aria-label="Review starting details">
-                      <h3>Starting details</h3>
-                      <p className={`${ELEMENT_TAG}-hint`}>
-                        Check what will last and what belongs only to Day 1. Use these details to continue to the map.
-                      </p>
-                      {setupImprint.origin ? (
-                        <p>
-                          <strong>Before the village:</strong> {setupImprint.origin}
-                        </p>
-                      ) : null}
-                      {setupImprint.worldFacts.length ? (
-                        <p>
-                          <strong>Lasting facts:</strong> {setupImprint.worldFacts.join("; ")}
-                        </p>
-                      ) : null}
-                      {setupImprint.openingConditions.length ? (
-                        <p>
-                          <strong>Day 1 conditions:</strong> {setupImprint.openingConditions.join("; ")}
-                        </p>
-                      ) : null}
-                      {setupImprint.visualCues.length ? (
-                        <p>
-                          <strong>Visual cues:</strong> {setupImprint.visualCues.join("; ")}
-                        </p>
-                      ) : null}
-                      {!setupImprint.origin &&
-                      !setupImprint.worldFacts.length &&
-                      !setupImprint.openingConditions.length &&
-                      !setupImprint.visualCues.length ? (
-                        <p className={`${ELEMENT_TAG}-hint`}>No details were drafted. Add at least one below.</p>
-                      ) : null}
-                      <details>
-                        <summary>Correct starting details</summary>
-                        <div className={`${ELEMENT_TAG}-field`}>
-                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-imprint-origin`}>
-                            Before the village (optional)
-                          </label>
-                          <textarea
-                            id={`${ELEMENT_TAG}-imprint-origin`}
-                            className={`${ELEMENT_TAG}-textarea`}
-                            value={setupImprint.origin}
-                            maxLength={400}
-                            disabled={busy}
-                            placeholder="Only events that happened before Day 1."
-                            onChange={(event) => {
-                              setSetupImprint((current) => ({ ...current, origin: event.target.value }));
-                              setSetupImprintApprovedKey("");
-                            }}
-                          />
-                        </div>
-                        {(
-                          [
-                            ["worldFacts", "Lasting facts", "Truths that should still hold after Day 1.", 160],
-                            [
-                              "openingConditions",
-                              "Day 1 conditions",
-                              "Starting pressures or opportunities, not permanent facts.",
-                              160,
-                            ],
-                            ["visualCues", "Visual cues", "Details for the first map and place art.", 120],
-                          ] as const
-                        ).map(([key, label, hint, limit]) => (
-                          <div className={`${ELEMENT_TAG}-field`} key={key}>
-                            <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-imprint-${key}`}>
-                              {label}
-                            </label>
-                            <textarea
-                              id={`${ELEMENT_TAG}-imprint-${key}`}
-                              className={`${ELEMENT_TAG}-textarea`}
-                              value={setupImprint[key].join("\n")}
-                              disabled={busy}
-                              placeholder="One detail per line, up to four."
-                              onChange={(event) => editSetupImprintLines(key, event.target.value)}
-                            />
-                            <span className={`${ELEMENT_TAG}-hint`}>
-                              {hint} Up to four lines, {limit} characters each.
-                            </span>
-                          </div>
-                        ))}
-                      </details>
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        disabled={busy}
-                        onClick={() => void draftSetupImprint()}
-                      >
-                        Retry draft
-                      </button>
-                    </section>
-                  ) : null}
                 </>
               ) : null}
 
-              {setupStep === 3 ? (
+              {setupStep === 2 ? (
                 <>
                   <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="Village map image source">
                     <button
@@ -17896,8 +17751,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </div>
                   {setupMapSource === "generate" ? (
                     <>
-                      <fieldset className={`${ELEMENT_TAG}-field`}>
-                        <legend className={`${ELEMENT_TAG}-label`}>Map elements</legend>
+                      <details className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-advanced`}>
+                        <summary className={`${ELEMENT_TAG}-label`}>Advanced map elements</summary>
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          Auto follows your village description. Include or exclude a feature only when you want to
+                          override it.
+                        </p>
                         <div className={`${ELEMENT_TAG}-reason-options`}>
                           {(
                             [
@@ -17906,64 +17765,86 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                               ["water", "Water"],
                             ] as const
                           ).map(([key, label]) => (
-                            <label key={key} className={`${ELEMENT_TAG}-reason-option`}>
-                              <input
-                                type="checkbox"
-                                checked={setupMapOptions[key]}
+                            <label key={key} className={`${ELEMENT_TAG}-label`}>
+                              {label}
+                              <select
+                                className={`${ELEMENT_TAG}-select`}
+                                value={setupMapOptions[key]}
                                 disabled={setupMapBusy}
                                 onChange={(event) =>
-                                  setSetupMapOptions((previous) => ({ ...previous, [key]: event.target.checked }))
+                                  setSetupMapOptions((previous) => ({
+                                    ...previous,
+                                    [key]: event.target.value as MapElementChoice,
+                                  }))
                                 }
-                              />
-                              {label}
+                              >
+                                <option value="auto">Auto</option>
+                                <option value="include">Include</option>
+                                <option value="exclude">Exclude</option>
+                              </select>
                             </label>
                           ))}
                         </div>
-                        <span className={`${ELEMENT_TAG}-hint`}>
-                          Unchecked elements are excluded, even if the village description mentions them. Structures may
-                          appear anywhere but must leave room for future locations.
-                        </span>
-                      </fieldset>
-                      <div className={`${ELEMENT_TAG}-field`}>
-                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-prompt`}>
-                          <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Map layout prompt
-                        </label>
-                        <textarea
-                          id={`${ELEMENT_TAG}-setup-map-prompt`}
-                          className={`${ELEMENT_TAG}-textarea`}
-                          value={setupMapPrompt}
-                          maxLength={1500}
-                          disabled={setupMapBusy}
-                          onChange={(event) => setSetupMapPrompt(event.target.value)}
-                        />
-                        <span className={`${ELEMENT_TAG}-hint`}>
-                          Temporary testing override. The default comes from the server; edits apply only to this setup
-                          session.
-                        </span>
-                      </div>
-                      <div className={`${ELEMENT_TAG}-field`}>
-                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-negative`}>
-                          <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Negative map tags
-                        </label>
-                        <textarea
-                          id={`${ELEMENT_TAG}-setup-map-negative`}
-                          className={`${ELEMENT_TAG}-textarea`}
-                          value={setupMapNegativePrompt}
-                          maxLength={1500}
-                          disabled={setupMapBusy}
-                          onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
-                        />
-                        <span className={`${ELEMENT_TAG}-hint`}>
-                          Image providers handle negative tags differently. Review the resulting map before continuing.
-                        </span>
-                      </div>
+                      </details>
+                      <details className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-advanced`}>
+                        <summary className={`${ELEMENT_TAG}-label`}>Testing prompt controls</summary>
+                        <div className={`${ELEMENT_TAG}-field`}>
+                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-prompt`}>
+                            <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Map layout prompt
+                          </label>
+                          <textarea
+                            id={`${ELEMENT_TAG}-setup-map-prompt`}
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={setupMapPrompt}
+                            maxLength={1500}
+                            disabled={setupMapBusy}
+                            onChange={(event) => setSetupMapPrompt(event.target.value)}
+                          />
+                          <span className={`${ELEMENT_TAG}-hint`}>
+                            Temporary testing override. The default comes from the server; edits apply only to this
+                            setup session.
+                          </span>
+                        </div>
+                        <div className={`${ELEMENT_TAG}-field`}>
+                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-negative`}>
+                            <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Negative map tags
+                          </label>
+                          <textarea
+                            id={`${ELEMENT_TAG}-setup-map-negative`}
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={setupMapNegativePrompt}
+                            maxLength={1500}
+                            disabled={setupMapBusy}
+                            onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
+                          />
+                          <span className={`${ELEMENT_TAG}-hint`}>
+                            Image providers handle negative tags differently. Review the resulting map before
+                            continuing.
+                          </span>
+                        </div>
+                        <div className={`${ELEMENT_TAG}-row`}>
+                          <button
+                            type="button"
+                            className={`${ELEMENT_TAG}-button`}
+                            disabled={
+                              setupMapBusy ||
+                              (setupMapPrompt === snapshot?.settings.townMapLayoutPrompt &&
+                                setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt)
+                            }
+                            onClick={() => {
+                              setSetupMapPrompt(snapshot?.settings.townMapLayoutPrompt ?? "");
+                              setSetupMapNegativePrompt(snapshot?.settings.townMapNegativePrompt ?? "");
+                            }}
+                          >
+                            Restore default prompt
+                          </button>
+                        </div>
+                      </details>
                       <div className={`${ELEMENT_TAG}-row`}>
                         <button
                           type="button"
                           className={`${ELEMENT_TAG}-button`}
-                          disabled={
-                            setupMapBusy || setupSetting.trim().length === 0 || setupMapPrompt.trim().length === 0
-                          }
+                          disabled={setupMapBusy || setupSetting.trim().length === 0}
                           onClick={() => void generateSetupTownMap()}
                         >
                           {setupMapBusy
@@ -17971,21 +17852,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             : setupMapImageSource === "generate"
                               ? "Generate again"
                               : "Generate map"}
-                        </button>
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={
-                            setupMapBusy ||
-                            (setupMapPrompt === snapshot?.settings.townMapLayoutPrompt &&
-                              setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt)
-                          }
-                          onClick={() => {
-                            setSetupMapPrompt(snapshot?.settings.townMapLayoutPrompt ?? "");
-                            setSetupMapNegativePrompt(snapshot?.settings.townMapNegativePrompt ?? "");
-                          }}
-                        >
-                          Restore default prompt
                         </button>
                       </div>
                     </>
@@ -18027,11 +17893,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 4 ? (
+              {setupStep === 3 ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
-                    Place your Residence, one to three villager Residences, and one Gathering Place. Select a photograph
-                    to finish it.
+                    Place your home, one to three villager homes, and a Gathering Place. Choose who lives where.
+                    Villages will draft the place details for you to review.
                   </p>
                   <div className={`${ELEMENT_TAG}-row`}>
                     <button
@@ -18238,255 +18104,293 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           </select>
                         </label>
                       ) : null}
-                      <label className={`${ELEMENT_TAG}-label`}>
-                        Purpose
-                        <input
-                          className={`${ELEMENT_TAG}-notice-input`}
-                          value={selectedSetupVenue.purpose}
-                          maxLength={240}
-                          onChange={(event) =>
-                            patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                              ...venue,
-                              purpose: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <label className={`${ELEMENT_TAG}-label`}>
-                        Guidance for AI text and art
-                        <textarea
-                          className={`${ELEMENT_TAG}-textarea`}
-                          value={selectedSetupVenue.guidance}
-                          maxLength={1000}
-                          placeholder="Mood, materials, details to include or avoid…"
-                          onChange={(event) =>
-                            patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                              ...venue,
-                              guidance: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        disabled={setupVenueBusy}
-                        onClick={() => void generateSetupText([selectedSetupVenue])}
-                      >
-                        Generate text draft
-                      </button>
-                      {setupTextDrafts[selectedSetupVenue.id] ? (
-                        <div className={`${ELEMENT_TAG}-overlay`}>
-                          <strong>Suggested venue text</strong>
-                          <p>
-                            {setupTextDrafts[selectedSetupVenue.id]?.name} ·{" "}
-                            {setupTextDrafts[selectedSetupVenue.id]?.form}
-                          </p>
-                          <p>
-                            <strong>Purpose:</strong> {setupTextDrafts[selectedSetupVenue.id]?.purpose}
-                          </p>
-                          <p>
-                            <strong>Exterior:</strong> {setupTextDrafts[selectedSetupVenue.id]?.description}
-                          </p>
-                          <p>
-                            <strong>Scene:</strong> {setupTextDrafts[selectedSetupVenue.id]?.spaceDescription}
-                          </p>
-                          <p>
-                            <strong>Initial condition:</strong> {setupTextDrafts[selectedSetupVenue.id]?.condition}
-                          </p>
-                          <p>
-                            <strong>Items:</strong> {setupTextDrafts[selectedSetupVenue.id]?.items.join(", ") || "None"}
-                          </p>
-                          <p>
-                            <strong>Public facts:</strong>{" "}
-                            {setupTextDrafts[selectedSetupVenue.id]?.publicFacts.join(", ") || "None"}
-                          </p>
-                          <p>
-                            <strong>Features:</strong>{" "}
-                            {setupTextDrafts[selectedSetupVenue.id]?.features.join(", ") || "None"}
-                          </p>
-                          <div className={`${ELEMENT_TAG}-row`}>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() => applySetupText(selectedSetupVenue.id, false)}
-                            >
-                              Use in empty fields
-                            </button>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() => applySetupText(selectedSetupVenue.id, true)}
-                            >
-                              Replace text with this draft
-                            </button>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              onClick={() =>
-                                setSetupTextDrafts((current) => {
-                                  const next = { ...current };
-                                  delete next[selectedSetupVenue.id];
-                                  return next;
-                                })
-                              }
-                            >
-                              Discard draft
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      <label className={`${ELEMENT_TAG}-label`}>
-                        Exterior description
-                        <textarea
-                          className={`${ELEMENT_TAG}-textarea`}
-                          value={selectedSetupVenue.description}
-                          maxLength={1000}
-                          onChange={(event) =>
-                            patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                              ...venue,
-                              description: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
-                      <label className={`${ELEMENT_TAG}-label`}>
-                        Scene description
-                        <textarea
-                          className={`${ELEMENT_TAG}-textarea`}
-                          value={selectedSetupSpace.description}
-                          maxLength={1000}
-                          onChange={(event) =>
-                            patchSetupVenue(selectedSetupVenue.id, (venue) => ({
-                              ...venue,
-                              spaces: [
-                                {
-                                  ...venueSpaceFor(
-                                    venue,
-                                    venue.category === "public-center" ? "gathering" : "residence",
-                                  ),
-                                  description: event.target.value,
-                                },
-                              ],
-                            }))
-                          }
-                        />
-                      </label>
-                      {(["exterior", "interior"] as const).map((area) => {
-                        const image =
-                          area === "exterior" ? selectedSetupVenue.presentation.image : selectedSetupSpace.image;
-                        return (
-                          <section key={area} className={`${ELEMENT_TAG}-field`}>
-                            <span className={`${ELEMENT_TAG}-label`}>
-                              {area === "exterior" ? "Exterior photograph" : "Interior photograph"} · optional
-                            </span>
-                            {image ? (
-                              <img
-                                className={`${ELEMENT_TAG}-setup-image-preview`}
-                                src={image.url}
-                                alt={`${area} of ${selectedSetupVenue.name}`}
-                              />
-                            ) : (
-                              <p className={`${ELEMENT_TAG}-hint`}>No image yet. A placeholder will be used.</p>
-                            )}
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        <strong>Exterior:</strong> {selectedSetupVenue.description || "Ready to draft"} ·{" "}
+                        <strong>Scene:</strong> {selectedSetupSpace.description || "Ready to draft"}
+                      </p>
+                      <details className={`${ELEMENT_TAG}-setup-advanced`}>
+                        <summary className={`${ELEMENT_TAG}-label`}>Edit place details and art</summary>
+                        <label className={`${ELEMENT_TAG}-label`}>
+                          Purpose
+                          <input
+                            className={`${ELEMENT_TAG}-notice-input`}
+                            value={selectedSetupVenue.purpose}
+                            maxLength={240}
+                            onChange={(event) =>
+                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
+                                ...venue,
+                                purpose: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={`${ELEMENT_TAG}-label`}>
+                          Guidance for AI text and art
+                          <textarea
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={selectedSetupVenue.guidance}
+                            maxLength={1000}
+                            placeholder="Mood, materials, details to include or avoid…"
+                            onChange={(event) =>
+                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
+                                ...venue,
+                                guidance: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          disabled={setupVenueBusy}
+                          onClick={() => void generateSetupText([selectedSetupVenue])}
+                        >
+                          Generate text draft
+                        </button>
+                        {setupTextDrafts[selectedSetupVenue.id] ? (
+                          <div className={`${ELEMENT_TAG}-overlay`}>
+                            <strong>Suggested venue text</strong>
+                            <p>
+                              {setupTextDrafts[selectedSetupVenue.id]?.name} ·{" "}
+                              {setupTextDrafts[selectedSetupVenue.id]?.form}
+                            </p>
+                            <p>
+                              <strong>Purpose:</strong> {setupTextDrafts[selectedSetupVenue.id]?.purpose}
+                            </p>
+                            <p>
+                              <strong>Exterior:</strong> {setupTextDrafts[selectedSetupVenue.id]?.description}
+                            </p>
+                            <p>
+                              <strong>Scene:</strong> {setupTextDrafts[selectedSetupVenue.id]?.spaceDescription}
+                            </p>
+                            <p>
+                              <strong>Initial condition:</strong> {setupTextDrafts[selectedSetupVenue.id]?.condition}
+                            </p>
+                            <p>
+                              <strong>Items:</strong>{" "}
+                              {setupTextDrafts[selectedSetupVenue.id]?.items.join(", ") || "None"}
+                            </p>
+                            <p>
+                              <strong>Public facts:</strong>{" "}
+                              {setupTextDrafts[selectedSetupVenue.id]?.publicFacts.join(", ") || "None"}
+                            </p>
+                            <p>
+                              <strong>Features:</strong>{" "}
+                              {setupTextDrafts[selectedSetupVenue.id]?.features.join(", ") || "None"}
+                            </p>
                             <div className={`${ELEMENT_TAG}-row`}>
                               <button
                                 type="button"
                                 className={`${ELEMENT_TAG}-button`}
-                                disabled={setupVenueBusy}
-                                onClick={() => void generateSetupImage(selectedSetupVenue, area)}
+                                onClick={() => applySetupText(selectedSetupVenue.id, false)}
                               >
-                                {image ? "Regenerate image" : "Generate image"}
+                                Use in empty fields
                               </button>
-                              <input
-                                className={`${ELEMENT_TAG}-file`}
-                                type="file"
-                                accept="image/*"
-                                disabled={setupVenueBusy}
-                                aria-label={`Upload ${area} image for ${selectedSetupVenue.name}`}
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0];
-                                  event.target.value = "";
-                                  void uploadSetupImage(selectedSetupVenue, area, file);
-                                }}
-                              />
-                              {image ? (
-                                <button
-                                  type="button"
-                                  className={`${ELEMENT_TAG}-button`}
-                                  onClick={() =>
-                                    patchSetupVenue(selectedSetupVenue.id, (venue) =>
-                                      area === "exterior"
-                                        ? { ...venue, presentation: { ...venue.presentation, image: null } }
-                                        : {
-                                            ...venue,
-                                            spaces: [
-                                              {
-                                                ...venueSpaceFor(
-                                                  venue,
-                                                  venue.category === "public-center" ? "gathering" : "residence",
-                                                ),
-                                                image: null,
-                                              },
-                                            ],
-                                          },
-                                    )
-                                  }
-                                >
-                                  Remove image
-                                </button>
-                              ) : null}
+                              <button
+                                type="button"
+                                className={`${ELEMENT_TAG}-button`}
+                                onClick={() => applySetupText(selectedSetupVenue.id, true)}
+                              >
+                                Replace text with this draft
+                              </button>
+                              <button
+                                type="button"
+                                className={`${ELEMENT_TAG}-button`}
+                                onClick={() =>
+                                  setSetupTextDrafts((current) => {
+                                    const next = { ...current };
+                                    delete next[selectedSetupVenue.id];
+                                    return next;
+                                  })
+                                }
+                              >
+                                Discard draft
+                              </button>
                             </div>
-                            {setupImageDraft?.venueId === selectedSetupVenue.id && setupImageDraft.area === area ? (
-                              <div className={`${ELEMENT_TAG}-overlay`}>
+                          </div>
+                        ) : null}
+                        <label className={`${ELEMENT_TAG}-label`}>
+                          Exterior description
+                          <textarea
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={selectedSetupVenue.description}
+                            maxLength={1000}
+                            onChange={(event) =>
+                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
+                                ...venue,
+                                description: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <label className={`${ELEMENT_TAG}-label`}>
+                          Scene description
+                          <textarea
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={selectedSetupSpace.description}
+                            maxLength={1000}
+                            onChange={(event) =>
+                              patchSetupVenue(selectedSetupVenue.id, (venue) => ({
+                                ...venue,
+                                spaces: [
+                                  {
+                                    ...venueSpaceFor(
+                                      venue,
+                                      venue.category === "public-center" ? "gathering" : "residence",
+                                    ),
+                                    description: event.target.value,
+                                  },
+                                ],
+                              }))
+                            }
+                          />
+                        </label>
+                        {(["exterior", "interior"] as const).map((area) => {
+                          const image =
+                            area === "exterior" ? selectedSetupVenue.presentation.image : selectedSetupSpace.image;
+                          return (
+                            <section key={area} className={`${ELEMENT_TAG}-field`}>
+                              <span className={`${ELEMENT_TAG}-label`}>
+                                {area === "exterior" ? "Exterior photograph" : "Interior photograph"} · optional
+                              </span>
+                              {image ? (
                                 <img
                                   className={`${ELEMENT_TAG}-setup-image-preview`}
-                                  src={setupImageDraft.image.url}
-                                  alt="New image preview"
+                                  src={image.url}
+                                  alt={`${area} of ${selectedSetupVenue.name}`}
                                 />
-                                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={useSetupImage}>
-                                  Use this photograph
-                                </button>
+                              ) : (
+                                <p className={`${ELEMENT_TAG}-hint`}>No image yet. A placeholder will be used.</p>
+                              )}
+                              <div className={`${ELEMENT_TAG}-row`}>
                                 <button
                                   type="button"
                                   className={`${ELEMENT_TAG}-button`}
-                                  onClick={() => setSetupImageDraft(null)}
+                                  disabled={setupVenueBusy}
+                                  onClick={() => void generateSetupImage(selectedSetupVenue, area)}
                                 >
-                                  Discard
+                                  {image ? "Regenerate image" : "Generate image"}
                                 </button>
+                                <input
+                                  className={`${ELEMENT_TAG}-file`}
+                                  type="file"
+                                  accept="image/*"
+                                  disabled={setupVenueBusy}
+                                  aria-label={`Upload ${area} image for ${selectedSetupVenue.name}`}
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    event.target.value = "";
+                                    void uploadSetupImage(selectedSetupVenue, area, file);
+                                  }}
+                                />
+                                {image ? (
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    onClick={() =>
+                                      patchSetupVenue(selectedSetupVenue.id, (venue) =>
+                                        area === "exterior"
+                                          ? { ...venue, presentation: { ...venue.presentation, image: null } }
+                                          : {
+                                              ...venue,
+                                              spaces: [
+                                                {
+                                                  ...venueSpaceFor(
+                                                    venue,
+                                                    venue.category === "public-center" ? "gathering" : "residence",
+                                                  ),
+                                                  image: null,
+                                                },
+                                              ],
+                                            },
+                                      )
+                                    }
+                                  >
+                                    Remove image
+                                  </button>
+                                ) : null}
                               </div>
-                            ) : null}
-                          </section>
-                        );
-                      })}
-                      <details>
-                        <summary>Advanced venue details</summary>
-                        <div className={`${ELEMENT_TAG}-setup-venue-editor`}>
-                          <label className={`${ELEMENT_TAG}-label`}>
-                            Initial condition
-                            <input
-                              className={`${ELEMENT_TAG}-notice-input`}
-                              value={selectedSetupSpace.state.condition}
-                              onChange={(event) =>
-                                patchSetupVenue(selectedSetupVenue.id, (venue) => {
-                                  const space = venueSpaceFor(
-                                    venue,
-                                    venue.category === "public-center" ? "gathering" : "residence",
-                                  );
-                                  return {
-                                    ...venue,
-                                    spaces: [{ ...space, state: { ...space.state, condition: event.target.value } }],
-                                  };
-                                })
-                              }
-                            />
-                          </label>
-                          {(["items", "publicFacts"] as const).map((key) => (
-                            <label key={key} className={`${ELEMENT_TAG}-label`}>
-                              {key === "items" ? "Notable items · one per line" : "Public facts · one per line"}
+                              {setupImageDraft?.venueId === selectedSetupVenue.id && setupImageDraft.area === area ? (
+                                <div className={`${ELEMENT_TAG}-overlay`}>
+                                  <img
+                                    className={`${ELEMENT_TAG}-setup-image-preview`}
+                                    src={setupImageDraft.image.url}
+                                    alt="New image preview"
+                                  />
+                                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={useSetupImage}>
+                                    Use this photograph
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    onClick={() => setSetupImageDraft(null)}
+                                  >
+                                    Discard
+                                  </button>
+                                </div>
+                              ) : null}
+                            </section>
+                          );
+                        })}
+                        <details>
+                          <summary>Advanced venue details</summary>
+                          <div className={`${ELEMENT_TAG}-setup-venue-editor`}>
+                            <label className={`${ELEMENT_TAG}-label`}>
+                              Initial condition
+                              <input
+                                className={`${ELEMENT_TAG}-notice-input`}
+                                value={selectedSetupSpace.state.condition}
+                                onChange={(event) =>
+                                  patchSetupVenue(selectedSetupVenue.id, (venue) => {
+                                    const space = venueSpaceFor(
+                                      venue,
+                                      venue.category === "public-center" ? "gathering" : "residence",
+                                    );
+                                    return {
+                                      ...venue,
+                                      spaces: [{ ...space, state: { ...space.state, condition: event.target.value } }],
+                                    };
+                                  })
+                                }
+                              />
+                            </label>
+                            {(["items", "publicFacts"] as const).map((key) => (
+                              <label key={key} className={`${ELEMENT_TAG}-label`}>
+                                {key === "items" ? "Notable items · one per line" : "Public facts · one per line"}
+                                <textarea
+                                  className={`${ELEMENT_TAG}-textarea`}
+                                  value={selectedSetupSpace.state[key].join("\n")}
+                                  onChange={(event) =>
+                                    patchSetupVenue(selectedSetupVenue.id, (venue) => {
+                                      const space = venueSpaceFor(
+                                        venue,
+                                        venue.category === "public-center" ? "gathering" : "residence",
+                                      );
+                                      return {
+                                        ...venue,
+                                        spaces: [
+                                          {
+                                            ...space,
+                                            state: {
+                                              ...space.state,
+                                              [key]: event.target.value
+                                                .split("\n")
+                                                .map((line) => line.trim())
+                                                .filter(Boolean),
+                                            },
+                                          },
+                                        ],
+                                      };
+                                    })
+                                  }
+                                />
+                              </label>
+                            ))}
+                            <label className={`${ELEMENT_TAG}-label`}>
+                              Features · one per line
                               <textarea
                                 className={`${ELEMENT_TAG}-textarea`}
-                                value={selectedSetupSpace.state[key].join("\n")}
+                                value={selectedSetupSpace.state.features.map((feature) => feature.text).join("\n")}
                                 onChange={(event) =>
                                   patchSetupVenue(selectedSetupVenue.id, (venue) => {
                                     const space = venueSpaceFor(
@@ -18500,10 +18404,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                           ...space,
                                           state: {
                                             ...space.state,
-                                            [key]: event.target.value
+                                            features: event.target.value
                                               .split("\n")
                                               .map((line) => line.trim())
-                                              .filter(Boolean),
+                                              .filter(Boolean)
+                                              .slice(0, 5)
+                                              .map((text, index) => ({
+                                                id: space.state.features[index]?.id ?? freshRowKey(),
+                                                text,
+                                                sourceCharacterId: "",
+                                                locked: false,
+                                                updatedAt: "",
+                                              })),
                                           },
                                         },
                                       ],
@@ -18512,46 +18424,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 }
                               />
                             </label>
-                          ))}
-                          <label className={`${ELEMENT_TAG}-label`}>
-                            Features · one per line
-                            <textarea
-                              className={`${ELEMENT_TAG}-textarea`}
-                              value={selectedSetupSpace.state.features.map((feature) => feature.text).join("\n")}
-                              onChange={(event) =>
-                                patchSetupVenue(selectedSetupVenue.id, (venue) => {
-                                  const space = venueSpaceFor(
-                                    venue,
-                                    venue.category === "public-center" ? "gathering" : "residence",
-                                  );
-                                  return {
-                                    ...venue,
-                                    spaces: [
-                                      {
-                                        ...space,
-                                        state: {
-                                          ...space.state,
-                                          features: event.target.value
-                                            .split("\n")
-                                            .map((line) => line.trim())
-                                            .filter(Boolean)
-                                            .slice(0, 5)
-                                            .map((text, index) => ({
-                                              id: space.state.features[index]?.id ?? freshRowKey(),
-                                              text,
-                                              sourceCharacterId: "",
-                                              locked: false,
-                                              updatedAt: "",
-                                            })),
-                                        },
-                                      },
-                                    ],
-                                  };
-                                })
-                              }
-                            />
-                          </label>
-                        </div>
+                          </div>
+                        </details>
                       </details>
                     </div>
                   ) : (
@@ -18561,101 +18435,74 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 5 ? (
+              {setupStep === 4 ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
-                    Review your village before opening its gates. Return to Step 5 to change a venue.
+                    Review your village before opening its gates. Return to Step 4 to change a venue.
                   </p>
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    {setupName.trim()} · {setupSetting.trim()} ·{" "}
-                    {setupVenues.filter((venue) => venue.classes?.includes("residence")).length} Residences ·{" "}
-                    {setupVenues.filter((venue) => venue.category === "public-center").length} Gathering Place
-                  </p>
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    <strong>Persona:</strong>{" "}
-                    {personas?.find((persona) => persona.id === personaDraft)?.name ?? "Selected Persona"}
-                    {" · "}
-                    <strong>Scenario:</strong> {foundingScenario(setupFoundingReason).label}
-                  </p>
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    <strong>Day 1:</strong> {setupFoundingDetails || "No first-day description was recorded."}
-                  </p>
-                  {setupFoundingGuidance ? (
+                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                    <h3>Village Beginning</h3>
                     <p className={`${ELEMENT_TAG}-hint`}>
-                      <strong>Original founding direction:</strong> {setupFoundingGuidance}
+                      <strong>{setupName.trim()}</strong> · {setupSetting.trim()}
                     </p>
-                  ) : null}
-                  {(snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint) ? (
-                    <div className={`${ELEMENT_TAG}-field`}>
-                      <strong>Starting details</strong>
-                      {(
-                        [
-                          ["Origin", (snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint)?.origin],
-                          [
-                            "Stable world facts",
-                            (snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint)?.worldFacts.join(
-                              "; ",
-                            ),
-                          ],
-                          [
-                            "Opening conditions",
-                            (snapshot?.isFounded
-                              ? snapshot.settings.scenarioImprint
-                              : setupImprint
-                            )?.openingConditions.join("; "),
-                          ],
-                          [
-                            "Visual cues",
-                            (snapshot?.isFounded ? snapshot.settings.scenarioImprint : setupImprint)?.visualCues.join(
-                              "; ",
-                            ),
-                          ],
-                        ] as const
-                      )
-                        .filter(([, value]) => value)
-                        .map(([label, value]) => (
-                          <p className={`${ELEMENT_TAG}-hint`} key={label}>
-                            <strong>{label}:</strong> {value}
-                          </p>
-                        ))}
-                    </div>
-                  ) : null}
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    <strong>Map:</strong> {setupMapSource === "none" ? "Logical map" : "Chosen picture"}
-                    {" · "}
-                    <strong>Lorebooks:</strong>{" "}
-                    {setupLorebookDraft.map((id) => lorebooks?.find((book) => book.id === id)?.name ?? id).join(", ") ||
-                      "None"}
-                  </p>
-                  <div className={`${ELEMENT_TAG}-setup-venue-list`}>
-                    {setupVenues.map((venue) => (
-                      <div key={venue.id} className={`${ELEMENT_TAG}-setup-venue-card`}>
-                        {venue.presentation.image ? (
-                          <img src={venue.presentation.image.url} alt="" />
-                        ) : (
-                          <span className={`${ELEMENT_TAG}-setup-venue-placeholder`} aria-hidden="true">
-                            ⌂
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      <strong>Persona:</strong>{" "}
+                      {personas?.find((persona) => persona.id === personaDraft)?.name ?? "Selected Persona"}
+                      {" · "}
+                      <strong>Scenario:</strong> {foundingScenario(setupFoundingReason).label}
+                    </p>
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      <strong>Day 1:</strong> {setupFoundingDetails || "No first-day description was recorded."}
+                    </p>
+                    {setupFoundingGuidance ? (
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        <strong>Original founding direction:</strong> {setupFoundingGuidance}
+                      </p>
+                    ) : null}
+                  </section>
+                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                    <h3>Map and lore</h3>
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      <strong>Map:</strong> {setupMapSource === "none" ? "Logical map" : "Chosen picture"}
+                      {" · "}
+                      <strong>Lorebooks:</strong>{" "}
+                      {setupLorebookDraft
+                        .map((id) => lorebooks?.find((book) => book.id === id)?.name ?? id)
+                        .join(", ") || "None"}
+                    </p>
+                  </section>
+                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                    <h3>Starting places</h3>
+                    <div className={`${ELEMENT_TAG}-setup-venue-list`}>
+                      {setupVenues.map((venue) => (
+                        <div key={venue.id} className={`${ELEMENT_TAG}-setup-venue-card`}>
+                          {venue.presentation.image ? (
+                            <img src={venue.presentation.image.url} alt="" />
+                          ) : (
+                            <span className={`${ELEMENT_TAG}-setup-venue-placeholder`} aria-hidden="true">
+                              ⌂
+                            </span>
+                          )}
+                          <span>
+                            <strong>
+                              {venue.name} · {venue.category === "public-center" ? "Gathering Place" : "Residence"}
+                            </strong>
+                            <small>
+                              {venue.form} ·{" "}
+                              {venue.occupancy.playerHome
+                                ? "You"
+                                : nameOfCharacter(venue.occupancy.residentCharacterId) || "Community"}
+                            </small>
                           </span>
-                        )}
-                        <span>
-                          <strong>
-                            {venue.name} · {venue.category === "public-center" ? "Gathering Place" : "Residence"}
-                          </strong>
-                          <small>
-                            {venue.form} ·{" "}
-                            {venue.occupancy.playerHome
-                              ? "You"
-                              : nameOfCharacter(venue.occupancy.residentCharacterId) || "Community"}
-                          </small>
-                        </span>
-                      </div>
+                        </div>
+                      ))}
+                    </div>
+                    {setupVenues.map((venue) => (
+                      <p key={`${venue.id}-summary`} className={`${ELEMENT_TAG}-hint`}>
+                        <strong>{venue.name}:</strong> {venue.description} {venue.spaces?.[0]?.description}
+                      </p>
                     ))}
-                  </div>
-                  {setupVenues.map((venue) => (
-                    <p key={`${venue.id}-summary`} className={`${ELEMENT_TAG}-hint`}>
-                      <strong>{venue.name}:</strong> {venue.description} {venue.spaces?.[0]?.description}
-                    </p>
-                  ))}
+                  </section>
                 </>
               ) : null}
 
@@ -18686,7 +18533,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             the village forever.
           */}
           <div className={`${ELEMENT_TAG}-setup-visual`}>
-            {setupStep <= 2 ? (
+            {setupStep <= 1 ? (
               <FoundingScenarioArtwork scenario={setupFoundingReason} />
             ) : (
               <div className={`${ELEMENT_TAG}-setup-map-shell`}>
@@ -18694,14 +18541,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   <MapStage
                     src={setupMapSrc}
                     alt={`A map of ${setupName.trim() || "your new village"}.`}
-                    pins={setupStep < 4 ? [] : draftPins}
-                    placing={setupStep === 4 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
+                    pins={setupStep < 3 ? [] : draftPins}
+                    placing={setupStep === 3 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
                     view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
                     shape={setupMapShape}
-                    onPlace={setupStep === 4 ? placeSetupPin : undefined}
-                    compact={setupStep < 3}
-                    mobile={mobile && setupStep >= 3}
-                    photoPins={setupStep >= 4}
+                    onPlace={setupStep === 3 ? placeSetupPin : undefined}
+                    compact={setupStep < 2}
+                    mobile={mobile && setupStep >= 2}
+                    photoPins={setupStep >= 3}
                   />
                 </div>
               </div>
@@ -18711,7 +18558,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
-                  disabled={busy || setupMapBusy}
+                  disabled={busy || setupMapBusy || setupVenueBusy}
                   onClick={() => gotoSetupStep(setupStep - 1)}
                 >
                   ← Back
@@ -18721,21 +18568,34 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
-                  disabled={busy || setupMapBusy}
+                  disabled={busy || setupMapBusy || setupVenueBusy}
                   onClick={() => {
-                    if (setupStep === 2 && !snapshot?.isFounded) {
-                      if (setupImprintApprovedKey === setupImprintSourceKey) gotoSetupStep(3);
-                      else if (setupImprintPreviewReady) approveSetupImprint();
-                      else void draftSetupImprint();
-                    } else gotoSetupStep(setupStep + 1);
+                    if (
+                      setupStep === 3 &&
+                      !snapshot?.isFounded &&
+                      setupVenues.some((venue) => !venue.description.trim() || !venue.spaces?.[0]?.description.trim())
+                    ) {
+                      const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
+                      const residents = residences.filter((venue) => !venue.occupancy.playerHome);
+                      if (
+                        residences.some((venue) => venue.occupancy.playerHome) &&
+                        residents.length >= SETUP_MIN_VILLAGER_COUNT &&
+                        residents.length <= SETUP_MAX_VILLAGER_COUNT &&
+                        setupVenues.some((venue) => venue.category === "public-center") &&
+                        residents.every((venue) => !!venue.occupancy.residentCharacterId) &&
+                        new Set(residents.map((venue) => venue.occupancy.residentCharacterId)).size === residents.length
+                      ) {
+                        void generateSetupText(setupVenues, true);
+                        return;
+                      }
+                    }
+                    gotoSetupStep(setupStep + 1);
                   }}
                 >
-                  {setupStep === 2 && !snapshot?.isFounded
-                    ? setupImprintBusy
-                      ? "Drafting…"
-                      : setupImprintApprovedKey === setupImprintSourceKey || setupImprintPreviewReady
-                        ? "Use details and continue →"
-                        : "Preview starting details →"
+                  {setupStep === 3 &&
+                  !snapshot?.isFounded &&
+                  setupVenues.some((venue) => !venue.description.trim() || !venue.spaces?.[0]?.description.trim())
+                    ? "Draft places →"
                     : "Next →"}
                 </button>
               ) : (

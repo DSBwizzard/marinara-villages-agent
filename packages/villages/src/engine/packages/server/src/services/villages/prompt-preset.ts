@@ -528,11 +528,11 @@ export function villageFoundingSetting(village: {
   } | null;
 }): string {
   const imprint = village.scenarioImprint;
-  const origin = imprint?.origin || (!imprint ? village.foundingDetails.trim() : "");
+  const origin = imprint?.origin.trim() ?? "";
   return [
     villageCurrentSetting(village),
     origin ? `Before the village began (past, not a standing condition): ${origin}` : "",
-    imprint && village.foundingDetails.trim()
+    village.foundingDetails.trim()
       ? `The player's description of Day 1 (use during founding only): ${village.foundingDetails.trim()}`
       : "",
     imprint?.openingConditions.length
@@ -554,7 +554,8 @@ export function villageRelevantOrigin(
   const origin = village.scenarioImprint?.origin.trim() || village.foundingDetails.trim();
   if (!origin) return "";
   const q = query.toLowerCase();
-  const asksHistory = /\b(found|founded|founding|origin|history|began|beginning|started|settled|first came)\b/u.test(q);
+  const asksHistory =
+    /\b(found|founded|founding|origin|history|begin|began|beginning|started|settled|first came)\b/u.test(q);
   const ordinaryWords = new Set([
     "village",
     "people",
