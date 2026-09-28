@@ -301,6 +301,8 @@ export type VillageRemap = {
   attempts: number;
   /** Display-only, exactly like `VillageChronicleEntry.at`. Read by nothing. */
   generatedAt: string;
+  /** Present on compact founding translations so later schedule drift can be applied locally. */
+  foundingLens?: string;
 };
 
 /**
@@ -1071,6 +1073,11 @@ export type VillageState = {
     completedIds: string[];
     currentId: string;
     error: string;
+    stage?: "reading" | "lore" | "resolving" | "model" | "applying" | "saving";
+    stageStartedAt?: string;
+    attempt?: number;
+    loreEntryCount?: number;
+    modelName?: string;
   } | null;
   /**
    * When the village began keeping its own time. Empty until the first write,

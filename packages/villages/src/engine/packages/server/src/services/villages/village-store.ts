@@ -564,6 +564,7 @@ export function coerceRemap(value: unknown): VillageRemap | null {
     moves,
     routine: boundText(raw.routine, MAX_ROUTINE_SUMMARY_LENGTH),
     signature: asTrimmedString(raw.signature),
+    ...(typeof raw.foundingLens === "string" ? { foundingLens: raw.foundingLens.slice(0, 100) } : {}),
     attempts: Math.max(0, Math.min(MAX_REMAP_ATTEMPTS, Math.floor(attempts))),
     // Left empty rather than stamped with "now", exactly as the agenda is: a
     // record read off disk has no answer to when it was written.
@@ -1767,6 +1768,24 @@ export function coerceVillageState(value: unknown): VillageState {
         completedIds: asStringArray(preparation.completedIds).slice(0, 12),
         currentId: asTrimmedString(preparation.currentId),
         error: boundText(preparation.error, 300),
+        ...(preparation.stage === "reading" ||
+        preparation.stage === "lore" ||
+        preparation.stage === "resolving" ||
+        preparation.stage === "model" ||
+        preparation.stage === "applying" ||
+        preparation.stage === "saving"
+          ? { stage: preparation.stage }
+          : {}),
+        ...(asIsoString(preparation.stageStartedAt)
+          ? { stageStartedAt: asIsoString(preparation.stageStartedAt)! }
+          : {}),
+        ...(typeof preparation.attempt === "number"
+          ? { attempt: Math.max(0, Math.min(3, Math.floor(preparation.attempt))) }
+          : {}),
+        ...(typeof preparation.loreEntryCount === "number"
+          ? { loreEntryCount: Math.max(0, Math.floor(preparation.loreEntryCount)) }
+          : {}),
+        ...(typeof preparation.modelName === "string" ? { modelName: preparation.modelName.slice(0, 120) } : {}),
       };
     })(),
     // Left empty rather than stamped with "now": a record that predates the

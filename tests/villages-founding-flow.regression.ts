@@ -74,6 +74,33 @@ async function main() {
     { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     "preparation progress survives loading",
   );
+  assert.deepEqual(
+    coerceVillageState({
+      foundingPreparation: {
+        status: "pending",
+        completedIds: ["one"],
+        currentId: "two",
+        error: "",
+        stage: "model",
+        stageStartedAt: "2026-09-28T12:00:00.000Z",
+        attempt: 2,
+        loreEntryCount: 4,
+        modelName: "Flash-class model",
+      },
+    }).foundingPreparation,
+    {
+      status: "pending",
+      completedIds: ["one"],
+      currentId: "two",
+      error: "",
+      stage: "model",
+      stageStartedAt: "2026-09-28T12:00:00.000Z",
+      attempt: 2,
+      loreEntryCount: 4,
+      modelName: "Flash-class model",
+    },
+    "the active stage and bounded retry count survive a process restart",
+  );
   assert.equal(coerceVillageState({}).foundingGuidance, "", "older villages have no narrative direction");
   assert.equal(coerceVillageState({ foundingGuidance: "Favor quiet bonds." }).foundingGuidance, "Favor quiet bonds.");
   const ongoingOnly = readScenarioImprint({
@@ -224,8 +251,10 @@ async function main() {
   assert.ok(village.includes("image: foundingImage(row.image)"));
   assert.ok(village.includes("features: features.map"));
   assert.ok(village.includes("marker.completedIds.includes(id)"));
-  assert.ok(village.includes("await writeVillagerAgenda(id)"));
-  assert.ok(village.includes("readNativeScheduleSnapshot(new Date())).cardsReadable"));
+  assert.ok(village.includes("await proposeCompactFounding("));
+  assert.ok(village.includes("await storeRemap(id, remap, schedule)"));
+  assert.ok(village.includes("readNativeScheduleSnapshot(new Date())"));
+  assert.ok(village.includes("snapshot.cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
   assert.ok(drafts.includes("foundingGuidance"));
   const builder = await readFile(join(root, "scripts/build-feature-packages.mjs"), "utf8");

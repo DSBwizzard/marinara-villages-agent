@@ -115,6 +115,11 @@ async function main() {
     assert.ok(!picked.join(" ").includes("secret canal"));
     assert.ok(!picked.join(" ").includes("Never"));
     assert.ok(!picked.join(" ").includes("Oversized"), "oversized entries do not displace selected facts");
+    await assert.rejects(
+      readVillageLore(["world", "missing"], "A harbor village", undefined, 1_600, true),
+      /Selected lorebook missing could not be found/,
+    );
+    assert.equal((await readVillageLore(["world"], "A harbor village", undefined, 200, true)).length, 2);
     assert.equal((await readVillageLore(["world"], "A mountain village")).length, 1);
     entries.world[1]!.keys = ["^harbor$"];
     entries.world[1]!.useRegex = true;

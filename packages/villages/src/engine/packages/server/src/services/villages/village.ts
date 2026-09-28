@@ -160,6 +160,7 @@ import type {
   VillageWish,
 } from "./types.js";
 import { readVenueRequestCore, venueRequestDraft, type VenueRequestCore } from "./venue-requests.js";
+import { proposeCompactFounding, rebaseFoundingRemap } from "./founding-compact.js";
 import {
   proposeAgenda,
   proposeHappenings,
@@ -1140,6 +1141,7 @@ async function writeVillagerRemap(
   const signature = remapSignature(context);
   const attempts = previous && previous.signature === signature ? previous.attempts + 1 : 1;
   const { remap, failure } = await proposeRemap(context, { attempts });
+  remap.foundingLens = remapSignatureFor(village, characterId, "founding", [], wishes);
   await storeRemap(characterId, remap, schedule);
   if (failure) {
     await mutateVillageState((state) => {
@@ -1354,6 +1356,19 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
           assertVillagePresence(state);
         });
       }
+      continue;
+    }
+    // A founding translation already chose village terms for each distinct native
+    // activity. New weekly slots can reuse those terms without another model walk.
+    const lens = remapSignatureFor(
+      village,
+      villager.characterId,
+      "founding",
+      [],
+      wishesFor(village, villager.characterId),
+    );
+    if (villager.remap?.foundingLens === lens && villager.remap.signature !== signature) {
+      await storeRemap(villager.characterId, rebaseFoundingRemap(villager.remap, schedule, signature), schedule);
       continue;
     }
     try {
@@ -3636,40 +3651,188 @@ export async function runVillageSetup(input: {
 
 let foundingWork: Promise<void> | null = null;
 
+function foundedVillagerPrepared(village: VillageState, id: string, schedule: NativeWeekSchedule | null): boolean {
+  const resident = village.villagers.find((entry) => entry.characterId === id);
+  return !!(
+    resident?.agenda?.generatedAt &&
+    !resident.agenda.personalizationPending &&
+    (!schedule ||
+      resident.ingestSchedule === false ||
+      resident.remap?.signature ===
+        remapSignatureFor(village, id, schedule.weekStart, remapBlocks(schedule), wishesFor(village, id)))
+  );
+}
+
 /** Durable, idempotent first-founding work. The read route restarts it after a process exit. */
 export function prepareFoundedVillage(): Promise<void> {
   if (foundingWork) return foundingWork;
   foundingWork = (async () => {
     const initial = await readVillageState();
     if (initial.foundingPreparation?.status !== "pending") return;
-    if (!(await readNativeScheduleSnapshot(new Date())).cardsReadable)
-      throw new Error("The character library could not be read, so the villagers' schedules could not be checked.");
+    let weeks: Map<string, NativeWeekSchedule> | null = null;
     for (const villager of initial.villagers) {
       const id = villager.characterId;
       const latest = await readVillageState();
       if (latest.foundingPreparation?.status !== "pending") return;
       if (latest.foundingPreparation.completedIds.includes(id)) continue;
-      await mutateVillageState((state) => {
-        if (state.foundingPreparation?.status === "pending") state.foundingPreparation.currentId = id;
-      });
-      try {
-        const current = (await readVillageState()).villagers.find((entry) => entry.characterId === id);
-        if (!current?.agenda?.generatedAt || current.agenda.personalizationPending) {
-          if (!(await writeVillagerAgenda(id))) throw new Error("This villager's agenda was not prepared.");
-        }
-        await clearVillagerRemap(id);
-        await refreshVillagerRemaps(await readVillageState(), new Date(), id);
-        const prepared = (await readVillageState()).villagers.find((entry) => entry.characterId === id);
-        if (prepared?.remapFailure) throw new Error(prepared.remapFailure.message);
-        await mutateVillageState((state) => {
+      const stage = async (
+        next: NonNullable<VillageState["foundingPreparation"]>["stage"],
+        attempt: number,
+        loreEntryCount?: number,
+        modelName?: string,
+      ) =>
+        mutateVillageState((state) => {
           const marker = state.foundingPreparation;
-          if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
+          if (marker?.status !== "pending") return;
+          marker.currentId = id;
+          marker.stage = next;
+          marker.stageStartedAt = new Date().toISOString();
+          marker.attempt = attempt;
+          if (loreEntryCount !== undefined) marker.loreEntryCount = loreEntryCount;
+          marker.modelName = modelName ?? "";
         });
-      } catch (error) {
+      const previousAttempt =
+        latest.foundingPreparation.currentId === id ? (latest.foundingPreparation.attempt ?? 0) : 0;
+      if (previousAttempt >= 3) {
+        const snapshot = await readNativeScheduleSnapshot(new Date());
+        if (
+          snapshot.cardsReadable &&
+          foundedVillagerPrepared(
+            latest,
+            id,
+            snapshot.schedules.find((schedule) => schedule.characterId === id) ?? null,
+          )
+        ) {
+          weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
+          await mutateVillageState((state) => {
+            const marker = state.foundingPreparation;
+            if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
+          });
+          continue;
+        }
+      }
+      let done = false;
+      for (let attempt = previousAttempt + 1; attempt <= 3; attempt += 1) {
+        try {
+          await stage("reading", attempt, 0);
+          if (!weeks) {
+            const snapshot = await readNativeScheduleSnapshot(new Date());
+            if (!snapshot.cardsReadable)
+              throw new Error(
+                "The character library could not be read, so the villagers' schedules could not be checked.",
+              );
+            weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
+          }
+          const currentState = await readVillageState();
+          const current = currentState.villagers.find((entry) => entry.characterId === id);
+          if (!current) throw new Error("This villager is no longer in the founding roster.");
+          const schedule = weeks.get(id) ?? null;
+          if (foundedVillagerPrepared(currentState, id, schedule)) {
+            await mutateVillageState((state) => {
+              const marker = state.foundingPreparation;
+              if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
+            });
+            done = true;
+            break;
+          }
+          const card = await readEffectiveVillagerCard(current);
+          if (!card) throw new Error(`The character card for ${current.cardSnapshot.name} could not be read.`);
+          const setting = villageFoundingSetting(currentState);
+          const venues = remapVenues(currentState.venues);
+          await stage("lore", attempt);
+          const lore = await readVillageLore(
+            currentState.selectedLorebookIds,
+            [
+              setting,
+              card.name,
+              card.summary,
+              card.personality,
+              card.description,
+              ...venues.map((venue) => venue.name),
+              ...(schedule ? remapBlocks(schedule).map((block) => block.activity) : []),
+            ].join("\n"),
+            undefined,
+            currentState.loreTokenBudget,
+            true,
+          );
+          await stage("resolving", attempt, lore.length);
+          const result = await proposeCompactFounding(
+            {
+              village: currentState.name,
+              setting,
+              card,
+              venues,
+              lore,
+              home: (() => {
+                const home = currentState.venues.find((venue) => venue.occupancy.residentCharacterId === id);
+                return home
+                  ? [home.name, home.form, home.purpose, home.state.condition].filter(Boolean).join("; ")
+                  : "";
+              })(),
+              completedWishes: current.completedWishes,
+              activeWishes: current.agenda?.generatedAt ? current.agenda.wishes : [],
+              schedule,
+            },
+            async (modelName) => {
+              await stage("model", attempt, lore.length, modelName);
+            },
+            attempt === 1,
+          );
+          await stage("saving", attempt);
+          await storeAgenda(
+            id,
+            result.agenda,
+            current.completedWishes.map((entry) => entry.wish.id),
+            current.agenda?.wishes.map((entry) => entry.id) ?? [],
+          );
+          if (schedule && current.ingestSchedule !== false) {
+            await stage("applying", attempt);
+            const withAgenda = await readVillageState();
+            const remap: VillageRemap = {
+              weekStart: schedule.weekStart,
+              moves: result.moves,
+              routine: result.agenda.routineSummary,
+              signature: remapSignatureFor(
+                withAgenda,
+                id,
+                schedule.weekStart,
+                remapBlocks(schedule),
+                wishesFor(withAgenda, id),
+              ),
+              foundingLens: remapSignatureFor(withAgenda, id, "founding", [], wishesFor(withAgenda, id)),
+              attempts: 1,
+              generatedAt: new Date().toISOString(),
+            };
+            await storeRemap(id, remap, schedule);
+            if (
+              (await readVillageState()).villagers.find((entry) => entry.characterId === id)?.remap?.signature !==
+              remap.signature
+            )
+              throw new Error("The native schedule changed while its village translation was being saved.");
+          }
+          await stage("saving", attempt);
+          await mutateVillageState((state) => {
+            const marker = state.foundingPreparation;
+            if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
+            if (marker) marker.error = "";
+          });
+          done = true;
+          break;
+        } catch (error) {
+          await mutateVillageState((state) => {
+            const marker = state.foundingPreparation;
+            if (marker?.status !== "pending") return;
+            marker.error = boundText(error instanceof Error ? error.message : String(error), 300);
+            if (attempt === 3) marker.status = "failed";
+          });
+        }
+      }
+      if (!done) {
         await mutateVillageState((state) => {
-          if (state.foundingPreparation?.status !== "pending") return;
-          state.foundingPreparation.status = "failed";
-          state.foundingPreparation.error = boundText(error instanceof Error ? error.message : String(error), 300);
+          if (state.foundingPreparation?.status === "pending") {
+            state.foundingPreparation.status = "failed";
+            state.foundingPreparation.error ||= "Preparation stopped after three attempts. Retry this villager.";
+          }
         });
         return;
       }
@@ -3678,6 +3841,7 @@ export function prepareFoundedVillage(): Promise<void> {
       if (state.foundingPreparation?.status === "pending") {
         state.foundingPreparation.status = "ready";
         state.foundingPreparation.currentId = "";
+        state.foundingPreparation.stage = undefined;
       }
     });
   })()
@@ -3705,6 +3869,8 @@ export async function retryFoundedVillagePreparation(): Promise<VillageSnapshot>
     if (!marker || marker.status !== "failed") return;
     marker.status = "pending";
     marker.error = "";
+    marker.attempt = 0;
+    marker.stage = undefined;
   });
   queueMicrotask(() => {
     void prepareFoundedVillage();
