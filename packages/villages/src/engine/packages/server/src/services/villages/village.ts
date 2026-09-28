@@ -4,11 +4,11 @@
 // route file so the rule is stated once: a card is authoritative when it still
 // exists, and a remembered name stands in when it does not.
 import {
+  captureMissingVillagerCardColors,
   findPlayerPersona,
   findVillagerCard,
   listPlayerPersonas,
   listVillagerCards,
-  listVillagerDialogueColors,
   readEffectiveVillagerCard,
   toCatalogEntry,
   type VillagerCard,
@@ -190,11 +190,13 @@ function projectVillager(
   cardName: string | null,
   cardSummary: string,
   cardTags: string[],
+  nameColor: string,
   dialogueColor: string,
   place: VillagePlaceView | null,
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
+    nameColor,
     dialogueColor,
     sprite: villager.sprite
       ? {
@@ -525,7 +527,7 @@ export function projectHomeLines(
   return lines;
 }
 
-/** The village as the tab draws it: live card fields, with remembered names as the fallback. */
+/** The village as the tab draws it: live library labels and adopted card colors. */
 export async function buildVillageSnapshot(now: Date = new Date()): Promise<VillageSnapshot> {
   let village = await readVillageState();
   if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
@@ -538,9 +540,22 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
   const residentIds = village.villagers.map((villager) => villager.characterId);
   const cards = await listVillagerCards(residentIds);
   const cardsById = new Map(cards.map((card) => [card.id, card]));
-  const dialogueColors = village.characterSpeechColors
-    ? await listVillagerDialogueColors(residentIds)
-    : new Map<string, string>();
+  // Existing residents adopted their cards before colors were captured. Fill only
+  // the missing fields once; later card edits still require Apply refresh.
+  if (
+    village.villagers.some(
+      ({ cardSnapshot }) => cardSnapshot.nameColor === undefined || cardSnapshot.dialogueColor === undefined,
+    )
+  ) {
+    await mutateVillageState((state) => {
+      for (const resident of state.villagers) {
+        const card = cardsById.get(resident.characterId);
+        if (resident.cardSnapshot.nameColor === undefined || resident.cardSnapshot.dialogueColor === undefined)
+          resident.cardSnapshot = captureMissingVillagerCardColors(resident.cardSnapshot, card ?? null);
+      }
+    });
+    village = await readVillageState();
+  }
   const player = readPlayerIdentity(village);
   const { activeVenueSession } = await import("./venue-session.js");
   const residenceAccess = await activeVenueSession();
@@ -555,7 +570,8 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
       card?.name ?? null,
       card?.summary ?? "",
       card?.tags ?? [],
-      card ? (dialogueColors.get(villager.characterId) ?? "") : "",
+      villager.cardSnapshot.nameColor ?? "",
+      villager.cardSnapshot.dialogueColor ?? "",
       villagerPlaceView(village, villager, null, minuteOfDay, now),
     );
   });
@@ -1487,6 +1503,8 @@ export async function addVillager(characterId: string): Promise<void> {
           backstory: card.backstory,
           appearance: card.appearance,
           exampleDialogue: card.exampleDialogue,
+          nameColor: card.nameColor,
+          dialogueColor: card.dialogueColor,
           capturedAt: addedAt,
         },
         addedAt,
@@ -1524,6 +1542,8 @@ function snapshotFromCard(card: VillagerCard, revision: number): VillageVillager
     backstory: card.backstory,
     appearance: card.appearance,
     exampleDialogue: card.exampleDialogue,
+    nameColor: card.nameColor,
+    dialogueColor: card.dialogueColor,
     capturedAt: new Date().toISOString(),
   };
 }
@@ -1542,6 +1562,8 @@ function snapshotContent(snapshot: VillageVillagerCardSnapshot): string {
     backstory: snapshot.backstory,
     appearance: snapshot.appearance,
     exampleDialogue: snapshot.exampleDialogue,
+    nameColor: snapshot.nameColor ?? "",
+    dialogueColor: snapshot.dialogueColor ?? "",
   });
 }
 
@@ -1567,6 +1589,12 @@ export async function applyVillagerRefresh(characterId: string): Promise<Village
   const card = await findVillagerCard(characterId);
   if (!card) throw badRequest("That character card is no longer in your library.");
   const proposed = snapshotFromCard(card, villager.cardSnapshot.revision + 1);
+  const proseChanged =
+    snapshotContent({
+      ...villager.cardSnapshot,
+      nameColor: proposed.nameColor,
+      dialogueColor: proposed.dialogueColor,
+    }) !== snapshotContent(proposed);
   if (
     snapshotContent(proposed) === snapshotContent(villager.cardSnapshot) &&
     villager.cardSnapshot.sourceStatus === "available"
@@ -1577,9 +1605,11 @@ export async function applyVillagerRefresh(characterId: string): Promise<Village
     const resident = state.villagers.find((entry) => entry.characterId === characterId);
     if (!resident) return;
     resident.cardSnapshot = proposed;
-    resident.agenda = unwrittenVillageAgenda(state.venues, card.name);
-    resident.remap = null;
-    resident.remapFailure = null;
+    if (proseChanged) {
+      resident.agenda = unwrittenVillageAgenda(state.venues, card.name);
+      resident.remap = null;
+      resident.remapFailure = null;
+    }
   });
   return buildVillageSnapshot();
 }

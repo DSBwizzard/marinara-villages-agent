@@ -10,7 +10,6 @@ import type {
   CapabilityResourceHost,
 } from "@marinara-engine/shared";
 import { asRecord, asString, asStringArray, asTrimmedString, condense } from "./coerce.js";
-import { villageEngineJson } from "./engine-loopback.js";
 import { villagesResources } from "./package-runtime.js";
 import type { VillageCatalogEntry, VillagePersona, VillageVillager, VillageVillagerCardSnapshot } from "./types.js";
 
@@ -48,6 +47,8 @@ export type VillagerCard = {
   appearance: string;
   /** Example dialogue, used to prime run-on replies. */
   exampleDialogue: string;
+  nameColor: string;
+  dialogueColor: string;
 };
 
 export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot): VillagerCard {
@@ -64,6 +65,8 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
     backstory: snapshot.backstory,
     appearance: snapshot.appearance,
     exampleDialogue: snapshot.exampleDialogue,
+    nameColor: snapshot.nameColor ?? "",
+    dialogueColor: snapshot.dialogueColor ?? "",
   };
 }
 
@@ -134,26 +137,21 @@ export function readVillagerCard(record: CapabilityCharacterRecord): VillagerCar
     backstory: expand(extensions.backstory),
     appearance: expand(extensions.appearance),
     exampleDialogue: expand(data.mes_example).trim(),
+    nameColor: asTrimmedString(extensions.nameColor),
+    dialogueColor: asTrimmedString(extensions.dialogueColor),
   };
 }
 
-/** Color columns are not exposed by the capability resource host; read the Engine's public card route. */
-export async function listVillagerDialogueColors(characterIds: readonly string[]): Promise<Map<string, string>> {
-  const colors = await Promise.all(
-    characterIds.map(async (id) => {
-      try {
-        const record = asRecord(
-          await villageEngineJson<unknown>(`/api/characters/${encodeURIComponent(id)}`, {
-            signal: AbortSignal.timeout(3000),
-          }),
-        );
-        return [id, asTrimmedString(record.dialogueColor)] as const;
-      } catch {
-        return [id, ""] as const;
-      }
-    }),
-  );
-  return new Map(colors);
+/** Fill only legacy missing paint fields; a later card edit waits for explicit refresh. */
+export function captureMissingVillagerCardColors(
+  snapshot: VillageVillagerCardSnapshot,
+  card: VillagerCard | null,
+): VillageVillagerCardSnapshot {
+  return {
+    ...snapshot,
+    nameColor: snapshot.nameColor ?? card?.nameColor ?? "",
+    dialogueColor: snapshot.dialogueColor ?? card?.dialogueColor ?? "",
+  };
 }
 
 /** Every card in the library, name-ordered for the picker. */

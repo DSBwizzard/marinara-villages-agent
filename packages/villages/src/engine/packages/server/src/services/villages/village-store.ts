@@ -338,6 +338,8 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     backstory: asString(raw.backstory),
     appearance: asString(raw.appearance),
     exampleDialogue: asString(raw.exampleDialogue),
+    ...(typeof raw.nameColor === "string" ? { nameColor: asTrimmedString(raw.nameColor) } : {}),
+    ...(typeof raw.dialogueColor === "string" ? { dialogueColor: asTrimmedString(raw.dialogueColor) } : {}),
     capturedAt,
   };
 }
