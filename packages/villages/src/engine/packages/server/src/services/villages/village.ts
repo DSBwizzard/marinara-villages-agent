@@ -138,6 +138,7 @@ import type {
   VillageMomentView,
   VillageOpportunity,
   VillagePersonaEntry,
+  VillagePersonaPreview,
   VillagePlaceView,
   VillagePlayerIdentity,
   VillageRecap,
@@ -577,8 +578,8 @@ export async function buildVillageCatalog(): Promise<VillageCatalogEntry[]> {
  * Every Persona the player could be, for the picker.
  *
  * Narrowed to what a chooser needs: the full identity text is what a villager
- * is told, and sending a library's worth of it down to fill a dropdown would be
- * paying for prose nobody reads on the way.
+ * is told, and sending a library's worth of it down to fill a card strip would
+ * be paying for prose nobody reads on the way.
  */
 export async function buildVillagePersonaCatalog(): Promise<VillagePersonaEntry[]> {
   const personas = await listPlayerPersonas();
@@ -590,6 +591,23 @@ export async function buildVillagePersonaCatalog(): Promise<VillagePersonaEntry[
     avatarPath: persona.avatarPath,
     avatarCrop: persona.avatarCrop,
   }));
+}
+
+/** Read only the chosen Persona's authored fields for the Founding preview. */
+export async function readVillagePersonaPreview(personaId: string): Promise<VillagePersonaPreview | null> {
+  const persona = await findPlayerPersona(personaId);
+  // Some Engine readers return the first library record for an unknown id.
+  if (!persona || persona.id !== personaId) return null;
+  return {
+    id: persona.id,
+    name: persona.name,
+    description: persona.description,
+    appearance: persona.appearance,
+    personality: persona.personality,
+    backstory: persona.backstory,
+    avatarPath: persona.avatarPath,
+    avatarCrop: persona.avatarCrop,
+  };
 }
 
 /**

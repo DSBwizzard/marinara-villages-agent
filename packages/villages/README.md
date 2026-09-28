@@ -39,6 +39,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.49 adds a searchable Persona gallery to Founding's Connections & Persona step. The chosen Persona shows a read-only portrait and short excerpts from authored identity fields, while System, Narration, and Images remain the three connection choices. Founding navigation now sits below the right-side visual on every step.
+
 0.6.48 makes Scenarios reviewed founding imprints. A draft separates historical origin, editable current world facts, opening conditions, and first-map visual cues before the village is saved. Initial venues and villager agendas can draw on that opening; ordinary village life uses current state instead of replaying the premise or founding direction. The Scenario locks after founding, while current world facts can still be edited. Existing villages keep their original text as history without generated retroactive changes.
 
 0.6.47 makes Village Identity fit the Engine's larger desktop text scale: the scenario cards and writing fields take less vertical room, and the illustration is shorter so its Next button remains visible. The wizard's height now includes its padding, eliminating the extra page scrollbar.
