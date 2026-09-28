@@ -1019,6 +1019,7 @@ export type VillageState = {
   name: string;
   /** Per-village writing choices for live venue visits. */
   narrationStyle: VillageNarrationStyle;
+  characterSpeechColors: boolean;
   /**
    * The one line of world the player wrote, e.g. "a rain-soaked harbour town".
    * Empty means the village has no place yet, and the setting and venue blocks
@@ -1424,6 +1425,7 @@ export type VillagePlayerIdentity = {
 /** A villager as the tab renders it: live card fields where they exist, cached name otherwise. */
 export type VillageVillagerView = {
   characterId: string;
+  dialogueColor: string;
   sprite: (VillageResidentSprite & { images: Array<{ view: "front" | "side"; label: string; url: string }> }) | null;
   name: string;
   summary: string;
@@ -1461,6 +1463,7 @@ export type VillageVillagerView = {
  * This snapshot view stays focused on the village's world context and knowledge.
  */
 export type VillageSettingsView = {
+  characterSpeechColors: boolean;
   visitRetention: VillageState["visitRetention"];
   promptKnowledge: string;
   defaultPromptKnowledge: string;

@@ -109,6 +109,7 @@ import {
   setVillagePromptKnowledge,
   setVillageLoreSettings,
   setVillageStoryPace,
+  setVillageCharacterSpeechColors,
   setVillageSetting,
   setVillageTownMapImage,
   setVillageVenueImage,
@@ -761,6 +762,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       townMapView?: unknown;
       homeBuildingNames?: unknown;
       storyPace?: unknown;
+      characterSpeechColors?: unknown;
       visitRetention?: unknown;
     };
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
@@ -781,6 +783,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
       }
       if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
       if (body.storyPace !== undefined) snapshot = await setVillageStoryPace(body.storyPace);
+      if (body.characterSpeechColors !== undefined)
+        snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
       if (body.visitRetention !== undefined) {
         await setVenueVisitRetention(body.visitRetention);
         snapshot = await buildVillageSnapshot();

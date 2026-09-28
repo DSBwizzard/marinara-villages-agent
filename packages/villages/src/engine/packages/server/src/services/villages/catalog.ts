@@ -10,6 +10,7 @@ import type {
   CapabilityResourceHost,
 } from "@marinara-engine/shared";
 import { asRecord, asString, asStringArray, asTrimmedString, condense } from "./coerce.js";
+import { villageEngineJson } from "./engine-loopback.js";
 import { villagesResources } from "./package-runtime.js";
 import type { VillageCatalogEntry, VillagePersona, VillageVillager, VillageVillagerCardSnapshot } from "./types.js";
 
@@ -134,6 +135,25 @@ export function readVillagerCard(record: CapabilityCharacterRecord): VillagerCar
     appearance: expand(extensions.appearance),
     exampleDialogue: expand(data.mes_example).trim(),
   };
+}
+
+/** Color columns are not exposed by the capability resource host; read the Engine's public card route. */
+export async function listVillagerDialogueColors(characterIds: readonly string[]): Promise<Map<string, string>> {
+  const colors = await Promise.all(
+    characterIds.map(async (id) => {
+      try {
+        const record = asRecord(
+          await villageEngineJson<unknown>(`/api/characters/${encodeURIComponent(id)}`, {
+            signal: AbortSignal.timeout(3000),
+          }),
+        );
+        return [id, asTrimmedString(record.dialogueColor)] as const;
+      } catch {
+        return [id, ""] as const;
+      }
+    }),
+  );
+  return new Map(colors);
 }
 
 /** Every card in the library, name-ordered for the picker. */
