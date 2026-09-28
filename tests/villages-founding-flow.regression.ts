@@ -13,7 +13,7 @@ async function main() {
   const { coerceVillageState } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
   );
-  const { parsePlace, runVillageSetup, assertFoundingScenarioLocked } = await import(
+  const { parsePlace, runVillageSetup, assertFoundingScenarioLocked, validateFirstDayDescription } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village.ts")).href
   );
   const { readScenarioImprint } = await import(
@@ -159,17 +159,17 @@ async function main() {
     /locked/,
   );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
+  assert.throws(() => validateFirstDayDescription("", true), /Describe the village's first day/);
+  assert.doesNotThrow(() => validateFirstDayDescription("They gather at dawn.", true));
+  assert.doesNotThrow(() => validateFirstDayDescription("", false), "older founded villages keep their record");
   await assert.rejects(
-    runVillageSetup({ ...identity, foundingReason: "none", foundingDetails: "A secret quest", foundingGuidance: "" }),
-    /No scenario cannot include/,
-  );
-  await assert.rejects(
-    runVillageSetup({ ...identity, foundingReason: "none", foundingDetails: "", foundingGuidance: "A secret quest" }),
-    /No scenario cannot include/,
-  );
-  await assert.rejects(
-    runVillageSetup({ ...identity, foundingReason: "custom", foundingDetails: "", foundingGuidance: "" }),
-    /Write a scenario premise/,
+    runVillageSetup({
+      ...identity,
+      foundingReason: "none",
+      foundingDetails: "They gather at dawn.",
+      foundingGuidance: "A secret quest",
+    }),
+    /Open beginning does not use/,
   );
   await assert.rejects(
     runVillageSetup({
@@ -223,10 +223,11 @@ async function main() {
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
-  assert.ok(client.includes("photoPins={setupStep >= 5}"));
-  assert.ok(client.includes("Scenario starting idea (required)"));
-  assert.ok(client.includes("Founding direction (optional)"));
-  assert.ok(client.includes('setupFoundingReason === "none"'));
+  assert.ok(client.includes("photoPins={setupStep >= 4}"));
+  assert.ok(client.includes("What is this village like?"));
+  assert.ok(client.includes("What happens on the village&apos;s first day?"));
+  assert.ok(client.includes("Open beginning"));
+  assert.ok(client.includes("Search lorebooks"));
   assert.ok(client.includes("Reset all venues"));
   assert.ok(client.includes("Place a Residence"));
   assert.ok(client.includes("Place a Gathering Place"));
@@ -236,11 +237,10 @@ async function main() {
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   const review =
     client
-      .split("{setupStep === 6 ? (")[1]
+      .split("{setupStep === 5 ? (")[1]
       ?.split("<div className={`${ELEMENT_TAG}-row`}>\n                {setupStep > 0")[0] ?? "";
   assert.ok(review.includes("Review your village"));
-  assert.ok(review.includes("Scenario premise:"));
-  assert.ok(review.includes("Narrative direction:"));
+  assert.ok(review.includes("Day 1:"));
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
   assert.ok(routes.includes('"/setup/venues/draft"'));

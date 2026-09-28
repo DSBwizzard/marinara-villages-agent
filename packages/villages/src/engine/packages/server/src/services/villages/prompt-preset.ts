@@ -531,13 +531,16 @@ export function villageFoundingSetting(village: {
   const origin = imprint?.origin || (!imprint ? village.foundingDetails.trim() : "");
   return [
     villageCurrentSetting(village),
-    origin ? `Founding history (past, not a standing condition): ${origin}` : "",
+    origin ? `Before the village began (past, not a standing condition): ${origin}` : "",
+    imprint && village.foundingDetails.trim()
+      ? `The player's description of Day 1 (use during founding only): ${village.foundingDetails.trim()}`
+      : "",
     imprint?.openingConditions.length
-      ? `Opening conditions (at founding only): ${imprint.openingConditions.join("; ")}`
+      ? `Day 1 conditions (at founding only): ${imprint.openingConditions.join("; ")}`
       : "",
     imprint?.visualCues.length ? `Founding visual cues: ${imprint.visualCues.join("; ")}` : "",
     village.foundingGuidance?.trim() ? `Founding narrative direction: ${village.foundingGuidance.trim()}` : "",
-    "Use founding details selectively where they fit this person or place. The resident's card, assigned home, and verified village facts take precedence. Do not repeat the Scenario everywhere.",
+    "Use first-day details selectively where they fit this person or place. The resident's card, assigned home, and verified village facts take precedence. Do not repeat the opening everywhere.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -549,7 +552,7 @@ export function villageRelevantOrigin(
   query: string,
 ): string {
   const origin = village.scenarioImprint?.origin.trim() || village.foundingDetails.trim();
-  if (!origin || village.foundingReason === "none") return "";
+  if (!origin) return "";
   const q = query.toLowerCase();
   const asksHistory = /\b(found|founded|founding|origin|history|began|beginning|started|settled|first came)\b/u.test(q);
   const ordinaryWords = new Set([
@@ -572,8 +575,8 @@ export function villageRelevantOrigin(
   if (!asksHistory && !distinctive) return "";
   const reason = FOUNDING_REASONS[village.foundingReason];
   return village.scenarioImprint?.origin
-    ? `Village founding history: ${origin} Current verified world and venue state takes precedence.`
-    : `Original Scenario description (historical context, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} Current verified world and venue state takes precedence.`;
+    ? `Before the village began: ${origin} Current verified world and venue state takes precedence.`
+    : `Original account of the village's beginning (history, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} Current verified world and venue state takes precedence.`;
 }
 
 /**

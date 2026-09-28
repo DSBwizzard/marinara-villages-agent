@@ -46,9 +46,19 @@ async function main() {
   assert.doesNotMatch(villageCurrentSetting(founded), /early days|flood|footbridge|solidarity/);
   assert.match(
     villageFoundingSetting(founded),
-    /Opening conditions \(at founding only\): The old footbridge needs repair/,
+    /Day 1 conditions \(at founding only\): The old footbridge needs repair/,
   );
+  assert.match(villageFoundingSetting(founded), /description of Day 1.*Survivors gathered after the flood/);
   assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
+  const openBeginning = {
+    ...founded,
+    foundingReason: "none",
+    foundingDetails: "Friends gather with tools to build a new home.",
+    foundingGuidance: "",
+    scenarioImprint: { origin: "", worldFacts: [], openingConditions: ["A temporary camp"], visualCues: [] },
+  };
+  assert.match(villageFoundingSetting(openBeginning), /Day 1.*Friends gather with tools/);
+  assert.doesNotMatch(villageCurrentSetting(openBeginning), /temporary camp|Friends gather/);
   assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
   assert.match(
     villageRelevantOrigin(founded, "Who founded this village?"),
@@ -140,7 +150,7 @@ async function main() {
       structures: !!(mask & 2),
       water: !!(mask & 4),
     });
-    assert.match(prompt, /Setting and Theme.*harbor city with canals/s);
+    assert.match(prompt, /Village description.*harbor city with canals/s);
     assert.equal(prompt.includes("Do not include streets"), !(mask & 1));
     assert.equal(prompt.includes("Do not include buildings"), !(mask & 2));
     assert.equal(prompt.includes("Do not include water"), !(mask & 4));
@@ -176,8 +186,7 @@ async function main() {
   for (const step of [
     "Village Identity",
     "Connections & Persona",
-    "World & Setting",
-    "Scenario Imprint",
+    "World & First Day",
     "Village Map",
     "Build the Village",
     "Review",
@@ -189,7 +198,7 @@ async function main() {
   assert.ok(client.includes("className={`${ELEMENT_TAG}-debug-label`}>DEBUG"));
   assert.ok(client.includes("setupMapOptions"));
   assert.equal(client.includes("Fit entire map"), false);
-  assert.ok(client.includes("mobile={mobile && setupStep >= 4}"));
+  assert.ok(client.includes("mobile={mobile && setupStep >= 3}"));
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   assert.ok(client.includes("lorebooks: setupLorebookDraft"));
   assert.ok(client.includes("setting: setupSetting.trim()"));
