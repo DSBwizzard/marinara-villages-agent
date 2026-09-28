@@ -43,6 +43,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.66 places the residence move request with the View Venue header actions and shows a refusal directly beneath them. The separate About this area card is removed; additional discovered area facts remain available within the Zone panel.
+
 0.6.65 gives View Venue a zone sidebar and one area at a time, with locked previews for spaces not yet entered. The area button now enters the selected exterior, shared, public, or invited private space. Private tabs follow the current residents, and the navy and violet design is the Villages UI default until future themes are added.
 
 0.6.62 gives venue replies role-explicit recent context and a looser scene cadence. Before saving a turn, Villages checks for copied player speech and a resident question repeated after the player's answer. A rejected reply gets one targeted retry; if it still fails, the draft and scene state remain intact for another send.
