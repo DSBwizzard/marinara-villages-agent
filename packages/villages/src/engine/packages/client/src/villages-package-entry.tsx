@@ -287,6 +287,11 @@ type VillageSnapshot = {
     completedIds: string[];
     currentId: string;
     error: string;
+    stage?: "reading" | "lore" | "resolving" | "model" | "applying" | "saving";
+    stageStartedAt?: string;
+    attempt?: number;
+    loreEntryCount?: number;
+    modelName?: string;
   } | null;
   settings: VillageSettings;
   recap: VillageRecap | null;
@@ -17236,6 +17241,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const total = snapshot?.villagers.length ?? 0;
     const done = preparation?.completedIds.length ?? 0;
     const current = snapshot?.villagers.find((villager) => villager.characterId === preparation?.currentId)?.name;
+    const stageText =
+      preparation?.stage === "reading"
+        ? "Reading the character card and native schedule"
+        : preparation?.stage === "lore"
+          ? "Selecting relevant entries from the founding lorebooks"
+          : preparation?.stage === "resolving"
+            ? "Connecting to the System model"
+            : preparation?.stage === "model"
+              ? `Waiting for ${preparation.modelName || "the System model"} to write wishes, the week, and schedule mappings`
+              : preparation?.stage === "applying"
+                ? "Expanding the week and applying native schedule times"
+                : preparation?.stage === "saving"
+                  ? "Saving this villager's agenda and translation"
+                  : "Preparing the first villager";
+    const started = preparation?.stageStartedAt ? Date.parse(preparation.stageStartedAt) : NaN;
+    const stageSeconds =
+      preparation?.status === "pending" && Number.isFinite(started)
+        ? Math.max(0, Math.floor((Date.now() - started) / 1000))
+        : null;
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-preparing`} role="status" aria-live="polite">
         <div>
@@ -17251,13 +17275,31 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 : "Lighting windows and making plans…"}
           </p>
           <p>{`${done} of ${total} villagers ready`}</p>
+          {preparation?.status === "pending" && preparation.stage ? (
+            <p>
+              {stageText}
+              {current ? ` for ${current}` : ""}.
+            </p>
+          ) : null}
+          {preparation?.attempt ? (
+            <p>{`Attempt ${preparation.attempt} of 3${stageSeconds !== null ? ` · ${stageSeconds}s in this stage` : ""}`}</p>
+          ) : null}
+          {preparation?.stage === "resolving" ||
+          preparation?.stage === "model" ||
+          preparation?.stage === "applying" ||
+          preparation?.stage === "saving" ? (
+            <p>{`${preparation.loreEntryCount ?? 0} relevant lorebook entries included`}</p>
+          ) : null}
+          {preparation?.status === "pending" && preparation.error ? (
+            <p className={`${ELEMENT_TAG}-hint`}>{`Previous attempt: ${preparation.error}`}</p>
+          ) : null}
           {preparation?.status === "failed" ? (
             <div className={`${ELEMENT_TAG}-overlay`}>
               <p className={`${ELEMENT_TAG}-error`} role="alert">
                 {preparation.error}
               </p>
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void retryPreparation()}>
-                Retry
+                Retry this villager
               </button>
               <details>
                 <summary>Change connections</summary>

@@ -146,6 +146,7 @@ export async function readVillageLore(
   context: string,
   signal?: AbortSignal,
   tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
+  strict = false,
 ): Promise<string[]> {
   if (!ids.length) return [];
   try {
@@ -153,12 +154,15 @@ export async function readVillageLore(
     const byId = new Map(books.map((book) => [book.id, book]));
     const candidates: EngineEntry[] = [];
     for (const id of ids) {
+      if (strict && !byId.has(id)) throw new Error(`Selected lorebook ${id} could not be found.`);
       if (!byId.get(id)?.enabled) continue;
       try {
         const [entries, folders] = await Promise.all([
           villageEngineJson<EngineEntry[]>(`/api/lorebooks/${encodeURIComponent(id)}/entries`, { signal }),
           villageEngineJson<EngineFolder[]>(`/api/lorebooks/${encodeURIComponent(id)}/folders`, { signal }),
         ]);
+        if (strict && (!Array.isArray(entries) || !Array.isArray(folders)))
+          throw new Error("The entries or folders response was unreadable.");
         const folderMap = new Map((Array.isArray(folders) ? folders : []).map((folder) => [folder.id, folder]));
         candidates.push(
           ...(Array.isArray(entries) ? entries : []).filter(
@@ -172,6 +176,8 @@ export async function readVillageLore(
         );
       } catch (error) {
         signal?.throwIfAborted();
+        if (strict)
+          throw new Error(`Selected lorebook ${byId.get(id)?.name ?? id} could not be read: ${String(error)}`);
         villagesLogger().warn("[villages] could not read lorebook %s: %s", id, String(error));
       }
     }
@@ -189,6 +195,7 @@ export async function readVillageLore(
     return selected;
   } catch (error) {
     signal?.throwIfAborted();
+    if (strict) throw error;
     villagesLogger().warn("[villages] Engine lorebooks unavailable: %s", String(error));
     return [];
   }
