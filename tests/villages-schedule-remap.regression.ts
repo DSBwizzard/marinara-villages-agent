@@ -74,10 +74,10 @@ async function main() {
     talkativeness: 60,
     days,
   });
-  const venue = (id: string, name: string, purpose = "") => ({
+  const venue = (id: string, name: string, form = "") => ({
     id,
     name,
-    purpose,
+    form,
     category: "public",
     presentation: { image: null, x: 0.5, y: 0.5 },
     occupancy: { playerHome: false, residentCharacterId: null as string | null, homeKind: null as string | null },
@@ -636,9 +636,9 @@ async function main() {
     "but a place RENAMED is a different question, because the sentence in front of the villager changes with it",
   );
   assert.notEqual(
-    remapSignature(moving({ purpose: "where the grain goes now" })),
+    remapSignature(moving({ form: "a stone watermill beside the river" })),
     signature,
-    "and so is one reworded, since the note is read out beside the name",
+    "and so is one whose physical Form changes, since Form is read out beside the name",
   );
   assert.equal(remapSignature({ ...context, weekStart: "" }), "", "no week at all is no question to answer");
 

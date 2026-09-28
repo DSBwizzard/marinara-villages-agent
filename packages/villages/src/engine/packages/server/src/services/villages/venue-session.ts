@@ -638,7 +638,7 @@ async function generate(
   const system = [
     `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
     `The player is ${player.name}. ${player.description}`,
-    `The venue: ${place?.purpose ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
+    `Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
       place?.state.traces
         ?.filter((trace) => trace.kind !== "note" && (!trace.expiresAt || Date.parse(trace.expiresAt) > now.getTime()))
         .map((trace) => `${trace.id}: ${trace.text}`)
@@ -1200,6 +1200,11 @@ export async function enterVenue(
     active.placeId = placeId;
   });
   if (area === "private") await markResidenceSeen(session);
+  if (area === "public")
+    await mutateVillageState((state) => {
+      const venue = state.venues.find((entry) => entry.id === placeId);
+      if (venue) venue.playerSeenPublic = true;
+    });
   return session;
 }
 

@@ -115,7 +115,7 @@ export function buildLocationPrompt(
   area: "exterior" | "interior" = "exterior",
   spaceLabel = "",
 ): string {
-  const purpose = venue.purpose.trim();
+  const form = venue.form?.trim() ?? "";
   const setting = village.setting.trim().slice(0, MAX_SETTING_IN_PROMPT_LENGTH);
   const surrounding = village.venues
     .filter((place) => place.id !== venue.id)
@@ -143,17 +143,15 @@ export function buildLocationPrompt(
         ? []
         : venue.state.publicFacts
     : venue.state.publicFacts;
-  const approvedDescription = privateResidenceOutside ? "" : venue.description;
+  const approvedDescription = venue.description;
   return [
     area === "exterior"
       ? `A wide, empty exterior view of ${venue.name} and its approach in ${village.name}. Show the building from outside; do not show an interior.`
       : `A wide, empty interior view of ${spaceLabel || "the described space"} at ${venue.name} in ${village.name}. Show the room from inside; do not show the building exterior.`,
     building ? `Building type: ${building}.` : "",
-    venue.form ? `Literal venue form: ${venue.form}.` : "",
     venue.classes?.length ? `Venue roles: ${venue.classes.join(" and ")}.` : "",
-    venue.category ? `Venue category: ${venue.category}.` : "",
     venue.occupancy.residentCharacterId && !building ? "This venue is also a villager's residence." : "",
-    purpose ? `Venue purpose: ${purpose}.` : "",
+    form ? `Venue form: ${form}.` : "",
     approvedDescription
       ? `Approved description of this ${outside ? "venue (show exterior cues only)" : "space"}: ${approvedDescription}.`
       : "",
@@ -231,13 +229,10 @@ export async function generateVillageLocationImage(
     now: new Date(),
   });
   const exterior = !spaceClass && !privateOwnerId;
-  const exteriorContext =
-    venue.classes?.includes("residence") && venue.residentIds?.length
-      ? [venue.name, venue.form, venue.purpose, venue.exteriorState?.condition ?? ""].join("\n")
-      : [venue.name, venue.form, venue.purpose, venue.description, venue.exteriorState?.condition ?? ""].join("\n");
+  const exteriorContext = [venue.name, venue.form, venue.description, venue.exteriorState?.condition ?? ""].join("\n");
   const lore = await readVillageVisualLore(
     village.selectedLorebookIds,
-    `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.purpose}\n${venue.description}\n${venue.state.condition}`}`,
+    `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}`,
     300,
   );
   const prompt = buildLocationPrompt(

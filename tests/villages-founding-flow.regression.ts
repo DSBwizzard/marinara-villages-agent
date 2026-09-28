@@ -71,7 +71,7 @@ async function main() {
     coerceVillageState({
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
-    { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
+    { status: "failed", completedIds: ["one"], venueDetailsSeeded: false, currentId: "two", error: "offline" },
     "preparation progress survives loading",
   );
   assert.deepEqual(
@@ -91,6 +91,7 @@ async function main() {
     {
       status: "pending",
       completedIds: ["one"],
+      venueDetailsSeeded: false,
       currentId: "two",
       error: "",
       stage: "model",
@@ -214,10 +215,16 @@ async function main() {
   assert.deepEqual(parsed.presentation.image, outsideImage);
   assert.deepEqual(parsed.spaces?.[0]?.image, insideImage);
   assert.equal(parsed.spaces?.[0]?.description, "A hearth and a low table");
-  assert.equal(parsed.spaces?.[0]?.state.condition, "lived in");
-  assert.deepEqual(parsed.spaces?.[0]?.state.items, ["wooden bowl"]);
-  assert.deepEqual(parsed.spaces?.[0]?.state.publicFacts, ["old chimney"]);
-  assert.equal(parsed.spaces?.[0]?.state.features[0]?.text, "blue curtains");
+  assert.equal(parsed.spaces?.[0]?.state.condition, "", "founding details emerge during preparation");
+  assert.deepEqual(parsed.spaces?.[0]?.state.items, []);
+  assert.deepEqual(parsed.spaces?.[0]?.state.publicFacts, []);
+  assert.deepEqual(parsed.spaces?.[0]?.state.features, []);
+  assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
+  assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
+  assert.throws(
+    () => parsePlace({ ...parsed, spaces: [{ venueClass: "residence", description: "" }] }, true),
+    /interior/,
+  );
 
   const client = await readFile(join(clientRoot, "villages-package-entry.tsx"), "utf8");
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
@@ -232,9 +239,10 @@ async function main() {
   assert.ok(client.includes("Reset all venues"));
   assert.ok(client.includes("Place a Residence"));
   assert.ok(client.includes("Place a Gathering Place"));
-  assert.ok(client.includes("Replace text with this draft"));
-  assert.ok(client.includes("Use in empty fields"));
-  assert.ok(client.includes("generateSetupText(setupVenues, true)"));
+  assert.ok(client.includes("What the Venue actually is"));
+  assert.ok(client.includes('(["exterior", "interior"] as const).map((area)'));
+  assert.ok(client.includes("generateSetupImage(selectedSetupVenue, area)"));
+  assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
@@ -243,19 +251,19 @@ async function main() {
   assert.ok(review.includes("Day 1:"));
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
-  assert.ok(routes.includes('"/setup/venues/draft"'));
+  assert.equal(routes.includes('"/setup/venues/draft"'), false);
   assert.ok(routes.includes('"/setup/venue-image/generate"'));
   assert.ok(routes.includes('"/setup/venue-image"'));
   assert.ok(routes.includes('"/setup/preparation/retry"'));
   assert.ok(village.includes("image: foundingImage(row.image)"));
-  assert.ok(village.includes("features: features.map"));
+  assert.ok(village.includes("seedFoundingVenueDetails(initial)"));
   assert.ok(village.includes("marker.completedIds.includes(id)"));
   assert.ok(village.includes("await proposeCompactFounding("));
   assert.ok(village.includes("await storeRemap(id, remap, schedule)"));
   assert.ok(village.includes("readNativeScheduleSnapshot(new Date())"));
   assert.ok(village.includes("snapshot.cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
-  assert.ok(drafts.includes("foundingGuidance"));
+  assert.ok(drafts.includes("foundingDetails"));
   const builder = await readFile(join(root, "scripts/build-feature-packages.mjs"), "utf8");
   for (const mode of ["rebuild", "pioneer", "prosper", "custom", "none"]) {
     const filename = `founding-${mode}.jpg`;
@@ -264,7 +272,7 @@ async function main() {
     assert.deepEqual([...bytes.subarray(0, 3)], [0xff, 0xd8, 0xff], `${mode} illustration must be a JPEG`);
   }
   assert.match(drafts, /resident:\s*card\s*\?/);
-  assert.ok(drafts.includes("row.guidance"));
+  assert.ok(drafts.includes("areaDescription"));
   console.log("Villages founding flow regression: placement, review, drafts, images, preparation ok");
 }
 

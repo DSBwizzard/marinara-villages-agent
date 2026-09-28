@@ -28,7 +28,6 @@ function isVillageVenue(value: unknown): boolean {
     typeof value.id !== "string" ||
     value.id.trim().length === 0 ||
     typeof value.name !== "string" ||
-    typeof value.purpose !== "string" ||
     typeof value.category !== "string" ||
     !isStringArray(value.capabilities) ||
     !isRecord(value.presentation) ||
@@ -70,7 +69,6 @@ export function normalizeVillageSnapshot<T>(snapshot: T): T {
       typeof entry.id === "string" &&
       isRecord(entry.venueDraft) &&
       typeof entry.venueDraft.name === "string" &&
-      typeof entry.venueDraft.purpose === "string" &&
       typeof entry.venueDraft.category === "string",
   );
   if (

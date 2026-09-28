@@ -4,30 +4,22 @@ import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 import { uploadVillageGalleryImage } from "./global-gallery.js";
 import { decodeVillageImageDataUrl, generateVillageImage } from "./image-generation.js";
-import {
-  DEFAULT_LORE_TOKEN_BUDGET,
-  readLoreTokenBudget,
-  readSelectedLorebookIds,
-  readVillageLore,
-  readVillageVisualLore,
-} from "./lorebooks.js";
+import { readSelectedLorebookIds, readVillageLore, readVillageVisualLore } from "./lorebooks.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "./prompt-preset.js";
 import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { extractJsonObject } from "./village-bootstrap.js";
-import type { VillageVenueImage } from "./types.js";
+import type { VillageState, VillageVenueImage } from "./types.js";
 
 type DraftRow = {
   id: string;
   name: string;
   form: string;
-  purpose: string;
   description: string;
   spaceDescription: string;
   venueClass: "residence" | "gathering";
   residentCharacterId: string;
-  guidance: string;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -47,12 +39,10 @@ function rowsOf(value: unknown): DraftRow[] {
       id,
       name: asTrimmedString(row.name).slice(0, 100),
       form: asTrimmedString(row.form).slice(0, 240),
-      purpose: asTrimmedString(row.purpose).slice(0, 240),
       description: asTrimmedString(row.description).slice(0, 1000),
       spaceDescription: asTrimmedString(row.spaceDescription).slice(0, 1000),
       venueClass,
       residentCharacterId: asTrimmedString(row.residentCharacterId).slice(0, 100),
-      guidance: asTrimmedString(row.guidance).slice(0, 1000),
     };
   });
 }
@@ -75,27 +65,36 @@ async function withResident(row: DraftRow) {
   };
 }
 
-export async function draftFoundingVenueText(
-  value: unknown,
-): Promise<{ drafts: Record<string, Record<string, unknown>> }> {
-  const input = record(value);
-  const imprint = coerceScenarioImprint(input.scenarioImprint);
-  const context = {
-    setting: asTrimmedString(input.setting),
-    foundingReason: asTrimmedString(input.foundingReason),
-    foundingDetails: asTrimmedString(input.foundingDetails),
-    foundingGuidance: asTrimmedString(input.foundingGuidance),
-    scenarioImprint: imprint,
-    worldFacts: imprint?.worldFacts ?? coerceWorldFacts(input.worldFacts),
-  };
-  const setting = villageFoundingSetting(context);
-  if (!setting.trim()) throw badRequest("Describe what the village is like first.");
-  const rows = await Promise.all(rowsOf(input.venues).map(withResident));
+export type SeededFoundingVenueDetails = {
+  condition: string;
+  items: string[];
+  publicFacts: string[];
+  features: string[];
+};
+
+/** Initial physical details are drafted after founding, never as editable setup answers. */
+export async function seedFoundingVenueDetails(
+  village: VillageState,
+): Promise<Record<string, SeededFoundingVenueDetails>> {
+  const rows = await Promise.all(
+    rowsOf(
+      village.venues.map((venue) => ({
+        id: venue.id,
+        name: venue.name,
+        form: venue.form,
+        description: venue.description,
+        spaceDescription: venue.spaces?.[0]?.description,
+        venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
+        residentCharacterId: venue.occupancy.residentCharacterId,
+      })),
+    ).map(withResident),
+  );
+  const setting = villageFoundingSetting(village);
   const lore = await readVillageLore(
-    readSelectedLorebookIds(input.selectedLorebookIds ?? []),
-    [setting, ...rows.map((row) => `${row.name} ${row.form} ${row.purpose} ${row.guidance}`)].join("\n"),
+    village.selectedLorebookIds,
+    [setting, ...rows.map((row) => `${row.name} ${row.form} ${row.description} ${row.spaceDescription}`)].join("\n"),
     undefined,
-    input.loreTokenBudget === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(input.loreTokenBudget),
+    village.loreTokenBudget,
   );
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),
@@ -104,28 +103,27 @@ export async function draftFoundingVenueText(
     {
       role: "system",
       content: [
-        "Draft vivid but grounded founding Venue details for a small fictional village.",
-        "Use the supplied setting, selected lore, resident card, and player guidance. Do not contradict supplied facts or invent named people.",
-        "A Residence belongs to its assigned person; a Gathering Place serves the community.",
-        "Use the player's Day 1 account selectively for plausible initial conditions. Keep lasting place descriptions grounded in the village setting. Do not repeat the same founding detail in every venue.",
-        'Return JSON only: {"venues":[{"id":"...","name":"...","form":"...","purpose":"...","description":"...","spaceDescription":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
-        "Keep names under 100 characters; each description under 1000 characters; items, facts and features short and concrete.",
+        "Seed a few observable initial physical details for each founding Venue.",
+        "Player-written names, form, exterior and interior descriptions are authoritative. Never replace or redefine them.",
+        "Use Day 1 selectively for plausible initial condition; do not repeat it in every Venue.",
+        "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
+        'Return JSON only: {"venues":[{"id":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
+        "Use short concrete details. Empty lists and an empty condition are valid where nothing is established.",
       ].join("\n"),
     },
     { role: "user", content: JSON.stringify({ setting: setting.slice(0, 2000), lore, venues: rows }) },
   ];
-  const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 3000, 3000) });
-  const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 3000, {
+  const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2000, 2000) });
+  const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
     temperature: 0.7,
     debugMode: false,
   });
   const payload = extractJsonObject(completion.content ?? "");
   const generated = Array.isArray(payload?.venues) ? payload.venues : [];
-  const drafts: Record<string, Record<string, unknown>> = {};
+  const details: Record<string, SeededFoundingVenueDetails> = {};
   for (const row of rows) {
     const result = generated.map(record).find((candidate) => candidate.id === row.id);
-    if (!result) continue;
-    const text = (key: string, limit: number) => asTrimmedString(result[key]).slice(0, limit);
+    if (!result) throw badRequest("The model did not return every founding Venue.");
     const lines = (key: string, max: number) =>
       Array.isArray(result[key])
         ? (result[key] as unknown[])
@@ -134,27 +132,22 @@ export async function draftFoundingVenueText(
             .filter(Boolean)
             .slice(0, max)
         : [];
-    drafts[row.id] = {
-      name: text("name", 100),
-      form: text("form", 240),
-      purpose: text("purpose", 240),
-      description: text("description", 1000),
-      spaceDescription: text("spaceDescription", 1000),
-      condition: text("condition", 300),
+    details[row.id] = {
+      condition: asTrimmedString(result.condition).slice(0, 300),
       items: lines("items", 20),
       publicFacts: lines("publicFacts", 20),
       features: lines("features", 5),
     };
   }
-  if (Object.keys(drafts).length !== rows.length)
-    throw badRequest("The model did not return every requested venue draft. Try again.");
-  return { drafts };
+  return details;
 }
 
 export async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
   const input = record(value);
   const row = await withResident(rowsOf([input.venue])[0]!);
   const area = input.area === "interior" ? "interior" : "exterior";
+  const areaDescription = area === "exterior" ? row.description : row.spaceDescription;
+  if (!areaDescription) throw badRequest(`Add an ${area} description before generating its image.`);
   const imprint = coerceScenarioImprint(input.scenarioImprint);
   const setting = [
     asTrimmedString(input.setting).slice(0, 1200),
@@ -166,7 +159,7 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
   if (!setting) throw badRequest("Describe what the village is like first.");
   const lore = await readVillageVisualLore(
     readSelectedLorebookIds(input.selectedLorebookIds ?? []),
-    `${setting}\n${row.name}\n${row.form}\n${row.guidance}`,
+    `${setting}\n${row.name}\n${row.form}\n${areaDescription}`,
     300,
   );
   const prompt = [
@@ -175,13 +168,12 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
       ? "Show the building and its approach from outside, not an interior."
       : "Show its enterable room from inside, not the building exterior.",
     `Setting: ${setting}.`,
-    row.purpose && `Purpose: ${row.purpose}.`,
-    row.description && `Exterior description: ${row.description}.`,
-    area === "interior" && row.spaceDescription && `Room description: ${row.spaceDescription}.`,
+    `${area === "exterior" ? "Exterior" : "Interior"} description, follow closely: ${areaDescription}.`,
+    asTrimmedString(input.foundingDetails) &&
+      `Day 1 context, use only if visually relevant to this venue: ${asTrimmedString(input.foundingDetails).slice(0, 600)}.`,
     row.resident &&
       `Resident: ${row.resident.name}; ${row.resident.description}; ${row.resident.personality}; ${row.resident.appearance}.`,
     lore && `Established lore: ${lore}.`,
-    row.guidance && `Player art direction: ${row.guidance}.`,
     "No people, lettering, numerals, signs, labels, or interface graphics.",
   ]
     .filter(Boolean)

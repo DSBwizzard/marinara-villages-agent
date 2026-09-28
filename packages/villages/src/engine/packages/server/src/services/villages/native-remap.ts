@@ -444,7 +444,7 @@ export function remapSignature(input: {
     .slice(0, MAX_VENUES)
     .map(
       (venue) =>
-        `${venue.id}\u0000${venue.name.trim()}\u0000${venue.purpose.trim()}\u0000${venue.state.condition.trim()}\u0000${venue.state.publicFacts.slice(0, 4).join("\u0000")}`,
+        `${venue.id}\u0000${venue.name.trim()}\u0000${venue.classes?.join("/") ?? ""}\u0000${venue.form?.trim() ?? ""}\u0000${venue.state.condition.trim()}\u0000${venue.state.publicFacts.slice(0, 4).join("\u0000")}`,
     );
   const digest = [weekStart, ...asked, ...wished, input.setting.trim(), input.loreKey ?? "", ...lens].join("\u0001");
   let hash = 2166136261;
@@ -479,7 +479,12 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
   const places = remapVenues(context.venues)
     .slice(0, MAX_VENUES)
     .map((venue, index) => {
-      const description = [venue.purpose.trim(), venue.state.condition.trim(), ...venue.state.publicFacts.slice(0, 4)]
+      const description = [
+        venue.classes?.join(" / ") ?? "",
+        venue.form?.trim() ?? "",
+        venue.state.condition.trim(),
+        ...venue.state.publicFacts.slice(0, 4),
+      ]
         .filter(Boolean)
         .map((part) => condense(part, 160))
         .join("; ");

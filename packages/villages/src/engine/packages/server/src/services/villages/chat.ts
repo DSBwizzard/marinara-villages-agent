@@ -1030,7 +1030,7 @@ function buildDistillMessages(context: VillageDistillContext): CapabilityLanguag
       `- Write between 0 and ${MAX_CHRONICLE_PER_WRITE} entries in "memory". An empty list is a good answer for a conversation that settled nothing.`,
       `- One entry is one or two short sentences, under ${MAX_CHRONICLE_LENGTH} characters, in the past tense, and says what was SAID or SETTLED rather than that a conversation happened.`,
       "- Write nothing that was not in the conversation above. Do not invent a detail, a promise or a feeling that neither of them expressed.",
-      `- Set "venueRequest" to {"quote":"...","name":"...","purpose":"...","category":"..."} only if ${card.name} explicitly asked ${player} to add a new place. Copy an exact excerpt of ${card.name}'s own words into "quote"; another speaker's words do not count. Use the place and purpose ${card.name} actually asked for. Otherwise use null. A private wish or the player's suggestion alone is not a request.`,
+      `- Set "venueRequest" to {"quote":"...","name":"...","classes":["gathering"]} only if ${card.name} explicitly asked ${player} to add a new place. Copy an exact excerpt of ${card.name}'s own words into "quote"; another speaker's words do not count. Use the place and Venue Class ${card.name} actually asked for. Otherwise use null. A private wish or the player's suggestion alone is not a request.`,
       '- "private" true means it passed between the two of them and only ' +
         `${card.name} knows it. "private" false means it is something the whole village now knows or could see for itself.`,
       `- The subject is always ${card.name} and ${player}. Do not name anyone else, and do not name a real place, company or person.`,

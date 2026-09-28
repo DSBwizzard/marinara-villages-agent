@@ -661,7 +661,6 @@ function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove 
 function coerceVenue(value: unknown): VillageVenue | null {
   const raw = asRecord(value);
   const name = boundText(raw.name, MAX_VENUE_NAME_LENGTH);
-  const purpose = boundText(raw.purpose, MAX_VENUE_NOTE_LENGTH);
   const description = boundText(raw.description, MAX_VENUE_DESCRIPTION_LENGTH);
   const category = boundText(raw.category, MAX_VENUE_NOTE_LENGTH);
   const presentation = asRecord(raw.presentation);
@@ -781,6 +780,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     exteriorState: coerceSpaceState(raw.exteriorState),
     privateSpaces,
     playerSeenShared: raw.playerSeenShared === true,
+    playerSeenPublic: raw.playerSeenPublic === true,
     playerSeenPrivateIds: coerceVenueIds(raw.playerSeenPrivateIds).filter((id) => residentIds.includes(id)),
     archivedPrivateSpaces: Array.isArray(raw.archivedPrivateSpaces)
       ? raw.archivedPrivateSpaces
@@ -854,7 +854,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
           .slice(-16)
       : [],
     improvements,
-    purpose,
     description,
     category,
     presentation: {
@@ -1578,8 +1577,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       const draft = asRecord(raw.venueDraft);
       const draftState = asRecord(draft.state);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
-      const requestPurpose = boundText(draft.purpose, MAX_VENUE_NOTE_LENGTH);
-      const requestCategory = boundText(draft.category, MAX_VENUE_NOTE_LENGTH);
+      const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
       return [
         {
           id,
@@ -1594,13 +1592,13 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
             raw.status === "approved" || raw.status === "denied" || raw.status === "countered"
               ? raw.status
               : ("pending" as const),
-          ...(requestName && requestPurpose
+          ...(requestName && requestClasses.length
             ? {
                 venueDraft: {
                   name: requestName,
-                  purpose: requestPurpose,
+                  classes: requestClasses,
                   description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                  category: requestCategory,
+                  category: "",
                   position: { x: null, y: null },
                   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
                   capabilities: [],
@@ -1683,8 +1681,7 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
             return asTrimmedString(draft.name) && asTrimmedString(draft.description)
               ? {
                   name: boundText(draft.name, MAX_VENUE_NAME_LENGTH),
-                  purpose: boundText(draft.purpose, MAX_VENUE_NOTE_LENGTH),
-                  category: boundText(draft.category, MAX_VENUE_NOTE_LENGTH),
+                  classes: validVenueClasses(draft.classes) ? draft.classes : ["gathering"],
                   description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
                 }
               : undefined;
@@ -1768,6 +1765,7 @@ export function coerceVillageState(value: unknown): VillageState {
       return {
         status: preparation.status,
         completedIds: asStringArray(preparation.completedIds).slice(0, 12),
+        venueDetailsSeeded: preparation.venueDetailsSeeded === true,
         currentId: asTrimmedString(preparation.currentId),
         error: boundText(preparation.error, 300),
         ...(preparation.stage === "reading" ||

@@ -8,11 +8,25 @@ const browser = await chromium.launch({
   headless: true,
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
+const residenceHints = [
+  "A modest stone home, with ivy growing on the walls",
+  "A tent and hammock pitched in the shade between two pine trees",
+  "A mighty castle, with imposing obsidian pillars and multiple dungeons",
+  "A dumpster behind the supermarket",
+  "An armored cash transport car, converted into a mobile home",
+];
+const gatheringHints = [
+  "A communal fire pit, with logs and stumps arranged around it in a semicircle",
+  "A decommissioned pizzeria, complete with inert animatronic performers",
+  "The situation room, with a round table bearing strategic maps",
+  "The hardy Brandythrone tavern, where ale and fistfights are plentiful",
+  "A meticulously-landscaped public park, where trampling the roses is punishable by fine",
+];
 
 const seededVenue = (id, name, venueClass, x, y, playerHome = false, residentCharacterId = null) => ({
   id,
   name,
-  form: venueClass === "gathering" ? "Gathering place" : "Home",
+  form: "",
   classes: [venueClass],
   spaces: [
     {
@@ -26,7 +40,6 @@ const seededVenue = (id, name, venueClass, x, y, playerHome = false, residentCha
   residenceCapacity: 1,
   residentIds: residentCharacterId ? [residentCharacterId] : [],
   improvements: [null, null],
-  purpose: "",
   description: "",
   category: venueClass === "gathering" ? "public-center" : "",
   presentation: { image: null, x, y },
@@ -60,6 +73,10 @@ const snapshot = {
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     townMapImageSetAt: "",
+    townMapExpectedWidth: 1280,
+    townMapExpectedHeight: 720,
+    townMapGenerationWidth: 1280,
+    townMapGenerationHeight: 720,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     villageNameMaxLength: 80,
     foundingDetailsMaxLength: 2000,
@@ -111,60 +128,34 @@ try {
       if (path.endsWith("/setup") && route.request().method() === "POST") {
         foundingPayload = JSON.parse(route.request().postData() ?? "{}");
       }
-      if (width === 1024 && path.endsWith("/setup/venues/draft")) {
-        return route.fulfill({
-          status: 503,
-          contentType: "application/json",
-          body: JSON.stringify({ error: "Draft unavailable" }),
-        });
-      }
       if (path.endsWith("/connections") && route.request().method() === "PUT") {
         connectionSettings = { ...connectionSettings, ...JSON.parse(route.request().postData() ?? "{}") };
       }
-      const value = path.endsWith("/setup/venues/draft")
-        ? {
-            drafts: Object.fromEntries(
-              startingVenues.map((venue) => [
-                venue.id,
-                {
-                  name: venue.name,
-                  form: venue.form,
-                  purpose: venue.category === "public-center" ? "A place to gather" : "A home",
-                  description: `${venue.name} stands above the sea.`,
-                  spaceDescription: "A bright, simple room.",
-                  condition: "",
-                  items: [],
-                  publicFacts: [],
-                  features: [],
-                },
-              ]),
-            ),
-          }
-        : path.endsWith("/personas/ada")
-          ? { persona: personaPreview }
-          : path.endsWith("/personas/bryn")
-            ? {
-                persona: {
-                  ...personaPreview,
-                  id: "bryn",
-                  name: "Bryn",
-                  description: "",
-                  appearance: "",
-                  personality: "",
-                  backstory: "Returned from a long journey.",
-                },
-              }
-            : path.endsWith("/personas/active")
-              ? { persona: { ...personaPreview, id: "active", name: "Zara", description: "A watchful traveler." } }
-              : path.endsWith("/personas")
-                ? { personas: availablePersonas }
-                : path.endsWith("/connections")
-                  ? connectionSettings
-                  : path.endsWith("/lorebooks")
-                    ? { books: lorebooks }
-                    : path.endsWith("/catalog")
-                      ? { characters: [{ id: "finn", name: "Finn" }] }
-                      : snapshot;
+      const value = path.endsWith("/personas/ada")
+        ? { persona: personaPreview }
+        : path.endsWith("/personas/bryn")
+          ? {
+              persona: {
+                ...personaPreview,
+                id: "bryn",
+                name: "Bryn",
+                description: "",
+                appearance: "",
+                personality: "",
+                backstory: "Returned from a long journey.",
+              },
+            }
+          : path.endsWith("/personas/active")
+            ? { persona: { ...personaPreview, id: "active", name: "Zara", description: "A watchful traveler." } }
+            : path.endsWith("/personas")
+              ? { personas: availablePersonas }
+              : path.endsWith("/connections")
+                ? connectionSettings
+                : path.endsWith("/lorebooks")
+                  ? { books: lorebooks }
+                  : path.endsWith("/catalog")
+                    ? { characters: [{ id: "finn", name: "Finn" }] }
+                    : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.route("**/api/connections", (route) =>
@@ -264,17 +255,79 @@ try {
 
     await expect(root.getByText("Step 4 of 5 · Build the Village")).toBeVisible();
     await checkTheme();
+    const place = async (button, x, y, name, count) => {
+      await root.getByRole("button", { name: button }).click();
+      const canvas = root.locator(
+        ".marinara-capability-villages-setup-map-viewport .marinara-capability-villages-canvas",
+      );
+      await canvas.scrollIntoViewIfNeeded();
+      const box = await canvas.boundingBox();
+      assert.ok(box);
+      await canvas.click({ position: { x: box.width * x, y: box.height * y } });
+      await expect(root.locator(".marinara-capability-villages-setup-venue-card")).toHaveCount(count);
+      await root.getByLabel("Name", { exact: true }).fill(name);
+    };
+    await place("Place a Residence", 0.3, 0.35, "Your residence", 1);
+    await place("Place a Residence", 0.7, 0.35, "Finn's residence", 2);
+    await root.locator(".marinara-capability-villages-setup-venue-editor select").last().selectOption("finn");
+    await place("Place a Gathering Place", 0.5, 0.7, "Gathering Place", 3);
     await expect(root.locator(".marinara-capability-villages-setup-venue-card")).toHaveCount(3);
-    await expect(root.getByText("Edit place details and art")).toBeVisible();
-    await (await visibleForward("Draft places →")).click();
-    await expect(
-      root
-        .getByText(
-          width === 1024 ? "Your residence is a modest home in Willowbrook." : "Your residence stands above the sea.",
-          { exact: false },
-        )
-        .first(),
-    ).toBeVisible();
+    await root.locator(".marinara-capability-villages-setup-venue-card").first().click();
+    await expect(root.getByText("What the Venue actually is")).toBeVisible();
+    const form = root.locator("#marinara-capability-villages-setup-form");
+    await expect(form).toHaveValue("");
+    await expect(form).toHaveAttribute("placeholder", residenceHints[0]);
+    if (width === 1917 && height === 655 && fontSize === 20) {
+      await root.getByRole("button", { name: "Generate Exterior Image" }).click();
+      await expect(root.getByRole("alert")).toContainText("exterior description");
+      await expect(root.locator("#marinara-capability-villages-setup-exterior-description")).toBeFocused();
+      await page.waitForTimeout(3000);
+      await expect(form).toHaveAttribute("placeholder", residenceHints[0]);
+      await expect(form).toHaveAttribute("placeholder", residenceHints[1], { timeout: 2500 });
+      await form.focus();
+      const paused = await form.getAttribute("placeholder");
+      await page.waitForTimeout(4200);
+      assert.equal(await form.getAttribute("placeholder"), paused, "focused Form pauses its examples");
+      await form.blur();
+      for (const hint of [...residenceHints.slice(2), residenceHints[0]])
+        await expect(form).toHaveAttribute("placeholder", hint, { timeout: 5500 });
+    }
+    await (await visibleForward()).click();
+    await expect(root.getByRole("alert")).toContainText("form");
+    await expect(form).toBeFocused();
+    for (let index = 0; index < 3; index++) {
+      await root.locator(".marinara-capability-villages-setup-venue-card").nth(index).click();
+      const name = index === 0 ? "Your residence" : index === 1 ? "Finn's residence" : "Gathering Place";
+      const selectedForm = root.locator("#marinara-capability-villages-setup-form");
+      await expect(selectedForm).toHaveValue("");
+      if (index === 2) {
+        await expect(selectedForm).toHaveAttribute("placeholder", gatheringHints[0]);
+        if (width === 1917 && height === 655 && fontSize === 20)
+          for (const hint of [...gatheringHints.slice(1), gatheringHints[0]])
+            await expect(selectedForm).toHaveAttribute("placeholder", hint, { timeout: 5500 });
+      }
+      await selectedForm.fill(index === 2 ? "A communal fire pit" : "A modest stone home");
+      if (index === 0 && width === 1917 && height === 655 && fontSize === 20) {
+        const filledHint = await selectedForm.getAttribute("placeholder");
+        await page.waitForTimeout(4200);
+        assert.equal(await selectedForm.getAttribute("placeholder"), filledHint, "filled Form pauses its examples");
+        await expect(selectedForm).toHaveValue("A modest stone home");
+        await (await visibleForward()).click();
+        await expect(root.getByRole("alert")).toContainText("exterior description");
+        await expect(root.locator("#marinara-capability-villages-setup-exterior-description")).toBeFocused();
+      }
+      await root
+        .locator("#marinara-capability-villages-setup-exterior-description")
+        .fill(`${name} stands above the sea.`);
+      if (index === 0 && width === 1917 && height === 655 && fontSize === 20) {
+        await (await visibleForward()).click();
+        await expect(root.getByRole("alert")).toContainText("interior description");
+        await expect(root.locator("#marinara-capability-villages-setup-interior-description")).toBeFocused();
+        await root.getByRole("button", { name: "Generate Interior Image" }).click();
+        await expect(root.getByRole("alert")).toContainText("interior description");
+      }
+      await root.locator("#marinara-capability-villages-setup-interior-description").fill("A bright, simple room.");
+    }
     await (await visibleForward()).click();
 
     await expect(root.getByText("Step 5 of 5 · Review")).toBeVisible();
@@ -290,6 +343,10 @@ try {
     assert.equal(foundingPayload.foundingDetails, "On Day 1, neighbors arrive with damaged boats.");
     assert.equal(foundingPayload.scenarioImprint, null);
     assert.deepEqual(foundingPayload.selectedLorebookIds, ["lore-37"]);
+    assert.deepEqual(
+      foundingPayload.venues.map((venue) => venue.form),
+      ["A modest stone home", "A modest stone home", "A communal fire pit"],
+    );
     assert.deepEqual(errors, []);
     await page.close();
   }

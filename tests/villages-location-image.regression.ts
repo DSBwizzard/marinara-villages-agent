@@ -82,7 +82,7 @@ async function main() {
     MAX_SETTING_LENGTH,
     VILLAGES_GALLERY_FOLDER_NAME,
   } = await import(moduleUrl(`${services}/prompt-preset.ts`));
-  const { coerceVillageState } = await import(moduleUrl(`${services}/village-store.ts`));
+  const { coerceVillageState, readVillageState } = await import(moduleUrl(`${services}/village-store.ts`));
   const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/engine-loopback.ts`));
   const { describeMoment } = await import(moduleUrl(`${services}/village-clock.ts`));
 
@@ -203,14 +203,14 @@ async function main() {
     buildLocationPrompt(
       village,
       coerceVillageState({
-        venues: [{ id: "mill", name: "the mill pond", purpose: "where the grain is ground" }],
+        venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
       }).venues[0]!,
       moment,
     ),
     [
       "A wide, empty exterior view of the mill pond and its approach in Willowbrook. Show the building from outside; do not show an interior.",
       "Venue roles: other.",
-      "Venue purpose: where the grain is ground.",
+      "Venue form: where the grain is ground.",
       `Village setting and theme: ${setting}.`,
       `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
       "Honor these facts and do not invent conflicting architecture, technology or geography.",
@@ -221,7 +221,7 @@ async function main() {
   const interiorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
-      venues: [{ id: "mill", name: "the mill pond", purpose: "grain", description: "A timbered room" }],
+      venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
     moment,
     "",
@@ -233,7 +233,7 @@ async function main() {
   assert.match(
     buildLocationPrompt(
       village,
-      coerceVillageState({ venues: [{ id: "mill", name: "the mill pond", purpose: "" }] }).venues[0]!,
+      coerceVillageState({ venues: [{ id: "mill", name: "the mill pond", form: "" }] }).venues[0]!,
       moment,
       "The mill walls are red brick",
     ),
@@ -244,7 +244,7 @@ async function main() {
     coerceVillageState({
       setting,
       foundingDetails: "Built beside the ridge",
-      venues: [{ id: "square", name: "market square", purpose: "trade" }],
+      venues: [{ id: "square", name: "market square", form: "trade" }],
     }),
     coerceVillageState({
       venues: [
@@ -252,7 +252,6 @@ async function main() {
           id: "mill",
           name: "the mill pond",
           form: "a stone watermill",
-          purpose: "grain",
           description: "A stone mill beside shallow water",
           exteriorState: {
             condition: "weathered but sound",
@@ -278,7 +277,6 @@ async function main() {
     "oak workbench",
     "the wheel turns east",
     "new roof",
-    "Built beside the ridge",
     "market square",
   ])
     assert.ok(factual.includes(fact), `${fact} informs the venue image`);
@@ -293,8 +291,7 @@ async function main() {
           form: "a brick cottage",
           classes: ["residence"],
           residentIds: ["bob"],
-          purpose: "a place to live",
-          description: "a secret shared-room mural",
+          description: "a brick porch beneath ivy",
           state: {
             condition: "a secret interior leak",
             furniture: ["hidden room chest"],
@@ -305,12 +302,12 @@ async function main() {
     }).venues[0]!,
     moment,
   );
-  assert.match(occupiedExterior, /brick cottage|place to live/u);
+  assert.match(occupiedExterior, /brick cottage|brick porch/u);
   assert.doesNotMatch(occupiedExterior, /secret|hidden room chest|private room fact/u);
   assert.equal(
     buildLocationPrompt(
       village,
-      coerceVillageState({ venues: [{ id: "mill", name: "the mill pond", purpose: "   " }] }).venues[0]!,
+      coerceVillageState({ venues: [{ id: "mill", name: "the mill pond", form: "   " }] }).venues[0]!,
       moment,
     ).includes("—"),
     false,
@@ -318,7 +315,7 @@ async function main() {
   );
   const chatty = buildLocationPrompt(
     coerceVillageState({ setting: "y".repeat(MAX_SETTING_LENGTH + 200) }),
-    coerceVillageState({ venues: [{ id: "mill", name: "the mill pond", purpose: "" }] }).venues[0]!,
+    coerceVillageState({ venues: [{ id: "mill", name: "the mill pond", form: "" }] }).venues[0]!,
     moment,
   );
   assert.ok(chatty.length < 1_200, "a two-thousand-character setting is cut for a picture rather than refused");
@@ -383,7 +380,7 @@ async function main() {
   const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
     id,
     name: "",
-    purpose: "",
+    form: "",
     occupancy: { playerHome: false, residentCharacterId: characterId, homeKind: "small-home" },
     ...extra,
   });
@@ -405,10 +402,10 @@ async function main() {
       "occupancy",
       "playerInvitations",
       "playerSeenPrivateIds",
+      "playerSeenPublic",
       "playerSeenShared",
       "presentation",
       "privateSpaces",
-      "purpose",
       "residenceCapacity",
       "residentIds",
       "spaces",
@@ -438,7 +435,7 @@ async function main() {
       "village has decided what it looks like",
   );
   assert.deepEqual(
-    placesOf([{ id: "nameless", name: "   ", purpose: "", occupancy: {} }]),
+    placesOf([{ id: "nameless", name: "   ", form: "", occupancy: {} }]),
     [],
     "while the same nameless place with nothing saying it is a house is dropped rather than kept as a blank row in " +
       "the player's editor",
@@ -502,7 +499,7 @@ async function main() {
   // the picture reads as "no position", which costs the player a pin rather than
   // moving it somewhere they never put it.
   const spot = (x: unknown, y: unknown) =>
-    placesOf([{ id: "mill", name: "the mill", purpose: "", presentation: { x, y } }])[0]!;
+    placesOf([{ id: "mill", name: "the mill", form: "", presentation: { x, y } }])[0]!;
   assert.deepEqual([spot(0.25, 0.5).presentation.x, spot(0.25, 0.5).presentation.y], [0.25, 0.5]);
   assert.deepEqual(
     [spot(0, 1).presentation.x, spot(0, 1).presentation.y],
@@ -531,7 +528,7 @@ async function main() {
       Array.from({ length: MAX_PLACES + 6 }, (_, index) => ({
         id: `place-${index}`,
         name: `place ${index}`,
-        purpose: "",
+        form: "",
       })),
     ).length,
     MAX_PLACES,
@@ -772,7 +769,7 @@ async function main() {
     name: "Ashcroft",
     setting: settingText,
     foundingReason: "fresh-start",
-    foundingDetails: "",
+    foundingDetails: "The group arrives at the riverside and opens the first shared path.",
     playerPersonaId: "persona-robin",
     venues: [
       {
@@ -780,8 +777,8 @@ async function main() {
         name: "Robin's Diner",
         form: "A converted diner",
         classes: ["residence"],
-        purpose: "",
         description: "A modest home for the player.",
+        spaces: [{ venueClass: "residence", description: "A warm room with tables and a small hearth." }],
         presentation: { x: 0.2, y: 0.3 },
         occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
       },
@@ -790,8 +787,8 @@ async function main() {
         name: "Millie's Pod",
         form: "A sleeping pod",
         classes: ["residence"],
-        purpose: "",
         description: "Millie's small home.",
+        spaces: [{ venueClass: "residence", description: "A compact room with a woven mat." }],
         presentation: { x: 0.4, y: 0.5 },
         occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
       },
@@ -800,8 +797,8 @@ async function main() {
         name: "Village square",
         form: "An open square",
         classes: ["gathering"],
-        purpose: "The center of town.",
         description: "A public square where neighbours meet.",
+        spaces: [{ venueClass: "gathering", description: "An open central yard with benches." }],
         category: "public-center",
         presentation: { x: 0.6, y: 0.7 },
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
@@ -809,6 +806,17 @@ async function main() {
     ],
   });
   assert.equal(founded.statusCode, 200);
+  let preparation = (await readVillageState()).foundingPreparation;
+  for (let attempt = 0; attempt < 30 && !preparation?.venueDetailsSeeded; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    preparation = (await readVillageState()).foundingPreparation;
+  }
+  assert.equal(
+    preparation?.venueDetailsSeeded,
+    true,
+    "failed detail seeding is recorded without holding up preparation",
+  );
+  assert.equal((await readVillageState()).venues[0]?.state.condition, "", "seed failure leaves details empty");
   assert.equal(
     founded.json().settings.venues.filter((venue: any) => venue.classes.includes("gathering")).length,
     1,
@@ -837,13 +845,13 @@ async function main() {
       {
         id: "mill",
         name: "the mill pond",
-        purpose: "where the grain is ground",
+        form: "where the grain is ground",
         description: "A stone mill beside shallow water.",
       },
       {
         id: "ridge",
         name: "the ridge path",
-        purpose: "A path along the ridge",
+        form: "A path along the ridge",
         description: "A narrow path over the ridge.",
       },
     ],
@@ -996,7 +1004,7 @@ async function main() {
     ),
     "the picture is of the place, with its own note",
   );
-  assert.ok(request.appearance.includes("Venue purpose: where the grain is ground."));
+  assert.ok(request.appearance.includes("Venue form: where the grain is ground."));
   assert.ok(request.appearance.includes(settingText), "and it knows which village it stands in");
   assert.match(request.appearance, /It is .+, and the weather is .+\./, "and what the weather is doing right now");
   assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
@@ -1026,7 +1034,7 @@ async function main() {
   assert.notDeepEqual(drawnImage, stored, "redrawing replaces the reference rather than accumulating one");
 
   // ── Taking one away ───────────────────────────────────────────────────────
-  const beforeRemoval = engineCalls.length;
+  const beforeRemoval = galleryCalls(UPLOAD_PATH).length;
   const removed = await del("/api/villages/locations/venue/image", { venueId: "mill" });
   assert.equal(removed.statusCode, 200);
   assert.equal(
@@ -1038,7 +1046,11 @@ async function main() {
     removed.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image,
     "and the other place keeps its own",
   );
-  assert.equal(engineCalls.length, beforeRemoval, "the gallery entry is left where it is: the gallery is the player's");
+  assert.equal(
+    galleryCalls(UPLOAD_PATH).length,
+    beforeRemoval,
+    "the gallery entry is left where it is: the gallery is the player's",
+  );
 
   // ── A place that is gone ──────────────────────────────────────────────────
   // A picture arrives twenty seconds after it was asked for, so the panel can
@@ -1132,6 +1144,69 @@ async function main() {
   const venueSession = await readFile(join(repoRoot, services, "venue-session.ts"), "utf8");
   assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
   assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
+
+  const foundingVenue = {
+    id: "founding-home",
+    name: "Cliff House",
+    form: "A stone cottage",
+    description: "Blue slate roof above the harbor.",
+    spaceDescription: "A copper stove beside a low table.",
+    venueClass: "residence",
+    residentCharacterId: "",
+  };
+  const foundingImageInput = {
+    villageName: "Ashcroft",
+    setting: "A cliffside village above the sea.",
+    foundingDetails: "On Day 1, a storm damages several boats.",
+    selectedLorebookIds: [],
+  };
+  const beforeInvalidImage = draws().length;
+  assert.equal(
+    (
+      await post("/api/villages/setup/venue-image/generate", {
+        ...foundingImageInput,
+        area: "exterior",
+        venue: { ...foundingVenue, description: "" },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(draws().length, beforeInvalidImage, "a blank exterior description cannot spend image tokens");
+  assert.equal(
+    (
+      await post("/api/villages/setup/venue-image/generate", {
+        ...foundingImageInput,
+        area: "interior",
+        venue: { ...foundingVenue, spaceDescription: "" },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(draws().length, beforeInvalidImage, "a blank interior description cannot spend image tokens");
+  assert.equal(
+    (
+      await post("/api/villages/setup/venue-image/generate", {
+        ...foundingImageInput,
+        area: "exterior",
+        venue: foundingVenue,
+      })
+    ).statusCode,
+    200,
+  );
+  assert.match(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof above the harbor/u);
+  assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
+  assert.equal(
+    (
+      await post("/api/villages/setup/venue-image/generate", {
+        ...foundingImageInput,
+        area: "interior",
+        venue: foundingVenue,
+      })
+    ).statusCode,
+    200,
+  );
+  assert.match(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
+  assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof/u);
 
   // The package must not have grown a private Engine import to do any of this.
   // The image connection, the gallery and the drawing are all the Engine's own

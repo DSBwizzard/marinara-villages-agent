@@ -45,7 +45,6 @@ async function main() {
   const venue = (id: string, name: string) => ({
     id,
     name,
-    purpose: "",
     category: "public",
     presentation: { image: null, x: 0.5, y: 0.5 },
     occupancy: { playerHome: false, residentCharacterId: null as string | null, homeKind: null as string | null },
