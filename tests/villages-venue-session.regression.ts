@@ -38,6 +38,7 @@ import {
   setVenueVisitRetention,
   backfillVenueMemories,
   parseVenueReply,
+  venueCardProfile,
   resetVenueSessions,
   sendVenueTurn,
   touchVenueSession,
@@ -116,8 +117,11 @@ let holdGreetingOnce = false;
 let greetingStarted: (() => void) | null = null;
 let releaseHeldGreeting: (() => void) | null = null;
 let malformedGreetingOnce = false;
+let openingSegmentsOnce: Record<string, unknown>[] | null = null;
+let emptyOpeningOnce = false;
 let failReplyOnce = false;
 let failActReplyOnce = false;
+let quietActReplyOnce = false;
 let narrationOnlyOnce = false;
 let featureProposal: Record<string, string> | null = null;
 let creativeActorIds = ["bob", "tina"];
@@ -153,7 +157,7 @@ const release = configureVillagesRuntime({
           calls += 1;
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");
-          if (user.startsWith("The player has reached the outside of this Residence"))
+          if (user.startsWith("The player arrives outside this Residence"))
             return {
               content: JSON.stringify({
                 heardPlayerBy: [],
@@ -262,7 +266,7 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
-          if (user.startsWith("The player is already inside"))
+          if (user.startsWith("The player enters this space"))
             assert.ok(options.maxTokens <= 1_600, "a brief greeting cannot spend a full-turn output budget");
           if (system.includes("Distill one venue visit")) {
             memoryCalls += 1;
@@ -451,11 +455,11 @@ const release = configureVillagesRuntime({
               }),
               finishReason: "stop",
             };
-          if (user.startsWith("The player is already inside") && failGreetingOnce) {
+          if (user.startsWith("The player enters this space") && failGreetingOnce) {
             failGreetingOnce = false;
             throw new Error("greeting unavailable");
           }
-          if (user.startsWith("The player is already inside") && holdGreetingOnce) {
+          if (user.startsWith("The player enters this space") && holdGreetingOnce) {
             holdGreetingOnce = false;
             return new Promise((resolve) => {
               releaseHeldGreeting = () =>
@@ -469,7 +473,7 @@ const release = configureVillagesRuntime({
               greetingStarted?.();
             });
           }
-          if (user.startsWith("The player is already inside") && malformedGreetingOnce) {
+          if (user.startsWith("The player enters this space") && malformedGreetingOnce) {
             malformedGreetingOnce = false;
             return {
               content: JSON.stringify({
@@ -488,6 +492,15 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
+          if (user.startsWith("The player enters this space") && emptyOpeningOnce) {
+            emptyOpeningOnce = false;
+            return { content: JSON.stringify({ heardPlayerBy: [], segments: [] }), finishReason: "stop" };
+          }
+          if (user.startsWith("The player enters this space") && openingSegmentsOnce) {
+            const segments = openingSegmentsOnce;
+            openingSegmentsOnce = null;
+            return { content: JSON.stringify({ heardPlayerBy: [], segments }), finishReason: "stop" };
+          }
           if (user === "Fail once" && failReplyOnce) {
             failReplyOnce = false;
             throw new Error("reply unavailable");
@@ -495,6 +508,16 @@ const release = configureVillagesRuntime({
           if (user === "Set down a lantern" && failActReplyOnce) {
             failActReplyOnce = false;
             throw new Error("action reply unavailable");
+          }
+          if (user === "Set down a lantern" && quietActReplyOnce) {
+            quietActReplyOnce = false;
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "narration", text: "Bob makes room for the lantern on the table." }],
+              }),
+              finishReason: "stop",
+            };
           }
           if (user === "How are you doing?" && narrationOnlyOnce) {
             narrationOnlyOnce = false;
@@ -511,6 +534,16 @@ const release = configureVillagesRuntime({
               content: JSON.stringify({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "narration", text: "No one spoke.", heardBy: ["bob", "tina"] }],
+              }),
+              finishReason: "stop",
+            };
+          if (user === "No scene moment")
+            return { content: JSON.stringify({ heardPlayerBy: ["tina"], segments: [] }), finishReason: "stop" };
+          if (user === "Wait outside quietly" || user === "Look around the private room")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: user === "Wait outside quietly" ? [] : ["bob"],
+                segments: [{ kind: "narration", text: "Bob continues mending the torn cloth." }],
               }),
               finishReason: "stop",
             };
@@ -925,6 +958,11 @@ async function main() {
     assert.match(lastVenueSystem, /Address the player as "you"/u);
     assert.match(lastVenueSystem, /Content rating: SFW/u);
     assert.match(lastVenueSystem, /## Villager reply guidance/u);
+    assert.match(lastVenueSystem, /moment already underway/u);
+    assert.doesNotMatch(
+      lastVenueSystem,
+      /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
+    );
     assert.deepEqual(coerceVillageState({}).narrationStyle, defaultVillageState().narrationStyle);
     records.set(key("villages", "villages-narration"), {
       packageId: "villages",
@@ -1000,32 +1038,39 @@ async function main() {
     assert.deepEqual(aside.heardBy, ["bob"], "a side remark keeps its own audience");
     assert.deepEqual(lively.session.lines.find((line) => line.kind === "whisper")?.heardBy, ["tina", "bob"]);
     narrationOnlyOnce = true;
-    const beforeSpeechRetry = calls;
+    const beforeQuietReply = calls;
     const answered = await sendVenueTurn({
       sessionId: group.id,
       message: "How are you doing?",
       mode: "chat",
       targetId: "tina",
-      submissionId: "speech-retry",
+      submissionId: "quiet-reply",
     });
-    assert.equal(calls - beforeSpeechRetry, 2, "narration-only speech receives one retry");
-    assert.equal(answered.session.lines.at(-1)?.speakerId, "tina");
-    assert.ok(!answered.session.lines.some((line) => line.content === "Tina glanced over."));
-    const beforeNoAnswer = answered.session.lines.length;
-    const beforeDoubleFailure = calls;
+    assert.equal(calls - beforeQuietReply, 1, "a nonverbal reply does not trigger a second model call");
+    assert.equal(answered.session.lines.at(-1)?.content, "Tina glanced over.");
+    const beforeQuietAsk = calls;
+    const quietAsk = await sendVenueTurn({
+      sessionId: group.id,
+      message: "Still no answer",
+      mode: "ask",
+      targetId: "tina",
+      submissionId: "quiet-ask",
+    });
+    assert.equal(calls - beforeQuietAsk, 1);
+    assert.equal(quietAsk.session.lines.at(-1)?.content, "No one spoke.");
+    const beforeEmptyReply = quietAsk.session.lines.length;
     await assert.rejects(
       () =>
         sendVenueTurn({
           sessionId: group.id,
-          message: "Still no answer",
-          mode: "ask",
+          message: "No scene moment",
+          mode: "chat",
           targetId: "tina",
-          submissionId: "speech-failure",
+          submissionId: "empty-reply",
         }),
-      /scene did not answer/u,
+      /no scene moment/u,
     );
-    assert.equal(calls - beforeDoubleFailure, 2);
-    assert.equal((await activeVenueSession())?.lines.length, beforeNoAnswer, "neither silent attempt is archived");
+    assert.equal((await activeVenueSession())?.lines.length, beforeEmptyReply, "an empty reply is not archived");
     failReplyOnce = true;
     const beforeFailedSend = (await activeVenueSession())!.lines.length;
     await assert.rejects(
@@ -1094,7 +1139,8 @@ async function main() {
         ?.state.furniture.filter((item) => item === "lantern").length,
       1,
     );
-    await sendVenueTurn({
+    quietActReplyOnce = true;
+    const completedQuietAction = await sendVenueTurn({
       sessionId: group.id,
       message: "Set down a lantern",
       mode: "act",
@@ -1102,6 +1148,11 @@ async function main() {
       submissionId: "uncertain-action",
     });
     assert.equal(calls - beforeUncertainAction, 3, "retry regenerates only the missing reaction");
+    assert.ok(
+      completedQuietAction.session.lines.some(
+        (line) => line.content === "Bob makes room for the lantern on the table.",
+      ),
+    );
     assert.equal(
       (await readVillageState()).venues
         .find((place) => place.id === "park")
@@ -1388,8 +1439,43 @@ async function main() {
     await endVenueSession(manualGroup.id);
     assert.equal(memoryCalls - beforeManualEnd, 1, "the player can end a group chat with one batched memory call");
     assert.equal(await activeVenueSession(), null);
+    openingSegmentsOnce = [{ kind: "narration", text: "Tina keeps sorting seeds while Bob repairs the latch." }];
+    const quietOpening = await enterVenue("park");
+    const beforeQuietOpening = calls;
+    const quietScene = await greetVenue(quietOpening.id);
+    assert.equal(calls - beforeQuietOpening, 1, "a quiet indoor opening uses one model call");
     assert.deepEqual(
-      parseVenueReply({ heardPlayerBy: ["bob"], lines: [], departures: [], sceneEnded: false }, ["tina"]).heardPlayerBy,
+      quietScene.lines.map((line) => line.kind),
+      ["narration"],
+    );
+    await endVenueSession(quietScene.id);
+    openingSegmentsOnce = [
+      { kind: "dialogue", speakerId: "bob", text: "The hinge still catches.", heardBy: ["bob", "tina"] },
+      { kind: "dialogue", speakerId: "tina", text: "Try the smaller pin.", heardBy: ["bob", "tina"] },
+    ];
+    const conversationOpening = await enterVenue("park");
+    const beforeConversationOpening = calls;
+    const ongoingScene = await greetVenue(conversationOpening.id);
+    assert.equal(calls - beforeConversationOpening, 1);
+    assert.deepEqual(
+      ongoingScene.lines.map((line) => line.kind),
+      ["dialogue", "dialogue"],
+    );
+    assert.deepEqual(ongoingScene.lines[0]?.heardBy, ["bob", "tina"]);
+    await endVenueSession(ongoingScene.id);
+    openingSegmentsOnce = [{ kind: "dialogue", speakerId: "tina", text: "There you are.", heardBy: ["tina"] }];
+    const speechOpening = await enterVenue("park");
+    const speechScene = await greetVenue(speechOpening.id);
+    assert.equal(speechScene.lines[0]?.speakerId, "tina", "a direct greeting can lead without narration");
+    await endVenueSession(speechScene.id);
+    emptyOpeningOnce = true;
+    const emptyOpening = await enterVenue("park");
+    await assert.rejects(() => greetVenue(emptyOpening.id), /no scene moment/u);
+    assert.equal((await activeVenueSession())?.status, "opening", "an empty opening remains retryable");
+    await endVenueSession((await greetVenue(emptyOpening.id)).id);
+    assert.deepEqual(
+      parseVenueReply({ heardPlayerBy: ["bob"], lines: [{ kind: "narration", text: "The latch clicks." }] }, ["tina"])
+        .heardPlayerBy,
       [],
       "unavailable audience hints are ignored",
     );
@@ -1437,6 +1523,23 @@ async function main() {
     assert.ok((malformed.lines[0]?.expression?.length ?? 0) <= 40, "expression is bounded");
     assert.deepEqual(malformed.lines[0]?.heardBy, ["tina"], "unavailable audience is not admitted to the cast");
     await endVenueSession(malformed.id);
+    const longCard = venueCardProfile({
+      id: "bob",
+      name: "Bob",
+      comment: "",
+      summary: "",
+      tags: [],
+      systemPrompt: "S".repeat(3_000),
+      description: "A village resident.",
+      personality: "Speaks in clipped, dry phrases.",
+      scenario: "",
+      backstory: "",
+      appearance: "",
+      exampleDialogue: "That hinge has opinions.",
+    });
+    assert.ok(longCard.length <= 2_800, "the card stays within its existing prompt budget");
+    assert.match(longCard, /Personality: Speaks in clipped, dry phrases/u);
+    assert.match(longCard, /Example dialogue: That hinge has opinions/u);
     const scene = parseVenueReply(
       {
         heardPlayerBy: ["bob"],
@@ -2155,6 +2258,16 @@ async function main() {
     assert.equal(outside.area, "outside");
     outside = await greetVenue(outside.id);
     assert.equal(outside.area, "outside", "an unresponsive resident leaves the player outside");
+    const beforeOutsideQuiet = calls;
+    const outsideQuiet = await sendVenueTurn({
+      sessionId: outside.id,
+      message: "Wait outside quietly",
+      mode: "chat",
+      targetId: "bob",
+      submissionId: "outside-quiet",
+    });
+    assert.equal(calls - beforeOutsideQuiet, 1);
+    assert.equal(outsideQuiet.session.lines.at(-1)?.kind, "narration");
     await assert.rejects(() => enterResidencePrivateSpace(outside.id, "bob"), /invitation/u);
     const vaguePrivate = await sendVenueTurn({
       sessionId: outside.id,
@@ -2232,6 +2345,16 @@ async function main() {
     });
     assert.equal(privateInvite.session.area, "private");
     assert.equal(privateInvite.session.privateOwnerId, "bob");
+    const beforePrivateQuiet = calls;
+    const privateQuiet = await sendVenueTurn({
+      sessionId: outside.id,
+      message: "Look around the private room",
+      mode: "chat",
+      targetId: "bob",
+      submissionId: "private-quiet",
+    });
+    assert.equal(calls - beforePrivateQuiet, 1);
+    assert.equal(privateQuiet.session.lines.at(-1)?.kind, "narration");
     await generateFirstPrivateSpaceImage("home", "bob");
     const firstImageAttempt = (await readVillageState()).venues
       .find((place) => place.id === "home")

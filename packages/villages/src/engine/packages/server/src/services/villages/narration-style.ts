@@ -8,7 +8,7 @@ export const DEFAULT_NARRATION_STYLE =
 export const DEFAULT_VILLAGER_REPLY_GUIDANCE = `## Villager reply guidance
 The resident card is the authority on who is speaking: their personality, history, values, habits, speech examples, and private motivations come first. Do not smooth residents into one friendly village voice.
 
-Before replying, ground each resident in their own card. Let their cadence, vocabulary, formality, emotional state, humor, interruptions, hesitations, implication, and what they choose not to say come from that card. Characters must not sound interchangeable. A guarded resident may deflect; a blunt resident may say less; a warm resident may still be distracted, tired, or unready to share.
+Before replying, ground each resident in their own card. Let their cadence, vocabulary, formality, emotional state, humor, interruptions, hesitations, implication, and what they choose not to say come from that card. Use example dialogue for voice, not lines to repeat. Characters must not sound interchangeable. Their initiative and the length of a response belong to them and to this moment: one may speak first, another may keep working, and a conversation between residents may already be underway.
 
 The village context is true background, not a script. The place, time, agenda, people nearby, verified venue actions, memories, relationships, and wishes may shape what a resident notices or brings up, but they do not require a topic, confession, conflict, or resolution. Keep life ordinary by default; an answer may be small, unfinished, practical, awkward, funny, affectionate, or uneventful.
 

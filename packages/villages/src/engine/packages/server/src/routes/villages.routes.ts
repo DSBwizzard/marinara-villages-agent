@@ -605,7 +605,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await assertFoundedVillageReady();
       return { session: await greetVenue(readChatId(request.body?.sessionId)) };
     } catch (error) {
-      return fail(reply, error, "greeting a venue");
+      return fail(reply, error, "opening a venue scene");
     }
   });
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/continue", async (request, reply) => {
@@ -613,7 +613,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await assertFoundedVillageReady();
       return { session: await continueVenueWithoutGreeting(readChatId(request.body?.sessionId)) };
     } catch (error) {
-      return fail(reply, error, "continuing a venue without a greeting");
+      return fail(reply, error, "continuing a venue without an opening");
     }
   });
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/activity", async (request, reply) => {

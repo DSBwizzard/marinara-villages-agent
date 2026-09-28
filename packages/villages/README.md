@@ -39,6 +39,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.52 lets venue visits open on the life already underway: residents may speak, continue their work, talk with each other, or leave the moment quiet. Ordinary replies usually engage the player in speech but may also respond through grounded action or silence. The scene format still records exact speakers and audiences, and decisions such as invitations and approvals still require spoken evidence. Character cards keep their voice examples visible in bounded prompts, while the built-in guidance favors each resident's own initiative and cadence.
+
 0.6.51 restores automatic durable-memory star cards when end-of-visit review promotes recollections. Natural endings, Conclude, and immediate endings all preserve the review receipts, show them before returning to the map, and deduplicate deterministic receipt IDs. Passing recollections and pending or failed reviews remain silent.
 
 0.6.50 prepares each founding villager with one compact System model request for wishes, a weekly pattern, and native activity mappings. Relevant enabled entries from lorebooks selected at founding enter that request within the chosen token budget. Native schedule times and availability remain authoritative. The preparation screen shows its stage, model, attempt, elapsed stage time, and lore entry count. Failed preparation stops after three attempts and can be retried for the unfinished villager. Later schedule drift reuses known mappings locally.
