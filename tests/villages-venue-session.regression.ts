@@ -25,6 +25,7 @@ import {
   activeVenueSession,
   continueVenueWithoutGreeting,
   endVenueSession,
+  endVenueSessionWithReceipts,
   leaveVenueMemoryPending,
   enterVenue,
   enterResidencePrivateSpace,
@@ -1904,9 +1905,11 @@ async function main() {
       targetId: "",
       submissionId: "group-memories",
     });
-    const groupClosed = await endVenueSession(groupVisit.id);
+    const groupEnding = await endVenueSessionWithReceipts(groupVisit.id);
+    const groupClosed = groupEnding.session;
     assert.equal(groupClosed.memoryReview.status, "complete");
     assert.equal(reviewCalls - reviewsBeforeGroup, 1, "one ordinary group visit uses one compact review call");
+    assert.equal(groupEnding.recordEvents.length, 5, "direct ending returns every promoted durable-memory receipt");
     const groupDurable = (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === groupVisit.id);
     assert.equal(groupDurable.length, 5, "all five distinct qualifying events survive; there is no four-memory cap");
     assert.equal(
@@ -1929,16 +1932,20 @@ async function main() {
       submissionId: "review-failure",
     });
     failReviewOnce = true;
-    const pendingReview = await endVenueSession(retryable.id);
+    const pendingEnding = await endVenueSessionWithReceipts(retryable.id);
+    const pendingReview = pendingEnding.session;
     assert.equal(pendingReview.status, "closed", "a failed reviewer never holds the room open");
     assert.equal(pendingReview.memoryPending, true);
     assert.equal(pendingReview.memoryReview.status, "pending");
+    assert.deepEqual(pendingEnding.recordEvents, [], "a pending review produces no false durable-memory receipt");
     assert.match(pendingReview.memoryReview.error, /review unavailable/u);
     assert.equal(await activeVenueSession(), null);
     assert.equal((await readVenueVisit(retryable.id)).lines.length > 0, true, "the exact archive remains available");
-    const retriedReview = await endVenueSession(retryable.id);
+    const retriedEnding = await endVenueSessionWithReceipts(retryable.id);
+    const retriedReview = retriedEnding.session;
     assert.equal(retriedReview.memoryPending, false);
     assert.equal(retriedReview.memoryReview.status, "complete");
+    assert.equal(retriedEnding.recordEvents.length, 1, "a successful retry returns its durable-memory receipt");
     const retryDurable = (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === retryable.id);
     assert.equal(retryDurable.length, 1, "retry commits the durable memory exactly once");
     await endVenueSession(retryable.id);
