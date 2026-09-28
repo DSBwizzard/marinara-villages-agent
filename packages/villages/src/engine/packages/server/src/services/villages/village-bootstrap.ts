@@ -721,6 +721,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
     );
     const sections = [
       `Write a brief visual Events update for ${context.village}, a small fictional village. This feed has no effect on the village or its residents.`,
+      "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
       context.setting.trim() ? `Setting: ${boundText(context.setting, 500)}` : "",
       context.worldFacts?.length ? `Current world facts: ${context.worldFacts.join("; ")}` : "",
       `Now: ${describeMoment(context.moment)}; weather: ${context.moment.weather}.`,
@@ -764,6 +765,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
   const gap = gapSince(context.lastSimulatedAt, context.moment, context.forced);
   const sections = [
     "You are the narrator of a small village in a text roleplay, writing down what has happened here lately. You are not writing as any one person.",
+    "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
     [
       `The village is called ${context.village}.`,
       world.length > 0
@@ -1311,6 +1313,7 @@ function buildReactionMessages(context: VillageReactionContext): CapabilityLangu
   const seen = context.recent.map((line) => line.trim()).filter((line) => line.length > 0);
   const sections = [
     "You are writing down what the village saw of one small thing that has just happened here, in a text roleplay. You are not writing as anybody, and you are not addressing anyone.",
+    "The supplied deed is already verified. Describe only what a bystander could observe of it. Do not invent additional player words, actions, decisions, consent, thoughts, or feelings, and do not continue the player's turn.",
     [
       `The village is called ${context.village}.`,
       world.length > 0

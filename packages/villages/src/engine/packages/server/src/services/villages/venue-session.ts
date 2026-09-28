@@ -676,7 +676,7 @@ async function generate(
       ? "Open on a brief, specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Someone may notice the player and speak, residents may be talking to each other, or the moment may pass without speech. Do not force a welcome, a description-then-dialogue pattern, or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
       : "",
     mode === "leave"
-      ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate the player's departure if the room is empty. Do not introduce a new errand or prolong the encounter."
+      ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate only that chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
       : "",
     "If a current resident explicitly invites the player into their Residence, return invitation with speakerId, venueId, scope (shared or private), timing (now or later), and an exact quote from that resident's spoken dialogue. Private entry may be granted only by that private space's owner. Later means one future visit; conditional, vague, sarcastic, or third-party permission is not an invitation. Omit invitation unless the resident actually says it. Entry never grants permission to change the space.",
     `Pending exact Residence edit proposals: ${
