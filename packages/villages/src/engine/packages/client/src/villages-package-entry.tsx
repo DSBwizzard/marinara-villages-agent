@@ -2404,9 +2404,9 @@ const VILLAGES_STYLES = `
 */
 .${ELEMENT_TAG}-chat[data-ended="true"] .${ELEMENT_TAG}-composer { display: none; }
 /*
-  And the same hiding, for the two states of a greeting that has not landed.
+  And the same hiding, for the two states of an opening that has not landed.
 
-  A villager greets first, so while they are still finding their line there is
+  The scene opens first, so while its first moment is being written there is
   nothing to answer: the box would take a sentence the player cannot send, and
   every verb above it would be a greyed-out version of itself. Hiding rather than
   unmounting keeps the half-written line in the box across a retry that succeeds,
@@ -5819,11 +5819,11 @@ async function completedGreetingAfterFailure(sessionId: string): Promise<RoomVie
   }
 }
 
-function greetingFailureMessage(cause: unknown): string {
-  const message = messageFrom(cause, "The greeting could not be prepared.");
+function openingFailureMessage(cause: unknown): string {
+  const message = messageFrom(cause, "The scene opening could not be prepared.");
   return /timeout|timed out|exceeded 28 seconds/iu.test(message)
-    ? "The greeting took too long. Retry it or continue without a greeting."
-    : `${message} Retry it or continue without a greeting.`;
+    ? "The scene opening took too long. Retry it or continue without an opening."
+    : `${message} Retry it or continue without an opening.`;
 }
 
 /** The one node kind that is a run of other nodes rather than a leaf. */
@@ -9871,7 +9871,7 @@ function RoomPanel({
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
       <span className={`${ELEMENT_TAG}-chat-pending-label`}>
         {room.status === "opening"
-          ? "Preparing a greeting…"
+          ? "Opening the scene…"
           : room.status === "closing"
             ? "Saving this visit…"
             : "The room is answering…"}
@@ -10247,7 +10247,7 @@ function RoomPanel({
                   */
                   <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
                     {room.status === "opening"
-                      ? `Preparing a greeting in ${room.placeName}…`
+                      ? `Opening the scene in ${room.placeName}…`
                       : activeParticipants.length === 0
                         ? `You are alone in ${room.placeName}.`
                         : "…"}
@@ -10306,7 +10306,7 @@ function RoomPanel({
               Back to map
             </button>
             <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onRetryGreeting} disabled={busy}>
-              Retry greeting
+              Retry opening
             </button>
             {room.id ? (
               <button
@@ -10315,7 +10315,7 @@ function RoomPanel({
                 onClick={onContinueWithoutGreeting}
                 disabled={busy}
               >
-                Continue without greeting
+                Continue without opening
               </button>
             ) : null}
           </div>
@@ -11411,7 +11411,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               const recovered = await completedGreetingAfterFailure(session.id);
               if (controller.signal.aborted) return;
               if (recovered) setRoom(recovered);
-              else setRoomError(greetingFailureMessage(cause));
+              else setRoomError(openingFailureMessage(cause));
             })
             .finally(() => {
               if (!controller.signal.aborted) setRoomBusy(false);
@@ -11933,7 +11933,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       } catch (cause) {
         const recovered = await completedGreetingAfterFailure(sessionId);
         if (recovered) setRoom(recovered);
-        else setRoomError(greetingFailureMessage(cause));
+        else setRoomError(openingFailureMessage(cause));
       } finally {
         setRoomBusy(false);
       }
@@ -11951,7 +11951,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       });
       setRoom(currentRoom(session));
       setRoomGreetingNotice(
-        session.lines.length === 0 ? "The greeting failed. You can start the conversation now." : "",
+        session.lines.length === 0 ? "The opening failed. You can start the conversation now." : "",
       );
       setRoomError("");
     } catch (cause) {
