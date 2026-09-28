@@ -8,6 +8,7 @@ import {
   findVillagerCard,
   listPlayerPersonas,
   listVillagerCards,
+  listVillagerDialogueColors,
   readEffectiveVillagerCard,
   toCatalogEntry,
   type VillagerCard,
@@ -188,10 +189,12 @@ function projectVillager(
   cardName: string | null,
   cardSummary: string,
   cardTags: string[],
+  dialogueColor: string,
   place: VillagePlaceView | null,
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
+    dialogueColor,
     sprite: villager.sprite
       ? {
           ...villager.sprite,
@@ -347,6 +350,7 @@ function villageSettings(
     macros: VILLAGE_PRESET_MACROS,
     storyPace: village.storyPace,
     storyPaces: ["off", "quiet", "balanced", "lively"],
+    characterSpeechColors: village.characterSpeechColors,
     villageNameMaxLength: MAX_VILLAGE_NAME_LENGTH,
     playerPersonaId: village.playerPersonaId,
     // The cached name travels even when the link is broken, so the panel can
@@ -525,6 +529,9 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
   const residentIds = village.villagers.map((villager) => villager.characterId);
   const cards = await listVillagerCards(residentIds);
   const cardsById = new Map(cards.map((card) => [card.id, card]));
+  const dialogueColors = village.characterSpeechColors
+    ? await listVillagerDialogueColors(residentIds)
+    : new Map<string, string>();
   const player = readPlayerIdentity(village);
   const { activeVenueSession } = await import("./venue-session.js");
   const residenceAccess = await activeVenueSession();
@@ -539,6 +546,7 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
       card?.name ?? null,
       card?.summary ?? "",
       card?.tags ?? [],
+      card ? (dialogueColors.get(villager.characterId) ?? "") : "",
       villagerPlaceView(village, villager, null, minuteOfDay, now),
     );
   });
@@ -1850,6 +1858,14 @@ export async function setVillageStoryPace(value: unknown): Promise<VillageSnapsh
   }
   await mutateVillageState((state) => {
     state.storyPace = value as VillageStoryPace;
+  });
+  return buildVillageSnapshot();
+}
+
+export async function setVillageCharacterSpeechColors(value: unknown): Promise<VillageSnapshot> {
+  if (typeof value !== "boolean") throw badRequest("Character speech colors must be on or off.");
+  await mutateVillageState((state) => {
+    state.characterSpeechColors = value;
   });
   return buildVillageSnapshot();
 }

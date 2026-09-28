@@ -135,6 +135,7 @@ type SetupMapSource = "existing" | "generate" | "upload" | "none";
 
 type VillageVillagerView = {
   characterId: string;
+  dialogueColor: string;
   name: string;
   sprite: ResidentSprite | null;
   summary: string;
@@ -558,6 +559,7 @@ type TownMapView = {
  * `/narration`. The knowledge box below remains separate from writing style.
  */
 type VillageSettings = {
+  characterSpeechColors: boolean;
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
   promptKnowledge: string;
   defaultPromptKnowledge: string;
@@ -5856,6 +5858,23 @@ type VillagesStyledNode = Extract<VillagesMarkdownNode, { kind: "styled" }>;
  * long enough for the reading to show up in a profile, the upgrade path is a
  * `useMemo` per message keyed on its content, not a change to the reader.
  */
+function villagesSpeechPaintStyle(value: string | undefined): CSSProperties | undefined {
+  const paint = value?.trim();
+  if (!paint || /url\(|;|expression\(/i.test(paint)) return undefined;
+  if (/^(?:linear|radial|conic)-gradient\(/i.test(paint)) {
+    return CSS.supports("background-image", paint)
+      ? {
+          backgroundImage: paint,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          color: "transparent",
+        }
+      : undefined;
+  }
+  return CSS.supports("color", paint) ? { color: paint } : undefined;
+}
+
 function renderVillagesMarkdown(text: string, keyPrefix: string): ReactNode {
   return drawVillagesNodes(parseVillagesInlineMarkdown(text), keyPrefix);
 }
@@ -9589,6 +9608,7 @@ function MailboxImprovementEditor({
 /** The single Visit surface for an empty, solo, or group cast. */
 function RoomPanel({
   room,
+  speechColors,
   picture,
   draft,
   mode,
@@ -9622,6 +9642,7 @@ function RoomPanel({
   onUseMailbox,
 }: {
   room: RoomView;
+  speechColors: Record<string, string>;
   /** The picture of the place, or `""` for one that has never been drawn. */
   picture: string;
   draft: string;
@@ -9867,6 +9888,7 @@ function RoomPanel({
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
   const cast = room.status === "closed" && activeParticipants.length === 0 ? room.participants : activeParticipants;
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
+  const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
   const asideSide =
@@ -10193,7 +10215,13 @@ function RoomPanel({
                       : line.name || "Resident"}
                   {line.kind === "side" ? " · aside" : line.kind === "whisper" ? " · whisper" : ""}:{" "}
                 </strong>
-                {renderVillagesMarkdown(line.content, `history-${index}-`)}
+                <span
+                  style={
+                    line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined
+                  }
+                >
+                  {renderVillagesMarkdown(line.content, `history-${index}-`)}
+                </span>
               </p>
             ))}
           </div>
@@ -10222,7 +10250,10 @@ function RoomPanel({
                       <span className={`${ELEMENT_TAG}-chat-vn-aside-target`}>{`→ ${aside.target}`}</span>
                     ) : null}
                   </p>
-                  <p className={`${ELEMENT_TAG}-chat-vn-aside-text`}>
+                  <p
+                    className={`${ELEMENT_TAG}-chat-vn-aside-text`}
+                    style={speechStyle(aside.speakerId ?? step.speakerId)}
+                  >
                     {renderVillagesMarkdown(aside.text, `vn-aside-${index}-`)}
                   </p>
                 </div>
@@ -10254,7 +10285,12 @@ function RoomPanel({
                       {renderVillagesMarkdown(step.text, "vn-beat-")}
                     </p>
                   ) : (
-                    <p className={`${ELEMENT_TAG}-chat-vn-text`}>{renderVillagesMarkdown(step.text, "vn-")}</p>
+                    <p
+                      className={`${ELEMENT_TAG}-chat-vn-text`}
+                      style={step.player ? undefined : speechStyle(step.speakerId)}
+                    >
+                      {renderVillagesMarkdown(step.text, "vn-")}
+                    </p>
                   )
                 ) : (
                   /*
@@ -12117,6 +12153,33 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, []);
 
+  const saveCharacterSpeechColors = useCallback(
+    async (characterSpeechColors: boolean) => {
+      const previous = snapshot?.settings.characterSpeechColors ?? true;
+      setSnapshot((current) =>
+        current ? { ...current, settings: { ...current.settings, characterSpeechColors } } : current,
+      );
+      setBusy(true);
+      setSettingsError("");
+      try {
+        setSnapshot(
+          await request<VillageSnapshot>("/settings", {
+            method: "PATCH",
+            body: JSON.stringify({ characterSpeechColors }),
+          }),
+        );
+      } catch (cause) {
+        setSnapshot((current) =>
+          current ? { ...current, settings: { ...current.settings, characterSpeechColors: previous } } : current,
+        );
+        setSettingsError(messageFrom(cause, "Character speech colors could not be saved."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [snapshot?.settings.characterSpeechColors],
+  );
+
   const saveVisitRetention = useCallback(async (visitRetention: VillageSettings["visitRetention"]) => {
     setBusy(true);
     setSettingsError("");
@@ -13906,6 +13969,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         {room ? (
           <RoomPanel
             room={room}
+            speechColors={
+              snapshot?.settings.characterSpeechColors
+                ? Object.fromEntries(
+                    snapshot.villagers.map((villager) => [villager.characterId, villager.dialogueColor]),
+                  )
+                : {}
+            }
             picture={venuePictureOf(snapshot?.settings.venues ?? [], room)}
             draft={roomDraft}
             mode={roomMode}
@@ -15251,6 +15321,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {/* Drawn before the village is founded as well as after, because
                 these belong to the agent rather than to the village. */}
             <AgentConnections />
+
+            {snapshot ? (
+              <div className={`${ELEMENT_TAG}-field`}>
+                <label className={`${ELEMENT_TAG}-row`} htmlFor={`${ELEMENT_TAG}-speech-colors`}>
+                  <input
+                    id={`${ELEMENT_TAG}-speech-colors`}
+                    type="checkbox"
+                    checked={snapshot.settings.characterSpeechColors}
+                    disabled={busy}
+                    onChange={(event) => void saveCharacterSpeechColors(event.target.checked)}
+                  />
+                  <span>Character speech colors</span>
+                </label>
+                <span className={`${ELEMENT_TAG}-hint`}>
+                  Show each villager’s character card dialogue color in chats.
+                </span>
+              </div>
+            ) : null}
 
             {snapshot ? (
               <div className={`${ELEMENT_TAG}-field`}>
@@ -16852,7 +16940,21 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   <span className={`${ELEMENT_TAG}-story-meta`}>
                                     {line.name || playerDisplayName(snapshot)} · {stampTime(line.at)}
                                   </span>
-                                  {renderVillagesMarkdown(line.content, `venue-${visit.id}-${index}-`)}
+                                  <span
+                                    style={
+                                      snapshot?.settings.characterSpeechColors &&
+                                      line.role === "assistant" &&
+                                      line.kind !== "narration"
+                                        ? villagesSpeechPaintStyle(
+                                            snapshot.villagers.find(
+                                              (villager) => villager.characterId === line.speakerId,
+                                            )?.dialogueColor,
+                                          )
+                                        : undefined
+                                    }
+                                  >
+                                    {renderVillagesMarkdown(line.content, `venue-${visit.id}-${index}-`)}
+                                  </span>
                                   <span className={`${ELEMENT_TAG}-story-meta`}>
                                     Heard by:{" "}
                                     {line.heardBy
