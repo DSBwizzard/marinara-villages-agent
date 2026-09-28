@@ -4512,11 +4512,15 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-scenario-option strong { font-size: max(.72rem, 13px); }
 .${ELEMENT_TAG}-scenario-option small { color: #bdc8ed; font-size: max(.6rem, 11px); line-height: 1.2; }
 .${ELEMENT_TAG}-scenario-art-panel {
-  position: relative; flex: 1 1 auto; min-width: 0; min-height: 0;
+  position: relative; flex: 1 1 12rem; min-width: 0; min-height: 8rem;
   overflow: hidden; border: 1px solid #6684d4; border-radius: 1.2rem; background: #162550;
 }
 .${ELEMENT_TAG}-scenario-art-panel > img {
   position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+}
+.${ELEMENT_TAG}-scenario-art-placeholder {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: #d3ddfa; font-size: 2rem;
 }
 .${ELEMENT_TAG}-scenario-art-panel::after {
   content: ""; position: absolute; inset: 36% 0 0;
@@ -7935,6 +7939,26 @@ type IdentityPreview = IdentityChoice & {
   details: { label: string; text: string }[];
   context: string;
 };
+
+function FoundingScenarioArtwork({ scenario }: { scenario: FoundingScenarioId }) {
+  const src = foundingScenarioArt(scenario);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  return (
+    <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
+      {failedSrc === src ? (
+        <span className={`${ELEMENT_TAG}-scenario-art-placeholder`} role="img" aria-label="Village scene unavailable">
+          ⌂
+        </span>
+      ) : (
+        <img src={src} alt={`${foundingScenario(scenario).label} village scene`} onError={() => setFailedSrc(src)} />
+      )}
+      <div className={`${ELEMENT_TAG}-scenario-art-content`}>
+        <p>A new beginning awaits.</p>
+        <strong>{foundingScenario(scenario).description}</strong>
+      </div>
+    </div>
+  );
+}
 
 /** Shared visual selection pattern; callers supply their own identity and status data. */
 function IdentityChoiceStrip({
@@ -18688,16 +18712,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           */}
           <div className={`${ELEMENT_TAG}-setup-visual`}>
             {setupStep <= 1 ? (
-              <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
-                <img
-                  src={foundingScenarioArt(setupFoundingReason)}
-                  alt={`${foundingScenario(setupFoundingReason).label} village scene`}
-                />
-                <div className={`${ELEMENT_TAG}-scenario-art-content`}>
-                  <p>A new beginning awaits.</p>
-                  <strong>{foundingScenario(setupFoundingReason).description}</strong>
-                </div>
-              </div>
+              <FoundingScenarioArtwork scenario={setupFoundingReason} />
             ) : (
               <div className={`${ELEMENT_TAG}-setup-map-shell`}>
                 <div className={`${ELEMENT_TAG}-setup-map-viewport`}>

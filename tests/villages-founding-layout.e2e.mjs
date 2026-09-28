@@ -112,6 +112,7 @@ try {
     );
     await page.route("**/api/capability-packages/villages/assets/founding-*.jpg", (route) => {
       const file = new URL(route.request().url()).pathname.split("/").at(-1);
+      if (file === "founding-rebuild.jpg") return route.fulfill({ status: 404 });
       return route.fulfill({
         status: 200,
         contentType: "image/jpeg",
@@ -133,11 +134,10 @@ try {
     await expect(root.locator(".marinara-capability-villages-mapbar")).toHaveCount(0);
     const cards = root.locator(".marinara-capability-villages-scenario-option");
     await expect(cards).toHaveCount(5);
-    await expect
-      .poll(() =>
-        root.locator(".marinara-capability-villages-scenario-art-panel img").evaluate((img) => img.naturalWidth),
-      )
-      .toBeGreaterThan(0);
+    await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
+    const artPanel = root.locator(".marinara-capability-villages-scenario-art-panel");
+    const artBounds = await artPanel.boundingBox();
+    assert.ok(artBounds && artBounds.width > 0 && artBounds.height > 0, "the missing artwork keeps its panel");
     const first = await cards.nth(0).boundingBox();
     const lastInRow = await cards.nth(cardsPerRow - 1).boundingBox();
     assert.ok(first && lastInRow && Math.abs(first.y - lastInRow.y) < 2, "scenario cards fit their row");
@@ -173,7 +173,9 @@ try {
     await premise.fill("My edited premise");
     await direction.fill("Keep the story hopeful");
     await root.getByText("Pioneer", { exact: true }).click();
+    await expect.poll(() => artPanel.locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
     await root.getByText("Rebuild", { exact: true }).click();
+    await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
     await expect(premise).toHaveValue(original);
     await expect(direction).toHaveValue("Keep the story hopeful");
     await root.getByText("Custom", { exact: true }).click();
@@ -186,6 +188,7 @@ try {
     await root.getByLabel("What is this village called?").fill("Willowbrook");
     await root.getByRole("button", { name: "Next →" }).click();
     await expect(root.getByText("Step 2 of 7 · Connections & Persona")).toBeVisible();
+    await expect(root.getByRole("img", { name: "Village scene unavailable" })).toBeVisible();
     const personaCards = root.locator(".marinara-capability-villages-identity-card");
     await expect(personaCards).toHaveCount(3);
     assert.equal(
