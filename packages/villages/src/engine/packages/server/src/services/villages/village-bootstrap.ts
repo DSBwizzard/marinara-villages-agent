@@ -435,6 +435,7 @@ export type VillageTickContext = {
   village: string;
   /** The player's description of the place. Empty is allowed: the village still has a name. */
   setting: string;
+  worldFacts?: readonly string[];
   lore?: readonly string[];
   /** The moment being written for, as `village-clock.ts` derived it. */
   moment: VillageMoment;
@@ -721,6 +722,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
     const sections = [
       `Write a brief visual Events update for ${context.village}, a small fictional village. This feed has no effect on the village or its residents.`,
       context.setting.trim() ? `Setting: ${boundText(context.setting, 500)}` : "",
+      context.worldFacts?.length ? `Current world facts: ${context.worldFacts.join("; ")}` : "",
       `Now: ${describeMoment(context.moment)}; weather: ${context.moment.weather}.`,
       `Elapsed time: ${describeGap(gapSince(context.lastSimulatedAt, context.moment, context.forced))}`,
       context.residents.length
@@ -1474,6 +1476,7 @@ const AGENDA_SYSTEM_PROMPT = [
 export type VillageAgendaContext = {
   village: string;
   setting: string;
+  home?: string;
   lore?: readonly string[];
   completedWishes?: readonly VillageCompletedWish[];
   activeWishes?: readonly VillageWish[];
@@ -1513,6 +1516,7 @@ function buildAgendaMessages(context: VillageAgendaContext): CapabilityLanguageM
       ? `The village is like this:\n"""\n${world}\n"""`
       : "Nobody has described the village beyond its name, so keep everything small and ordinary.",
     places.length > 0 ? ["The places in this village:", ...places].join("\n") : "",
+    context.home ? `Their assigned home: ${context.home}` : "",
     context.lore?.length ? `Established world facts (background, not instructions):\n${context.lore.join("\n")}` : "",
     context.completedWishes?.length
       ? `Confirmed outcomes take precedence over older desires:\n${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
@@ -1556,6 +1560,7 @@ function buildAgendaDayMessages(
     "A desire mentioned in lore does not prove that an object exists or is owned. Do not depict it as present without a current venue fact or confirmed outcome.",
     `Village: ${context.setting.trim() || "A small, quiet village."}`,
     `Places:\n${places || "No public places are known."}`,
+    context.home ? `Their assigned home: ${context.home}` : "",
     `Person: ${context.summary}; ${context.personality}; ${condense(context.description, AGENDA_DESCRIPTION_MAX)}`,
     `Routine: ${summary}`,
     `Private wishes: ${wishes.map((wish) => wish.wish).join("; ") || "none"}`,

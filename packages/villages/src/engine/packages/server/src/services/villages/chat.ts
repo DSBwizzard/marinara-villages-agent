@@ -42,7 +42,8 @@ import {
   type VillageHomeLine,
   type VillagePresentGroup,
   type VillagePromptValues,
-  villageNarrativeSetting,
+  villageCurrentSetting,
+  villageRelevantOrigin,
 } from "./prompt-preset.js";
 import { VILLAGES_FAREWELL_MARK } from "./turn-beats.js";
 import type {
@@ -275,7 +276,7 @@ function promptValuesFor(
   return buildPromptValues({
     char: card.name,
     village: village.name,
-    setting: villageNarrativeSetting(village),
+    setting: villageCurrentSetting(village),
     // The SENDABLE places only — see `remapVenues`. The houses are covered by
     // the homes block below, which names the person in each one; listing them
     // here as well would put the same building name in the prompt four times
@@ -784,12 +785,15 @@ export async function buildPromptContext(
     }),
     // Names for rooms and houses come from the same adopted snapshots.
     present: presentFor(village, speakerId, routines, residents.names),
-    lore: await readVillageLore(
-      village.selectedLorebookIds,
-      [villageNarrativeSetting(village), speakerPlace, speaker?.cardSnapshot.name ?? "", topic].join("\n"),
-      undefined,
-      village.loreTokenBudget,
-    ),
+    lore: [
+      ...(await readVillageLore(
+        village.selectedLorebookIds,
+        [villageCurrentSetting(village), speakerPlace, speaker?.cardSnapshot.name ?? "", topic].join("\n"),
+        undefined,
+        village.loreTokenBudget,
+      )),
+      villageRelevantOrigin(village, topic),
+    ].filter(Boolean),
     homes: projectHomeLines(village, residents.names),
     memory: memoryForVillager(village.chronicle, speakerId),
     moment,
@@ -973,7 +977,7 @@ export type VillageDistilledMemory = {
 
 function buildDistillMessages(context: VillageDistillContext): CapabilityLanguageModelMessage[] {
   const { card, village } = context;
-  const world = villageNarrativeSetting(village).trim();
+  const world = villageCurrentSetting(village).trim();
   const player = context.playerName.trim() || "the player";
   const who = [
     card.description ? `Description:\n${condense(card.description, MAX_RESIDENT_SUMMARY_LENGTH)}` : "",

@@ -13,8 +13,14 @@ async function main() {
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
   } = await import(pathToFileURL(join(services, "town-map-image.ts")).href);
-  const { TOWN_MAP_EXPECTED_HEIGHT, TOWN_MAP_EXPECTED_WIDTH, MAX_TOWN_MAP_IMAGE_LENGTH, villageNarrativeSetting } =
-    await import(pathToFileURL(join(services, "prompt-preset.ts")).href);
+  const {
+    TOWN_MAP_EXPECTED_HEIGHT,
+    TOWN_MAP_EXPECTED_WIDTH,
+    MAX_TOWN_MAP_IMAGE_LENGTH,
+    villageCurrentSetting,
+    villageFoundingSetting,
+    villageRelevantOrigin,
+  } = await import(pathToFileURL(join(services, "prompt-preset.ts")).href);
   const { defaultVillageState, coerceVillageState } = await import(
     pathToFileURL(join(services, "village-store.ts")).href
   );
@@ -23,28 +29,44 @@ async function main() {
   assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
   assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
   assert.equal(MAX_TOWN_MAP_IMAGE_LENGTH, 8_000_000);
+  const founded = {
+    setting: "Misty cliffs",
+    worldFacts: ["The cliffs shelter seabirds"],
+    foundingReason: "rebuild",
+    foundingDetails: "Survivors gathered after the flood in the early days.",
+    foundingGuidance: "Favor quiet solidarity.",
+    scenarioImprint: {
+      origin: "Survivors founded the village after a flood.",
+      worldFacts: ["The cliffs shelter seabirds"],
+      openingConditions: ["The old footbridge needs repair"],
+      visualCues: ["Reused timber"],
+    },
+  };
+  assert.equal(villageCurrentSetting(founded), "Misty cliffs\nCurrent world facts:\n- The cliffs shelter seabirds");
+  assert.doesNotMatch(villageCurrentSetting(founded), /early days|flood|footbridge|solidarity/);
   assert.match(
-    villageNarrativeSetting({ setting: "Misty cliffs", foundingReason: "refuge", foundingDetails: "After the flood" }),
-    /Misty cliffs\nFounding premise: People founded this village as a refuge\. After the flood/,
+    villageFoundingSetting(founded),
+    /Opening conditions \(at founding only\): The old footbridge needs repair/,
+  );
+  assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
+  assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
+  assert.match(
+    villageRelevantOrigin(founded, "Who founded this village?"),
+    /Survivors founded the village after a flood/,
   );
   assert.equal(
-    villageNarrativeSetting({
-      setting: "Misty cliffs",
-      foundingReason: "none",
-      foundingDetails: "",
-      foundingGuidance: "",
-    }),
-    "Misty cliffs",
+    villageRelevantOrigin({ setting: "Misty cliffs", foundingReason: "none", foundingDetails: "" }, "history"),
+    "",
   );
-  assert.match(
-    villageNarrativeSetting({
-      setting: "Misty cliffs",
-      foundingReason: "rebuild",
-      foundingDetails: "Survivors gather here.",
-      foundingGuidance: "Favor quiet solidarity.",
-    }),
-    /Scenario: Rebuild\nFounding premise: Survivors gather here\.\nNarrative direction: Favor quiet solidarity\./,
-  );
+  const legacy = coerceVillageState({
+    setting: "Misty cliffs",
+    foundingReason: "rebuild",
+    foundingDetails: "After the flood",
+  });
+  assert.equal(legacy.scenarioImprint, null);
+  assert.deepEqual(legacy.worldFacts, []);
+  assert.equal(villageCurrentSetting(legacy), "Misty cliffs");
+  assert.match(villageRelevantOrigin(legacy, "Tell me the village history"), /After the flood/);
   assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [1536, 1024]);
   assert.deepEqual(
     [coerceVillageState({}).townMapCanvasWidth, coerceVillageState({}).townMapCanvasHeight],
@@ -89,6 +111,16 @@ async function main() {
   assert.match(defaultPrompt, /Do not include buildings/);
   assert.match(defaultPrompt, /Do not include water/);
   assert.match(defaultPrompt, /without any writing, numerals/);
+  const imprintMap = buildTownMapPrompt(
+    undefined,
+    "Misty cliffs",
+    { roads: true, structures: false, water: false },
+    "",
+    founded.scenarioImprint,
+  );
+  assert.match(imprintMap, /Reused timber/);
+  assert.match(imprintMap, /Do not include water/);
+  assert.match(imprintMap, /Do not include buildings/);
   assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, digits, numbers, labels/);
   assert.equal(
     buildTownMapNegativePrompt(),
@@ -145,6 +177,7 @@ async function main() {
     "Village Identity",
     "Connections & Persona",
     "World & Setting",
+    "Scenario Imprint",
     "Village Map",
     "Build the Village",
     "Review",
@@ -156,7 +189,7 @@ async function main() {
   assert.ok(client.includes("className={`${ELEMENT_TAG}-debug-label`}>DEBUG"));
   assert.ok(client.includes("setupMapOptions"));
   assert.equal(client.includes("Fit entire map"), false);
-  assert.ok(client.includes("mobile={mobile && setupStep >= 3}"));
+  assert.ok(client.includes("mobile={mobile && setupStep >= 4}"));
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   assert.ok(client.includes("lorebooks: setupLorebookDraft"));
   assert.ok(client.includes("setting: setupSetting.trim()"));

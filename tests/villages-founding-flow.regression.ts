@@ -13,8 +13,11 @@ async function main() {
   const { coerceVillageState } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
   );
-  const { parsePlace, runVillageSetup } = await import(
+  const { parsePlace, runVillageSetup, assertFoundingScenarioLocked } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village.ts")).href
+  );
+  const { readScenarioImprint } = await import(
+    pathToFileURL(join(serverRoot, "services/villages/scenario-imprint.ts")).href
   );
 
   for (const picture of [
@@ -53,6 +56,61 @@ async function main() {
   );
   assert.equal(coerceVillageState({}).foundingGuidance, "", "older villages have no narrative direction");
   assert.equal(coerceVillageState({ foundingGuidance: "Favor quiet bonds." }).foundingGuidance, "Favor quiet bonds.");
+  const ongoingOnly = readScenarioImprint({
+    origin: "",
+    worldFacts: ["The sun never fully sets"],
+    openingConditions: [],
+    visualCues: ["Long amber twilight"],
+  });
+  assert.equal(ongoingOnly.origin, "", "an ongoing-only Custom scenario does not gain an invented origin");
+  assert.deepEqual(ongoingOnly.worldFacts, ["The sun never fully sets"]);
+  assert.equal(
+    readScenarioImprint({ origin: "Families arrived by sea", worldFacts: [], openingConditions: [], visualCues: [] })
+      .origin,
+    "Families arrived by sea",
+  );
+  assert.equal(
+    readScenarioImprint({
+      origin: "Families arrived by sea",
+      worldFacts: ["The sun never fully sets"],
+      openingConditions: [],
+      visualCues: [],
+    }).worldFacts.length,
+    1,
+  );
+  assert.throws(
+    () => readScenarioImprint({ origin: "", worldFacts: [], openingConditions: [], visualCues: [] }),
+    /at least one/,
+  );
+  assert.throws(
+    () =>
+      readScenarioImprint({ origin: "", worldFacts: ["a", "b", "c", "d", "e"], openingConditions: [], visualCues: [] }),
+    /at most four/,
+  );
+  const savedScenario = {
+    foundingReason: "rebuild",
+    foundingDetails: "The flood was years ago.",
+    foundingGuidance: "Keep the first days hopeful.",
+    scenarioImprint: readScenarioImprint({
+      origin: "Families rebuilt after the flood.",
+      worldFacts: ["Stone bridge"],
+      openingConditions: [],
+      visualCues: [],
+    }),
+  };
+  assert.doesNotThrow(() => assertFoundingScenarioLocked(savedScenario, { ...savedScenario }));
+  assert.throws(
+    () => assertFoundingScenarioLocked(savedScenario, { ...savedScenario, foundingDetails: "Changed" }),
+    /locked/,
+  );
+  assert.throws(
+    () =>
+      assertFoundingScenarioLocked(savedScenario, {
+        ...savedScenario,
+        scenarioImprint: { ...savedScenario.scenarioImprint, origin: "Changed" },
+      }),
+    /locked/,
+  );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   await assert.rejects(
     runVillageSetup({ ...identity, foundingReason: "none", foundingDetails: "A secret quest", foundingGuidance: "" }),
@@ -74,6 +132,10 @@ async function main() {
       foundingGuidance: "x".repeat(501),
     }),
     /Narrative direction must be text of at most 500/,
+  );
+  await assert.rejects(
+    runVillageSetup({ ...identity, foundingReason: "custom", foundingDetails: "x".repeat(2_001) }),
+    /at most 2,000/,
   );
   const outsideImage = { id: "outer", ref: "global-gallery:outer", url: "/outer.webp" };
   const insideImage = { id: "inner", ref: "global-gallery:inner", url: "/inner.webp" };
@@ -114,9 +176,9 @@ async function main() {
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
-  assert.ok(client.includes("photoPins={setupStep >= 4}"));
-  assert.ok(client.includes("Scenario premise (required)"));
-  assert.ok(client.includes("Narrative direction (optional)"));
+  assert.ok(client.includes("photoPins={setupStep >= 5}"));
+  assert.ok(client.includes("Scenario starting idea (required)"));
+  assert.ok(client.includes("Founding direction (optional)"));
   assert.ok(client.includes('setupFoundingReason === "none"'));
   assert.ok(client.includes("Reset all venues"));
   assert.ok(client.includes("Place a Residence"));
@@ -127,7 +189,7 @@ async function main() {
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   const review =
     client
-      .split("{setupStep === 5 ? (")[1]
+      .split("{setupStep === 6 ? (")[1]
       ?.split("<div className={`${ELEMENT_TAG}-row`}>\n                {setupStep > 0")[0] ?? "";
   assert.ok(review.includes("Review your village"));
   assert.ok(review.includes("Scenario premise:"));
@@ -135,6 +197,7 @@ async function main() {
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
   assert.ok(routes.includes('"/setup/venues/draft"'));
+  assert.ok(routes.includes('"/setup/scenario-imprint/draft"'));
   assert.ok(routes.includes('"/setup/venue-image/generate"'));
   assert.ok(routes.includes('"/setup/venue-image"'));
   assert.ok(routes.includes('"/setup/preparation/retry"'));

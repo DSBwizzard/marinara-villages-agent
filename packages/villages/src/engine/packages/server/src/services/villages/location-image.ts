@@ -162,7 +162,7 @@ export function buildLocationPrompt(
     facts.length ? `Established venue facts: ${facts.join("; ")}.` : "",
     venue.state.upgrades.length ? `Approved improvements: ${venue.state.upgrades.join(", ")}.` : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
-    village.foundingDetails ? `Founding context: ${village.foundingDetails.slice(0, 250)}.` : "",
+    village.worldFacts.length ? `Current world facts: ${village.worldFacts.join("; ")}.` : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
     `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
@@ -237,7 +237,7 @@ export async function generateVillageLocationImage(
       : [venue.name, venue.form, venue.purpose, venue.description, venue.exteriorState?.condition ?? ""].join("\n");
   const lore = await readVillageVisualLore(
     village.selectedLorebookIds,
-    `${village.name}\n${village.setting}\n${village.foundingDetails}\n${exterior ? exteriorContext : `${venue.name}\n${venue.purpose}\n${venue.description}\n${venue.state.condition}`}`,
+    `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.purpose}\n${venue.description}\n${venue.state.condition}`}`,
     300,
   );
   const prompt = buildLocationPrompt(
