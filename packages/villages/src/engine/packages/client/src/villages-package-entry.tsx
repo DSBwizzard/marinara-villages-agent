@@ -41,7 +41,7 @@ import {
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
 import { createVillagesClientId, shouldSubmitVenueKey } from "./villages-venue-send";
-import { nextRoomReadIndex } from "./villages-room-reading";
+import { hasCompletedRoomSubmission, isLocalRoomCompletion, nextRoomReadIndex } from "./villages-room-reading";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import {
@@ -5867,6 +5867,17 @@ async function completedGreetingAfterFailure(sessionId: string): Promise<RoomVie
   }
 }
 
+async function completedRoomAfterFailure(sessionId: string, submissionId: string): Promise<RoomView | null> {
+  try {
+    const { visit } = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    return hasCompletedRoomSubmission(visit, submissionId) ? currentRoom(visit) : null;
+  } catch {
+    return null;
+  }
+}
+
 function openingFailureMessage(cause: unknown): string {
   const message = messageFrom(cause, "The scene opening could not be prepared.");
   return /timeout|timed out|exceeded 28 seconds/iu.test(message)
@@ -11022,6 +11033,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const leavingRoomPendingRef = useRef(false);
   const roomSubmissionIdRef = useRef<string | null>(null);
   const roomLeaveSubmissionIdRef = useRef<string | null>(null);
+  const roomCompletionRef = useRef<{ roomId: string; submissionId: string } | null>(null);
 
   /** Accept each server receipt once, regardless of which visit-ending path returned it. */
   const receiveRoomRecordEvents = useCallback((events: readonly RoomRecordEvent[]) => {
@@ -11464,7 +11476,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
     let disposed = false;
     const interrupted = (reason: "inactivity" | "elsewhere") => {
-      if (disposed) return;
+      if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
       setRoom(null);
       setRoomOpen(false);
       setRoomNotices([]);
@@ -11478,8 +11490,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       void loadSnapshot();
     };
     const validate = (touchAfter = false) => {
+      if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
       void request<{ session: RoomView | null }>("/rooms/active")
         .then(async ({ session }) => {
+          if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
           if (session?.id === room.id) {
             if (touchAfter) {
               await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
@@ -11490,6 +11504,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           const archived = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(room.id)}`).catch(
             () => null,
           );
+          if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
           interrupted(archived?.visit.endReason === "inactivity" ? "inactivity" : "elsewhere");
         })
         .catch((cause) => {
@@ -11498,6 +11513,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         });
     };
     const deliberate = (event: Event) => {
+      if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
       if (Date.now() - lastRoomDeliberateAtRef.current >= 30 * 60_000) {
         if (event.cancelable) event.preventDefault();
         event.stopImmediatePropagation();
@@ -11809,6 +11825,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const closeRoom = useCallback(async () => {
     if (!room || roomBusy) return;
     if (!room.id || room.status === "closed" || roomEnded) {
+      roomCompletionRef.current = null;
       setRoomOpen(false);
       setRoom(null);
       setRoomNotices([]);
@@ -11823,6 +11840,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setRoomError("");
     setEndFailed(false);
     setRoom({ ...room, status: "closing" });
+    roomCompletionRef.current = { roomId: room.id, submissionId: "" };
     try {
       const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/end", {
         method: "POST",
@@ -11837,6 +11855,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       void loadSnapshot();
     } catch (cause) {
       if (leavingRoomPendingRef.current) return;
+      roomCompletionRef.current = null;
       const staleReason = staleVenueReason(cause);
       if (staleReason) {
         setRoom(null);
@@ -11863,6 +11882,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     if (!room?.id || room.status !== "active" || roomBusy || roomSendInFlightRef.current) return;
     const submissionId = roomLeaveSubmissionIdRef.current ?? createVillagesClientId();
     roomLeaveSubmissionIdRef.current = submissionId;
+    roomCompletionRef.current = { roomId: room.id, submissionId };
     setRoomBusy(true);
     setRoomError("");
     setEndFailed(false);
@@ -11873,12 +11893,39 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         signal: AbortSignal.timeout(300_000),
       });
       setRoom(currentRoom(answer.session));
-      void loadSnapshot();
       setRoomEnded(true);
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       roomLeaveSubmissionIdRef.current = null;
+      setRoomDraft("");
       void loadSnapshot();
     } catch (cause) {
+      const recovered = await completedRoomAfterFailure(room.id, submissionId);
+      if (recovered) {
+        setRoom(currentRoom(recovered));
+        setRoomEnded(true);
+        setRoomDraft("");
+        setRoomError("");
+        setEndFailed(false);
+        roomLeaveSubmissionIdRef.current = null;
+        void loadSnapshot();
+        return;
+      }
+      roomCompletionRef.current = null;
+      const staleReason = staleVenueReason(cause);
+      if (staleReason) {
+        setRoom(null);
+        setRoomOpen(false);
+        setRoomNotices([]);
+        seenRoomEventIdsRef.current.clear();
+        setLastSceneEnding(
+          staleReason === "inactivity"
+            ? "Interrupted: Inactivity. Your completed exchanges were saved in the visit archive."
+            : "This visit ended while you were away. Its completed exchanges are in the visit archive.",
+        );
+        setScreen("home");
+        void loadSnapshot();
+        return;
+      }
       setRoomError(messageFrom(cause, "The scene could not end yet."));
       setEndFailed(true);
     } finally {
@@ -11892,6 +11939,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setRoomBusy(true);
     try {
       await request("/rooms/leave-pending", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
+      roomCompletionRef.current = null;
       setRoomOpen(false);
       setRoom(null);
       setRoomNotices([]);
@@ -11980,6 +12028,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setRoomError("");
     setRoomDraft("");
     setRoom({ ...room, lines: [...room.lines, mine] });
+    roomCompletionRef.current = { roomId: room.id, submissionId };
     try {
       const answer = await request<{
         session: RoomView;
@@ -11999,6 +12048,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       });
       setRoom(currentRoom(answer.session));
       setRoomEnded(answer.session.status === "closed");
+      if (answer.session.status !== "closed") roomCompletionRef.current = null;
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       if (roomTargetId && !answer.session.activeIds.includes(roomTargetId)) setRoomTargetId("");
       setRoomRuling(answer.verdict?.reason ?? "");
@@ -12007,6 +12057,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomGreetingNotice("");
       void loadSnapshot();
     } catch (cause) {
+      const recovered = await completedRoomAfterFailure(room.id, submissionId);
+      if (recovered) {
+        setRoom(currentRoom(recovered));
+        setRoomEnded(true);
+        setRoomError("");
+        roomSubmissionIdRef.current = null;
+        setRoomGreetingNotice("");
+        void loadSnapshot();
+        return;
+      }
+      roomCompletionRef.current = null;
       const staleReason = staleVenueReason(cause);
       if (staleReason) {
         setRoom(null);
@@ -12111,6 +12172,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const openRoom = useCallback(
     async (place: VillageVenue, spaceClass?: VenueClass, privateOwnerId = "") => {
       leavingRoomPendingRef.current = false;
+      roomCompletionRef.current = null;
       setOpenPlaceId(null);
       setPlacesOpen(false);
       setPlaceProblem(null);
