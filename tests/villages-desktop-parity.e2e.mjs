@@ -119,7 +119,25 @@ try {
             ...snapshot,
             villagers: residents.map((resident, index) => (index === 3 ? { ...resident, sprite: null } : resident)),
           }
-        : snapshot;
+        : width === 1440
+          ? {
+              ...snapshot,
+              settings: {
+                ...snapshot.settings,
+                venues: [
+                  ...snapshot.settings.venues,
+                  {
+                    ...place("home", 0.76, 0.23),
+                    name: "Mara's home",
+                    classes: ["residence"],
+                    residentIds: ["mara"],
+                    residenceCapacity: 1,
+                    occupancy: { playerHome: false, residentCharacterId: "mara", homeKind: null },
+                  },
+                ],
+              },
+            }
+          : snapshot;
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let lastTurn = null;
@@ -150,6 +168,14 @@ try {
     };
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/locations/venue/home/player-move")) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "This home has no room for another resident." }),
+        });
+        return;
+      }
       let value = fixtureSnapshot;
       if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
@@ -249,7 +275,7 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
-    await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(3);
+    await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(width === 1440 ? 4 : 3);
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
     await expect(home.locator(`[data-pin-id="${mobile ? "market" : "mill"}"]`)).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
@@ -310,6 +336,7 @@ try {
     await expect(zoneNav.getByRole("button", { name: /Exterior/u })).toBeVisible();
     await expect(page.getByRole("button", { name: "Visit this area →" })).toBeVisible();
     await expect(page.getByRole("button", { name: "About" })).toHaveCount(0);
+    await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
         path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-venue-${width}x${height}.png`),
@@ -515,6 +542,24 @@ try {
     await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByRole("button", { name: "Return to map" }).first()).toBeVisible();
     assert.equal(lastLeave.message, finalLine, "Conclude sends the optional final line");
+    if (width === 1440) {
+      await page.getByRole("button", { name: "Return to map" }).first().click();
+      await home.locator('[data-pin-id="home"]').click();
+      await home
+        .locator(".marinara-capability-villages-doors")
+        .getByRole("button", { name: /View venue/iu })
+        .click();
+      const headerActions = page.locator(".marinara-capability-villages-actions");
+      await expect(headerActions.getByRole("button", { name: "Request to live here" })).toBeVisible();
+      await expect(headerActions.getByRole("button", { name: "Edit Venue" })).toBeVisible();
+      await headerActions.getByRole("button", { name: "Request to live here" }).click();
+      const moveError = page.getByRole("alert");
+      await expect(moveError).toHaveText("This home has no room for another resident.");
+      const errorBox = await moveError.boundingBox();
+      const zoneBox = await page.locator(".marinara-capability-villages-venue-zone-context").boundingBox();
+      assert.ok(errorBox && zoneBox && errorBox.y + errorBox.height <= zoneBox.y, "move error appears above Zone");
+      await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
+    }
     await page.close();
   }
   console.log("Villages desktop parity: five viewports, four-person stage, compact reading, and map controls passed");
