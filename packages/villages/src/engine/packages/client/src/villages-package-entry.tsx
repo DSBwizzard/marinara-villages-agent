@@ -1769,12 +1769,8 @@ type VillageWritingView = {
   tense: "present" | "past";
   person: "first" | "second" | "third";
   rating: "sfw" | "nsfw";
-  styleInstructions: string;
-  defaultStyleInstructions: string;
-  styleMaxLength: number;
-  replyGuidance: string;
-  defaultReplyGuidance: string;
-  replyGuidanceMaxLength: number;
+  writingGuidance: string;
+  writingGuidanceMaxLength: number;
 };
 
 /**
@@ -9169,8 +9165,7 @@ function useVillageWriting() {
       tense?: VillageWritingView["tense"];
       person?: VillageWritingView["person"];
       rating?: VillageWritingView["rating"];
-      styleInstructions?: string;
-      replyGuidance?: string | null;
+      writingGuidance?: string;
     }): Promise<VillageWritingView | null> => {
       setBusy(true);
       setSaved(false);
@@ -9193,52 +9188,53 @@ function useVillageWriting() {
   return { view, error, busy, saved, save };
 }
 
-function VillageNarrationStyleSettings() {
+function VillageWritingSettings() {
   const { view, error, busy, saved, save } = useVillageWriting();
-  const [styleDraft, setStyleDraft] = useState<string | null>(null);
-  const draft = styleDraft ?? view?.styleInstructions ?? "";
+  const [guidanceDraft, setGuidanceDraft] = useState<string | null>(null);
+  const draft = guidanceDraft ?? view?.writingGuidance ?? "";
 
   return (
     <div className={ELEMENT_TAG + "-field"}>
-      <span className={ELEMENT_TAG + "-label"}>Narration style</span>
+      <span className={ELEMENT_TAG + "-label"}>Additional writing guidance</span>
       <p className={ELEMENT_TAG + "-empty"}>
-        Shape scene descriptions and the descriptive beats around replies. Each resident&apos;s card still governs their
-        spoken voice. Saved changes apply to the next generated venue turn.
+        Optionally influence narration and dialogue in this village. Resident cards, scene facts, and the player&apos;s
+        choices remain in charge. Leave this empty for Villages&apos; own scene writing. Saved changes apply to the next
+        generated venue turn.
       </p>
       {view ? (
         <>
           <textarea
             className={ELEMENT_TAG + "-textarea"}
-            aria-label="Narration style"
+            aria-label="Additional writing guidance"
             value={draft}
-            rows={3}
-            maxLength={view.styleMaxLength}
+            rows={5}
+            maxLength={view.writingGuidanceMaxLength}
             disabled={busy}
-            onChange={(event) => setStyleDraft(event.target.value)}
+            onChange={(event) => setGuidanceDraft(event.target.value)}
           />
           <button
             type="button"
             className={ELEMENT_TAG + "-button"}
-            disabled={busy || draft === view.styleInstructions}
+            disabled={busy || draft === view.writingGuidance}
             onClick={() => {
-              void save({ styleInstructions: draft }).then((next) => {
-                if (next) setStyleDraft(next.styleInstructions);
+              void save({ writingGuidance: draft }).then((next) => {
+                if (next) setGuidanceDraft(next.writingGuidance);
               });
             }}
           >
-            Apply style
+            Apply guidance
           </button>
           <button
             type="button"
             className={ELEMENT_TAG + "-button"}
-            disabled={busy || draft === view.defaultStyleInstructions}
+            disabled={busy || !draft}
             onClick={() => {
-              void save({ styleInstructions: "" }).then((next) => {
-                if (next) setStyleDraft(next.styleInstructions);
+              void save({ writingGuidance: "" }).then((next) => {
+                if (next) setGuidanceDraft(next.writingGuidance);
               });
             }}
           >
-            Restore default style
+            Clear guidance
           </button>
           <div className={ELEMENT_TAG + "-row"}>
             <label className={ELEMENT_TAG + "-field"}>
@@ -9281,7 +9277,7 @@ function VillageNarrationStyleSettings() {
           </span>
         </>
       ) : !error ? (
-        <span className={ELEMENT_TAG + "-hint"}>Reading narration style…</span>
+        <span className={ELEMENT_TAG + "-hint"}>Reading village writing settings…</span>
       ) : null}
       {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
       {saved && !busy ? (
@@ -9295,80 +9291,6 @@ function VillageNarrationStyleSettings() {
         </p>
       ) : null}
     </div>
-  );
-}
-
-function VillagerReplyGuidanceDebug() {
-  const { view, error, busy, saved, save } = useVillageWriting();
-  const [draft, setDraft] = useState<string | null>(null);
-  const guidance = draft ?? view?.replyGuidance ?? "";
-
-  return (
-    <section className={ELEMENT_TAG + "-panel"}>
-      <h2 className={ELEMENT_TAG + "-panel-title"}>DEBUG: Villager reply guidance</h2>
-      <p className={ELEMENT_TAG + "-empty"}>
-        This prompt guides each resident&apos;s voice, knowledge, and motivation. Saved edits apply to the next
-        generated venue turn.
-      </p>
-      {view ? (
-        <>
-          <textarea
-            className={ELEMENT_TAG + "-textarea"}
-            aria-label="Villager reply guidance"
-            value={guidance}
-            rows={12}
-            maxLength={view.replyGuidanceMaxLength}
-            disabled={busy}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <div className={ELEMENT_TAG + "-row"}>
-            <button
-              type="button"
-              className={ELEMENT_TAG + "-button"}
-              disabled={busy || guidance === view.replyGuidance}
-              onClick={() => {
-                void save({ replyGuidance: guidance }).then((next) => {
-                  if (next) setDraft(next.replyGuidance);
-                });
-              }}
-            >
-              Apply guidance
-            </button>
-            <button
-              type="button"
-              className={ELEMENT_TAG + "-button"}
-              disabled={busy || guidance === view.defaultReplyGuidance}
-              onClick={() => {
-                void save({ replyGuidance: null }).then((next) => {
-                  if (next) setDraft(next.replyGuidance);
-                });
-              }}
-            >
-              Restore built-in guidance
-            </button>
-          </div>
-          <details>
-            <summary>Show built-in guidance</summary>
-            <pre className={ELEMENT_TAG + "-hint"} style={{ whiteSpace: "pre-wrap" }}>
-              {view.defaultReplyGuidance}
-            </pre>
-          </details>
-        </>
-      ) : !error ? (
-        <span className={ELEMENT_TAG + "-hint"}>Reading villager reply guidance…</span>
-      ) : null}
-      {busy ? <span className={ELEMENT_TAG + "-hint"}>Saving…</span> : null}
-      {saved && !busy ? (
-        <span className={ELEMENT_TAG + "-hint"} role="status">
-          Saved for the next venue turn.
-        </span>
-      ) : null}
-      {error ? (
-        <p className={ELEMENT_TAG + "-error"} role="alert">
-          {error}
-        </p>
-      ) : null}
-    </section>
   );
 }
 
@@ -11033,7 +10955,6 @@ type MenuTab =
   | "map"
   | "village"
   | "general"
-  | "replyGuidance"
   | "story"
   | "chatlogs"
   | "agendas"
@@ -11043,7 +10964,7 @@ type MenuPage = "index" | MenuTab;
 
 function menuCategory(page: MenuPage): "index" | "general" | "village" | "debug" {
   if (page === "index" || page === "general") return page;
-  if (["replyGuidance", "story", "chatlogs", "agendas", "schedules"].includes(page)) return "debug";
+  if (["story", "chatlogs", "agendas", "schedules"].includes(page)) return "debug";
   return "village";
 }
 
@@ -11057,7 +10978,6 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   map: "Town map",
   village: "Village Settings",
   general: "General Settings",
-  replyGuidance: "Villager reply guidance",
   story: "Village Story",
   chatlogs: "Venue Visits",
   agendas: "Villager Wishes",
@@ -16429,16 +16349,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "replyGuidance"}
-                data-active={menuPage === "replyGuidance" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("replyGuidance")}
-              >
-                DEBUG: Villager reply guidance
-              </button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
                 aria-pressed={menuPage === "story"}
                 data-active={menuPage === "story" ? "true" : "false"}
                 disabled={!snapshot || busy}
@@ -16680,11 +16590,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <section className={`${ELEMENT_TAG}-panel`}>
                 <h2 className={`${ELEMENT_TAG}-panel-title`}>Village settings</h2>
                 <p className={`${ELEMENT_TAG}-empty`}>
-                  These choices belong to this village. Narration style shapes scene prose; resident cards shape their
-                  dialogue. Village knowledge is refreshed for every reply.
+                  These choices belong to this village. Resident cards shape their voices, and Villages writes each
+                  scene around what is happening now. Village knowledge is refreshed for every reply.
                 </p>
 
-                <VillageNarrationStyleSettings />
+                <VillageWritingSettings />
                 {mobile ? (
                   <div className={`${ELEMENT_TAG}-field`}>
                     <span className={`${ELEMENT_TAG}-label`}>Map background image</span>
@@ -16944,7 +16854,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     ))}
                 </section>
                 {/*
-                  The knowledge box is world context. Narration style is above;
+                  The knowledge box is world context. Writing guidance is above;
                   each resident's own card governs their speech.
                 */}
                 <div className={`${ELEMENT_TAG}-field`}>
@@ -16964,8 +16874,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     What a villager here knows, written as tokens the village fills in for itself: the time, the
                     weather, who else lives here, what is on the noticeboard. Because it is written out fresh on every
                     reply, a villager here is always current — and because it is only these tokens, adding a place or
-                    pinning a note reaches every villager without anything being edited here. A resident&apos;s card and
-                    the DEBUG Villager reply guidance govern how they respond.
+                    pinning a note reaches every villager without anything being edited here. A resident&apos;s card
+                    guides their voice; additional writing guidance is in Village Settings.
                   </p>
                   <div className={`${ELEMENT_TAG}-macros`}>
                     {snapshot.settings.macros.map((macro) => (
@@ -17962,8 +17872,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               find out what a village believes about you is to ask one of its
               villagers and hope they bring it up.
             */}
-            {menuPage === "replyGuidance" ? <VillagerReplyGuidanceDebug /> : null}
-
             {menuPage === "story" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>

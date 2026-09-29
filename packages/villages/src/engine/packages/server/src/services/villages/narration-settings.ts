@@ -4,12 +4,9 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 import {
-  DEFAULT_NARRATION_STYLE,
   DEFAULT_VILLAGER_REPLY_GUIDANCE,
-  effectiveNarrationStyle,
-  effectiveVillagerReplyGuidance,
-  NARRATION_STYLE_MAX_LENGTH,
   VILLAGER_REPLY_GUIDANCE_MAX_LENGTH,
+  WRITING_GUIDANCE_MAX_LENGTH,
   type VillageNarrationStyle,
 } from "./narration-style.js";
 import {
@@ -380,12 +377,8 @@ export async function saveVillageNarration(body: unknown): Promise<VillageNarrat
 
 /** The active venue's per-village writing controls. Old preset documents are not read here. */
 export type VillageWritingView = Pick<VillageNarrationStyle, "tense" | "person" | "rating"> & {
-  styleInstructions: string;
-  defaultStyleInstructions: string;
-  styleMaxLength: number;
-  replyGuidance: string;
-  defaultReplyGuidance: string;
-  replyGuidanceMaxLength: number;
+  writingGuidance: string;
+  writingGuidanceMaxLength: number;
 };
 
 export async function readVillageWriting(): Promise<VillageWritingView> {
@@ -394,12 +387,8 @@ export async function readVillageWriting(): Promise<VillageWritingView> {
     tense: style.tense,
     person: style.person,
     rating: style.rating,
-    styleInstructions: effectiveNarrationStyle(style),
-    defaultStyleInstructions: DEFAULT_NARRATION_STYLE,
-    styleMaxLength: NARRATION_STYLE_MAX_LENGTH,
-    replyGuidance: effectiveVillagerReplyGuidance(style),
-    defaultReplyGuidance: DEFAULT_VILLAGER_REPLY_GUIDANCE,
-    replyGuidanceMaxLength: VILLAGER_REPLY_GUIDANCE_MAX_LENGTH,
+    writingGuidance: style.writingGuidance,
+    writingGuidanceMaxLength: WRITING_GUIDANCE_MAX_LENGTH,
   };
 }
 
@@ -419,19 +408,11 @@ export async function saveVillageWriting(body: unknown): Promise<void> {
     if (patch.rating !== "sfw" && patch.rating !== "nsfw") throw badRequest("Choose SFW or NSFW.");
     accepted.rating = patch.rating;
   }
-  if (patch.styleInstructions !== undefined) {
-    if (patch.styleInstructions !== null && typeof patch.styleInstructions !== "string")
-      throw badRequest("Narration style must be text.");
-    const value = asTrimmedString(patch.styleInstructions);
-    if (value.length > NARRATION_STYLE_MAX_LENGTH) throw badRequest("Narration style is too long.");
-    accepted.styleInstructions = value === DEFAULT_NARRATION_STYLE ? "" : value;
-  }
-  if (patch.replyGuidance !== undefined) {
-    if (patch.replyGuidance !== null && typeof patch.replyGuidance !== "string")
-      throw badRequest("Villager reply guidance must be text.");
-    const value = asTrimmedString(patch.replyGuidance);
-    if (value.length > VILLAGER_REPLY_GUIDANCE_MAX_LENGTH) throw badRequest("Villager reply guidance is too long.");
-    accepted.replyGuidanceOverride = value === DEFAULT_VILLAGER_REPLY_GUIDANCE ? "" : value;
+  if (patch.writingGuidance !== undefined) {
+    if (typeof patch.writingGuidance !== "string") throw badRequest("Additional writing guidance must be text.");
+    const value = patch.writingGuidance.trim();
+    if (value.length > WRITING_GUIDANCE_MAX_LENGTH) throw badRequest("Additional writing guidance is too long.");
+    accepted.writingGuidance = value;
   }
   if (Object.keys(accepted).length === 0) throw badRequest("No writing setting was supplied.");
   await mutateVillageState((state) => {

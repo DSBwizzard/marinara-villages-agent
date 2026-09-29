@@ -51,6 +51,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.72 gives venue replies a fixed scene-writing foundation that keeps each resident's card in charge while allowing narration and dialogue to vary with the moment. Recent scene history retains narration alongside speech in chronological order. Village Settings now has one optional Additional writing guidance field for both narration and dialogue; it adds a preference without replacing the foundation. Earlier custom Narration style and DEBUG reply-guidance text are intentionally not carried over, while tense, person, and rating remain.
+
 0.6.71 gives every Menu page the View Venue navy and violet layout and keeps navigation visible beside its content. Menu navigation now uses one active page state, with explicit loading and error content, so returning from a page or opening a direct link cannot leave an empty menu. The package stylesheet is restored if the Engine replaces head styles while the tab remains mounted.
 
 0.6.70 recognizes a Builder's brief spoken agreement when the player's request clearly identifies a Project through its venue description, even if the resident replies “I'll do it” rather than repeating the Project's title. Projects can recheck recent archived chats for missed Builder agreements without asking the resident again.

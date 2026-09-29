@@ -187,9 +187,8 @@ try {
       else if (path.endsWith("/story")) value = { entries: [], total: 0 };
       else if (path.endsWith("/narration"))
         value = {
-          styleInstructions: "",
-          defaultStyleInstructions: "",
-          styleMaxLength: 1000,
+          writingGuidance: "",
+          writingGuidanceMaxLength: 4000,
           tense: "present",
           person: "third",
           rating: "sfw",

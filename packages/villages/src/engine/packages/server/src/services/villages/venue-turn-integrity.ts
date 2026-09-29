@@ -13,18 +13,23 @@ type CandidateLine = { kind: "narration" | "dialogue" | "side" | "whisper"; cont
 export function venueSceneHistory(lines: readonly SceneHistoryLine[], playerName: string): string {
   const playerIndexes = lines.flatMap((line, index) => (line.role === "user" ? [index] : []));
   const start = playerIndexes.at(-3) ?? 0;
-  const recent = lines.slice(start);
-  const latestNarration = [...lines].reverse().find((line) => line.kind === "narration");
-  const selected = recent.filter((line) => line.kind !== "narration");
-  const shown = [
-    ...(latestNarration ? [`SCENE: ${latestNarration.content.slice(0, 400)}`] : []),
-    ...selected.map((line) => {
-      const label =
-        line.role === "user" ? `PLAYER ${playerName || "the player"}` : `RESIDENT ${line.name} (${line.speakerId})`;
-      return `${label}: ${line.content.slice(0, 500)} [heard by: ${line.heardBy.join(", ") || "nobody"}]`;
-    }),
-  ];
-  return shown.join("\n");
+  const recent = lines.slice(start).slice(-18);
+  const shown = recent.map((line) => {
+    if (line.kind === "narration" || line.speakerId === "__venue_scene__")
+      return `SCENE: ${line.content.slice(0, 300)}`;
+    const label =
+      line.role === "user" ? `PLAYER ${playerName || "the player"}` : `RESIDENT ${line.name} (${line.speakerId})`;
+    return `${label}: ${line.content.slice(0, 500)} [heard by: ${line.heardBy.join(", ") || "nobody"}]`;
+  });
+  const bounded: string[] = [];
+  let length = 0;
+  for (let index = shown.length - 1; index >= 0; index -= 1) {
+    const row = shown[index]!;
+    if (length + row.length + 1 > 3_500) break;
+    bounded.unshift(row);
+    length += row.length + 1;
+  }
+  return bounded.join("\n");
 }
 
 function normalizedWords(text: string): string {
