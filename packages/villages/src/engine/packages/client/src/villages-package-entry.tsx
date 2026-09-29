@@ -403,41 +403,6 @@ type BuildProject = {
   };
 };
 
-/**
- * A house as the houses editor holds it: a place with a spot on the picture, a
- * building, and who lives there.
- *
- * It is deliberately the house half of a `VillageVenue` and not a record of its
- * own. A house is a place — the village keeps one list of them and the map draws
- * one list of pins — so this carries only the fields the houses editor is allowed
- * to move, and a place that is not a house is left to the editor that owns it.
- *
- * `name` is absent rather than empty: a house has no name, and the village says
- * so by leaving it off. What the player reads on the pin is who lives there, or
- * that nobody does yet — see `pinText`.
- */
-type HomeDraft = {
-  id: string;
-  name: string;
-  form: string;
-  description: string;
-  /**
-   * 0..1 across the map, so the pin lands on the same field at any size — or both
-   * null for a house nobody has drawn yet.
-   *
-   * Nullable even though every house this tab makes is placed by a click: the
-   * village's own record allows a place with no spot on the picture, and a draft
-   * that could not hold one would have to drop such a house the first time the
-   * editor was opened — which is saving by losing something.
-   */
-  x: number | null;
-  y: number | null;
-  /** A kind out of the server's own catalogue, never a label the player typed. */
-  building: string | null;
-  isPlayerHome: boolean;
-  characterId: string | null;
-};
-
 type SetupVenueDraft = VillageVenue;
 
 function newSetupVenue(
@@ -1057,11 +1022,6 @@ type StoryEntry = {
   dateLabel: string;
 };
 
-type StoryResponse = {
-  entries: StoryEntry[];
-  total: number;
-};
-
 type MemoryPerson = { id: string; name: string };
 type MemoryCategory = "commitment" | "personal-fact" | "preference" | "relationship" | "shared-experience";
 type MemoryDurable = StoryEntry & {
@@ -1092,23 +1052,6 @@ type MemoryLibrary = {
   expiredRecollectionCount: number;
   archive: { total: number; pendingReviewCount: number; pendingReviewId?: string; recent: ArchiveVisitSummary[] };
 };
-
-/**
- * The story grouped by the day the server filed each memory under.
- *
- * The list arrives newest first and is already in day order, so this only has to
- * start a new group when the label changes — no sorting, and no risk of the tab
- * deciding on a different day order than the village did.
- */
-function storyDays(entries: StoryEntry[]): { label: string; entries: StoryEntry[] }[] {
-  const days: { label: string; entries: StoryEntry[] }[] = [];
-  for (const entry of entries) {
-    const last = days[days.length - 1];
-    if (last && last.label === entry.dateLabel) last.entries.push(entry);
-    else days.push({ label: entry.dateLabel, entries: [entry] });
-  }
-  return days;
-}
 
 const MEMORY_CATEGORY_LABELS: Record<MemoryCategory, string> = {
   commitment: "Promise & obligation",
@@ -6697,119 +6640,11 @@ function VenueDraftFields({
   );
 }
 
-/** The places in a list that are houses, in the order the village keeps them. */
-function housePlaces(places: readonly VillageVenue[]): VillageVenue[] {
-  return places.filter((place) => isHouse(place));
-}
-
 /** And the other half of the same list: everywhere a villager can be sent. */
 function destinationPlaces(places: readonly VillageVenue[]): VillageVenue[] {
   return places.filter((place) => !isHouse(place) || venueClassesFor(place).some((item) => item !== "residence"));
 }
 
-/**
- * The same question for the houses, where the spot on the map is part of the
- * answer too.
- *
- * The saved side is the whole place list, because that is what the village sends
- * now, so the houses are picked out of it first. The two lists are then compared
- * in order, which holds because the draft is seeded from this same list and the
- * houses editor never reorders it — see `seedHomes`.
- */
-function homesMatch(saved: readonly VillageVenue[], draft: readonly HomeDraft[]): boolean {
-  const stored = housePlaces(saved);
-  if (stored.length !== draft.length) return false;
-  return draft.every((house, index) => {
-    const place = stored[index];
-    return (
-      place.id === house.id &&
-      place.name === house.name &&
-      (place.form ?? "Home") === house.form &&
-      place.occupancy.playerHome === house.isPlayerHome &&
-      place.occupancy.residentCharacterId === house.characterId &&
-      place.description === house.description &&
-      // A pin dragged a thousandth of the way across the map is not an edit.
-      Math.abs((place.presentation.x ?? -1) - (house.x ?? -1)) < 0.0001 &&
-      Math.abs((place.presentation.y ?? -1) - (house.y ?? -1)) < 0.0001
-    );
-  });
-}
-
-/**
- * The whole place list, with the houses replaced by the houses editor's draft.
- *
- * One record on the server and two editors here, and each editor owns its own
- * half: the houses editor moves pins, sets buildings and hands out addresses; the
- * places editor renames and reworks the destinations. So a save sends the half it
- * edits beside the STORED copy of the other, which is what keeps a save from one
- * panel from committing an unsaved edit left sitting in the other — a list
- * written half from a draft and half from the record is not a state the village
- * should ever be able to be put in.
- *
- * A house that keeps its id keeps everything the houses editor never asks about:
- * its name, if the village ever gave it one, its note, and the picture somebody
- * drew for it. Only the spot, the building and who lives there are the editor's
- * to move.
- */
-function withHouseDraft(stored: readonly VillageVenue[], houses: readonly HomeDraft[]): VillageVenue[] {
-  const before = new Map(stored.map((place) => [place.id, place]));
-  const moved: VillageVenue[] = houses.map((house) => {
-    const place = before.get(house.id);
-    return {
-      id: house.id,
-      name: house.name,
-      form: house.form,
-      classes: ["residence"],
-      spaces: [
-        {
-          ...venueSpaceFor(
-            place ?? {
-              id: house.id,
-              name: house.name,
-              description: house.description,
-              category: "",
-              presentation: { image: null, x: house.x, y: house.y },
-              occupancy: { playerHome: house.isPlayerHome, residentCharacterId: house.characterId, homeKind: null },
-              capabilities: [],
-              state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-            },
-            "residence",
-          ),
-          description: house.description,
-        },
-      ],
-      residenceCapacity: place?.residenceCapacity ?? 1,
-      residentIds: house.characterId ? [house.characterId] : [],
-      improvements: place?.improvements ?? [null, null],
-      description: house.description,
-      category: place?.category ?? "",
-      presentation: {
-        image: place?.presentation.image ?? null,
-        x: house.x,
-        y: house.y,
-      },
-      occupancy: {
-        playerHome: house.isPlayerHome,
-        residentCharacterId: house.characterId,
-        homeKind: null,
-      },
-      capabilities: place?.capabilities ?? [],
-      state: place?.state ?? {
-        condition: "",
-        upgrades: [],
-        furniture: [],
-        publicFacts: [],
-        updatedAt: "",
-      },
-    };
-  });
-  return [...moved, ...stored.filter((place) => !isHouse(place))];
-}
-
-/**
- * And the whole place list with the destinations replaced by the places editor's
- * draft, which is the same bargain struck the other way round.
- */
 /**
  * A stable key for a row the player adds by hand — a venue, a home. Uniqueness
  * only has to hold within the open editor; the server mints the real id.
@@ -7599,7 +7434,7 @@ function defaultView(fit: TownMapFit): TownMapView {
 }
 
 /**
- * The town map, with the homes on it.
+ * The village map, with its venue pins.
  *
  * The picture is the page here, so the pins are placed as fractions of the
  * PICTURE rather than of the frame: the same home stays on the same building
@@ -7610,9 +7445,9 @@ function defaultView(fit: TownMapFit): TownMapView {
  *
  * Three different things can be asked of a stage:
  *   * `onPlace` makes it a picker — the picture takes clicks and reports where
- *     they landed. That is what the founding wizard and the homes editor ask for.
+ *     they landed. Founding and map replacement use it to place pins.
  *   * `onView` makes it a framing editor — dragging slides the picture under the
- *     frame and the zoom buttons magnify it. That is what the Town map panel
+ *     frame and the zoom buttons magnify it. That is what Village Map settings
  *     asks for. Only a crop is draggable, because it is the only fit with
  *     picture left over to drag into view.
  *   * neither, which is the homepage: the map is drawn and the pins are the only
@@ -8101,7 +7936,7 @@ function MapStage({
         )}
         {src && failedSrc === src ? (
           <span className={`${ELEMENT_TAG}-canvas-missing`}>
-            The map picture could not be loaded — pick another one from the Town map panel.
+            The map picture could not be loaded — choose another one in Village Settings → Village Map.
           </span>
         ) : null}
         {picture
@@ -8747,137 +8582,6 @@ function VillageLorebookPicker({
         </div>
       </details>
     </fieldset>
-  );
-}
-
-function HomeRows({
-  homes,
-  villagers,
-  disabled,
-  selectedId,
-  onPatch,
-  onRemove,
-  onSelect,
-  lockedIds,
-  showDescriptions,
-  onGenerateDescription,
-}: {
-  homes: HomeDraft[];
-  /** Who may be given a house. Empty while the village is still being founded. */
-  villagers: { id: string; name: string }[];
-  disabled: boolean;
-  selectedId: string | null;
-  onPatch(id: string, patch: Partial<HomeDraft>): void;
-  onRemove(id: string): void;
-  onSelect(id: string): void;
-  lockedIds?: ReadonlySet<string>;
-  showDescriptions?: boolean;
-  onGenerateDescription?(home: HomeDraft): void;
-}) {
-  // Everyone who already has a house on this map. A villager lives in one home
-  // at a time, so the rows below offer the taken ones but refuse to take them,
-  // which makes the mistake unpickable instead of merely rejected on save.
-  const housed = new Set(homes.map((home) => home.characterId));
-  return (
-    <div className={`${ELEMENT_TAG}-home-list`}>
-      {homes.map((home, index) => {
-        const locked = lockedIds?.has(home.id) ?? false;
-        const residentName = villagers.find((villager) => villager.id === home.characterId)?.name ?? "";
-        return (
-          <div
-            key={home.id}
-            className={`${ELEMENT_TAG}-home-row`}
-            data-selected={home.id === selectedId ? "true" : "false"}
-            onMouseEnter={() => onSelect(home.id)}
-          >
-            <span className={`${ELEMENT_TAG}-home-index`} aria-hidden="true">
-              {index + 1}
-            </span>
-            {home.isPlayerHome ? (
-              <span className={`${ELEMENT_TAG}-who`}>You live here</span>
-            ) : (
-              <>
-                <span className={`${ELEMENT_TAG}-who`}>
-                  {residentName ? `${residentName} lives here` : "No villager lives here"}
-                </span>
-                {villagers.length > 0 ? (
-                  <select
-                    className={`${ELEMENT_TAG}-select`}
-                    value={home.characterId ?? ""}
-                    disabled={disabled || locked}
-                    aria-label={`Who lives in home ${index + 1}`}
-                    onChange={(event) => onPatch(home.id, { characterId: event.target.value || null })}
-                  >
-                    <option value="">Nobody yet</option>
-                    {villagers.map((villager) => {
-                      const elsewhere = villager.id !== home.characterId && housed.has(villager.id);
-                      return (
-                        <option key={villager.id} value={villager.id} disabled={elsewhere}>
-                          {elsewhere ? `${villager.name} — already housed` : villager.name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                ) : null}
-              </>
-            )}
-            <label className={`${ELEMENT_TAG}-label`}>
-              Venue name
-              <input
-                className={`${ELEMENT_TAG}-notice-input`}
-                value={home.name}
-                maxLength={60}
-                disabled={disabled || locked}
-                onChange={(event) => onPatch(home.id, { name: event.target.value })}
-              />
-            </label>
-            <label className={`${ELEMENT_TAG}-label`}>
-              Form · what is it?
-              <input
-                className={`${ELEMENT_TAG}-notice-input`}
-                value={home.form}
-                maxLength={240}
-                disabled={disabled || locked}
-                onChange={(event) => onPatch(home.id, { form: event.target.value })}
-                placeholder="Cabin, truck, sleeping pod…"
-              />
-            </label>
-            {showDescriptions ? (
-              <div className={`${ELEMENT_TAG}-field`}>
-                <textarea
-                  className={`${ELEMENT_TAG}-textarea`}
-                  value={home.description}
-                  maxLength={1000}
-                  disabled={disabled || locked}
-                  aria-label={`Description of home ${index + 1}`}
-                  onChange={(event) => onPatch(home.id, { description: event.target.value })}
-                />
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={disabled || locked}
-                  onClick={() => onGenerateDescription?.(home)}
-                >
-                  Generate description draft
-                </button>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-remove`}
-              disabled={disabled || locked}
-              aria-label={`Take home ${index + 1} off the map`}
-              onClick={() => onRemove(home.id)}
-            >
-              ×
-            </button>
-            {locked ? (
-              <span className={`${ELEMENT_TAG}-hint`}>Move approved and completed before changing this home.</span>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -10943,19 +10647,16 @@ function RoomPanel({
 //     place and now match nothing.
 
 /**
- * Every option the Menu offers. The first four show you the village; the last
- * two are what changes it, and the two Debug entries are what it has kept.
+ * Pages reachable from the village menu and the map's Noticeboard shortcut.
  */
 type MenuTab =
   | "villagers"
   | "noticeboard"
   | "venueRequests"
   | "projects"
-  | "homes"
-  | "map"
+  | "memories"
   | "village"
   | "general"
-  | "story"
   | "chatlogs"
   | "agendas"
   | "schedules";
@@ -10964,7 +10665,7 @@ type MenuPage = "index" | MenuTab;
 
 function menuCategory(page: MenuPage): "index" | "general" | "village" | "debug" {
   if (page === "index" || page === "general") return page;
-  if (["story", "chatlogs", "agendas", "schedules"].includes(page)) return "debug";
+  if (["chatlogs", "agendas", "schedules"].includes(page)) return "debug";
   return "village";
 }
 
@@ -10974,11 +10675,9 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   noticeboard: "Noticeboard",
   venueRequests: "Venue Requests",
   projects: "Projects",
-  homes: "Homes",
-  map: "Town map",
+  memories: "Memories",
   village: "Village Settings",
   general: "General Settings",
-  story: "Village Story",
   chatlogs: "Venue Visits",
   agendas: "Villager Wishes",
   schedules: "Villager Agendas",
@@ -11699,19 +11398,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     return () => observer.disconnect();
   }, [element]);
   const [snapshot, setSnapshot] = useState<VillageSnapshot | null>(null);
+  const setupMaxVillagerCount = snapshot?.settings.setupMaxVillagerCount ?? 3;
+  const homeBuildings = snapshot?.settings.homeBuildings ?? [];
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
-  /**
-   * The village's memory, or null while it is being read. Null rather than an
-   * empty list so "still reading" and "it has remembered nothing yet" are told
-   * apart, since only one of them is something the player has to wait for.
-   *
-   * Deliberately not part of the snapshot. The story is the one part of the
-   * record with no ceiling, and the snapshot is rebuilt on every chat send and
-   * every pulse; a growing list in it would be re-sent with each of them.
-   */
-  const [story, setStory] = useState<StoryEntry[] | null>(null);
-  const [storyTotal, setStoryTotal] = useState(0);
-  const [villagersSection, setVillagersSection] = useState<"residents" | "memories">("residents");
   const [memoryLibrary, setMemoryLibrary] = useState<MemoryLibrary | null>(null);
   const [venueVisits, setVenueVisits] = useState<ArchiveVisitSummary[] | null>(null);
   const [archiveTotal, setArchiveTotal] = useState(0);
@@ -11864,16 +11553,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [lorebooksError, setLorebooksError] = useState("");
   const [venuesDraft, setVenuesDraft] = useState<VillageVenue[]>([]);
   const [venueSearch, setVenueSearch] = useState("");
-  // Homes as the editors hold them: the wizard's map and the Homes panel edit
-  // the same list, they are never open together, and both save the whole list.
-  const [homesDraft, setHomesDraft] = useState<HomeDraft[]>([]);
   // Which home the next click on the map will place, and which pin the editor is
   // pointing at so the row and the map agree about what is being edited.
   const [placingHome, setPlacingHome] = useState(false);
   const [placingPublicCenter, setPlacingPublicCenter] = useState(false);
-  const [activeHomeId, setActiveHomeId] = useState<string | null>(null);
   const [selectedMapVenueId, setSelectedMapVenueId] = useState<string | null>(null);
   const [placingMapVenueId, setPlacingMapVenueId] = useState<string | null>(null);
+  const [mapReplaceOpen, setMapReplaceOpen] = useState(false);
+  const [mapRemoveDraft, setMapRemoveDraft] = useState(false);
+  const [mapGenerating, setMapGenerating] = useState(false);
+  const [mapExpectedSetAt, setMapExpectedSetAt] = useState("");
+  const [mapBasePositions, setMapBasePositions] = useState<Record<string, { x: number | null; y: number | null }>>({});
+  const [mapPinDraft, setMapPinDraft] = useState<Record<string, { x: number | null; y: number | null }>>({});
   const [noticeDraft, setNoticeDraft] = useState("");
   // The founding wizard. Its own name and setting drafts rather than the menu's,
   // so a half-typed founding cannot be overwritten by the menu opening and a
@@ -11984,12 +11675,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * that answers "how big is a map", so the frame the picture is drawn in, the
    * advice beside the file box and the server all agree about it.
    */
-  const townMapShape: MapFrameShape | null = snapshot
-    ? (townMapPick?.size ?? {
-        width: snapshot.settings.townMapExpectedWidth,
-        height: snapshot.settings.townMapExpectedHeight,
-      })
+  const savedTownMapShape: MapFrameShape | null = snapshot
+    ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
     : null;
+  const townMapShape: MapFrameShape | null = townMapPick?.size ?? savedTownMapShape;
   const setupMapShape: MapFrameShape | null = snapshot
     ? setupMapSource === "existing"
       ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
@@ -12009,7 +11698,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * The map as it is drawn: the picture being previewed in the panel, or the
    * village's own picture, or the one the package ships.
    */
-  const townMapSrc = townMapPick ? townMapPick.image : townMapImage || null;
+  const townMapSrc = mapRemoveDraft ? null : townMapPick ? townMapPick.image : townMapImage || null;
   const setupMapSrc =
     setupMapSource === "none"
       ? null
@@ -12304,26 +11993,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, []);
 
-  /**
-   * Read what the village remembers.
-   *
-   * On its own route and its own callback, read when the tab is opened rather
-   * than kept current, for the same reason the character catalog is: nobody is
-   * looking at it while it is closed, and a list that grows with every part of
-   * every day is the last thing worth carrying on a snapshot read every minute.
-   */
-  const loadStory = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<StoryResponse>("/story?offset=0&limit=50", { signal });
-      setStory(response.entries);
-      setStoryTotal(response.total);
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setStory(null);
-      setError(messageFrom(cause, "Could not read the village story."));
-    }
-  }, []);
-
   const memoryAutoRetryIdsRef = useRef(new Set<string>());
   const loadMemoryLibrary = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -12366,39 +12035,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     },
     [loadMemoryLibrary],
   );
-
-  /**
-   * Forget one memory.
-   *
-   * The server answers with the whole list again and that answer is what gets
-   * drawn. Dropping the row locally would look identical today and diverge the
-   * first time a write trimmed the tail of the story, which is a thing the
-   * server does and the tab does not.
-   */
-  const removeStoryEntry = useCallback(async (id: string) => {
-    setBusy(true);
-    try {
-      const response = await request<StoryResponse>(`/story/${encodeURIComponent(id)}`, { method: "DELETE" });
-      setStory(response.entries);
-      setStoryTotal(response.total);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That memory could not be removed."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const loadMoreStory = useCallback(async () => {
-    const offset = story?.length ?? 0;
-    try {
-      const response = await request<StoryResponse>(`/story?offset=${offset}&limit=50`);
-      setStory((current) => [...(current ?? []), ...response.entries]);
-      setStoryTotal(response.total);
-    } catch (cause) {
-      setError(messageFrom(cause, "Could not read more memories."));
-    }
-  }, [story]);
 
   /**
    * Read what each villager is privately after.
@@ -12828,13 +12464,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // The villager list is read when it is asked for rather than kept current
       // on every snapshot.
       if (tab === "villagers") void loadCatalog();
-      if (tab === "villagers" && (screen !== "menu" || menuPage !== "villagers")) setVillagersSection("residents");
       // Same rule for the Personas the identity picker offers.
       if (tab === "village") void loadPersonas();
       if (tab === "village") void loadLorebooks();
-      // And for the story, which is read for the same reason: it is only worth
-      // having while it is being looked at.
-      if (tab === "story") void loadStory();
+      if (tab === "memories") {
+        setMemoryLibrary(null);
+        void loadMemoryLibrary();
+      }
       // And again for the wishes, which are the whole reason this debug group
       // exists: nothing else in the tab shows them. The agendas tab draws the
       // other half of the same listing, so it reads it the same way — one route,
@@ -12847,14 +12483,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSettingDraft(snapshot.settings.setting);
         setLorebookDraft(snapshot.settings.selectedLorebookIds);
         setLoreTokenBudgetDraft(snapshot.settings.loreTokenBudget);
-        // Destinations only: the houses are the map's to edit and are drawn on it
-        // — see `destinationPlaces`.
+        // The settings form's legacy draft covers destination venues. Home
+        // details live in View Venue, while map positions use Village Map.
         setVenuesDraft(destinationPlaces(snapshot.settings.venues).map((venue) => ({ ...venue })));
       }
       setMenuPage(tab);
       setScreen("menu");
     },
-    [loadAgendas, loadCatalog, loadLorebooks, loadPersonas, loadStory, menuPage, screen, snapshot],
+    [loadAgendas, loadCatalog, loadLorebooks, loadMemoryLibrary, loadPersonas, menuPage, screen, snapshot],
   );
 
   const goHome = useCallback(() => {
@@ -13603,6 +13239,54 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // one down to fit would be the same mistake as truncating an over-long prompt
   // box, so a file that will not fit is refused with both sizes in the message
   // instead.
+  const startMapReplacement = useCallback(() => {
+    if (!snapshot) return;
+    const positions = Object.fromEntries(
+      snapshot.settings.venues.map((venue) => [venue.id, { x: venue.presentation.x, y: venue.presentation.y }]),
+    );
+    setMapBasePositions(positions);
+    setMapPinDraft(positions);
+    setMapExpectedSetAt(snapshot.settings.townMapImageSetAt);
+    setSelectedMapVenueId(snapshot.settings.venues[0]?.id ?? null);
+    setMapReplaceOpen(true);
+    setMapRemoveDraft(false);
+    setTownMapPick(null);
+    setTownMapDraft(null);
+    setReframingMap(false);
+    setSettingsError("");
+  }, [snapshot]);
+
+  const generateReplacementMap = useCallback(async () => {
+    if (!snapshot) return;
+    setMapGenerating(true);
+    setSettingsError("");
+    try {
+      const generated = await request<{ image: string; width: number; height: number }>("/setup/town-map/generate", {
+        method: "POST",
+        body: JSON.stringify({
+          setting: snapshot.settings.setting,
+          selectedLorebookIds: snapshot.settings.selectedLorebookIds,
+          scenarioImprint: {
+            origin: "",
+            worldFacts: snapshot.settings.worldFacts,
+            openingConditions: [],
+            visualCues: [],
+          },
+        }),
+      });
+      const size = await measureImage(generated.image);
+      if (size.width !== generated.width || size.height !== generated.height)
+        throw new Error("The generated map's reported dimensions do not match the image.");
+      setTownMapPick({ image: generated.image, size });
+      setMapRemoveDraft(false);
+      setTownMapDraft(defaultView("cover"));
+    } catch (cause) {
+      setSettingsError(messageFrom(cause, "The village map could not be generated."));
+    } finally {
+      setMapGenerating(false);
+    }
+  }, [snapshot]);
+
   const pickTownMap = useCallback(
     async (file: File | undefined) => {
       if (!file || !snapshot) return;
@@ -13622,12 +13306,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         const image = await readFileAsDataUrl(file);
         const size = await measureImage(image);
         setTownMapPick({ image, size });
+        setMapRemoveDraft(false);
         // A fresh picture opens on the fit that fills the frame, because that is
         // the one that leaves the frame looking like a map instead of like a
         // picture parked in a box, and the other two are one press away.
         setTownMapDraft(defaultView("cover"));
       } catch (cause) {
-        setSettingsError(messageFrom(cause, "That picture could not be used as the town map."));
+        setSettingsError(messageFrom(cause, "That picture could not be used as the village map."));
       } finally {
         setBusy(false);
       }
@@ -13635,66 +13320,63 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     [snapshot],
   );
 
-  /**
-   * Write the map the panel is previewing.
-   *
-   * Whatever is on screen is what is written — the picture picked this visit, or
-   * the one already saved when only its framing was changed — so the player is
-   * never shown one thing and given another.
-   */
   const saveTownMap = useCallback(async () => {
     if (!snapshot) return;
-    const image = townMapPick ? townMapPick.image : townMapImage;
+    const image = mapRemoveDraft ? "" : (townMapPick?.image ?? townMapImage);
     setBusy(true);
     setSettingsError("");
     try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({
-            townMapImage: image,
-            townMapView: townMapDraft ?? snapshot.settings.townMapView,
-          }),
+      const current = Object.fromEntries(snapshot.settings.venues.map((venue) => [venue.id, placeSpot(venue)]));
+      const next = await request<VillageSnapshot>("/town-map", {
+        method: "PUT",
+        body: JSON.stringify({
+          image,
+          view: townMapDraft ?? snapshot.settings.townMapView,
+          expectedMapSetAt: mapReplaceOpen ? mapExpectedSetAt : snapshot.settings.townMapImageSetAt,
+          placements: Object.entries(mapReplaceOpen ? mapBasePositions : current).map(([venueId, from]) => ({
+            venueId,
+            fromX: from.x,
+            fromY: from.y,
+            x: mapReplaceOpen ? (mapPinDraft[venueId]?.x ?? null) : from.x,
+            y: mapReplaceOpen ? (mapPinDraft[venueId]?.y ?? null) : from.y,
+          })),
         }),
-      );
-      // Shown straight away rather than after the re-fetch below, so the map
-      // does not blink back to the image-free surface between the two.
+      });
+      setSnapshot(next);
       setTownMapImage(image);
       setTownMapPick(null);
       setTownMapDraft(null);
       setReframingMap(false);
+      setMapReplaceOpen(false);
+      setMapRemoveDraft(false);
+      setPlacingMapVenueId(null);
     } catch (cause) {
-      setSettingsError(messageFrom(cause, "The town map could not be saved."));
+      setSettingsError(messageFrom(cause, "The village map could not be saved."));
     } finally {
       setBusy(false);
     }
-  }, [snapshot, townMapDraft, townMapImage, townMapPick]);
+  }, [
+    snapshot,
+    townMapDraft,
+    townMapImage,
+    townMapPick,
+    mapRemoveDraft,
+    mapReplaceOpen,
+    mapExpectedSetAt,
+    mapBasePositions,
+    mapPinDraft,
+  ]);
 
   /** Put the panel back the way it was: nothing picked, nothing changed. */
   const discardTownMapDraft = useCallback(() => {
     setTownMapPick(null);
     setTownMapDraft(null);
     setReframingMap(false);
+    setMapReplaceOpen(false);
+    setMapRemoveDraft(false);
+    setPlacingMapVenueId(null);
     setSettingsError("");
   }, []);
-
-  const clearTownMap = useCallback(async () => {
-    setBusy(true);
-    setSettingsError("");
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", { method: "PATCH", body: JSON.stringify({ townMapImage: "" }) }),
-      );
-      // Shown straight away rather than after the re-fetch below, so the map
-      // does not sit there looking set after it has been taken down.
-      setTownMapImage("");
-      discardTownMapDraft();
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "The town map could not be taken down."));
-    } finally {
-      setBusy(false);
-    }
-  }, [discardTownMapDraft]);
 
   // ── Pictures of the places ─────────────────────────────────────────────────
   // These handlers serve player-requested draws, uploads, and removal. First
@@ -13810,34 +13492,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // the map pins it the same way. What makes it a house is that it has a building
   // and somebody living in it — see `isHouse` — and a house nobody has moved into
   // yet is a normal thing for a village to have.
-  const maxPlaces = snapshot?.settings.maxPlaces ?? 48;
-  const setupMaxVillagerCount = snapshot?.settings.setupMaxVillagerCount ?? SETUP_MAX_VILLAGER_COUNT;
-  /** The buildings a home may be, and what one is by default. The server owns both. */
-  const homeBuildings = (snapshot?.settings.homeBuildings ?? []).map((building) => ({
-    ...building,
-    name: snapshot?.settings.homeBuildingNames?.[building.kind] ?? building.name,
-  }));
-  /**
-   * How many places the village will take right now.
-   *
-   * Founding is the one exception, and it is an exception about the request
-   * rather than about the village: the server refuses any house count but
-   * one player home plus the maximum initial Villager homes while the wizard is open,
-   * so that is the ceiling until the
-   * village exists. Afterwards it is the village's standing ceiling.
-   */
-  const placeLimit = snapshot && !snapshot.isFounded ? 1 + setupMaxVillagerCount : maxPlaces;
-
-  /**
-   * How many houses it could still take, which is the places left over after the
-   * ones that are not houses.
-   *
-   * Counted against the one ceiling rather than against an allowance of its own,
-   * because a separate allowance for roofs is the two-list model growing back
-   * under a new name. A house spends a place like anything else.
-   */
-  const houseLimit = Math.max(0, placeLimit - destinationPlaces(snapshot?.settings.venues ?? []).length);
-
   /**
    * How many places the village holds with the draft list in it, which is what the
    * ceiling is really checked against: the houses the village has, plus the
@@ -13847,74 +13501,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const placeCount =
     (snapshot?.settings.venues.length ?? 0) +
     venuesDraft.filter((draft) => !snapshot?.settings.venues.some((saved) => saved.id === draft.id)).length;
-
-  /**
-   * Hold the houses the village has as drafts.
-   *
-   * Handed the whole place list rather than a list of houses, because that is what
-   * the village sends and picking the houses out is this side's business — see
-   * `housePlaces`. Seeding the drafts from the record in the record's own order is
-   * also what lets `homesMatch` compare the two by position.
-   */
-  const seedHomes = useCallback((places: readonly VillageVenue[]) => {
-    const houses = housePlaces(places);
-    setHomesDraft(
-      houses.map((house) => ({
-        id: house.id,
-        name: house.name,
-        form: house.form ?? "Home",
-        description: house.description,
-        x: house.presentation.x,
-        y: house.presentation.y,
-        building: house.occupancy.homeKind,
-        isPlayerHome: house.occupancy.playerHome,
-        characterId: house.occupancy.residentCharacterId,
-      })),
-    );
-    setActiveHomeId(houses[0]?.id ?? null);
-    setPlacingHome(false);
-  }, []);
-
-  /** Open the houses editor in the Menu, seeded from what is saved. */
-  const openHomes = useCallback(() => {
-    setSettingsError("");
-    if (snapshot) seedHomes(snapshot.settings.venues);
-    setMenuPage("homes");
-    setScreen("menu");
-  }, [seedHomes, snapshot]);
-
-  /**
-   * Drop a pin where the player clicked.
-   *
-   * The first home placed is the player's own: the flow asks for one house of
-   * yours and three for villagers, and "the first spot you mark is where you
-   * live" is one less thing to explain. Every one after that belongs to whoever
-   * is given it.
-   */
-  const placeHome = useCallback(
-    (x: number, y: number) => {
-      setSettingsError("");
-      if (homesDraft.length >= houseLimit || homesDraft.length >= 1 + setupMaxVillagerCount) return;
-      const id = freshRowKey();
-      const isPlayerHome = homesDraft.length === 0;
-      setHomesDraft((rows) => [
-        ...rows,
-        {
-          id,
-          name: isPlayerHome ? "Your residence" : `Residence ${rows.length + 1}`,
-          form: "Home",
-          description: "",
-          x,
-          y,
-          building: null,
-          isPlayerHome,
-          characterId: null,
-        },
-      ]);
-      setActiveHomeId(id);
-    },
-    [homesDraft.length, houseLimit, setupMaxVillagerCount],
-  );
 
   const placeSetupPin = useCallback(
     (
@@ -13978,114 +13564,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     });
     setSelectedSetupVenueId((current) => (current === id ? null : current));
   }, []);
-
-  /**
-   * A spot picked on the map from the homes editor.
-   *
-   * The editor is a list and the list cannot also be the map, so the player is
-   * handed the map to mark one house and then handed straight back to the list
-   * with the new row on it. One house per trip: each one is a house they get to
-   * see land.
-   */
-  const placeHomeOnMap = useCallback(
-    (x: number, y: number) => {
-      placeHome(x, y);
-      setPlacingHome(false);
-      setScreen("menu");
-    },
-    [placeHome],
-  );
-
-  const patchHome = useCallback(
-    (id: string, patch: Partial<HomeDraft>) => {
-      if (snapshot?.settings.venues.some((venue) => venue.id === id && venue.occupancy.residentCharacterId)) return;
-      setHomesDraft((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-    },
-    [snapshot],
-  );
-
-  const removeHome = useCallback(
-    (id: string) => {
-      if (snapshot?.settings.venues.some((venue) => venue.id === id && venue.occupancy.residentCharacterId)) {
-        setSettingsError("Move the resident to another venue before removing this home.");
-        return;
-      }
-      setHomesDraft((rows) => {
-        const kept = rows.filter((row) => row.id !== id);
-        // A village with no house of your own is not a village anyone lives in,
-        // so the role passes to the first house still standing.
-        if (kept.length > 0 && !kept.some((row) => row.isPlayerHome)) {
-          kept[0] = { ...kept[0], isPlayerHome: true, characterId: null };
-        }
-        return kept;
-      });
-    },
-    [snapshot],
-  );
-
-  /**
-   * Save the houses.
-   *
-   * The village keeps one place list, so the write is the whole list: the houses
-   * the editor has been moving, and the destinations exactly as the village already
-   * had them. Sending only the houses would be asking the server to work out what
-   * to do with the other half, and the answer it would reach for is the one the
-   * founding wizard gets — that the player is drawing a new map — which is right
-   * there and wrong here.
-   */
-  const saveHomes = useCallback(async () => {
-    if (!snapshot) return;
-    if (homesDraft.some((home) => !home.description.trim())) {
-      setSettingsError("Review a description for every home before saving.");
-      return;
-    }
-    setBusy(true);
-    setSettingsError("");
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({ venues: withHouseDraft(snapshot.settings.venues, homesDraft), venueScope: "homes" }),
-        }),
-      );
-      setPlacingHome(false);
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "Those homes could not be saved."));
-    } finally {
-      setBusy(false);
-    }
-  }, [homesDraft, snapshot]);
-
-  const generateHomeDescription = async (home: HomeDraft) => {
-    if (!snapshot) return;
-    const resident = snapshot.villagers.find((entry) => entry.characterId === home.characterId)?.name;
-    const name = home.isPlayerHome
-      ? `${playerDisplayName(snapshot)}'s home`
-      : resident
-        ? `${resident}'s home`
-        : buildingOf(homeBuildings, home.building).name;
-    setBusy(true);
-    setSettingsError("");
-    try {
-      const result = await request<{ descriptions: Record<string, string> }>("/locations/venue/descriptions/draft", {
-        method: "POST",
-        body: JSON.stringify({
-          venues: [
-            {
-              id: home.id,
-              name,
-              homeKind: home.building,
-            },
-          ],
-        }),
-      });
-      patchHome(home.id, { description: result.descriptions[home.id] ?? "" });
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "The home description could not be generated. You can write it by hand."));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // ── Founding the village ───────────────────────────────────────────────────
   // The wizard collects identity, the Day 1 world, map, and residents before
@@ -14183,12 +13661,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // respective steps are ready when the player reaches them.
       void loadPersonas();
       void loadLorebooks();
-      // The wizard places houses, so it is handed the places and picks the houses
-      // out itself — see `seedHomes`.
-      seedHomes(fresh || !village ? [] : village.settings.venues);
       setScreen("setup");
     },
-    [loadLorebooks, loadPersonas, seedHomes],
+    [loadLorebooks, loadPersonas],
   );
 
   const gotoSetupStep = useCallback(
@@ -16272,13 +15747,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </button>
               <button
                 type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "noticeboard"}
-                data-active={menuPage === "noticeboard" ? "true" : "false"}
+                className={ELEMENT_TAG + "-button"}
+                aria-pressed={menuPage === "memories"}
+                data-active={menuPage === "memories" ? "true" : "false"}
                 disabled={!snapshot || busy}
-                onClick={() => openMenu("noticeboard")}
+                onClick={() => openMenu("memories")}
               >
-                {`Noticeboard (${snapshot?.noticeboard.length ?? 0})`}
+                Memories
               </button>
               <button
                 type="button"
@@ -16298,26 +15773,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("projects")}
               >{`Projects (${snapshot?.projects?.filter((entry) => (entry.kind === "new-venue" || entry.kind === "renovation") && entry.lifecycle?.phase !== "complete").length ?? 0})`}</button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "homes"}
-                data-active={menuPage === "homes" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={openHomes}
-              >
-                {`Homes (${housePlaces(snapshot?.settings.venues ?? []).length})`}
-              </button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "map"}
-                data-active={menuPage === "map" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("map")}
-              >
-                Town map
-              </button>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
@@ -16346,16 +15801,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           <div className={`${ELEMENT_TAG}-menu-group`}>
             <h2 className={`${ELEMENT_TAG}-panel-title`}>Debug</h2>
             <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "story"}
-                data-active={menuPage === "story" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("story")}
-              >
-                {`DEBUG: Village Story (${story?.length ?? 0})`}
-              </button>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
@@ -16412,7 +15857,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("general")}>
                 General Settings
               </button>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("story")}>
+              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("chatlogs")}>
                 DEBUG Settings
               </button>
             </div>
@@ -16519,26 +15964,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             ) : null}
 
             <div className={`${ELEMENT_TAG}-field`}>
-              <p className={`${ELEMENT_TAG}-empty`}>
-                Revisit the founding setup to update the village as it stands now. Its original first day stays in the
-                founding record.
-              </p>
-              <div className={`${ELEMENT_TAG}-row`}>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy || !snapshot}
-                  onClick={() => openSetup(false, snapshot)}
-                >
-                  Run setup again
-                </button>
-                <span className={`${ELEMENT_TAG}-hint`}>
-                  Keeps your villagers, their conversations and anything you have written.
-                </span>
-              </div>
-            </div>
-
-            <div className={`${ELEMENT_TAG}-field`}>
               <span className={`${ELEMENT_TAG}-label`}>Starting over</span>
               <p className={`${ELEMENT_TAG}-empty`}>
                 This is not the same thing. It takes the village apart completely — the villagers, their conversations,
@@ -16595,61 +16020,274 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </p>
 
                 <VillageWritingSettings />
-                {mobile ? (
-                  <div className={`${ELEMENT_TAG}-field`}>
-                    <span className={`${ELEMENT_TAG}-label`}>Map background image</span>
-                    {townMapSrc ? (
-                      <img
-                        className={`${ELEMENT_TAG}-mobile-map-preview`}
-                        src={townMapSrc}
-                        alt="Current village map background"
-                      />
-                    ) : (
-                      <p className={`${ELEMENT_TAG}-empty`}>The map has no background image.</p>
-                    )}
-                    <input
-                      className={`${ELEMENT_TAG}-file`}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp,image/avif"
-                      disabled={busy}
-                      aria-label="Choose a town map picture"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        event.target.value = "";
-                        void pickTownMap(file);
-                      }}
-                    />
-                    {townMapPick ? (
-                      <div className={`${ELEMENT_TAG}-row`}>
+
+                <section className={ELEMENT_TAG + "-field"} aria-label="Village Map">
+                  <h3 className={ELEMENT_TAG + "-panel-title"}>Village Map</h3>
+                  <p className={ELEMENT_TAG + "-hint"}>
+                    Replace the background image here. Venue pins remain in their saved places until you reposition them
+                    in the preview.
+                  </p>
+                  {mapReplaceOpen ? (
+                    <p className={ELEMENT_TAG + "-error"} role="alert">
+                      Venues will not move automatically. Review every pin on the new map; moving one here is free and
+                      does not change its residents, projects, or history.
+                    </p>
+                  ) : null}
+                  <MapStage
+                    src={townMapSrc}
+                    alt="Village map preview with venue pins"
+                    pins={snapshot.settings.venues.flatMap((venue): MapPin[] => {
+                      const spot = mapReplaceOpen ? mapPinDraft[venue.id] : placeSpot(venue);
+                      if (!spot || spot.x === null || spot.y === null) return [];
+                      return [
+                        {
+                          id: venue.id,
+                          x: spot.x,
+                          y: spot.y,
+                          text: venue.name,
+                          tone: isHouse(venue)
+                            ? pinTone({
+                                isPlayerHome: venue.occupancy.playerHome,
+                                occupant: venue.occupancy.residentCharacterId,
+                              })
+                            : "venue",
+                          onSelect: () => setSelectedMapVenueId(venue.id),
+                        },
+                      ];
+                    })}
+                    placing={mapReplaceOpen && placingMapVenueId !== null}
+                    view={panelMapView}
+                    shape={townMapShape}
+                    zoom={townMapZoom}
+                    mobile={mobile}
+                    onView={framingMap && !placingMapVenueId ? setTownMapDraft : undefined}
+                    onPlace={
+                      mapReplaceOpen && placingMapVenueId
+                        ? (x, y) => {
+                            setMapPinDraft((current) => ({ ...current, [placingMapVenueId]: { x, y } }));
+                            setSelectedMapVenueId(placingMapVenueId);
+                            setPlacingMapVenueId(null);
+                          }
+                        : undefined
+                    }
+                  />
+                  {mapReplaceOpen ? (
+                    <>
+                      <div className={ELEMENT_TAG + "-row"}>
                         <button
                           type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={busy}
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={busy || mapGenerating}
+                          onClick={() => void generateReplacementMap()}
+                        >
+                          {mapGenerating ? "Generating map…" : "Generate replacement"}
+                        </button>
+                        <input
+                          className={ELEMENT_TAG + "-file"}
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/avif"
+                          aria-label="Upload replacement village map"
+                          disabled={busy || mapGenerating}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+                            void pickTownMap(file);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={busy || mapGenerating}
+                          onClick={() => {
+                            setMapRemoveDraft(true);
+                            setTownMapPick(null);
+                            setTownMapDraft(null);
+                            setPlacingMapVenueId(null);
+                          }}
+                        >
+                          No background image
+                        </button>
+                      </div>
+                      {townMapPick || mapRemoveDraft ? (
+                        <>
+                          <p className={ELEMENT_TAG + "-hint"}>
+                            Select a venue, then choose Move pin and its new position on the preview. Unmoved venues
+                            keep their saved coordinates.
+                          </p>
+                          <div className={ELEMENT_TAG + "-field"} aria-label="Venue placement">
+                            {snapshot.settings.venues.map((venue) => {
+                              const spot = mapPinDraft[venue.id];
+                              const resident = venue.occupancy.residentCharacterId
+                                ? nameOfCharacter(venue.occupancy.residentCharacterId)
+                                : venue.occupancy.playerHome
+                                  ? playerDisplayName(snapshot)
+                                  : "";
+                              return (
+                                <div key={venue.id} className={ELEMENT_TAG + "-row"}>
+                                  <button
+                                    type="button"
+                                    className={ELEMENT_TAG + "-button"}
+                                    aria-pressed={selectedMapVenueId === venue.id}
+                                    onClick={() => setSelectedMapVenueId(venue.id)}
+                                  >
+                                    {venue.name}
+                                  </button>
+                                  <span className={ELEMENT_TAG + "-hint"}>{resident || "No resident"}</span>
+                                  <span className={ELEMENT_TAG + "-hint"}>
+                                    {spot?.x !== null &&
+                                    spot?.x !== undefined &&
+                                    spot?.y !== null &&
+                                    spot?.y !== undefined
+                                      ? "On map"
+                                      : "Not placed"}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className={ELEMENT_TAG + "-button"}
+                                    aria-pressed={placingMapVenueId === venue.id}
+                                    onClick={() => setPlacingMapVenueId(venue.id)}
+                                  >
+                                    Move pin
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      ) : null}
+                      {townMapAdvice ? (
+                        <p className={ELEMENT_TAG + "-hint"} data-tone={townMapAdvice.tone}>
+                          {townMapAdvice.text}
+                        </p>
+                      ) : null}
+                      {framingMap ? (
+                        <div
+                          className={ELEMENT_TAG + "-steps"}
+                          role="group"
+                          aria-label="How the picture sits in the frame"
+                        >
+                          {TOWN_MAP_FITS.map((option) => (
+                            <button
+                              key={option.fit}
+                              type="button"
+                              className={ELEMENT_TAG + "-step"}
+                              data-clickable="true"
+                              data-active={panelMapView.fit === option.fit ? "true" : "false"}
+                              aria-pressed={panelMapView.fit === option.fit}
+                              onClick={() => setTownMapDraft({ ...panelMapView, fit: option.fit })}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      <div className={ELEMENT_TAG + "-row"}>
+                        <button
+                          type="button"
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={busy || mapGenerating || (!townMapPick && !mapRemoveDraft)}
                           onClick={() => void saveTownMap()}
                         >
-                          Use this map
+                          Save map and placements
                         </button>
                         <button
                           type="button"
-                          className={`${ELEMENT_TAG}-button`}
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={busy || mapGenerating}
+                          onClick={discardTownMapDraft}
+                        >
+                          Cancel replacement
+                        </button>
+                      </div>
+                    </>
+                  ) : framingMap ? (
+                    <>
+                      <div
+                        className={ELEMENT_TAG + "-steps"}
+                        role="group"
+                        aria-label="How the picture sits in the frame"
+                      >
+                        {TOWN_MAP_FITS.map((option) => (
+                          <button
+                            key={option.fit}
+                            type="button"
+                            className={ELEMENT_TAG + "-step"}
+                            data-clickable="true"
+                            data-active={panelMapView.fit === option.fit ? "true" : "false"}
+                            aria-pressed={panelMapView.fit === option.fit}
+                            onClick={() => setTownMapDraft({ ...panelMapView, fit: option.fit })}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className={ELEMENT_TAG + "-row"}>
+                        <button
+                          type="button"
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={busy}
+                          onClick={() => void saveTownMap()}
+                        >
+                          Save framing
+                        </button>
+                        <button
+                          type="button"
+                          className={ELEMENT_TAG + "-button"}
                           disabled={busy}
                           onClick={discardTownMapDraft}
                         >
                           Cancel
                         </button>
                       </div>
-                    ) : snapshot.settings.townMapImageSetAt ? (
+                    </>
+                  ) : (
+                    <div className={ELEMENT_TAG + "-row"}>
                       <button
                         type="button"
-                        className={`${ELEMENT_TAG}-button`}
+                        className={ELEMENT_TAG + "-button"}
                         disabled={busy}
-                        onClick={() => void clearTownMap()}
+                        onClick={startMapReplacement}
                       >
-                        Remove background image
+                        Replace map
                       </button>
-                    ) : null}
+                      {snapshot.settings.townMapImageSetAt ? (
+                        <button
+                          type="button"
+                          className={ELEMENT_TAG + "-button"}
+                          disabled={busy || !townMapImage}
+                          onClick={() => setReframingMap(true)}
+                        >
+                          Crop or fit current map
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                  {settingsError ? (
+                    <p className={ELEMENT_TAG + "-error"} role="alert">
+                      {settingsError}
+                    </p>
+                  ) : null}
+                </section>
+
+                <div className={`${ELEMENT_TAG}-field`}>
+                  <p className={`${ELEMENT_TAG}-empty`}>
+                    Revisit the founding setup to update the village as it stands now. Its original first day stays in
+                    the founding record.
+                  </p>
+                  <div className={`${ELEMENT_TAG}-row`}>
+                    <button
+                      type="button"
+                      className={`${ELEMENT_TAG}-button`}
+                      disabled={busy || !snapshot}
+                      onClick={() => openSetup(false, snapshot)}
+                    >
+                      Run setup again
+                    </button>
+                    <span className={`${ELEMENT_TAG}-hint`}>
+                      Keeps your villagers, their conversations and anything you have written.
+                    </span>
                   </div>
-                ) : null}
+                </div>
 
                 {/*
                   The setting below is the wizard's. It is left on screen with
@@ -16938,7 +16576,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </section>
             ) : null}
 
-            {settingsError ? (
+            {settingsError && !mapReplaceOpen && !reframingMap ? (
               <p className={`${ELEMENT_TAG}-error`} role="alert">
                 {settingsError}
               </p>
@@ -16973,212 +16611,191 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Villagers</h2>
                 </div>
-                <nav className={`${ELEMENT_TAG}-villager-submenu`} aria-label="Villagers sections">
-                  <button
-                    type="button"
-                    data-active={villagersSection === "residents"}
-                    aria-pressed={villagersSection === "residents"}
-                    onClick={() => setVillagersSection("residents")}
-                  >
-                    <span>Residents</span>
-                    <small>{snapshot?.villagers.length ?? 0} living here</small>
-                  </button>
-                  <button
-                    type="button"
-                    data-active={villagersSection === "memories"}
-                    aria-pressed={villagersSection === "memories"}
-                    onClick={() => {
-                      setVillagersSection("memories");
-                      setMemoryLibrary(null);
-                      void loadMemoryLibrary();
-                    }}
-                  >
-                    <span>Memories</span>
-                    <small>Passing, durable & evidence</small>
-                  </button>
-                </nav>
-                {villagersSection === "residents" ? (
-                  <>
-                    <p className={`${ELEMENT_TAG}-empty`}>
-                      Characters from your library live here. Moving someone out forgets nothing about the character
-                      card itself.
-                    </p>
-                    <div className={`${ELEMENT_TAG}-row`}>
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        onClick={() => setPickerOpen((open) => !open)}
-                        disabled={busy}
-                      >
-                        {pickerOpen ? "Close the list" : "Add a villager"}
-                      </button>
-                    </div>
-                    {pickerOpen ? (
-                      <div className={`${ELEMENT_TAG}-field`}>
-                        <input
-                          className={`${ELEMENT_TAG}-search`}
-                          type="search"
-                          value={search}
-                          onChange={(event) => setSearch(event.target.value)}
-                          placeholder="Search by name, note or tag…"
-                          aria-label="Search your character library"
-                        />
-                        {catalog === null ? (
-                          <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                            Reading your library…
-                          </p>
-                        ) : visibleCatalog.length === 0 ? (
-                          <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                            No characters match that search.
-                          </p>
-                        ) : (
-                          <div className={`${ELEMENT_TAG}-picker-list`}>
-                            {visibleCatalog.map((entry) => (
-                              <div
-                                key={entry.id}
-                                className={`${ELEMENT_TAG}-picker-item`}
-                                data-resident={entry.inVillage ? "true" : "false"}
+                <>
+                  <p className={`${ELEMENT_TAG}-empty`}>
+                    Characters from your library live here. Moving someone out forgets nothing about the character card
+                    itself.
+                  </p>
+                  <div className={`${ELEMENT_TAG}-row`}>
+                    <button
+                      type="button"
+                      className={`${ELEMENT_TAG}-button`}
+                      onClick={() => setPickerOpen((open) => !open)}
+                      disabled={busy}
+                    >
+                      {pickerOpen ? "Close the list" : "Add a villager"}
+                    </button>
+                  </div>
+                  {pickerOpen ? (
+                    <div className={`${ELEMENT_TAG}-field`}>
+                      <input
+                        className={`${ELEMENT_TAG}-search`}
+                        type="search"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        placeholder="Search by name, note or tag…"
+                        aria-label="Search your character library"
+                      />
+                      {catalog === null ? (
+                        <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                          Reading your library…
+                        </p>
+                      ) : visibleCatalog.length === 0 ? (
+                        <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                          No characters match that search.
+                        </p>
+                      ) : (
+                        <div className={`${ELEMENT_TAG}-picker-list`}>
+                          {visibleCatalog.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className={`${ELEMENT_TAG}-picker-item`}
+                              data-resident={entry.inVillage ? "true" : "false"}
+                            >
+                              <AvatarFace
+                                portrait={portraits[entry.id]}
+                                name={entry.name}
+                                className={`${ELEMENT_TAG}-avatar`}
+                              />
+                              <div className={`${ELEMENT_TAG}-picker-text`}>
+                                <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
+                                <div className={`${ELEMENT_TAG}-villager-role`}>
+                                  {entry.comment || entry.tags.slice(0, 3).join(" · ")}
+                                </div>
+                                {entry.summary ? (
+                                  <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p>
+                                ) : null}
+                              </div>
+                              <button
+                                type="button"
+                                className={`${ELEMENT_TAG}-button`}
+                                onClick={() => void addVillager(entry.id)}
+                                disabled={busy || entry.inVillage}
                               >
-                                <AvatarFace
-                                  portrait={portraits[entry.id]}
-                                  name={entry.name}
-                                  className={`${ELEMENT_TAG}-avatar`}
-                                />
-                                <div className={`${ELEMENT_TAG}-picker-text`}>
-                                  <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
-                                  <div className={`${ELEMENT_TAG}-villager-role`}>
-                                    {entry.comment || entry.tags.slice(0, 3).join(" · ")}
-                                  </div>
-                                  {entry.summary ? (
-                                    <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p>
-                                  ) : null}
-                                </div>
-                                <button
-                                  type="button"
-                                  className={`${ELEMENT_TAG}-button`}
-                                  onClick={() => void addVillager(entry.id)}
-                                  disabled={busy || entry.inVillage}
-                                >
-                                  {entry.inVillage ? "Lives here" : "Move in"}
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                    {snapshot && snapshot.villagers.length > 0 ? (
-                      <>
-                        <div className={`${ELEMENT_TAG}-villagers`}>
-                          {snapshot.villagers.map((villager) => (
-                            <VillagerTile
-                              key={villager.characterId}
-                              villager={villager}
-                              portrait={portraits[villager.characterId]}
-                              selected={false}
-                              // A resident's name leads to the venue they currently
-                              // occupy. Conversation belongs to that venue visit.
-                              onSelect={
-                                !villager.place || room !== null
-                                  ? undefined
-                                  : () => {
-                                      const place = snapshot.settings.venues.find(
-                                        (entry) => entry.id === villager.place?.id,
-                                      );
-                                      if (place) openVenue(place);
-                                    }
-                              }
-                            />
-                          ))}
-                        </div>
-                        <div className={`${ELEMENT_TAG}-roster`}>
-                          {snapshot.villagers.map((villager) => (
-                            <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-entry`}>
-                              <div className={`${ELEMENT_TAG}-roster-row`}>
-                                <div>
-                                  <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
-                                  {villager.missing ? (
-                                    <span className={`${ELEMENT_TAG}-badge`}>card missing</span>
-                                  ) : null}
-                                  {refreshPreviews[villager.characterId] ? (
-                                    <div className={`${ELEMENT_TAG}-tile-summary`}>
-                                      {refreshPreviews[villager.characterId].changed
-                                        ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
-                                        : refreshPreviews[villager.characterId].sourceAvailable
-                                          ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
-                                          : "The saved snapshot remains playable; the source card is unavailable."}
-                                    </div>
-                                  ) : null}
-                                </div>
-                                <span className={`${ELEMENT_TAG}-row`}>
-                                  <button
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    onClick={() =>
-                                      setSpriteEditorId(
-                                        spriteEditorId === villager.characterId ? null : villager.characterId,
-                                      )
-                                    }
-                                    aria-expanded={spriteEditorId === villager.characterId}
-                                  >
-                                    {spriteEditorId === villager.characterId
-                                      ? "Close sprite studio"
-                                      : `Sprites · ${villager.sprite?.images.length ?? 0} approved`}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    onClick={() => void previewVillagerRefresh(villager.characterId)}
-                                    disabled={busy || refreshBusyId.length > 0}
-                                  >
-                                    Compare card
-                                  </button>
-                                  {refreshPreviews[villager.characterId]?.changed &&
-                                  refreshPreviews[villager.characterId]?.sourceAvailable ? (
-                                    <button
-                                      type="button"
-                                      className={`${ELEMENT_TAG}-button`}
-                                      onClick={() => void applyVillagerRefresh(villager.characterId)}
-                                      disabled={busy || refreshBusyId.length > 0}
-                                    >
-                                      Apply refresh
-                                    </button>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    onClick={() => void removeVillager(villager.characterId)}
-                                    disabled={busy || refreshBusyId.length > 0}
-                                  >
-                                    Move out
-                                  </button>
-                                </span>
-                              </div>
-                              {spriteEditorId === villager.characterId ? (
-                                <ResidentSpriteEditor villager={villager} onSaved={setSnapshot} />
-                              ) : null}
+                                {entry.inVillage ? "Lives here" : "Move in"}
+                              </button>
                             </div>
                           ))}
                         </div>
-                      </>
-                    ) : (
-                      <p className={`${ELEMENT_TAG}-empty`}>
-                        Nobody lives here yet. If you have just founded the village, the people you named are on their
-                        way.
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <VillagerMemoriesPanel
-                    library={memoryLibrary}
-                    busy={busy}
-                    onRefresh={() => {
-                      setMemoryLibrary(null);
-                      void loadMemoryLibrary();
-                    }}
-                    onForget={(kind, id) => void forgetMemory(kind, id)}
-                  />
-                )}
+                      )}
+                    </div>
+                  ) : null}
+                  {snapshot && snapshot.villagers.length > 0 ? (
+                    <>
+                      <div className={`${ELEMENT_TAG}-villagers`}>
+                        {snapshot.villagers.map((villager) => (
+                          <VillagerTile
+                            key={villager.characterId}
+                            villager={villager}
+                            portrait={portraits[villager.characterId]}
+                            selected={false}
+                            // A resident's name leads to the venue they currently
+                            // occupy. Conversation belongs to that venue visit.
+                            onSelect={
+                              !villager.place || room !== null
+                                ? undefined
+                                : () => {
+                                    const place = snapshot.settings.venues.find(
+                                      (entry) => entry.id === villager.place?.id,
+                                    );
+                                    if (place) openVenue(place);
+                                  }
+                            }
+                          />
+                        ))}
+                      </div>
+                      <div className={`${ELEMENT_TAG}-roster`}>
+                        {snapshot.villagers.map((villager) => (
+                          <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-entry`}>
+                            <div className={`${ELEMENT_TAG}-roster-row`}>
+                              <div>
+                                <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
+                                {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
+                                {refreshPreviews[villager.characterId] ? (
+                                  <div className={`${ELEMENT_TAG}-tile-summary`}>
+                                    {refreshPreviews[villager.characterId].changed
+                                      ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
+                                      : refreshPreviews[villager.characterId].sourceAvailable
+                                        ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
+                                        : "The saved snapshot remains playable; the source card is unavailable."}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <span className={`${ELEMENT_TAG}-row`}>
+                                <button
+                                  type="button"
+                                  className={`${ELEMENT_TAG}-button`}
+                                  onClick={() =>
+                                    setSpriteEditorId(
+                                      spriteEditorId === villager.characterId ? null : villager.characterId,
+                                    )
+                                  }
+                                  aria-expanded={spriteEditorId === villager.characterId}
+                                >
+                                  {spriteEditorId === villager.characterId
+                                    ? "Close sprite studio"
+                                    : `Sprites · ${villager.sprite?.images.length ?? 0} approved`}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${ELEMENT_TAG}-button`}
+                                  onClick={() => void previewVillagerRefresh(villager.characterId)}
+                                  disabled={busy || refreshBusyId.length > 0}
+                                >
+                                  Compare card
+                                </button>
+                                {refreshPreviews[villager.characterId]?.changed &&
+                                refreshPreviews[villager.characterId]?.sourceAvailable ? (
+                                  <button
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    onClick={() => void applyVillagerRefresh(villager.characterId)}
+                                    disabled={busy || refreshBusyId.length > 0}
+                                  >
+                                    Apply refresh
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={`${ELEMENT_TAG}-button`}
+                                  onClick={() => void removeVillager(villager.characterId)}
+                                  disabled={busy || refreshBusyId.length > 0}
+                                >
+                                  Move out
+                                </button>
+                              </span>
+                            </div>
+                            {spriteEditorId === villager.characterId ? (
+                              <ResidentSpriteEditor villager={villager} onSaved={setSnapshot} />
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className={`${ELEMENT_TAG}-empty`}>
+                      Nobody lives here yet. If you have just founded the village, the people you named are on their
+                      way.
+                    </p>
+                  )}
+                </>
+              </div>
+            ) : null}
+
+            {menuPage === "memories" ? (
+              <div className={ELEMENT_TAG + "-overlay"}>
+                <div className={ELEMENT_TAG + "-overlay-head"}>
+                  <h2 className={ELEMENT_TAG + "-panel-title"}>Memories</h2>
+                </div>
+                <VillagerMemoriesPanel
+                  library={memoryLibrary}
+                  busy={busy}
+                  onRefresh={() => {
+                    setMemoryLibrary(null);
+                    void loadMemoryLibrary();
+                  }}
+                  onForget={(kind, id) => void forgetMemory(kind, id)}
+                />
               </div>
             ) : null}
 
@@ -17493,473 +17110,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </div>
             ) : null}
 
-            {menuPage === "homes" && snapshot ? (
-              <div className={`${ELEMENT_TAG}-overlay`}>
-                <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Homes on the map</h2>
-                </div>
-                <p className={`${ELEMENT_TAG}-empty`}>
-                  Where everyone lives. Each Residence has its own name and Form. A Residence nobody has moved into is a
-                  normal thing for a village to have, and the villagers are told about the occupied ones and nothing
-                  else.
-                </p>
-                <div className={`${ELEMENT_TAG}-row`}>
-                  {/* The list cannot also be the map, so this hands the tab
-                      over for one click and comes straight back with the new
-                      row on it. */}
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy || homesDraft.length >= houseLimit}
-                    onClick={() => {
-                      setPlacingHome(true);
-                      goHome();
-                    }}
-                  >
-                    Put a home on the map
-                  </button>
-                  <span className={`${ELEMENT_TAG}-hint`}>{`${homesDraft.length} of at most ${houseLimit}`}</span>
-                </div>
-                {homesDraft.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>No homes on the map yet.</p>
-                ) : (
-                  <HomeRows
-                    homes={homesDraft}
-                    villagers={(snapshot?.villagers ?? []).map((villager) => ({
-                      id: villager.characterId,
-                      name: villager.name,
-                    }))}
-                    disabled={busy}
-                    selectedId={activeHomeId}
-                    onPatch={patchHome}
-                    onRemove={removeHome}
-                    onSelect={setActiveHomeId}
-                    showDescriptions
-                    onGenerateDescription={(home) => void generateHomeDescription(home)}
-                    lockedIds={
-                      new Set(
-                        snapshot.settings.venues
-                          .filter((venue) => venue.occupancy.residentCharacterId)
-                          .map((venue) => venue.id),
-                      )
-                    }
-                  />
-                )}
-                <div className={`${ELEMENT_TAG}-row`}>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => void saveHomes()}
-                  >
-                    Save the homes
-                  </button>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => seedHomes(snapshot.settings.venues)}
-                  >
-                    Put them back
-                  </button>
-                  <span className={`${ELEMENT_TAG}-hint`}>
-                    {homesMatch(snapshot.settings.venues, homesDraft) ? "No unsaved changes." : "Unsaved changes."}
-                  </span>
-                </div>
-              </div>
-            ) : null}
-
-            {menuPage === "map" && snapshot ? (
-              <div className={`${ELEMENT_TAG}-overlay`}>
-                <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Town map</h2>
-                </div>
-                <p className={`${ELEMENT_TAG}-empty`}>
-                  The optional picture beneath the village&apos;s logical map. Upload one here, or leave the navigation
-                  surface clean; venue pins work in either case.
-                </p>
-
-                {/*
-                  The frame itself, at the shape a map is really drawn in. "Does
-                  this look right" is a question about a picture, so the answer
-                  is given with the picture rather than with a description of it
-                  — the same component the homepage draws, so what is agreed
-                  here is what will be drawn there.
-                */}
-                <MapStage
-                  src={townMapSrc}
-                  alt="A preview of the town map, framed the way it will be drawn in the village."
-                  pins={snapshot.settings.venues.flatMap((venue): MapPin[] => {
-                    const spot = placeSpot(venue);
-                    if (!spot) return [];
-                    const resident = venue.occupancy.residentCharacterId
-                      ? nameOfCharacter(venue.occupancy.residentCharacterId)
-                      : venue.occupancy.playerHome
-                        ? playerDisplayName(snapshot)
-                        : "";
-                    return [
-                      {
-                        id: venue.id,
-                        x: spot.x,
-                        y: spot.y,
-                        text: resident ? `${venue.name || "Home"} · ${resident}` : venue.name,
-                        tone: isHouse(venue)
-                          ? pinTone({
-                              isPlayerHome: venue.occupancy.playerHome,
-                              occupant: venue.occupancy.residentCharacterId,
-                            })
-                          : "venue",
-                        onSelect: () => setSelectedMapVenueId(venue.id),
-                      },
-                    ];
-                  })}
-                  placing={placingMapVenueId !== null}
-                  view={panelMapView}
-                  shape={townMapShape}
-                  zoom={townMapZoom}
-                  onView={framingMap ? setTownMapDraft : undefined}
-                  onPlace={
-                    placingMapVenueId
-                      ? (x, y) => {
-                          const venueId = placingMapVenueId;
-                          setBusy(true);
-                          setSettingsError("");
-                          void request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(venueId)}`, {
-                            method: "PUT",
-                            body: JSON.stringify({ presentation: { x, y } }),
-                          })
-                            .then(setSnapshot)
-                            .catch((cause) => setSettingsError(messageFrom(cause, "The venue could not be placed.")))
-                            .finally(() => {
-                              setBusy(false);
-                              setPlacingMapVenueId(null);
-                            });
-                        }
-                      : undefined
-                  }
-                />
-                <div className={`${ELEMENT_TAG}-field`}>
-                  <span className={`${ELEMENT_TAG}-label`}>Venue positions and residents</span>
-                  {snapshot.settings.venues.map((venue) => {
-                    const resident = venue.occupancy.residentCharacterId
-                      ? nameOfCharacter(venue.occupancy.residentCharacterId)
-                      : venue.occupancy.playerHome
-                        ? playerDisplayName(snapshot)
-                        : "";
-                    return (
-                      <div key={venue.id} className={`${ELEMENT_TAG}-row`}>
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          aria-pressed={selectedMapVenueId === venue.id}
-                          onClick={() => setSelectedMapVenueId(venue.id)}
-                        >
-                          {venue.name || "Home"}
-                        </button>
-                        <span className={`${ELEMENT_TAG}-hint`}>
-                          {resident ? `Lives here: ${resident}` : "No villager lives here"}
-                        </span>
-                        <span className={`${ELEMENT_TAG}-hint`}>{placeSpot(venue) ? "On map" : "Not placed"}</span>
-                        <span className={`${ELEMENT_TAG}-hint`}>Pin moves need a future project.</span>
-                      </div>
-                    );
-                  })}
-                  {placingMapVenueId ? (
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      onClick={() => setPlacingMapVenueId(null)}
-                    >
-                      Cancel pin placement
-                    </button>
-                  ) : null}
-                  {settingsError ? (
-                    <p className={`${ELEMENT_TAG}-error`} role="alert">
-                      {settingsError}
-                    </p>
-                  ) : null}
-                </div>
-
-                {framingMap ? (
-                  <>
-                    <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="How the picture sits in the frame">
-                      {TOWN_MAP_FITS.map((option) => (
-                        <button
-                          key={option.fit}
-                          type="button"
-                          className={`${ELEMENT_TAG}-step`}
-                          // These ones are a control, unlike the wizard's chips.
-                          data-clickable="true"
-                          data-active={panelMapView.fit === option.fit ? "true" : "false"}
-                          aria-pressed={panelMapView.fit === option.fit}
-                          onClick={() => setTownMapDraft({ ...panelMapView, fit: option.fit })}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      {TOWN_MAP_FITS.find((option) => option.fit === panelMapView.fit)?.help}
-                    </p>
-                  </>
-                ) : null}
-
-                {townMapAdvice ? (
-                  <p className={`${ELEMENT_TAG}-hint`} data-tone={townMapAdvice.tone}>
-                    {townMapAdvice.text}
-                  </p>
-                ) : null}
-
-                <div className={`${ELEMENT_TAG}-row`}>
-                  <input
-                    className={`${ELEMENT_TAG}-file`}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/avif"
-                    disabled={busy}
-                    aria-label="Choose a town map picture"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      // Cleared so picking the same file twice still counts as
-                      // a choice; the File object itself is already in hand.
-                      event.target.value = "";
-                      void pickTownMap(file);
-                    }}
-                  />
-                  {snapshot.settings.townMapImageSetAt ? (
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void clearTownMap()}
-                    >
-                      Remove background image
-                    </button>
-                  ) : null}
-                </div>
-
-                {framingMap ? (
-                  <div className={`${ELEMENT_TAG}-row`}>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void saveTownMap()}
-                    >
-                      {townMapPick ? "Use this map" : "Keep this framing"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={discardTownMapDraft}
-                    >
-                      Leave it as it was
-                    </button>
-                  </div>
-                ) : (
-                  <div className={`${ELEMENT_TAG}-row`}>
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      {snapshot.settings.townMapImageSetAt
-                        ? "Your own map is drawn at the moment."
-                        : "The logical map is drawn without a background image."}
-                    </p>
-                    {snapshot.settings.townMapImageSetAt ? (
-                      <button
-                        type="button"
-                        className={`${ELEMENT_TAG}-button`}
-                        disabled={busy}
-                        onClick={() => setReframingMap(true)}
-                      >
-                        Crop or fit it again
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-
-                <p className={`${ELEMENT_TAG}-macro-help`}>
-                  Landscape images work best. Each map keeps its actual size and shape, with the whole image visible on
-                  desktop. It is stored with the village so it travels with a backup. A picture that is too large is
-                  refused before upload rather than silently shrunk.
-                </p>
-
-                {/*
-                  Pictures of the destinations, read only here. Edit Room owns
-                  generation, upload and removal for every kind of venue.
-
-                  It sits on the map tab because that is where the village's
-                  pictures are kept — the map, and then everything on it — and the
-                  names come from the SAVED village rather than from the places
-                  editor's drafts, so a picture can be given to a place without
-                  anything about that place being edited, and an unsaved rename
-                  cannot leave a picture hanging off a name that was never saved.
-
-                  The houses are not in this list, and that is the one list in
-                  this tab that is deliberately half of the village: a house has
-                  no name for a column like this to print, and it is pictured from
-                  its own screen on the map, which is where the player is standing
-                  when they decide what a building should look like. The
-                  destinations have no such screen to stand on — they are walked
-                  past rather than into — so this is where they are pictured.
-
-                  Every control here is a button somebody presses. Nothing on
-                  this section fires on its own, which is what makes "a picture
-                  is only ever drawn when you ask for one" true of the tab and
-                  not merely of the route behind it.
-                */}
-                <div className={`${ELEMENT_TAG}-field`}>
-                  <span className={`${ELEMENT_TAG}-label`}>Pictures of the places</span>
-                  <p className={`${ELEMENT_TAG}-macro-help`}>
-                    What a conversation stands in when somebody is there. Open a Venue to generate, upload, or remove
-                    its picture. Nothing is drawn automatically. These are kept in the{" "}
-                    <strong>{snapshot.settings.villageGalleryFolderName}</strong> folder of the Engine&apos;s own
-                    gallery rather than with the village, so they are yours to reuse or throw away from there, and a
-                    village with twenty pictured places stays as small as one with none.
-                  </p>
-
-                  {destinationPlaces(snapshot.settings.venues).length === 0 ? (
-                    <p className={`${ELEMENT_TAG}-empty`}>No places yet, so there is nothing to draw.</p>
-                  ) : (
-                    <ul className={`${ELEMENT_TAG}-places`}>
-                      {destinationPlaces(snapshot.settings.venues).map((venue) => {
-                        return (
-                          <li key={venue.id} className={`${ELEMENT_TAG}-place`}>
-                            {venue.presentation.image ? (
-                              <img
-                                className={`${ELEMENT_TAG}-place-thumb`}
-                                src={venue.presentation.image.url}
-                                alt=""
-                                loading="lazy"
-                              />
-                            ) : (
-                              // A place with no picture is not a broken picture:
-                              // it is the same box, drawn empty, so the column
-                              // still reads as a column of pictures and the
-                              // missing ones are visibly missing rather than
-                              // silently absent.
-                              <span className={`${ELEMENT_TAG}-place-thumb`} data-empty="true" aria-hidden="true" />
-                            )}
-                            <div className={`${ELEMENT_TAG}-place-body`}>
-                              <span className={`${ELEMENT_TAG}-place-name`}>{venue.name}</span>
-                              <div className={`${ELEMENT_TAG}-row`}>
-                                <button
-                                  type="button"
-                                  className={`${ELEMENT_TAG}-button`}
-                                  disabled={busy}
-                                  onClick={() => {
-                                    openPlace(venue);
-                                  }}
-                                >
-                                  View Venue
-                                </button>
-                              </div>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            {/*
-              The village's own memory, laid out the way it is kept: newest day
-              first, newest memory first within it.
-
-              This is a read-and-forget surface and nothing here can change how
-              the village behaves. Gathered memories are what the prompt is fed
-              and are worth being able to look at, because the only other way to
-              find out what a village believes about you is to ask one of its
-              villagers and hope they bring it up.
-            */}
-            {menuPage === "story" ? (
-              <div className={`${ELEMENT_TAG}-overlay`}>
-                <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Village story</h2>
-                </div>
-                <p className={`${ELEMENT_TAG}-empty`}>
-                  Memories from conversations and favors can guide residents. Older model-written tick entries are kept
-                  here for review but no longer affect the village while Events is being rebuilt. A private memory is
-                  known only to the people named on it and to you. Deleting one here is permanent.
-                </p>
-
-                {story === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>Reading what the village remembers…</p>
-                ) : story.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    Nothing written down yet. Meaningful visits and fulfilled wishes can leave memories.
-                  </p>
-                ) : (
-                  storyDays(story).map((day) => (
-                    // Days are the grouping and memories are the list, so the
-                    // heading is a heading and the rows are list items rather
-                    // than one list with the dates interleaved into it.
-                    <section key={`${day.label}:${day.entries[0]?.id ?? ""}`}>
-                      <h3 className={`${ELEMENT_TAG}-story-day`}>{day.label}</h3>
-                      <ul className={`${ELEMENT_TAG}-story`}>
-                        {day.entries.map((entry) => {
-                          const time = storyTime(entry);
-                          // A private memory always names somebody: the server
-                          // drops one that names nobody rather than filing it
-                          // against no one, so this only has to decide how to
-                          // say it, not whether it is possible.
-                          const who = entry.actors.map((actor) => actor.name).join(", ");
-                          return (
-                            <li key={entry.id} className={`${ELEMENT_TAG}-story-row`}>
-                              <span>
-                                {time.length > 0 || entry.scope === "private" || entry.kind === "favour" ? (
-                                  <span className={`${ELEMENT_TAG}-story-meta`}>
-                                    {time}
-                                    {entry.scope === "private" ? (
-                                      <span className={`${ELEMENT_TAG}-story-scope`}>{` · private to ${who}`}</span>
-                                    ) : null}
-                                    {/* Everything else in this list is the
-                                        village happening to itself. This is the
-                                        one kind the player caused, and the one
-                                        the trimming is built to keep. */}
-                                    {entry.kind === "favour" ? (
-                                      <span className={`${ELEMENT_TAG}-story-scope`}> · a favour</span>
-                                    ) : null}
-                                    {entry.kind === "tick" ? (
-                                      <span className={`${ELEMENT_TAG}-story-scope`}> · legacy Events prose</span>
-                                    ) : null}
-                                  </span>
-                                ) : null}
-                                {entry.text}
-                              </span>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-remove`}
-                                disabled={busy}
-                                onClick={() => void removeStoryEntry(entry.id)}
-                                aria-label={`Forget: ${entry.text}`}
-                              >
-                                ×
-                              </button>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </section>
-                  ))
-                )}
-                {story && story.length < storyTotal ? (
-                  <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void loadMoreStory()}>
-                    Load more memories ({story.length} of {storyTotal})
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-
-            {/*
-              What was actually said, kept for the player and read by nothing.
-              The story above is the village's own memory of these same
-              conversations, which is a villager's account of what mattered; this
-              is the transcript they were drawn from, which is the only way to
-              tell whether the account is fair. It is deliberately not part of
-              the village's record in any other sense: no prompt is built from
-              it, so nothing here can change how the village behaves.
-            */}
             {menuPage === "chatlogs" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
@@ -18837,7 +17987,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 2 ? (
+              {setupStep === 2 && snapshot?.isFounded ? (
+                <p className={`${ELEMENT_TAG}-hint`}>
+                  Replace the map and review venue pins in Village Settings → Village Map. Finish this setup to keep
+                  changes you made on earlier steps.
+                </p>
+              ) : null}
+              {setupStep === 2 && !snapshot?.isFounded ? (
                 <>
                   <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="Village map image source">
                     <button
@@ -19016,8 +18172,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   ) : null}
                   {setupMapSource === "none" ? (
                     <p className={`${ELEMENT_TAG}-empty`}>
-                      Venues will remain clickable on a clean logical map surface. You can add an image from the Town
-                      map panel later.
+                      Venues will remain clickable on a clean logical map surface. You can add an image in Village
+                      Settings → Village Map later.
                     </p>
                   ) : null}
                   {setupMapSize &&
@@ -19031,7 +18187,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </>
               ) : null}
 
-              {setupStep === 3 ? (
+              {setupStep === 3 && snapshot?.isFounded ? (
+                <p className={`${ELEMENT_TAG}-hint`}>
+                  Existing Venues keep their locations. Use Village Settings → Village Map to reposition them with a
+                  replacement map, and View Venue to edit their details.
+                </p>
+              ) : null}
+              {setupStep === 3 && !snapshot?.isFounded ? (
                 <>
                   <p className={`${ELEMENT_TAG}-empty`}>
                     Place your home, one to three villager homes, and a Gathering Place. Choose who lives where.
@@ -19461,10 +18623,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     src={setupMapSrc}
                     alt={`A map of ${setupName.trim() || "your new village"}.`}
                     pins={setupStep < 3 ? [] : draftPins}
-                    placing={setupStep === 3 && (placingHome || placingPublicCenter || movingSetupVenueId !== null)}
+                    placing={
+                      setupStep === 3 &&
+                      !snapshot?.isFounded &&
+                      (placingHome || placingPublicCenter || movingSetupVenueId !== null)
+                    }
                     view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
                     shape={setupMapShape}
-                    onPlace={setupStep === 3 ? placeSetupPin : undefined}
+                    onPlace={setupStep === 3 && !snapshot?.isFounded ? placeSetupPin : undefined}
                     compact={setupStep < 2}
                     mobile={mobile && setupStep >= 2}
                     photoPins={setupStep >= 3}
@@ -19624,12 +18790,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             ☰
           </button>
           {!mobile ? <FullscreenToggle /> : null}
-          {placingHome || placingProjectId ? (
+          {placingProjectId ? (
             <button
               type="button"
               className={`${ELEMENT_TAG}-button`}
               onClick={() => {
-                setPlacingHome(false);
                 setPlacingProjectId("");
               }}
             >
@@ -19641,19 +18806,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       <div className={`${ELEMENT_TAG}-room`}>
         <div className={`${ELEMENT_TAG}-home-map-viewport`}>
           <MapStage
-            src={townMapSrc}
+            src={townMapImage || null}
             alt={`A map of ${snapshot?.village.name ?? "the village"}.`}
             pins={savedPins}
-            // Placing a house happens out here, on the map itself, because the list
-            // that asked for it cannot also be the map.
-            placing={placingHome || !!placingProjectId}
+            placing={!!placingProjectId}
             view={savedTownMapView}
-            shape={townMapShape}
+            shape={savedTownMapShape}
             onPlace={(x, y) => {
-              if (!placingProjectId) {
-                placeHomeOnMap(x, y);
-                return;
-              }
+              if (!placingProjectId) return;
               const projectId = placingProjectId;
               setBusy(true);
               setError("");
@@ -19693,7 +18853,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             pinned to the same corner, and two of these on screen at once — an
             error and a house waiting to be placed — used to be two boxes in the
             same place, drawn over each other. */}
-            {error || settingsError || placingHome || catchingUp || lastSceneEnding ? (
+            {error || settingsError || catchingUp || lastSceneEnding ? (
               <div className={`${ELEMENT_TAG}-notice`}>
                 {error ? (
                   <p className={`${ELEMENT_TAG}-error`} role="alert">
@@ -19704,11 +18864,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   <p className={`${ELEMENT_TAG}-error`} role="alert">
                     {settingsError}
                   </p>
-                ) : null}
-                {/* What to do next while a house is waiting to be put down. The panel
-                that asked for the click is off screen by now. */}
-                {placingHome ? (
-                  <span className={`${ELEMENT_TAG}-status`}>Click the map where the house stands.</span>
                 ) : null}
                 {/* The village is writing about time it has not been open for. The
                 map does not change until it is done, so without this a slow

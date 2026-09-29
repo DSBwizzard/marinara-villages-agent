@@ -218,7 +218,11 @@ async function main() {
   assert.ok(client.includes("No background image"));
   assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
-  assert.equal(client.match(/\/setup\/town-map\/generate/g)?.length, 1, "only the explicit generation handler spends");
+  assert.equal(
+    client.match(/\/setup\/town-map\/generate/g)?.length,
+    2,
+    "founding and replacement each generate explicitly",
+  );
 
   const routes = await readFile(
     join(root, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),

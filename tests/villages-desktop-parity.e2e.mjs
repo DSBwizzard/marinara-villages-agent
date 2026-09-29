@@ -180,6 +180,7 @@ try {
       }
       let value = fixtureSnapshot;
       if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
+      else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
@@ -299,16 +300,17 @@ try {
     await expect(page.getByRole("heading", { name: "Noticeboard", level: 1 })).toBeVisible();
     await expect(page.getByText("Market today")).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
-    await expect(page.getByRole("button", { name: "General Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Village Settings" }).click();
-    await expect(page.getByRole("button", { name: "Town map", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "DEBUG Settings" }).click();
     await expect(page.getByRole("button", { name: "Venue Visits" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Back to the village" }).click();
     await page.getByRole("button", { name: "Open settings menu" }).click();
-    await expect(page.getByRole("button", { name: "General Settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to the village" }).click();
 
     const visitedId = mobile ? "market" : "mill";
@@ -429,8 +431,12 @@ try {
     await historyButton.click();
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Projects", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Projects", level: 2 })).toBeVisible();
-    await page.getByRole("button", { name: "Return to current visit" }).click();
+    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "Back to menu" }).click();
+    await page.getByRole("button", { name: "Back to the village" }).click();
+    await pin.focus();
+    await page.keyboard.press("Enter");
+    await doors.getByRole("button", { name: "Visit" }).click();
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();

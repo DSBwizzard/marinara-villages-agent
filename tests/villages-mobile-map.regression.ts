@@ -116,7 +116,8 @@ assert.ok(source.includes("bypasses Story pace for one visual Events update"));
 assert.ok(source.includes("data-section={menuSection}"));
 assert.ok(source.includes('onClick={() => openMenu("general")}'));
 assert.ok(source.includes('onClick={() => openMenu("village")}'));
-assert.ok(source.includes('onClick={() => openMenu("story")}'));
+assert.ok(source.includes('onClick={() => openMenu("memories")}'));
+assert.equal(source.includes('onClick={() => openMenu("story")}'), false);
 assert.equal(source.includes("Fit entire map"), false);
 
 console.log("Villages mobile map: bounded pan, anchored pinch, tap threshold, menu bounds, scoped controls ok");

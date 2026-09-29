@@ -32,7 +32,7 @@ import {
 } from "../services/villages/venue-session.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "../services/villages/connections.js";
 import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
-import { badRequest, notFound, statusCodeOf } from "../services/villages/errors.js";
+import { badRequest, conflict, notFound, statusCodeOf } from "../services/villages/errors.js";
 import { VENUE_CLASSES } from "../services/villages/venue-model.js";
 import {
   createNewVenueProject,
@@ -103,6 +103,7 @@ import {
   proposeVillageResidence,
   proposeResidenceSpaceEdit,
   readVillageTownMapImage,
+  replaceVillageTownMap,
   refreshPlayerPersona,
   removeChronicleEntry,
   removeVillageRecollection,
@@ -120,7 +121,6 @@ import {
   setVillageStoryPace,
   setVillageCharacterSpeechColors,
   setVillageSetting,
-  setVillageTownMapImage,
   setVillageVenueImage,
   setVillageHomeBuildingNames,
   setVillageVenues,
@@ -485,6 +485,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
+  app.put<{ Body: unknown }>("/town-map", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
+    try {
+      return await replaceVillageTownMap(request.body);
+    } catch (error) {
+      return fail(reply, error, "replacing the village map");
+    }
+  });
+
   app.post<{ Body: { characterId?: unknown } }>("/villagers", async (request, reply) => {
     try {
       await addVillager(readCharacterId(request.body?.characterId));
@@ -787,6 +795,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
     try {
       const body = request.body ?? {};
+      if (body.townMapImage !== undefined || body.townMapView !== undefined)
+        throw conflict("Edit the village map in Village Settings.");
       let snapshot = await buildVillageSnapshot();
       if (body.name !== undefined) snapshot = await setVillageName(body.name);
       if (body.promptKnowledge !== undefined) {
@@ -815,12 +825,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
       // describe half a place.
       if (body.venues !== undefined)
         snapshot = await setVillageVenues(body.venues, body.venueScope === "homes" ? "homes" : "all");
-      // The framing rides along with the picture and is ignored without one, so
-      // a patch that only names a framing changes nothing rather than quietly
-      // cropping whichever map happens to be drawn.
-      if (body.townMapImage !== undefined) {
-        snapshot = await setVillageTownMapImage(body.townMapImage, body.townMapView);
-      }
       return snapshot;
     } catch (error) {
       return fail(reply, error, "saving the village settings");
