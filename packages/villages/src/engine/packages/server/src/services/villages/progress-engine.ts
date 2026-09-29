@@ -25,6 +25,7 @@ export type ProgressEvidence = {
   lineId?: string;
   speakerId?: string;
   venueId?: string;
+  area?: string;
   excerpt?: string;
 };
 export type ProgressReceipt = {
@@ -47,6 +48,12 @@ export type ProgressAttempt = {
 };
 export type ProgressTask = {
   definition: ProgressDefinition;
+  definedAt: string;
+  revisionHistory: {
+    definition: ProgressDefinition;
+    receipts: ProgressReceipt[];
+    transitions: ProgressTask["transitions"];
+  }[];
   visibleAt: string;
   requirementVisibleAt: Record<string, string>;
   phaseIndex: number;
@@ -74,7 +81,36 @@ export type ProgressRegistry<Context> = {
 
 const ATTEMPT_LIMIT = 24;
 
-export function createProgressTask(definition: ProgressDefinition, visibleAt = ""): ProgressTask {
+export function rejectProgressEvidence(
+  task: ProgressTask,
+  phaseId: string,
+  requirementId: string,
+  routeId: string,
+  evidence: ProgressEvidence,
+  reason: string,
+  status: ProgressAttempt["status"] = "rejected",
+): void {
+  if (
+    task.attempts.some(
+      (attempt) =>
+        attempt.evidenceId === evidence.id &&
+        attempt.phaseId === phaseId &&
+        attempt.requirementId === requirementId &&
+        attempt.routeId === routeId &&
+        attempt.status === status &&
+        attempt.reason === reason,
+    )
+  )
+    return;
+  task.attempts.push({ evidenceId: evidence.id, phaseId, requirementId, routeId, status, reason, at: evidence.at });
+  task.attempts = task.attempts.slice(-ATTEMPT_LIMIT);
+}
+
+export function createProgressTask(
+  definition: ProgressDefinition,
+  visibleAt = "",
+  definedAt = new Date().toISOString(),
+): ProgressTask {
   if (!definition.id || !definition.owner.id || !definition.resolver || !Number.isInteger(definition.revision))
     throw new Error("A progress task needs an id, owner, resolver, and integer revision.");
   if (!definition.phases.length) throw new Error("A progress task needs at least one phase.");
@@ -96,6 +132,8 @@ export function createProgressTask(definition: ProgressDefinition, visibleAt = "
   }
   return {
     definition,
+    definedAt,
+    revisionHistory: [],
     visibleAt,
     requirementVisibleAt: {},
     phaseIndex: 0,
@@ -141,6 +179,11 @@ export function reviseProgress(task: ProgressTask, definition: ProgressDefinitio
   if (definition.id !== task.definition.id || definition.revision <= task.definition.revision)
     throw new Error("Progress revisions must increase for the same task.");
   const retained = new Set(carryReceiptIds);
+  task.revisionHistory.push({
+    definition: task.definition,
+    receipts: task.receipts.map((receipt) => ({ ...receipt, evidence: { ...receipt.evidence } })),
+    transitions: task.transitions.map((transition) => ({ ...transition })),
+  });
   task.receipts = task.receipts.filter((receipt) => retained.has(receipt.id));
   task.definition = definition;
   task.phaseIndex = 0;
@@ -168,8 +211,30 @@ export function submitProgressEvidence<Context>(
   const route = requirement?.routes.find((row) => row.id === routeId);
   if (!phase || !requirement || !route)
     return { status: "rejected", reason: "This route is not in the current phase." };
+  if (!Number.isFinite(Date.parse(evidence.at)) || Date.parse(evidence.at) < Date.parse(task.definedAt)) {
+    rejectProgressEvidence(
+      task,
+      phase.id,
+      requirementId,
+      routeId,
+      evidence,
+      "This source predates the task definition.",
+    );
+    return { status: "rejected", reason: "This source predates the task definition." };
+  }
   if (task.receipts.some((receipt) => receipt.evidence.id === evidence.id && receipt.requirementId === requirementId))
     return { status: "accepted" };
+  if (task.receipts.some((receipt) => receipt.evidence.id === evidence.id)) {
+    rejectProgressEvidence(
+      task,
+      phase.id,
+      requirementId,
+      routeId,
+      evidence,
+      "This saved source has already advanced this task.",
+    );
+    return { status: "rejected", reason: "This saved source has already advanced this task." };
+  }
   const verifier = registry.verifiers[route.verifier];
   const verdict: ProgressVerdict = !verifier
     ? { status: "unavailable", reason: `Verifier ${route.verifier} is not registered.` }
@@ -177,27 +242,7 @@ export function submitProgressEvidence<Context>(
       ? { status: "rejected", reason: "That evidence source is already used or unavailable." }
       : verifier(route, evidence, context);
   if (verdict.status !== "accepted") {
-    if (
-      !task.attempts.some(
-        (attempt) =>
-          attempt.evidenceId === evidence.id &&
-          attempt.phaseId === phase.id &&
-          attempt.requirementId === requirementId &&
-          attempt.routeId === routeId &&
-          attempt.status === verdict.status &&
-          attempt.reason === verdict.reason,
-      )
-    )
-      task.attempts.push({
-        evidenceId: evidence.id,
-        phaseId: phase.id,
-        requirementId,
-        routeId,
-        status: verdict.status,
-        reason: verdict.reason,
-        at: evidence.at,
-      });
-    task.attempts = task.attempts.slice(-ATTEMPT_LIMIT);
+    rejectProgressEvidence(task, phase.id, requirementId, routeId, evidence, verdict.reason, verdict.status);
     return verdict;
   }
   const id = [task.definition.id, task.definition.revision, phase.id, requirementId, routeId, evidence.id].join(":");
@@ -326,6 +371,26 @@ export function coerceProgressTasks(value: unknown): ProgressTask[] {
           : [],
       };
       const task = createProgressTask(definition, asTrimmedString(raw.visibleAt));
+      task.definedAt = asTrimmedString(raw.definedAt) || "1970-01-01T00:00:00.000Z";
+      task.revisionHistory = Array.isArray(raw.revisionHistory)
+        ? raw.revisionHistory.flatMap((entry) => {
+            const previous = asRecord(entry);
+            const historyTask = coerceProgressTasks([
+              { definition: previous.definition, receipts: previous.receipts, transitions: previous.transitions },
+            ])[0];
+            return historyTask &&
+              historyTask.definition.id === definition.id &&
+              historyTask.definition.revision < definition.revision
+              ? [
+                  {
+                    definition: historyTask.definition,
+                    receipts: historyTask.receipts,
+                    transitions: historyTask.transitions,
+                  },
+                ]
+              : [];
+          })
+        : [];
       task.requirementVisibleAt = Object.fromEntries(
         Object.entries(asRecord(raw.requirementVisibleAt)).filter(
           ([id, at]) =>
@@ -365,6 +430,7 @@ export function coerceProgressTasks(value: unknown): ProgressTask[] {
                   lineId: asTrimmedString(evidence.lineId),
                   speakerId: asTrimmedString(evidence.speakerId),
                   venueId: asTrimmedString(evidence.venueId),
+                  ...(asTrimmedString(evidence.area) ? { area: asTrimmedString(evidence.area) } : {}),
                   excerpt: asTrimmedString(evidence.excerpt).slice(0, 300),
                 },
               },

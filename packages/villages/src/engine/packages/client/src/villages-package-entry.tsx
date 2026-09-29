@@ -302,6 +302,7 @@ type VillageSnapshot = {
    * fact about the village, not something the player can edit.
    */
   isFounded: boolean;
+  progressEngineVersion: 0 | 1;
   foundingPreparation: {
     status: "pending" | "failed" | "ready";
     completedIds: string[];
@@ -364,6 +365,24 @@ type BuildProject = {
     }[];
     requirementsEvidenceId: string;
     requirementsAcceptedAt: string;
+    recordedItems: { venueId: string; itemName: string }[];
+    sources: {
+      requirementId: string;
+      kind: "existing-item" | "resident-offer" | "held-supply";
+      venueId: string;
+      itemName: string;
+      supplierId: string;
+      evidenceId: string;
+      at: string;
+      acquiredAt: string;
+    }[];
+    heldSupplies: {
+      id: string;
+      itemName: string;
+      acquiredAt: string;
+      deliveredAt: string;
+      assignedRequirementId: string;
+    }[];
     workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
     blockedReason: string;
     completedAt: string;
@@ -402,6 +421,52 @@ type BuildProject = {
     siteVenueId: string;
     blockedReason: string;
   };
+};
+
+type ProjectEvidenceCandidate = {
+  sessionId: string;
+  submissionId: string;
+  lineId: string;
+  residentId: string;
+  residentName: string;
+  venueId: string;
+  venueName: string;
+  at: string;
+  playerMessage: string;
+  quote: string;
+};
+
+type ProgressDebugView = {
+  engineVersion: 0 | 1;
+  tasks: Array<{
+    definition: {
+      id: string;
+      revision: number;
+      owner: { kind: string; id: string };
+      phases: Array<{ id: string; title: string; requirements: Array<{ id: string; title: string }> }>;
+    };
+    revisionHistory: Array<{
+      definition: { revision: number; phases: Array<{ id: string; title: string }> };
+      receipts: Array<{ requirementId: string; evidence: { sourceId: string; excerpt?: string } }>;
+      transitions: Array<{ phaseId: string; at: string }>;
+    }>;
+    visibleAt: string;
+    requirementVisibleAt: Record<string, string>;
+    phaseIndex: number;
+    receipts: Array<{
+      id: string;
+      phaseId: string;
+      requirementId: string;
+      routeId: string;
+      definitionRevision: number;
+      evidence: { sourceId: string; lineId?: string; excerpt?: string; at: string };
+    }>;
+    attempts: Array<{ phaseId: string; requirementId: string; status: string; reason: string; evidenceId: string }>;
+    transitions: Array<{ phaseId: string; at: string; evidenceId: string }>;
+    resolvedAt: string;
+    resolutionKey: string;
+  }>;
+  backlog: Array<{ sessionId: string; submissionId: string; at: string; error: string }>;
 };
 
 type SetupVenueDraft = VillageVenue;
@@ -10273,6 +10338,7 @@ type MenuTab =
   | "village"
   | "general"
   | "chatlogs"
+  | "progress"
   | "agendas"
   | "schedules";
 
@@ -10280,7 +10346,7 @@ type MenuPage = "index" | MenuTab;
 
 function menuCategory(page: MenuPage): "index" | "general" | "village" | "debug" {
   if (page === "index" || page === "general") return page;
-  if (["chatlogs", "agendas", "schedules"].includes(page)) return "debug";
+  if (["chatlogs", "progress", "agendas", "schedules"].includes(page)) return "debug";
   return "village";
 }
 
@@ -10294,6 +10360,7 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   village: "Village Settings",
   general: "General Settings",
   chatlogs: "Venue Visits",
+  progress: "Progress",
   agendas: "Villager Wishes",
   schedules: "Villager Agendas",
 };
@@ -10365,6 +10432,7 @@ function ProjectsPanelV2({
   const [finishingVisit, setFinishingVisit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [evidenceCandidates, setEvidenceCandidates] = useState<ProjectEvidenceCandidate[]>([]);
   useEffect(() => {
     if (focusProjectId) setSelectedId(focusProjectId);
   }, [focusProjectId]);
@@ -10373,6 +10441,21 @@ function ProjectsPanelV2({
   );
   const project = active.find((entry) => entry.id === selectedId) ?? null;
   const flow = project?.lifecycle;
+  const refreshEvidence = useCallback(async (projectId: string) => {
+    try {
+      const result = await request<{ candidates: ProjectEvidenceCandidate[] }>(
+        `/projects/${encodeURIComponent(projectId)}/evidence`,
+      );
+      setEvidenceCandidates(result.candidates);
+    } catch (cause) {
+      setEvidenceCandidates([]);
+      setError(messageFrom(cause, "Saved conversation evidence could not be loaded."));
+    }
+  }, []);
+  useEffect(() => {
+    if (snapshot.progressEngineVersion === 1 && project?.id) void refreshEvidence(project.id);
+    else setEvidenceCandidates([]);
+  }, [project?.id, flow?.phase, snapshot.progressEngineVersion, refreshEvidence]);
   const target = snapshot.settings.venues.find((entry) => entry.id === project?.venueId);
   const selectedVenue = snapshot.settings.venues.find((entry) => entry.id === venueId);
   const extraClass = (["residence", "workplace", "gathering", "other"] as VenueClass[])
@@ -10468,6 +10551,73 @@ function ProjectsPanelV2({
     }
   };
   const phase = flow?.phase;
+  const renderEvidence = (
+    kind: "approval" | "builder" | "requirements" | "offer" | "handoff",
+    requirementId = "",
+    itemName = "",
+  ) => {
+    if (snapshot.progressEngineVersion !== 1 || !project) return null;
+    const likely = evidenceCandidates.filter((candidate) => {
+      const text = candidate.quote.toLocaleLowerCase();
+      if (itemName && !text.includes(itemName.toLocaleLowerCase())) return false;
+      return kind === "approval"
+        ? /\b(?:yes|agree|approve|fine|okay|can|may)\b/iu.test(text)
+        : kind === "builder"
+          ? /\b(?:build|construct|renovat\w*|work on|do it|take it on|handle it)\b/iu.test(text)
+          : kind === "requirements"
+            ? /\b(?:structure|equipment|finish)\b/iu.test(text)
+            : kind === "offer"
+              ? /\b(?:have|supply|bring|provide)\b/iu.test(text)
+              : /\b(?:here|give|hand|take)\b/iu.test(text);
+    });
+    const rows = (likely.length ? likely : evidenceCandidates).slice(0, 12);
+    return (
+      <details className={`${ELEMENT_TAG}-project-evidence`}>
+        <summary>
+          Record{" "}
+          {kind === "requirements"
+            ? "Builder checklist"
+            : kind === "handoff"
+              ? "supply handoff"
+              : kind === "offer"
+                ? "supply offer"
+                : kind === "approval"
+                  ? "approval"
+                  : "Builder agreement"}{" "}
+          from a saved visit
+        </summary>
+        {rows.length ? (
+          rows.map((candidate) => (
+            <div key={`${candidate.sessionId}:${candidate.lineId}`} className={`${ELEMENT_TAG}-notice-row`}>
+              <p>
+                <strong>{candidate.residentName || candidate.residentId}</strong> at {candidate.venueName}: “
+                {candidate.quote}”
+              </p>
+              <small>After: “{candidate.playerMessage}”</small>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={busy}
+                onClick={() =>
+                  void action("record", {
+                    kind,
+                    requirementId,
+                    sessionId: candidate.sessionId,
+                    submissionId: candidate.submissionId,
+                    lineId: candidate.lineId,
+                  })
+                }
+              >
+                Record this line
+              </button>
+            </div>
+          ))
+        ) : (
+          <p>No saved resident lines yet. Talk to a villager, then return here.</p>
+        )}
+      </details>
+    );
+  };
   if (project && phase === "finishing" && finishingVisit)
     return (
       <div className={`${ELEMENT_TAG}-project-finish-visit`}>
@@ -10794,6 +10944,7 @@ function ProjectsPanelV2({
                     {flow.approvals.some((entry) => entry.residentId === id) ? "Approved" : "Awaiting approval"}
                   </p>
                 ))}
+                {renderEvidence("approval")}
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
@@ -10811,14 +10962,17 @@ function ProjectsPanelV2({
                   Find villagers on the map and ask them about this Project in a real conversation. Their clear
                   agreements appear here.
                 </p>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy}
-                  onClick={() => void action("recheck-builder")}
-                >
-                  Review recent chats for missed agreements
-                </button>
+                {renderEvidence("builder")}
+                {snapshot.progressEngineVersion !== 1 ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-button`}
+                    disabled={busy}
+                    onClick={() => void action("recheck-builder")}
+                  >
+                    Review recent chats for missed agreements
+                  </button>
+                ) : null}
                 {flow?.candidates.length ? (
                   flow.candidates.map((entry) => (
                     <button
@@ -10865,6 +11019,8 @@ function ProjectsPanelV2({
                 ) : (
                   <p>Waiting for the Builder's plan.</p>
                 )}
+                {renderEvidence("requirements")}
+                {snapshot.progressEngineVersion === 1 ? renderEvidence("builder") : null}
                 {flow?.candidates
                   .filter((entry) => entry.residentId !== flow.builderId)
                   .map((entry) => (
@@ -10897,6 +11053,54 @@ function ProjectsPanelV2({
                       <span>
                         {entry.deliveredAt ? "Delivered" : entry.carriedAt ? "Ready to deliver" : "Find and obtain"}
                       </span>
+                      {snapshot.progressEngineVersion === 1 && !entry.carriedAt ? (
+                        <>
+                          {!flow.sources?.some((source) => source.requirementId === entry.id) ? (
+                            <>
+                              {(flow.recordedItems ?? [])
+                                .filter((item) => item.itemName.toLocaleLowerCase() === entry.title.toLocaleLowerCase())
+                                .map((item) => (
+                                  <button
+                                    key={item.venueId}
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void action("existing-source", { requirementId: entry.id, venueId: item.venueId })
+                                    }
+                                  >
+                                    Record existing item at{" "}
+                                    {snapshot.settings.venues.find((venue) => venue.id === item.venueId)?.name ??
+                                      "Venue"}
+                                  </button>
+                                ))}
+                              {(flow.heldSupplies ?? [])
+                                .filter(
+                                  (held) =>
+                                    !held.assignedRequirementId &&
+                                    held.itemName.toLocaleLowerCase() === entry.title.toLocaleLowerCase(),
+                                )
+                                .map((held) => (
+                                  <button
+                                    key={held.id}
+                                    type="button"
+                                    className={`${ELEMENT_TAG}-button`}
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void action("reallocate-held", { requirementId: entry.id, heldId: held.id })
+                                    }
+                                  >
+                                    Commit previously acquired {held.itemName}
+                                    {held.deliveredAt ? " (already delivered)" : ""}
+                                  </button>
+                                ))}
+                              {renderEvidence("offer", entry.id, entry.title)}
+                            </>
+                          ) : (
+                            renderEvidence("handoff", entry.id, entry.title)
+                          )}
+                        </>
+                      ) : null}
                       {entry.carriedAt && !entry.deliveredAt && siteProjectId === project.id ? (
                         <button
                           type="button"
@@ -10912,6 +11116,17 @@ function ProjectsPanelV2({
                       ) : null}
                     </div>
                   ))}
+                {snapshot.progressEngineVersion === 1 ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-button`}
+                    disabled={busy}
+                    onClick={() => void refreshEvidence(project.id)}
+                  >
+                    Refresh saved visit lines
+                  </button>
+                ) : null}
+                {snapshot.progressEngineVersion === 1 ? renderEvidence("builder") : null}
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
@@ -10933,6 +11148,9 @@ function ProjectsPanelV2({
                   <p>Expected completion: {new Date(flow.workOrder.completesAt).toLocaleString()}</p>
                 ) : null}
                 {flow?.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
+                {snapshot.progressEngineVersion === 1 && project.status === "blocked"
+                  ? renderEvidence("builder")
+                  : null}
                 {project.status === "blocked"
                   ? flow?.candidates
                       .filter((entry) => entry.residentId !== flow.builderId)
@@ -11037,6 +11255,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * to avoid.
    */
   const [agendas, setAgendas] = useState<VillagerAgendaView[] | null>(null);
+  const [progressDebug, setProgressDebug] = useState<ProgressDebugView | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // The menu is its own screen. The homepage never carries the villager
   // controls, and the menu never draws the village itself; `menuPage` picks
@@ -12093,6 +12312,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // other half of the same listing, so it reads it the same way — one route,
       // one answer, and the two panels cannot disagree about the same villager.
       if (tab === "agendas" || tab === "schedules") void loadAgendas();
+      if (tab === "progress")
+        void request<ProgressDebugView>("/progress/debug")
+          .then(setProgressDebug)
+          .catch((cause) => {
+            setProgressDebug(null);
+            setError(messageFrom(cause, "Progress diagnostics are unavailable."));
+          });
       const enteringVillageSettings = tab === "village" && (screen !== "menu" || menuPage !== "village");
       if (enteringVillageSettings && snapshot) {
         setKnowledgeDraft(snapshot.settings.promptKnowledge);
@@ -15418,6 +15644,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           <div className={`${ELEMENT_TAG}-menu-group`}>
             <h2 className={`${ELEMENT_TAG}-panel-title`}>Debug</h2>
             <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
+              {debugDiscardEnabled ? (
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  aria-pressed={menuPage === "progress"}
+                  data-active={menuPage === "progress" ? "true" : "false"}
+                  disabled={!snapshot || busy}
+                  onClick={() => openMenu("progress")}
+                >
+                  DEBUG: Progress
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
@@ -16744,6 +16982,110 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 {settingsError ? (
                   <p className={`${ELEMENT_TAG}-error`} role="alert">
                     {settingsError}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {menuPage === "progress" ? (
+              <div className={`${ELEMENT_TAG}-panel`}>
+                <h2>DEBUG: Progress</h2>
+                <p>Engine version: {progressDebug?.engineVersion ?? "loading"}</p>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  onClick={() => void request<ProgressDebugView>("/progress/debug").then(setProgressDebug)}
+                >
+                  Refresh diagnostics
+                </button>
+                {progressDebug?.backlog.length ? (
+                  <section>
+                    <h3>Unprocessed saved turns</h3>
+                    {progressDebug.backlog.map((turn) => (
+                      <p key={`${turn.sessionId}:${turn.submissionId}`}>
+                        {turn.at} · {turn.sessionId}/{turn.submissionId}{" "}
+                        {turn.error ? `· ${turn.error}` : "· awaiting replay"}
+                      </p>
+                    ))}
+                  </section>
+                ) : (
+                  <p>No saved turns await replay.</p>
+                )}
+                {progressDebug?.tasks.map((task) => (
+                  <details key={task.definition.id} open>
+                    <summary>
+                      {task.definition.owner.kind} {task.definition.owner.id} · revision {task.definition.revision} ·{" "}
+                      {task.resolvedAt ? "resolved" : (task.definition.phases[task.phaseIndex]?.title ?? "complete")}
+                    </summary>
+                    <p>
+                      Disclosed: {task.visibleAt || "hidden"}
+                      {task.resolvedAt ? ` · Resolved: ${task.resolvedAt} · ${task.resolutionKey}` : ""}
+                    </p>
+                    {task.definition.phases.map((phase) => (
+                      <section key={phase.id}>
+                        <h3>{phase.title}</h3>
+                        {phase.requirements.map((requirement) => {
+                          const receipts = task.receipts.filter(
+                            (receipt) => receipt.phaseId === phase.id && receipt.requirementId === requirement.id,
+                          );
+                          return (
+                            <p key={requirement.id}>
+                              {requirement.title} · {task.requirementVisibleAt[requirement.id] || "hidden"} ·{" "}
+                              {receipts.length
+                                ? receipts
+                                    .map(
+                                      (receipt) =>
+                                        `${receipt.routeId}: ${receipt.evidence.sourceId} ${receipt.evidence.excerpt ?? ""}`,
+                                    )
+                                    .join("; ")
+                                : "pending"}
+                            </p>
+                          );
+                        })}
+                      </section>
+                    ))}
+                    {task.attempts.length ? (
+                      <section>
+                        <h3>Rejected or unavailable</h3>
+                        {task.attempts.map((attempt, index) => (
+                          <p key={`${attempt.evidenceId}:${index}`}>
+                            {attempt.phaseId}/{attempt.requirementId} · {attempt.status}: {attempt.reason}
+                          </p>
+                        ))}
+                      </section>
+                    ) : null}
+                    {task.transitions.length ? (
+                      <section>
+                        <h3>Transitions</h3>
+                        {task.transitions.map((transition, index) => (
+                          <p key={`${transition.phaseId}:${index}`}>
+                            {transition.phaseId} → {transition.at} · {transition.evidenceId}
+                          </p>
+                        ))}
+                      </section>
+                    ) : null}
+                    {task.revisionHistory?.map((prior) => (
+                      <details key={prior.definition.revision}>
+                        <summary>
+                          Earlier revision {prior.definition.revision} · {prior.receipts.length} accepted sources
+                        </summary>
+                        {prior.receipts.map((receipt) => (
+                          <p key={`${receipt.requirementId}:${receipt.evidence.sourceId}`}>
+                            {receipt.requirementId} · {receipt.evidence.sourceId} · {receipt.evidence.excerpt ?? ""}
+                          </p>
+                        ))}
+                        {prior.transitions.map((transition, index) => (
+                          <p key={`${transition.phaseId}:${index}`}>
+                            {transition.phaseId} → {transition.at}
+                          </p>
+                        ))}
+                      </details>
+                    ))}
+                  </details>
+                ))}
+                {error ? (
+                  <p className={`${ELEMENT_TAG}-error`} role="alert">
+                    {error}
                   </p>
                 ) : null}
               </div>

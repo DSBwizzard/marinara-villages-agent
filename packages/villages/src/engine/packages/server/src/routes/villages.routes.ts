@@ -33,6 +33,7 @@ import {
   listVenueVisitSummaries,
   readVenueVisit,
   recheckRecentBuilderConversations,
+  progressBacklog,
   deleteVenueVisit,
   deleteAllVenueVisits,
   setVenueVisitRetention,
@@ -58,6 +59,13 @@ import {
   debugCompleteProjectConstruction,
   openFinishedProject,
 } from "../services/villages/project-lifecycle.js";
+import {
+  listProjectEvidenceCandidates,
+  recordExistingProjectSource,
+  reallocateHeldProjectSupply,
+  recordProjectSpokenEvidence,
+} from "../services/villages/project-evidence.js";
+import { readVillageState } from "../services/villages/village-store.js";
 import type { VillageVenueClass } from "../services/villages/types.js";
 import { listVillageLorebooks } from "../services/villages/lorebooks.js";
 import {
@@ -1191,6 +1199,31 @@ export async function villagesRoutes(engine: FastifyInstance) {
   projectAction("start", (projectId) => startProjectConstruction(projectId));
   projectAction("debug-complete", (projectId) => debugCompleteProjectConstruction(projectId));
   projectAction("open", openFinishedProject);
+  projectAction("record", recordProjectSpokenEvidence);
+  projectAction("existing-source", recordExistingProjectSource);
+  projectAction("reallocate-held", reallocateHeldProjectSupply);
+
+  app.get<{ Params: { projectId: string } }>("/projects/:projectId/evidence", async (request, reply) => {
+    try {
+      return { candidates: await listProjectEvidenceCandidates(readVenueId(request.params.projectId)) };
+    } catch (error) {
+      return fail(reply, error, "reading saved Project evidence");
+    }
+  });
+
+  app.get("/progress/debug", async (_request, reply) => {
+    try {
+      if (!villagesDebugAgentsEnabled()) throw notFound("Progress debugging is unavailable.");
+      const village = await readVillageState();
+      return {
+        engineVersion: village.progressEngineVersion,
+        tasks: village.progressTasks,
+        backlog: await progressBacklog(),
+      };
+    } catch (error) {
+      return fail(reply, error, "reading Progress Engine diagnostics");
+    }
+  });
 
   app.post<{ Params: { venueId: string }; Body: unknown }>("/projects/renovations/:venueId", async (request, reply) => {
     try {

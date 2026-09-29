@@ -48,6 +48,7 @@ import { venueReplyIntegrity, venueSceneHistory } from "./venue-turn-integrity.j
 import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
 import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
 import { recordProjectConversation } from "./project-lifecycle.js";
+import { ingestSavedProgressEvent } from "./progress-runtime.js";
 import { readVenueRequestCore } from "./venue-requests.js";
 import type { VillageVenueClass } from "./types.js";
 
@@ -73,17 +74,23 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
   const submission = session.submissions.find((entry) => entry.id === submissionId);
   if (!submission) throw notFound("That roleplay turn was not recorded.");
   return {
+    sessionId,
     venueId: session.placeId,
     submissionId,
     mode: submission.mode,
     message: submission.message,
     at: submission.at ?? "",
+    areaAtTurn: submission.areaAtTurn ?? session.area,
+    activeIdsAtTurn: submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId),
     action: submission.action ?? null,
-    lines: session.lines.filter(
-      (line) =>
-        line.at === submission.at &&
-        line.role === "assistant" &&
-        session.participants.some((participant) => participant.characterId === line.speakerId),
+    lines: session.lines.filter((line) =>
+      submission.replyLineIds?.length
+        ? submission.replyLineIds.includes(line.id) &&
+          line.role === "assistant" &&
+          submission.activeIdsAtTurn?.includes(line.speakerId)
+        : line.at === submission.at &&
+          line.role === "assistant" &&
+          session.participants.some((participant) => participant.characterId === line.speakerId),
     ),
   };
 }
@@ -94,6 +101,10 @@ type VenueSubmission = {
   targetId: string;
   areaAtTurn?: VenueSession["area"];
   privateOwnerIdAtTurn?: string;
+  activeIdsAtTurn?: string[];
+  replyLineIds?: string[];
+  progressProcessedAt?: string;
+  progressError?: string;
   verdict: { fulfilled: boolean; reason: string } | null;
   wishId: string;
   wishMemory: string;
@@ -385,6 +396,14 @@ function coerceSession(value: unknown): VenueSession {
               ...(typeof row.privateOwnerIdAtTurn === "string"
                 ? { privateOwnerIdAtTurn: row.privateOwnerIdAtTurn }
                 : {}),
+              ...(Array.isArray(row.activeIdsAtTurn)
+                ? { activeIdsAtTurn: row.activeIdsAtTurn.filter((id): id is string => typeof id === "string") }
+                : {}),
+              ...(Array.isArray(row.replyLineIds)
+                ? { replyLineIds: row.replyLineIds.filter((id): id is string => typeof id === "string") }
+                : {}),
+              ...(typeof row.progressProcessedAt === "string" ? { progressProcessedAt: row.progressProcessedAt } : {}),
+              ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
                   ? {
@@ -505,6 +524,132 @@ async function changeSession(id: string, change: (session: VenueSession) => void
     result = session;
   });
   return result!;
+}
+
+function pendingProgressTurns(session: VenueSession, foundedAt: string) {
+  return session.submissions.filter(
+    (turn) => turn.at && !turn.progressProcessedAt && (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
+  );
+}
+
+/** The visit document is the outbox. Village receipts are idempotent if the second write is interrupted. */
+export async function processSavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
+  const village = await readVillageState();
+  if (village.progressEngineVersion !== 1) return;
+  const session = await readSession(sessionId);
+  const submission = session.submissions.find((entry) => entry.id === submissionId);
+  if (
+    !submission ||
+    submission.progressProcessedAt ||
+    !submission.at ||
+    (village.foundedAt && Date.parse(submission.at) < Date.parse(village.foundedAt))
+  )
+    return;
+  try {
+    const hasAutomaticRoute = village.progressTasks.some((task) =>
+      task.definition.phases[task.phaseIndex]?.requirements.some((requirement) =>
+        requirement.routes.some(
+          (route) =>
+            route.automatic &&
+            route.evidenceKinds?.some(
+              (kind) => kind === "saved-resident-line" || (kind === "saved-venue-action" && !!submission.action),
+            ),
+        ),
+      ),
+    );
+    if (hasAutomaticRoute)
+      await mutateVillageState((state) => {
+        if (state.progressEngineVersion !== 1) return;
+        for (const line of session.lines) {
+          if (
+            submission.replyLineIds?.includes(line.id) &&
+            submission.activeIdsAtTurn?.includes(line.speakerId) &&
+            session.participants.some((person) => person.characterId === line.speakerId)
+          )
+            ingestSavedProgressEvent(state, {
+              id: `visit:${sessionId}:${submissionId}:${line.id}`,
+              kind: "saved-resident-line",
+              at: submission.at!,
+              sourceId: submissionId,
+              lineId: line.id,
+              speakerId: line.speakerId,
+              venueId: session.placeId,
+              area: submission.areaAtTurn,
+              excerpt: line.content,
+            });
+        }
+        if (submission.action)
+          ingestSavedProgressEvent(state, {
+            id: `visit-action:${sessionId}:${submissionId}`,
+            kind: "saved-venue-action",
+            at: submission.at!,
+            sourceId: submissionId,
+            venueId: session.placeId,
+            area: submission.areaAtTurn,
+            excerpt: submission.message,
+          });
+      });
+    await changeSession(sessionId, (saved) => {
+      const turn = saved.submissions.find((entry) => entry.id === submissionId);
+      if (turn) {
+        turn.progressProcessedAt ||= new Date().toISOString();
+        turn.progressError = "";
+      }
+    });
+  } catch (error) {
+    await changeSession(sessionId, (saved) => {
+      const turn = saved.submissions.find((entry) => entry.id === submissionId);
+      if (turn && !turn.progressProcessedAt) turn.progressError = String(error).slice(0, 300);
+    });
+    throw error;
+  }
+}
+
+export async function progressBacklog() {
+  const village = await readVillageState();
+  if (village.progressEngineVersion !== 1) return [];
+  const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
+  return records
+    .flatMap((record) => {
+      const session = coerceSession(record.data);
+      return pendingProgressTurns(session, village.foundedAt).map((turn) => ({
+        sessionId: session.id,
+        submissionId: turn.id,
+        at: turn.at,
+        error: turn.progressError ?? "",
+      }));
+    })
+    .slice(0, 100);
+}
+
+/** One startup scan, then bounded asynchronous batches; never part of the minute snapshot. */
+export function startProgressRecovery(): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const start = async () => {
+    try {
+      const queue = await progressBacklog();
+      const batch = async () => {
+        for (const turn of queue.splice(0, 8)) {
+          if (stopped) return;
+          try {
+            await processSavedProgressSubmission(turn.sessionId, turn.submissionId);
+          } catch (error) {
+            villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
+          }
+        }
+        if (!stopped && queue.length) timer = setTimeout(() => void batch(), 25);
+      };
+      if (!stopped && queue.length) timer = setTimeout(() => void batch(), 0);
+    } catch (error) {
+      villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
+    }
+  };
+  void start();
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
 }
 
 function appendLine(session: VenueSession, line: VenueLine): void {
@@ -679,12 +824,33 @@ async function generateOnce(
     });
   const [lore, model] = await Promise.all([lorePromise, modelPromise]);
   signal?.throwIfAborted();
+  const progressProjects =
+    village.progressEngineVersion === 1
+      ? village.projects
+          .filter((project) => project.lifecycle && project.status !== "complete" && project.status !== "abandoned")
+          .slice(0, 2)
+      : [];
   const system = [
     VENUE_SCENE_WRITING_FOUNDATION,
     `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
     venueWritingDirection(village.narrationStyle, player.name),
     venueAdditionalWritingGuidance(village.narrationStyle),
     `The player is ${player.name}. ${player.description}`,
+    progressProjects.length
+      ? `Current public Projects: ${progressProjects
+          .map((project) => {
+            const flow = project.lifecycle!;
+            return `${project.title} (${project.id}), phase ${flow.phase}, Builder ${flow.builderId || "unassigned"}, needed supplies ${
+              flow.requirements
+                .filter((entry) => entry.needed)
+                .map((entry) => entry.title)
+                .join(", ") || "not yet defined"
+            }`;
+          })
+          .join(
+            " | ",
+          )}. Residents may discuss these naturally. When an assigned Builder is asked for the Project checklist, have them state all three categories in one spoken line using the exact labels "Structure: …; Equipment: …; Finish: …"; say "not needed" for a category with no supply. A supply offer or handoff must be explicit in a resident's spoken words and name the exact item. A player's claim alone changes no Project state.`
+      : "",
     `Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
       place?.state.traces
         ?.filter((trace) => trace.kind !== "note" && (!trace.expiresAt || Date.parse(trace.expiresAt) > now.getTime()))
@@ -1747,6 +1913,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       targetId: input.targetId,
       areaAtTurn: session.area,
       privateOwnerIdAtTurn: session.privateOwnerId,
+      activeIdsAtTurn: [...session.activeIds],
+      replyLineIds,
       verdict,
       wishId,
       wishMemory,
@@ -1811,6 +1979,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     }
   });
   const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
+  try {
+    await processSavedProgressSubmission(updated.id, submission.id);
+  } catch (error) {
+    villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", submission.id, String(error));
+  }
   await applyVenueTurnChange(updated, submission);
   if (await applyFulfilledWish(updated, submission)) await refreshAgendaAfterWish(submission.targetId);
   await applyVenueRequests(updated, submission);
@@ -2985,8 +3158,9 @@ export async function recordVenueAction(
       at,
       heardBy: [...state.activeIds],
     });
+    const sceneLineId = randomUUID();
     appendLine(state, {
-      id: randomUUID(),
+      id: sceneLineId,
       speakerId: "__venue_scene__",
       name: "Scene",
       role: "assistant",
@@ -3003,9 +3177,17 @@ export async function recordVenueAction(
       wishId: "",
       wishMemory: "",
       action: result,
+      areaAtTurn: state.area,
+      activeIdsAtTurn: [...state.activeIds],
+      replyLineIds: [sceneLineId],
       at,
     });
   });
+  try {
+    await processSavedProgressSubmission(session.id, submissionId);
+  } catch (error) {
+    villagesLogger().warn("[villages] saved action progress deferred for %s: %s", submissionId, String(error));
+  }
 }
 
 export async function discardVenueVisitDebug(id: string): Promise<void> {
@@ -3135,6 +3317,9 @@ export async function listVenueVisitSummaries(
 }
 
 export async function deleteVenueVisit(id: string): Promise<void> {
+  const before = await readSession(id);
+  for (const turn of pendingProgressTurns(before, (await readVillageState()).foundedAt))
+    await processSavedProgressSubmission(id, turn.id);
   const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
   if (!document || coerceSession(document.data).status !== "closed")
     throw notFound("That visit is not in the archive.");
@@ -3164,12 +3349,18 @@ export async function setVenueVisitRetention(value: unknown): Promise<void> {
 }
 
 export async function pruneVenueVisits(): Promise<void> {
-  const retention = (await readVillageState()).visitRetention;
+  const village = await readVillageState();
+  const retention = village.visitRetention;
   if (retention.mode === "forever") return;
   const documents = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
   const eligible = documents
     .map((document) => ({ document, session: coerceSession(document.data) }))
-    .filter(({ session }) => session.status === "closed" && !session.memoryPending)
+    .filter(
+      ({ session }) =>
+        session.status === "closed" &&
+        !session.memoryPending &&
+        (village.progressEngineVersion !== 1 || pendingProgressTurns(session, village.foundedAt).length === 0),
+    )
     .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
   const cutoff = Date.now() - retention.value * 86_400_000;
   const expired =
