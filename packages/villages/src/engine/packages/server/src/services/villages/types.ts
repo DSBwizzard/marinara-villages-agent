@@ -19,6 +19,7 @@
 
 import type { HomeBuildingKind, VillageBuildingOption, VillagePresetMacro } from "./prompt-preset.js";
 import type { VillageNarrationStyle } from "./narration-style.js";
+import type { ProgressTask } from "./progress-engine.js";
 import type { VillagesTurnBeat } from "./turn-beats.js";
 
 /**
@@ -1221,6 +1222,8 @@ export type VillageState = {
   scheduledEvents: VillageScheduledEvent[];
   relationships: VillageRelationship[];
   projects: VillageProject[];
+  /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
+  progressTasks: ProgressTask[];
   /** Ordinary scene props are visible but cannot become project stock. */
   narrativeItems: { venueId: string; itemName: string }[];
   /** Finite resident source yields already transferred into a project. */

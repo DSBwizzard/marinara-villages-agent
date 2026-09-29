@@ -14,6 +14,12 @@ Villages is a first-class downloadable agent in the normal catalog channels. It 
 
 ## Venue projects
 
+### Progress Engine foundation
+
+The shared Progress Engine stores versioned task phases, typed evidence routes, separate disclosure, cited receipts, rejection reasons, and one-time resolution keys. It is model-free: task prose cannot prove completion. New integrations can process saved gameplay events without asking a model to judge each requirement. The foundation currently has a regression fixture for hidden progress and replay; the Project lifecycle integration follows separately.
+
+If playtesting shows that reasonable social events repeatedly fail typed checks, explore a later, explicitly weaker evidence grade for model interpretation of cited scene lines. Such a grade must never authorize stock transfers, construction, or capabilities.
+
 Projects has one New Venue slot and one Renovation slot. A New Venue begins with one Class, a name, and a description; place its generic blueprint on the Village map. It needs no village approval. A Renovation changes the physical form, Class, capacity, or one of a Venue's two reusable Upgrade slots. Residents and workers affected through that Venue approve in conversation or Mailbox before builder recruitment. Direct name, prose, picture, and Feature edits remain outside Projects.
 
 The visible sequence is Concept and placement, affected-person approval when needed, Assign Builder, Define Requirements, Prepare Materials, 24-hour Construction, and Finishing Visit. Villagers explicitly agree to build during ordinary visits and appear as candidates. The chosen builder explains the structure materials, equipment, and finishing supplies, including anything unnecessary. The player accepts that checklist or asks the builder to revise it, obtains supplies in Village visits, and delivers them at the blueprint site. Construction follows the device-local clock across restarts and pauses if the builder leaves. The finished work remains a blueprint until the finishing visit opens it as a Venue. New Venues require a form and exterior and interior descriptions; pictures are optional. The Project screen has no embedded map or image panel: placement happens on the Village map and imagery belongs to the finishing visit.
