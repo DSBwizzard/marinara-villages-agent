@@ -10,83 +10,18 @@ import {
   MAX_VENUE_NOTE_LENGTH,
   remapVenues,
 } from "./prompt-preset.js";
-import type {
-  VillageState,
-  VillageVenue,
-  VillageVenueClass,
-  VillageVenueImprovement,
-  VillageVenueMail,
-  VillageResidence,
-} from "./types.js";
+import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueMail, VillageResidence } from "./types.js";
 import { hashString, randomVillageSeed } from "./village-clock.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 import { extractJsonObject } from "./village-bootstrap.js";
-import { draftBuildProject } from "./build-projects.js";
-import type { VenueRequestCore } from "./venue-requests.js";
 import {
-  hasVenueClass,
-  venueAssignedCount,
-  venueCapacity,
-  venueResidentIds,
-  validVenueClasses,
-} from "./venue-model.js";
-
-function readChange(value: unknown): {
-  classes?: VillageVenueClass[];
-  capacity?: number;
-  slot?: number;
-  improvement?: VillageVenueImprovement;
-  title: string;
-  detail: string;
-} {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest("Describe the Venue proposal.");
-  const row = value as Record<string, unknown>;
-  if (row.classes !== undefined && !validVenueClasses(row.classes))
-    throw badRequest("Choose one or two Venue Classes.");
-  if (
-    row.capacity !== undefined &&
-    (!Number.isInteger(row.capacity) || Number(row.capacity) < 1 || Number(row.capacity) > 4)
-  )
-    throw badRequest("Residence capacity is one to four people.");
-  const slot = row.slot;
-  if (slot !== undefined && slot !== 0 && slot !== 1) throw badRequest("Choose one of the two improvement slots.");
-  const proposal = row.improvement;
-  if (
-    proposal !== undefined &&
-    (slot === undefined || !proposal || typeof proposal !== "object" || Array.isArray(proposal))
-  )
-    throw badRequest("An improvement needs a slot, title, and description.");
-  const improvementRow = proposal as Record<string, unknown> | undefined;
-  const improvement = improvementRow
-    ? {
-        id: randomVillageSeed(),
-        title: boundText(improvementRow.title, MAX_VENUE_NOTE_LENGTH).trim(),
-        description: boundText(improvementRow.description, MAX_VENUE_DESCRIPTION_LENGTH).trim(),
-        spaceId: typeof improvementRow.spaceId === "string" && improvementRow.spaceId ? improvementRow.spaceId : null,
-        extraBeds: Number(improvementRow.extraBeds ?? 0),
-        approvedAt: "",
-      }
-    : undefined;
-  if (
-    improvement &&
-    (!improvement.title ||
-      !improvement.description ||
-      !Number.isInteger(improvement.extraBeds) ||
-      improvement.extraBeds < 0 ||
-      improvement.extraBeds > 3)
-  )
-    throw badRequest("An improvement needs a title, description, and up to three extra beds.");
-  if (row.classes === undefined && row.capacity === undefined && improvement === undefined)
-    throw badRequest("Choose a Class, capacity, or improvement change.");
-  return {
-    ...(validVenueClasses(row.classes) ? { classes: row.classes } : {}),
-    ...(typeof row.capacity === "number" ? { capacity: row.capacity } : {}),
-    ...(typeof slot === "number" ? { slot } : {}),
-    ...(improvement ? { improvement } : {}),
-    title: boundText(row.title, MAX_VENUE_NOTE_LENGTH).trim() || "Venue change",
-    detail: boundText(row.detail, MAX_VENUE_DESCRIPTION_LENGTH).trim(),
-  };
-}
+  createRenovationProject,
+  draftRenovationProject,
+  applyProjectMailboxDecisions,
+  draftNewVenueProject,
+} from "./project-lifecycle.js";
+import type { VenueRequestCore } from "./venue-requests.js";
+import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
 
 function proposedCapacity(venue: VillageVenue, mail: VillageVenueMail): number {
   const base = mail.proposedCapacity ?? venue.residenceCapacity ?? 1;
@@ -146,9 +81,9 @@ function applyMail(state: VillageState, mail: VillageVenueMail, at: string): voi
   if (mail.kind === "counteroffer") {
     const draft = mail.counterofferDraft!;
     const request = state.pendingDecisions.find((entry) => entry.id === mail.counterofferRequestId)!;
-    draftBuildProject(
+    draftNewVenueProject(
       state,
-      { ...draft, requestQuote: request.requestQuote },
+      { ...draft, classes: draft.classes.slice(0, 1), requestQuote: request.requestQuote },
       request.requesterCharacterId,
       `request:${request.id}`,
     );
@@ -165,24 +100,23 @@ function applyMail(state: VillageState, mail: VillageVenueMail, at: string): voi
     for (const current of state.venues) current.occupancy.playerHome = false;
     venue!.occupancy.playerHome = true;
   } else {
-    if (mail.proposedClasses) {
-      venue!.classes = mail.proposedClasses;
-      venue!.spaces = mail.proposedClasses.map(
-        (item) =>
-          venue!.spaces?.find((space) => space.venueClass === item) ?? {
-            id: item,
-            venueClass: item,
-            description: venue!.description,
-            image: null,
-            state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: at },
-          },
-      );
-    }
-    if (mail.proposedCapacity !== undefined) venue!.residenceCapacity = mail.proposedCapacity;
-    if (mail.improvementSlot !== undefined) {
-      venue!.improvements = [...(venue!.improvements ?? [null, null])];
-      venue!.improvements[mail.improvementSlot] = mail.improvement ? { ...mail.improvement, approvedAt: at } : null;
-    }
+    const project = draftRenovationProject(state, mail.venueId, {
+      title: mail.title,
+      detail: mail.detail,
+      ...(mail.proposedClasses ? { classes: mail.proposedClasses } : {}),
+      ...(mail.proposedCapacity !== undefined ? { capacity: mail.proposedCapacity } : {}),
+      ...(mail.improvementSlot !== undefined
+        ? { slot: mail.improvementSlot, improvement: mail.improvement ?? null }
+        : {}),
+    });
+    const flow = project.lifecycle!;
+    flow.approvals = flow.affectedIds
+      .filter(
+        (id) =>
+          id === mail.requesterCharacterId || mail.decisions.some((row) => row.characterId === id && row.accepted),
+      )
+      .map((residentId) => ({ residentId, source: "mailbox" as const, evidenceId: mail.id, at }));
+    if (flow.affectedIds.every((id) => flow.approvals.some((entry) => entry.residentId === id))) flow.phase = "builder";
   }
   mail.status = "approved";
   mail.resolvedAt = at;
@@ -206,33 +140,7 @@ function dueAt(id: string, at: Date): string {
 }
 
 export async function proposeVenueChange(venueId: string, value: unknown): Promise<void> {
-  const change = readChange(value);
-  const id = randomVillageSeed();
-  const at = new Date();
-  await mutateVillageState((state) => {
-    const venue = state.venues.find((entry) => entry.id === venueId);
-    if (!venue) throw notFound("That Venue no longer exists.");
-    const affectedIds = [...new Set([...venueResidentIds(venue), ...(venue.workerIds ?? [])])];
-    addMail(state, {
-      id,
-      venueId,
-      kind: "change",
-      title: change.title,
-      detail: change.detail,
-      status: "awaiting-villagers",
-      createdAt: at.toISOString(),
-      dueAt: dueAt(id, at),
-      resolvedAt: "",
-      requesterCharacterId: "",
-      affectedIds,
-      decisions: [],
-      error: "",
-      proposedClasses: change.classes,
-      proposedCapacity: change.capacity,
-      improvementSlot: change.slot,
-      improvement: change.improvement,
-    });
-  });
+  await createRenovationProject(venueId, value);
 }
 
 export async function proposePlayerMove(venueId: string): Promise<void> {
@@ -400,24 +308,14 @@ export async function decideVillagerVenueImprovement(mailId: string, approved: b
       (slot !== 0 && slot !== 1)
     )
       throw badRequest("Review the improvement title, description, slot, and bed effect.");
-    const edited =
-      title !== mail.improvement.title ||
-      description !== mail.improvement.description ||
-      extraBeds !== mail.improvement.extraBeds ||
-      slot !== mail.improvementSlot;
-    mail.improvement = { ...mail.improvement, title, description, extraBeds };
-    mail.improvementSlot = slot;
-    const venue = state.venues.find((entry) => entry.id === mail.venueId);
-    if (!venue) throw notFound("That Venue no longer exists.");
-    mail.affectedIds = [...new Set([...venueResidentIds(venue), ...(venue.workerIds ?? [])])].filter(
-      (id) => edited || id !== mail.requesterCharacterId,
-    );
-    validateMail(state, mail);
-    if (mail.affectedIds.length === 0) applyMail(state, mail, new Date().toISOString());
-    else {
-      mail.status = "awaiting-villagers";
-      mail.dueAt = dueAt(mail.id, new Date());
-    }
+    draftRenovationProject(state, mail.venueId, {
+      title,
+      detail: description,
+      slot,
+      improvement: { title, description, extraBeds, spaceId: mail.improvement.spaceId },
+    });
+    mail.status = "approved";
+    mail.resolvedAt = new Date().toISOString();
   });
 }
 
@@ -471,6 +369,12 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
       if (!current || current.status !== "awaiting-villagers") return;
       current.decisions = decisions;
       current.error = "";
+      if (current.kind === "project-approval" && current.projectId) {
+        applyProjectMailboxDecisions(state, current.projectId, current.id, decisions, now.toISOString());
+        current.status = decisions.every((entry) => entry.accepted) ? "approved" : "declined";
+        current.resolvedAt = now.toISOString();
+        return;
+      }
       if (decisions.every((entry) => entry.accepted)) {
         try {
           applyMail(state, current, now.toISOString());

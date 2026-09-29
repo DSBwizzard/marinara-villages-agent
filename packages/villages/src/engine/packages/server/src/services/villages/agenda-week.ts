@@ -255,15 +255,43 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
       ...(entry.endMinute > through ? [{ ...entry, startMinute: through }] : []),
     ];
   });
-  return [
-    ...remaining,
-    {
-      startMinute: from,
+  const essential = ordinary
+    .filter(
+      (entry) =>
+        /\b(?:sleep|rest|meal|breakfast|lunch|dinner|eat|wash|bathe)\b/iu.test(entry.activity) ||
+        entry.endMinute <= 360 ||
+        entry.startMinute >= 1320,
+    )
+    .map((entry) => ({
+      ...entry,
+      startMinute: Math.max(from, entry.startMinute),
+      endMinute: Math.min(through, entry.endMinute),
+    }))
+    .filter((entry) => entry.endMinute > entry.startMinute)
+    .sort((left, right) => left.startMinute - right.startMinute);
+  const workBlocks: VillageAgendaBlock[] = [];
+  let cursor = from;
+  for (const breakBlock of essential) {
+    if (breakBlock.startMinute > cursor)
+      workBlocks.push({
+        startMinute: cursor,
+        endMinute: breakBlock.startMinute,
+        venueId: work.venueId,
+        activity: "Build the agreed venue",
+        reason: "Committed project work order",
+        status: "online",
+      });
+    workBlocks.push(breakBlock);
+    cursor = Math.max(cursor, breakBlock.endMinute);
+  }
+  if (cursor < through)
+    workBlocks.push({
+      startMinute: cursor,
       endMinute: through,
       venueId: work.venueId,
       activity: "Build the agreed venue",
       reason: "Committed project work order",
-      status: "online" as const,
-    },
-  ].sort((left, right) => left.startMinute - right.startMinute);
+      status: "online",
+    });
+  return [...remaining, ...workBlocks].sort((left, right) => left.startMinute - right.startMinute);
 }
