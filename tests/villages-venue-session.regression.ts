@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { requestProjectMailbox } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
 import { proposeHappenings } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
@@ -1029,6 +1030,8 @@ async function main() {
     );
     await mutateVillageState((state) => {
       state.name = "Fixture village";
+      state.setupAt = now.toISOString();
+      state.foundedAt = now.toISOString();
       state.setting = "A quiet village";
       state.venues = [venue("park"), venue("empty")];
       state.venues[0]!.classes = ["workplace"];
@@ -2666,6 +2669,9 @@ async function main() {
       title: "Open the workshop for gatherings",
       detail: "Add a shared table.",
     });
+    const firstRenovation = (await readVillageState()).projects.find((entry) => entry.kind === "renovation")!;
+    assert.equal(firstRenovation.lifecycle?.phase, "approval");
+    await requestProjectMailbox(firstRenovation.id);
     let mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "awaiting-villagers");
     assert.ok(Date.parse(mail.dueAt) > Date.parse(mail.createdAt));
@@ -2676,7 +2682,18 @@ async function main() {
     await respondDueVenueMail();
     mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "approved");
-    assert.deepEqual((await readVillageState()).venues[0]!.classes, ["workplace", "gathering"]);
+    assert.equal(
+      (await readVillageState()).projects.find((entry) => entry.id === firstRenovation.id)?.lifecycle?.phase,
+      "builder",
+    );
+    assert.deepEqual(
+      (await readVillageState()).venues[0]!.classes,
+      ["workplace"],
+      "approval does not perform construction",
+    );
+    await mutateVillageState((state) => {
+      state.projects = state.projects.filter((entry) => entry.id !== firstRenovation.id);
+    });
     await mutateVillageState((state) => {
       const request = state.pendingDecisions.find((entry) => entry.venueDraft?.name === "Power Plant")!;
       queueVenueCounteroffer(
@@ -2701,18 +2718,27 @@ async function main() {
     );
     mailboxAccept = false;
     await proposeVenueChange("park", { capacity: 2, title: "Make more room", detail: "Add another cot." });
+    const secondRenovation = (await readVillageState()).projects.find((entry) => entry.kind === "renovation")!;
+    await requestProjectMailbox(secondRenovation.id);
     await mutateVillageState((state) => {
       state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1000).toISOString();
     });
     await respondDueVenueMail();
     assert.equal((await readVillageState()).venueMail.at(-1)!.status, "declined");
     assert.equal((await readVillageState()).venues[0]!.residenceCapacity, 1);
+    await mutateVillageState((state) => {
+      state.projects = state.projects.filter((entry) => entry.id !== secondRenovation.id);
+    });
     await recordVillagerVenueImprovement("bob", "park", "I could add a sturdy workbench.", "fixture-improvement");
     mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "pending-player");
     await decideVillagerVenueImprovement(mail.id, true, {});
     assert.equal((await readVillageState()).venueMail.at(-1)!.status, "approved");
-    assert.match((await readVillageState()).venues[0]!.improvements![0]!.description, /sturdy workbench/u);
+    assert.equal((await readVillageState()).venues[0]!.improvements?.[0], null);
+    assert.match(
+      (await readVillageState()).projects.find((entry) => entry.kind === "renovation")?.lifecycle?.change?.detail ?? "",
+      /sturdy workbench/u,
+    );
     await mutateVillageState((state) => {
       state.venues.push({
         ...venue("home"),

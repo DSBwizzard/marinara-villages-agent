@@ -670,7 +670,8 @@ export type VillageVenueMail = {
   venueId: string;
   title: string;
   detail: string;
-  kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move";
+  kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move" | "project-approval";
+  projectId?: string;
   status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
   createdAt: string;
   dueAt: string;
@@ -992,18 +993,54 @@ export type VillageBuildPlan = {
   blockedReason: string;
 };
 
+export type VillageProjectPhase =
+  "concept" | "approval" | "builder" | "requirements" | "materials" | "construction" | "finishing" | "complete";
+
+export type VillageProjectLifecycle = {
+  version: 2;
+  phase: VillageProjectPhase;
+  targetVenueId: string;
+  change: {
+    classes?: VillageVenueClass[];
+    capacity?: number;
+    homeKind?: HomeBuildingKind;
+    slot?: number;
+    improvement?: VillageVenueImprovement | null;
+    detail: string;
+  } | null;
+  affectedIds: string[];
+  approvals: { residentId: string; source: "conversation" | "mailbox"; evidenceId: string; at: string }[];
+  candidates: { residentId: string; evidenceId: string; at: string }[];
+  builderId: string;
+  requirements: {
+    id: string;
+    category: "structure" | "equipment" | "finish";
+    title: string;
+    needed: boolean;
+    carriedAt: string;
+    deliveredAt: string;
+  }[];
+  requirementsEvidenceId: string;
+  requirementsAcceptedAt: string;
+  evidenceIds: string[];
+  workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;
+  blockedReason: string;
+  completedAt: string;
+};
+
 export type VillageProject = {
   id: string;
   title: string;
   venueId: string;
   participantIds: string[];
   progress: number;
-  status: "draft" | "active" | "building" | "blocked" | "complete";
+  status: "draft" | "active" | "building" | "blocked" | "finishing" | "complete" | "abandoned";
   updatedAt: string;
-  kind?: "build-venue";
+  kind?: "build-venue" | "new-venue" | "renovation";
   venueDraft?: VillageVenueDraft;
   requesterCharacterId?: string;
   plan?: VillageBuildPlan;
+  lifecycle?: VillageProjectLifecycle;
 };
 
 export type VillagePendingDecision = {

@@ -42,6 +42,7 @@ const venue = (name: string): VillageVenue => {
   };
 };
 const state = defaultVillageState();
+state.setupAt = at;
 state.foundedAt = at;
 state.villagers.push({
   characterId: "rosa",
@@ -150,8 +151,9 @@ assert.equal(persisted.pendingDecisions[0]?.id, id, "removing a note does not di
 applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse for herbs.", new Date(at));
 assert.equal(persisted.pendingDecisions[0]?.status, "approved");
 assert.equal(persisted.venues.length, 0, "approval begins planning without creating a venue");
-assert.equal(persisted.projects[0]?.kind, "build-venue");
+assert.equal(persisted.projects[0]?.kind, "new-venue");
 assert.equal(persisted.projects[0]?.status, "draft");
+assert.equal(persisted.projects[0]?.lifecycle?.phase, "concept");
 assert.deepEqual(persisted.projects[0]?.venueDraft?.classes, ["gathering"]);
 assert.equal(persisted.projects[0]?.venueDraft?.description, "A shared glasshouse for herbs.");
 assert.match(persisted.chronicle[0]?.text ?? "", /accepted Rosa's request to plan/u);
@@ -165,6 +167,7 @@ assert.equal(persisted.venues.length, 0, "denial must leave the map unchanged");
 assert.match(persisted.chronicle[0]?.text ?? "", /declined Rosa's request/u);
 
 const competing = defaultVillageState();
+competing.setupAt = at;
 competing.villagers.push({
   characterId: "rosa",
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },

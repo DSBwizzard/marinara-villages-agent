@@ -67,7 +67,8 @@ import {
 } from "./package-runtime.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import { seedFoundingVenueDetails } from "./founding-drafts.js";
-import { draftBuildProject, reconcileBuildProjects } from "./build-projects.js";
+import { reconcileBuildProjects } from "./build-projects.js";
+import { draftNewVenueProject, draftRenovationProject, reconcileProjectLifecycles } from "./project-lifecycle.js";
 import {
   defaultVenueSpace,
   hasVenueClass,
@@ -1769,6 +1770,22 @@ export async function removeVillager(characterId: string): Promise<void> {
     if (removed)
       for (const project of state.projects) {
         if (
+          project.lifecycle?.phase === "construction" &&
+          project.lifecycle.builderId === characterId &&
+          project.lifecycle.workOrder &&
+          !project.lifecycle.workOrder.pausedAt
+        ) {
+          const now = new Date();
+          project.lifecycle.workOrder.remainingMs = Math.max(
+            0,
+            Date.parse(project.lifecycle.workOrder.completesAt) - now.getTime(),
+          );
+          project.lifecycle.workOrder.pausedAt = now.toISOString();
+          project.lifecycle.blockedReason = "The Builder left. Choose another willing Villager to finish the work.";
+          project.status = "blocked";
+          project.updatedAt = now.toISOString();
+        }
+        if (
           project.kind !== "build-venue" ||
           !project.plan ||
           project.plan.builderId !== characterId ||
@@ -2581,7 +2598,7 @@ export function queueVillageVenueRequest(
     state.venues.some((venue) => venue.name.trim().toLowerCase() === key) ||
     state.projects.some(
       (project) =>
-        project.kind === "build-venue" &&
+        (project.kind === "build-venue" || project.kind === "new-venue") &&
         project.status !== "complete" &&
         project.venueDraft?.name.trim().toLowerCase() === key,
     ) ||
@@ -2698,9 +2715,21 @@ export async function decideVillageHomeUpgrade(requestId: string, approved: bool
       const next = HOME_BUILDING_ORDER[HOME_BUILDING_ORDER.indexOf(venue.occupancy.homeKind) + 1];
       if (!next || next !== decision.proposedHomeKind)
         throw conflict("The home's tier has changed since this request.");
-      venue.occupancy.homeKind = next;
-      venue.state.upgrades.push(state.homeBuildingNames[next]);
-      venue.state.updatedAt = new Date().toISOString();
+      const project = draftRenovationProject(state, venue.id, {
+        title: `Renovate ${venue.name}`,
+        detail: `${decision.requesterName || "The resident"} wants ${state.homeBuildingNames[next]}.`,
+        homeKind: next,
+      });
+      const flow = project.lifecycle!;
+      if (decision.requesterCharacterId && flow.affectedIds.includes(decision.requesterCharacterId))
+        flow.approvals.push({
+          residentId: decision.requesterCharacterId,
+          source: "conversation",
+          evidenceId: decision.id,
+          at: decision.proposedAt,
+        });
+      if (flow.affectedIds.every((id) => flow.approvals.some((entry) => entry.residentId === id)))
+        flow.phase = "builder";
     }
     decision.status = approved ? "approved" : "denied";
   });
@@ -2729,9 +2758,9 @@ export function applyVillageVenueDecision(
     return;
   }
   if (approved) {
-    draftBuildProject(
+    draftNewVenueProject(
       state,
-      { ...core, description, requestQuote: decision.requestQuote },
+      { ...core, classes: core.classes.slice(0, 1), description, requestQuote: decision.requestQuote },
       decision.requesterCharacterId,
       `request:${requestId}`,
     );
@@ -2779,7 +2808,7 @@ export async function updateVillageVenue(venueId: string, value: unknown): Promi
     if (
       state.projects.some(
         (project) =>
-          project.kind === "build-venue" &&
+          (project.kind === "build-venue" || project.kind === "new-venue") &&
           project.status !== "complete" &&
           project.venueDraft?.name.toLowerCase() === name.toLowerCase(),
       )
@@ -4299,7 +4328,10 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
     }
   }
   if (completedMove) recorded = await readVillageState();
-  await mutateVillageState((state) => reconcileBuildProjects(state, now));
+  await mutateVillageState((state) => {
+    reconcileBuildProjects(state, now);
+    reconcileProjectLifecycles(state, now);
+  });
   await respondDueVenueMail(now);
   recorded = await readVillageState();
   const moment = deriveVillageMoment({ foundedAt: recorded.foundedAt, seed: recorded.seed, now });

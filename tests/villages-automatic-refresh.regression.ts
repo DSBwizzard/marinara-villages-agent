@@ -413,7 +413,11 @@ async function main() {
     await requestVillageHomeUpgrade("housing-resident", "rosa-home");
     const upgrade = (await readVillageState()).pendingDecisions.find((entry) => entry.kind === "venue-upgrade")!;
     await decideVillageHomeUpgrade(upgrade.id, true);
-    assert.equal((await readVillageState()).venues[0]!.occupancy.homeKind, "medium-home");
+    assert.equal((await readVillageState()).venues[0]!.occupancy.homeKind, "small-home");
+    assert.equal(
+      (await readVillageState()).projects.find((entry) => entry.kind === "renovation")?.lifecycle?.change?.homeKind,
+      "medium-home",
+    );
     await proposeVillageResidence("housing-resident", "empty-venue");
     await decideVillageResidence("housing-resident", false, "villager");
     assert.equal((await readVillageState()).residences.length, 0, "the villager can decline the player's request");

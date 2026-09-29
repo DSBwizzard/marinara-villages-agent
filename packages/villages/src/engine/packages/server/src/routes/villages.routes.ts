@@ -34,16 +34,17 @@ import { readVillageWriting, saveVillageWriting } from "../services/villages/nar
 import { badRequest, notFound, statusCodeOf } from "../services/villages/errors.js";
 import { VENUE_CLASSES } from "../services/villages/venue-model.js";
 import {
-  proposeBuildProject,
-  addBuildSource,
-  setBuildSite,
-  agreeBuildProject,
-  promiseBuildSource,
-  acquireBuildSource,
-  commitBuildSupply,
-  recruitBuildWorker,
-  startBuildWork,
-} from "../services/villages/build-projects.js";
+  createNewVenueProject,
+  createRenovationProject,
+  placeNewVenueProject,
+  requestProjectMailbox,
+  lockProjectBuilder,
+  acceptProjectRequirements,
+  deliverProjectMaterial,
+  startProjectConstruction,
+  debugCompleteProjectConstruction,
+  openFinishedProject,
+} from "../services/villages/project-lifecycle.js";
 import type { VillageVenueClass } from "../services/villages/types.js";
 import { listVillageLorebooks } from "../services/villages/lorebooks.js";
 import {
@@ -1112,7 +1113,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
 
   app.post<{ Body: unknown }>("/projects", async (request, reply) => {
     try {
-      await proposeBuildProject(request.body);
+      await createNewVenueProject(request.body);
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "proposing a build project");
@@ -1132,14 +1133,23 @@ export async function villagesRoutes(engine: FastifyInstance) {
       },
     );
   };
-  projectAction("routes", addBuildSource);
-  projectAction("site", setBuildSite);
-  projectAction("agree", (projectId) => agreeBuildProject(projectId));
-  projectAction("promise", promiseBuildSource);
-  projectAction("acquire", acquireBuildSource);
-  projectAction("commit", commitBuildSupply);
-  projectAction("recruit", recruitBuildWorker);
-  projectAction("start", (projectId) => startBuildWork(projectId));
+  projectAction("place", placeNewVenueProject);
+  projectAction("request-approval", (projectId) => requestProjectMailbox(projectId));
+  projectAction("builder", lockProjectBuilder);
+  projectAction("requirements", (projectId) => acceptProjectRequirements(projectId));
+  projectAction("deliver", deliverProjectMaterial);
+  projectAction("start", (projectId) => startProjectConstruction(projectId));
+  projectAction("debug-complete", (projectId) => debugCompleteProjectConstruction(projectId));
+  projectAction("open", openFinishedProject);
+
+  app.post<{ Params: { venueId: string }; Body: unknown }>("/projects/renovations/:venueId", async (request, reply) => {
+    try {
+      await createRenovationProject(readVenueId(request.params.venueId), request.body);
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "starting a Renovation");
+    }
+  });
 
   app.post<{ Params: { requestId: string }; Body: unknown }>(
     "/venue-requests/:requestId/approve",

@@ -43,6 +43,7 @@ import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } fr
 import { venueReplyIntegrity, venueSceneHistory } from "./venue-turn-integrity.js";
 import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
 import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
+import { recordProjectConversation } from "./project-lifecycle.js";
 import { readVenueRequestCore } from "./venue-requests.js";
 import type { VillageVenueClass } from "./types.js";
 
@@ -1243,6 +1244,17 @@ export async function enterVenue(
   const classes = venueClasses(place);
   const spaceClass = requestedClass ?? classes.find((entry) => entry !== "residence") ?? classes[0]!;
   if (!classes.includes(spaceClass)) throw badRequest("That Venue has no such space.");
+  const renovation = village.projects.find(
+    (project) =>
+      project.kind === "renovation" &&
+      project.venueId === placeId &&
+      (project.lifecycle?.phase === "construction" || project.lifecycle?.phase === "finishing"),
+  );
+  const closedClass =
+    renovation?.lifecycle?.change?.improvement?.spaceId ??
+    (renovation?.lifecycle?.change?.capacity !== undefined ? "residence" : "");
+  if (closedClass === spaceClass && entryArea !== "outside")
+    throw conflict("This Venue area is closed for Renovation. Other areas remain open.");
   if (
     (entryArea === "shared" || entryArea === "private") !== (spaceClass === "residence") &&
     entryArea !== undefined &&
@@ -1797,6 +1809,28 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   await applyVenueTurnChange(updated, submission);
   if (await applyFulfilledWish(updated, submission)) await refreshAgendaAfterWish(submission.targetId);
   await applyVenueRequests(updated, submission);
+  if (submission.mode === "chat" || submission.mode === "ask")
+    await recordProjectConversation({
+      submissionId: submission.id,
+      venueId: updated.placeId,
+      playerMessage: submission.message,
+      lines: updated.lines
+        .filter((line) => line.at === submission.at && !!line.speakerId)
+        .map((line) => ({
+          id: line.id,
+          speakerId: line.speakerId,
+          content: line.content,
+        })),
+      context: updated.lines
+        .slice(-12)
+        .filter((line) => !!line.speakerId)
+        .map((line) => ({
+          id: line.id,
+          speakerId: line.speakerId,
+          content: line.content,
+        })),
+      at: submission.at ?? new Date().toISOString(),
+    });
   if (submission.invitationSignal && submission.invitationSignal.timing === "later")
     await recordSpokenInvitation(updated, submission.invitationSignal);
   if (updated.area === "shared" || updated.area === "private") await markResidenceSeen(updated);
