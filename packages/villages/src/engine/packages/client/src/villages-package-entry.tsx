@@ -11460,6 +11460,14 @@ function ProjectsPanelV2({
                   Find villagers on the map and ask them about this Project in a real conversation. Their clear
                   agreements appear here.
                 </p>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={busy}
+                  onClick={() => void action("recheck-builder")}
+                >
+                  Review recent chats for missed agreements
+                </button>
                 {flow?.candidates.length ? (
                   flow.candidates.map((entry) => (
                     <button

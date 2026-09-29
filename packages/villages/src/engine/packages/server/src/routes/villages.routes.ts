@@ -20,6 +20,7 @@ import {
   greetVenue,
   listVenueVisitSummaries,
   readVenueVisit,
+  recheckRecentBuilderConversations,
   deleteVenueVisit,
   deleteAllVenueVisits,
   setVenueVisitRetention,
@@ -1136,6 +1137,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   projectAction("place", placeNewVenueProject);
   projectAction("request-approval", (projectId) => requestProjectMailbox(projectId));
   projectAction("builder", lockProjectBuilder);
+  projectAction("recheck-builder", (projectId) => recheckRecentBuilderConversations(projectId));
   projectAction("requirements", (projectId) => acceptProjectRequirements(projectId));
   projectAction("deliver", deliverProjectMaterial);
   projectAction("start", (projectId) => startProjectConstruction(projectId));
