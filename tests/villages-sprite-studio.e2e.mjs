@@ -131,6 +131,13 @@ for (const profile of browsers) {
       });
     }
     if (action === "/cell") state.jobs[0].sheets[0].cells[0] = body.cell;
+    if (action === "/discard") {
+      for (const job of state.jobs)
+        for (const sheet of job.sheets) {
+          const cell = sheet.cells.find((item) => item.id === body.id);
+          if (cell) cell.status = "discarded";
+        }
+    }
     if (action === "/import") {
       assert.equal(body.cells[0].view, "side");
       state.jobs.push({
@@ -175,12 +182,15 @@ for (const profile of browsers) {
         },
       };
     }
+    if (action === "/remove") result = { studio: state, snapshot: { characterId: "mara", name: "Mara", sprite: null } };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(result) });
   });
   try {
     await page.goto("http://studio.test/");
     await expect(page.getByRole("heading", { name: "Mara’s Sprite Studio" })).toBeVisible();
     await expect(page.getByLabel("Style example")).toHaveValue("PAPERCRAFT");
+    await expect(page.getByLabel("Style example").locator("option[value=PAPERCRAFT]")).toHaveText("Papercraft");
+    await expect(page.getByLabel("Style example").locator("option[value=BATTLEHIGHWAY]")).toHaveText("Battle Highway");
     await page.getByLabel("Style example").selectOption("BATTLEHIGHWAY");
     await expect(page.getByLabel("Draw it in this style")).toContainText("Sonic Battle");
     await page.getByLabel("Style example").selectOption("Custom");
@@ -203,6 +213,9 @@ for (const profile of browsers) {
     await page.getByRole("button", { name: "Approved", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Approved sprites" })).toBeVisible();
     assert.equal(generated, 1);
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByRole("button", { name: "Remove approved sprite" }).click();
+    await expect(page.getByText("No sprites approved yet.")).toBeVisible();
     const pixelProof = await page.evaluate(async () => {
       const canvas = document.createElement("canvas");
       canvas.width = 4;
@@ -235,6 +248,13 @@ for (const profile of browsers) {
     await page.getByRole("button", { name: "Edit side neutral" }).click();
     await page.getByRole("button", { name: "Facing left" }).click();
     await expect(page.locator(".vss-stage canvas")).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page
+      .locator(".vss-card")
+      .filter({ has: page.getByRole("button", { name: "Edit side neutral" }) })
+      .getByRole("button", { name: "Delete candidate" })
+      .click();
+    await expect(page.getByText("No candidates awaiting review.")).toBeVisible();
     assert.equal(generated, 1, "sheet import and mirrored preview make no generation call");
     assert.deepEqual(errors, []);
     console.log(profile.name + ": create, styles, review, reopen, matte cleanup, approve and responsive layout passed");

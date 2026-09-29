@@ -8,6 +8,7 @@ import {
   editStudioCell,
   approveStudioCells,
   discardStudioCell,
+  removeStudioApprovedSprite,
   recoverStudioJob,
 } from "../services/villages/sprite-studio.js";
 // Villages — the package's privileged route surface, mounted at `/api/villages`.
@@ -454,6 +455,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     cell: editStudioCell,
     approve: approveStudioCells,
     discard: discardStudioCell,
+    remove: removeStudioApprovedSprite,
     recover: recoverStudioJob,
   };
   for (const [action, handler] of Object.entries(studioActions)) {

@@ -78,10 +78,8 @@ function requestBody(connectionId: string, identity: Identity, expressions: Expr
     rows: batch.rows,
     spriteType: "full-body",
     fullBodyExpressionMode: false,
-    noBackground: false,
-    // Keep host cleanup off: it can erase PAPERCRAFT's intentional pale border.
-    // The Studio's edge-matte cleanup is reversible during local review.
-    nativeTransparentPng: false,
+    noBackground: true,
+    nativeTransparentPng: true,
     promptOverrides: [
       {
         id: overrideId(batch.cols, batch.rows, expressions),
