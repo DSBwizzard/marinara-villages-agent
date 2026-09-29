@@ -107,7 +107,6 @@ const pages = [
   [/^Town map$/, "map"],
   [/^Village Settings$/, "village"],
   [/^General settings$/, "general"],
-  [/^DEBUG: Villager reply guidance$/, "replyGuidance"],
   [/^DEBUG: Village Story/, "story"],
   [/^DEBUG: Venue Visits/, "chatlogs"],
   [/^DEBUG: Villager Wishes/, "agendas"],
@@ -132,23 +131,31 @@ try {
       }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
-        : path.endsWith("/catalog")
-          ? { characters: [] }
-          : path.endsWith("/personas")
-            ? { personas: [] }
-            : path.endsWith("/lorebooks")
-              ? { books: [] }
-              : path.endsWith("/story")
-                ? { entries: [], total: 0 }
-                : path.endsWith("/agendas")
-                  ? { villagers: [] }
-                  : path.endsWith("/rooms/archive")
-                    ? { visits: [], total: 0 }
-                    : path.endsWith("/memories")
-                      ? { passing: [], durable: [], archives: [], pending: [] }
-                      : path.endsWith("/rooms/active")
-                        ? { session: null }
-                        : snapshot;
+        : path.endsWith("/narration")
+          ? {
+              tense: "present",
+              person: "second",
+              rating: "sfw",
+              writingGuidance: "",
+              writingGuidanceMaxLength: 4000,
+            }
+          : path.endsWith("/catalog")
+            ? { characters: [] }
+            : path.endsWith("/personas")
+              ? { personas: [] }
+              : path.endsWith("/lorebooks")
+                ? { books: [] }
+                : path.endsWith("/story")
+                  ? { entries: [], total: 0 }
+                  : path.endsWith("/agendas")
+                    ? { villagers: [] }
+                    : path.endsWith("/rooms/archive")
+                      ? { visits: [], total: 0 }
+                      : path.endsWith("/memories")
+                        ? { passing: [], durable: [], archives: [], pending: [] }
+                        : path.endsWith("/rooms/active")
+                          ? { session: null }
+                          : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
     await page.route("**/api/connections", (route) =>
@@ -183,6 +190,10 @@ try {
       await nav.getByRole("button", { name }).click();
       await expect(root).toHaveAttribute("data-page", key);
       await expect(main).toBeVisible();
+      if (key === "village") {
+        await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
+        await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
+      }
       if (process.env.VILLAGES_MENU_SCREENSHOTS && ["villagers", "projects", "village", "story"].includes(key)) {
         await page.screenshot({
           path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-${key}-${width}-${height}.png`),

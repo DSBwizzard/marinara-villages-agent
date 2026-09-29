@@ -837,7 +837,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   });
 
   app.put<{
-    Body: { tense?: unknown; person?: unknown; rating?: unknown; styleInstructions?: unknown; replyGuidance?: unknown };
+    Body: { tense?: unknown; person?: unknown; rating?: unknown; writingGuidance?: unknown };
   }>("/narration", async (request, reply) => {
     try {
       await saveVillageWriting(request.body ?? {});

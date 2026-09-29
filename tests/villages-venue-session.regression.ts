@@ -24,8 +24,8 @@ import {
   saveVillageWriting,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
 import {
-  DEFAULT_NARRATION_STYLE,
-  DEFAULT_VILLAGER_REPLY_GUIDANCE,
+  VENUE_SCENE_WRITING_FOUNDATION,
+  WRITING_GUIDANCE_MAX_LENGTH,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-style.js";
 import {
   activeVenueSession,
@@ -971,8 +971,38 @@ async function main() {
     assert.match(history, /PLAYER Legitimate Businessperson: I actually don't remember anything/u);
     assert.match(history, /RESIDENT Bob \(bob\): Mecca\. What about you\?/u);
     assert.match(history, /SCENE: Bob looks at the fire\./u);
-    assert.doesNotMatch(history, /Old scene\./u);
+    assert.match(history, /SCENE: Old scene\./u);
+    assert.ok(
+      history.indexOf("SCENE: Old scene.") < history.indexOf("PLAYER Legitimate Businessperson: Where are you from?") &&
+        history.indexOf("Mecca. What about you?") < history.indexOf("SCENE: Bob looks at the fire."),
+      "narration and dialogue keep their chronological positions",
+    );
     assert.doesNotMatch(history, /Discarded prior player turn|Discarded reply/u);
+    const longHistory = Array.from({ length: 30 }, (_, index) => ({
+      ...sampleHistory[5]!,
+      content: `Reply ${index}: ${"x".repeat(500)}`,
+    }));
+    assert.ok(venueSceneHistory(longHistory, "Visitor").length <= 3_500);
+    assert.deepEqual(
+      parseVenueReply(
+        {
+          heardPlayerBy: ["bob"],
+          segments: [
+            { kind: "dialogue", speakerId: "bob", text: "Yes.", heardBy: ["bob"] },
+            { kind: "narration", text: "Bob returns to the workbench.", heardBy: ["bob"] },
+            {
+              kind: "dialogue",
+              speakerId: "bob",
+              text: "I had more to say about that, once I found the right words.",
+              heardBy: ["bob"],
+            },
+          ],
+        },
+        ["bob"],
+      ).lines.map((line) => line.kind),
+      ["dialogue", "narration", "dialogue"],
+      "short speech, longer speech, and mixed scene prose remain valid without a style quota",
+    );
     assert.equal(
       venueReplyIntegrity(sampleHistory.at(-1)!.content, sampleHistory.slice(0, -1), [
         { kind: "dialogue", content: "I actually don't remember anything. Funny, huh?" },
@@ -1178,17 +1208,33 @@ async function main() {
       (await readVillageState()).happenings.some((entry) => entry.id === "legacy-visual-only"),
       "the old visual entry remains readable without affecting the scene",
     );
-    assert.equal((await readVillageWriting()).styleInstructions, DEFAULT_NARRATION_STYLE);
+    assert.equal((await readVillageWriting()).writingGuidance, "");
+    assert.equal((await readVillageWriting()).writingGuidanceMaxLength, WRITING_GUIDANCE_MAX_LENGTH);
     assert.match(lastVenueSystem, /Write narration segments.*present tense/u);
     assert.match(lastVenueSystem, /Address the player as "you"/u);
     assert.match(lastVenueSystem, /Content rating: SFW/u);
-    assert.match(lastVenueSystem, /## Villager reply guidance/u);
+    assert.ok(lastVenueSystem.startsWith(VENUE_SCENE_WRITING_FOUNDATION), "fixed scene rules survive context fitting");
+    assert.match(lastVenueSystem, /Narration can show observable gestures, pauses, attention, activity/u);
+    assert.doesNotMatch(lastVenueSystem, /Grounded, concise slice-of-life prose/u);
     assert.match(lastVenueSystem, /moment already underway/u);
     assert.doesNotMatch(
       lastVenueSystem,
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.deepEqual(coerceVillageState({}).narrationStyle, defaultVillageState().narrationStyle);
+    assert.deepEqual(
+      coerceVillageState({
+        narrationStyle: {
+          tense: "past",
+          person: "first",
+          rating: "nsfw",
+          styleInstructions: "OLD STYLE",
+          replyGuidanceOverride: "OLD REPLY GUIDANCE",
+        },
+      }).narrationStyle,
+      { tense: "past", person: "first", rating: "nsfw", writingGuidance: "" },
+      "older custom text is ignored while the independent writing choices remain",
+    );
     records.set(key("villages", "villages-narration"), {
       packageId: "villages",
       id: "villages-narration",
@@ -1200,11 +1246,18 @@ async function main() {
       tense: "past",
       person: "third",
       rating: "nsfw",
-      styleInstructions: "Plain and dry scene prose.",
-      replyGuidance: "CUSTOM VILLAGER GUIDANCE",
+      writingGuidance: "Plain and dry scene prose. Let residents speak in their own rhythm.",
     });
-    assert.equal((await readVillageWriting()).replyGuidance, "CUSTOM VILLAGER GUIDANCE");
+    assert.equal(
+      (await readVillageWriting()).writingGuidance,
+      "Plain and dry scene prose. Let residents speak in their own rhythm.",
+    );
     await assert.rejects(() => saveVillageWriting({ tense: "future" }), /Choose present or past/u);
+    await assert.rejects(
+      () => saveVillageWriting({ writingGuidance: "x".repeat(WRITING_GUIDANCE_MAX_LENGTH + 1) }),
+      /Additional writing guidance is too long/u,
+    );
+    await assert.rejects(() => saveVillageWriting({ writingGuidance: null }), /must be text/u);
     await assert.rejects(() => resetVenueSessions(), /Finish the active venue conversation/u);
     assert.deepEqual(group.activeIds, ["bob", "tina"]);
     assert.equal(calls, callsAfterEmpty + 1, "one opening call writes one shared scene");
@@ -1226,6 +1279,7 @@ async function main() {
     assert.equal((await activeVenueSession())?.id, group.id, "reload restores the same active visit");
     await assert.rejects(() => enterVenue("empty"), /Finish the conversation/u);
 
+    const beforeAskedCalls = venueReplyCalls;
     const asked = await sendVenueTurn({
       sessionId: group.id,
       message: "A quiet question",
@@ -1233,20 +1287,25 @@ async function main() {
       targetId: "bob",
       submissionId: "ask-1",
     });
+    assert.equal(venueReplyCalls - beforeAskedCalls, 1, "additional guidance adds no model call");
     assert.match(lastVenueSystem, /Plain and dry scene prose/u);
     assert.match(lastVenueSystem, /Write narration segments.*past tense/u);
     assert.match(lastVenueSystem, /Refer to the player in scene prose/u);
     assert.match(lastVenueSystem, /Content rating: NSFW/u);
-    assert.match(lastVenueSystem, /CUSTOM VILLAGER GUIDANCE/u);
+    assert.equal(
+      lastVenueSystem.match(/Plain and dry scene prose\. Let residents speak in their own rhythm\./gu)?.length,
+      1,
+      "the optional guidance is sent once",
+    );
+    assert.match(lastVenueSystem, /resident card is the authority/u);
     assert.doesNotMatch(lastVenueSystem, /LEGACY GUIDANCE|obsolete-preset/u);
     await saveVillageWriting({
       tense: "present",
       person: "second",
       rating: "sfw",
-      styleInstructions: "",
-      replyGuidance: null,
+      writingGuidance: "",
     });
-    assert.equal((await readVillageWriting()).replyGuidance, DEFAULT_VILLAGER_REPLY_GUIDANCE);
+    assert.equal((await readVillageWriting()).writingGuidance, "");
     assert.equal(asked.session.lines.at(-2)?.heardBy.join(), "bob", "targeting can keep a line from a bystander");
     assert.equal(asked.session.lines.at(-1)?.speakerId, "bob");
     assert.ok(
@@ -3066,7 +3125,7 @@ async function main() {
     const parkExterior = await enterVenue("park", "workplace", "", "outside");
     assert.equal(parkExterior.area, "outside", "a public Venue also supports an explicit exterior visit");
     await endVenueSession(parkExterior.id);
-    await saveVillageWriting({ styleInstructions: "An old village's style" });
+    await saveVillageWriting({ writingGuidance: "An old village's style" });
     await resetVillage();
     assert.deepEqual((await readVillageState()).narrationStyle, defaultVillageState().narrationStyle);
     console.log("villages-venue-session: ok");

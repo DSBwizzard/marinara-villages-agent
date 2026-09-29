@@ -8,7 +8,11 @@ import { villagesConnectionIdFor } from "./connections.js";
 import { VillagesRequestError, badGateway, badRequest, conflict, notFound } from "./errors.js";
 import { readVillageLore } from "./lorebooks.js";
 import { selectPromptMemories, selectPromptRecollections } from "./memory-selection.js";
-import { effectiveVillagerReplyGuidance, venueWritingDirection } from "./narration-style.js";
+import {
+  VENUE_SCENE_WRITING_FOUNDATION,
+  venueAdditionalWritingGuidance,
+  venueWritingDirection,
+} from "./narration-style.js";
 import {
   VILLAGES_PACKAGE_ID,
   completeWithRoom,
@@ -676,7 +680,10 @@ async function generateOnce(
   const [lore, model] = await Promise.all([lorePromise, modelPromise]);
   signal?.throwIfAborted();
   const system = [
+    VENUE_SCENE_WRITING_FOUNDATION,
     `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
+    venueWritingDirection(village.narrationStyle, player.name),
+    venueAdditionalWritingGuidance(village.narrationStyle),
     `The player is ${player.name}. ${player.description}`,
     `Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
       place?.state.traces
@@ -708,25 +715,23 @@ async function generateOnce(
     `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
     `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
     `Relevant world lore: ${[...lore, villageRelevantOrigin(village, message)].filter(Boolean).join("\n") || "none"}`,
-    effectiveVillagerReplyGuidance(village.narrationStyle),
-    venueWritingDirection(village.narrationStyle, player.name),
     `The residents currently here are: ${audience.join(", ")}. Nobody joins mid-visit. A resident may leave after a clear spoken departure, and the scene ends when the last one leaves. Do not force a departure merely because time passed.`,
     session.area === "outside"
       ? session.spaceClass === "residence"
         ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the shared area or a private space without validated permission. Do not expose unseen interior details."
         : "The player is outside this Venue. Show only what they can observe from outside; do not describe them entering an interior."
       : active.length
-        ? "Write as the named residents, preserving their separate voices and knowledge. Do not disclose one resident's private knowledge through another. The room has a life beyond the player's arrival: residents may be occupied or talking with each other. When the player addresses someone, engage with what they said; speech is usually natural, but a grounded action, hesitation, or lack of response can carry the moment. Do not use silence as a default way around a question. Never imply consent from silence. Quoted dialogue is not required because each segment has an explicit kind."
+        ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
         : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
     ...profiles,
     `Earlier visit recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
     `Recent scene history:\n${history || "The visit has just begun."}`,
     mode === "greet"
       ? ""
-      : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered. Let the relevant residents choose whether to speak or act; others may stay occupied. Narration belongs only where something observable changes or clarifies the moment. Stop at a natural handoff without filling a speaker or narration quota.",
+      : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
     `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
     mode === "greet"
-      ? "Open on a brief, specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Someone may notice the player and speak, residents may be talking to each other, or the moment may pass without speech. Do not force a welcome, a description-then-dialogue pattern, or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
+      ? "Open on a specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
       : "",
     mode === "leave"
       ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate only that chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
@@ -769,7 +774,7 @@ async function generateOnce(
     repairHint
       ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
       : "",
-    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Each segment records what actually happens; it is not a sequence of beats to fill. Include at least one substantial main segment, narration or dialogue, but use either only when the moment calls for it. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
+    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
   ].join("\n\n");
   const messages: CapabilityLanguageModelMessage[] = [
     { role: "system", content: system },
