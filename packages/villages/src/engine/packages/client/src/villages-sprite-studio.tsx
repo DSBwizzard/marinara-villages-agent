@@ -765,9 +765,11 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                       ))}
                       <small>
                         {plan.localWorkflow
-                          ? "A local workflow submission can run multiple internal generation steps. Internal counts and cost are unavailable."
+                          ? "A local workflow may run multiple internal steps. Internal counts and cost are unavailable."
                           : "Reference inputs may also be billed."}{" "}
-                        No automatic retries or provider fallback.
+                        Villages sends one Engine request per listed sheet and never retries automatically.
+                        Provider-internal attempts and usage are unavailable; Studio blocks a separately configured
+                        Engine fallback.
                       </small>
                       {plan.customParametersIgnored ? (
                         <small>

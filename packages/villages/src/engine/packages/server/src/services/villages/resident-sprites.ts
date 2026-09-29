@@ -44,7 +44,7 @@ async function sourcePortrait(characterId: string): Promise<string | null> {
   }
 }
 
-function generatedMime(bytes: Uint8Array): string {
+export function generatedMime(bytes: Uint8Array): string {
   if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return "image/png";
   if (bytes[0] === 255 && bytes[1] === 216) return "image/jpeg";
   if (bytes[0] === 82 && bytes[1] === 73 && bytes[8] === 87 && bytes[9] === 69) return "image/webp";

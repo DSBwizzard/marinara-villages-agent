@@ -1,12 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { badRequest, notFound } from "./errors.js";
 import { villageEngineJson } from "./engine-loopback.js";
-import {
-  villagesDocuments,
-  VILLAGES_PACKAGE_ID,
-  villagesLogger,
-  villagesDebugAgentsEnabled,
-} from "./package-runtime.js";
+import { villagesDocuments, VILLAGES_PACKAGE_ID, villagesLogger } from "./package-runtime.js";
 import { mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
 import { approveResidentSprite, readSpriteExpression, readSpriteView } from "./resident-sprites.js";
 import { resolveVillageImageConnectionId, inspectVillageImage } from "./image-generation.js";
@@ -14,7 +9,6 @@ import { captureSpriteReference, saveStudioImage } from "./sprite-reference.js";
 import { asRecord, asString } from "./coerce.js";
 import {
   defaultStudioState,
-  studioPrompt,
   validateStudioCell,
   SPRITE_STYLES,
   type StudioState,
@@ -22,6 +16,7 @@ import {
   type StudioCell,
   type StudioSettings,
 } from "./sprite-studio-model.js";
+import { planVillageStudioSheets, generateVillageStudioSheet } from "./sprite-studio-generation.js";
 import { buildVillageSnapshot } from "./village.js";
 
 const active = new Set<string>();
@@ -170,23 +165,25 @@ async function prepare(characterId: string, raw: unknown) {
         : resident.cardSnapshot.spriteReference?.url;
   if (!referenceUrl) throw badRequest("Capture or upload this villager’s identity reference first.");
   const connectionId = await resolveVillageImageConnectionId(state.settings.connectionId);
+  const identity = {
+    name: resident.cardSnapshot.name,
+    appearance: (resident.cardSnapshot.appearance || resident.cardSnapshot.description).slice(0, 2000),
+    style: state.settings.prompts[state.settings.style],
+    view: input.view,
+    referenceUrl,
+  };
   let plan: StudioPlan;
   try {
-    plan = await villageEngineJson<StudioPlan>("/api/sprites/studio/plan", {
-      body: { connectionId, count: input.expressions.length, individual: input.individual },
-    });
+    plan = await planVillageStudioSheets(connectionId, identity, input.expressions, input.individual);
   } catch (error) {
     if (safeMessage(error).includes("(404)"))
-      throw badRequest(
-        "Update Marinara Engine to enable single-sheet Sprite Studio generation. Import and review remain available.",
-      );
+      throw badRequest("This Marinara version cannot preview sprite requests. Import and review remain available.");
     throw error;
   }
-  if (plan.protocol !== 1 || !plan.batches?.length) throw badRequest("Update Marinara Engine to support this studio.");
   plan.reviewToken = hash(
     JSON.stringify({ input, settings: state.settings, referenceUrl, model: plan.connection.model }),
   );
-  return { id, resident, state, input, referenceUrl, connectionId, plan };
+  return { id, state, input, identity, connectionId, plan };
 }
 export async function planSpriteStudio(characterId: string, raw: unknown) {
   const prepared = await prepare(characterId, raw);
@@ -232,7 +229,7 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
     return readSpriteStudio(characterId);
   }
   const prepared = await prepare(characterId, raw);
-  const { plan, input, state, resident, referenceUrl, connectionId } = prepared;
+  const { plan, input, identity, connectionId } = prepared;
   // Confirm the exact displayed plan, including connection and request count.
   if (JSON.stringify(body.plan) !== JSON.stringify(plan))
     throw badRequest("The generation plan changed. Review it again before generating.");
@@ -275,52 +272,29 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
         const expressions = input.expressions.slice(offset, offset + batch.count);
         offset += batch.count;
         const assetId = `villages-${randomUUID()}`;
-        await mutate(id, (next) => {
-          const job = next.jobs.find((item) => item.id === jobId)!;
-          job.pendingAssetId = assetId;
-          job.pendingBatch = batch;
-          job.pendingExpressions = expressions;
-          job.attempted += 1;
-        });
-        const output = await villageEngineJson<{
-          url: string;
-          width: number;
-          height: number;
-          attempts: number;
-          usage: Record<string, unknown> | null;
-        }>("/api/sprites/studio/generate", {
-          body: {
-            connectionId,
-            expectedModel: plan.connection.model,
-            providerToken: plan.providerToken,
-            assetId,
-            width: batch.width,
-            height: batch.height,
-            reference: referenceUrl,
-            debugMode: villagesDebugAgentsEnabled(),
-            prompt: studioPrompt({
-              name: resident.cardSnapshot.name,
-              appearance: (resident.cardSnapshot.appearance || resident.cardSnapshot.description).slice(0, 2000),
-              style: state.settings.prompts[state.settings.style],
-              view: input.view,
-              expressions,
-              batch,
+        const image = await generateVillageStudioSheet({
+          connectionId,
+          expectedModel: plan.connection.model,
+          identity,
+          expressions,
+          batch,
+          onSubmit: () =>
+            mutate(id, (next) => {
+              const job = next.jobs.find((item) => item.id === jobId)!;
+              job.pendingAssetId = assetId;
+              job.pendingBatch = batch;
+              job.pendingExpressions = expressions;
+              job.attempted += 1;
             }),
-          },
         });
-        if (
-          !output.url?.startsWith(`/api/sprites/${assetId}/file/`) ||
-          !Number.isInteger(output.width) ||
-          !Number.isInteger(output.height) ||
-          output.width < 1 ||
-          output.height < 1
-        )
-          throw new Error("The Engine saved an image but could not inspect it. Recover the original in Review.");
+        // Persist the untouched output before interpreting crops or approvals.
+        const output = await saveStudioImage(image, "original", assetId);
         await mutate(id, (next) => {
           const job = next.jobs.find((item) => item.id === jobId)!;
           job.sheets.push({
-            assetId,
             ...output,
+            attempts: 1,
+            usage: null,
             baseScale: Math.min(512 / (output.width / batch.cols), 768 / (output.height / batch.rows)),
             cells: cellsFor(jobId, index, input.view, expressions, batch.cols, batch.rows, output.width, output.height),
           });
@@ -495,11 +469,9 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
   const job = (await read(id)).jobs.find((item) => item.id === asString(asRecord(raw).id));
   if (!job?.pendingAssetId || !job.pendingBatch || !job.pendingExpressions || active.has(id + ":" + job.id))
     throw badRequest("This job has no interrupted image to recover.");
-  let files = await villageEngineJson<Array<{ url: string; expression: string }>>(`/api/sprites/${job.pendingAssetId}`);
-  if (!files.some((file) => file.expression === "original")) {
-    await villageEngineJson("/api/sprites/studio/recover", { body: { assetId: job.pendingAssetId } });
-    files = await villageEngineJson<Array<{ url: string; expression: string }>>(`/api/sprites/${job.pendingAssetId}`);
-  }
+  const files = await villageEngineJson<Array<{ url: string; expression: string }>>(
+    `/api/sprites/${job.pendingAssetId}`,
+  );
   const original = files.find((file) => file.expression === "original");
   if (!original) throw badRequest("No saved original is available yet. Recovery made no image-generation call.");
   const image = await import("./engine-loopback.js").then(async ({ villageEngineBaseUrl }) => {

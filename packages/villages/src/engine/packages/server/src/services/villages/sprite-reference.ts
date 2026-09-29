@@ -5,10 +5,11 @@ import { inspectVillageImage, decodeVillageImageDataUrl } from "./image-generati
 
 export type SpriteReference = { url: string; capturedAt: string; origin: "snapshot" | "current-card" | "upload" };
 
-export async function saveStudioImage(image: string, expression = "original") {
+export async function saveStudioImage(image: string, expression = "original", requestedAssetId?: string) {
   decodeVillageImageDataUrl(image, { label: "sprite", maxBase64Length: 16_000_000 });
   const size = await inspectVillageImage(image);
-  const assetId = `villages-${randomUUID()}`;
+  const assetId = requestedAssetId ?? `villages-${randomUUID()}`;
+  if (!/^villages-[a-f0-9-]{36}$/i.test(assetId)) throw new Error("Invalid Villages sprite asset id.");
   const saved = asRecord(await villageEngineJson(`/api/sprites/${assetId}`, { body: { expression, image } }));
   const filename = asString(saved.filename);
   if (!/^[a-z0-9_-]+\.(png|jpg|jpeg|webp)$/.test(filename))

@@ -16,9 +16,9 @@ Change `MARINARA_ENGINE_ROOT` if your Engine checkout is elsewhere. Before packa
 
 ## Install into the existing Engine
 
-Sprite Studio generation needs the local-only host support described in [host-patches/README.md](host-patches/README.md). Keep that patch in this Villages repository; do not publish it to upstream Marinara repositories. The compatibility helper checks before applying and never restarts the Engine.
+Sprite Studio uses the Engine's existing public sprite preview and generation endpoints. Its planning, jobs, references, review, and approval belong to Villages; no Engine source patch is needed. The standing restriction in [AGENTS.md](AGENTS.md) requires explicit, task-specific permission before Codex changes or sideloads into a local Engine installation.
 
-The sideload helper installs Villages into either an existing package registry or a fresh data directory. It preserves other installed package records and saves a registry backup when one already exists. After building, run:
+The sideload helper installs Villages into either an existing package registry or a fresh data directory. It preserves other installed package records and saves a registry backup when one already exists. Only when the user explicitly authorizes sideloading, run:
 
 ```powershell
 $version = (Get-Content packages/villages/manifest.json -Raw | ConvertFrom-Json).version

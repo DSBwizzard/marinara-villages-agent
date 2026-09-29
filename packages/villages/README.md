@@ -63,7 +63,9 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
-0.6.75 adds the per-villager Sprite Studio, persistent sheet review, frozen identity references, and explicit generation planning with no automatic retries or provider fallback. The shared Engine Sprite Studio API is required for generation.
+0.6.77 makes Sprite Studio generation work through the Engine's existing public sprite endpoints. Villages plans one full-body image request per sheet, shows the connection and request count, keeps the returned original for crop review, and never repeats a failed request automatically. A separately configured Engine image fallback blocks Studio generation until the player selects that fallback directly or disables it; provider-internal attempts and billed usage are not exposed by the existing endpoint. No Engine source patch or separate Marinara Sprite Studio is required.
+
+0.6.75 adds the per-villager Sprite Studio, persistent sheet review, frozen identity references, and explicit generation planning. Its first generation path required a separate host API and was superseded in 0.6.77.
 
 0.6.72 gives venue replies a fixed scene-writing foundation that keeps each resident's card in charge while allowing narration and dialogue to vary with the moment. Recent scene history retains narration alongside speech in chronological order. Village Settings now has one optional Additional writing guidance field for both narration and dialogue; it adds a preference without replacing the foundation. Earlier custom Narration style and DEBUG reply-guidance text are intentionally not carried over, while tense, person, and rating remain.
 
