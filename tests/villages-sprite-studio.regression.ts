@@ -20,6 +20,7 @@ import {
   captureStudioReference,
   discardStudioCell,
   approveStudioCells,
+  recoverStudioJob,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio.ts";
 
 const records = new Map<string, any>();
@@ -77,15 +78,10 @@ const release = configureVillagesRuntime({
 const previousFetch = globalThis.fetch;
 let calls = 0,
   failGeneration = false,
+  constrainedCanvas = false,
+  fallbackConfigured = false,
   generationRelease: (() => void) | undefined;
 const requests: any[] = [];
-const fakePlan = {
-  protocol: 1,
-  connection: { id: "image", name: "Mock", model: "test-image", source: "openai" },
-  batches: [{ width: 1536, height: 1536, cols: 3, rows: 2, count: 5 }],
-  estimatedCost: null,
-  localWorkflow: false,
-};
 const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAMACAIAAABfake";
 globalThis.fetch = async (url, init) => {
   const path = new URL(String(url)).pathname;
@@ -93,10 +89,30 @@ globalThis.fetch = async (url, init) => {
   if (path === "/api/connections")
     return Response.json([
       { id: "image", name: "Mock", provider: "image_generation", model: "test-image", isDefault: true },
+      ...(fallbackConfigured
+        ? [
+            {
+              id: "backup",
+              name: "Backup",
+              provider: "image_generation",
+              model: "backup-image",
+              fallbackForAgents: "true",
+            },
+          ]
+        : []),
     ]);
-  if (path === "/api/sprites/studio/plan")
-    return Response.json({ ...fakePlan, batches: [{ ...fakePlan.batches[0], count: body.count }] });
-  if (path === "/api/sprites/studio/generate") {
+  if (path === "/api/sprites/generate-sheet/preview")
+    return Response.json({
+      items: [
+        {
+          id: body.promptOverrides[0].id,
+          width: constrainedCanvas && body.cols === 3 ? 1536 : body.cols * 512,
+          height:
+            constrainedCanvas && body.cols === 3 ? 1024 : constrainedCanvas && body.rows === 3 ? 1536 : body.rows * 768,
+        },
+      ],
+    });
+  if (path === "/api/sprites/generate-sheet") {
     calls++;
     requests.push(body);
     await new Promise<void>((resolve) => {
@@ -104,14 +120,15 @@ globalThis.fetch = async (url, init) => {
     });
     if (failGeneration) return Response.json({ error: "Provider timeout" }, { status: 504 });
     return Response.json({
-      url: "/api/sprites/" + body.assetId + "/file/original.png",
-      width: 1536,
-      height: 1536,
-      attempts: 1,
-      usage: { output_tokens: 100 },
+      sheetBase64: png.split(",")[1],
+      cells: body.expressions.map((expression: string) => ({ expression, base64: png.split(",")[1] })),
     });
   }
   if (path === "/api/image-metadata/inspect") return Response.json({ width: 512, height: 768 });
+  if (/^\/api\/sprites\/villages-[^/]+\/file\/original\.png$/.test(path))
+    return new Response(Buffer.from(png.split(",")[1]!, "base64"), { headers: { "content-type": "image/png" } });
+  if (/^\/api\/sprites\/villages-[^/]+$/.test(path) && !init?.body)
+    return Response.json([{ expression: "original", url: path + "/file/original.png" }]);
   if (/^\/api\/sprites\/villages-/.test(path))
     return Response.json({ filename: (body.expression || "original") + ".png" });
   throw new Error("Unexpected Engine call: " + path);
@@ -146,6 +163,15 @@ async function main() {
     };
     const plan = await planSpriteStudio("mara", input),
       submissionId = randomUUID();
+    assert.equal(plan.protocol, 2);
+    assert.equal(plan.batches.length, 1);
+    assert.equal(plan.batches[0]?.count, 5);
+    assert.equal(plan.estimatedCost, null);
+    const individualPlan = await planSpriteStudio("mara", { ...input, individual: true });
+    assert.deepEqual(
+      individualPlan.batches.map((batch) => batch.count),
+      [1, 1, 1, 1, 1],
+    );
     await Promise.all([
       startSpriteStudioJob("mara", { ...input, plan, submissionId }),
       startSpriteStudioJob("mara", { ...input, plan, submissionId }),
@@ -156,8 +182,21 @@ async function main() {
     let data = await settle();
     assert.equal(data.jobs.length, 1);
     assert.equal(data.jobs[0]!.sheets[0]!.cells.length, 5);
-    assert.equal(data.jobs[0]!.sheets[0]!.usage?.output_tokens, 100);
-    assert.match(requests[0].prompt, /Arms raised/);
+    assert.equal(data.jobs[0]!.sheets[0]!.usage, null);
+    assert.match(requests[0].promptOverrides[0].prompt, /Arms raised/);
+    assert.equal(requests[0].fullBodyExpressionMode, false);
+    assert.equal(requests[0].noBackground, false);
+    assert.equal(requests[0].nativeTransparentPng, false);
+    constrainedCanvas = true;
+    const split = await planSpriteStudio("mara", input);
+    assert.deepEqual(
+      split.batches.map((batch) => batch.count),
+      [4, 1],
+    );
+    constrainedCanvas = false;
+    fallbackConfigured = true;
+    await assert.rejects(() => planSpriteStudio("mara", input), /automatic fallback/);
+    fallbackConfigured = false;
     await startSpriteStudioJob("mara", { ...input, plan, submissionId });
     assert.equal(calls, 1);
     await assert.rejects(
@@ -201,6 +240,20 @@ async function main() {
     assert.equal(data.jobs[1]!.status, "interrupted");
     assert.match(data.jobs[1]!.error, /No automatic retry/);
     assert.equal(data.jobs[0]!.sheets.length, 1);
+    const persisted = [...records.values()].find((row) => row.kind === "sprite-studio");
+    const recoverId = randomUUID();
+    persisted.data.jobs.push({
+      ...structuredClone(data.jobs[0]),
+      id: recoverId,
+      status: "interrupted",
+      sheets: [],
+      pendingAssetId: data.jobs[0]!.sheets[0]!.assetId,
+      pendingBatch: plan.batches[0],
+      pendingExpressions: input.expressions,
+    });
+    await recoverStudioJob("mara", { id: recoverId });
+    assert.equal(calls, 2, "saved-sheet recovery makes no image-generation call");
+    assert.equal((await readSpriteStudio("mara")).jobs.find((job) => job.id === recoverId)?.sheets.length, 1);
     await importStudioSheet("mara", {
       image: png,
       cells: [{ view: "side", label: "neutral", x: 0, y: 0, width: 512, height: 768 }],
