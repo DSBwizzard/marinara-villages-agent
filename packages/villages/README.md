@@ -51,6 +51,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.71 gives every Menu page the View Venue navy and violet layout and keeps navigation visible beside its content. Menu navigation now uses one active page state, with explicit loading and error content, so returning from a page or opening a direct link cannot leave an empty menu. The package stylesheet is restored if the Engine replaces head styles while the tab remains mounted.
+
 0.6.70 recognizes a Builder's brief spoken agreement when the player's request clearly identifies a Project through its venue description, even if the resident replies “I'll do it” rather than repeating the Project's title. Projects can recheck recent archived chats for missed Builder agreements without asking the resident again.
 
 0.6.66 places the residence move request with the View Venue header actions and shows a refusal directly beneath them. The separate About this area card is removed; additional discovered area facts remain available within the Zone panel.
