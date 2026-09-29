@@ -5518,10 +5518,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin[data-kind="person"] { max-width: 7rem; }
 .${ELEMENT_TAG}-stage[data-mobile="true"][data-mobile-gesturing="true"] .${ELEMENT_TAG}-pin-photo-card { transition: none; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-doors { z-index: 8; transform: translateX(-50%); min-width: min(10rem, 70cqw); }
-.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav { display: none; }
-/* Projects owns the full menu canvas; its phase rail replaces the menu's navigation. */
-.${ELEMENT_TAG}-sectioned-menu[data-projects="true"] .${ELEMENT_TAG}-mobile-menu-nav { display: none; }
-.${ELEMENT_TAG}-sectioned-menu[data-projects="true"] .${ELEMENT_TAG}-subtitle { display: none; }
 .${ELEMENT_TAG}-project-screen { display: grid; gap: 1.25rem; min-height: 0; color: #eef2ff; }
 .${ELEMENT_TAG}-project-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; padding: .25rem .25rem .5rem; }
 .${ELEMENT_TAG}-project-head h2 { font-size: clamp(1.5rem, 3vw, 2.2rem); margin: .25rem 0; color: #f6f4ff; }
@@ -5561,16 +5557,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-project-image img { max-width: min(100%, 20rem); aspect-ratio: 3 / 2; object-fit: cover; border-radius: .5rem; }
 .${ELEMENT_TAG}-project-footer { display: flex; justify-content: flex-start; border-top: 1px solid #425ba1; padding-top: .8rem; }
 @media (max-width: 700px) { .${ELEMENT_TAG}-project-slots, .${ELEMENT_TAG}-project-layout { grid-template-columns: 1fr; } .${ELEMENT_TAG}-project-rail { display: flex; overflow-x: auto; } .${ELEMENT_TAG}-project-step { flex: 0 0 9rem; } }
-.${ELEMENT_TAG}-mobile-menu-nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: .5rem; }
-.${ELEMENT_TAG}-mobile-menu-nav .${ELEMENT_TAG}-button { min-height: 2.75rem; text-align: left; }
-.${ELEMENT_TAG}-mobile-menu-nav .${ELEMENT_TAG}-status { grid-column: 1 / -1; margin: 0; line-height: 1.45; }
-.${ELEMENT_TAG}-sectioned-menu[data-section="index"] > .${ELEMENT_TAG}-panel, .${ELEMENT_TAG}-sectioned-menu[data-section="index"] > .${ELEMENT_TAG}-menu-body { display: none; }
-.${ELEMENT_TAG}-sectioned-menu[data-section="noticeboard"] .${ELEMENT_TAG}-overlay { border: .8rem solid #9e6835; border-radius: .5rem; background: repeating-linear-gradient(90deg, #ba854d 0 21px, #a9733d 21px 24px); box-shadow: inset 0 0 0 2px #6b3d1e, 0 .5rem 1rem #0005; padding: .8rem; }
-.${ELEMENT_TAG}-sectioned-menu[data-section="noticeboard"] .${ELEMENT_TAG}-notice-row { border: 1px solid #d9c69c; background: #fff7db; color: #33281d; padding: .6rem; box-shadow: 1px 2px 3px #0005; }
-.${ELEMENT_TAG}-sectioned-menu[data-section="noticeboard"] .${ELEMENT_TAG}-notice-author { color: #33281d; }
-.${ELEMENT_TAG}-sectioned-menu[data-section="noticeboard"] .${ELEMENT_TAG}-overlay-head > .${ELEMENT_TAG}-panel-title { color: #2e2116; font-size: 1rem; }
-.${ELEMENT_TAG}-sectioned-menu[data-mobile="false"] .${ELEMENT_TAG}-mobile-menu-nav { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
-.${ELEMENT_TAG}-sectioned-menu[data-mobile="false"] .${ELEMENT_TAG}-mobile-menu-nav .${ELEMENT_TAG}-button { min-height: 2.5rem; }
 .${ELEMENT_TAG}-mobile-map-preview { display: block; max-width: min(100%, 22rem); max-height: 13rem; object-fit: contain; border: 2px solid var(--border); }
 .${ELEMENT_TAG}-setup-map-viewport:has(> .${ELEMENT_TAG}-stage[data-mobile="true"]) { height: min(55cqh, 30rem); overflow: hidden; }
 .${ELEMENT_TAG}-setup-map-viewport > .${ELEMENT_TAG}-stage[data-mobile="true"] { width: 100% !important; height: 100% !important; aspect-ratio: auto !important; }
@@ -5707,6 +5693,102 @@ a chat is the moment this tab stops being a picture of a village and starts
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { bottom: calc(100% + 13rem); }
 }
 @media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { transition: none; } }
+
+/* The Menu shares View Venue's palette and keeps its navigation on screen. */
+.${ELEMENT_TAG}-root.${ELEMENT_TAG}-sectioned-menu {
+  --background: #0b1938;
+  --foreground: #f3f4ff;
+  --popover: #142753;
+  --muted: #1d3567;
+  --muted-foreground: #c0c9ee;
+  --border: #38569a;
+  --primary: #ac90ff;
+  --primary-foreground: #fff;
+  --destructive: #ffb7c1;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: clamp(13rem, 20cqw, 17rem) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  background: radial-gradient(circle at 82% 20%, #1b346d 0, transparent 50%), linear-gradient(120deg, #09132f, #0e1e43);
+  color: var(--foreground);
+}
+.${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header {
+  grid-column: 1 / -1; grid-row: 1; align-items: center; min-height: 4.5rem; padding: .8rem 1.25rem;
+  border-bottom: 1px solid #314782; background: #101f48e8;
+}
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-title { font-size: clamp(1.3rem, 2.4cqw, 2rem); font-weight: 700; }
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-subtitle { color: var(--muted-foreground); font-size: .82rem; }
+.${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header > .${ELEMENT_TAG}-error { flex-basis: 100%; margin: 0; }
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav {
+  grid-column: 1; grid-row: 2; display: flex; flex-direction: column; gap: 1rem; min-height: 0; overflow-y: auto;
+  padding: 1rem .7rem; border-right: 1px solid #314782;
+  background: radial-gradient(circle at 25% 85%, #274588, transparent 65%), linear-gradient(#10214a, #142a5b);
+}
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group { gap: .45rem; }
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group > .${ELEMENT_TAG}-panel-title {
+  padding: .1rem .5rem; color: #b9c5ff; font-size: .7rem;
+}
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group-buttons { flex-direction: column; align-items: stretch; gap: .25rem; }
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button {
+  min-height: 2.45rem; border-color: transparent; background: transparent;
+  color: var(--foreground); text-align: left; font-size: .85rem;
+}
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button:hover { border-color: #6a7fc4; background: #253b75; color: white; }
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button[data-active="true"] {
+  border-color: #8060ff; background: linear-gradient(105deg, #5139b4, #253c8d);
+  color: white; box-shadow: 0 0 0 1px #8756ff, 0 0 1rem #683cf955;
+}
+.${ELEMENT_TAG}-menu-content {
+  grid-column: 2; grid-row: 2; box-sizing: border-box; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto;
+  padding: clamp(.75rem, 2cqw, 1.5rem);
+}
+.${ELEMENT_TAG}-menu-content.${ELEMENT_TAG}-panel,
+.${ELEMENT_TAG}-menu-content > .${ELEMENT_TAG}-panel,
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-overlay {
+  border: 1px solid var(--border); border-radius: .85rem;
+  background: linear-gradient(145deg, #172c5e, #101f45); color: var(--foreground);
+}
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-panel-title { color: #c7d2ff; font-size: .74rem; }
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-button { min-height: 2.35rem; background: #172d60; color: var(--foreground); font-size: .85rem; }
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-button:hover { border-color: #aa92ff; background: #203774; color: white; }
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-hint,
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-empty,
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-status { font-size: .82rem; line-height: 1.5; }
+.${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-button:focus-visible,
+.${ELEMENT_TAG}-sectioned-menu input:focus-visible,
+.${ELEMENT_TAG}-sectioned-menu select:focus-visible,
+.${ELEMENT_TAG}-sectioned-menu textarea:focus-visible { outline: 3px solid #b6a2ff; outline-offset: 2px; }
+.${ELEMENT_TAG}-menu-content input:not([type="checkbox"]):not([type="radio"]),
+.${ELEMENT_TAG}-menu-content select, .${ELEMENT_TAG}-menu-content textarea {
+  border-color: #5570b0; background: #0c1c42; color: var(--foreground); font-size: .85rem;
+}
+.${ELEMENT_TAG}-menu-content input::placeholder, .${ELEMENT_TAG}-menu-content textarea::placeholder { color: #aebce3; }
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-row { border-color: #526bb1; background: #1c3568; color: var(--foreground); }
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-notice-author { color: #d9e1ff; }
+.${ELEMENT_TAG}-menu-content .${ELEMENT_TAG}-menu-body { gap: 1rem; }
+.${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-panel.${ELEMENT_TAG}-menu-content { margin: clamp(.75rem, 2cqw, 1.5rem); }
+.${ELEMENT_TAG}-menu-welcome { display: grid; align-self: start; gap: .9rem; max-width: 50rem; padding: 1.5rem; }
+.${ELEMENT_TAG}-menu-welcome h2 { margin: 0; font-size: clamp(1.4rem, 3cqw, 2.2rem); }
+.${ELEMENT_TAG}-menu-welcome p { max-width: 40rem; margin: 0; color: var(--muted-foreground); line-height: 1.6; }
+.${ELEMENT_TAG}-menu-quick-links { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .4rem; }
+.${ELEMENT_TAG}-menu-debug-action { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-bottom: 1rem; }
+.${ELEMENT_TAG}-menu-debug-action .${ELEMENT_TAG}-status { margin: 0; flex: 1 1 15rem; }
+@container (max-width: 48rem) {
+  .${ELEMENT_TAG}-root.${ELEMENT_TAG}-sectioned-menu { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav {
+    grid-column: 1; grid-row: 2; flex-direction: row; gap: 1.25rem; max-height: 7.5rem;
+    overflow-x: auto; overflow-y: hidden; padding: .6rem .75rem;
+    border-right: 0; border-bottom: 1px solid #314782;
+  }
+  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group { flex: 0 0 auto; }
+  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-group-buttons { flex-direction: row; flex-wrap: nowrap; }
+  .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button { flex: 0 0 auto; min-height: 2.5rem; white-space: nowrap; }
+  .${ELEMENT_TAG}-menu-content { grid-column: 1; grid-row: 3; padding: .75rem; }
+  .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header { padding: .75rem; }
+}
 `;
 
 function syncVillagesStyles() {
@@ -5715,12 +5797,22 @@ function syncVillagesStyles() {
     existing?.remove();
     return;
   }
-  if (existing) return;
+  if (existing) {
+    if (existing.textContent !== VILLAGES_STYLES) existing.textContent = VILLAGES_STYLES;
+    return;
+  }
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = VILLAGES_STYLES;
   document.head.appendChild(style);
 }
+
+// The Engine can replace head styles while keeping a capability tab mounted.
+// Restore this package's stylesheet without requiring the player to reopen the tab.
+const villagesStyleObserver = new MutationObserver(() => {
+  if (document.querySelector(ELEMENT_TAG)) syncVillagesStyles();
+});
+villagesStyleObserver.observe(document.head, { childList: true, subtree: true });
 
 /**
  * Where the Engine keeps the admin secret this browser was given.
@@ -10947,6 +11039,31 @@ type MenuTab =
   | "agendas"
   | "schedules";
 
+type MenuPage = "index" | MenuTab;
+
+function menuCategory(page: MenuPage): "index" | "general" | "village" | "debug" {
+  if (page === "index" || page === "general") return page;
+  if (["replyGuidance", "story", "chatlogs", "agendas", "schedules"].includes(page)) return "debug";
+  return "village";
+}
+
+const MENU_PAGE_TITLES: Record<MenuPage, string> = {
+  index: "Menu",
+  villagers: "Villagers",
+  noticeboard: "Noticeboard",
+  venueRequests: "Venue Requests",
+  projects: "Projects",
+  homes: "Homes",
+  map: "Town map",
+  village: "Village Settings",
+  general: "General Settings",
+  replyGuidance: "Villager reply guidance",
+  story: "Village Story",
+  chatlogs: "Venue Visits",
+  agendas: "Villager Wishes",
+  schedules: "Villager Agendas",
+};
+
 const FORCE_VILLAGE_UPDATE_NOTICE =
   "Testing action: runs normal time catch-up, then bypasses Story pace for one visual Events update. It can spend a model call, but its prose cannot change memories, wishes, notices, venues, or resident behavior.";
 
@@ -11698,7 +11815,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [agendas, setAgendas] = useState<VillagerAgendaView[] | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   // The menu is its own screen. The homepage never carries the villager
-  // controls, and the menu never draws the village itself; `menuTab` picks
+  // controls, and the menu never draws the village itself; `menuPage` picks
   // which option inside the menu is open.
   //
   // `setup` is the third screen: the founding wizard owns the whole tab while it
@@ -11765,8 +11882,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    */
   const [openPlaceId, setOpenPlaceId] = useState<string | null>(null);
   const [placesOpen, setPlacesOpen] = useState(false);
-  const [menuTab, setMenuTab] = useState<MenuTab>("village");
-  const [menuSection, setMenuSection] = useState<"index" | "general" | "village" | "debug" | "noticeboard">("index");
+  const [menuPage, setMenuPage] = useState<MenuPage>("index");
+  const menuSection = menuCategory(menuPage);
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
   const [spriteEditorId, setSpriteEditorId] = useState<string | null>(null);
   /**
@@ -12383,14 +12500,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   useEffect(() => {
-    if (screen !== "menu" || (menuTab !== "agendas" && menuTab !== "schedules")) return;
+    if (screen !== "menu" || (menuPage !== "agendas" && menuPage !== "schedules")) return;
     if (
       !agendas?.some((villager) => villager.agenda?.personalizationPending && !villager.agenda.personalizationFailure)
     )
       return;
     const timer = window.setInterval(() => void loadAgendas(), 5_000);
     return () => window.clearInterval(timer);
-  }, [agendas, loadAgendas, menuTab, screen]);
+  }, [agendas, loadAgendas, menuPage, screen]);
 
   /**
    * Ask the village to work one villager out again.
@@ -12604,7 +12721,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   useEffect(() => {
-    if (menuTab !== "chatlogs" || !snapshot?.isFounded) return;
+    if (menuPage !== "chatlogs" || !snapshot?.isFounded) return;
     const controller = new AbortController();
     const query = new URLSearchParams();
     if (archiveVenueId) query.set("venueId", archiveVenueId);
@@ -12626,7 +12743,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         if (!controller.signal.aborted) setArchiveError(messageFrom(cause, "Venue visits could not be read."));
       });
     return () => controller.abort();
-  }, [archiveVenueId, archiveVillagerId, archiveOffset, archiveVersion, menuTab, snapshot?.isFounded]);
+  }, [archiveVenueId, archiveVillagerId, archiveOffset, archiveVersion, menuPage, snapshot?.isFounded]);
 
   const openVisit = useCallback(async (id: string) => {
     try {
@@ -12786,25 +12903,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const openMenu = useCallback(
     (tab: MenuTab) => {
       if (tab === "projects") setSiteProjectId("");
-      setMenuSection(
-        tab === "noticeboard"
-          ? "noticeboard"
-          : tab === "general"
-            ? "general"
-            : tab === "replyGuidance" ||
-                tab === "story" ||
-                tab === "chatlogs" ||
-                tab === "agendas" ||
-                tab === "schedules"
-              ? "debug"
-              : "village",
-      );
       setSettingsError("");
       setPlacesOpen(false);
       // The villager list is read when it is asked for rather than kept current
       // on every snapshot.
       if (tab === "villagers") void loadCatalog();
-      if (tab === "villagers" && (screen !== "menu" || menuTab !== "villagers")) setVillagersSection("residents");
+      if (tab === "villagers" && (screen !== "menu" || menuPage !== "villagers")) setVillagersSection("residents");
       // Same rule for the Personas the identity picker offers.
       if (tab === "village") void loadPersonas();
       if (tab === "village") void loadLorebooks();
@@ -12816,7 +12920,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // other half of the same listing, so it reads it the same way — one route,
       // one answer, and the two panels cannot disagree about the same villager.
       if (tab === "agendas" || tab === "schedules") void loadAgendas();
-      const enteringVillageSettings = tab === "village" && (screen !== "menu" || menuTab !== "village");
+      const enteringVillageSettings = tab === "village" && (screen !== "menu" || menuPage !== "village");
       if (enteringVillageSettings && snapshot) {
         setKnowledgeDraft(snapshot.settings.promptKnowledge);
         setPersonaDraft(snapshot.settings.playerPersonaId);
@@ -12827,10 +12931,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         // — see `destinationPlaces`.
         setVenuesDraft(destinationPlaces(snapshot.settings.venues).map((venue) => ({ ...venue })));
       }
-      setMenuTab(tab);
+      setMenuPage(tab);
       setScreen("menu");
     },
-    [loadAgendas, loadCatalog, loadLorebooks, loadPersonas, loadStory, menuTab, screen, snapshot],
+    [loadAgendas, loadCatalog, loadLorebooks, loadPersonas, loadStory, menuPage, screen, snapshot],
   );
 
   const goHome = useCallback(() => {
@@ -13855,8 +13959,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const openHomes = useCallback(() => {
     setSettingsError("");
     if (snapshot) seedHomes(snapshot.settings.venues);
-    setMenuSection("village");
-    setMenuTab("homes");
+    setMenuPage("homes");
     setScreen("menu");
   }, [seedHomes, snapshot]);
 
@@ -16205,22 +16308,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-sectioned-menu`}
         data-section={menuSection}
-        data-projects={menuTab === "projects" ? "true" : "false"}
+        data-page={menuPage}
         data-mobile={mobile}
       >
         <header className={`${ELEMENT_TAG}-header`}>
           <div>
-            <h1 className={`${ELEMENT_TAG}-title`}>
-              {
-                {
-                  index: "Menu",
-                  general: "General Settings",
-                  village: "Village Settings",
-                  debug: "DEBUG Settings",
-                  noticeboard: "Noticeboard",
-                }[menuSection]
-              }
-            </h1>
+            <h1 className={`${ELEMENT_TAG}-title`}>{MENU_PAGE_TITLES[menuPage]}</h1>
             {!mobile ? (
               <p className={`${ELEMENT_TAG}-subtitle`}>
                 Everything you can change about the village lives here, away from the village itself.
@@ -16231,103 +16324,27 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             <button
               type="button"
               className={`${ELEMENT_TAG}-button`}
-              onClick={menuSection !== "index" ? () => setMenuSection("index") : goHome}
+              onClick={menuPage !== "index" ? () => setMenuPage("index") : goHome}
             >
-              {menuSection !== "index" ? "Back to menu" : "Back to the village"}
+              {menuPage !== "index" ? "Back to menu" : "Back to the village"}
             </button>
           </div>
+          {error ? (
+            <p className={`${ELEMENT_TAG}-error`} role="alert">
+              {error}
+            </p>
+          ) : null}
         </header>
 
-        {error ? (
-          <p className={`${ELEMENT_TAG}-error`} role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        <nav className={`${ELEMENT_TAG}-mobile-menu-nav`} aria-label="Village menu">
-          {menuSection === "index" ? (
-            <>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("general")}>
-                General Settings
-              </button>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("village")}>
-                Village Settings
-              </button>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("story")}>
-                DEBUG Settings
-              </button>
-            </>
-          ) : menuSection === "village" ? (
-            <>
-              {(
-                [
-                  ["villagers", "Villagers"],
-                  ["venueRequests", "Venue Requests"],
-                  ["projects", "Projects"],
-                  ["homes", "Homes"],
-                  ["map", "Town map"],
-                  ["village", "Village Settings"],
-                ] as const
-              ).map(([tab, label]) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  data-active={menuTab === tab}
-                  onClick={() => (tab === "homes" ? openHomes() : openMenu(tab))}
-                >
-                  {label}
-                </button>
-              ))}
-            </>
-          ) : menuSection === "debug" ? (
-            <>
-              {(
-                [
-                  ["story", "Village Story"],
-                  ["replyGuidance", "Villager reply guidance"],
-                  ["chatlogs", "Venue Visits"],
-                  ["agendas", "Villager Wishes"],
-                  ["schedules", "Villager Agendas"],
-                ] as const
-              ).map(([tab, label]) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  data-active={menuTab === tab}
-                  onClick={() => openMenu(tab)}
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={!snapshot || busy || catchingUp}
-                onClick={() => void writeItUpNow()}
-              >
-                Force Village Update
-              </button>
-              <p className={`${ELEMENT_TAG}-status`}>{FORCE_VILLAGE_UPDATE_NOTICE}</p>
-              {writeUpNote ? (
-                <p className={`${ELEMENT_TAG}-status`} role="status">
-                  {writeUpNote}
-                </p>
-              ) : null}
-            </>
-          ) : null}
-        </nav>
-
-        <nav className={`${ELEMENT_TAG}-menu-nav`} aria-label="Everything you can change">
+        <nav className={`${ELEMENT_TAG}-menu-nav`} aria-label="Village menu pages">
           <div className={`${ELEMENT_TAG}-menu-group`}>
             <h2 className={`${ELEMENT_TAG}-panel-title`}>Village Management</h2>
             <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "villagers"}
-                data-active={menuTab === "villagers" ? "true" : "false"}
+                aria-pressed={menuPage === "villagers"}
+                data-active={menuPage === "villagers" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("villagers")}
               >
@@ -16336,8 +16353,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "noticeboard"}
-                data-active={menuTab === "noticeboard" ? "true" : "false"}
+                aria-pressed={menuPage === "noticeboard"}
+                data-active={menuPage === "noticeboard" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("noticeboard")}
               >
@@ -16346,8 +16363,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "venueRequests"}
-                data-active={menuTab === "venueRequests" ? "true" : "false"}
+                aria-pressed={menuPage === "venueRequests"}
+                data-active={menuPage === "venueRequests" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("venueRequests")}
               >
@@ -16356,16 +16373,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "projects"}
-                data-active={menuTab === "projects" ? "true" : "false"}
+                aria-pressed={menuPage === "projects"}
+                data-active={menuPage === "projects" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("projects")}
               >{`Projects (${snapshot?.projects?.filter((entry) => (entry.kind === "new-venue" || entry.kind === "renovation") && entry.lifecycle?.phase !== "complete").length ?? 0})`}</button>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "homes"}
-                data-active={menuTab === "homes" ? "true" : "false"}
+                aria-pressed={menuPage === "homes"}
+                data-active={menuPage === "homes" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={openHomes}
               >
@@ -16374,8 +16391,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "map"}
-                data-active={menuTab === "map" ? "true" : "false"}
+                aria-pressed={menuPage === "map"}
+                data-active={menuPage === "map" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("map")}
               >
@@ -16384,8 +16401,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "village"}
-                data-active={menuTab === "village" ? "true" : "false"}
+                aria-pressed={menuPage === "village"}
+                data-active={menuPage === "village" ? "true" : "false"}
                 onClick={() => openMenu("village")}
               >
                 Village Settings
@@ -16398,8 +16415,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "general"}
-                data-active={menuTab === "general" ? "true" : "false"}
+                aria-pressed={menuPage === "general"}
+                data-active={menuPage === "general" ? "true" : "false"}
                 onClick={() => openMenu("general")}
               >
                 General settings
@@ -16412,8 +16429,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "replyGuidance"}
-                data-active={menuTab === "replyGuidance" ? "true" : "false"}
+                aria-pressed={menuPage === "replyGuidance"}
+                data-active={menuPage === "replyGuidance" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("replyGuidance")}
               >
@@ -16422,8 +16439,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "story"}
-                data-active={menuTab === "story" ? "true" : "false"}
+                aria-pressed={menuPage === "story"}
+                data-active={menuPage === "story" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("story")}
               >
@@ -16432,8 +16449,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "chatlogs"}
-                data-active={menuTab === "chatlogs" ? "true" : "false"}
+                aria-pressed={menuPage === "chatlogs"}
+                data-active={menuPage === "chatlogs" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("chatlogs")}
               >
@@ -16442,8 +16459,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "agendas"}
-                data-active={menuTab === "agendas" ? "true" : "false"}
+                aria-pressed={menuPage === "agendas"}
+                data-active={menuPage === "agendas" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("agendas")}
               >
@@ -16459,39 +16476,43 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuTab === "schedules"}
-                data-active={menuTab === "schedules" ? "true" : "false"}
+                aria-pressed={menuPage === "schedules"}
+                data-active={menuPage === "schedules" ? "true" : "false"}
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("schedules")}
               >
                 {`Villager Agendas (${agendas?.length ?? 0})`}
               </button>
-              {/*
-                An action rather than a tab, so no `aria-pressed` and no
-                `data-active`: it does something and stays where it is. It costs
-                a model call, which is why it is the only button here that says
-                so, and why it is disabled while the village is busy.
-              */}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={!snapshot || busy || catchingUp}
-                onClick={() => void writeItUpNow()}
-              >
-                Force Village Update
-              </button>
             </div>
-            <p className={`${ELEMENT_TAG}-status`}>{FORCE_VILLAGE_UPDATE_NOTICE}</p>
-            {writeUpNote ? (
-              <p className={`${ELEMENT_TAG}-status`} role="status">
-                {writeUpNote}
-              </p>
-            ) : null}
           </div>
         </nav>
 
-        {menuTab === "general" ? (
-          <section className={`${ELEMENT_TAG}-panel`}>
+        {menuPage === "index" ? (
+          <section
+            className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content ${ELEMENT_TAG}-menu-welcome`}
+            role="main"
+          >
+            <span className={`${ELEMENT_TAG}-venue-kicker`}>Village menu</span>
+            <h2>Choose where to go</h2>
+            <p>Manage the people and places in your village, adjust settings, or inspect its DEBUG records.</p>
+            <div className={`${ELEMENT_TAG}-menu-quick-links`}>
+              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("villagers")}>
+                Village Management
+              </button>
+              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("general")}>
+                General Settings
+              </button>
+              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("story")}>
+                DEBUG Settings
+              </button>
+            </div>
+          </section>
+        ) : !snapshot && menuPage !== "general" ? (
+          <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
+            {error ? "The village could not be loaded. Return to the village and try again." : "Loading village menu…"}
+          </section>
+        ) : menuPage === "general" ? (
+          <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
             <h2 className={`${ELEMENT_TAG}-panel-title`}>General settings</h2>
 
             {/* Drawn before the village is founded as well as after, because
@@ -16653,8 +16674,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </p>
             ) : null}
           </section>
-        ) : menuTab === "village" ? (
-          <div className={`${ELEMENT_TAG}-menu-body`}>
+        ) : menuPage === "village" ? (
+          <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
             {snapshot ? (
               <section className={`${ELEMENT_TAG}-panel`}>
                 <h2 className={`${ELEMENT_TAG}-panel-title`}>Village settings</h2>
@@ -17018,8 +17039,26 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           // unchanged; only what opens them has moved. `Look again` in the nav
           // reads the village afresh, so a panel is never stale by the time it
           // is opened.
-          <div className={`${ELEMENT_TAG}-menu-body`}>
-            {menuTab === "villagers" ? (
+          <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
+            {menuSection === "debug" ? (
+              <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-debug-action`}>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={!snapshot || busy || catchingUp}
+                  onClick={() => void writeItUpNow()}
+                >
+                  Force Village Update
+                </button>
+                <p className={`${ELEMENT_TAG}-status`}>{FORCE_VILLAGE_UPDATE_NOTICE}</p>
+                {writeUpNote ? (
+                  <p className={`${ELEMENT_TAG}-status`} role="status">
+                    {writeUpNote}
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+            {menuPage === "villagers" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Villagers</h2>
@@ -17233,7 +17272,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </div>
             ) : null}
 
-            {menuTab === "noticeboard" && snapshot ? (
+            {menuPage === "noticeboard" && snapshot ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Noticeboard</h2>
@@ -17301,7 +17340,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </div>
             ) : null}
 
-            {menuTab === "projects" && snapshot ? (
+            {menuPage === "projects" && snapshot ? (
               <ProjectsPanelV2
                 snapshot={snapshot}
                 room={room}
@@ -17322,7 +17361,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 siteProjectId={siteProjectId}
               />
             ) : null}
-            {menuTab === "venueRequests" && snapshot ? (
+            {menuPage === "venueRequests" && snapshot ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Venue Requests</h2>
@@ -17544,7 +17583,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </div>
             ) : null}
 
-            {menuTab === "homes" && snapshot ? (
+            {menuPage === "homes" && snapshot ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Homes on the map</h2>
@@ -17620,7 +17659,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </div>
             ) : null}
 
-            {menuTab === "map" && snapshot ? (
+            {menuPage === "map" && snapshot ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Town map</h2>
@@ -17923,9 +17962,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               find out what a village believes about you is to ask one of its
               villagers and hope they bring it up.
             */}
-            {menuTab === "replyGuidance" ? <VillagerReplyGuidanceDebug /> : null}
+            {menuPage === "replyGuidance" ? <VillagerReplyGuidanceDebug /> : null}
 
-            {menuTab === "story" ? (
+            {menuPage === "story" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Village story</h2>
@@ -18013,7 +18052,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               the village's record in any other sense: no prompt is built from
               it, so nothing here can change how the village behaves.
             */}
-            {menuTab === "chatlogs" ? (
+            {menuPage === "chatlogs" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Venue visits</h2>
@@ -18270,7 +18309,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               differently, so unfinished wish-writing is not mistaken for an
               answer of "no current wishes".
             */}
-            {menuTab === "agendas" ? (
+            {menuPage === "agendas" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>What the villagers wish</h2>
@@ -18380,7 +18419,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               own schedule screen rather than in the village. The tab title
               carries the count of weeks found for the same reason.
             */}
-            {menuTab === "schedules" ? (
+            {menuPage === "schedules" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Villager agendas</h2>
@@ -19670,7 +19709,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             aria-label="Open settings menu"
             disabled={busy || !snapshot}
             onClick={() => {
-              setMenuSection("index");
+              setMenuPage("index");
               setScreen("menu");
             }}
           >
