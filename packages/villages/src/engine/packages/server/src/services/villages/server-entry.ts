@@ -6,6 +6,7 @@ import { villagesRoutes } from "../../routes/villages.routes.js";
 import { configureVillagesRuntime } from "./package-runtime.js";
 import { startVillageRefreshScheduler } from "./village-refresh-scheduler.js";
 import { readVillageState } from "./village-store.js";
+import { startProgressRecovery } from "./venue-session.js";
 
 type ActivationContext = {
   api: {
@@ -29,6 +30,7 @@ export async function activate({ api }: ActivationContext) {
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.
     cleanups.push(startVillageRefreshScheduler());
+    cleanups.push(startProgressRecovery());
     active = true;
   } catch (error) {
     // Never leave a half-wired package holding a runtime slot.

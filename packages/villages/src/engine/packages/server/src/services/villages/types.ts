@@ -1024,6 +1024,35 @@ export type VillageProjectLifecycle = {
   }[];
   requirementsEvidenceId: string;
   requirementsAcceptedAt: string;
+  /** Supplies recorded when the checklist was accepted, before later scene claims. */
+  recordedItems: { venueId: string; itemName: string }[];
+  sources: {
+    requirementId: string;
+    kind: "existing-item" | "resident-offer" | "held-supply";
+    venueId: string;
+    itemName: string;
+    supplierId: string;
+    evidenceId: string;
+    at: string;
+    acquiredAt: string;
+  }[];
+  /** Physical supplies already obtained survive plan and builder revisions. */
+  heldSupplies: {
+    id: string;
+    itemName: string;
+    acquiredAt: string;
+    deliveredAt: string;
+    assignedRequirementId: string;
+  }[];
+  spokenProofs: {
+    lineId: string;
+    sessionId: string;
+    submissionId: string;
+    speakerId: string;
+    venueId: string;
+    quote: string;
+    at: string;
+  }[];
   evidenceIds: string[];
   workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;
   blockedReason: string;
@@ -1118,6 +1147,8 @@ export type VillageScenarioImprint = {
 
 export type VillageState = {
   version: 2;
+  /** 0 keeps the established Project path; 1 enables the evidence-backed path at founding. */
+  progressEngineVersion: 0 | 1;
   name: string;
   /** Per-village writing choices for live venue visits. */
   narrationStyle: VillageNarrationStyle;
@@ -1720,6 +1751,7 @@ export type VillageMomentView = {
 
 export type VillageSnapshot = {
   status: "ready";
+  progressEngineVersion: 0 | 1;
   foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];

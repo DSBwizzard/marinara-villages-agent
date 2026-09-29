@@ -31,6 +31,13 @@ import {
 } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { extractJsonObject } from "./village-bootstrap.js";
+import {
+  createProjectProgress,
+  progressProject,
+  projectProgressPhase,
+  recordProjectProgress,
+  reviseProjectProgress,
+} from "./project-progress.js";
 
 const DAY_MS = 24 * 60 * 60_000;
 const categories = ["structure", "equipment", "finish"] as const;
@@ -47,6 +54,8 @@ function projectFor(state: VillageState, id: string): VillageProject & { lifecyc
     (entry) => entry.id === id && (entry.kind === "new-venue" || entry.kind === "renovation"),
   );
   if (!project?.lifecycle) throw notFound("That Project no longer exists.");
+  if (state.progressEngineVersion === 1 && projectProgressPhase(state, project) !== project.lifecycle.phase)
+    throw conflict("Project phase and verified progress disagree. Check DEBUG: Progress before continuing.");
   return project as VillageProject & { lifecycle: VillageProjectLifecycle };
 }
 
@@ -68,6 +77,10 @@ function lifecycle(
     requirements: [],
     requirementsEvidenceId: "",
     requirementsAcceptedAt: "",
+    recordedItems: [],
+    sources: [],
+    heldSupplies: [],
+    spokenProofs: [],
     evidenceIds: [],
     workOrder: null,
     blockedReason: "",
@@ -137,6 +150,7 @@ export function draftNewVenueProject(
     lifecycle: lifecycle("concept"),
   };
   state.projects.push(project);
+  createProjectProgress(state, project, at);
   return project;
 }
 
@@ -202,6 +216,13 @@ export async function placeNewVenueProject(id: string, value: unknown): Promise<
     project.lifecycle.phase = "builder";
     project.status = "active";
     project.updatedAt = at;
+    recordProjectProgress(state, project, "site-placed", {
+      id: `project:${id}:placed`,
+      kind: "project-placement",
+      at,
+      sourceId: shell.id,
+      venueId: shell.id,
+    });
   });
 }
 
@@ -292,6 +313,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
     ),
   };
   state.projects.push(project);
+  createProjectProgress(state, project, at);
   return project;
 }
 
@@ -348,6 +370,13 @@ export function applyProjectMailboxDecisions(
     )
       continue;
     project.lifecycle.approvals.push({ residentId: decision.characterId, source: "mailbox", evidenceId: mailId, at });
+    recordProjectProgress(state, project, `approval:${decision.characterId}`, {
+      id: `mail:${mailId}:${decision.characterId}`,
+      kind: "project-approval",
+      at,
+      sourceId: mailId,
+      speakerId: decision.characterId,
+    });
   }
   if (
     project.lifecycle.affectedIds.every((id) => project.lifecycle!.approvals.some((entry) => entry.residentId === id))
@@ -374,6 +403,15 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
     )
       throw conflict("This Villager has not agreed to build this Project.");
     const switched = flow.builderId !== residentId;
+    if (state.progressEngineVersion === 1 && switched && flow.phase !== "builder") {
+      const candidate = flow.candidates.find((entry) => entry.residentId === residentId)!;
+      const task = progressProject(state, project)!;
+      const currentPhaseStartedAt = task.transitions.at(-1)?.at ?? task.definedAt;
+      const since =
+        flow.phase === "construction" ? (flow.workOrder?.pausedAt ?? currentPhaseStartedAt) : currentPhaseStartedAt;
+      if (Date.parse(candidate.at) < Date.parse(since))
+        throw conflict("Ask this Builder again after the current phase began, then Record their new agreement.");
+    }
     flow.builderId = residentId;
     project.participantIds = [...new Set([...project.participantIds, residentId])];
     if (flow.phase === "construction") {
@@ -392,11 +430,40 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
       };
       project.status = "building";
     } else if (switched) {
+      const revising = state.progressEngineVersion === 1 && projectProgressPhase(state, project) !== "builder";
+      if (revising)
+        for (const requirement of flow.requirements.filter((entry) => entry.carriedAt)) {
+          const existing = flow.heldSupplies.find((entry) => entry.assignedRequirementId === requirement.id);
+          if (existing) existing.assignedRequirementId = "";
+          else
+            flow.heldSupplies.push({
+              id: `held:${project.id}:${requirement.id}:${requirement.carriedAt}`,
+              itemName: requirement.title,
+              acquiredAt: requirement.carriedAt,
+              deliveredAt: requirement.deliveredAt,
+              assignedRequirementId: "",
+            });
+        }
       flow.phase = "requirements";
       flow.requirements = [];
       flow.requirementsEvidenceId = "";
       flow.requirementsAcceptedAt = "";
+      if (revising) reviseProjectProgress(state, project, "builder");
       project.status = "active";
+      const candidate = flow.candidates.find((entry) => entry.residentId === residentId)!;
+      const spoken = flow.spokenProofs.find((entry) => entry.lineId === candidate.evidenceId);
+      if (state.progressEngineVersion === 1 && (!spoken || spoken.speakerId !== residentId))
+        throw conflict("The Builder's recorded agreement is missing its saved spoken proof.");
+      recordProjectProgress(state, project, "builder-selected", {
+        id: `project:${id}:builder:${candidate.evidenceId}`,
+        kind: "project-builder",
+        at: candidate.at,
+        sourceId: candidate.evidenceId,
+        lineId: candidate.evidenceId,
+        speakerId: residentId,
+        venueId: spoken?.venueId,
+        excerpt: spoken?.quote,
+      });
     }
     flow.blockedReason = "";
     project.updatedAt = new Date().toISOString();
@@ -414,8 +481,32 @@ export async function acceptProjectRequirements(id: string): Promise<void> {
     )
       throw conflict("Ask the Builder for a complete requirements list first.");
     flow.requirementsAcceptedAt = new Date().toISOString();
+    if (state.progressEngineVersion === 1) {
+      flow.recordedItems = state.venues.flatMap((venue) =>
+        venue.state.furniture
+          .filter(
+            (itemName) => !state.narrativeItems.some((item) => item.venueId === venue.id && item.itemName === itemName),
+          )
+          .map((itemName) => ({ venueId: venue.id, itemName })),
+      );
+      flow.sources = [];
+    }
     flow.phase = "materials";
     project.updatedAt = flow.requirementsAcceptedAt;
+    reviseProjectProgress(state, project, "requirements");
+    const spoken = flow.spokenProofs.find((entry) => entry.lineId === flow.requirementsEvidenceId);
+    if (state.progressEngineVersion === 1 && (!spoken || spoken.speakerId !== flow.builderId))
+      throw conflict("The Builder's checklist is missing its saved spoken proof.");
+    recordProjectProgress(state, project, "plan-accepted", {
+      id: `project:${id}:plan:${flow.requirementsEvidenceId}`,
+      kind: "project-plan",
+      at: flow.requirementsAcceptedAt,
+      sourceId: flow.requirementsEvidenceId,
+      lineId: flow.requirementsEvidenceId,
+      speakerId: flow.builderId,
+      venueId: spoken?.venueId,
+      excerpt: spoken?.quote,
+    });
   });
 }
 
@@ -430,6 +521,13 @@ export async function deliverProjectMaterial(id: string, value: unknown): Promis
     if (entry.deliveredAt) return;
     entry.deliveredAt = new Date().toISOString();
     project.updatedAt = entry.deliveredAt;
+    recordProjectProgress(state, project, `delivered:${requirementId}`, {
+      id: `project:${id}:delivered:${requirementId}`,
+      kind: "project-delivery",
+      at: entry.deliveredAt,
+      sourceId: project.venueId,
+      venueId: project.venueId,
+    });
   });
 }
 
@@ -460,6 +558,16 @@ export async function startProjectConstruction(id: string, now = new Date()): Pr
     project.status = "building";
     project.progress = 80;
     project.updatedAt = at;
+    recordProjectProgress(state, project, "work-started", {
+      id: `project:${id}:work-started`,
+      kind: "project-start",
+      at,
+      sourceId: id,
+      speakerId: flow.builderId,
+      venueId: project.venueId,
+    });
+    if (state.progressEngineVersion === 1 && projectProgressPhase(state, project) !== "construction")
+      throw conflict("Verified supplies are required before work starts.");
   });
 }
 
@@ -471,12 +579,20 @@ function finishConstruction(
   const flow = project.lifecycle;
   if (flow.phase !== "construction" || !flow.workOrder || flow.workOrder.pausedAt) return;
   const builder = state.villagers.find((entry) => entry.characterId === flow.builderId);
-  if (builder?.agenda?.projectWork?.projectId === project.id) delete builder.agenda.projectWork;
-  flow.phase = "finishing";
+  if (state.progressEngineVersion !== 1) flow.phase = "finishing";
   flow.completedAt = at;
   project.status = "finishing";
   project.progress = 95;
   project.updatedAt = at;
+  recordProjectProgress(state, project, "work-complete", {
+    id: `project:${project.id}:work-complete`,
+    kind: "work-order",
+    at,
+    sourceId: project.id,
+    speakerId: flow.builderId,
+    venueId: project.venueId,
+  });
+  if (builder?.agenda?.projectWork?.projectId === project.id) delete builder.agenda.projectWork;
 }
 
 export async function debugCompleteProjectConstruction(id: string): Promise<void> {
@@ -485,6 +601,8 @@ export async function debugCompleteProjectConstruction(id: string): Promise<void
     const project = projectFor(state, id);
     if (project.lifecycle.phase !== "construction" || project.status !== "building")
       throw conflict("Start construction before using the debug completion action.");
+    if (state.progressEngineVersion === 1 && project.lifecycle.workOrder)
+      project.lifecycle.workOrder.completesAt = new Date().toISOString();
     finishConstruction(state, project, new Date().toISOString());
   });
 }
@@ -506,51 +624,62 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
     const venue = state.venues.find((entry) => entry.id === project.venueId);
     if (!venue) throw conflict("The Project site is missing.");
     const at = new Date().toISOString();
-    if (project.kind === "new-venue") {
-      const form = boundText(row.form, 240).trim();
-      const exterior = boundText(row.exteriorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-      const interior = boundText(row.interiorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-      if (!form || !exterior || !interior)
-        throw badRequest("Define the Venue form, exterior, and interior before opening it.");
-      venue.form = form;
-      venue.description = exterior;
-      venue.presentation.image = validImage(row.exteriorImage);
-      venue.spaces =
-        venue.classes?.map((venueClass) => ({
-          ...defaultVenueSpace(venueClass, interior),
-          image: validImage(row.interiorImage),
-        })) ?? [];
-      venue.constructionStatus = "complete";
-      venue.state.condition = "complete";
-    } else {
-      const change = flow.change!;
-      if (change.classes) {
-        venue.classes = change.classes;
-        venue.spaces = change.classes.map(
-          (venueClass) =>
-            venue.spaces?.find((space) => space.venueClass === venueClass) ??
-            defaultVenueSpace(venueClass, venue.description),
-        );
+    const applyOpening = () => {
+      if (project.kind === "new-venue") {
+        const form = boundText(row.form, 240).trim();
+        const exterior = boundText(row.exteriorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+        const interior = boundText(row.interiorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+        if (!form || !exterior || !interior)
+          throw badRequest("Define the Venue form, exterior, and interior before opening it.");
+        venue.form = form;
+        venue.description = exterior;
+        venue.presentation.image = validImage(row.exteriorImage);
+        venue.spaces =
+          venue.classes?.map((venueClass) => ({
+            ...defaultVenueSpace(venueClass, interior),
+            image: validImage(row.interiorImage),
+          })) ?? [];
+        venue.constructionStatus = "complete";
+        venue.state.condition = "complete";
+      } else {
+        const change = flow.change!;
+        if (change.classes) {
+          venue.classes = change.classes;
+          venue.spaces = change.classes.map(
+            (venueClass) =>
+              venue.spaces?.find((space) => space.venueClass === venueClass) ??
+              defaultVenueSpace(venueClass, venue.description),
+          );
+        }
+        if (change.capacity !== undefined) venue.residenceCapacity = change.capacity;
+        if (change.homeKind) {
+          venue.occupancy.homeKind = change.homeKind;
+          const tierName = state.homeBuildingNames[change.homeKind];
+          if (tierName && !venue.state.upgrades.includes(tierName)) venue.state.upgrades.push(tierName);
+        }
+        if (change.slot !== undefined) {
+          const upgrades = [...(venue.improvements ?? [null, null])];
+          upgrades[change.slot] = change.improvement ? { ...change.improvement, approvedAt: at } : null;
+          venue.improvements = upgrades;
+        }
+        const exterior = validImage(row.exteriorImage);
+        if (exterior) venue.presentation.image = exterior;
       }
-      if (change.capacity !== undefined) venue.residenceCapacity = change.capacity;
-      if (change.homeKind) {
-        venue.occupancy.homeKind = change.homeKind;
-        const tierName = state.homeBuildingNames[change.homeKind];
-        if (tierName && !venue.state.upgrades.includes(tierName)) venue.state.upgrades.push(tierName);
-      }
-      if (change.slot !== undefined) {
-        const upgrades = [...(venue.improvements ?? [null, null])];
-        upgrades[change.slot] = change.improvement ? { ...change.improvement, approvedAt: at } : null;
-        venue.improvements = upgrades;
-      }
-      const exterior = validImage(row.exteriorImage);
-      if (exterior) venue.presentation.image = exterior;
-    }
-    venue.state.updatedAt = at;
-    flow.phase = "complete";
-    project.status = "complete";
-    project.progress = 100;
-    project.updatedAt = at;
+      venue.state.updatedAt = at;
+      flow.phase = "complete";
+      project.status = "complete";
+      project.progress = 100;
+      project.updatedAt = at;
+    };
+    const evidence = {
+      id: `project:${id}:opened`,
+      kind: "project-opening",
+      at,
+      sourceId: project.venueId,
+      venueId: project.venueId,
+    };
+    if (state.progressEngineVersion === 1) recordProjectProgress(state, project, "opened", evidence, "", applyOpening);
+    else applyOpening();
   });
 }
 
@@ -627,6 +756,7 @@ export async function recordProjectConversation(input: {
 }): Promise<void> {
   if (!input.lines.length || !input.playerMessage.trim()) return;
   const state = await (await import("./village-store.js")).readVillageState();
+  if (state.progressEngineVersion === 1) return;
   const relevant = state.projects.filter(
     (project) =>
       project.lifecycle &&

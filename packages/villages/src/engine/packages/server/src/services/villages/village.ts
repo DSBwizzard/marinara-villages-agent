@@ -580,6 +580,7 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
   });
   return {
     status: "ready",
+    progressEngineVersion: village.progressEngineVersion,
     foundingPreparation: village.foundingPreparation ?? null,
     village: villageMomentView(village, now, exactSnapshotTransition(village, now)),
     venueRequests: village.pendingDecisions.filter(
@@ -3732,6 +3733,7 @@ export async function runVillageSetup(input: {
     // The stamp that closes the wizard. Written here and nowhere else, so a
     // village can only become founded by coming through this flow.
     state.setupAt = new Date().toISOString();
+    if (founding) state.progressEngineVersion = 1;
     if (founding)
       state.foundingPreparation = {
         status: "pending",

@@ -139,6 +139,7 @@ export function sceneDocumentId(characterId: string): string {
 export function defaultVillageState(): VillageState {
   return {
     version: 2,
+    progressEngineVersion: 0,
     name: "Willowbrook",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
@@ -1714,6 +1715,80 @@ function coerceProjects(value: unknown): VillageProject[] {
               : [],
             requirementsEvidenceId: asTrimmedString(flow.requirementsEvidenceId),
             requirementsAcceptedAt: asIsoString(flow.requirementsAcceptedAt) ?? "",
+            recordedItems: Array.isArray(flow.recordedItems)
+              ? flow.recordedItems.flatMap((entry) => {
+                  const item = asRecord(entry);
+                  const venueId = asTrimmedString(item.venueId);
+                  const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
+                  return venueId && itemName ? [{ venueId, itemName }] : [];
+                })
+              : [],
+            sources: Array.isArray(flow.sources)
+              ? flow.sources.flatMap((entry) => {
+                  const source = asRecord(entry);
+                  const requirementId = asTrimmedString(source.requirementId);
+                  const venueId = asTrimmedString(source.venueId);
+                  const itemName = boundText(source.itemName, MAX_VENUE_NOTE_LENGTH);
+                  const evidenceId = asTrimmedString(source.evidenceId);
+                  if (!requirementId || !venueId || !itemName || !evidenceId) return [];
+                  return [
+                    {
+                      requirementId,
+                      kind:
+                        source.kind === "existing-item"
+                          ? ("existing-item" as const)
+                          : source.kind === "held-supply"
+                            ? ("held-supply" as const)
+                            : ("resident-offer" as const),
+                      venueId,
+                      itemName,
+                      supplierId: asTrimmedString(source.supplierId),
+                      evidenceId,
+                      at: asIsoString(source.at) ?? "",
+                      acquiredAt: asIsoString(source.acquiredAt) ?? "",
+                    },
+                  ];
+                })
+              : [],
+            heldSupplies: Array.isArray(flow.heldSupplies)
+              ? flow.heldSupplies.flatMap((entry) => {
+                  const held = asRecord(entry);
+                  const id = asTrimmedString(held.id);
+                  const itemName = boundText(held.itemName, MAX_VENUE_NOTE_LENGTH);
+                  const acquiredAt = asIsoString(held.acquiredAt) ?? "";
+                  return id && itemName && acquiredAt
+                    ? [
+                        {
+                          id,
+                          itemName,
+                          acquiredAt,
+                          deliveredAt: asIsoString(held.deliveredAt) ?? "",
+                          assignedRequirementId: asTrimmedString(held.assignedRequirementId),
+                        },
+                      ]
+                    : [];
+                })
+              : [],
+            spokenProofs: Array.isArray(flow.spokenProofs)
+              ? flow.spokenProofs.flatMap((entry) => {
+                  const proof = asRecord(entry);
+                  const lineId = asTrimmedString(proof.lineId);
+                  const sessionId = asTrimmedString(proof.sessionId);
+                  const submissionId = asTrimmedString(proof.submissionId);
+                  if (!lineId || !sessionId || !submissionId) return [];
+                  return [
+                    {
+                      lineId,
+                      sessionId,
+                      submissionId,
+                      speakerId: asTrimmedString(proof.speakerId),
+                      venueId: asTrimmedString(proof.venueId),
+                      quote: boundText(proof.quote, 300),
+                      at: asIsoString(proof.at) ?? "",
+                    },
+                  ];
+                })
+              : [],
             evidenceIds: asStringArray(flow.evidenceIds),
             workOrder:
               asIsoString(order.startsAt) && asIsoString(order.completesAt)
@@ -2063,6 +2138,7 @@ export function coerceVillageState(value: unknown): VillageState {
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
   const state: VillageState = {
     version: 2,
+    progressEngineVersion: raw.progressEngineVersion === 1 ? 1 : 0,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,

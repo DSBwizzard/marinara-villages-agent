@@ -73,7 +73,7 @@ const registry: ProgressRegistry<State> = {
 const event = (id: string, excerpt: string, speakerId = "rosa", venueId = "bar"): ProgressEvidence => ({
   id,
   kind: "visit-line",
-  at: "2026-09-29T12:00:00.000Z",
+  at: new Date(Date.now() + 60_000).toISOString(),
   sourceId: "visit:one:turn:one",
   lineId: id,
   speakerId,
