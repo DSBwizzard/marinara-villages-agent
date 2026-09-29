@@ -100,14 +100,11 @@ const snapshot = {
 
 const pages = [
   [/^Villagers \(/, "villagers"],
-  [/^Noticeboard \(/, "noticeboard"],
+  [/^Memories$/, "memories"],
   [/^Venue Requests \(/, "venueRequests"],
   [/^Projects \(/, "projects"],
-  [/^Homes \(/, "homes"],
-  [/^Town map$/, "map"],
   [/^Village Settings$/, "village"],
   [/^General settings$/, "general"],
-  [/^DEBUG: Village Story/, "story"],
   [/^DEBUG: Venue Visits/, "chatlogs"],
   [/^DEBUG: Villager Wishes/, "agendas"],
   [/^Villager Agendas/, "schedules"],
@@ -122,12 +119,16 @@ try {
   ]) {
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
-    let failStory = false;
+    let failMemory = false;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path.endsWith("/story") && failStory) {
-        return route.fulfill({ status: 503, contentType: "application/json", body: '{"error":"Story unavailable"}' });
+      if (path.endsWith("/memories") && failMemory) {
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: '{"error":"Memories unavailable"}',
+        });
       }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
@@ -152,7 +153,14 @@ try {
                     : path.endsWith("/rooms/archive")
                       ? { visits: [], total: 0 }
                       : path.endsWith("/memories")
-                        ? { passing: [], durable: [], archives: [], pending: [] }
+                        ? {
+                            generatedAt: new Date().toISOString(),
+                            residents: [],
+                            recollections: [],
+                            durable: [],
+                            expiredRecollectionCount: 0,
+                            archive: { total: 0, pendingReviewCount: 0, recent: [] },
+                          }
                         : path.endsWith("/rooms/active")
                           ? { session: null }
                           : snapshot;
@@ -194,7 +202,7 @@ try {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
       }
-      if (process.env.VILLAGES_MENU_SCREENSHOTS && ["villagers", "projects", "village", "story"].includes(key)) {
+      if (process.env.VILLAGES_MENU_SCREENSHOTS && ["villagers", "projects", "village", "memories"].includes(key)) {
         await page.screenshot({
           path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-${key}-${width}-${height}.png`),
         });
@@ -217,11 +225,11 @@ try {
     await root.getByRole("button", { name: "Back to menu" }).click();
     await expect(root).toHaveAttribute("data-page", "index");
     await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
-    failStory = true;
-    await nav.getByRole("button", { name: /^DEBUG: Village Story/ }).click();
+    failMemory = true;
+    await nav.getByRole("button", { name: /^Memories$/ }).click();
     await expect(root.getByRole("alert")).toBeVisible();
     await expect(main).toBeVisible();
-    failStory = false;
+    failMemory = false;
     await root.getByRole("button", { name: "Back to menu" }).click();
     await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
     await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
@@ -241,13 +249,8 @@ try {
     await page.getByRole("button", { name: "Open settings menu" }).click();
     await expect(root).toHaveAttribute("data-page", "index");
     await expect(nav).toBeVisible();
-    await nav.getByRole("button", { name: /^Homes \(/ }).click();
-    await main.getByRole("button", { name: "Put a home on the map" }).click();
-    await page.locator(`.${tag}-stage`).click({ position: { x: 80, y: 80 } });
-    await expect(root).toHaveAttribute("data-page", "homes");
-    await expect(main).toBeVisible();
+    await expect(nav.getByRole("button", { name: /^Homes \(/ })).toHaveCount(0);
     if (width > 700 && height > 700) {
-      await root.getByRole("button", { name: "Back to menu" }).click();
       await root.getByRole("button", { name: "Back to the village" }).click();
       await page.getByRole("button", { name: "Use the whole screen" }).click();
       await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName.toLowerCase())).toBe(tag);

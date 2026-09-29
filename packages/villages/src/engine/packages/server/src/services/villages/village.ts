@@ -3575,6 +3575,11 @@ export async function runVillageSetup(input: {
     ? (scenarioImprint?.worldFacts ?? [])
     : readWorldFacts(input.worldFacts ?? village.worldFacts);
   const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView);
+  if (
+    !founding &&
+    (townMap.image !== village.townMapImage || JSON.stringify(townMap.view) !== JSON.stringify(village.townMapView))
+  )
+    throw conflict("Replace the village map from Village Settings.");
   const connections = await readVillageConnectionSettings();
   await validateVillageSetupConnections(connections);
   // Resolved before anything is written, so a village is never founded holding a
@@ -3598,12 +3603,9 @@ export async function runVillageSetup(input: {
   ];
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   const initialResidents = initialResidentIds.map((characterId) => cardsById.get(characterId)!);
-  // The wizard's step is the map, and the map it draws is the village's houses.
-  // The places the model proposed are not on it and were never shown on it, so
-  // the posted list is taken as the houses and every sendable place already in
-  // the village is kept — one record for every place, with the houses written
-  // whole and the rest left exactly as they were. A re-run to move a single pin
-  // therefore cannot quietly delete the places the player was last sent to.
+  // Founding posts the houses placed in the wizard. Later setup runs keep the
+  // other venues and require every saved pin to stay put; Village Settings owns
+  // map replacement and its placement pass.
   //
   // A stored place the posted map does name is not stored twice: the posted copy
   // is the newer one. The picture, though, is the place's rather than the
@@ -3646,6 +3648,14 @@ export async function runVillageSetup(input: {
   });
   const keptPlaces = founding ? [] : village.venues.filter((place) => !isHousePlace(place) && !postedIds.has(place.id));
   const venues: VillageVenue[] = [...postedPlaces, ...keptPlaces];
+  if (
+    !founding &&
+    village.venues.some((old) => {
+      const next = venues.find((venue) => venue.id === old.id);
+      return !next || next.presentation.x !== old.presentation.x || next.presentation.y !== old.presentation.y;
+    })
+  )
+    throw conflict("Move map pins while replacing the map in Village Settings.");
   for (const old of village.venues) {
     if (!old.occupancy.residentCharacterId) continue;
     const next = venues.find((venue) => venue.id === old.id);
@@ -3663,6 +3673,18 @@ export async function runVillageSetup(input: {
   await mutateVillageState((state) => {
     if (isVillageFounded(state) === founding)
       throw conflict("The village changed during setup. Reload it before saving.");
+    if (
+      !founding &&
+      (state.townMapImageSetAt !== village.townMapImageSetAt ||
+        state.venues.length !== village.venues.length ||
+        state.venues.some((venue) => {
+          const prior = village.venues.find((entry) => entry.id === venue.id);
+          return (
+            !prior || venue.presentation.x !== prior.presentation.x || venue.presentation.y !== prior.presentation.y
+          );
+        }))
+    )
+      throw conflict("The village map changed during setup. Reload it before saving.");
     if (!founding)
       assertFoundingScenarioLocked(state, { foundingReason, foundingDetails, foundingGuidance, scenarioImprint });
     state.name = name;
@@ -3674,13 +3696,13 @@ export async function runVillageSetup(input: {
     state.worldFacts = worldFacts;
     state.selectedLorebookIds = selectedLorebookIds;
     state.loreTokenBudget = loreTokenBudget;
-    state.townMapImage = townMap.image;
-    if (!townMap.image || townMap.image !== village.townMapImage) {
+    if (founding) {
+      state.townMapImage = townMap.image;
       state.townMapCanvasWidth = townMap.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
       state.townMapCanvasHeight = townMap.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;
+      state.townMapImageSetAt = townMap.image.length > 0 ? new Date().toISOString() : "";
+      state.townMapView = townMap.view;
     }
-    state.townMapImageSetAt = townMap.image.length > 0 ? new Date().toISOString() : "";
-    state.townMapView = townMap.view;
     // Written on every setup, like the name and the setting: the wizard is the
     // only editor of the village's identity, and it opens holding what is
     // stored, so re-running it to redraw the map cannot quietly unlink the
@@ -4045,39 +4067,62 @@ export async function resetVillage(): Promise<VillageSnapshot> {
   return buildVillageSnapshot();
 }
 
-/**
- * Store the town map the homepage draws, or clear it by passing "".
- *
- * The picture is kept exactly as it was picked. Re-encoding it to fit a smaller
- * budget would be the same class of mistake as truncating an over-long prompt
- * preset: the player chose that image because they could see it. Anything too
- * big is refused instead, and the message names the size so they can act on it.
- *
- * ponytail: debug-level control. A base64 image on the village record is the
- * ceiling here — it needs no new storage and travels with a backup — but the
- * whole payload is re-sent on every change. A finished town map belongs on a
- * package asset or its own file, which is the upgrade path.
- */
-export async function setVillageTownMapImage(value: unknown, view?: unknown): Promise<VillageSnapshot> {
-  const submitted = await readTownMapSubmission(value, view);
-  const { image } = submitted;
-  // Stamped only while there is a map, so the tab can tell "no map" apart from
-  // "same map" when it decides whether to refetch.
-  const setAt = image.length > 0 ? new Date().toISOString() : "";
-  // The framing arrives WITH the picture rather than after it: a crop means
-  // nothing without the picture it is a crop of, and applying the two in two
-  // writes would draw the new picture framed by the old numbers for a beat.
-  // An absent or unusable framing takes the shipped default rather than being
-  // rejected, because the picture is the part the player chose deliberately.
-  const next = submitted.view;
+/** Replace the background and its complete pin layout in one village write. */
+export async function replaceVillageTownMap(value: unknown): Promise<VillageSnapshot> {
+  const body = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const submitted = await readTownMapSubmission(body.image, body.view);
+  if (typeof body.expectedMapSetAt !== "string") throw badRequest("Reload the village map before replacing it.");
+  if (!Array.isArray(body.placements)) throw badRequest("Review every venue pin before saving the map.");
+  const positions = new Map<
+    string,
+    { x: number | null; y: number | null; fromX: number | null; fromY: number | null }
+  >();
+  const coordinate = (value: unknown): number | null => {
+    if (value === null) return null;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
+      throw badRequest("Map pin coordinates must be between 0 and 1.");
+    return value;
+  };
+  for (const row of body.placements) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) throw badRequest("A venue pin is invalid.");
+    const item = row as Record<string, unknown>;
+    const id = asTrimmedString(item.venueId);
+    if (!id || positions.has(id)) throw badRequest("Every venue must have one distinct pin entry.");
+    const x = coordinate(item.x);
+    const y = coordinate(item.y);
+    const fromX = coordinate(item.fromX);
+    const fromY = coordinate(item.fromY);
+    if ((x === null) !== (y === null) || (fromX === null) !== (fromY === null))
+      throw badRequest("A venue pin needs both coordinates or neither.");
+    positions.set(id, { x, y, fromX, fromY });
+  }
   await mutateVillageState((state) => {
-    if (!image || image !== state.townMapImage) {
+    if (!isVillageFounded(state)) throw conflict("Found the village before replacing its map.");
+    if (state.townMapImageSetAt !== body.expectedMapSetAt)
+      throw conflict("The village map changed. Reload it before saving.");
+    if (state.venues.length !== positions.size || state.venues.some((venue) => !positions.has(venue.id)))
+      throw conflict("The venue list changed. Reload the village map before saving.");
+    for (const venue of state.venues) {
+      const spot = positions.get(venue.id)!;
+      if (venue.presentation.x !== spot.fromX || venue.presentation.y !== spot.fromY)
+        throw conflict("A venue pin changed. Reload the village map before saving.");
+      if (submitted.image === state.townMapImage && (spot.x !== spot.fromX || spot.y !== spot.fromY))
+        throw conflict("Choose a replacement map before moving venues.");
+    }
+    for (const venue of state.venues) {
+      const spot = positions.get(venue.id)!;
+      venue.presentation.x = spot.x;
+      venue.presentation.y = spot.y;
+    }
+    if (!submitted.image || submitted.image !== state.townMapImage) {
       state.townMapCanvasWidth = submitted.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
       state.townMapCanvasHeight = submitted.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;
     }
-    state.townMapImage = image;
-    state.townMapImageSetAt = setAt;
-    state.townMapView = next;
+    state.townMapImage = submitted.image;
+    state.townMapImageSetAt = submitted.image
+      ? new Date(Math.max(Date.now(), (Date.parse(state.townMapImageSetAt) || 0) + 1)).toISOString()
+      : "";
+    state.townMapView = submitted.view;
   });
   return buildVillageSnapshot();
 }
