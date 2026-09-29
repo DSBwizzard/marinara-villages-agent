@@ -23,6 +23,7 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
 import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.ts";
 import { removeVillager } from "../packages/villages/src/engine/packages/server/src/services/villages/village.ts";
+import { recheckRecentBuilderConversations } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
 import type {
   VillageVenue,
   VillageVillager,
@@ -125,6 +126,82 @@ async function main() {
     assert.equal(
       (await readVillageState()).venues.find((row) => row.buildProjectId === id)?.constructionStatus,
       "worksite",
+    );
+    await mutateVillageState((state) => {
+      state.projects.find((row) => row.id === id)!.venueDraft!.description =
+        "The lookout rests in an ironwood tree above the road.";
+    });
+    modelEvents = [];
+    await recordProjectConversation({
+      submissionId: "unrelated-offer",
+      venueId: "mill",
+      playerMessage: "Do you want to build cabinets for the mill?",
+      lines: [{ id: "unrelated-line", speakerId: "rosa", content: "I'll do it." }],
+      context: [],
+      at,
+    });
+    assert.equal((await readVillageState()).projects.find((row) => row.id === id)?.lifecycle?.candidates.length, 0);
+    const replayAt = new Date(Date.now() + 1_000).toISOString();
+    records.set("villages-venue-visit-builder-replay", {
+      id: "villages-venue-visit-builder-replay",
+      kind: "venue-visit",
+      revision: 1,
+      data: {
+        id: "builder-replay",
+        status: "closed",
+        placeId: "mill",
+        startedAt: replayAt,
+        participants: [{ characterId: "ivo", name: "Ivo" }],
+        submissions: [
+          {
+            id: "replay-turn",
+            mode: "chat",
+            message: "Do you want to build the lookout on the ironwood tree?",
+            at: replayAt,
+          },
+        ],
+        lines: [
+          { id: "replay-user", role: "user", speakerId: "", content: "Build the ironwood tree lookout?", at: replayAt },
+          {
+            id: "replay-offer",
+            role: "assistant",
+            speakerId: "ivo",
+            content: "I'll do it. Bird lady doesn't need to know what's up there.",
+            at: replayAt,
+          },
+        ],
+      },
+    });
+    await recheckRecentBuilderConversations(id);
+    await recheckRecentBuilderConversations(id);
+    assert.deepEqual(
+      (await readVillageState()).projects
+        .find((row) => row.id === id)
+        ?.lifecycle?.candidates.map((row) => row.evidenceId),
+      ["replay-offer"],
+    );
+    records.delete("villages-venue-visit-builder-replay");
+    await mutateVillageState((state) => {
+      const flow = state.projects.find((row) => row.id === id)!.lifecycle!;
+      flow.candidates = [];
+      flow.evidenceIds = [];
+    });
+    await recordProjectConversation({
+      submissionId: "lookout-offer",
+      venueId: "mill",
+      playerMessage: "Do you want to build the lookout on the ironwood tree?",
+      lines: [
+        { id: "lookout-reference", speakerId: "rosa", content: "The tree." },
+        { id: "lookout-acceptance", speakerId: "rosa", content: "I'll do it." },
+      ],
+      context: [],
+      at,
+    });
+    assert.deepEqual(
+      (await readVillageState()).projects
+        .find((row) => row.id === id)
+        ?.lifecycle?.candidates.map((row) => row.evidenceId),
+      ["lookout-acceptance"],
     );
     const line = { id: "builder-offer", speakerId: "rosa", content: "I can build Lantern House." };
     modelEvents = [

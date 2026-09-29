@@ -576,9 +576,49 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
 
 type SpokenProjectLine = { id: string; speakerId: string; content: string };
 
+const projectReferenceStopWords = new Set(["building", "project", "village", "resident", "people", "outside"]);
+
+function namesProjectInBuilderRequest(project: VillageProject, playerMessage: string): boolean {
+  const message = playerMessage.toLocaleLowerCase();
+  if (message.includes(project.title.toLocaleLowerCase())) return true;
+  // A player may call an Observation Post a lookout. A shared, distinctive
+  // phrase from the venue description still ties that request to the project.
+  const description = project.venueDraft?.description ?? "";
+  const words = description.toLocaleLowerCase().match(/\p{L}+/gu) ?? [];
+  return words.some((word, index) => {
+    const next = words[index + 1];
+    return (
+      next &&
+      word.length >= 4 &&
+      next.length >= 4 &&
+      (word.length >= 7 || next.length >= 7) &&
+      !projectReferenceStopWords.has(word) &&
+      !projectReferenceStopWords.has(next) &&
+      message.includes(`${word} ${next}`)
+    );
+  });
+}
+
+function contextualBuilderRequest(project: VillageProject, playerMessage: string): boolean {
+  return (
+    /\?|\b(?:want|need|please) you\b/iu.test(playerMessage) &&
+    /\b(?:build|construct|renovate|put up)\b/iu.test(playerMessage) &&
+    namesProjectInBuilderRequest(project, playerMessage)
+  );
+}
+
+function builderCommitment(content: string, contextualRequest: boolean): boolean {
+  return (
+    /\b(?:i will|i'll|i can|yes|agree|count me in)\b/iu.test(content) &&
+    (/\b(?:build|construct|renovat\w*|work on)\b/iu.test(content) ||
+      (contextualRequest && /\b(?:i will|i'll|i can) (?:do it|take it on|handle it)\b/iu.test(content)))
+  );
+}
+
 /** Read the ordinary visit's newly spoken lines once. Project progress is never inferred from narration alone. */
 export async function recordProjectConversation(input: {
   submissionId: string;
+  projectId?: string;
   venueId: string;
   playerMessage: string;
   lines: SpokenProjectLine[];
@@ -589,12 +629,37 @@ export async function recordProjectConversation(input: {
   const state = await (await import("./village-store.js")).readVillageState();
   const relevant = state.projects.filter(
     (project) =>
-      project.lifecycle && ["approval", "builder", "requirements", "materials"].includes(project.lifecycle.phase),
+      project.lifecycle &&
+      (!input.projectId || project.id === input.projectId) &&
+      ["approval", "builder", "requirements", "materials"].includes(project.lifecycle.phase),
   );
   if (!relevant.length) return;
   const participants = new Set(state.villagers.map((entry) => entry.characterId));
   const usable = input.lines.filter((line) => participants.has(line.speakerId));
   if (!usable.length) return;
+  // Keep a narrow local path for direct answers such as "I'll do it". A model
+  // review can miss these when the player uses a nickname for the Project.
+  const contextualProjects = relevant.filter(
+    (project) => project.lifecycle?.phase === "builder" && contextualBuilderRequest(project, input.playerMessage),
+  );
+  if (contextualProjects.length === 1) {
+    const offer = usable.find(
+      (line) =>
+        !/\b(?:not|never|don't|can't|won't|refuse)\b/iu.test(line.content) && builderCommitment(line.content, true),
+    );
+    if (offer) {
+      await mutateVillageState((current) => {
+        const project = current.projects.find((entry) => entry.id === contextualProjects[0]!.id);
+        const flow = project?.lifecycle;
+        if (!flow || flow.phase !== "builder" || flow.evidenceIds.includes(offer.id)) return;
+        if (!current.villagers.some((resident) => resident.characterId === offer.speakerId)) return;
+        if (!flow.candidates.some((row) => row.residentId === offer.speakerId))
+          flow.candidates.push({ residentId: offer.speakerId, evidenceId: offer.id, at: input.at });
+        flow.evidenceIds.push(offer.id);
+        project.updatedAt = input.at;
+      });
+    }
+  }
   try {
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
@@ -605,7 +670,7 @@ export async function recordProjectConversation(input: {
         content: [
           "Identify explicit Project events in the NEW spoken lines only. Do not infer an agreement, handoff, or requirement from narration or the player's words. Reply JSON only.",
           'Shape: {"events":[{"projectId":"exact id","kind":"builder-agreement|approval|requirements|supply","residentId":"exact speaker id","lineId":"exact new line id","quote":"exact excerpt of that line","items":[{"category":"structure|equipment|finish","title":"specific item or not needed","needed":true}]}]}.',
-          "Use builder-agreement only for a clear, willing agreement to build the named Project. Use approval only for clear consent to the named Renovation. Use requirements only when the assigned builder states a concrete plan covering all three categories; they may explicitly say a category is not needed. Use supply only for an explicit handoff of a named listed item to the player. Return an empty list when uncertain.",
+          "Use builder-agreement only for a clear, willing agreement to build the Project the player asked about. A short answer such as 'I'll do it' can be an agreement when the player's request unambiguously identifies the Project. Use approval only for clear consent to the named Renovation. Use requirements only when the assigned builder states a concrete plan covering all three categories; they may explicitly say a category is not needed. Use supply only for an explicit handoff of a named listed item to the player. Return an empty list when uncertain.",
         ].join(" "),
       },
       {
@@ -614,6 +679,7 @@ export async function recordProjectConversation(input: {
           projects: relevant.map((project) => ({
             id: project.id,
             title: project.title,
+            description: project.venueDraft?.description ?? project.lifecycle?.change?.detail ?? "",
             kind: project.kind,
             phase: project.lifecycle!.phase,
             venueName: state.venues.find((venue) => venue.id === project.venueId)?.name,
@@ -660,7 +726,8 @@ export async function recordProjectConversation(input: {
           .some((item) =>
             `${input.playerMessage} ${line.content}`.toLocaleLowerCase().includes(item.toLocaleLowerCase()),
           );
-        if (!named) continue;
+        const contextualRequest = contextualProjects.length === 1 && contextualProjects[0]!.id === project.id;
+        if (!named && !(event.kind === "builder-agreement" && contextualRequest)) continue;
         const at = input.at;
         if (
           event.kind === "approval" &&
@@ -678,8 +745,7 @@ export async function recordProjectConversation(input: {
           event.kind === "builder-agreement" &&
           flow.phase === "builder" &&
           !refusing &&
-          /\b(?:build|construct|renovat|work on)\b/iu.test(content) &&
-          /\b(?:i will|i'll|i can|yes|agree|count me in)\b/iu.test(content)
+          builderCommitment(content, contextualRequest)
         ) {
           if (!flow.candidates.some((row) => row.residentId === line.speakerId))
             flow.candidates.push({ residentId: line.speakerId, evidenceId: line.id, at });

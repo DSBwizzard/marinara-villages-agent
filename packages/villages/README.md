@@ -51,6 +51,8 @@ A played tiered visit is closed and releases the active-room pointer before revi
 
 ## What this release contains
 
+0.6.70 recognizes a Builder's brief spoken agreement when the player's request clearly identifies a Project through its venue description, even if the resident replies “I'll do it” rather than repeating the Project's title. Projects can recheck recent archived chats for missed Builder agreements without asking the resident again.
+
 0.6.66 places the residence move request with the View Venue header actions and shows a refusal directly beneath them. The separate About this area card is removed; additional discovered area facts remain available within the Zone panel.
 
 0.6.65 gives View Venue a zone sidebar and one area at a time, with locked previews for spaces not yet entered. The area button now enters the selected exterior, shared, public, or invited private space. Private tabs follow the current residents, and the navy and violet design is the Villages UI default until future themes are added.

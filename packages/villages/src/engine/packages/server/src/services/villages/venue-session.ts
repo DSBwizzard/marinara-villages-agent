@@ -3040,6 +3040,46 @@ export async function readVenueVisit(id: string): Promise<VenueSession> {
   return session;
 }
 
+/** Replay recent saved speech when a Builder offer was missed during a visit. */
+export async function recheckRecentBuilderConversations(projectId: string): Promise<void> {
+  const village = await readVillageState();
+  const project = village.projects.find((entry) => entry.id === projectId);
+  if (!project?.lifecycle) throw notFound("That Project is no longer available.");
+  if (project.lifecycle.phase !== "builder") throw conflict("This Project is not seeking a Builder.");
+  const worksiteAt = village.venues.find((entry) => entry.id === project.venueId)?.state.updatedAt ?? "";
+  const since = Math.max(Date.now() - 7 * 24 * 60 * 60_000, Date.parse(worksiteAt) || 0);
+  for (const session of (await listVenueVisits()).slice(0, 20)) {
+    for (const submission of session.submissions) {
+      if (
+        (submission.mode !== "chat" && submission.mode !== "ask") ||
+        !submission.at ||
+        Date.parse(submission.at) < since ||
+        !/\b(?:build|construct|renovate|put up)\b/iu.test(submission.message)
+      )
+        continue;
+      const participants = new Set(session.participants.map((entry) => entry.characterId));
+      const lines = session.lines
+        .filter((line) => line.at === submission.at && line.role === "assistant" && participants.has(line.speakerId))
+        .map(({ id, speakerId, content }) => ({ id, speakerId, content }));
+      if (!lines.length) continue;
+      const turnStart = session.lines.findIndex((line) => line.at === submission.at && line.role === "user");
+      const context = session.lines
+        .slice(Math.max(0, turnStart - 8), turnStart < 0 ? 0 : turnStart)
+        .filter((line) => participants.has(line.speakerId))
+        .map(({ id, speakerId, content }) => ({ id, speakerId, content }));
+      await recordProjectConversation({
+        projectId,
+        submissionId: submission.id,
+        venueId: session.placeId,
+        playerMessage: submission.message,
+        lines,
+        context,
+        at: submission.at,
+      });
+    }
+  }
+}
+
 export async function listVenueVisitSummaries(
   filter: { placeId?: string; characterId?: string; offset?: number; limit?: number } = {},
 ): Promise<{
