@@ -188,14 +188,14 @@ assert.equal(
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const entry = readFileSync(
-  join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
+  join(root, "packages/villages/src/engine/packages/client/src/villages-sprite-studio.tsx"),
   "utf8",
 );
-assert.ok(entry.includes("Facing villagers"));
-assert.ok(entry.includes("Review candidate"));
+assert.ok(entry.includes("facing villagers"));
+assert.ok(entry.includes("Review candidates"));
 assert.ok(entry.includes("Download both views and manifest"));
 assert.ok(entry.includes('item.label === "neutral"'));
-assert.ok(entry.includes("Approve this sprite"));
+assert.ok(entry.includes("Approve selected"));
 
 checkEngineRefusal()
   .then(() =>

@@ -456,6 +456,7 @@ export type VillageResidentSprite = {
 };
 
 export type VillageVillagerCardSnapshot = {
+  spriteReference?: { url: string; capturedAt: string; origin: "snapshot" | "current-card" | "upload" };
   id: string;
   revision: number;
   sourceStatus: "available" | "missing";

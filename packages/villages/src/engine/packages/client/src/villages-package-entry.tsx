@@ -1,3 +1,4 @@
+import { SpriteStudio } from "./villages-sprite-studio.js";
 // Villages — client entry for the Home → Villages browser tab.
 //
 // The host mounts this module's custom element as `marinara-capability-villages`
@@ -9185,392 +9186,6 @@ async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promi
   );
 }
 
-function ResidentSpriteEditor({
-  villager,
-  onSaved,
-}: {
-  villager: VillageVillagerView;
-  onSaved: (snapshot: VillageSnapshot) => void;
-}) {
-  const base = `/villagers/${encodeURIComponent(villager.characterId)}/sprites`;
-  const [view, setView] = useState<"front" | "side">("front");
-  const [expression, setExpression] = useState("neutral");
-  const [custom, setCustom] = useState("");
-  const [appearance, setAppearance] = useState("");
-  const [useReference, setUseReference] = useState(true);
-  const [candidate, setCandidate] = useState<{ view: "front" | "side"; label: string; image: string } | null>(null);
-  const [source, setSource] = useState<Array<{ expression: string; url: string }>>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [note, setNote] = useState("");
-  const uploadRef = useRef<HTMLInputElement>(null);
-  const allApproved = villager.sprite?.images ?? [];
-  const approved = allApproved.filter((item) => item.view === view);
-  const hasFrontNeutral = allApproved.some((item) => item.view === "front" && item.label === "neutral");
-  const hasNeutral = approved.some((item) => item.label === "neutral");
-  const selectedExpression = expression === "custom" ? custom.trim().toLowerCase().replace(/\s+/g, "_") : expression;
-  const selectedApproved = approved.find((item) => item.label === selectedExpression);
-  const expressionChoices = [
-    ...STARTER_SPRITE_EXPRESSIONS,
-    ...allApproved
-      .map((item) => item.label)
-      .filter((label) => !STARTER_SPRITE_EXPRESSIONS.includes(label as (typeof STARTER_SPRITE_EXPRESSIONS)[number])),
-  ].filter((label, index, all) => all.indexOf(label) === index);
-
-  useEffect(() => {
-    setCandidate(null);
-    setView("front");
-    setExpression("neutral");
-    setError("");
-    request<{ sprites: Array<{ expression: string; url: string }> }>(`${base}/source`)
-      .then((result) => setSource(result.sprites))
-      .catch(() => setSource([]));
-  }, [base]);
-
-  async function perform(action: () => Promise<void>) {
-    setBusy(true);
-    setError("");
-    setNote("");
-    try {
-      await action();
-    } catch (cause) {
-      setError(messageFrom(cause, "The sprite could not be prepared."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function validExpression(): string {
-    if (!/^[a-z0-9_-]{1,40}$/.test(selectedExpression))
-      throw new Error("Use a short expression name with letters, numbers, dashes, or underscores.");
-    if (view === "side" && !hasFrontNeutral) throw new Error("Approve the front neutral sprite first.");
-    if (selectedExpression !== "neutral" && !hasNeutral) throw new Error(`Approve the ${view} neutral sprite first.`);
-    return selectedExpression;
-  }
-
-  return (
-    <section className={`${ELEMENT_TAG}-sprite-editor`} aria-label={`${villager.name} sprite studio`}>
-      <div className={`${ELEMENT_TAG}-sprite-heading`}>
-        <div>
-          <h3>{villager.name}&apos;s sprite studio</h3>
-          <p>Build a front view for player conversations and one side profile for villager-to-villager moments.</p>
-        </div>
-        <span className={`${ELEMENT_TAG}-sprite-count`}>{allApproved.length} approved</span>
-      </div>
-      <div className={`${ELEMENT_TAG}-sprite-views`} aria-label="Sprite view">
-        {(["front", "side"] as const).map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={`${ELEMENT_TAG}-sprite-view`}
-            aria-pressed={view === item}
-            data-active={view === item ? "true" : "false"}
-            disabled={busy}
-            onClick={() => {
-              setView(item);
-              setExpression("neutral");
-              setCandidate(null);
-            }}
-          >
-            <strong>{item === "front" ? "Facing you" : "Facing villagers"}</strong>
-            <span>
-              {allApproved.filter((cell) => cell.view === item).length} approved ·{" "}
-              {item === "front" ? "front" : "side, mirrored left or right"}
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className={`${ELEMENT_TAG}-sprite-section-head`}>
-        <strong>Choose an expression</strong>
-        <span>Only approved images appear in scenes.</span>
-      </div>
-      <div className={`${ELEMENT_TAG}-sprite-choices`}>
-        {expressionChoices.map((item) => {
-          const image = approved.find((cell) => cell.label === item);
-          return (
-            <button
-              key={item}
-              type="button"
-              className={`${ELEMENT_TAG}-sprite-choice`}
-              data-active={expression === item ? "true" : "false"}
-              aria-pressed={expression === item}
-              disabled={busy}
-              onClick={() => {
-                setExpression(item);
-                setCandidate(null);
-              }}
-            >
-              <span className={`${ELEMENT_TAG}-sprite-choice-art`}>
-                {image ? <img src={image.url} alt="" /> : <span aria-hidden="true">＋</span>}
-              </span>
-              <span>{item}</span>
-              <small>{image ? "Approved" : "Open"}</small>
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-sprite-choice`}
-          data-active={expression === "custom" ? "true" : "false"}
-          aria-pressed={expression === "custom"}
-          disabled={busy}
-          onClick={() => {
-            setExpression("custom");
-            setCandidate(null);
-          }}
-        >
-          <span className={`${ELEMENT_TAG}-sprite-choice-art`} aria-hidden="true">
-            ✦
-          </span>
-          <span>Custom</span>
-          <small>Name your own</small>
-        </button>
-      </div>
-      {expression === "custom" ? (
-        <label>
-          Custom expression name
-          <input
-            value={custom}
-            maxLength={40}
-            disabled={busy}
-            onChange={(event) => {
-              setCustom(event.target.value);
-              setCandidate(null);
-            }}
-          />
-        </label>
-      ) : null}
-      <div className={`${ELEMENT_TAG}-sprite-selected`}>
-        <strong>
-          {view === "front" ? "Front" : "Side"} · {selectedExpression || "custom"}
-        </strong>
-        <span>
-          {selectedApproved
-            ? "Approved art is ready. You can replace it after reviewing a new candidate."
-            : "No approved art yet."}
-        </span>
-      </div>
-      {view === "side" && !hasFrontNeutral ? (
-        <p className={`${ELEMENT_TAG}-hint`}>
-          Start with an approved front neutral sprite to keep the side profile recognizable.
-        </p>
-      ) : null}
-      {selectedExpression !== "neutral" && !hasNeutral ? (
-        <p className={`${ELEMENT_TAG}-hint`}>Approve this view&apos;s neutral sprite before adding expressions.</p>
-      ) : null}
-      <label>
-        Appearance details for generation
-        <textarea
-          value={appearance}
-          maxLength={2000}
-          disabled={busy}
-          onChange={(event) => setAppearance(event.target.value)}
-          placeholder="Use the resident’s saved appearance, or describe it here"
-        />
-      </label>
-      <label className={`${ELEMENT_TAG}-row`}>
-        <input
-          type="checkbox"
-          checked={useReference}
-          disabled={busy}
-          onChange={(event) => setUseReference(event.target.checked)}
-        />{" "}
-        Use an approved neutral or available portrait as the identity reference
-      </label>
-      <p className={`${ELEMENT_TAG}-hint`}>
-        Turn references off for a connection that cannot accept images. Review identity carefully before approval.
-      </p>
-      <div className={`${ELEMENT_TAG}-sprite-actions`}>
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-button`}
-          disabled={busy || (view === "side" && !hasFrontNeutral) || (selectedExpression !== "neutral" && !hasNeutral)}
-          onClick={() =>
-            void perform(async () => {
-              const label = validExpression();
-              const result = await request<{ image: string; width: number; height: number }>(`${base}/generate`, {
-                method: "POST",
-                body: JSON.stringify({ view, expression: label, appearance, useReference }),
-              });
-              setCandidate({ view, label, image: result.image });
-              setNote(`Candidate: ${result.width} × ${result.height}. Review before approving.`);
-            })
-          }
-        >
-          {busy ? "Working…" : `Generate ${view} ${selectedExpression || "sprite"} · 1 image request`}
-        </button>
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-button`}
-          disabled={busy || (view === "side" && !hasFrontNeutral) || (selectedExpression !== "neutral" && !hasNeutral)}
-          onClick={() => uploadRef.current?.click()}
-        >
-          Upload candidate
-        </button>
-        <input
-          ref={uploadRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/avif"
-          hidden
-          onChange={(event) =>
-            void perform(async () => {
-              const label = validExpression();
-              const file = event.target.files?.[0];
-              if (file) setCandidate({ view, label, image: await readFileAsDataUrl(file) });
-              event.target.value = "";
-            })
-          }
-        />
-      </div>
-      <p className={`${ELEMENT_TAG}-hint`}>
-        One cell per click. Approval, mirroring, and export use no image API. If the selected Engine connection fails,
-        its configured fallback may make another provider attempt.
-      </p>
-      {candidate ? (
-        <div className={`${ELEMENT_TAG}-sprite-candidate`}>
-          <div className={`${ELEMENT_TAG}-sprite-section-head`}>
-            <strong>Review candidate</strong>
-            <span>
-              {candidate.view} · {candidate.label}
-            </span>
-          </div>
-          <div className={`${ELEMENT_TAG}-sprite-candidate-views`}>
-            <div>
-              <img src={candidate.image} alt={`${candidate.view} ${candidate.label} candidate for ${villager.name}`} />
-              <span>{candidate.view === "side" ? "Facing right" : "Facing you"}</span>
-            </div>
-            {candidate.view === "side" ? (
-              <div>
-                <img className={`${ELEMENT_TAG}-sprite-mirrored`} src={candidate.image} alt="" />
-                <span>Mirrored left · no extra image</span>
-              </div>
-            ) : null}
-          </div>
-          <div className={`${ELEMENT_TAG}-row`}>
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              disabled={busy}
-              onClick={() =>
-                void perform(async () => {
-                  const next = await request<VillageSnapshot>(`${base}/approve`, {
-                    method: "POST",
-                    body: JSON.stringify({ view: candidate.view, expression: candidate.label, image: candidate.image }),
-                  });
-                  onSaved(next);
-                  setCandidate(null);
-                  setNote(`${candidate.view} ${candidate.label} approved.`);
-                })
-              }
-            >
-              Approve this sprite
-            </button>
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              disabled={busy}
-              onClick={() => setCandidate(null)}
-            >
-              Discard candidate
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {source.length && view === "front" ? (
-        <details className={`${ELEMENT_TAG}-sprite-more`}>
-          <summary>Copy an existing Engine full-body sprite</summary>
-          <div className={`${ELEMENT_TAG}-row`}>
-            {source.map((item) => (
-              <button
-                key={item.expression}
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy || (item.expression !== "neutral" && !hasNeutral)}
-                onClick={() =>
-                  void perform(async () => {
-                    const next = await request<VillageSnapshot>(`${base}/import`, {
-                      method: "POST",
-                      body: JSON.stringify({ view, expression: item.expression }),
-                    });
-                    onSaved(next);
-                    setNote(`${item.expression} copied to this Village.`);
-                  })
-                }
-              >
-                {item.expression}
-              </button>
-            ))}
-          </div>
-        </details>
-      ) : null}
-      {allApproved.length ? (
-        <>
-          <details className={`${ELEMENT_TAG}-sprite-more`}>
-            <summary>Display framing and export</summary>
-            <div className={`${ELEMENT_TAG}-row`}>
-              <label>
-                Display framing{" "}
-                <select
-                  value={villager.sprite?.framing.mode ?? "full"}
-                  disabled={busy}
-                  onChange={(event) =>
-                    void perform(async () =>
-                      onSaved(
-                        await request<VillageSnapshot>(`${base}/framing`, {
-                          method: "PATCH",
-                          body: JSON.stringify({
-                            mode: event.target.value,
-                            cropPercent: villager.sprite?.framing.cropPercent ?? 58,
-                          }),
-                        }),
-                      ),
-                    )
-                  }
-                >
-                  <option value="full">Full body</option>
-                  <option value="half">Waist up</option>
-                </select>
-              </label>
-              {villager.sprite?.framing.mode === "half" ? (
-                <label>
-                  Visible height: {villager.sprite.framing.cropPercent}%{" "}
-                  <input
-                    type="range"
-                    min={40}
-                    max={85}
-                    value={villager.sprite.framing.cropPercent}
-                    disabled={busy}
-                    onChange={(event) =>
-                      void perform(async () =>
-                        onSaved(
-                          await request<VillageSnapshot>(`${base}/framing`, {
-                            method: "PATCH",
-                            body: JSON.stringify({ mode: "half", cropPercent: Number(event.target.value) }),
-                          }),
-                        ),
-                      )
-                    }
-                  />
-                </label>
-              ) : null}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy}
-                onClick={() => void perform(() => downloadResidentSpriteSheet(villager))}
-              >
-                Download both views and manifest
-              </button>
-            </div>
-          </details>
-        </>
-      ) : null}
-      {note ? <p role="status">{note}</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
-    </section>
-  );
-}
-
 /** One paragraph in a venue visit, with its speaker and attached asides. */
 type RoomStep = {
   /**
@@ -11495,6 +11110,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const menuSection = menuCategory(menuPage);
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
   const [spriteEditorId, setSpriteEditorId] = useState<string | null>(null);
+  const spriteRosterButton = useRef<HTMLButtonElement | null>(null);
+  const spriteRosterScroll = useRef<Array<{ element: HTMLElement; top: number }>>([]);
   /**
    * Portraits, by character id, as the Engine has been willing to hand them over.
    *
@@ -16606,8 +16223,28 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 ) : null}
               </section>
             ) : null}
+            {menuPage === "villagers" &&
+            spriteEditorId &&
+            snapshot?.villagers.some((entry) => entry.characterId === spriteEditorId) ? (
+              <SpriteStudio
+                key={spriteEditorId}
+                villager={snapshot.villagers.find((entry) => entry.characterId === spriteEditorId)!}
+                request={request}
+                onSaved={(next) => setSnapshot(next as VillageSnapshot)}
+                onExport={() =>
+                  downloadResidentSpriteSheet(snapshot.villagers.find((entry) => entry.characterId === spriteEditorId)!)
+                }
+                onBack={() => {
+                  setSpriteEditorId(null);
+                  requestAnimationFrame(() => {
+                    for (const { element, top } of spriteRosterScroll.current) element.scrollTop = top;
+                    spriteRosterButton.current?.focus({ preventScroll: true });
+                  });
+                }}
+              />
+            ) : null}
             {menuPage === "villagers" ? (
-              <div className={`${ELEMENT_TAG}-overlay`}>
+              <div className={`${ELEMENT_TAG}-overlay`} style={spriteEditorId ? { display: "none" } : undefined}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
                   <h2 className={`${ELEMENT_TAG}-panel-title`}>Villagers</h2>
                 </div>
@@ -16725,16 +16362,21 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 <button
                                   type="button"
                                   className={`${ELEMENT_TAG}-button`}
-                                  onClick={() =>
-                                    setSpriteEditorId(
-                                      spriteEditorId === villager.characterId ? null : villager.characterId,
-                                    )
-                                  }
+                                  onClick={(event) => {
+                                    spriteRosterButton.current = event.currentTarget;
+                                    spriteRosterScroll.current = [];
+                                    for (
+                                      let element: HTMLElement | null = event.currentTarget.parentElement;
+                                      element;
+                                      element = element.parentElement
+                                    ) {
+                                      spriteRosterScroll.current.push({ element, top: element.scrollTop });
+                                    }
+                                    setSpriteEditorId(villager.characterId);
+                                  }}
                                   aria-expanded={spriteEditorId === villager.characterId}
                                 >
-                                  {spriteEditorId === villager.characterId
-                                    ? "Close sprite studio"
-                                    : `Sprites · ${villager.sprite?.images.length ?? 0} approved`}
+                                  {`Sprite Studio · ${villager.sprite?.images.length ?? 0} approved`}
                                 </button>
                                 <button
                                   type="button"
@@ -16765,9 +16407,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 </button>
                               </span>
                             </div>
-                            {spriteEditorId === villager.characterId ? (
-                              <ResidentSpriteEditor villager={villager} onSaved={setSnapshot} />
-                            ) : null}
                           </div>
                         ))}
                       </div>

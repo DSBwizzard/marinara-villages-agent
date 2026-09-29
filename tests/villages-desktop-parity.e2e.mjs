@@ -179,7 +179,19 @@ try {
         return;
       }
       let value = fixtureSnapshot;
-      if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
+      if (path.endsWith("/sprites/studio") || path.endsWith("/sprites/studio/settings"))
+        value = {
+          version: 1,
+          settings: {
+            style: "PAPERCRAFT",
+            prompts: { PAPERCRAFT: "Paper", BATTLEHIGHWAY: "Angular", Custom: "" },
+            connectionId: "",
+          },
+          jobs: [],
+          connections: [],
+          reference: null,
+        };
+      else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/personas")) value = { personas: [] };
@@ -301,6 +313,15 @@ try {
     await expect(page.getByText("Market today")).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /^Villagers \(/u }).click();
+    const studioButton = page.getByRole("button", { name: /Sprite Studio ·/u }).first();
+    await studioButton.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "Mara’s Sprite Studio" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Review generation plan" })).toBeVisible();
+    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await expect(studioButton).toBeFocused();
+    await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();
     await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();

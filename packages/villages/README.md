@@ -28,9 +28,13 @@ Unfinished projects from the earlier receipt-based pipeline are retired when a s
 
 ## Villager sprites
 
-Open **Villagers → Sprites** beside any resident to use their sprite studio. **Facing you** holds front-facing art; **Facing villagers** holds one right-facing side profile that the scene mirrors when the resident looks left. Start with a front neutral sprite, then a side neutral. Add only the expressions you want in either view. Each generated candidate is one requested image, shown for review before approval; uploading, approval, mirroring, and sheet export do not call an image model. The Engine may try its configured fallback image connection if the first attempt fails.
+Open **Villagers → [Villager] → Sprite Studio** for Create, Review, and Approved workspaces. Approve a front neutral, then a right-facing three-quarter neutral, then select expressions and optional pose instructions. Scenes mirror the side view when looking left. PAPERCRAFT, BATTLEHIGHWAY, and Custom each retain an editable style prompt per villager. Restyling starts with replacement neutral references; changing a prompt never changes existing art.
 
-Approved images belong to this Village. The scene uses the expression and gaze chosen in the existing dialogue reply, falls back to a neutral expression or front art when needed, and never generates sprites while you talk. The studio can copy existing Engine full-body sprites into the front view and export approved front and side cells with a JSON manifest.
+New resident snapshots capture Village-owned avatar bytes. Legacy snapshots explicitly capture the current avatar or accept an upload; existing approved art remains usable when a source card is changed or deleted. The village image connection is the default, with a saved per-villager override. Before each generation, review the actual model, expressions, provider-sized sheet layouts, request count, and cost availability. Sheets contain at most six cells from one view; individual replacement generation is an explicit choice. Studio generation requires the Engine single-sheet API; older hosts can still import, review, and use approved sprites.
+
+Jobs and original artwork persist separately from ordinary village snapshots. Studio requests never automatically retry or switch providers. Interrupted submissions retain their IDs and can recover saved artwork without another generation. Review supports crop, label, common scale, foot-anchor position, reversible saturated-background cleanup, and selected approval. Cleanup preserves off-white paper borders. Upload single images or sheets, optionally with the exported JSON manifest. Unapproved candidates remain until discarded, and approved images stay active until replacements are saved.
+
+The scene selects the approved expression and gaze from its existing dialogue reply, falls back to neutral or front art when needed, and never generates sprites while talking. Both views retain PNG/JSON export and full-body or waist-up framing. Cost estimates, when available, are separate from provider-reported usage; unavailable pricing is explicitly shown.
 
 ## Venue editing and resident authority
 
@@ -56,6 +60,8 @@ Conversation memories are event-centric. A promise heard by four residents is on
 A played tiered visit is closed and releases the active-room pointer before review. No recollections means no review call. A failed or interrupted review leaves `memoryPending` with its transcript and decisions safely retryable; automatic retention skips it. Opening **Villagers → Memories** retries one pending review and shows passing context, durable history, archive health, and exact cited lines. Existing legacy chronicle entries remain untouched and use their older scope/actor fallback.
 
 ## What this release contains
+
+0.6.75 adds the per-villager Sprite Studio, persistent sheet review, frozen identity references, and explicit generation planning with no automatic retries or provider fallback. The shared Engine Sprite Studio API is required for generation.
 
 0.6.72 gives venue replies a fixed scene-writing foundation that keeps each resident's card in charge while allowing narration and dialogue to vary with the moment. Recent scene history retains narration alongside speech in chronological order. Village Settings now has one optional Additional writing guidance field for both narration and dialogue; it adds a preference without replacing the foundation. Earlier custom Narration style and DEBUG reply-guidance text are intentionally not carried over, while tense, person, and rating remain.
 

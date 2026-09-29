@@ -172,7 +172,9 @@ export async function approveResidentSprite(
       : (owner.sprite?.assetId ?? `villages-${randomUUID()}`);
   const saved = asRecord(
     await villageEngineJson<unknown>(`/api/sprites/${assetId}`, {
-      body: { expression, image },
+      // Publish the new filename only after persistence succeeds. Existing approved
+      // bytes must remain intact if the village document update fails.
+      body: { expression: "s-" + randomUUID().replaceAll("-", ""), image },
     }),
   );
   const filename = asString(saved.filename);

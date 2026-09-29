@@ -16,6 +16,8 @@ Change `MARINARA_ENGINE_ROOT` if your Engine checkout is elsewhere. Before packa
 
 ## Install into the existing Engine
 
+Sprite Studio generation needs the local-only host support described in [host-patches/README.md](host-patches/README.md). Keep that patch in this Villages repository; do not publish it to upstream Marinara repositories. The compatibility helper checks before applying and never restarts the Engine.
+
 The sideload helper installs Villages into either an existing package registry or a fresh data directory. It preserves other installed package records and saves a registry backup when one already exists. After building, run:
 
 ```powershell
