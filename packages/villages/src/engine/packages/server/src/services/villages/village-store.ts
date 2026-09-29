@@ -343,6 +343,19 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     backstory: asString(raw.backstory),
     appearance: asString(raw.appearance),
     exampleDialogue: asString(raw.exampleDialogue),
+    ...(/^\/api\/sprites\/villages-[a-f0-9-]{36}\/file\/[a-z0-9_-]+\.(png|jpg|jpeg|webp)$/i.test(
+      asString(asRecord(raw.spriteReference).url),
+    )
+      ? {
+          spriteReference: {
+            url: asString(asRecord(raw.spriteReference).url),
+            capturedAt: asString(asRecord(raw.spriteReference).capturedAt),
+            origin: (["snapshot", "current-card", "upload"].includes(asString(asRecord(raw.spriteReference).origin))
+              ? asString(asRecord(raw.spriteReference).origin)
+              : "snapshot") as "snapshot" | "current-card" | "upload",
+          },
+        }
+      : {}),
     ...(typeof raw.nameColor === "string" ? { nameColor: asTrimmedString(raw.nameColor) } : {}),
     ...(typeof raw.dialogueColor === "string" ? { dialogueColor: asTrimmedString(raw.dialogueColor) } : {}),
     capturedAt,

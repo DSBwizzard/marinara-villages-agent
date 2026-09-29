@@ -626,7 +626,7 @@ async function generateOnce(
     const recent = promptRecollections
       .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
       .map((entry) => entry.text);
-    const spriteLabels = [...new Set(resident.sprite?.expressions.map((entry) => entry.label) ?? [])].slice(0, 8);
+    const spriteLabels = [...new Set(resident.sprite?.expressions.map((entry) => entry.label) ?? [])];
     return [
       `${card.name} (${person.characterId})`,
       venueCardProfile(card),

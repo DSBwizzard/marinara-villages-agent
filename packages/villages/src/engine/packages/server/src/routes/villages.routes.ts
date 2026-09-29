@@ -1,3 +1,15 @@
+import {
+  readSpriteStudio,
+  saveSpriteStudioSettings,
+  captureStudioReference,
+  planSpriteStudio,
+  startSpriteStudioJob,
+  importStudioSheet,
+  editStudioCell,
+  approveStudioCells,
+  discardStudioCell,
+  recoverStudioJob,
+} from "../services/villages/sprite-studio.js";
 // Villages — the package's privileged route surface, mounted at `/api/villages`.
 //
 // Everything behind this plugin is the Engine owner (the host authenticates
@@ -417,6 +429,38 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // than as bare functions, which the collector does not need but a real Fastify
   // instance does. See `sceneLockedRoutes` above.
   const app = engine;
+
+  app.get<{ Params: CharacterParams }>("/villagers/:characterId/sprites/studio", async (request, reply) => {
+    try {
+      return await readSpriteStudio(readCharacterId(request.params.characterId));
+    } catch (error) {
+      return fail(reply, error, "reading the sprite studio");
+    }
+  });
+  const studioActions: Record<string, (id: string, body: unknown) => Promise<unknown>> = {
+    settings: saveSpriteStudioSettings,
+    reference: captureStudioReference,
+    plan: planSpriteStudio,
+    jobs: startSpriteStudioJob,
+    import: importStudioSheet,
+    cell: editStudioCell,
+    approve: approveStudioCells,
+    discard: discardStudioCell,
+    recover: recoverStudioJob,
+  };
+  for (const [action, handler] of Object.entries(studioActions)) {
+    app.post<{ Params: CharacterParams; Body: unknown }>(
+      "/villagers/:characterId/sprites/studio/" + action,
+      { bodyLimit: 32_000_000 },
+      async (request, reply) => {
+        try {
+          return await handler(readCharacterId(request.params.characterId), request.body);
+        } catch (error) {
+          return fail(reply, error, "updating the sprite studio");
+        }
+      },
+    );
+  }
 
   app.get("/", async (_request, reply) => {
     try {
