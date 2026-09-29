@@ -371,6 +371,24 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     setDraft(null);
     setNote("Selected sprites approved.");
   }
+  async function deleteCandidate(item: Candidate) {
+    if (!window.confirm(`Delete the ${item.cell.view} ${item.cell.label} candidate from review?`)) return;
+    consume(await call<StudioData>("discard", { id: item.cell.id }));
+    setSelected((ids) => ids.filter((id) => id !== item.cell.id));
+    if (focused === item.cell.id) {
+      setFocused("");
+      setDraft(null);
+    }
+    setNote("Candidate removed from review.");
+  }
+  async function removeApproved(item: Approved) {
+    if (!window.confirm(`Remove the approved ${item.view} ${item.label} sprite from scenes?`)) return;
+    const result = await call<{ studio: StudioData; snapshot: unknown }>("remove", item);
+    consume(result.studio);
+    onSaved(result.snapshot);
+    setApprovedIndex(0);
+    setNote("Approved sprite removed from scenes.");
+  }
   return (
     <section className="vss" aria-label={villager.name + " Sprite Studio"}>
       <style>{css}</style>
@@ -612,7 +630,9 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                       onBlur={() => void perform(saveSettings)}
                     >
                       {Object.keys(SPRITE_STYLES).map((style) => (
-                        <option key={style}>{style}</option>
+                        <option key={style} value={style}>
+                          {style === "PAPERCRAFT" ? "Papercraft" : style === "BATTLEHIGHWAY" ? "Battle Highway" : style}
+                        </option>
                       ))}
                     </select>
                   </label>
@@ -940,6 +960,9 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                               {item.cell.label}
                             </label>
                             <small>{item.cell.view}</small>
+                            <button disabled={busy} onClick={() => void perform(() => deleteCandidate(item))}>
+                              Delete candidate
+                            </button>
                           </div>
                         ))}
                       </div>
@@ -1030,17 +1053,8 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                         >
                           Save crop and alignment
                         </button>
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            void perform(async () => {
-                              consume(await call<StudioData>("discard", { id: draft.id }));
-                              setFocused("");
-                              setDraft(null);
-                            })
-                          }
-                        >
-                          Discard candidate
+                        <button disabled={busy} onClick={() => void perform(() => deleteCandidate(current))}>
+                          Delete candidate
                         </button>
                         <button
                           disabled={running}
@@ -1098,6 +1112,9 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                               }}
                             >
                               Replace
+                            </button>
+                            <button disabled={busy} onClick={() => void perform(() => removeApproved(item))}>
+                              Remove approved sprite
                             </button>
                           </div>
                         ))}

@@ -19,6 +19,7 @@ import {
   editStudioCell,
   captureStudioReference,
   discardStudioCell,
+  removeStudioApprovedSprite,
   approveStudioCells,
   recoverStudioJob,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio.ts";
@@ -185,8 +186,8 @@ async function main() {
     assert.equal(data.jobs[0]!.sheets[0]!.usage, null);
     assert.match(requests[0].promptOverrides[0].prompt, /Arms raised/);
     assert.equal(requests[0].fullBodyExpressionMode, false);
-    assert.equal(requests[0].noBackground, false);
-    assert.equal(requests[0].nativeTransparentPng, false);
+    assert.equal(requests[0].noBackground, true);
+    assert.equal(requests[0].nativeTransparentPng, true);
     constrainedCanvas = true;
     const split = await planSpriteStudio("mara", input);
     assert.deepEqual(
@@ -229,6 +230,21 @@ async function main() {
         .filename,
       /^s-[a-f0-9]{32}\.png$/,
     );
+    const approved = records.get("villages-village").data.villagers[0].sprite;
+    const happy = approved.expressions.find((entry: any) => entry.label === "happy");
+    const happyUrl = `/api/sprites/${approved.assetId}/file/${happy.filename}?v=${happy.revision}`;
+    await assert.rejects(
+      () => removeStudioApprovedSprite("mara", { view: "front", label: "happy", url: happyUrl + "-stale" }),
+      /changed/,
+    );
+    assert.ok(records.get("villages-village").data.villagers[0].sprite.expressions.includes(happy));
+    const removed = await removeStudioApprovedSprite("mara", { view: "front", label: "happy", url: happyUrl });
+    assert.ok(
+      !records
+        .get("villages-village")
+        .data.villagers[0].sprite.expressions.some((entry: any) => entry.label === "happy"),
+    );
+    assert.ok(removed.snapshot);
     await discardStudioCell("mara", { id: sheet.cells[1]!.id });
     generationRelease = undefined;
     failGeneration = true;

@@ -3,7 +3,12 @@ import { badRequest, notFound } from "./errors.js";
 import { villageEngineJson } from "./engine-loopback.js";
 import { villagesDocuments, VILLAGES_PACKAGE_ID, villagesLogger } from "./package-runtime.js";
 import { mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
-import { approveResidentSprite, readSpriteExpression, readSpriteView } from "./resident-sprites.js";
+import {
+  approveResidentSprite,
+  readSpriteExpression,
+  readSpriteView,
+  removeResidentSprite,
+} from "./resident-sprites.js";
 import { resolveVillageImageConnectionId, inspectVillageImage } from "./image-generation.js";
 import { captureSpriteReference, saveStudioImage } from "./sprite-reference.js";
 import { asRecord, asString } from "./coerce.js";
@@ -464,6 +469,16 @@ async function discardStudioCellUnlocked(characterId: string, raw: unknown) {
   });
   return readSpriteStudio(characterId);
 }
+export const removeStudioApprovedSprite = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, async () => {
+    const body = asRecord(raw);
+    const snapshot = await removeResidentSprite(characterId, {
+      view: body.view,
+      expression: body.label,
+      expectedUrl: body.url,
+    });
+    return { studio: await readSpriteStudio(characterId), snapshot };
+  });
 export async function recoverStudioJob(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
   const job = (await read(id)).jobs.find((item) => item.id === asString(asRecord(raw).id));

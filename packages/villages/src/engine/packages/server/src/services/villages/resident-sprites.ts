@@ -198,6 +198,28 @@ export async function approveResidentSprite(
   return buildVillageSnapshot();
 }
 
+export async function removeResidentSprite(
+  characterId: string,
+  input: { view?: unknown; expression?: unknown; expectedUrl?: unknown },
+) {
+  const view = readSpriteView(input.view);
+  const expression = readSpriteExpression(input.expression);
+  const expectedUrl = typeof input.expectedUrl === "string" ? input.expectedUrl : "";
+  await mutateVillageState((state) => {
+    const current = state.villagers.find((entry) => entry.characterId === characterId);
+    if (!current) throw notFound("That resident no longer lives in this village.");
+    const sprite = current.sprite;
+    const approved = sprite?.expressions.find((entry) => entry.view === view && entry.label === expression);
+    if (!sprite || !approved) throw notFound("That approved sprite is no longer active.");
+    const assetId = view === "side" ? sprite.sideAssetId : sprite.assetId;
+    const url = `/api/sprites/${assetId}/file/${encodeURIComponent(approved.filename)}${approved.revision ? `?v=${approved.revision}` : ""}`;
+    if (expectedUrl !== url) throw badRequest("This sprite changed. Refresh Sprite Studio before removing it.");
+    sprite.expressions = sprite.expressions.filter((entry) => entry !== approved);
+    if (sprite.expressions.length === 0) current.sprite = null;
+  });
+  return buildVillageSnapshot();
+}
+
 export async function setResidentSpriteFraming(characterId: string, input: { mode?: unknown; cropPercent?: unknown }) {
   const mode = input.mode === "half" ? "half" : input.mode === "full" ? "full" : null;
   const cropPercent = input.cropPercent;
