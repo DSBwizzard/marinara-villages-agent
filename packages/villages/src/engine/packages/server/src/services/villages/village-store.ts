@@ -13,6 +13,7 @@ import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "./nar
 import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "./native-remap.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./package-runtime.js";
+import { coerceProgressTasks } from "./progress-engine.js";
 import { defaultVenueSpace, validVenueClasses, validVenueImprovements } from "./venue-model.js";
 import {
   boundText,
@@ -198,6 +199,7 @@ export function defaultVillageState(): VillageState {
     scheduledEvents: [],
     relationships: [],
     projects: [],
+    progressTasks: [],
     narrativeItems: [],
     projectSourceClaims: [],
     villageCapabilities: [],
@@ -2133,6 +2135,7 @@ export function coerceVillageState(value: unknown): VillageState {
     scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
     relationships: coerceRelationships(raw.relationships),
     projects: coerceProjects(raw.projects),
+    progressTasks: coerceProgressTasks(raw.progressTasks),
     narrativeItems: Array.isArray(raw.narrativeItems)
       ? raw.narrativeItems.flatMap((value) => {
           const item = asRecord(value);
