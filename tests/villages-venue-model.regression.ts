@@ -64,7 +64,7 @@ assert.deepEqual(venueInArea(venue, "outside", "residence").state.furniture, ["g
 assert.deepEqual(venueInArea(venue, "private", "residence", "bob").state.furniture, ["Bob's letter"]);
 assert.equal(venueInArea(venue, "outside", "residence").description.includes("private"), false);
 applyVenueSceneChange(
-  { venues: [venue], venueEvents: [], happenings: [] } as any,
+  { venues: [venue], venueEvents: [], happenings: [], narrativeItems: [] } as any,
   "shop",
   { narration: "The player plants a sign by the gate.", addItem: "sign" },
   "outside-action",

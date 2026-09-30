@@ -82,7 +82,7 @@ async function main() {
     MAX_SETTING_LENGTH,
     VILLAGES_GALLERY_FOLDER_NAME,
   } = await import(moduleUrl(`${services}/prompt-preset.ts`));
-  const { coerceVillageState, readVillageState } = await import(moduleUrl(`${services}/village-store.ts`));
+  const { coerceVillageState, readVillageState, mutateVillageState } = await import(moduleUrl(`${services}/village-store.ts`));
   const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/engine-loopback.ts`));
   const { describeMoment } = await import(moduleUrl(`${services}/village-clock.ts`));
 
@@ -389,9 +389,13 @@ async function main() {
     Object.keys(placesOf([house("bram-house", "character-bram")])[0]!).sort(),
     [
       "archivedPrivateSpaces",
+      "archivedZones",
+      "baseClasses",
+      "buildProjectId",
       "capabilities",
       "category",
       "classes",
+      "constructionStatus",
       "description",
       "editProposals",
       "exteriorState",
@@ -410,7 +414,9 @@ async function main() {
       "residentIds",
       "spaces",
       "state",
+      "usedInvitationIds",
       "workerIds",
+      "zones",
     ],
     "a stored place has normalized presentation, occupancy, capabilities, and state fields",
   );
@@ -826,7 +832,6 @@ async function main() {
   assert.equal(galleryCalls(UPLOAD_PATH).length, 0, "and it puts nothing in their gallery either");
   const editedHome = await put("/api/villages/locations/venue/player-home", {
     description: "A snug home overlooking the square.",
-    state: { condition: "well kept" },
   });
   assert.equal(editedHome.statusCode, 200, "Edit Room accepts a home without a custom name");
   assert.equal(
@@ -836,7 +841,7 @@ async function main() {
   const movedOccupiedHome = await put("/api/villages/locations/venue/millie-home", {
     presentation: { x: 0.9, y: 0.9 },
   });
-  assert.equal(movedOccupiedHome.statusCode, 409, "an occupied home cannot be moved on the map");
+  assert.equal(movedOccupiedHome.statusCode, 400, "an occupied home cannot be moved on the map");
 
   // ── A place can be added without a picture ────────────────────────────────
   const added = await patch("/api/villages/settings", {
@@ -856,10 +861,11 @@ async function main() {
       },
     ],
   });
-  assert.equal(added.statusCode, 200);
+  assert.equal(added.statusCode, 409, "finished buildings must use Projects");
+  await mutateVillageState(state => { state.venues.push(...placesOf([{id:"mill",name:"the mill pond",form:"where the grain is ground",description:"A stone mill beside shallow water."},{id:"ridge",name:"the ridge path",form:"A path along the ridge",description:"A narrow path over the ridge."}])); });
+  const addedSnapshot = (await import(moduleUrl(`${services}/village.ts`))).buildVillageSnapshot;
   assert.deepEqual(
-    added
-      .json()
+    (await addedSnapshot())
       .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
       .map((venue: any) => venue.presentation.image),
     [null, null],
@@ -1137,7 +1143,7 @@ async function main() {
   );
   assert.match(
     client,
-    /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId\)\}/,
+    /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId, zoneId\)\}/,
     "and wired to a click on the screen that stands in a place",
   );
   const imageService = await readFile(join(repoRoot, services, "location-image.ts"), "utf8");

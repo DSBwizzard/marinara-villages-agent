@@ -16,7 +16,7 @@ const sendButton = ui.match(
   /className=\{`\$\{ELEMENT_TAG\}-chat-send`\}[\s\S]*?aria-label=\{busy \? "Sending" : "Send"\}/u,
 )?.[0];
 assert.ok(sendButton, "the room has a native Send button");
-assert.match(sendButton, /onClick=\{onSend\}/u, "one click handler sends the room line");
+assert.match(sendButton, /onClick=\{submitComposer\}/u, "one click handler sends the room line");
 assert.doesNotMatch(sendButton, /onPointerDown|onTouchStart|onTouchEnd/u, "Send has no competing touch handlers");
 assert.match(
   ui,

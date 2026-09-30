@@ -1,3 +1,4 @@
+import { renovationTerms } from "./project-lifecycle.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import type { VillageState } from "./types.js";
 
@@ -63,7 +64,7 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
       return JSON.stringify({
         ...context,
         title: project.title,
-        detail: (flow.change?.detail ?? project.venueDraft?.description ?? "").slice(0, 500),
+        detail: flow.change ? renovationTerms(flow.change) : (project.venueDraft?.description ?? "").slice(0, 500),
         builderId: flow.builderId,
         affectedIds: flow.affectedIds,
         supplies: flow.requirements

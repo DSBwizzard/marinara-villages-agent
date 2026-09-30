@@ -250,7 +250,7 @@ const release = configureVillagesRuntime({
             };
           }
           if (user === "Please enter Bob's private space") {
-            const quote = "You may enter my private space now.";
+            const quote = "You may enter my private space with me now.";
             return {
               content: JSON.stringify({
                 heardPlayerBy: ["bob"],
@@ -261,6 +261,7 @@ const release = configureVillagesRuntime({
                   scope: "private",
                   ownerId: "bob",
                   timing: "now",
+                  accompanies: true,
                   quote,
                 },
               }),
@@ -1808,13 +1809,11 @@ async function main() {
 
     await mutateVillageState((state) => {
       state.villagers[0]!.agenda!.activeDay!.blocks[0]!.venueId = "empty";
+      state.villagers[0]!.agenda!.activeDay!.blocks[0]!.zoneId = undefined;
       state.villagers[1]!.agenda!.activeDay!.blocks[0]!.venueId = "empty";
+      state.villagers[1]!.agenda!.activeDay!.blocks[0]!.zoneId = undefined;
     });
-    assert.deepEqual(
-      (await activeVenueSession())?.activeIds,
-      ["bob", "tina"],
-      "agenda changes do not evict the starting cast",
-    );
+    assert.deepEqual((await activeVenueSession())?.activeIds, [], "agenda changes update the current zone cast");
     await sendVenueTurn({
       sessionId: group.id,
       message: "Bob heads away",
@@ -1824,8 +1823,8 @@ async function main() {
     });
     assert.deepEqual(
       (await activeVenueSession())?.activeIds,
-      ["bob", "tina"],
-      "a narrated departure does not change the cast",
+      [],
+      "narration does not bring absent villagers back into the zone",
     );
     await sendVenueTurn({
       sessionId: group.id,
@@ -1834,7 +1833,7 @@ async function main() {
       targetId: "",
       submissionId: "leave-tina",
     });
-    assert.deepEqual((await activeVenueSession())?.activeIds, ["bob", "tina"], "the cast stays fixed until exit");
+    assert.deepEqual((await activeVenueSession())?.activeIds, [], "absent villagers remain outside the zone");
     await endVenueSession(group.id);
     assert.equal(await activeVenueSession(), null, "Visit ends only when the player leaves");
     assert.equal(memoryCalls, 1, "one batched memory call closes a played visit");
@@ -1850,20 +1849,26 @@ async function main() {
 
     await mutateVillageState((state) => {
       state.villagers[1]!.agenda!.activeDay!.blocks[0]!.venueId = "park";
+      state.villagers[1]!.agenda!.activeDay!.blocks[0]!.zoneId = undefined;
     });
     const single = await greetVenue((await enterVenue("park"))!.id);
     assert.deepEqual(single.activeIds, ["tina"]);
     await mutateVillageState((state) => {
       state.villagers[0]!.agenda!.activeDay!.blocks[0]!.venueId = "park";
+      state.villagers[0]!.agenda!.activeDay!.blocks[0]!.zoneId = undefined;
     });
-    assert.deepEqual((await activeVenueSession())?.activeIds, ["tina"], "later arrival cannot join the current cast");
+    assert.deepEqual(
+      (await activeVenueSession())?.activeIds,
+      ["bob", "tina"],
+      "agenda arrivals join the current zone cast",
+    );
     await assert.rejects(
       () =>
         sendVenueTurn({
           sessionId: single.id,
           message: "Hello",
           mode: "chat",
-          targetId: "bob",
+          targetId: "outsider",
           submissionId: "wrong-target",
         }),
       /no longer in this conversation/u,
@@ -1913,7 +1918,11 @@ async function main() {
     assert.equal(closed.status, "closed");
     assert.equal(calls - beforeRetry, 1, "retry repeats only the failed memory call");
     assert.equal(closed.lines.filter((line) => line.content === "A natural goodbye").length, 1);
-    assert.equal((await listVenueVisits({ characterId: "bob" })).length, 1);
+    assert.equal(
+      (await listVenueVisits({ characterId: "bob" })).length,
+      2,
+      "Bob witnessed the visit after his agenda arrival",
+    );
     assert.equal((await listVenueVisits({ characterId: "tina" })).length, 2);
 
     const greetingOnly = await greetVenue((await enterVenue("park"))!.id);
@@ -2129,6 +2138,7 @@ async function main() {
     const privateVisit = await enterVenue("park");
     const privateRecord = records.get(key("villages", `villages-venue-visit-${privateVisit.id}`));
     privateRecord.data.status = "active";
+    privateRecord.data.legacyCast = true;
     privateRecord.data.participants = [
       { characterId: "bob", name: "Bob", doing: "listening" },
       { characterId: "tina", name: "Tina", doing: "listening" },
@@ -2168,6 +2178,7 @@ async function main() {
     const compactVisit = await enterVenue("park");
     const compactRecord = records.get(key("villages", `villages-venue-visit-${compactVisit.id}`));
     compactRecord.data.status = "active";
+    compactRecord.data.legacyCast = true;
     compactRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     compactRecord.data.activeIds = ["tina"];
     compactRecord.data.lines = Array.from({ length: 105 }, (_, index) => ({
@@ -2188,6 +2199,7 @@ async function main() {
     const fitVisit = await enterVenue("park");
     const fitRecord = records.get(key("villages", `villages-venue-visit-${fitVisit.id}`));
     fitRecord.data.status = "active";
+    fitRecord.data.legacyCast = true;
     fitRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     fitRecord.data.activeIds = ["tina"];
     fitRecord.data.lines = Array.from({ length: 20 }, (_, index) => ({
@@ -2216,6 +2228,7 @@ async function main() {
     const heldVisit = await enterVenue("park");
     const heldRecord = records.get(key("villages", `villages-venue-visit-${heldVisit.id}`));
     heldRecord.data.status = "active";
+    heldRecord.data.legacyCast = true;
     heldRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     heldRecord.data.activeIds = ["tina"];
     heldRecord.data.lines = [
@@ -2251,6 +2264,7 @@ async function main() {
     const longRecord = records.get(key("villages", `villages-venue-visit-${longVisit.id}`));
     assert.ok(longRecord);
     longRecord.data.status = "active";
+    longRecord.data.legacyCast = true;
     longRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     longRecord.data.activeIds = ["tina"];
     longRecord.data.lines = Array.from({ length: 112 }, (_, index) => ({
@@ -2498,6 +2512,7 @@ async function main() {
 
     const groupDraft = await enterVenue("park");
     const groupRecord = records.get(key("villages", `villages-venue-visit-${groupDraft.id}`));
+    groupRecord.data.legacyCast = true;
     groupRecord.data.participants = [
       { characterId: "bob", name: "Bob", doing: "listening" },
       { characterId: "tina", name: "Tina", doing: "listening" },
@@ -2572,6 +2587,7 @@ async function main() {
       const synthetic = await enterVenue("park");
       const record = records.get(key("villages", `villages-venue-visit-${synthetic.id}`));
       record.data.status = "active";
+      record.data.legacyCast = true;
       record.data.participants = [{ characterId: "bob", name: "Bob", doing: "listening" }];
       record.data.activeIds = ["bob"];
       record.data.lines = Array.from({ length: paragraphCount }, (_, index) => ({
@@ -2902,8 +2918,8 @@ async function main() {
     assert.equal(selectedExterior.area, "outside");
     await assert.rejects(
       () => enterVenue("home", "residence", "", "shared"),
-      /active Venue area/u,
-      "another selected area cannot reuse an exterior session",
+      /finish opening/u,
+      "navigation waits for the exterior scene to finish opening",
     );
     await endVenueSession(selectedExterior.id);
     let outside = await enterVenue("home", "residence");
@@ -2937,6 +2953,12 @@ async function main() {
       submissionId: "home-invite-now",
     });
     assert.equal(invited.session.area, "shared", "spoken invitation enters within the same scene");
+    await mutateVillageState((state) => {
+      for (const resident of state.villagers.filter((person) => ["bob", "tina"].includes(person.characterId))) {
+        resident.agenda!.day.forEach((block) => (block.zoneId = "residence"));
+        resident.agenda!.activeDay!.blocks.forEach((block) => (block.zoneId = "residence"));
+      }
+    });
     const roomBefore = (await readVillageState()).venues
       .find((place) => place.id === "home")!
       .spaces!.find((space) => space.venueClass === "residence")!;
@@ -3111,6 +3133,12 @@ async function main() {
       0,
       "legacy image-only proposals are retired when persisted state is read",
     );
+    await mutateVillageState((state) => {
+      for (const resident of state.villagers.filter((person) => ["bob", "tina"].includes(person.characterId))) {
+        resident.agenda!.day.forEach((block) => (block.zoneId = "exterior"));
+        resident.agenda!.activeDay!.blocks.forEach((block) => (block.zoneId = "exterior"));
+      }
+    });
     outside = await greetVenue((await enterVenue("home", "residence")).id);
     assert.equal(outside.area, "outside");
     await sendVenueTurn({

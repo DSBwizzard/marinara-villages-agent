@@ -1,3 +1,4 @@
+import { venueZones, effectiveVenueClasses } from "./venue-zones.js";
 import { randomUUID } from "node:crypto";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -20,6 +21,7 @@ import type {
   VillageVenueClass,
   VillageVenueImage,
   VillageVenueImprovement,
+  VillageZoneDraft,
 } from "./types.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "./venue-model.js";
 import { mutateVillageState } from "./village-store.js";
@@ -37,6 +39,7 @@ import {
   projectProgressPhase,
   recordProjectProgress,
   reviseProjectProgress,
+  renewProjectApprovalProgress,
 } from "./project-progress.js";
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -252,7 +255,16 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
       : improvementRow === null
         ? null
         : {
-            id: randomUUID(),
+            id: asTrimmedString(improvementRow.id) || randomUUID(),
+            classContribution:
+              improvementRow.classContribution === undefined || improvementRow.classContribution === ""
+                ? undefined
+                : validVenueClasses([improvementRow.classContribution])
+                  ? (improvementRow.classContribution as VillageVenueClass)
+                  : (() => {
+                      throw badRequest("Choose a valid Upgrade Class.");
+                    })(),
+            zones: undefined,
             title: boundText(improvementRow.title, MAX_VENUE_NAME_LENGTH).trim(),
             description: boundText(improvementRow.description, MAX_VENUE_DESCRIPTION_LENGTH).trim(),
             spaceId: asTrimmedString(improvementRow.spaceId) || null,
@@ -275,8 +287,62 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
   const venue = state.venues.find((entry) => entry.id === venueId && entry.constructionStatus !== "worksite");
   if (!venue) throw notFound("That finished Venue no longer exists.");
   if (homeKind && !venue.classes?.includes("residence")) throw conflict("Only a Residence has a home tier.");
-  const nextClasses = (classes ?? venue.classes ?? ["other"]) as VillageVenueClass[];
-  if (!nextClasses.includes("residence") && venueResidentIds(venue).length)
+  const priorUpgrade = slot !== undefined ? venue.improvements?.[slot] : null;
+  if (improvement && improvementRow) {
+    if (improvementRow.id && improvement.id !== priorUpgrade?.id)
+      throw badRequest("Only the current Upgrade can be modified in this slot.");
+    if (improvementRow.zones !== undefined) {
+      if (!Array.isArray(improvementRow.zones) || improvementRow.zones.length > 16)
+        throw badRequest("Describe up to sixteen Upgrade zones.");
+      const ids = new Set<string>();
+      improvement.zones = improvementRow.zones.map((value) => {
+        const zone = asRecord(value),
+          requestedId = asTrimmedString(zone.id);
+        const existing = requestedId
+          ? venueZones(venue).find((entry) => entry.id === requestedId && entry.upgradeId === improvement.id)
+          : undefined;
+        if (requestedId && !existing) throw badRequest("A modified zone must belong to this Upgrade.");
+        const id = existing?.id ?? randomUUID(),
+          name = boundText(zone.name, MAX_VENUE_NAME_LENGTH).trim(),
+          description = boundText(zone.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+        if (
+          !name ||
+          !description ||
+          ids.has(id) ||
+          !["public", "shared-residence", "staff"].includes(String(zone.kind))
+        )
+          throw badRequest("Give every zone a name, description, and supported kind.");
+        ids.add(id);
+        return {
+          id,
+          name,
+          description,
+          kind: zone.kind as VillageZoneDraft["kind"],
+          venueClass: validVenueClasses([zone.venueClass])
+            ? (zone.venueClass as VillageVenueClass)
+            : (improvement.classContribution ?? (venue.baseClasses ?? venue.classes ?? ["other"])[0]!),
+        };
+      });
+    } else if (priorUpgrade?.id === improvement.id) improvement.zones = priorUpgrade.zones;
+  }
+  const baseClasses = (classes ?? venue.baseClasses ?? venue.classes ?? ["other"]) as VillageVenueClass[];
+  const proposedUpgrades = [...(venue.improvements ?? [null, null])];
+  if (slot !== undefined) proposedUpgrades[slot] = improvement ?? null;
+  const nextClasses = effectiveVenueClasses({ ...venue, baseClasses, improvements: proposedUpgrades });
+  if (nextClasses.length > 2)
+    throw conflict("A Venue may have at most two distinct Classes across its base and Upgrades.");
+  const survivingUpgradeZones = venueZones(venue).filter(
+    (zone) => zone.upgradeId && zone.upgradeId !== priorUpgrade?.id,
+  );
+  for (const zone of [...(improvement?.zones ?? []), ...survivingUpgradeZones]) {
+    if (
+      !nextClasses.includes(zone.venueClass) ||
+      (zone.kind === "shared-residence" && zone.venueClass !== "residence") ||
+      (zone.kind === "staff" && zone.venueClass !== "workplace")
+    )
+      throw badRequest("The zone must be supported by the Venue's Classes.");
+  }
+  if (!nextClasses.includes("residence") && (venueResidentIds(venue).length || venue.occupancy.playerHome))
     throw conflict("Residents must move before Residence is removed.");
   if (!nextClasses.includes("workplace") && (venue.workerIds?.length ?? 0))
     throw conflict("Workers must be unassigned before Workplace is removed.");
@@ -285,7 +351,11 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
   if (slot !== undefined) upgrades[slot] = improvement ?? null;
   if (venueResidentIds(venue).length > nextCapacity + upgrades.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0))
     throw conflict("The finished Residence needs room for its current residents.");
-  if (improvement?.spaceId && !nextClasses.includes(improvement.spaceId as VillageVenueClass))
+  if (
+    improvement?.spaceId &&
+    !venueZones(venue).some((zone) => zone.id === improvement.spaceId) &&
+    !nextClasses.includes(improvement.spaceId as VillageVenueClass)
+  )
     throw badRequest("The Upgrade must belong to one of this Venue's Classes.");
   const affectedIds = [...new Set([...venueResidentIds(venue), ...(venue.workerIds ?? [])])];
   const at = new Date().toISOString();
@@ -304,7 +374,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
       {
         ...(classes ? { classes: classes as VillageVenueClass[] } : {}),
         ...(capacity !== undefined ? { capacity } : {}),
-        ...(homeKind !== undefined ? { homeKind } : {}),
+        ...(homeKind !== undefined ? { homeKind: homeKind as NonNullable<VillageVenue["occupancy"]["homeKind"]> } : {}),
         ...(slot !== undefined ? { slot } : {}),
         ...(improvement !== undefined ? { improvement } : {}),
         detail,
@@ -315,6 +385,34 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
   state.projects.push(project);
   createProjectProgress(state, project, at);
   return project;
+}
+
+export function renovationTerms(change: NonNullable<VillageProjectLifecycle["change"]>): string {
+  return [
+    change.detail,
+    change.classes ? "Base Classes: " + change.classes.join(", ") : "",
+    change.capacity !== undefined ? "Residence capacity: " + change.capacity : "",
+    change.homeKind ? "Home tier: " + change.homeKind : "",
+    change.slot !== undefined ? "Upgrade slot " + (change.slot + 1) : "",
+    change.improvement === null
+      ? "Remove the existing Upgrade and archive its zones."
+      : change.improvement
+        ? [
+            change.improvement.title + ": " + change.improvement.description,
+            "Contributed Class: " + (change.improvement.classContribution ?? "none"),
+            "Extra beds: " + change.improvement.extraBeds,
+            change.improvement.spaceId ? "Modify existing zone: " + change.improvement.spaceId : "",
+            ...(change.improvement.zones ?? []).map(
+              (zone) =>
+                zone.name + " [" + zone.id + "; " + zone.kind + "; " + zone.venueClass + "]: " + zone.description,
+            ),
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export async function requestProjectMailbox(id: string): Promise<void> {
@@ -340,7 +438,7 @@ export async function requestProjectMailbox(id: string): Promise<void> {
       venueId: project.venueId,
       kind: "project-approval",
       title: project.title,
-      detail: flow.change?.detail ?? "",
+      detail: flow.change ? renovationTerms(flow.change) : "",
       status: "awaiting-villagers",
       createdAt: at.toISOString(),
       dueAt: new Date(at.getTime() + 60 * 60_000).toISOString(),
@@ -381,7 +479,12 @@ export function applyProjectMailboxDecisions(
   if (
     project.lifecycle.affectedIds.every((id) => project.lifecycle!.approvals.some((entry) => entry.residentId === id))
   )
-    project.lifecycle.phase = "builder";
+    project.lifecycle.phase =
+      state.progressEngineVersion === 1
+        ? (projectProgressPhase(state, project) as VillageProjectLifecycle["phase"])
+        : project.lifecycle.completedAt
+          ? "finishing"
+          : "builder";
   project.updatedAt = at;
 }
 
@@ -486,11 +589,19 @@ export async function acceptProjectRequirements(id: string): Promise<void> {
     flow.requirementsAcceptedAt = new Date().toISOString();
     if (state.progressEngineVersion === 1) {
       flow.recordedItems = state.venues.flatMap((venue) =>
-        venue.state.furniture
-          .filter(
-            (itemName) => !state.narrativeItems.some((item) => item.venueId === venue.id && item.itemName === itemName),
-          )
-          .map((itemName) => ({ venueId: venue.id, itemName })),
+        venueZones(venue).flatMap((zone) =>
+          zone.state.items
+            .filter(
+              (itemName) =>
+                !state.narrativeItems.some(
+                  (item) =>
+                    item.venueId === venue.id &&
+                    (!item.zoneId || item.zoneId === zone.id) &&
+                    item.itemName === itemName,
+                ),
+            )
+            .map((itemName) => ({ venueId: venue.id, zoneId: zone.id, itemName })),
+        ),
       );
       flow.sources = [];
     }
@@ -559,7 +670,13 @@ export async function startProjectConstruction(id: string, now = new Date()): Pr
     const at = now.toISOString(),
       completesAt = new Date(now.getTime() + DAY_MS).toISOString();
     flow.workOrder = { startsAt: at, completesAt, pausedAt: "", remainingMs: DAY_MS };
-    builder.agenda.projectWork = { projectId: id, venueId: project.venueId, startsAt: at, endsAt: completesAt };
+    builder.agenda.projectWork = {
+      projectId: id,
+      venueId: project.venueId,
+      zoneId: "exterior",
+      startsAt: at,
+      endsAt: completesAt,
+    };
     flow.phase = "construction";
     project.status = "building";
     project.progress = 80;
@@ -629,6 +746,41 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
     if (flow.phase !== "finishing") throw conflict("Construction must finish before the opening visit.");
     const venue = state.venues.find((entry) => entry.id === project.venueId);
     if (!venue) throw conflict("The Project site is missing.");
+    if (project.kind === "renovation") {
+      if (
+        ["classes", "capacity", "homeKind", "slot", "improvement", "zones", "change"].some(
+          (key) => row[key] !== undefined,
+        )
+      )
+        throw conflict(
+          "Reviewed structural terms cannot change at finishing. Revise the proposal and obtain renewed approval before construction.",
+        );
+      const change = flow.change!;
+      const upgrades = [...(venue.improvements ?? [null, null])];
+      if (change.slot !== undefined) upgrades[change.slot] = change.improvement ?? null;
+      const projected = {
+        ...venue,
+        baseClasses: change.classes ?? venue.baseClasses ?? venue.classes,
+        improvements: upgrades,
+      };
+      const classes = effectiveVenueClasses(projected);
+      if (classes.length > 2) throw conflict("A Venue may have at most two distinct Classes.");
+      if (!classes.includes("residence") && (venueResidentIds(venue).length || venue.occupancy.playerHome))
+        throw conflict("Residents must move before Residence is removed.");
+      if (!classes.includes("workplace") && venue.workerIds?.length)
+        throw conflict("Workers must be unassigned before Workplace is removed.");
+      if (
+        venueResidentIds(venue).length >
+        (change.capacity ?? venue.residenceCapacity ?? 1) +
+          upgrades.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0)
+      )
+        throw conflict("The finished Residence needs room for its current residents.");
+      const newAffected = [...venueResidentIds(venue), ...(venue.workerIds ?? [])].filter(
+        (actorId) => !flow.affectedIds.includes(actorId),
+      );
+      if (newAffected.length)
+        throw conflict("The affected residents or workers changed. Renew the Renovation approvals before opening.");
+    }
     const at = new Date().toISOString();
     const applyOpening = () => {
       if (project.kind === "new-venue") {
@@ -650,6 +802,7 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
       } else {
         const change = flow.change!;
         if (change.classes) {
+          venue.baseClasses = change.classes;
           venue.classes = change.classes;
           venue.spaces = change.classes.map(
             (venueClass) =>
@@ -657,6 +810,42 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
               defaultVenueSpace(venueClass, venue.description),
           );
         }
+        const oldZones = venueZones(venue);
+        const oldUpgrade = change.slot !== undefined ? venue.improvements?.[change.slot] : null;
+        const nextDrafts = change.improvement?.zones ?? [];
+        const retired = oldZones.filter(
+          (zone) =>
+            zone.kind !== "exterior" &&
+            zone.kind !== "private-residence" &&
+            ((change.classes && !zone.upgradeId && !change.classes.includes(zone.venueClass)) ||
+              (oldUpgrade &&
+                zone.upgradeId === oldUpgrade.id &&
+                (change.improvement?.id !== oldUpgrade.id || !nextDrafts.some((draft) => draft.id === zone.id)))),
+        );
+        venue.archivedZones = [
+          ...(venue.archivedZones ?? []),
+          ...retired.map((zone) => ({ zone: structuredClone(zone), archivedAt: at })),
+        ].slice(-64);
+        venue.zones = oldZones.filter((zone) => !retired.some((entry) => entry.id === zone.id));
+        if (change.improvement)
+          for (const draft of nextDrafts) {
+            const index = venue.zones.findIndex((zone) => zone.id === draft.id);
+            const previous = index >= 0 ? venue.zones[index] : undefined;
+            const zone = {
+              ...defaultVenueSpace(draft.venueClass, draft.description),
+              ...previous,
+              ...draft,
+              upgradeId: change.improvement.id,
+              image: previous?.image ?? null,
+            };
+            const image = validImage(asRecord(row.zoneImages)[draft.id]);
+            if (image) zone.image = image;
+            if (index >= 0) venue.zones[index] = zone;
+            else venue.zones.push(zone);
+          }
+        venue.playerInvitations = venue.playerInvitations?.filter(
+          (invitation) => !retired.some((zone) => zone.id === invitation.zoneId),
+        );
         if (change.capacity !== undefined) venue.residenceCapacity = change.capacity;
         if (change.homeKind) {
           venue.occupancy.homeKind = change.homeKind;
@@ -668,6 +857,7 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
           upgrades[change.slot] = change.improvement ? { ...change.improvement, approvedAt: at } : null;
           venue.improvements = upgrades;
         }
+        venue.classes = effectiveVenueClasses(venue);
         const exterior = validImage(row.exteriorImage);
         if (exterior) venue.presentation.image = exterior;
       }
@@ -815,7 +1005,9 @@ export async function recordProjectConversation(input: {
           projects: relevant.map((project) => ({
             id: project.id,
             title: project.title,
-            description: project.venueDraft?.description ?? project.lifecycle?.change?.detail ?? "",
+            description: project.lifecycle?.change
+              ? renovationTerms(project.lifecycle.change)
+              : (project.venueDraft?.description ?? ""),
             kind: project.kind,
             phase: project.lifecycle!.phase,
             venueName: state.venues.find((venue) => venue.id === project.venueId)?.name,
@@ -876,7 +1068,7 @@ export async function recordProjectConversation(input: {
           if (!flow.approvals.some((row) => row.residentId === line.speakerId))
             flow.approvals.push({ residentId: line.speakerId, source: "conversation", evidenceId: line.id, at });
           if (flow.affectedIds.every((id) => flow.approvals.some((row) => row.residentId === id)))
-            flow.phase = "builder";
+            flow.phase = flow.completedAt ? "finishing" : "builder";
         } else if (
           event.kind === "builder-agreement" &&
           flow.phase === "builder" &&
@@ -923,4 +1115,74 @@ export async function recordProjectConversation(input: {
   } catch (error) {
     villagesLogger().warn("[villages] Project conversation review will not block the visit: %s", String(error));
   }
+}
+
+/** Material proposal revisions invalidate approval, builder, and checklist evidence. */
+export async function reviseRenovationProject(id: string, value: unknown): Promise<void> {
+  await mutateVillageState((state) => {
+    const project = projectFor(state, id),
+      old = project.lifecycle;
+    if (project.kind !== "renovation" || ["construction", "finishing", "complete"].includes(old.phase))
+      throw conflict("Revise structural terms before construction begins.");
+    const body = structuredClone(asRecord(value));
+    const upgrade = asRecord(body.improvement);
+    if (Array.isArray(upgrade.zones)) {
+      const venue = state.venues.find((entry) => entry.id === project.venueId)!;
+      upgrade.zones = upgrade.zones.map((value) => {
+        const zone = asRecord(value);
+        return {
+          ...zone,
+          id: venueZones(venue).some((entry) => entry.id === zone.id && entry.upgradeId === upgrade.id)
+            ? zone.id
+            : undefined,
+        };
+      });
+      body.improvement = upgrade;
+    }
+    old.phase = "complete"; // Validation still uses the current Venue and its actual slots.
+    const draft = draftRenovationProject(state, project.venueId, body);
+    state.projects = state.projects.filter((entry) => entry.id !== draft.id);
+    state.progressTasks = state.progressTasks.filter((task) => task.definition.owner.id !== draft.id);
+    const held = structuredClone(old.heldSupplies).map((item) => ({ ...item, assignedRequirementId: "" }));
+    for (const item of old.requirements.filter((entry) => entry.carriedAt)) {
+      if (!old.heldSupplies.some((entry) => entry.assignedRequirementId === item.id))
+        held.push({
+          id: "held:" + id + ":" + item.id + ":" + item.carriedAt,
+          itemName: item.title,
+          acquiredAt: item.carriedAt,
+          deliveredAt: item.deliveredAt,
+          assignedRequirementId: "",
+        });
+    }
+    project.title = draft.title;
+    project.lifecycle = { ...draft.lifecycle!, heldSupplies: held, evidenceIds: old.evidenceIds };
+    project.participantIds = [];
+    project.status = "active";
+    project.progress = 0;
+    project.updatedAt = new Date().toISOString();
+    for (const mail of state.venueMail.filter(
+      (entry) => entry.projectId === id && entry.status === "awaiting-villagers",
+    )) {
+      mail.status = "declined";
+      mail.resolvedAt = project.updatedAt;
+    }
+    reviseProjectProgress(state, project, "approval");
+  });
+}
+
+export async function renewRenovationApprovals(id: string): Promise<void> {
+  await mutateVillageState((state) => {
+    const project = projectFor(state, id),
+      flow = project.lifecycle;
+    if (project.kind !== "renovation" || !["finishing", "approval"].includes(flow.phase))
+      throw conflict("Renew affected-person approvals at the finishing review.");
+    const venue = state.venues.find((entry) => entry.id === project.venueId);
+    if (!venue) throw conflict("The Project Venue is missing.");
+    flow.affectedIds = [...new Set([...venueResidentIds(venue), ...(venue.workerIds ?? [])])];
+    flow.approvals = flow.approvals.filter((entry) => flow.affectedIds.includes(entry.residentId));
+    if (flow.affectedIds.every((id) => flow.approvals.some((entry) => entry.residentId === id))) return;
+    flow.phase = "approval";
+    renewProjectApprovalProgress(state, project);
+    project.updatedAt = new Date().toISOString();
+  });
 }

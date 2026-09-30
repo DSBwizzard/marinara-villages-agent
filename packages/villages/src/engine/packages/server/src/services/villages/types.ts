@@ -117,7 +117,7 @@ export type VillageAgenda = {
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
   /** The village's repeating exact-time day when the Engine has no weekly schedule. */
-  day: { startMinute: number; endMinute: number; venueId: string; activity: string }[];
+  day: { startMinute: number; endMinute: number; venueId: string; zoneId?: string; activity: string }[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
   /** A village-local interpretation of an optional Marinara schedule. */
@@ -125,7 +125,7 @@ export type VillageAgenda = {
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** A single agreed construction shift overrides the ordinary plan while it runs. */
-  projectWork?: { projectId: string; venueId: string; startsAt: string; endsAt: string };
+  projectWork?: { projectId: string; venueId: string; zoneId?: string; startsAt: string; endsAt: string };
   /** A failed model call leaves the working week in place and retries later. */
   personalizationPending?: boolean;
   /** Latest actionable generation failure; empty while work is queued or successful. */
@@ -141,6 +141,7 @@ export type VillageAgendaBlock = {
   startMinute: number;
   endMinute: number;
   venueId: string;
+  zoneId?: string;
   activity: string;
   reason: string;
   status: "online" | "idle" | "dnd" | "offline";
@@ -219,6 +220,7 @@ export type VillageRemapMove = {
    * invent a discrepancy rather than admit to one.
    */
   venueId: string;
+  zoneId?: string;
   /**
    * Which of their own wishes coloured this hour, as that wish's own `id`, or ""
    * for none.
@@ -583,6 +585,20 @@ export type VillageVenueSpace = {
   };
 };
 
+export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff";
+export type VillageVenueZone = VillageVenueSpace & {
+  closed?: boolean;
+  name: string;
+  kind: VillageZoneKind;
+  upgradeId?: string;
+  ownerId?: string;
+  seen?: boolean;
+  initialImageAttemptedAt?: string;
+  adaptationPending?: boolean;
+  adaptationSourceArchiveAt?: string;
+};
+export type VillageZoneDraft = Pick<VillageVenueZone, "id" | "name" | "kind" | "description" | "venueClass">;
+
 export type VillagePrivateSpace = VillageVenueSpace & {
   ownerId: string;
   /** A first-entry picture is attempted once; later drawing is player controlled. */
@@ -594,6 +610,7 @@ export type VillagePrivateSpace = VillageVenueSpace & {
 export type VillageVenueEditProposal = {
   id: string;
   target: "shared" | "private";
+  zoneId?: string;
   ownerId: string;
   baseUpdatedAt: string;
   proposed: VillageVenueSpace;
@@ -609,6 +626,8 @@ export type VillageVenueImprovement = {
   title: string;
   description: string;
   spaceId: string | null;
+  classContribution?: VillageVenueClass;
+  zones?: VillageZoneDraft[];
   /** Bounded mechanical effect. Other improvements are durable narrative truth. */
   extraBeds: number;
   approvedAt: string;
@@ -626,13 +645,18 @@ export type VillageVenue = {
   /** One or two mechanical roles. There is no shared venue-type catalogue. */
   classes?: VillageVenueClass[];
   spaces?: VillageVenueSpace[];
+  baseClasses?: VillageVenueClass[];
+  zones?: VillageVenueZone[];
+  archivedZones?: { zone: VillageVenueZone; archivedAt: string }[];
   /** Starting capacity; active improvements may add beds, up to four total people. */
   residenceCapacity?: number;
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
   /** One-use invitations backed by resident speech; older manual entries remain shared invitations. */
+  usedInvitationIds?: string[];
   playerInvitations?: {
     residentId: string;
+    zoneId?: string;
     recordedAt: string;
     scope?: "shared" | "private";
     ownerId?: string;
@@ -708,6 +732,7 @@ export type VillageVenueMail = {
 /** A compact reference used anywhere a current literal location is required. */
 export type VillageVenueReference = {
   venueId: string;
+  zoneId?: string;
   detail: string;
 };
 
@@ -716,6 +741,7 @@ export type VillageVenueEvent = {
   id: string;
   venueId: string;
   venueName: string;
+  zoneId?: string;
   text: string;
   at: string;
   actionReceipt?: {
@@ -940,6 +966,7 @@ export type VillageChronicleEntry = {
 export type VillageStoryPace = "off" | "quiet" | "balanced" | "lively";
 
 export type VillageOpportunity = {
+  zoneId?: string;
   id: string;
   kind: "encounter" | "wish" | "weather" | "routine" | "project";
   startsAt: string;
@@ -963,6 +990,7 @@ export type VillageBuildRequirement = {
 };
 
 export type VillageBuildSource = {
+  zoneId?: string;
   id: string;
   requirementId: string;
   kind: "existing-item" | "limited-opportunity";
@@ -998,7 +1026,7 @@ export type VillageBuildPlan = {
   requirements: VillageBuildRequirement[];
   sources: VillageBuildSource[];
   /** Literal furniture available when this project was drafted, before later scene claims. */
-  recordedItems: { venueId: string; itemName: string }[];
+  recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
   receipts: VillageBuildReceipt[];
   builderId: string;
   workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
@@ -1038,11 +1066,12 @@ export type VillageProjectLifecycle = {
   requirementsEvidenceId: string;
   requirementsAcceptedAt: string;
   /** Supplies recorded when the checklist was accepted, before later scene claims. */
-  recordedItems: { venueId: string; itemName: string }[];
+  recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
   sources: {
     requirementId: string;
     kind: "existing-item" | "resident-offer" | "held-supply";
     venueId: string;
+    zoneId?: string;
     itemName: string;
     supplierId: string;
     evidenceId: string;
@@ -1063,6 +1092,7 @@ export type VillageProjectLifecycle = {
     submissionId: string;
     speakerId: string;
     venueId: string;
+    zoneId?: string;
     quote: string;
     at: string;
     grade?: "cited-interpretation";
@@ -1273,7 +1303,7 @@ export type VillageState = {
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   progressTasks: ProgressTask[];
   /** Ordinary scene props are visible but cannot become project stock. */
-  narrativeItems: { venueId: string; itemName: string }[];
+  narrativeItems: { venueId: string; zoneId?: string; itemName: string }[];
   /** Finite resident source yields already transferred into a project. */
   projectSourceClaims: { key: string; projectId: string; sourceId: string; submissionId: string }[];
   /** Outcomes established by completed projects, independently of narration and lore. */
@@ -1400,6 +1430,8 @@ export type VillageTownMapView = {
  */
 export type VillagePlaceView = {
   id: string;
+  zoneId?: string;
+  zoneName?: string;
   name: string;
   /** Null until somebody gives that place a picture. A place with no picture is ordinary. */
   image: VillageVenueImage | null;

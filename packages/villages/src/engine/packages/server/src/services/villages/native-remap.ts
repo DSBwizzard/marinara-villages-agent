@@ -1,3 +1,4 @@
+import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — translate the Engine's week into this village's own terms.
 //
 // This is the join between the two systems, and it exists because of one
@@ -177,7 +178,7 @@ const REMAP_SYSTEM_PROMPT = [
   "The original week was written for this character before anything knew which village they would live in, so it may describe places, vehicles and machines that do not exist here. Your job is to say the SAME thing happening HERE, at the SAME time.",
   "Keep the shape: how long each block takes, when in the week it falls, whether it is work or rest, whether they are away from home or at it, and whether they are asleep. Replace the NOUNS — the places, the vehicles, the machinery — and nothing else.",
   "Answer with JSON only, in exactly this shape and nothing else:",
-  '{"agenda":"...","moves":[{"day":"...","time":"...","here":"...","place":1}]}',
+  '{"agenda":"...","moves":[{"day":"...","time":"...","here":"...","place":1,"zoneId":"exact zone id"}]}',
   "Rules:",
   '- "moves" has exactly one entry for every block you were given, and no others. One block of their week, one entry. Do not merge two blocks into one entry, do not summarise a day, do not leave a block out, and do not invent one.',
   '- "day" is the day that block was listed under, copied back EXACTLY as it was written. "time" is that block\'s hour range with its start and end, copied back EXACTLY as it was written, including the hyphen and the leading zeroes. Together they are the key the village finds your answer by, so one changed character means that whole block of the week is dropped and reads as nonsense here.',
@@ -209,6 +210,7 @@ const REMAP_SYSTEM_PROMPT = [
  * differently, and only the card knows which one this is.
  */
 export type VillageRemapContext = {
+  characterId?: string;
   village: string;
   setting: string;
   lore: readonly string[];
@@ -536,6 +538,7 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
           ...places,
         ].join("\n")
       : "Nobody has said what is in this village. There are no numbered places, so every move has a place of 0, and you describe everything in terms of an ordinary day in a small, quiet place.",
+    "Playable zones: " + remapVenues(context.venues).map(venue => venue.id + ": " + venueZones(venue).filter(zone => !context.characterId || canOccupyZone(venue, zone, context.characterId)).map(zone => zone.id + " (" + zone.name + "; " + zone.kind + ")").join("; ")).join("\n") + ". Copy the exact zoneId into each move without changing its times or activity.",
     wishes.length > 0 ? ["What is privately on their mind:", ...wishes].join("\n") : "",
     known.length > 0 ? ["What is already known about this person:", ...known].join("\n") : "",
     week.length > 0
@@ -672,6 +675,7 @@ export function coerceRemap(
         activity: block.activity,
         here,
         venueId: venueIdFromPlace(raw.place, context.venues),
+        ...(typeof raw.zoneId === "string" ? { zoneId: raw.zoneId } : {}),
         wishId: "",
       });
     }

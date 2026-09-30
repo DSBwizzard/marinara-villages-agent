@@ -1,3 +1,4 @@
+import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { randomUUID } from "node:crypto";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict, notFound } from "./errors.js";
@@ -86,7 +87,7 @@ function sourceAvailable(state: VillageState, source: VillageBuildSource): boole
   if (source.remaining < 1) return false;
   const venue = state.venues.find((entry) => entry.id === source.venueId);
   if (!venue || venue.constructionStatus === "worksite") return false;
-  if (source.kind === "existing-item") return venue.state.furniture.includes(source.itemName);
+  if (source.kind === "existing-item") return resolveVenueZone(venue, source.zoneId ?? legacyZoneId(venue, "public"))?.state.items.includes(source.itemName) ?? false;
   return (
     state.villagers.some((resident) => resident.characterId === source.supplierId) &&
     !state.projectSourceClaims.some((claim) => claim.key === sourceKey(source))
@@ -230,13 +231,13 @@ export function draftBuildProject(
         routeIds: sources.filter((source) => source.requirementId === requirement.id).map((source) => source.id),
       })),
       sources,
-      recordedItems: state.venues.flatMap((venue) =>
-        venue.state.furniture
+      recordedItems: state.venues.flatMap((venue) => venueZones(venue).flatMap(zone =>
+        zone.state.items
           .filter(
-            (itemName) => !state.narrativeItems.some((item) => item.venueId === venue.id && item.itemName === itemName),
+            (itemName) => !state.narrativeItems.some((item) => item.venueId === venue.id && (!item.zoneId || item.zoneId === zone.id) && item.itemName === itemName),
           )
-          .map((itemName) => ({ venueId: venue.id, itemName })),
-      ),
+          .map((itemName) => ({ venueId: venue.id, zoneId: zone.id, itemName })),
+      )),
       receipts: [],
       builderId: "",
       workOrder: null,
@@ -306,11 +307,14 @@ export async function addBuildSource(projectId: string, value: unknown): Promise
     const requirement = plan.requirements.find((entry) => entry.id === requirementId);
     const venue = state.venues.find((entry) => entry.id === venueId && entry.constructionStatus !== "worksite");
     if (!requirement || !venue) throw badRequest("Choose a current project requirement and source venue.");
-    if (kind === "existing-item" && !venue.state.furniture.includes(itemName))
+    const requestedZoneId = asTrimmedString(raw.zoneId);
+    const zoneId = requestedZoneId || plan.recordedItems.find(item => item.venueId === venueId && item.itemName === itemName)?.zoneId || legacyZoneId(venue, "public");
+    const zone = resolveVenueZone(venue, zoneId);
+    if (kind === "existing-item" && !zone?.state.items.includes(itemName))
       throw conflict("That item is no longer recorded at the source venue.");
     if (
       kind === "existing-item" &&
-      !plan.recordedItems.some((item) => item.venueId === venueId && item.itemName === itemName)
+      !plan.recordedItems.some((item) => item.venueId === venueId && item.itemName === itemName && (!item.zoneId || item.zoneId === zoneId))
     )
       throw conflict("Only an item recorded when this project began can be used as an existing source.");
     if (kind === "limited-opportunity" && !state.villagers.some((resident) => resident.characterId === supplierId))
@@ -323,6 +327,7 @@ export async function addBuildSource(projectId: string, value: unknown): Promise
       requirementId,
       kind,
       venueId,
+      zoneId,
       itemName,
       supplierId: kind === "existing-item" ? "" : supplierId,
       remaining: 1,
@@ -429,7 +434,7 @@ export async function promiseBuildSource(projectId: string, value: unknown): Pro
     const source = plan.sources.find((entry) => entry.id === sourceId && entry.kind === "limited-opportunity");
     if (
       !source ||
-      evidence.venueId !== source.venueId ||
+      evidence.venueId !== source.venueId || (source.zoneId && source.zoneId !== evidence.zoneId) ||
       !state.villagers.some((resident) => resident.characterId === source.supplierId)
     )
       throw conflict("The supplier must agree at the recorded source place while still a resident.");
@@ -462,7 +467,7 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
     const source = plan.sources.find((entry) => entry.id === sourceId);
     if (source?.requirementId === "site-permission")
       throw conflict("Site permission is a spoken agreement, not a material transfer.");
-    if (!source || source.remaining < 1 || evidence.venueId !== source.venueId)
+    if (!source || source.remaining < 1 || evidence.venueId !== source.venueId || (source.zoneId && source.zoneId !== evidence.zoneId))
       throw conflict("That finite source is unavailable at this place.");
     if (
       !source.magic &&
@@ -474,6 +479,7 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
     if (usedLine(state, lineId)) throw conflict("That spoken handoff was already used.");
     const venue = state.venues.find((entry) => entry.id === source.venueId);
     if (!venue) throw conflict("The source venue no longer exists.");
+    const zone = resolveVenueZone(venue, source.zoneId ?? legacyZoneId(venue, "public"));
     const handoff = evidence.lines.find(
       (line) =>
         line.id === lineId &&
@@ -489,8 +495,8 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
     if (!handoff) throw conflict("A present resident must explicitly hand over this supply in the visit.");
     if (source.kind === "existing-item") {
       if (
-        !venue.state.furniture.includes(source.itemName) ||
-        !plan.recordedItems.some((item) => item.venueId === venue.id && item.itemName === source.itemName)
+        !zone?.state.items.includes(source.itemName) ||
+        !plan.recordedItems.some((item) => item.venueId === venue.id && item.itemName === source.itemName && (!item.zoneId || item.zoneId === zone?.id))
       )
         throw conflict("The recorded item is no longer available to transfer.");
     } else if (
@@ -505,12 +511,8 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
         throw conflict("This finite resident source was already transferred to a project. Negotiate an alternative.");
       state.projectSourceClaims.push({ key, projectId, sourceId, submissionId });
     } else {
-      venue.state.furniture = venue.state.furniture.filter((item) => item !== source.itemName);
-      for (const space of venue.spaces ?? [])
-        space.state.items = space.state.items.filter((item) => item !== source.itemName);
-      if (venue.exteriorState)
-        venue.exteriorState.items = venue.exteriorState.items.filter((item) => item !== source.itemName);
-      venue.state.updatedAt = evidence.at;
+      zone!.state.items = zone!.state.items.filter(item => item !== source.itemName);
+      zone!.state.updatedAt = evidence.at;
     }
     source.remaining -= 1;
     receipt(project, submissionId, "acquired", sourceId, handoff.speakerId, handoff.id, source.cost, evidence.at);

@@ -1,3 +1,4 @@
+import { resolveVenueZone, canOccupyZone, zoneClosed } from "./venue-zones.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { VillagesRequestError, badRequest, conflict, notFound } from "./errors.js";
 import { validateProjectSpeech } from "./project-interpretation.js";
@@ -114,6 +115,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
     lineId,
     speakerId: line?.speakerId,
     venueId: turn.venueId,
+    zoneId: turn.zoneId,
     area: turn.areaAtTurn,
     excerpt: line?.content,
     ...(interpreted
@@ -324,6 +326,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
           requirementId,
           kind: "resident-offer",
           venueId: turn.venueId,
+          zoneId: turn.zoneId,
           itemName: requirement.title,
           supplierId: line.speakerId,
           evidenceId: line.id,
@@ -339,7 +342,12 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
         );
       } else {
         const source = flow.sources.find((entry) => entry.requirementId === requirementId);
-        if (!source || source.venueId !== turn.venueId || source.acquiredAt)
+        if (
+          !source ||
+          source.venueId !== turn.venueId ||
+          (source.zoneId && source.zoneId !== turn.zoneId) ||
+          source.acquiredAt
+        )
           return fail("Record an available source at this venue before its handoff.");
         if (!handoffVerb.test(speech)) return fail("The resident must explicitly hand over the named supply.");
         if (source.kind === "resident-offer") {
@@ -351,17 +359,23 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
           state.projectSourceClaims.push({ key, projectId, sourceId: source.evidenceId, submissionId });
         } else {
           const venue = state.venues.find((entry) => entry.id === source.venueId);
+          const recorded = flow.recordedItems.find(
+            (item) =>
+              item.venueId === source.venueId &&
+              item.itemName === source.itemName &&
+              (!source.zoneId || item.zoneId === source.zoneId),
+          );
+          const zone = venue && resolveVenueZone(venue, source.zoneId ?? recorded?.zoneId ?? "");
           if (
-            !venue?.state.furniture.includes(source.itemName) ||
-            !flow.recordedItems.some((item) => item.venueId === venue.id && item.itemName === source.itemName)
+            !venue ||
+            !recorded ||
+            (zone ? !zone.state.items.includes(source.itemName) : !venue.state.furniture.includes(source.itemName))
           )
             return fail("The recorded physical item is no longer available here.");
-          venue.state.furniture = venue.state.furniture.filter((item) => item !== source.itemName);
-          for (const space of venue.spaces ?? [])
-            space.state.items = space.state.items.filter((item) => item !== source.itemName);
-          if (venue.exteriorState)
-            venue.exteriorState.items = venue.exteriorState.items.filter((item) => item !== source.itemName);
-          venue.state.updatedAt = turn.at;
+          if (zone) {
+            zone.state.items = zone.state.items.filter((item) => item !== source.itemName);
+            zone.state.updatedAt = turn.at;
+          } else venue.state.furniture = venue.state.furniture.filter((item) => item !== source.itemName);
         }
         source.acquiredAt = turn.at;
         requirement.carriedAt = turn.at;
@@ -375,6 +389,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
         submissionId,
         speakerId: line.speakerId,
         venueId: turn.venueId,
+        zoneId: turn.zoneId,
         quote: line.content.slice(0, 300),
         at: turn.at,
         ...(interpreted
@@ -481,6 +496,7 @@ export async function recordExistingProjectSource(projectId: string, value: unkn
   const input = asRecord(value);
   const requirementId = asTrimmedString(input.requirementId);
   const venueId = asTrimmedString(input.venueId);
+  const zoneId = asTrimmedString(input.zoneId);
   await mutateVillageState((state) => {
     const project = projectFor(state, projectId);
     const flow = project.lifecycle!;
@@ -488,21 +504,33 @@ export async function recordExistingProjectSource(projectId: string, value: unkn
       throw conflict("This Project is not preparing materials.");
     const requirement = flow.requirements.find((entry) => entry.id === requirementId && entry.needed);
     const venue = state.venues.find((entry) => entry.id === venueId && entry.constructionStatus !== "worksite");
+    const recorded = flow.recordedItems.find(
+      (item) => item.venueId === venueId && item.itemName === requirement?.title && (!zoneId || item.zoneId === zoneId),
+    );
+    const zone = venue && resolveVenueZone(venue, zoneId || recorded?.zoneId || "");
     if (
       !requirement ||
       !venue ||
-      !flow.recordedItems.some((item) => item.venueId === venue.id && item.itemName === requirement.title) ||
-      !venue.state.furniture.includes(requirement.title)
+      !recorded ||
+      (zone ? !zone.state.items.includes(requirement.title) : !venue.state.furniture.includes(requirement.title))
     )
       throw conflict("Choose a matching physical item recorded when the Builder's plan was accepted.");
+    if (
+      zone &&
+      ((!zone.seen && zone.kind !== "exterior" && !(venue.occupancy.playerHome && zone.kind === "shared-residence")) ||
+        !canOccupyZone(venue, zone, "player") ||
+        zoneClosed(state, venue, zone))
+    )
+      throw conflict("This supply is in a restricted or closed zone. Obtain an evidenced handoff from its controller.");
     if (flow.sources.some((entry) => entry.requirementId === requirementId))
       throw conflict("This supply already has a selected source.");
     const at = new Date().toISOString();
-    const evidenceId = `recorded:${project.id}:${requirementId}:${venue.id}:${requirement.title}`;
+    const evidenceId = `recorded:${project.id}:${requirementId}:${venue.id}:${zone?.id ?? "legacy"}:${requirement.title}`;
     flow.sources.push({
       requirementId,
       kind: "existing-item",
       venueId: venue.id,
+      zoneId: zone?.id,
       itemName: requirement.title,
       supplierId: "",
       evidenceId,

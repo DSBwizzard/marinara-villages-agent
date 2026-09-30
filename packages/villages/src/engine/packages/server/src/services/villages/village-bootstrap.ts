@@ -1,3 +1,4 @@
+import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — the two model calls the package makes.
 //
 // The first turns a setting into places. The product move it makes is
@@ -1477,6 +1478,7 @@ const AGENDA_SYSTEM_PROMPT = [
  * it is what the answer is overwritten with afterwards — see `proposeAgenda`.
  */
 export type VillageAgendaContext = {
+  characterId?: string;
   village: string;
   setting: string;
   home?: string;
@@ -1565,7 +1567,7 @@ function buildAgendaDayMessages(
     )
     .join("\n");
   const system = [
-    `Write ${context.name}'s ${weekday} in ${context.village} as a village agenda. Return JSON only: {"blocks":[{"startMinute":0,"endMinute":420,"venue":0,"activity":"Sleeping at home","reason":"To rest","status":"offline"}]}`,
+    `Write ${context.name}'s ${weekday} in ${context.village} as a village agenda. Return JSON only: {"blocks":[{"startMinute":0,"endMinute":420,"venue":0,"zoneId":"exact zone id","activity":"Sleeping at home","reason":"To rest","status":"offline"}]}`,
     "Cover every minute from 0 to 1440 in ordered, non-overlapping blocks. Waking activities should change every 30 to 60 minutes. Sleep and sustained work can last longer.",
     'Venue is 0 for home or one of the numbered places. Status is "online", "idle", "dnd", or "offline".',
     "Keep activities specific, varied, ordinary, and consistent with the person and village. Do not invent places or people. Let wishes influence activities quietly; do not announce them.",
@@ -1573,6 +1575,19 @@ function buildAgendaDayMessages(
     "A desire mentioned in lore does not prove that an object exists or is owned. Do not depict it as present without a current venue fact or confirmed outcome.",
     `Village: ${context.setting.trim() || "A small, quiet village."}`,
     `Places:\n${places || "No public places are known."}`,
+    `Zones within places: ${context.venues
+      .map(
+        (venue) =>
+          venue.id +
+          ": " +
+          venueZones(venue)
+            .filter(zone => !context.characterId || canOccupyZone(venue, zone, context.characterId))
+            .map((zone) => `${zone.id}: ${zone.name} (${zone.kind})`)
+            .join("; "),
+      )
+      .join(
+        "\n",
+      )}. Copy a zoneId belonging to the chosen Venue. Restricted areas require the resident or worker role; private spaces belong to their owner.`,
     context.home ? `Their assigned home: ${context.home}` : "",
     `Person: ${context.summary}; ${context.personality}; ${condense(context.description, AGENDA_DESCRIPTION_MAX)}`,
     `Routine: ${summary}`,
@@ -1639,6 +1654,7 @@ function completeModelDay(
   const mapped = rows.map((row) => ({
     ...row,
     venueId: typeof row.venue === "number" ? (context.venues[row.venue - 1]?.id ?? "") : "",
+    zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
   }));
   return completeAgendaWeek({ [weekday]: mapped }, workingAgendaWeek(context.venues, context.name), context.venues);
 }

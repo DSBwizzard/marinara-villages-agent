@@ -325,6 +325,11 @@ export function recordProjectProgress(
     registry,
   );
   if (verdict.status !== "accepted") throw conflict(verdict.reason);
+  while (!task.resolvedAt) {
+    const before = task.phaseIndex;
+    advanceProgress(task, evidence, { state, project, resolveOpening }, registry);
+    if (task.phaseIndex === before) break;
+  }
   project.lifecycle!.phase = projectProgressPhase(state, project) as NonNullable<VillageProject["lifecycle"]>["phase"];
 }
 
@@ -349,6 +354,32 @@ export function reviseProjectProgress(state: VillageState, project: VillageProje
     const before = task.phaseIndex;
     advanceProgress(task, synthetic, { state, project }, registry);
     if (task.phaseIndex === before) throw conflict("An earlier Project phase lost its verified proof during revision.");
+  }
+  project.lifecycle!.phase = projectProgressPhase(state, project) as NonNullable<VillageProject["lifecycle"]>["phase"];
+}
+
+/** Renew a changed affected-person roster without invalidating verified building work. */
+export function renewProjectApprovalProgress(state: VillageState, project: VillageProject): void {
+  const task = progressProject(state, project);
+  if (!task) return;
+  reviseProgress(
+    task,
+    definitionFor(project, task.definition.revision + 1),
+    task.receipts.map((receipt) => receipt.id),
+  );
+  if (task.visibleAt)
+    for (const phase of task.definition.phases)
+      for (const requirement of phase.requirements) task.requirementVisibleAt[requirement.id] ||= task.visibleAt;
+  const evidence: ProgressEvidence = {
+    id: "approval-renewal:" + task.definition.revision,
+    kind: "project-revision",
+    at: new Date().toISOString(),
+    sourceId: project.id,
+  };
+  while (!task.resolvedAt) {
+    const before = task.phaseIndex;
+    advanceProgress(task, evidence, { state, project }, registry);
+    if (task.phaseIndex === before) break;
   }
   project.lifecycle!.phase = projectProgressPhase(state, project) as NonNullable<VillageProject["lifecycle"]>["phase"];
 }

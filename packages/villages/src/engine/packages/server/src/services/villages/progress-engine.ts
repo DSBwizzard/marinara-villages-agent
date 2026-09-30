@@ -25,6 +25,7 @@ export type ProgressEvidence = {
   lineId?: string;
   speakerId?: string;
   venueId?: string;
+  zoneId?: string;
   area?: string;
   excerpt?: string;
   grade?: "cited-interpretation";
@@ -449,6 +450,7 @@ export function coerceProgressTasks(value: unknown): ProgressTask[] {
                   lineId: asTrimmedString(evidence.lineId),
                   speakerId: asTrimmedString(evidence.speakerId),
                   venueId: asTrimmedString(evidence.venueId),
+                  ...(asTrimmedString(evidence.zoneId) ? { zoneId: asTrimmedString(evidence.zoneId) } : {}),
                   ...(asTrimmedString(evidence.area) ? { area: asTrimmedString(evidence.area) } : {}),
                   excerpt: asTrimmedString(evidence.excerpt).slice(0, 300),
                   ...readProgressInterpretation(evidence),
