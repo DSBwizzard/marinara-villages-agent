@@ -1,4 +1,5 @@
 import { renderPlayerRoleContext } from "./player-role.js";
+import { relationshipPrompt } from "./relationships.js";
 import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "./background-work.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -364,6 +365,7 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
           .map((entry) => ({
             characterId: entry.characterId,
             capturedAt: entry.cardSnapshot.capturedAt,
+            relationship: relationshipPrompt(village, entry.characterId),
             cardSnapshot: { name: entry.cardSnapshot.name, summary: entry.cardSnapshot.summary },
           })),
       },
@@ -377,7 +379,12 @@ registerBackgroundHandler("mail", {
     });
     const people = due.affectedIds.map((id) => {
       const villager = input.villagers.find((entry: any) => entry.characterId === id);
-      return { id, name: villager?.cardSnapshot.name ?? id, summary: villager?.cardSnapshot.summary ?? "" };
+      return {
+        id,
+        name: villager?.cardSnapshot.name ?? id,
+        summary: villager?.cardSnapshot.summary ?? "",
+        relationship: villager?.relationship ?? "",
+      };
     });
     const messages: CapabilityLanguageModelMessage[] = [
       {
@@ -385,6 +392,7 @@ registerBackgroundHandler("mail", {
         content: [
           'Answer as each affected villager to a grounded Venue proposal. Each can accept or decline. Keep each reply short and in character. Return JSON only: {"decisions":[{"characterId":"exact ID","accepted":true,"reply":"short message"}]}. Include every listed person exactly once.',
           renderPlayerRoleContext(input),
+          "Consider your own feelings toward the player alongside personal benefit and availability. Neutral villagers may accept and volunteer. A score is not a veto, and changed feelings never cancel an already accepted commitment.",
         ]
           .filter(Boolean)
           .join("\n\n"),

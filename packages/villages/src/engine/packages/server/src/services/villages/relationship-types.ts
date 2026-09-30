@@ -1,0 +1,133 @@
+export type RelationshipDimension = "warmth" | "trust";
+export type RelationshipChange = {
+  id: string;
+  fromId: string;
+  toId: string;
+  dimension: RelationshipDimension;
+  amount: number;
+  ordinary: boolean;
+  reason: string;
+  lineIds: string[];
+  disclosed: boolean;
+  contact: boolean;
+};
+export type RelationshipPermission = {
+  id: string;
+  controllerId: string;
+  visitorId: string;
+  venueId: string;
+  zoneId: string;
+  action: "grant" | "revoke";
+  lineIds: string[];
+};
+export type RelationshipDisclosure = {
+  id: string;
+  fromId: string;
+  toId: string;
+  text: string;
+  kind: "explanation" | "preference" | "boundary";
+  lineIds: string[];
+};
+export type RelationshipReview = {
+  changes: RelationshipChange[];
+  permissions: RelationshipPermission[];
+  disclosures: RelationshipDisclosure[];
+};
+export type RelationshipEvidenceLine = {
+  id: string;
+  speakerId: string;
+  role: "user" | "assistant";
+  content: string;
+  heardBy: string[];
+  kind?: string;
+  playerHeard?: boolean;
+};
+export type RelationshipEdge = {
+  fromId: string;
+  toId: string;
+  warmth: number;
+  trust: number;
+  familiarity: number;
+  lastContactAt: string;
+  decayAnchorAt: string;
+  knowledgeBlockedUntilContact: boolean;
+  decayThrough: number;
+  decayAmount: number;
+  playerContactAt: string;
+  updatedAt: string;
+  friend: boolean;
+  close: boolean;
+  ordinaryGains: Record<string, number>;
+};
+export type RelationshipGrant = {
+  id: string;
+  controllerId: string;
+  visitorId: string;
+  venueId: string;
+  zoneId: string;
+  active: boolean;
+  revoked: boolean;
+  automatic: boolean;
+  at: string;
+};
+export type RelationshipReceipt = {
+  id: string;
+  fromId: string;
+  toId: string;
+  dimension: RelationshipDimension;
+  before: number;
+  after: number;
+  reason: string;
+  at: string;
+  sourceId: string;
+  lineIds: string[];
+};
+export type RelationshipKnowledge = {
+  fromId: string;
+  at: string;
+  routine: string[];
+  interests: string;
+  wishes: string[];
+  ties: { toId: string; warmth: number; trust: number }[];
+  closeAt: string;
+};
+export type StartingTie = { fromId: string; toId: string; warmth: number; trust: number; established: boolean };
+export type SocialPlan = {
+  id: string;
+  dateKey: string;
+  actorIds: string[];
+  venueId: string;
+  zoneId: string;
+  startMinute: number;
+  endMinute: number;
+  activity: string;
+  reason: string;
+  revisions: Record<string, string>;
+  kind: "meeting" | "avoidance";
+  status: "planned" | "completed" | "cancelled";
+};
+export type SocialEncounter = {
+  id: string;
+  at: string;
+  venueId: string;
+  zoneId: string;
+  actorIds: string[];
+  lines: RelationshipEvidenceLine[];
+  review: RelationshipReview;
+};
+export type RelationshipState = {
+  version: 1;
+  seed: string;
+  edges: Record<string, RelationshipEdge>;
+  grants: Record<string, RelationshipGrant>;
+  receipts: Record<string, RelationshipReceipt>;
+  applied: Record<string, true>;
+  disclosures: Record<string, RelationshipDisclosure & { at: string; sourceId: string }>;
+  knowledge: Record<string, RelationshipKnowledge>;
+  reviewedActorIds: string[];
+  startingTies: StartingTie[];
+  startingActorIds: string[];
+  spoilers: boolean;
+  socialPlans: SocialPlan[];
+  socialEncounters: SocialEncounter[];
+};

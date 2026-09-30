@@ -1,6 +1,10 @@
 import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
 import {
+  readRelationshipState,
+  relationshipFor,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+import {
   DEFAULT_PLAYER_ROLE,
   renderPlayerRoleContext,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
@@ -101,6 +105,9 @@ async function endVenueSessionWithReceipts(id: string) {
 const records = new Map<string, any>();
 const key = (packageId: string, id: string) => `${packageId}:${id}`;
 let legacyVisits = true;
+let relationshipDecisions = false;
+let failRelationshipStorage = false;
+let failMemoryStorageForVisit = "";
 const documents = {
   async getById(packageId: string, id: string) {
     return records.get(key(packageId, id)) ?? null;
@@ -109,17 +116,30 @@ const documents = {
     return [...records.values()].filter((row) => row.packageId === packageId && row.kind === kind);
   },
   async create(input: any) {
+    if (failRelationshipStorage && input.id.startsWith("villages-relationships-"))
+      throw new Error("relationship storage unavailable");
     const id = key(input.packageId, input.id);
     if (records.has(id)) throw new Error("already created");
     const row = {
       ...input,
-      data: input.kind === "venue-visit" && legacyVisits ? { ...input.data, memoryMode: "end" } : input.data,
+      data:
+        input.kind === "venue-visit" && legacyVisits
+          ? { ...input.data, memoryMode: "end", relationshipReview: undefined }
+          : input.data,
       revision: 1,
     };
     records.set(id, row);
     return row;
   },
   async update(input: any) {
+    if (failRelationshipStorage && input.id.startsWith("villages-relationships-"))
+      throw new Error("relationship storage unavailable");
+    if (
+      failMemoryStorageForVisit &&
+      input.id === "villages-village" &&
+      input.data.chronicle.some((entry: any) => entry.sourceVisitId === failMemoryStorageForVisit)
+    )
+      throw new Error("memory storage unavailable");
     const id = key(input.packageId, input.id);
     const old = records.get(id);
     if (!old || old.revision !== input.expectedRevision) return null;
@@ -414,6 +434,23 @@ const release = configureVillagesRuntime({
             if (responseMode === "malformed") return { content: "{bad", finishReason: "stop" };
             return {
               content: JSON.stringify({
+                relationshipReview: {
+                  changes: relationshipDecisions
+                    ? ["warmth", "trust"].map((dimension) => ({
+                        fromId: "bob",
+                        toId: "player",
+                        dimension,
+                        strength: "minor",
+                        direction: dimension === "warmth" ? "increase" : "decrease",
+                        ordinary: dimension === "warmth",
+                        reason: "A shared exchange affected company and confidence independently.",
+                        lineIds: input.recollections[0].evidence.map((line: any) => line.id),
+                        disclosed: false,
+                      }))
+                    : [],
+                  permissions: [],
+                  disclosures: [],
+                },
                 decisions: input.recollections.map((recollection: any) => ({
                   action:
                     recollection.text.includes("promised") || recollection.text.includes("kissed")
@@ -2721,6 +2758,84 @@ async function main() {
       1,
       "replaying a completed review preserves its deterministic memory ID",
     );
+
+    relationshipDecisions = true;
+    for (const failure of ["relationship", "memory", "review", "discard"]) {
+      const visit = await greetVenue((await enterVenue("park")).id);
+      await sendVenueTurn({
+        sessionId: visit.id,
+        message: "Remember the bridge",
+        mode: "chat",
+        targetId: "bob",
+        submissionId: "combined-" + failure,
+      });
+      const seed = (await readVillageState()).seed;
+      const before = relationshipFor(await readRelationshipState(seed), "bob", "player");
+      const baseline = { warmth: before.warmth, trust: before.trust };
+      const calls = reviewCalls;
+      if (failure === "discard") {
+        debugEnabled = true;
+        await discardVenueVisitDebug(visit.id);
+        debugEnabled = false;
+        assert.equal(reviewCalls, calls);
+        assert.equal(relationshipFor(await readRelationshipState(seed), "bob", "player").trust, baseline.trust);
+        continue;
+      }
+      if (failure === "relationship") failRelationshipStorage = true;
+      if (failure === "memory") failMemoryStorageForVisit = visit.id;
+      if (failure === "review") failReviewOnce = true;
+      const pending = await endVenueSessionWithReceipts(visit.id);
+      assert.equal(pending.session.memoryPending, true);
+      assert.equal(await activeVenueSession(), null, "closing releases the visit before either domain settles");
+      if (failure === "relationship") {
+        assert.equal(
+          pending.session.memoryReview.applied,
+          true,
+          "memory can settle despite relationship storage failure",
+        );
+        assert.equal(pending.recordEvents.filter((event) => event.kind === "memory").length, 1);
+        assert.equal(relationshipFor(await readRelationshipState(seed), "bob", "player").trust, baseline.trust);
+      } else if (failure === "memory") {
+        assert.equal(
+          pending.session.relationshipReview?.applied,
+          true,
+          "relationship can settle despite memory storage failure",
+        );
+        assert.equal(pending.recordEvents.filter((event) => event.kind === "relationship-down").length, 1);
+      } else {
+        assert.deepEqual(pending.recordEvents, []);
+        assert.equal(
+          relationshipFor(await readRelationshipState(seed), "bob", "player").trust,
+          baseline.trust,
+          "failed review awards nothing",
+        );
+      }
+      failRelationshipStorage = false;
+      failMemoryStorageForVisit = "";
+      const paid = reviewCalls;
+      const recovered = await endVenueSessionWithReceipts(visit.id);
+      assert.equal(recovered.session.memoryPending, false);
+      assert.equal(
+        reviewCalls,
+        paid + (failure === "review" ? 1 : 0),
+        "saved decisions replay without another model request",
+      );
+      const settled = relationshipFor(await readRelationshipState(seed), "bob", "player");
+      assert.equal(settled.trust, baseline.trust - 2);
+      assert.equal(recovered.recordEvents.filter((event) => event.kind === "relationship-down").length, 1);
+      const repeat = await endVenueSessionWithReceipts(visit.id);
+      assert.deepEqual(repeat.recordEvents, recovered.recordEvents, "heart and star receipts retain stable IDs");
+      assert.equal(relationshipFor(await readRelationshipState(seed), "bob", "player").trust, settled.trust);
+      await mutateVillageState((state) => {
+        state.chronicle = state.chronicle.filter((entry) => entry.sourceVisitId !== visit.id);
+      });
+      assert.equal(
+        relationshipFor(await readRelationshipState(seed), "bob", "player").trust,
+        settled.trust,
+        "deleting memory cannot undo a relationship",
+      );
+    }
+    relationshipDecisions = false;
 
     for (const paragraphCount of [10, 97, 125]) {
       const synthetic = await enterVenue("park");

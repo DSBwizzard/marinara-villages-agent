@@ -1,3 +1,4 @@
+import { readRelationshipsView, changeRelationshipCreator } from "../services/villages/relationships.js";
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
 import { setScenerySettings } from "../services/villages/village.js";
 import { retryPrivateSpaces } from "../services/villages/private-space-preparation.js";
@@ -471,6 +472,12 @@ function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
             if (scene)
               payload[key] = {
                 ...scene,
+                relationshipReview: scene.relationshipReview
+                  ? {
+                      applied: (scene.relationshipReview as { applied?: boolean }).applied,
+                      receipts: (scene.relationshipReview as { receipts?: unknown[] }).receipts ?? [],
+                    }
+                  : undefined,
                 operation: operationSummary(
                   scene.operation as import("../services/villages/venue-coordinator.js").VenueOperation | undefined,
                 ),
@@ -489,6 +496,20 @@ function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
 
 export async function villagesRoutes(engine: FastifyInstance) {
   engine = publicSceneRoutes(engine);
+  engine.get("/relationships", async (_request, reply) => {
+    try {
+      return await readRelationshipsView();
+    } catch (error) {
+      return fail(reply, error, "read relationships");
+    }
+  });
+  engine.post("/relationships/creator", async (request, reply) => {
+    try {
+      return await changeRelationshipCreator(request.body);
+    } catch (error) {
+      return fail(reply, error, "relationship creator");
+    }
+  });
   // The response wrapper exposes coordination summaries through the host collector.
   // The former locked
   // surface — `sceneLockedRoutes(engine)` — and that is the whole of what 0.4.43

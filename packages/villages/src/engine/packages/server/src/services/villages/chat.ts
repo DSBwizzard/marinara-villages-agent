@@ -1,3 +1,4 @@
+import { relationshipPrompt } from "./relationships.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 // Villages — shared resident prompt and memory helpers.
 //
@@ -433,7 +434,10 @@ function narrationTurn(
     // lines that could drift.
     card,
     player: narrationPlayerFor(village),
-    knowledge: renderVillagePrompt(village.promptKnowledge, { ...values, lore: "" }),
+    knowledge: [
+      renderVillagePrompt(village.promptKnowledge, { ...values, lore: "" }),
+      relationshipPrompt(village, card.id),
+    ].join("\n\n"),
     lore: values.lore,
     history: parts.history.map((entry) => ({ role: entry.role, content: entry.content })),
     message: parts.message,

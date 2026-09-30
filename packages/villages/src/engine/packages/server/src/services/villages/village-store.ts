@@ -2496,6 +2496,9 @@ export function coerceVillageState(value: unknown): VillageState {
     opportunities: coerceOpportunities(raw.opportunities),
     scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
     relationships: coerceRelationships(raw.relationships),
+    socialOutbox: Array.isArray(raw.socialOutbox)
+      ? (structuredClone(raw.socialOutbox) as VillageState["socialOutbox"])
+      : [],
     projects: coerceProjects(raw.projects),
     progressTasks: coerceProgressTasks(raw.progressTasks),
     narrativeItems: Array.isArray(raw.narrativeItems)
@@ -2701,7 +2704,23 @@ const villageSlot: DocumentSlot<VillageState> = {
 
 export async function readVillageState(): Promise<VillageState> {
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID);
-  return coerceVillageState(record?.data);
+  const state = coerceVillageState(record?.data);
+  if (state.seed) {
+    const { readRelationshipState, reconcileRelationships } = await import("./relationship-store.js");
+    state.relationshipContext = await readRelationshipState(state.seed);
+    reconcileRelationships(state.relationshipContext, state);
+    const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } =
+      await import("./relationship-social.js");
+    if (await processSocialOutbox(state)) {
+      const refreshed = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID);
+      Object.assign(state, coerceVillageState(refreshed?.data));
+      state.relationshipContext = await readRelationshipState(state.seed);
+      reconcileRelationships(state.relationshipContext, state);
+    }
+    reconcileSocialPlans(state);
+    projectSocialActivities(state);
+  }
+  return state;
 }
 
 /**
@@ -2724,6 +2743,8 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
     if (state.seed.length === 0) state.seed = randomVillageSeed();
     next = state;
   });
+  const { persistRelationshipAuthority } = await import("./relationship-store.js");
+  await persistRelationshipAuthority(next);
   return next;
 }
 
