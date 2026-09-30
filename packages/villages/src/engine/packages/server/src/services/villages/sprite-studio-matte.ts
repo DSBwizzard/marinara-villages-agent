@@ -1,9 +1,10 @@
 /** Shared, local chroma cleanup. No provider call or style-specific segmentation. */
-export const STUDIO_CLEANUP_VERSION = 2;
+export const STUDIO_CLEANUP_VERSION = 3;
 
 export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height: number): boolean {
   const count = width * height;
   if (!count || rgba.length !== count * 4) return false;
+  const original = rgba.slice();
   const bandX = Math.max(1, Math.ceil(width * 0.18));
   const bandY = Math.max(1, Math.ceil(height * 0.18));
   const step = Math.max(1, Math.floor(Math.sqrt(count / 40000)));
@@ -26,8 +27,14 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
   const dominant = [...buckets.values()].sort((a, b) => b.count - a.count)[0];
   if (!dominant || dominant.count < Math.max(4, opaque * 0.25)) return false;
   const matte = dominant.rgb.map((value) => value / dominant.count);
-  const distance = (index: number) =>
-    Math.hypot(rgba[index * 4]! - matte[0]!, rgba[index * 4 + 1]! - matte[1]!, rgba[index * 4 + 2]! - matte[2]!);
+  const distances = new Float32Array(count);
+  for (let index = 0; index < count; index++)
+    distances[index] = Math.hypot(
+      original[index * 4]! - matte[0]!,
+      original[index * 4 + 1]! - matte[1]!,
+      original[index * 4 + 2]! - matte[2]!,
+    );
+  const distance = (index: number) => distances[index]!;
   const quadrants = new Set<number>();
   for (let y = 0; y < height; y += step)
     for (let x = 0; x < width; x += step) {
@@ -47,7 +54,7 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
     top = height,
     bottom = -1;
   for (let index = 0; index < count; index++) {
-    if (rgba[index * 4 + 3]! < 16 || distance(index) >= 28) continue;
+    if (rgba[index * 4 + 3]! === 0 || distance(index) >= 28) continue;
     mask[index] = 1;
     queue[tail++] = index;
     left = Math.min(left, index % width);
@@ -63,63 +70,132 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
   };
   while (head < tail) {
     neighbors(queue[head++]!, (index) => {
-      if (mask[index] || rgba[index * 4 + 3]! < 16 || distance(index) >= 90) return;
+      if (mask[index] || rgba[index * 4 + 3]! === 0 || distance(index) >= 90) return;
       mask[index] = 1;
       queue[tail++] = index;
     });
   }
   const high = matte.map((value, index) => ({ value, index })).filter(({ value }) => value > Math.max(...matte) - 48);
   const low = matte.map((value, index) => ({ value, index })).filter(({ value }) => value < Math.min(...matte) + 48);
-  const dominance = (index: number) =>
-    Math.min(...high.map(({ index: channel }) => rgba[index * 4 + channel]!)) -
-    Math.max(...low.map(({ index: channel }) => rgba[index * 4 + channel]!));
-  // Unmix only chroma-contaminated pixels beside removed background. Existing
-  // outlines, white details, and native alpha elsewhere remain artwork.
-  const original = rgba.slice();
+  const dominances = new Float32Array(count);
+  const keyHues = new Uint8Array(count);
   for (let index = 0; index < count; index++) {
-    if (mask[index] || rgba[index * 4 + 3]! < 16 || dominance(index) < 40) continue;
-    let adjacent = false;
+    let minHigh = 255,
+      maxHigh = 0,
+      maxLow = 0;
+    for (const { index: channel } of high) {
+      minHigh = Math.min(minHigh, original[index * 4 + channel]!);
+      maxHigh = Math.max(maxHigh, original[index * 4 + channel]!);
+    }
+    for (const { index: channel } of low) maxLow = Math.max(maxLow, original[index * 4 + channel]!);
+    dominances[index] = minHigh - maxLow;
+    keyHues[index] = minHigh - maxLow > 8 && maxHigh - minHigh < 48 ? 1 : 0;
+  }
+  const dominance = (index: number) => dominances[index]!;
+  // Small disconnected remnants of the evidenced key color are background
+  // specks. Connected character details and differently colored islands stay.
+  const seen = new Uint8Array(count);
+  for (let start = 0; start < count; start++) {
+    if (seen[start] || mask[start] || rgba[start * 4 + 3] === 0) continue;
+    head = 0;
+    tail = 1;
+    queue[0] = start;
+    seen[start] = 1;
+    let chromaOnly = true;
+    while (head < tail) {
+      const index = queue[head++]!;
+      chromaOnly &&= dominance(index) > 8 && distance(index) < 180;
+      neighbors(index, (neighbor) => {
+        if (seen[neighbor] || mask[neighbor] || rgba[neighbor * 4 + 3] === 0) return;
+        seen[neighbor] = 1;
+        queue[tail++] = neighbor;
+      });
+    }
+    if (tail <= 16 && chromaOnly) for (let item = 0; item < tail; item++) mask[queue[item]!] = 1;
+  }
+  // Mixed matte/foreground colors can occupy several source pixels. Track a
+  // bounded band rather than only the immediately adjacent four-neighbor ring.
+  const radius = Math.min(12, Math.max(6, Math.ceil(Math.min(width, height) / 32)));
+  const proximity = new Uint8Array(count);
+  head = 0;
+  tail = 0;
+  for (let index = 0; index < count; index++)
+    if (mask[index] || rgba[index * 4 + 3] === 0) {
+      proximity[index] = 1;
+      queue[tail++] = index;
+    }
+  while (head < tail) {
+    const index = queue[head++]!;
+    if (proximity[index]! > radius * 2) continue;
     neighbors(index, (neighbor) => {
-      adjacent ||= !!mask[neighbor];
+      if (proximity[neighbor]) return;
+      proximity[neighbor] = proximity[index]! + 1;
+      queue[tail++] = neighbor;
     });
-    if (!adjacent) continue;
+  }
+  // Keep clean outline pixels intact; reconstruct only chroma-contaminated
+  // pixels near evidenced background, including faint and low-alpha remnants.
+  for (let index = 0; index < count; index++) {
+    if (mask[index] || !proximity[index] || proximity[index]! > radius + 1 || rgba[index * 4 + 3] === 0) continue;
     const x = index % width,
       y = Math.floor(index / width);
-    const observed = [original[index * 4]!, original[index * 4 + 1]!, original[index * 4 + 2]!];
+    const red = original[index * 4]! - matte[0]!,
+      green = original[index * 4 + 1]! - matte[1]!,
+      blue = original[index * 4 + 2]! - matte[2]!;
+    let foreground: number[] | undefined;
     let coverage = 1,
       error = Infinity;
-    for (let dy = -3; dy <= 3; dy++)
-      for (let dx = -3; dx <= 3; dx++) {
-        const sx = x + dx,
-          sy = y + dy;
-        if (sx < 0 || sx >= width || sy < 0 || sy >= height) continue;
+    const keyHue = !!keyHues[index];
+    const searchRadius = keyHue ? radius * 2 : radius;
+    const minDistance = distance(index) + 8,
+      maxDominance = dominance(index) - 8;
+    search: for (let sy = Math.max(0, y - searchRadius); sy <= Math.min(height - 1, y + searchRadius); sy++)
+      for (let sx = Math.max(0, x - searchRadius); sx <= Math.min(width - 1, x + searchRadius); sx++) {
         const sample = sy * width + sx;
-        if (mask[sample] || original[sample * 4 + 3]! <= 128 || dominance(sample) >= 40) continue;
-        const delta = [0, 1, 2].map((channel) => original[sample * 4 + channel]! - matte[channel]!);
+        if (
+          mask[sample] ||
+          original[sample * 4 + 3]! <= 128 ||
+          (keyHues[sample] && proximity[sample] && proximity[sample]! <= radius * 2) ||
+          dominance(sample) >= maxDominance ||
+          distance(sample) <= minDistance
+        )
+          continue;
+        const dr = original[sample * 4]! - matte[0]!,
+          dg = original[sample * 4 + 1]! - matte[1]!,
+          db = original[sample * 4 + 2]! - matte[2]!;
         const candidateCoverage = Math.max(
           0,
-          Math.min(
-            1,
-            delta.reduce((sum, value, channel) => sum + value * (observed[channel]! - matte[channel]!), 0) /
-              delta.reduce((sum, value) => sum + value * value, 0),
-          ),
+          Math.min(1, (dr * red + dg * green + db * blue) / (dr * dr + dg * dg + db * db)),
         );
-        const candidateError = Math.hypot(
-          ...observed.map((value, channel) => value - (matte[channel]! + candidateCoverage * delta[channel]!)),
-        );
+        const er = red - candidateCoverage * dr,
+          eg = green - candidateCoverage * dg,
+          eb = blue - candidateCoverage * db;
+        const candidateError = er * er + eg * eg + eb * eb;
         if (candidateError < error) {
           error = candidateError;
           coverage = candidateCoverage;
+          foreground = [original[sample * 4]!, original[sample * 4 + 1]!, original[sample * 4 + 2]!];
+          // An exact local color fit cannot be improved by scanning more pixels.
+          if (error < 0.000001) break search;
         }
       }
-    if (error > 32 || coverage >= 0.98) continue;
+    if (!foreground) {
+      if (keyHue && distance(index) < 180) rgba[index * 4 + 3] = 0;
+      continue;
+    }
+    if (keyHue) {
+      // Compression and color spill need not lie on a perfect RGB mixture
+      // line. Estimate coverage from the evidenced key's channel dominance.
+      const fgDominance =
+        Math.min(...high.map(({ index: channel }) => foreground![channel]!)) -
+        Math.max(...low.map(({ index: channel }) => foreground![channel]!));
+      const matteDominance = Math.min(...high.map(({ value }) => value)) - Math.max(...low.map(({ value }) => value));
+      coverage = Math.max(0, Math.min(1, (matteDominance - dominance(index)) / (matteDominance - fgDominance)));
+    } else if (error > 64 || coverage >= 0.98) continue;
     rgba[index * 4 + 3] = Math.round(original[index * 4 + 3]! * coverage);
-    if (coverage > 0.05)
-      for (let channel = 0; channel < 3; channel++)
-        rgba[index * 4 + channel] = Math.max(
-          0,
-          Math.min(255, Math.round((observed[channel]! - matte[channel]! * (1 - coverage)) / coverage)),
-        );
+    // The RGB fit can retain compression noise in the key-color direction.
+    // Use the evidenced local foreground palette for the antialiased edge.
+    if (foreground) for (let channel = 0; channel < 3; channel++) rgba[index * 4 + channel] = foreground[channel]!;
   }
   // Strip thin neutral cell frames outside a rectangular chroma backdrop.
   const edgeCoverage = (indices: number[]) => indices.filter((index) => mask[index]).length / indices.length;
@@ -141,7 +217,7 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
       mask[index] ||
       (framed &&
         (x < left || x > right || y < top || y > bottom) &&
-        ((Math.max(...rgb) < 100 && Math.max(...rgb) - Math.min(...rgb) < 50) || dominance(index) > 40))
+        ((Math.max(...rgb) < 100 && Math.max(...rgb) - Math.min(...rgb) < 50) || dominance(index) > 8))
     )
       rgba[p + 3] = 0;
   }

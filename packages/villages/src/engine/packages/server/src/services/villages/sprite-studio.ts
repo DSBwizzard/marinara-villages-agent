@@ -632,15 +632,19 @@ export const repairStudioBackgrounds = (characterId: string, raw: unknown) =>
       if (job.status === "running") throw badRequest("Wait for this batch to finish before repairing backgrounds.");
       for (const sheet of job.sheets)
         for (const cell of [...sheet.cells]) {
-          if (cell.repairedFrom) continue;
-          let repaired = sheet.cells.find((item) => item.repairedFrom === cell.id);
+          if (cell.repairedFrom && cell.cleanup && cell.cleanupVersion === STUDIO_CLEANUP_VERSION) continue;
+          const originalId = cell.repairedFrom ?? cell.id;
+          let repaired = sheet.cells.find(
+            (item) =>
+              item.repairedFrom === originalId && item.cleanup && item.cleanupVersion === STUDIO_CLEANUP_VERSION,
+          );
           if (!repaired) {
             repaired = {
               ...cell,
               id: randomUUID(),
               cleanup: true,
               cleanupVersion: STUDIO_CLEANUP_VERSION,
-              repairedFrom: cell.id,
+              repairedFrom: originalId,
               pending: true,
               status: "candidate",
             };
