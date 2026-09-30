@@ -179,13 +179,15 @@ for (const profile of browserProfiles) {
       const repairedCells = [];
       for (const sheet of job.sheets)
         for (const cell of [...sheet.cells]) {
-          if (cell.repairedFrom) continue;
-          let repaired = sheet.cells.find((item) => item.repairedFrom === cell.id);
+          if (cell.repairedFrom && cell.cleanupVersion === 3) continue;
+          const originalId = cell.repairedFrom ?? cell.id;
+          let repaired = sheet.cells.find((item) => item.repairedFrom === originalId && item.cleanupVersion === 3);
           if (!repaired) {
             repaired = {
               ...cell,
               id: "repair-" + seq++,
-              repairedFrom: cell.id,
+              repairedFrom: originalId,
+              cleanupVersion: 3,
               cleanup: true,
               pending: true,
               rendered: undefined,

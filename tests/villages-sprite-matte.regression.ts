@@ -59,3 +59,46 @@ assert.deepEqual(nonuniform.rgba, original, "unrecognized scenery is not guessed
 console.log(
   "Sprite matte regression passed: inset mattes, frames, pockets, fringes, three chroma colors, outlines, native alpha and idempotence.",
 );
+
+// Thick and faint antialiased edges use actual character colors. No particular
+// outline, palette, or art style is required to reconstruct the foreground.
+for (const outline of [paper, [25, 30, 35, 255] as Color, [230, 105, 40, 255] as Color, blue]) {
+  for (const spill of [0.12, 0.4]) {
+    const image = fixture(magenta);
+    const tinted = outline.map((value, channel) =>
+      channel === 3 ? 255 : Math.round(value * (1 - spill) + magenta[channel]! * spill),
+    ) as Color;
+    for (let y = 8; y <= 51; y++)
+      for (let x = 12; x <= 27; x++) image.set(x, y, x >= 14 && x <= 25 && y >= 10 && y <= 49 ? outline : tinted);
+    image.set(4, 4, [180, 40, 180, 1]);
+    image.set(5, 4, [180, 40, 180, 12]);
+    removeStudioMatte(image.rgba, width, height);
+    assert.equal(image.pixel(4, 4)[3], 0, "alpha-1 detached speck is removed");
+    assert.equal(image.pixel(5, 4)[3], 0, "low-alpha detached speck is removed");
+    assert.deepEqual(image.pixel(14, 25), outline, "clean dark, colored, or unoutlined character edge is preserved");
+    const edge = image.pixel(13, 25);
+    assert.ok(
+      edge[3]! < 255 && edge[3]! > 100,
+      "the inner edge of a multi-pixel halo is reconstructed: " + JSON.stringify({ outline, spill, tinted, edge }),
+    );
+    for (let channel = 0; channel < 3; channel++)
+      assert.ok(Math.abs(edge[channel]! - outline[channel]!) < 4, "edge color matches the actual foreground palette");
+  }
+}
+const cyanNoOutline = fixture([0, 255, 255, 255]);
+for (let y = 8; y <= 51; y++)
+  for (let x = 12; x <= 27; x++)
+    cyanNoOutline.set(x, y, x >= 14 && x <= 25 && y >= 10 && y <= 49 ? blue : [30, 162, 216, 255]);
+removeStudioMatte(cyanNoOutline.rgba, width, height);
+assert.deepEqual(cyanNoOutline.pixel(14, 25), blue, "a colored unoutlined sprite is not mistaken for cyan spill");
+assert.ok(cyanNoOutline.pixel(13, 25)[3]! < 255, "cyan spill is unmixed against the blue foreground");
+console.log(
+  "Extended matte regression passed: multi-pixel and faint halos, low-alpha specks, dark/colored edges and no-outline sprites.",
+);
+
+const shaded = fixture(magenta);
+for (let y = 10; y <= 49; y++) for (let x = 14; x <= 25; x++) shaded.set(x, y, [30, 90, 180, 255]);
+shaded.set(14, 25, blue);
+removeStudioMatte(shaded.rgba, width, height);
+assert.deepEqual(shaded.pixel(14, 25), blue, "legitimate colored shading beside the boundary is not treated as spill");
+console.log("Colored shading protection passed.");

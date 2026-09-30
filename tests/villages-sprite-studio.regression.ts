@@ -514,7 +514,7 @@ async function main() {
     for (const mapping of repaired.repairedCells) {
       const cell = cellsOf(repairedJob).find((item) => item.id === mapping.cellId)!;
       assert.equal(cell.cleanup, true);
-      assert.equal(cell.cleanupVersion, 2);
+      assert.equal(cell.cleanupVersion, 3);
       assert.equal(cell.rendered, undefined, "old rendered files cannot bypass new cleanup");
       assert.ok(cellsOf(repairedJob).some((item) => item.id === mapping.originalId));
     }
@@ -542,6 +542,26 @@ async function main() {
         entry.id,
       );
     await assert.rejects(() => repairStudioBackgrounds("mara", { batchId: "missing" }), /no longer exists/);
+    // Simulate cached artwork from the prior cleanup release, including an
+    // active repaired cutout. Upgrade it without mutating its saved pixels.
+    const storedStudio = [...records.values()].find((record) => record.kind === "sprite-studio");
+    const priorRepairJob = storedStudio.data.jobs.find((job: any) => job.id === a.job.id);
+    for (const cell of cellsOf(priorRepairJob)) if (cell.repairedFrom) cell.cleanupVersion = 2;
+    const priorVersionSprite = activeSprite();
+    const upgraded = await repairStudioBackgrounds("mara", { batchId: a.job.id });
+    assert.deepEqual(activeSprite(), priorVersionSprite, "preparing an upgrade leaves old assignments intact");
+    const upgradedJob = upgraded.jobs.find((job) => job.id === a.job.id)!;
+    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 3);
+    assert.equal(upgradedCells.length, originalCount, "each root artwork gets one current-version repair");
+    for (const entry of repairedAssignments) {
+      const replacement = upgraded.repairedCells.find((item) => item.originalId === entry.id);
+      assert.ok(replacement, "active prior-version repaired IDs map to upgraded candidates");
+      assert.notEqual(replacement.cellId, entry.id);
+      assert.equal(cellsOf(upgradedJob).find((cell) => cell.id === replacement.cellId)!.rendered, undefined);
+    }
+    const upgradedRetry = await repairStudioBackgrounds("mara", { batchId: a.job.id });
+    assert.equal(cellsOf(upgradedRetry.jobs.find((job) => job.id === a.job.id)!).length, cellsOf(upgradedJob).length);
+    assert.deepEqual(upgradedRetry.repairedCells, upgraded.repairedCells);
 
     // Adjustments retain both the prior cutout and its current scene assignment.
     const beforeAdjust = activeSprite(),
