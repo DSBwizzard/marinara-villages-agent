@@ -1,3 +1,4 @@
+import { renderPlayerRoleContext } from "./player-role.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
 import { zoneControllerIds } from "./venue-zones.js";
 import {
@@ -1058,6 +1059,7 @@ async function generateOnce(
     venueWritingDirection(village.narrationStyle, player.name),
     venueAdditionalWritingGuidance(village.narrationStyle),
     `The player is ${player.name}. ${player.description}`,
+    renderPlayerRoleContext(village),
     projectSpeechPrompt(village, projectContexts),
     `Zone: ${storedPlace ? (resolveVenueZone(storedPlace, session.zoneId ?? "")?.name ?? session.area) : session.area} (${session.zoneId ?? "legacy"}). Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
       place?.state.traces

@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import {
+  DEFAULT_PLAYER_ROLE,
+  renderPlayerRoleContext,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
+import {
   foundingNativeActivities,
   parseCompactFounding,
   proposeCompactFounding,
@@ -116,6 +120,7 @@ async function main() {
   );
 
   let calls = 0;
+  let capturedPrompt = "";
   let options: Record<string, unknown> = {};
   let answer = payload(0);
   const release = configureVillagesRuntime({
@@ -129,6 +134,7 @@ async function main() {
         fitContext: (messages: unknown[]) => ({ messages, maxTokens: 4_000, estimatedTokensAfter: 900 }),
         chatComplete: async (_messages: unknown[], next: Record<string, unknown>) => {
           calls += 1;
+          capturedPrompt = _messages.map((message: any) => message.content).join("\n");
           options = next;
           return {
             content: JSON.stringify(answer),
@@ -150,6 +156,25 @@ async function main() {
       const result = await proposeCompactFounding(context(native) as any, async () => {});
       assert.equal(result.moves.length, count);
       assert.equal(calls, before + 1, "one package-level request handles this villager's full founding plan");
+    }
+    for (const playerRole of [
+      DEFAULT_PLAYER_ROLE,
+      {
+        ...DEFAULT_PLAYER_ROLE,
+        title: "Harbor Patron",
+        explanation: "Neighbors bring me plans because I coordinate harbor repairs.",
+      },
+      { ...DEFAULT_PLAYER_ROLE, enabled: false },
+    ]) {
+      const roleContext = { ...context(null), setting: "S".repeat(4000), playerRole, playerPersonaName: "Robin" };
+      const before = calls;
+      answer = payload(0);
+      await proposeCompactFounding(roleContext as any, async () => {});
+      assert.ok(
+        capturedPrompt.includes(renderPlayerRoleContext(roleContext)),
+        "the role is separate from truncated scenery",
+      );
+      assert.equal(calls, before + 1, "role context adds no generation call");
     }
     assert.deepEqual(options.responseFormat, { type: "json_object" });
     assert.equal(options.reasoningEffort, "none");

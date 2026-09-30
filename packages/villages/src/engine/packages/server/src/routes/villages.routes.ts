@@ -1130,6 +1130,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       foundingReason?: unknown;
       foundingDetails?: unknown;
       foundingGuidance?: unknown;
+      playerRole?: unknown;
       scenarioImprint?: unknown;
       worldFacts?: unknown;
       selectedLorebookIds?: unknown;
@@ -1153,6 +1154,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
         foundingReason: body.foundingReason,
         foundingDetails: body.foundingDetails,
         foundingGuidance: body.foundingGuidance,
+        playerRole: body.playerRole,
         scenarioImprint: body.scenarioImprint,
         worldFacts: body.worldFacts,
         selectedLorebookIds: body.selectedLorebookIds,
