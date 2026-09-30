@@ -1,3 +1,5 @@
+import { sceneryImageKey, sceneryPrompt, sceneryCharacterContext } from "./scenery-context.js";
+import { legacyZoneId, venueZones } from "./venue-zones.js";
 import { venueInZone, resolveVenueZone } from "./venue-zones.js";
 // Villages — how a place gets its picture.
 //
@@ -165,7 +167,7 @@ export function buildLocationPrompt(
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
     `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
-    "Honor these facts and do not invent conflicting architecture, technology or geography. Painted background art for a story: no people, no animals, no text, no lettering, no watermark.",
+    `Honor these facts and do not invent conflicting architecture, technology or geography. ${village.sceneryArtStyle ? "Background scenery" : "Painted background art"} for a story: no people, no animals, no text, no lettering, no watermark.`,
   ]
     .filter((part) => part.length > 0)
     .join(" ")
@@ -227,6 +229,27 @@ export async function generateVillageLocationImage(
       : spaceClass
         ? venueInSpace(found.venue, spaceClass)
         : found.venue;
+  const targetZone = zoneId
+    ? resolveVenueZone(found.venue, zoneId)
+    : privateOwnerId
+      ? resolveVenueZone(found.venue, "private:" + privateOwnerId)
+      : undefined;
+  const character = sceneryCharacterContext(
+    village,
+    found.venue,
+    targetZone?.kind === "private-residence" ? targetZone.ownerId : "",
+  );
+  const expectedContext = sceneryImageKey(
+    village,
+    found.venue,
+    zoneId ??
+      legacyZoneId(
+        found.venue,
+        privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
+        spaceClass,
+        privateOwnerId,
+      ),
+  );
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
     seed: village.seed,
@@ -234,16 +257,23 @@ export async function generateVillageLocationImage(
   });
   const exterior = zoneId ? resolveVenueZone(found.venue, zoneId)?.kind === "exterior" : !spaceClass && !privateOwnerId;
   const exteriorContext = [venue.name, venue.form, venue.description, venue.exteriorState?.condition ?? ""].join("\n");
-  const lore = await readVillageVisualLore(
-    village.selectedLorebookIds,
-    `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}`,
-    300,
-  );
-  const prompt = buildLocationPrompt(
-    village,
-    venue,
+  const lore =
+    (found.venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault)
+      ? await readVillageVisualLore(
+          village.selectedLorebookIds,
+          `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
+          900,
+        )
+      : "";
+  const basePrompt = buildLocationPrompt(
+    { ...village, setting: "", worldFacts: [], venues: [] },
+    {
+      ...venue,
+      state: { ...venue.state, furniture: [], publicFacts: [], upgrades: [] },
+      exteriorState: venue.exteriorState ? { ...venue.exteriorState, items: [], publicFacts: [] } : undefined,
+    },
     moment,
-    lore,
+    "",
     exterior ? "exterior" : "interior",
     privateOwnerId
       ? `${village.villagers.find((person) => person.characterId === privateOwnerId)?.cardSnapshot.name ?? "a resident"}'s private space`
@@ -252,6 +282,22 @@ export async function generateVillageLocationImage(
         : "",
   );
 
+  const prompt = sceneryPrompt(
+    [basePrompt],
+    [
+      character ? `Occupant context, reflect preferences without depicting people: ${character}` : "",
+      village.setting ? `Village setting: ${village.setting.slice(0, 400)}` : "",
+      ...village.worldFacts.map((fact) => `World fact: ${fact}`),
+      lore ? `Established visual lore: ${lore}` : "",
+      ...(exterior ? (venue.exteriorState?.items ?? []) : venue.state.furniture).map(
+        (item) => `Visible physical detail: ${item}`,
+      ),
+      ...(exterior ? (venue.exteriorState?.publicFacts ?? []) : venue.state.publicFacts).map(
+        (fact) => `Established area fact: ${fact}`,
+      ),
+    ],
+    village.sceneryArtStyle,
+  );
   const decoded = await generateVillageImage({
     connectionId,
     name: venue.name,
@@ -269,26 +315,33 @@ export async function generateVillageLocationImage(
     width: LOCATION_IMAGE_WIDTH,
     height: LOCATION_IMAGE_HEIGHT,
   });
-  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, onlyIfEmpty, zoneId);
+  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, onlyIfEmpty, zoneId, expectedContext);
 }
 
 /** One automatic drawing after the player first enters this particular private room. */
 export async function generateFirstPrivateSpaceImage(venueId: string, ownerId: string): Promise<void> {
   let claimed = false;
+  let targetId = "";
   await mutateVillageState((state) => {
-    // mutateVillageState may retry this callback after a revision conflict.
-    // Only the final, committed attempt may authorize the paid image request.
     claimed = false;
     const venue = state.venues.find((entry) => entry.id === venueId);
-    const space = venue?.privateSpaces?.find((entry) => entry.ownerId === ownerId);
-    if (!venue?.playerSeenPrivateIds?.includes(ownerId) || !space || space.image || space.initialImageAttemptedAt)
+    const space = venue && venueZones(venue).find((entry) => entry.id === ownerId || entry.id === "private:" + ownerId);
+    if (
+      !space?.seen ||
+      !["private-residence", "staff", "restricted"].includes(space.kind) ||
+      space.image ||
+      space.initialImageAttemptedAt ||
+      space.preparation?.status === "pending" ||
+      space.preparation?.status === "failed"
+    )
       return;
     space.initialImageAttemptedAt = new Date().toISOString();
+    targetId = space.id;
     claimed = true;
   });
   if (!claimed) return;
   try {
-    await generateVillageLocationImage(venueId, undefined, "residence", ownerId, true);
+    await generateVillageLocationImage(venueId, undefined, undefined, "", true, targetId);
   } catch (error) {
     villagesLogger().warn("[villages] first private-space image failed for %s: %s", venueId, String(error));
   }
@@ -311,7 +364,7 @@ export async function storeVillageVenueImage(
 ): Promise<VillageSnapshot> {
   const { venue } = await requireVenue(venueId);
   if (spaceClass && !venueClasses(venue).includes(spaceClass)) throw notFound("That Venue space no longer exists.");
-  await assertVenueImageAccess(venueId, spaceClass, privateOwnerId);
+  await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
   const decoded = decodeImageDataUrl(dataUrl);
   const image = await uploadVillageGalleryImage({
     bytes: decoded.bytes,

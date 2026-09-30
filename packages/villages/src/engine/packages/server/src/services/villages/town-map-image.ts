@@ -1,3 +1,4 @@
+import { readSceneryStyle, sceneryPrompt } from "./scenery-context.js";
 // Villages — generation rules for the founding map.
 //
 // The navigation rules live here. Only the testing editor can override them.
@@ -18,7 +19,7 @@ import {
 export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 
 export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
-  "Create a wide landscape, top-down or three-quarter-view illustrated game navigation map. " +
+  "Create a wide landscape, top-down or three-quarter-view game navigation map. " +
   "Use the village description for the surroundings and visual character. Show varied, coherent, traversable terrain " +
   "and natural landmarks. Distribute many visually distinct, usable places for future venue placements " +
   "across the image, with clear separation. These should read as natural clearings, terraces, platforms, " +
@@ -62,6 +63,7 @@ export function buildTownMapPrompt(
   options?: unknown,
   lore = "",
   scenarioImprint?: unknown,
+  style = "",
 ): string {
   const rules =
     structure === undefined || structure === null || structure === ""
@@ -86,18 +88,20 @@ export function buildTownMapPrompt(
         ? "Do not include water, including oceans, rivers, ponds, canals, or waterfalls."
         : "",
   ].filter(Boolean);
-  let base = `${rules}\n\nFollow the village description for water, paths, and existing structures unless an explicit map preference below says otherwise. Leave room for future village places.${elements.length ? `\n\nExplicit map preferences:\n${elements.join("\n")}` : ""}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nVillage description: ${world}`;
+  const base = `${rules}\n\nFollow the village description for water, paths, and existing structures unless an explicit map preference below says otherwise. Leave room for future village places.${elements.length ? `\n\nExplicit map preferences:\n${elements.join("\n")}` : ""}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nVillage description: ${world}`;
   if (base.length > 4_000)
     throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or village description.");
   const imprint = coerceScenarioImprint(scenarioImprint);
-  const visual = [...(imprint?.worldFacts ?? []), ...(imprint?.visualCues ?? [])].join("; ");
-  const visualPrefix = "\nReviewed founding visual context (map controls above always win): ";
-  if (visual && base.length + visualPrefix.length < 4_000)
-    base += visualPrefix + visual.slice(0, 4_000 - base.length - visualPrefix.length);
-  const lorePrefix =
-    "\nVisual details from selected lore (follow only where consistent with the setting and map controls): ";
-  const room = 4_000 - base.length - lorePrefix.length;
-  return lore && room > 0 ? `${base}${lorePrefix}${lore.slice(0, room)}` : base;
+  return sceneryPrompt(
+    [base],
+    [
+      style ? "" : "Illustrated game navigation map scenery.",
+      ...(imprint?.worldFacts ?? []).map((fact) => "Reviewed founding world fact (map controls always win): " + fact),
+      ...(imprint?.visualCues ?? []).map((cue) => "Reviewed founding visual context (map controls always win): " + cue),
+      lore ? "Visual details from selected lore (consistent with setting and map controls): " + lore : "",
+    ],
+    style,
+  );
 }
 
 export function buildTownMapNegativePrompt(options?: unknown, negative?: unknown): string {
@@ -130,10 +134,35 @@ export async function generateVillageTownMap(input: {
   connectionId?: unknown;
   selectedLorebookIds?: unknown;
   scenarioImprint?: unknown;
+  sceneryArtStyle?: unknown;
+  useVisualLore?: unknown;
 }): Promise<{ image: string; width: number; height: number }> {
   const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
-  const lore = await readVillageVisualLore(ids, typeof input.setting === "string" ? input.setting : "", 260);
-  const prompt = buildTownMapPrompt(input.structure, input.setting, input.options, lore, input.scenarioImprint);
+  if (input.useVisualLore !== undefined && typeof input.useVisualLore !== "boolean")
+    throw badRequest("Visual lore must be on or off.");
+  const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
+  const lore =
+    input.useVisualLore === false
+      ? ""
+      : await readVillageVisualLore(
+          ids,
+          [input.setting, JSON.stringify(coerceScenarioImprint(input.scenarioImprint))].filter(Boolean).join("\n"),
+          900,
+        );
+  const prompt = sceneryPrompt(
+    [
+      buildTownMapPrompt(
+        input.structure,
+        typeof input.setting === "string" ? input.setting.slice(0, style ? 1500 : 2000) : input.setting,
+        input.options,
+        "",
+        input.scenarioImprint,
+        style,
+      ),
+    ],
+    [lore ? `Established visual lore: ${lore}` : ""],
+    "",
+  );
   const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const generated = await generateVillageImage({
     connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,

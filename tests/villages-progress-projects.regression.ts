@@ -355,9 +355,25 @@ async function main() {
       form: "A timber hall",
       exteriorDescription: "Warm windows.",
       interiorDescription: "Tables and a hearth.",
+      privateSpaces: [
+        {
+          id: "restricted:archive",
+          name: "Archive",
+          purpose: "Store records",
+          controllerIds: ["player"],
+          description: "An authored archive",
+        },
+      ],
+      imageContext: { useAssignedVillagerContext: false, useVisualLore: false },
     });
     state = await readVillageState();
     assert.equal(state.projects.find((entry) => entry.id === projectId)?.status, "complete");
+    const openedVenue = state.venues.find((entry) => entry.buildProjectId === projectId);
+    const privateRoom = openedVenue.zones.find((zone) => zone.id === "restricted:archive");
+    assert.equal(privateRoom.description, "An authored archive");
+    assert.deepEqual(privateRoom.controllerIds, ["player"]);
+    assert.ok(privateRoom.preparation, "private preparation belongs to the opening flow");
+    assert.deepEqual(openedVenue.imageContext, { useAssignedVillagerContext: false, useVisualLore: false });
     assert.equal(
       state.progressTasks.find((entry) => entry.definition.owner.id === projectId)?.resolutionKey,
       `project:${projectId}:4:resolved`,

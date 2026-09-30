@@ -147,6 +147,7 @@ export async function readVillageLore(
   signal?: AbortSignal,
   tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
   strict = false,
+  preferMatches = false,
 ): Promise<string[]> {
   if (!ids.length) return [];
   try {
@@ -181,7 +182,15 @@ export async function readVillageLore(
         villagesLogger().warn("[villages] could not read lorebook %s: %s", id, String(error));
       }
     }
-    candidates.sort((a, b) => (a.order ?? 100) - (b.order ?? 100) || a.name.localeCompare(b.name));
+    candidates.sort(
+      (a, b) =>
+        (preferMatches
+          ? Number(!!b.keys?.some((key) => keyMatches(key, context, b))) -
+            Number(!!a.keys?.some((key) => keyMatches(key, context, a)))
+          : 0) ||
+        (a.order ?? 100) - (b.order ?? 100) ||
+        a.name.localeCompare(b.name),
+    );
     const selected: string[] = [];
     let tokens = 0;
     for (const entry of candidates) {
@@ -203,6 +212,13 @@ export async function readVillageLore(
 
 /** Image prompts need visual cues, not a complete world-info entry. */
 export async function readVillageVisualLore(ids: readonly string[], context: string, maxLength = 360): Promise<string> {
-  const entries = await readVillageLore(ids, context);
-  return entries.join("; ").slice(0, maxLength).trim();
+  const entries = await readVillageLore(ids, context, undefined, DEFAULT_LORE_TOKEN_BUDGET, false, true);
+  const selected: string[] = [];
+  let length = 0;
+  for (const entry of entries) {
+    if (length + entry.length + (selected.length ? 2 : 0) > maxLength) continue;
+    selected.push(entry);
+    length += entry.length + (selected.length > 1 ? 2 : 0);
+  }
+  return selected.join("; ");
 }

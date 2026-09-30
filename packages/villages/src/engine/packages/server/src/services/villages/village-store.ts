@@ -166,6 +166,9 @@ export function defaultVillageState(): VillageState {
     scenarioImprint: null,
     worldFacts: [],
     selectedLorebookIds: [],
+    sceneryArtStyle: "",
+    personalizeVenueImagesByDefault: true,
+    useVisualLoreByDefault: true,
     loreTokenBudget: DEFAULT_LORE_TOKEN_BUDGET,
     // No place in the village yet, and no home on the map: the founding flow
     // writes the homes the player placed, and a village that predates places
@@ -782,9 +785,17 @@ function coerceVenue(value: unknown): VillageVenue | null {
     return {
       ...defaultVenueSpace("residence", `A private space for this resident at ${name}.`),
       id: `private:${ownerId}`,
+      preparation: value
+        ? ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
+          ? (row.preparation as { status: "pending" | "ready" | "failed"; error?: string })
+          : undefined
+        : ownerId === "player"
+          ? undefined
+          : { status: "pending" },
       ownerId,
-      description:
-        boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`,
+      description: value
+        ? boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`
+        : "",
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
@@ -793,7 +804,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     };
   };
   const privateSpaces = classes.includes("residence")
-    ? residentIds.map((ownerId) =>
+    ? [...residentIds, ...(playerHome ? ["player"] : [])].map((ownerId) =>
         privateSpaceFor(
           ownerId,
           Array.isArray(raw.privateSpaces)
@@ -884,6 +895,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
     return null;
   }
   const venue: VillageVenue = {
+    imageContext: {
+      useAssignedVillagerContext: asRecord(raw.imageContext).useAssignedVillagerContext !== false,
+      useVisualLore: asRecord(raw.imageContext).useVisualLore !== false,
+    },
     id: asTrimmedString(raw.id),
     buildProjectId: asTrimmedString(raw.buildProjectId) || undefined,
     constructionStatus:
@@ -927,7 +942,12 @@ function coerceVenue(value: unknown): VillageVenue | null {
             const ownerId = asTrimmedString(entry.ownerId);
             const proposed = asRecord(entry.proposed);
             const requiredIds = coerceVenueIds(entry.requiredIds);
-            if (!id || !requiredIds.length || (target === "private" && ownerId !== requiredIds[0])) return [];
+            if (
+              !id ||
+              !requiredIds.length ||
+              (target === "private" && !entry.zoneId && !entry.privateSpaceId && ownerId !== requiredIds[0])
+            )
+              return [];
             const current =
               asTrimmedString(entry.zoneId) && Array.isArray(raw.zones)
                 ? raw.zones.map(asRecord).find((zone) => zone.id === entry.zoneId)
@@ -945,7 +965,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
               {
                 id,
                 target,
-                zoneId: asTrimmedString(entry.zoneId) || undefined,
+                zoneId: asTrimmedString(entry.privateSpaceId ?? entry.zoneId) || undefined,
+                privateSpaceId:
+                  target === "private" ? asTrimmedString(entry.privateSpaceId ?? entry.zoneId) || undefined : undefined,
                 ownerId,
                 baseUpdatedAt: asIsoString(entry.baseUpdatedAt) ?? "",
                 proposed: {
@@ -977,7 +999,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ? raw.playerInvitations
           .map((entry) => ({
             residentId: asTrimmedString(asRecord(entry).residentId),
-            zoneId: asTrimmedString(asRecord(entry).zoneId) || undefined,
+            zoneId: asTrimmedString(asRecord(entry).privateSpaceId ?? asRecord(entry).zoneId) || undefined,
+            privateSpaceId: asTrimmedString(asRecord(entry).privateSpaceId) || undefined,
             recordedAt: asIsoString(asRecord(entry).recordedAt) ?? "",
             scope: asRecord(entry).scope === "private" ? ("private" as const) : ("shared" as const),
             ownerId: asTrimmedString(asRecord(entry).ownerId),
@@ -986,8 +1009,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           }))
           .filter(
             (entry) =>
-              (residentIds.includes(entry.residentId) ||
-                (!!entry.zoneId && coerceVenueIds(raw.workerIds).includes(entry.residentId))) &&
+              (!!entry.zoneId || residentIds.includes(entry.residentId)) &&
               (entry.scope === "shared" || entry.ownerId === entry.residentId),
           )
           .slice(-16)
@@ -1022,7 +1044,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
     const id = asTrimmedString(row.id);
     if (!id || !ZONE_KINDS.includes(row.kind as VillageVenueZone["kind"])) return null;
     const ownerId = asTrimmedString(row.ownerId);
-    if (row.kind === "private-residence" && !residentIds.includes(ownerId)) return null;
+    if (row.kind === "private-residence" && !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome)))
+      return null;
     const upgradeId = asTrimmedString(row.upgradeId);
     if (upgradeId && !improvements.some((upgrade) => upgrade?.id === upgradeId)) return null;
     return {
@@ -1034,6 +1057,14 @@ function coerceVenue(value: unknown): VillageVenue | null {
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
+      purpose: boundText(row.purpose, 240),
+      controllerIds: coerceVenueIds(row.controllerIds),
+      preparation: ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
+        ? {
+            status: asRecord(row.preparation).status as "pending" | "ready" | "failed",
+            error: boundText(asRecord(row.preparation).error, 300),
+          }
+        : undefined,
       upgradeId: upgradeId || undefined,
       seen: row.seen === true,
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
@@ -1105,12 +1136,20 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
       id = asTrimmedString(row.id),
       name = boundText(row.name, MAX_VENUE_NAME_LENGTH),
       description = boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH);
-    if (!id || !name || !description || !["public", "shared-residence", "staff"].includes(String(row.kind))) return [];
+    if (
+      !id ||
+      !name ||
+      (!description && !["staff", "restricted"].includes(String(row.kind))) ||
+      !["public", "shared-residence", "staff", "restricted"].includes(String(row.kind))
+    )
+      return [];
     return [
       {
         id,
         name,
         description,
+        purpose: boundText(row.purpose, 240),
+        controllerIds: coerceVenueIds(row.controllerIds),
         kind: row.kind as VillageZoneDraft["kind"],
         venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       },
@@ -2362,6 +2401,9 @@ export function coerceVillageState(value: unknown): VillageState {
     scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
     worldFacts: coerceWorldFacts(raw.worldFacts),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
+    sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
+    personalizeVenueImagesByDefault: raw.personalizeVenueImagesByDefault !== false,
+    useVisualLoreByDefault: raw.useVisualLoreByDefault !== false,
     loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),
     venues,
     homeBuildingNames: Object.fromEntries(
