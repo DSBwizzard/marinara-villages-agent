@@ -2,6 +2,8 @@ import type { VillageResidentSprite } from "./types.js";
 
 export function describeSpriteExpressions(sprite: VillageResidentSprite | null | undefined): string {
   const seen = new Set<string>();
+  const defaultEntry = sprite?.expressions.find((entry) => entry.label === "neutral") ?? sprite?.expressions[0];
+  const defaultId = sprite?.defaultExpressionId ?? defaultEntry?.expressionId ?? defaultEntry?.label;
   return (sprite?.expressions ?? [])
     .flatMap((entry) => {
       const id = entry.expressionId ?? entry.label;
@@ -13,6 +15,7 @@ export function describeSpriteExpressions(sprite: VillageResidentSprite | null |
           name: entry.name || entry.label.replaceAll("_", " "),
           useWhen: entry.useWhen || "",
           pose: entry.pose || "",
+          isDefault: id === defaultId,
         }),
       ];
     })

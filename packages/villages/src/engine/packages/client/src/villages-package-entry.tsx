@@ -43,6 +43,15 @@ import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villag
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
 import { createVillagesClientId, shouldSubmitVenueKey } from "./villages-venue-send";
 import { hasCompletedRoomSubmission, isLocalRoomCompletion, nextRoomReadIndex } from "./villages-room-reading";
+import {
+  initialStaging,
+  lineStagingCues,
+  replayStaging,
+  stagingBoundaries,
+  stagingLayout,
+  type StagingCue,
+  type StagingEvent,
+} from "../../shared/src/villages/scene-staging.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import {
@@ -957,6 +966,7 @@ type RoomLine = {
   kind?: "narration" | "dialogue" | "side" | "whisper";
   expression?: string;
   gazeAt?: string;
+  staging?: StagingCue[];
   targetId?: string;
   asideFor?: string;
   id?: string;
@@ -993,6 +1003,7 @@ type RoomMemoryDecision = {
 /** One venue visit: its cast stays fixed until the player leaves. */
 type RoomView = {
   version: 1;
+  stagingVersion?: 1;
   id: string;
   placeId: string;
   /** The name that place had when the room opened, for the plate. */
@@ -1021,6 +1032,9 @@ type RoomView = {
   };
   submissions?: {
     id: string;
+    activeIdsAtTurn?: string[];
+    activeIdsAfterTurn?: string[];
+    replyLineIds?: string[];
     mode?: string;
     at?: string;
     action?: { happened: boolean; narration: string };
@@ -5673,6 +5687,12 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > img { width: 100%; height: 100%; max-width: none; object-fit: contain; object-position: center bottom; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > .${ELEMENT_TAG}-avatar { width: min(8rem, 80%); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > span:not(.${ELEMENT_TAG}-avatar) { position: absolute; bottom: .3rem; max-width: 95%; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person,
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: absolute; bottom: 0; flex: none; max-width: none; height: 100%; transition: left .22s ease, opacity .18s ease, filter .18s ease, transform .18s ease; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"][data-animate="false"] > .${ELEMENT_TAG}-chat-cast-person { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person { transition: none; }
+}
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-rest { position: absolute; right: .5rem; bottom: .25rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { position: relative; z-index: 3; flex: 0 0 auto; align-self: center; width: min(72rem, calc(100% - 1.5rem)); margin: 0 auto .5rem; padding: .5rem .75rem; gap: .25rem; border-radius: .85rem; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat[data-opening-error="true"] .${ELEMENT_TAG}-chat-vn { display: flex; }
@@ -9269,6 +9289,7 @@ async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promi
 
 /** One paragraph in a venue visit, with its speaker and attached asides. */
 type RoomStep = {
+  stagingEvent?: StagingEvent;
   /**
    * Stable under append, which is the only thing a room's history ever does.
    *
@@ -9562,6 +9583,8 @@ function RoomPanel({
    */
   const steps = useMemo<RoomStep[]>(() => {
     const built: RoomStep[] = [];
+    const boundaries = stagingBoundaries(room.lines, room.submissions ?? []);
+    const stageAsides = new Map<string, RoomLine[]>();
     const attached = new Map<string, RoomStep["asides"]>();
     for (const line of room.lines) {
       if ((line.kind !== "side" && line.kind !== "whisper") || !line.asideFor) continue;
@@ -9578,14 +9601,31 @@ function RoomPanel({
         gazeAt: line.gazeAt,
       });
       attached.set(line.asideFor, list);
+      stageAsides.set(line.asideFor, [...(stageAsides.get(line.asideFor) ?? []), line]);
     }
     for (const line of room.lines) {
       if (line.kind === "side" || line.kind === "whisper") continue;
       const player = line.speakerId.length === 0;
       const walk = villagesWalk(line.content, line.beats ?? null);
+      const asideLines = stageAsides.get(line.id ?? "") ?? [];
+      const momentBoundaries = [line, ...asideLines].map((item) => boundaries.get(item.id ?? ""));
+      const beforeIds = momentBoundaries.find((item) => item?.beforeIds)?.beforeIds;
+      const afterIds = momentBoundaries.find((item) => item?.afterIds)?.afterIds;
       walk.paragraphs.forEach((paragraph, index) => {
         built.push({
           key: `${built.length}`,
+          ...(room.stagingVersion === 1
+            ? {
+                stagingEvent: {
+                  cues: [
+                    ...(index === 0 ? lineStagingCues(line) : []),
+                    ...(index === walk.paragraphs.length - 1 ? asideLines.flatMap(lineStagingCues) : []),
+                  ],
+                  ...(index === 0 && beforeIds ? { beforeIds } : {}),
+                  ...(index === walk.paragraphs.length - 1 && afterIds ? { afterIds } : {}),
+                },
+              }
+            : {}),
           speakerId: player ? "" : line.speakerId,
           name: player ? playerName : line.name,
           player,
@@ -9601,7 +9641,7 @@ function RoomPanel({
       });
     }
     return built;
-  }, [playerName, room.lines, room.participants]);
+  }, [playerName, room.lines, room.participants, room.stagingVersion, room.submissions]);
 
   /** A new visit opens at its latest line; each append opens at its first new paragraph. */
   useLayoutEffect(() => {
@@ -9611,6 +9651,34 @@ function RoomPanel({
 
   const at = Math.min(readStep, Math.max(0, steps.length - 1));
   const step = steps[at];
+  const stagingFrames = useMemo(
+    () =>
+      room.stagingVersion === 1
+        ? replayStaging(
+            room.participants.map((person) => person.characterId),
+            steps.map((item) => item.stagingEvent ?? {}),
+          )
+        : [],
+    [room.stagingVersion, room.participants, steps],
+  );
+  const stagingFrame = stagingFrames[at];
+  const stagingState = stagingFrame?.state ?? initialStaging(room.participants.map((person) => person.characterId));
+  const previousStageReading = useRef<{ roomId: string; at: number; restoring: boolean } | null>(null);
+  const animateStaging = useMemo(
+    () =>
+      previousStageReading.current?.roomId === room.id &&
+      !previousStageReading.current.restoring &&
+      at > previousStageReading.current.at,
+    [room.id, at],
+  );
+  useLayoutEffect(() => {
+    const initialRead = previousStageReading.current?.roomId !== room.id;
+    previousStageReading.current = {
+      roomId: room.id,
+      at,
+      restoring: initialRead && at !== Math.max(0, steps.length - 1),
+    };
+  }, [room.id, at, steps.length]);
   const canReadPrevious = at > 0;
   const canReadNext = at < steps.length - 1;
   const canCompose = !ended && room.status === "active" && !canReadNext;
@@ -9665,14 +9733,28 @@ function RoomPanel({
 
   const speakerPortrait = step === undefined ? undefined : step.player ? playerPortrait : portraits[step.speakerId];
   const activeParticipants = room.participants.filter((person) => room.activeIds.includes(person.characterId));
-  const cast = room.status === "closed" && activeParticipants.length === 0 ? room.participants : activeParticipants;
+  const cast =
+    room.stagingVersion === 1
+      ? room.participants.filter((person) => (stagingFrame?.activeIds ?? room.activeIds).includes(person.characterId))
+      : room.status === "closed" && activeParticipants.length === 0
+        ? room.participants
+        : activeParticipants;
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
-  const asideSide =
-    displayed.findIndex((person) => person.characterId === speaker?.characterId) >= 2 ? "left" : "right";
+  const stageLayout = stagingLayout(
+    displayed.map((person) => person.characterId),
+    stagingState,
+  );
+  const asideSide = (
+    room.stagingVersion === 1
+      ? (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5
+      : displayed.findIndex((person) => person.characterId === speaker?.characterId) >= 2
+  )
+    ? "left"
+    : "right";
 
   /**
    * The wait, in the room's own words.
@@ -9920,30 +10002,49 @@ function RoomPanel({
         </div>
       ) : null}
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
-        <div className={`${ELEMENT_TAG}-chat-cast`}>
+        <div
+          className={`${ELEMENT_TAG}-chat-cast`}
+          data-staging={room.stagingVersion === 1 ? "true" : "false"}
+          data-animate={animateStaging ? "true" : "false"}
+        >
           {displayed.map((villager, index) => {
             const sprite = sprites[villager.characterId];
             const isSpeaker = villager.characterId === speaker?.characterId;
             const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
-            const wanted = isSpeaker ? (step?.expression ?? "") : (aside?.expression ?? "");
+            const slot = room.stagingVersion === 1 ? stageLayout[villager.characterId] : undefined;
+            const wanted = slot
+              ? stagingState[villager.characterId].expression
+              : isSpeaker
+                ? (step?.expression ?? "")
+                : (aside?.expression ?? "");
             const gazeAt = isSpeaker
               ? step?.gazeAt
               : (aside?.gazeAt ?? (villager.characterId === step?.gazeAt ? speaker?.characterId : undefined));
             const targetIndex = displayed.findIndex((person) => person.characterId === gazeAt);
-            const selected = selectSpriteImage(sprite?.images ?? [], wanted, spriteFacing(index, targetIndex));
+            const selected = selectSpriteImage(
+              sprite?.images ?? [],
+              wanted,
+              slot?.facing ?? spriteFacing(index, targetIndex),
+            );
             return (
               <div
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
                 data-active={villager.characterId === speaker?.characterId ? "true" : "false"}
                 data-sprite={selected ? "true" : "false"}
+                data-character-id={villager.characterId}
+                data-position={slot ? stagingState[villager.characterId].position : undefined}
+                data-attention={slot ? slot.facing : undefined}
+                style={
+                  slot ? { left: `${(slot.x - slot.width / 2) * 100}%`, width: `${slot.width * 100}%` } : undefined
+                }
               >
                 {selected ? (
                   <img
                     src={selected.image.url}
                     alt=""
                     data-framing={sprite?.framing.mode ?? "full"}
-                    data-facing={selected.mirrored ? "left" : "right"}
+                    data-facing={selected.image.view === "front" ? "front" : selected.mirrored ? "left" : "right"}
                   />
                 ) : (
                   <AvatarFace
