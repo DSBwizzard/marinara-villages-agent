@@ -805,8 +805,6 @@ function agendaRevision(village: VillageState, characterId: string): string {
       resident.cardSnapshot.personality,
       resident.cardSnapshot.description,
     ],
-    resident?.completedWishes.map((entry) => entry.wish.id),
-    resident?.agenda?.wishes.map((entry) => entry.id),
   ]);
 }
 
@@ -875,8 +873,6 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
       characterId,
       revision: agendaRevision(village, characterId),
       context,
-      completedIds: villager.completedWishes.map((entry) => entry.wish.id),
-      activeIds: villager.agenda?.wishes.map((entry) => entry.id) ?? [],
     },
   });
 }
@@ -4575,6 +4571,10 @@ export async function reconcileVillage(
 
   // Discover optional paid work only after deterministic advancement has committed.
   await respondDueVenueMail(now);
+  // Initial space preparation retains the founding generation path; begin it only after local advancement.
+  outsideVenueOperation(() => {
+    void preparePrivateSpaces().catch(() => {});
+  });
   const pendingRooms = (await readVillageState()).venues.flatMap(
     (venue) => venue.privateSpaces?.filter((room) => room.adaptationPending).map((room) => room.ownerId) ?? [],
   );

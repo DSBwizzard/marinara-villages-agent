@@ -507,10 +507,15 @@ registerBackgroundHandler("wish", {
       wishRevision(resident, state) === input.revision
     );
   },
-  apply(state, input, result: WishAttempt) {
+  apply(state, input, result: WishAttempt, context) {
     const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
     const committedAt = (clocks.get(input.id) ?? (() => new Date()))();
     const attempt = structuredClone(result);
+    // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.
+    if (context.retrying) {
+      attempt.dateKey = agendaDateKey(committedAt);
+      attempt.at = committedAt.toISOString();
+    }
     if (
       attempt.accepted &&
       attempt.candidate &&
@@ -526,7 +531,6 @@ registerBackgroundHandler("wish", {
     attempt.stage = "done";
     owner.wishLifecycle!.attempt = attempt;
     delete state.wishRefillIntents[input.characterId];
-    clocks.delete(input.id);
   },
 });
 export async function processWishAttempt(
@@ -542,7 +546,8 @@ export async function processWishAttempt(
   const existingStatus = await backgroundStatus("wish", characterId);
   if (["failed", "interrupted"].includes(existingStatus ?? "") && wishRevision(resident, state) === job.revision)
     return;
-  if (wishRevision(resident, state) !== job.revision || job.dateKey !== agendaDateKey(now)) {
+  const legacyInterrupted = job.stage === "comparing" || (job.stage === "reserved" && job.calls > 0);
+  if (!legacyInterrupted && (wishRevision(resident, state) !== job.revision || job.dateKey !== agendaDateKey(now))) {
     await mutateVillageState((live) => {
       const attempt = live.villagers.find((entry) => entry.characterId === characterId)?.wishLifecycle?.attempt;
       if (attempt?.id === id) {
@@ -553,7 +558,7 @@ export async function processWishAttempt(
     return;
   }
   if (clock) clocks.set(id, clock);
-  const interrupted = job.stage === "comparing" || (job.stage === "reserved" && job.calls > 0);
+  const interrupted = legacyInterrupted;
   if (interrupted)
     await mutateVillageState((live) => {
       const attempt = live.villagers.find((entry) => entry.characterId === characterId)?.wishLifecycle?.attempt;
@@ -578,7 +583,13 @@ export async function processWishAttempt(
       now: now.toISOString(),
     },
   });
-  if (clock) await settleBackgroundWork();
+  if (clock) {
+    try {
+      await settleBackgroundWork();
+    } finally {
+      clocks.delete(id);
+    }
+  }
 }
 
 /** Reserves a bounded batch atomically. The caller decides whether to await its model work. */
@@ -592,6 +603,18 @@ export async function reserveWishAttempts(now: Date): Promise<{ characterId: str
   let work: { characterId: string; id: string }[] = [];
   await mutateVillageState((state) => {
     work = [];
+    // Older releases recorded provider failures as "done"; retain their allowance and expose explicit recovery.
+    for (const resident of state.villagers) {
+      const attempt = resident.wishLifecycle?.attempt;
+      if (
+        attempt?.stage === "done" &&
+        attempt.calls > 0 &&
+        !/^(No new wish today|Local identity check|Bounded semantic comparison accepted|Repeated need or uncertain comparison|Active duplicate or settled need|State changed before commit|The proposal's day|Initial wish granted|No initial wish today|Daily wish allowance consumed)/.test(
+          attempt.reason,
+        )
+      )
+        attempt.stage = attempt.candidate ? "comparing" : "reserved";
+    }
     if (state.storyPace === "off" || (state.foundingPreparation && state.foundingPreparation.status !== "ready"))
       return;
     // A clock rollback must not reopen an earlier phase's batch for other residents.

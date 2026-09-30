@@ -189,12 +189,15 @@ async function main() {
           async chatComplete(messages: any[]) {
             modelCalls += 1;
             if (agendaMode) {
-              const user = String(messages[1]?.content ?? "");
+              const weekday = String(messages[0]?.content ?? "").match(
+                /Lina's (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/,
+              )?.[1];
+              const user = weekday ? "Write " + weekday + " only." : "Write routine.";
               agendaRequests.push(user);
               if (user === "Write Wednesday only." && failWednesday) throw new Error("Wednesday unavailable");
               return {
                 content: JSON.stringify(
-                  user.startsWith("Write ")
+                  Boolean(weekday)
                     ? {
                         blocks: [
                           {
@@ -461,7 +464,7 @@ async function main() {
     ]);
     await settleBackgroundWork();
     assert.deepEqual(agendaRequests, [
-      "What does Lina wish for?",
+      "Write routine.",
       "Write Monday only.",
       "Write Tuesday only.",
       "Write Wednesday only.",

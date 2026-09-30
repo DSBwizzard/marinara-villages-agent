@@ -1594,7 +1594,7 @@ export async function proposeAgenda(
 
   const payload = extractJsonObject(completion.content ?? "");
   const agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
-  if (!agenda)
+  if (!agenda || (backgroundCalls.getStore() && !agenda.routineSummary))
     throw new Error(completionFailure("Village routine", completion, fitted.maxTokens ?? requestedMaxTokens));
   agenda.wishes = [...(context.activeWishes ?? [])];
   const proposedWeek: Record<string, unknown> = {};

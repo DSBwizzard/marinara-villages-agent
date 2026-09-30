@@ -1114,3 +1114,32 @@ npm run check
 ```
 
 Because `villages` is listed in `scripts/catalog-incomplete.mjs`, the builder keeps it out of every published catalog lane, so the catalog counts and the package guidance tables stay unchanged while it is being built. Delete the id from that set and rebuild the catalog when it graduates.
+
+## Background work and recovery
+
+Stories, resident agendas, native schedule translations, wish replenishment, mailbox replies, and move-related private room adaptation share one server-owned coordinator. Dialogue, image generation, memory review, and founding generation (including initial private-space preparation) retain their own paths.
+
+Time, construction, moves, expiry, and schedule rollover commit locally before enrichment is discovered. Recurring enrichment starts while Villages is visible: each browser session sends a heartbeat every 30 seconds and expires after 90 seconds without one. Multiple tabs collectively permit work. Finite work requested by a player can finish while away. Hiding Villages lets the active request finish and checkpoint, then pauses recurring work before its next request. Returning generates current enrichment, without writing stories for every missed day. Story pace Off stops pending automatic stories; Write now remains available.
+
+The **Background work** panel in the Village menu reports progress, saved stages, request counts, and provider-reported token usage. Missing usage is shown as unavailable. Failed and interrupted jobs require an explicit retry. A provider exception pauses further automatic requests on that connection; a successful deliberate retry resumes it. Invalid output blocks its own job. Retries reuse completed stages, including earlier agenda weekdays and translation batches.
+
+### Coordinator invariants
+
+`background-work.ts` owns synchronous admission, persisted request claims, fair FIFO request dispatch, checkpoints, and recovery. Domain handlers in `village.ts`, `wish-lifecycle.ts`, and `venue-mailbox.ts` freeze generation inputs, check whether they still apply, and apply validated effects. `background-context.ts` intercepts existing completion calls so the prompts stay shared with foreground/founding paths.
+
+A slot is keyed by work kind and subject; a job is keyed by village seed, subject, kind, and input revision. Automatic stories use the local date. Date-only native schedule rollover does not retry an unresolved translation. Wish generation retains the finite lifecycle and daily allowance; a failed wish proposal or comparison stays blocked across later dates until the player retries it. Replacement work coalesces per subject. Paid responses live in separate package documents, and successful application writes effects plus a completion receipt in the Village transaction. Local revision conflicts reuse saved output. Completed payloads are removed immediately; snapshot housekeeping prunes up to eight old/obsolete records per pass and removes receipts for retired subjects. The story high-water mark and live-subject receipts protect repeated discovery.
+
+Each model request is claimed before dispatch, with no implicit empty-response retries, paid output repairs, or agenda regeneration after a write conflict. Restart recovery resumes unattempted stages and applies saved results. A started request with no saved response is **interrupted** and waits for deliberate retry; elapsed timers never authorize another request. Retry endpoints require an action ID and the expected attempt. Reusing the action ID handles double clicks and lost HTTP responses. Reset seeds, removed residents, replaced proposals, superseded inputs, and package teardown fence late effects.
+
+### Persistence boundary
+
+The existing Engine document store buffers disk persistence and exposes no durable flush barrier to packages. Villages prevents duplicate package requests during normal operation and safely recovers recorded work. A hard crash can still lose a recently acknowledged claim or response before the Engine writes it to disk. This is not crash-proof billing deduplication: an interrupted request may have incurred provider costs, and deliberately retrying it may incur them again. Stronger crash guarantees would require an Engine durability contract or provider-supported idempotency; this package does not change Engine code.
+
+Run the coordinator and production-path regressions with:
+
+```powershell
+node --import tsx tests/villages-background-work.regression.ts
+node --import tsx tests/villages-automatic-refresh.regression.ts
+# After building the package (mocked host, no Engine startup):
+node tests/villages-background-work.e2e.mjs
+```

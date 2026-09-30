@@ -204,8 +204,7 @@ const release = configureVillagesRuntime({
           if (system.startsWith("Identify explicit Project events"))
             return { content: JSON.stringify({ events: [] }), finishReason: "stop" };
           // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
-          if (user.startsWith("What does ") && user.endsWith(" wish for?"))
-            return { content: "{}", finishReason: "stop" };
+          if (system.startsWith("Describe a stable ordinary routine")) return { content: "{}", finishReason: "stop" };
           if (user.startsWith("The player arrives outside this Residence"))
             return {
               content: JSON.stringify({

@@ -603,7 +603,7 @@ async function main() {
     failMovementCommit = true;
     await assert.rejects(
       () => moveVenueZone(recoveringMove.id, "stock", recoveringMove.sceneRevision),
-      /village kept changing/,
+      /movement commit interrupted/,
     );
     failMovementCommit = false;
     assert.ok((await readVillageState()).venues[0]!.usedInvitationIds!.includes("movement-crash"));

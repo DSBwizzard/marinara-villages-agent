@@ -76,7 +76,7 @@ let pageFailure = false,
   conflictOnce = false,
   listCalls = 0,
   modelCalls: string[] = [];
-let mode: "fresh" | "none" | "repeat" | "uncertain" | "blank" | "throw" = "fresh";
+let mode: "fresh" | "none" | "repeat" | "uncertain" | "blank" | "throw" | "compare-throw" = "fresh";
 let onModel: (() => Promise<void>) | undefined;
 let comparisonId = "";
 let unavailableGenerationUsage = false;
@@ -220,6 +220,8 @@ const release = configureVillagesRuntime({
           }
           if (mode === "throw") throw new Error("provider unavailable");
           if (mode === "blank") return { content: "", finishReason: "length" };
+          if (mode === "compare-throw" && prompt.includes("Compare one wish"))
+            throw new Error("comparison unavailable");
           if (prompt.includes("Compare one wish"))
             return {
               content: JSON.stringify({
@@ -374,6 +376,20 @@ async function run() {
     assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 1);
     assert.deepEqual((docs.get("villages-venue-visit-background-wish")!.data as any).operation.attempts, {});
 
+    // A legacy recorded provider failure becomes retryable, without an automatic daily repair.
+    const legacyFailureState = seed();
+    registerInitialWish(legacyFailureState.villagers[0]!, new Date(now.getTime() - 2 * WISH_DAY_MS));
+    const legacyAttempt = legacyFailureState.villagers[0]!.wishLifecycle!.attempt!;
+    legacyAttempt.calls = 1;
+    legacyAttempt.reason = "provider unavailable";
+    legacyAttempt.revision = wishRevision(legacyFailureState.villagers[0]!, legacyFailureState);
+    put(legacyFailureState);
+    await reconcileWishLifecycle(now, false, () => now);
+    assert.equal(modelCalls.length, 0);
+    assert.equal((await backgroundWorkSummaries()).find((entry) => entry.kind === "wish")!.status, "failed");
+    await reconcileWishLifecycle(nextDay, false, () => nextDay);
+    assert.equal(modelCalls.length, 0, "legacy failures remain blocked across dates");
+
     // Interrupted provider calls are not silently sent again; persisted candidates and verdicts replay.
     seed();
     let job = (await reserveWishAttempts(now))[0]!;
@@ -461,6 +477,29 @@ async function run() {
       null,
       "partial usage remains explicitly unavailable",
     );
+    // A failed semantic comparison preserves the paid proposal, and dates cannot authorize another attempt.
+    const comparisonState = seed();
+    rememberWishNeed(comparisonState.villagers[0]!, freshWish("known", "A watering can", "lasting"));
+    put(comparisonState);
+    mode = "compare-throw";
+    await reconcileWishLifecycle(now, false, () => now);
+    const comparisonFailure = (await backgroundWorkSummaries()).find((entry) => entry.kind === "wish")!;
+    assert.equal(comparisonFailure.status, "failed");
+    assert.equal(comparisonFailure.completedSteps, 1);
+    assert.equal(modelCalls.length, 2);
+    await reconcileWishLifecycle(nextDay, false, () => nextDay);
+    assert.equal(modelCalls.length, 2, "daily ticks keep the failed comparison blocked");
+    mode = "fresh";
+    await Promise.all([
+      retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "comparison-retry"),
+      retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "comparison-retry"),
+    ]);
+    await settleBackgroundWork();
+    assert.equal(modelCalls.length, 3, "deliberate retry sends only the failed comparison");
+    assert.match(modelCalls[2]!, /Compare one wish/);
+    await retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "comparison-retry");
+    await settleBackgroundWork();
+    assert.equal(modelCalls.length, 3, "lost retry responses do not repeat the comparison");
     for (const count of [10, 1000, 10000]) {
       const live = seed(),
         resident = live.villagers[0]!;

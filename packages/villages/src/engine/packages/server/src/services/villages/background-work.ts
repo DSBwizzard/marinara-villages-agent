@@ -63,7 +63,7 @@ type Job = BackgroundInput & {
 type Handler = {
   generate(input: any): Promise<unknown>;
   valid(state: VillageState, input: any): boolean;
-  apply(state: VillageState, input: any, result: any): void;
+  apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void;
   afterApply?(input: any, finite: boolean): Promise<void>;
 };
 const KIND = "background-work";
@@ -331,6 +331,7 @@ async function runJob(id: string): Promise<void> {
       ...current!,
       status: "completed",
       steps: [],
+      settings: {},
       input: null,
       result: undefined,
       hasResult: false,
@@ -424,10 +425,11 @@ async function runJob(id: string): Promise<void> {
       return response;
     });
   };
-  complete.setting = async <T>(key: string, create: () => T): Promise<T> => {
+  complete.setting = async <T>(key: string, create: () => T | Promise<T>): Promise<T> => {
+    const value = key in (job!.settings ?? {}) ? job!.settings[key] : await create();
     job = await changeJob(id, (current) => {
       current!.settings ??= {};
-      if (!(key in current!.settings)) current!.settings[key] = create();
+      if (!(key in current!.settings)) current!.settings[key] = value;
       return current!;
     });
     return job.settings[key] as T;
@@ -444,7 +446,7 @@ async function runJob(id: string): Promise<void> {
       if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
       if (state.backgroundReceipts[id] === job!.id) return;
       checkCurrent(job!, state);
-      handlers.get(job!.kind)!.apply(state, job!.input, job!.result);
+      handlers.get(job!.kind)!.apply(state, job!.input, job!.result, { retrying: job!.retrying });
       state.backgroundReceipts[id] = job!.id;
     });
     const appliedInput = job.input;
@@ -456,6 +458,7 @@ async function runJob(id: string): Promise<void> {
       status: "completed",
       error: "",
       steps: [],
+      settings: {},
       input: null,
       result: undefined,
       hasResult: false,
@@ -486,7 +489,7 @@ async function runJob(id: string): Promise<void> {
         : paused || obsolete || !invoked
           ? current!.failedStep
           : Math.max(0, cursor - 1),
-      ...(obsolete ? { steps: [], input: null, result: undefined, hasResult: false } : {}),
+      ...(obsolete ? { steps: [], settings: {}, input: null, result: undefined, hasResult: false } : {}),
     }));
   } finally {
     controllers.delete(id);
