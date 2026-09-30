@@ -87,7 +87,11 @@ function sourceAvailable(state: VillageState, source: VillageBuildSource): boole
   if (source.remaining < 1) return false;
   const venue = state.venues.find((entry) => entry.id === source.venueId);
   if (!venue || venue.constructionStatus === "worksite") return false;
-  if (source.kind === "existing-item") return resolveVenueZone(venue, source.zoneId ?? legacyZoneId(venue, "public"))?.state.items.includes(source.itemName) ?? false;
+  if (source.kind === "existing-item")
+    return (
+      resolveVenueZone(venue, source.zoneId ?? legacyZoneId(venue, "public"))?.state.items.includes(source.itemName) ??
+      false
+    );
   return (
     state.villagers.some((resident) => resident.characterId === source.supplierId) &&
     !state.projectSourceClaims.some((claim) => claim.key === sourceKey(source))
@@ -231,13 +235,21 @@ export function draftBuildProject(
         routeIds: sources.filter((source) => source.requirementId === requirement.id).map((source) => source.id),
       })),
       sources,
-      recordedItems: state.venues.flatMap((venue) => venueZones(venue).flatMap(zone =>
-        zone.state.items
-          .filter(
-            (itemName) => !state.narrativeItems.some((item) => item.venueId === venue.id && (!item.zoneId || item.zoneId === zone.id) && item.itemName === itemName),
-          )
-          .map((itemName) => ({ venueId: venue.id, zoneId: zone.id, itemName })),
-      )),
+      recordedItems: state.venues.flatMap((venue) =>
+        venueZones(venue).flatMap((zone) =>
+          zone.state.items
+            .filter(
+              (itemName) =>
+                !state.narrativeItems.some(
+                  (item) =>
+                    item.venueId === venue.id &&
+                    (!item.zoneId || item.zoneId === zone.id) &&
+                    item.itemName === itemName,
+                ),
+            )
+            .map((itemName) => ({ venueId: venue.id, zoneId: zone.id, itemName })),
+        ),
+      ),
       receipts: [],
       builderId: "",
       workOrder: null,
@@ -308,13 +320,18 @@ export async function addBuildSource(projectId: string, value: unknown): Promise
     const venue = state.venues.find((entry) => entry.id === venueId && entry.constructionStatus !== "worksite");
     if (!requirement || !venue) throw badRequest("Choose a current project requirement and source venue.");
     const requestedZoneId = asTrimmedString(raw.zoneId);
-    const zoneId = requestedZoneId || plan.recordedItems.find(item => item.venueId === venueId && item.itemName === itemName)?.zoneId || legacyZoneId(venue, "public");
+    const zoneId =
+      requestedZoneId ||
+      plan.recordedItems.find((item) => item.venueId === venueId && item.itemName === itemName)?.zoneId ||
+      legacyZoneId(venue, "public");
     const zone = resolveVenueZone(venue, zoneId);
     if (kind === "existing-item" && !zone?.state.items.includes(itemName))
       throw conflict("That item is no longer recorded at the source venue.");
     if (
       kind === "existing-item" &&
-      !plan.recordedItems.some((item) => item.venueId === venueId && item.itemName === itemName && (!item.zoneId || item.zoneId === zoneId))
+      !plan.recordedItems.some(
+        (item) => item.venueId === venueId && item.itemName === itemName && (!item.zoneId || item.zoneId === zoneId),
+      )
     )
       throw conflict("Only an item recorded when this project began can be used as an existing source.");
     if (kind === "limited-opportunity" && !state.villagers.some((resident) => resident.characterId === supplierId))
@@ -434,7 +451,8 @@ export async function promiseBuildSource(projectId: string, value: unknown): Pro
     const source = plan.sources.find((entry) => entry.id === sourceId && entry.kind === "limited-opportunity");
     if (
       !source ||
-      evidence.venueId !== source.venueId || (source.zoneId && source.zoneId !== evidence.zoneId) ||
+      evidence.venueId !== source.venueId ||
+      (source.zoneId && source.zoneId !== evidence.zoneId) ||
       !state.villagers.some((resident) => resident.characterId === source.supplierId)
     )
       throw conflict("The supplier must agree at the recorded source place while still a resident.");
@@ -467,7 +485,12 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
     const source = plan.sources.find((entry) => entry.id === sourceId);
     if (source?.requirementId === "site-permission")
       throw conflict("Site permission is a spoken agreement, not a material transfer.");
-    if (!source || source.remaining < 1 || evidence.venueId !== source.venueId || (source.zoneId && source.zoneId !== evidence.zoneId))
+    if (
+      !source ||
+      source.remaining < 1 ||
+      evidence.venueId !== source.venueId ||
+      (source.zoneId && source.zoneId !== evidence.zoneId)
+    )
       throw conflict("That finite source is unavailable at this place.");
     if (
       !source.magic &&
@@ -496,7 +519,12 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
     if (source.kind === "existing-item") {
       if (
         !zone?.state.items.includes(source.itemName) ||
-        !plan.recordedItems.some((item) => item.venueId === venue.id && item.itemName === source.itemName && (!item.zoneId || item.zoneId === zone?.id))
+        !plan.recordedItems.some(
+          (item) =>
+            item.venueId === venue.id &&
+            item.itemName === source.itemName &&
+            (!item.zoneId || item.zoneId === zone?.id),
+        )
       )
         throw conflict("The recorded item is no longer available to transfer.");
     } else if (
@@ -511,7 +539,7 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
         throw conflict("This finite resident source was already transferred to a project. Negotiate an alternative.");
       state.projectSourceClaims.push({ key, projectId, sourceId, submissionId });
     } else {
-      zone!.state.items = zone!.state.items.filter(item => item !== source.itemName);
+      zone!.state.items = zone!.state.items.filter((item) => item !== source.itemName);
       zone!.state.updatedAt = evidence.at;
     }
     source.remaining -= 1;

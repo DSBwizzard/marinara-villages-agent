@@ -538,7 +538,19 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
           ...places,
         ].join("\n")
       : "Nobody has said what is in this village. There are no numbered places, so every move has a place of 0, and you describe everything in terms of an ordinary day in a small, quiet place.",
-    "Playable zones: " + remapVenues(context.venues).map(venue => venue.id + ": " + venueZones(venue).filter(zone => !context.characterId || canOccupyZone(venue, zone, context.characterId)).map(zone => zone.id + " (" + zone.name + "; " + zone.kind + ")").join("; ")).join("\n") + ". Copy the exact zoneId into each move without changing its times or activity.",
+    "Playable zones: " +
+      remapVenues(context.venues)
+        .map(
+          (venue) =>
+            venue.id +
+            ": " +
+            venueZones(venue)
+              .filter((zone) => !context.characterId || canOccupyZone(venue, zone, context.characterId))
+              .map((zone) => zone.id + " (" + zone.name + "; " + zone.kind + ")")
+              .join("; "),
+        )
+        .join("\n") +
+      ". Copy the exact zoneId into each move without changing its times or activity.",
     wishes.length > 0 ? ["What is privately on their mind:", ...wishes].join("\n") : "",
     known.length > 0 ? ["What is already known about this person:", ...known].join("\n") : "",
     week.length > 0

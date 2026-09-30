@@ -1,4 +1,7 @@
-import { addBuildSource, acquireBuildSource } from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.js";
+import {
+  addBuildSource,
+  acquireBuildSource,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -37,7 +40,6 @@ import {
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
 import type {
   VillageVenue,
-  VillageVenueZone,
   VillageVillager,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
 
@@ -133,6 +135,7 @@ home.playerInvitations = [
   { residentId: "resident", scope: "private", ownerId: "resident", recordedAt: stamp, sourceLineId: "old-invite" },
 ];
 old.venues = [cafe, home];
+old.narrativeItems = [{ venueId: "cafe", zoneId: "exterior", itemName: "made-up flower" }];
 old.villagers = [
   villager("chef", "cafe", "gathering"),
   villager("guest", "cafe", "gathering"),
@@ -144,6 +147,7 @@ assert.deepEqual(
   migrated.venues,
   "migration is repeatable",
 );
+assert.equal(migrated.narrativeItems[0]!.zoneId, "exterior", "narrative item boundaries persist");
 assert.deepEqual(migrated.venues[0]!.baseClasses, ["gathering"]);
 assert.ok(resolveVenueZone(migrated.venues[0]!, "gathering")!.state.items.includes("legacy bench"));
 assert.equal(migrated.venues[1]!.playerInvitations![0]!.zoneId, "private:resident");
@@ -190,20 +194,47 @@ assert.doesNotThrow(() =>
 );
 
 const cramped = structuredClone(migrated);
-cramped.venues[1]!.residentIds = ['resident', 'second'];
-assert.throws(() => draftRenovationProject(cramped, 'home', { title: 'Shrink', detail: 'Smaller shared space', capacity: 1 }), /needs room/);
+cramped.venues[1]!.residentIds = ["resident", "second"];
+assert.throws(
+  () => draftRenovationProject(cramped, "home", { title: "Shrink", detail: "Smaller shared space", capacity: 1 }),
+  /needs room/,
+);
 const playerHome = structuredClone(migrated);
-playerHome.venues[1]!.residentIds = []; playerHome.venues[1]!.occupancy.residentCharacterId = null; playerHome.venues[1]!.occupancy.playerHome = true;
-assert.throws(() => draftRenovationProject(playerHome, 'home', { title: 'Convert', detail: 'Remove the home', classes: ['gathering'] }), /Residents must move/);
+playerHome.venues[1]!.residentIds = [];
+playerHome.venues[1]!.occupancy.residentCharacterId = null;
+playerHome.venues[1]!.occupancy.playerHome = true;
+assert.throws(
+  () =>
+    draftRenovationProject(playerHome, "home", { title: "Convert", detail: "Remove the home", classes: ["gathering"] }),
+  /Residents must move/,
+);
 const discovery = structuredClone(migrated);
-discovery.venues[0]!.improvements![0] = { id: 'old-upgrade', title: 'Addition', description: 'An old addition', extraBeds: 0, approvedAt: stamp };
-discovery.venues[0]!.zones!.push({ ...defaultVenueSpace('gathering', 'Hidden zone details'), id: 'unseen-zone', name: 'Unseen room', kind: 'public', upgradeId: 'old-upgrade', seen: false });
-assert.equal(resolveVenueZone(coerceVillageState(discovery).venues[0]!, 'unseen-zone')!.seen, false, 'discovery remains zone-specific after reload');
+discovery.venues[0]!.improvements![0] = {
+  id: "old-upgrade",
+  title: "Addition",
+  description: "An old addition",
+  extraBeds: 0,
+  approvedAt: stamp,
+};
+discovery.venues[0]!.zones!.push({
+  ...defaultVenueSpace("gathering", "Hidden zone details"),
+  id: "unseen-zone",
+  name: "Unseen room",
+  kind: "public",
+  upgradeId: "old-upgrade",
+  seen: false,
+});
+assert.equal(
+  resolveVenueZone(coerceVillageState(discovery).venues[0]!, "unseen-zone")!.seen,
+  false,
+  "discovery remains zone-specific after reload",
+);
 
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: migrated, revision: 1 });
 let inviterId = "chef";
-let replyGate: Promise<void> | null = null, signalReplyStarted: (() => void) | null = null;
+let replyGate: Promise<void> | null = null,
+  signalReplyStarted: (() => void) | null = null;
 let lastPrompt = "",
   response: "ordinary" | "invite-now" | "invite-later" | "legacy-handoff" = "ordinary";
 const release = configureVillagesRuntime({
@@ -249,12 +280,24 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
-          if (replyGate) { const gate = replyGate; replyGate = null; signalReplyStarted?.(); await gate; }
+          if (replyGate) {
+            const gate = replyGate;
+            replyGate = null;
+            signalReplyStarted?.();
+            await gate;
+          }
           lastPrompt = messages.map((message) => message.content).join("\n");
           const audience = (lastPrompt.match(/The residents currently here are: ([^.]*)\./)?.[1] ?? "")
             .split(", ")
             .filter(Boolean);
-          if (response === "legacy-handoff") return { content: JSON.stringify({ heardPlayerBy: audience, segments: [{ kind: "dialogue", speakerId: "chef", text: "Here is legacy timber.", heardBy: audience }] }), finishReason: "stop" };
+          if (response === "legacy-handoff")
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: audience,
+                segments: [{ kind: "dialogue", speakerId: "chef", text: "Here is legacy timber.", heardBy: audience }],
+              }),
+              finishReason: "stop",
+            };
           const quote =
             response === "invite-later"
               ? "Come back tomorrow and visit the stockroom."
@@ -350,14 +393,38 @@ async function main() {
     assert.equal(hidden.description, "");
     assert.deepEqual(hidden.state.items, []);
     await assert.rejects(() => setVillageVenueImage("cafe", null, undefined, "", false, "stock"), /Visit this zone/);
-    response = "invite-now"; inviterId = "guest";
-    const unauthorized = await sendVenueTurn({ sessionId: visit.id, message: "Can a guest invite me into the stockroom?", mode: "chat", targetId: "guest", submissionId: "unauthorized" }); assert.equal(unauthorized.session.zoneId, "gathering"); await assert.rejects(() => moveVenueZone(visit.id, "stock"), /invitation/); inviterId = "chef";
+    response = "invite-now";
+    inviterId = "guest";
+    const unauthorized = await sendVenueTurn({
+      sessionId: visit.id,
+      message: "Can a guest invite me into the stockroom?",
+      mode: "chat",
+      targetId: "guest",
+      submissionId: "unauthorized",
+    });
+    assert.equal(unauthorized.session.zoneId, "gathering");
+    await assert.rejects(() => moveVenueZone(visit.id, "stock"), /invitation/);
+    inviterId = "chef";
     response = "ordinary";
     let resumeReply: (() => void) | undefined;
-    replyGate = new Promise(resolve => { resumeReply = resolve; });
-    const started = new Promise<void>(resolve => { signalReplyStarted = resolve; });
-    const pending = sendVenueTurn({ sessionId: visit.id, message: "Wait for this reply", mode: "chat", targetId: "", submissionId: "pending-navigation" }); await started;
-    await assert.rejects(() => moveVenueZone(visit.id, "exterior"), /current scene reply/); resumeReply!(); await pending; signalReplyStarted = null;
+    replyGate = new Promise((resolve) => {
+      resumeReply = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      signalReplyStarted = resolve;
+    });
+    const pending = sendVenueTurn({
+      sessionId: visit.id,
+      message: "Wait for this reply",
+      mode: "chat",
+      targetId: "",
+      submissionId: "pending-navigation",
+    });
+    await started;
+    await assert.rejects(() => moveVenueZone(visit.id, "exterior"), /current scene reply/);
+    resumeReply!();
+    await pending;
+    signalReplyStarted = null;
     response = "invite-now";
     const invited = await sendVenueTurn({
       sessionId: visit.id,
@@ -409,18 +476,72 @@ async function main() {
     state = await readVillageState();
     assert.ok(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("cup"));
     assert.equal(resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("cup"), false);
-    await mutateVillageState(current => {
+    await mutateVillageState((current) => {
       resolveVenueZone(current.venues[0]!, "stock")!.state.items.push("legacy timber");
       resolveVenueZone(current.venues[0]!, "gathering")!.state.items.push("legacy timber");
-      current.projects.push({ id: "legacy-project", kind: "build-venue", title: "Legacy Project", venueId: "cafe", participantIds: [], progress: 0, status: "active", updatedAt: stamp, plan: { revision: 1, agreedAt: stamp, need: "Timber", revisions: [], requirements: [{ id: "timber", title: "Timber", routeIds: [] }], sources: [], recordedItems: [{ venueId: "cafe", zoneId: "stock", itemName: "legacy timber" }], receipts: [], builderId: "", builderAgreedAt: "", workOrder: null, finishing: null, blockedReason: "" } } as any);
+      current.projects.push({
+        id: "legacy-project",
+        kind: "build-venue",
+        title: "Legacy Project",
+        venueId: "cafe",
+        participantIds: [],
+        progress: 0,
+        status: "active",
+        updatedAt: stamp,
+        plan: {
+          revision: 1,
+          agreedAt: stamp,
+          need: "Timber",
+          revisions: [],
+          requirements: [{ id: "timber", title: "Timber", routeIds: [] }],
+          sources: [],
+          recordedItems: [{ venueId: "cafe", zoneId: "stock", itemName: "legacy timber" }],
+          receipts: [],
+          builderId: "",
+          builderAgreedAt: "",
+          workOrder: null,
+          finishing: null,
+          blockedReason: "",
+        },
+      } as any);
     });
-    await addBuildSource("legacy-project", { requirementId: "timber", kind: "existing-item", venueId: "cafe", zoneId: "stock", itemName: "legacy timber", cost: "Use the stored timber", prerequisite: "Obtain the controller's handoff" });
+    await addBuildSource("legacy-project", {
+      requirementId: "timber",
+      kind: "existing-item",
+      venueId: "cafe",
+      zoneId: "stock",
+      itemName: "legacy timber",
+      cost: "Use the stored timber",
+      prerequisite: "Obtain the controller's handoff",
+    });
     response = "legacy-handoff";
-    const handoff = await sendVenueTurn({ sessionId: visit.id, message: "Receive legacy timber", mode: "chat", targetId: "chef", submissionId: "legacy-handoff" }); response = "ordinary";
-    await mutateVillageState(current => { const legacy = current.projects.find(project => project.id === "legacy-project")!; legacy.status = "active"; legacy.plan!.agreedAt = stamp; });
-    const legacySource = (await readVillageState()).projects.find(project => project.id === "legacy-project")!.plan!.sources[0]!;
-    await acquireBuildSource("legacy-project", { sourceId: legacySource.id, sessionId: visit.id, submissionId: "legacy-handoff", lineId: handoff.session.lines.at(-1)!.id });
-    state = await readVillageState(); assert.equal(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("legacy timber"), false); assert.ok(resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("legacy timber"), "legacy Project debits do not remove another zone's identically named item");
+    const handoff = await sendVenueTurn({
+      sessionId: visit.id,
+      message: "Receive legacy timber",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "legacy-handoff",
+    });
+    response = "ordinary";
+    await mutateVillageState((current) => {
+      const legacy = current.projects.find((project) => project.id === "legacy-project")!;
+      legacy.status = "active";
+      legacy.plan!.agreedAt = stamp;
+    });
+    const legacySource = (await readVillageState()).projects.find((project) => project.id === "legacy-project")!.plan!
+      .sources[0]!;
+    await acquireBuildSource("legacy-project", {
+      sourceId: legacySource.id,
+      sessionId: visit.id,
+      submissionId: "legacy-handoff",
+      lineId: handoff.session.lines.at(-1)!.id,
+    });
+    state = await readVillageState();
+    assert.equal(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("legacy timber"), false);
+    assert.ok(
+      resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("legacy timber"),
+      "legacy Project debits do not remove another zone's identically named item",
+    );
     await endVenueSession(visit.id);
     await assert.rejects(
       () => enterVenue("cafe", undefined, "", undefined, "stock"),
@@ -503,8 +624,35 @@ async function main() {
     await mutateVillageState((current) => {
       current.venues[0]!.workerIds = [];
     });
-    await createRenovationProject("cafe", {title: "Replace kitchen", detail: "Replace it with a public workshop", slot: 0, improvement: { title: "Workshop", description: "A public workshop", classContribution: "workplace", zones: [{ name: "Workshop floor", kind: "public", venueClass: "workplace", description: "A workshop open to everyone." }] }});
-    state = await readVillageState(); project = state.projects.find(entry => entry.kind === "renovation" && entry.lifecycle?.phase !== "complete")!; await finishProject(project.id); state = await readVillageState(); assert.notEqual(state.venues[0]!.improvements![0]!.id, upgrade.id); assert.equal(resolveVenueZone(state.venues[0]!, "stock"), undefined); assert.ok(state.venues[0]!.archivedZones!.some(entry => entry.zone.id === "stock" && entry.zone.state.items.includes("cup")));
+    await createRenovationProject("cafe", {
+      title: "Replace kitchen",
+      detail: "Replace it with a public workshop",
+      slot: 0,
+      improvement: {
+        title: "Workshop",
+        description: "A public workshop",
+        classContribution: "workplace",
+        zones: [
+          {
+            name: "Workshop floor",
+            kind: "public",
+            venueClass: "workplace",
+            description: "A workshop open to everyone.",
+          },
+        ],
+      },
+    });
+    state = await readVillageState();
+    project = state.projects.find((entry) => entry.kind === "renovation" && entry.lifecycle?.phase !== "complete")!;
+    await finishProject(project.id);
+    state = await readVillageState();
+    assert.notEqual(state.venues[0]!.improvements![0]!.id, upgrade.id);
+    assert.equal(resolveVenueZone(state.venues[0]!, "stock"), undefined);
+    assert.ok(
+      state.venues[0]!.archivedZones!.some(
+        (entry) => entry.zone.id === "stock" && entry.zone.state.items.includes("cup"),
+      ),
+    );
     await createRenovationProject("cafe", {
       title: "Remove kitchen",
       detail: "Remove the kitchen",
@@ -523,6 +671,17 @@ async function main() {
     );
     assert.deepEqual(state.venues[0]!.classes, ["gathering"]);
     assert.equal(await activeVenueSession(), null);
+    const privateVisit = await enterVenue("home", undefined, "", undefined, "private:resident");
+    const afterPrivateEntry = await readVillageState();
+    assert.equal(
+      resolveVenueZone(
+        afterPrivateEntry.venues.find((entry) => entry.id === "home")!,
+        "residence",
+      )!.seen,
+      false,
+      "private entry does not discover a different shared zone",
+    );
+    await endVenueSession(privateVisit.id);
     console.log(
       "Villages Zones: migration, Classes, proposals, access, invitations, presence, hearing, state isolation and archives ok",
     );

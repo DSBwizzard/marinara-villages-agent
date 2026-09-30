@@ -1,6 +1,7 @@
 import { venueResidentIds } from "./venue-model.js";
 import {
   synchronizeVenueZones,
+  legacyZoneId,
   legacyVenueZones,
   ZONE_KINDS,
   canInviteToZone,
@@ -534,6 +535,7 @@ function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: str
     agenda.projectWork = {
       projectId: asTrimmedString(projectWork.projectId),
       venueId: asTrimmedString(projectWork.venueId),
+      zoneId: asTrimmedString(projectWork.zoneId) || "exterior",
       startsAt: asIsoString(projectWork.startsAt)!,
       endsAt: asIsoString(projectWork.endsAt)!,
     };
@@ -810,6 +812,30 @@ function coerceVenue(value: unknown): VillageVenue | null {
   if (!Array.isArray(raw.zones)) {
     const primary = spaces.find((space) => space.venueClass !== "residence") ?? spaces[0];
     if (primary) {
+      primary.state.condition ||= boundText(state.condition, MAX_VENUE_NOTE_LENGTH);
+      primary.state.publicFacts = [
+        ...new Set([
+          ...primary.state.publicFacts,
+          ...coerceVenueStringList(state.publicFacts).filter(
+            (fact) =>
+              !spaces.some((space) => space.state.publicFacts.includes(fact)) &&
+              !privateSpaces.some((space) => space.state.publicFacts.includes(fact)) &&
+              !coerceSpaceState(raw.exteriorState).publicFacts.includes(fact),
+          ),
+        ]),
+      ];
+      for (const feature of coerceVenueFeatures(state.features))
+        if (
+          ![...spaces, ...privateSpaces].some((space) => space.state.features.some((item) => item.id === feature.id)) &&
+          !coerceSpaceState(raw.exteriorState).features.some((item) => item.id === feature.id)
+        )
+          primary.state.features.push(feature);
+      for (const trace of coerceVenueTraces(state.traces))
+        if (
+          ![...spaces, ...privateSpaces].some((space) => space.state.traces.some((item) => item.id === trace.id)) &&
+          !coerceSpaceState(raw.exteriorState).traces.some((item) => item.id === trace.id)
+        )
+          primary.state.traces.push(trace);
       const placed = new Set([
         ...spaces.flatMap((space) => space.state.items),
         ...privateSpaces.flatMap((space) => space.state.items),
@@ -1046,7 +1072,11 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? "private:" + invitation.ownerId
         : venue.zones?.find((zone) => zone.kind === "shared-residence")?.id;
     const zone = venue.zones?.find((zone) => zone.id === invitation.zoneId);
-    return !!zone && canInviteToZone(venue, zone, invitation.residentId);
+    return (
+      !!zone &&
+      !venue.usedInvitationIds?.includes(invitation.sourceLineId) &&
+      canInviteToZone(venue, zone, invitation.residentId)
+    );
   });
   return venue;
 }
@@ -2061,7 +2091,9 @@ function coerceProjects(value: unknown): VillageProject[] {
                   const item = asRecord(value);
                   const venueId = asTrimmedString(item.venueId);
                   const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
-                  return venueId && itemName ? [{ venueId, zoneId: asTrimmedString(item.zoneId) || undefined, itemName }] : [];
+                  return venueId && itemName
+                    ? [{ venueId, zoneId: asTrimmedString(item.zoneId) || undefined, itemName }]
+                    : [];
                 })
               : [],
             receipts,
@@ -2394,7 +2426,7 @@ export function coerceVillageState(value: unknown): VillageState {
           const item = asRecord(value);
           const venueId = asTrimmedString(item.venueId);
           const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
-          return venueId && itemName ? [{ venueId, itemName }] : [];
+          return venueId && itemName ? [{ venueId, zoneId: asTrimmedString(item.zoneId) || undefined, itemName }] : [];
         })
       : [],
     projectSourceClaims: Array.isArray(raw.projectSourceClaims)
@@ -2470,9 +2502,26 @@ export function coerceVillageState(value: unknown): VillageState {
     // package ships the way it was drawn before anyone picked a picture.
     townMapView: coerceTownMapView(townMapImage.length > 0 ? raw.townMapView : {}),
   };
+  // Legacy supply and physical-effect records refer to the old primary Class interior.
+  for (const item of [
+    ...state.narrativeItems,
+    ...state.venueEvents,
+    ...state.projects.flatMap((project) => [
+      ...(project.lifecycle?.recordedItems ?? []),
+      ...(project.lifecycle?.sources ?? []),
+      ...(project.plan?.recordedItems ?? []),
+      ...(project.plan?.sources ?? []),
+    ]),
+  ]) {
+    const venue = state.venues.find((entry) => entry.id === item.venueId);
+    if (venue) item.zoneId ??= legacyZoneId(venue, "public");
+  }
   // Zone migration retains unfinished Projects, work sites, builder shifts and acquired supply receipts.
   for (const villager of state.villagers) {
-    for (const move of villager.remap?.moves ?? []) { const venue = state.venues.find(entry => entry.id === move.venueId); if (venue) move.zoneId = chooseAgendaZone(venue, villager.characterId, move.here, move.zoneId, state).id; }
+    for (const move of villager.remap?.moves ?? []) {
+      const venue = state.venues.find((entry) => entry.id === move.venueId);
+      if (venue) move.zoneId = chooseAgendaZone(venue, villager.characterId, move.here, move.zoneId, state).id;
+    }
     const agenda = villager.agenda;
     if (!agenda) continue;
     const blocks = [

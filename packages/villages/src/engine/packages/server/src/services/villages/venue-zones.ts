@@ -28,11 +28,15 @@ export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
       name: "Exterior",
       kind: "exterior",
       description: venue.description,
-      image: venue.presentation.image,
+      image: venue.presentation?.image ?? null,
       state: venue.exteriorState ?? defaultVenueSpace("other").state,
       seen: true,
     },
-    ...venueSpaces(venue).map((space) => ({
+    ...venueSpaces({
+      ...venue,
+      presentation: venue.presentation ?? { image: null, x: null, y: null },
+      state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "", ...venue.state },
+    }).map((space) => ({
       ...space,
       name: space.venueClass === "residence" ? "Shared living space" : "Interior",
       kind: space.venueClass === "residence" ? ("shared-residence" as const) : ("public" as const),
@@ -87,9 +91,7 @@ export function canOccupyZone(venue: VillageVenue, zone: VillageVenueZone, actor
   if (zone.kind === "exterior" || zone.kind === "public") return true;
   if (actorId === "player" && venue.occupancy.playerHome && zone.kind === "shared-residence") return true;
   if (zone.kind === "private-residence") return zone.ownerId === actorId;
-  return zone.kind === "staff"
-    ? !!venue.workerIds?.includes(actorId)
-    : !venueResidentIds(venue).length || venueResidentIds(venue).includes(actorId);
+  return zone.kind === "staff" ? !!venue.workerIds?.includes(actorId) : venueResidentIds(venue).includes(actorId);
 }
 export function canInviteToZone(venue: VillageVenue, zone: VillageVenueZone, actorId: string): boolean {
   if (zone.kind === "private-residence") return zone.ownerId === actorId && venueResidentIds(venue).includes(actorId);
@@ -115,6 +117,9 @@ export function zoneClosed(
     return !!(
       (upgrade && zone.upgradeId === upgrade.id) ||
       change?.improvement?.spaceId === zone.id ||
+      (change?.improvement?.spaceId === zone.venueClass && !zone.upgradeId) ||
+      upgrade?.spaceId === zone.id ||
+      (change?.homeKind !== undefined && zone.venueClass === "residence") ||
       (change?.capacity !== undefined && zone.venueClass === "residence") ||
       (change?.classes && !change.classes.includes(zone.venueClass) && !zone.upgradeId)
     );
@@ -152,7 +157,12 @@ export function venueInZone(venue: VillageVenue, zoneId: string): VillageVenue {
   return {
     ...venue,
     improvements: venue.improvements?.map((upgrade) =>
-      upgrade && (upgrade.spaceId === zone.id || upgrade.id === zone.upgradeId) ? upgrade : null,
+      upgrade &&
+      (upgrade.spaceId === zone.id ||
+        upgrade.id === zone.upgradeId ||
+        (upgrade.spaceId === zone.venueClass && !zone.upgradeId))
+        ? upgrade
+        : null,
     ),
     description: zone.description,
     presentation: { ...venue.presentation, image: zone.image },
@@ -204,6 +214,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       zones[index] = {
         ...zones[index]!,
         ...adapter,
+        name: zones[index]!.name,
         seen: zones[index]!.seen || (adapter.seen && !priorAdapter?.seen),
       };
   }

@@ -930,7 +930,13 @@ async function generateOnce(
     player.name,
   );
   const stageIds = session.participants.map((person) => person.characterId);
-  const stage = replayStaging(stageIds, stagingTranscriptEvents(session.lines.filter(line => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId), session.submissions)).at(-1)?.state;
+  const stage = replayStaging(
+    stageIds,
+    stagingTranscriptEvents(
+      session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
+      session.submissions,
+    ),
+  ).at(-1)?.state;
   const stageState = stage ?? initialStaging(stageIds);
   const layout = stagingLayout(session.activeIds, stageState);
   const audience = active.map((person) => person.characterId);
@@ -2416,8 +2422,11 @@ async function markResidenceSeen(session: VenueSession): Promise<void> {
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     if (!venue || !venueClasses(venue).includes("residence")) return;
-    venue.playerSeenShared = true;
-    if (session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
+    if (session.zoneId) {
+      const zone = resolveVenueZone(venue, session.zoneId);
+      if (zone) zone.seen = true;
+    } else if (session.area === "shared") venue.playerSeenShared = true;
+    if (!session.zoneId && session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
       venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
   });
   if (session.area === "private" && session.privateOwnerId) {

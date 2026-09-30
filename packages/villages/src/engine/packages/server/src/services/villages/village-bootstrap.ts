@@ -1581,7 +1581,7 @@ function buildAgendaDayMessages(
           venue.id +
           ": " +
           venueZones(venue)
-            .filter(zone => !context.characterId || canOccupyZone(venue, zone, context.characterId))
+            .filter((zone) => !context.characterId || canOccupyZone(venue, zone, context.characterId))
             .map((zone) => `${zone.id}: ${zone.name} (${zone.kind})`)
             .join("; "),
       )

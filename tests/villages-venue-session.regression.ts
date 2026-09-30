@@ -1147,6 +1147,9 @@ async function main() {
     park = (await readVillageState()).venues.find((place) => place.id === "park")!;
     assert.equal(park.state.features?.[0]?.id, lockedId, "blocked edits keep a feature's stable identity");
     assert.equal(park.state.features?.[0]?.locked, true, "the editor cannot unlock a physical feature");
+    await mutateVillageState((state) => {
+      state.venues.find((venue) => venue.id === "empty")!.occupancy.playerHome = true;
+    });
     const empty = await enterVenue("empty");
     assert.equal(empty.status, "active", "an empty visit has a durable session");
     assert.deepEqual(empty.participants, []);
@@ -1170,6 +1173,9 @@ async function main() {
     assert.equal(emptyAction.action?.happened, true);
     assert.equal(emptyAction.session.lines.at(-1)?.content, "The player sets down a cup.");
     await endVenueSession(empty.id);
+    await mutateVillageState((state) => {
+      state.venues.find((venue) => venue.id === "empty")!.occupancy.playerHome = false;
+    });
     assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
     await mutateVillageState((state) => {
       const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });

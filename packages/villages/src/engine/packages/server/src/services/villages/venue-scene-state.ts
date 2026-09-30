@@ -1,4 +1,4 @@
-import { resolveVenueZone } from "./venue-zones.js";
+import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { badGateway, conflict } from "./errors.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
 import type { VillageState, VillageVenue, VillageVenueClass } from "./types.js";
@@ -98,6 +98,8 @@ export function applyVenueSceneChange(
       : area === "outside"
         ? undefined
         : venue.spaces?.find((entry) => entry.venueClass === spaceClass);
+  if (zoneId && (!space || zoneClosed(state, venue, space)))
+    throw conflict("That zone is unavailable during this turn.");
   if (area === "private" && !space) throw conflict("That private space is no longer here.");
   const areaState = space?.state ?? (area === "outside" ? venue.exteriorState : undefined);
   if (areaState)

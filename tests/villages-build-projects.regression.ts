@@ -382,7 +382,10 @@ async function main() {
       venues: [...state.venues, { ...mill, id: "old-site", constructionStatus: "worksite", buildProjectId: "old-inn" }],
     });
     assert.equal(legacy.projects[0]?.status, "building", "zone migration preserves unfinished Projects");
-    assert.ok(legacy.venues.some((row) => row.id === "old-site"), "the saved work site remains");
+    assert.ok(
+      legacy.venues.some((row) => row.id === "old-site"),
+      "the saved work site remains",
+    );
     console.log(
       "Villages Project lifecycle regression: ordering, slots, replanning, delivery, clock, finishing, approval, migration ok",
     );

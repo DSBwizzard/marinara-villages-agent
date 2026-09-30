@@ -349,7 +349,10 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
   const nextCapacity = capacity ?? venue.residenceCapacity ?? 1;
   const upgrades = [...(venue.improvements ?? [null, null])];
   if (slot !== undefined) upgrades[slot] = improvement ?? null;
-  if (venueResidentIds(venue).length > nextCapacity + upgrades.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0))
+  if (
+    venueResidentIds(venue).length + Number(venue.occupancy.playerHome) >
+    Math.min(4, nextCapacity + upgrades.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0))
+  )
     throw conflict("The finished Residence needs room for its current residents.");
   if (
     improvement?.spaceId &&
@@ -770,9 +773,12 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
       if (!classes.includes("workplace") && venue.workerIds?.length)
         throw conflict("Workers must be unassigned before Workplace is removed.");
       if (
-        venueResidentIds(venue).length >
-        (change.capacity ?? venue.residenceCapacity ?? 1) +
-          upgrades.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0)
+        venueResidentIds(venue).length + Number(venue.occupancy.playerHome) >
+        Math.min(
+          4,
+          (change.capacity ?? venue.residenceCapacity ?? 1) +
+            upgrades.reduce((sum, entry) => sum + (entry?.extraBeds ?? 0), 0),
+        )
       )
         throw conflict("The finished Residence needs room for its current residents.");
       const newAffected = [...venueResidentIds(venue), ...(venue.workerIds ?? [])].filter(

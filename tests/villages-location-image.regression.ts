@@ -82,7 +82,9 @@ async function main() {
     MAX_SETTING_LENGTH,
     VILLAGES_GALLERY_FOLDER_NAME,
   } = await import(moduleUrl(`${services}/prompt-preset.ts`));
-  const { coerceVillageState, readVillageState, mutateVillageState } = await import(moduleUrl(`${services}/village-store.ts`));
+  const { coerceVillageState, readVillageState, mutateVillageState } = await import(
+    moduleUrl(`${services}/village-store.ts`)
+  );
   const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/engine-loopback.ts`));
   const { describeMoment } = await import(moduleUrl(`${services}/village-clock.ts`));
 
@@ -862,11 +864,28 @@ async function main() {
     ],
   });
   assert.equal(added.statusCode, 409, "finished buildings must use Projects");
-  await mutateVillageState(state => { state.venues.push(...placesOf([{id:"mill",name:"the mill pond",form:"where the grain is ground",description:"A stone mill beside shallow water."},{id:"ridge",name:"the ridge path",form:"A path along the ridge",description:"A narrow path over the ridge."}])); });
+  await mutateVillageState((state) => {
+    state.venues.push(
+      ...placesOf([
+        {
+          id: "mill",
+          name: "the mill pond",
+          form: "where the grain is ground",
+          description: "A stone mill beside shallow water.",
+        },
+        {
+          id: "ridge",
+          name: "the ridge path",
+          form: "A path along the ridge",
+          description: "A narrow path over the ridge.",
+        },
+      ]),
+    );
+  });
   const addedSnapshot = (await import(moduleUrl(`${services}/village.ts`))).buildVillageSnapshot;
   assert.deepEqual(
-    (await addedSnapshot())
-      .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
+    (await addedSnapshot()).settings.venues
+      .filter((venue: any) => ["mill", "ridge"].includes(venue.id))
       .map((venue: any) => venue.presentation.image),
     [null, null],
     "a place starts with no picture, which is what makes drawing one a decision",

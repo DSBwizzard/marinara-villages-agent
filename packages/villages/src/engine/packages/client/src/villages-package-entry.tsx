@@ -345,6 +345,7 @@ type VenueRequest = {
 
 type BuildProject = {
   id: string;
+  updatedAt: string;
   kind?: "build-venue" | "new-venue" | "renovation";
   title: string;
   venueId: string;
@@ -632,6 +633,7 @@ type VillageVenue = {
   editProposals?: Array<{
     id: string;
     target: "shared" | "private";
+    zoneId?: string;
     ownerId: string;
     proposed: NonNullable<VillageVenue["spaces"]>[number];
     requiredIds: string[];
@@ -6090,7 +6092,9 @@ function readAvatarCrop(value: unknown): AvatarCrop | null {
   const { zoom, offsetX, offsetY, fullImage } = stored;
   if (!isFiniteNumber(zoom) || zoom <= 0 || !isFiniteNumber(offsetX) || !isFiniteNumber(offsetY)) return null;
   if (fullImage !== undefined && typeof fullImage !== "boolean") return null;
-  return fullImage === undefined ? { zoom, offsetX, offsetY } : { zoom, offsetX, offsetY, fullImage };
+  return fullImage === undefined
+    ? { zoom, offsetX, offsetY }
+    : { zoom, offsetX, offsetY, fullImage: fullImage as boolean };
 }
 
 /**
@@ -10600,7 +10604,7 @@ function RenovationRevisionEditor({
   busy,
   onSave,
 }: {
-  project: VillageProject;
+  project: BuildProject;
   busy: boolean;
   onSave: (body: unknown) => Promise<unknown>;
 }) {
@@ -15337,8 +15341,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             !zone.closed &&
             (zone.kind === "exterior" ||
               zone.kind === "public" ||
-              (zone.kind === "shared-residence" &&
-                (place.occupancy.playerHome || !(place.residentIds?.length || place.occupancy.residentCharacterId))) ||
+              (zone.kind === "shared-residence" && place.occupancy.playerHome) ||
               !!invited);
           return {
             key: zone.id,
@@ -15379,9 +15382,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       : legacyZones;
     const selectedZone = zones.find((zone) => zone.key === venueZoneKey) ?? zones[0]!;
     const zoneProposals = (place.editProposals ?? []).filter((proposal) =>
-      selectedZone.area === "shared"
-        ? proposal.target === "shared"
-        : selectedZone.area === "private" && proposal.target === "private" && proposal.ownerId === selectedZone.ownerId,
+      proposal.zoneId
+        ? proposal.zoneId === selectedZone.zoneId
+        : selectedZone.area === "shared"
+          ? proposal.target === "shared"
+          : selectedZone.area === "private" &&
+            proposal.target === "private" &&
+            proposal.ownerId === selectedZone.ownerId,
     );
     const zoneDescription =
       selectedZone.description && selectedZone.description !== place.form && selectedZone.description !== building

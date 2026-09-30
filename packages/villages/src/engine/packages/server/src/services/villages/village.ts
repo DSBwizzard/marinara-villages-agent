@@ -1,4 +1,11 @@
-import { venueZones, resolveVenueZone, legacyZoneId, chooseAgendaZone, canOccupyZone, zoneClosed } from "./venue-zones.js";
+import {
+  venueZones,
+  resolveVenueZone,
+  legacyZoneId,
+  chooseAgendaZone,
+  canOccupyZone,
+  zoneClosed,
+} from "./venue-zones.js";
 import { captureSnapshotSpriteReference } from "./sprite-reference.js";
 // Villages — the village-level operations the routes call.
 //
@@ -603,10 +610,23 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
   const villagers = village.villagers.map((villager) => {
     const card = cardsById.get(villager.characterId) ?? null;
     let destination = villagerPlaceView(village, villager, null, minuteOfDay, now);
-    const companion = residenceAccess?.accompanying?.find(entry => entry.characterId === villager.characterId);
-    const companionVenue = companion && village.venues.find(entry => entry.id === residenceAccess?.placeId);
+    const companion = residenceAccess?.accompanying?.find((entry) => entry.characterId === villager.characterId);
+    const companionVenue = companion && village.venues.find((entry) => entry.id === residenceAccess?.placeId);
     const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);
-    if (companionVenue && companionZone && canOccupyZone(companionVenue, companionZone, villager.characterId) && !zoneClosed(village, companionVenue, companionZone)) destination = { id: companionVenue.id, name: companionVenue.name, image: companionVenue.presentation.image, kind: "venue", zoneId: companionZone.id, zoneName: companionZone.name };
+    if (
+      companionVenue &&
+      companionZone &&
+      canOccupyZone(companionVenue, companionZone, villager.characterId) &&
+      !zoneClosed(village, companionVenue, companionZone)
+    )
+      destination = {
+        id: companionVenue.id,
+        name: companionVenue.name,
+        image: companionVenue.presentation.image,
+        kind: "venue",
+        zoneId: companionZone.id,
+        zoneName: companionZone.name,
+      };
     return projectVillager(
       villager,
       card?.name ?? null,
@@ -648,11 +668,24 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
               }),
             },
           }
-        : project.plan ? { ...project, plan: { ...project.plan, recordedItems: project.plan.recordedItems.filter(item => {
-          const venue = village.venues.find(entry => entry.id === item.venueId);
-          const zone = venue && resolveVenueZone(venue, item.zoneId ?? legacyZoneId(venue, 'public'));
-          return !!zone && (zone.seen || zone.kind === 'exterior' || (venue!.occupancy.playerHome && zone.kind === 'shared-residence'));
-        }) } } : project,
+        : project.plan
+          ? {
+              ...project,
+              plan: {
+                ...project.plan,
+                recordedItems: project.plan.recordedItems.filter((item) => {
+                  const venue = village.venues.find((entry) => entry.id === item.venueId);
+                  const zone = venue && resolveVenueZone(venue, item.zoneId ?? legacyZoneId(venue, "public"));
+                  return (
+                    !!zone &&
+                    (zone.seen ||
+                      zone.kind === "exterior" ||
+                      (venue!.occupancy.playerHome && zone.kind === "shared-residence"))
+                  );
+                }),
+              },
+            }
+          : project,
     ),
     villageCapabilities: village.villageCapabilities,
     upgradeRequests: village.pendingDecisions.filter(
@@ -4450,13 +4483,13 @@ function creativeOpportunity(
     overlap?.[1].slice(0, 4) ??
     activeProject?.participantIds.slice(0, 4) ??
     (wishing ? [wishing.characterId] : firstResident ? [firstResident.characterId] : []);
-  const destinationKey = overlap?.[0] ?? (wishing ? currentPlaces.entries().find(([, ids]) => ids.includes(wishing.characterId))?.[0] : undefined);
-  const [destinationVenueId, zoneId] = destinationKey ? JSON.parse(destinationKey) as [string, string] : [undefined, "exterior"];
-  const venueId =
-    destinationVenueId ??
-    activeProject?.venueId ??
-    publicVenue?.id ??
-    "";
+  const destinationKey =
+    overlap?.[0] ??
+    (wishing ? currentPlaces.entries().find(([, ids]) => ids.includes(wishing.characterId))?.[0] : undefined);
+  const [destinationVenueId, zoneId] = destinationKey
+    ? (JSON.parse(destinationKey) as [string, string])
+    : [undefined, "exterior"];
+  const venueId = destinationVenueId ?? activeProject?.venueId ?? publicVenue?.id ?? "";
   if (actorIds.length === 0 && venueId.length === 0) return null;
   const facts = [
     `${moment.localTime} local time`,
