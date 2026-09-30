@@ -380,7 +380,9 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   const jobId = asString(body.submissionId);
   if (!/^[a-f0-9-]{36}$/i.test(jobId)) throw badRequest("A generation needs a valid submission id.");
   const { id } = await scope(characterId);
-  const fingerprint = hash(JSON.stringify(selection(raw)));
+  const fingerprint = hash(
+    JSON.stringify({ ...selection(raw), ...(body.settings ? { settings: readSettings(body.settings) } : {}) }),
+  );
   const prior = (await read(id)).jobs.find((job) => job.id === jobId);
   if (prior) {
     if (prior.fingerprint !== fingerprint) throw badRequest("This submission id belongs to a different selection.");

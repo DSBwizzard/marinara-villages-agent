@@ -347,6 +347,16 @@ async function main() {
       () =>
         startSpriteStudioJob("mara", {
           ...a.input,
+          settings: { ...settings, style: "Custom" },
+          plan: a.plan,
+          submissionId: a.submissionId,
+        }),
+      /different selection/,
+    );
+    await assert.rejects(
+      () =>
+        startSpriteStudioJob("mara", {
+          ...a.input,
           expressions: [{ label: "different" }],
           plan: a.plan,
           submissionId: a.submissionId,
