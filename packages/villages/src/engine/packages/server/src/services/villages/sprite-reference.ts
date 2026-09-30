@@ -14,7 +14,7 @@ export async function saveStudioImage(image: string, expression = "original", re
   const filename = asString(saved.filename);
   if (!/^[a-z0-9_-]+\.(png|jpg|jpeg|webp)$/.test(filename))
     throw new Error("The Engine did not save a supported sprite image.");
-  return { assetId, url: `/api/sprites/${assetId}/file/${filename}`, ...size };
+  return { assetId, filename, url: `/api/sprites/${assetId}/file/${filename}`, ...size };
 }
 
 export async function captureSpriteReference(

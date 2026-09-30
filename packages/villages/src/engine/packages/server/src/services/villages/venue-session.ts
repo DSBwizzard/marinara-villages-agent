@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { describeSpriteExpressions, validateSpriteExpression } from "./sprite-expressions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { agendaAt } from "./agenda-plan.js";
 import { readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
@@ -771,7 +772,7 @@ async function generateOnce(
     const recent = promptRecollections
       .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
       .map((entry) => entry.text);
-    const spriteLabels = [...new Set(resident.sprite?.expressions.map((entry) => entry.label) ?? [])];
+    const spriteLabels = describeSpriteExpressions(resident.sprite);
     return [
       `${card.name} (${person.characterId})`,
       venueCardProfile(card),
@@ -785,7 +786,9 @@ async function generateOnce(
       `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
       `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
       `Recent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
-      spriteLabels.length ? `Visible expressions for ${card.name}: ${spriteLabels.join(", ")}.` : "",
+      spriteLabels
+        ? `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id using its meaning. Pose-specific pictures must match actions already occurring in the scene. Omit expression to use the default image.`
+        : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -986,6 +989,15 @@ async function generateOnce(
   let parsed: ReturnType<typeof parseVenueReply>;
   try {
     parsed = parseVenueReply(raw, audience);
+    for (const line of parsed.lines) {
+      if (!line.expression) continue;
+      const expression = validateSpriteExpression(
+        village.villagers.find((item) => item.characterId === line.speakerId)?.sprite,
+        line.expression,
+      );
+      if (expression) line.expression = expression;
+      else delete line.expression;
+    }
   } catch {
     throw new VenueReplyFailure(raw ? "invalid-segments" : "invalid-json");
   }

@@ -46,6 +46,7 @@ import {
   villageRelevantOrigin,
 } from "./prompt-preset.js";
 import { VILLAGES_FAREWELL_MARK } from "./turn-beats.js";
+import { describeSpriteExpressions } from "./sprite-expressions.js";
 import type {
   VillageAgenda,
   VillageChatMessage,
@@ -355,15 +356,9 @@ function sideLineDirection(playerName: string): string {
 }
 
 function spriteExpressionDirection(village: VillageState, characterId: string): string {
-  const labels = [
-    ...new Set(
-      village.villagers
-        .find((entry) => entry.characterId === characterId)
-        ?.sprite?.expressions.map((entry) => entry.label) ?? [],
-    ),
-  ];
-  if (!labels.includes("neutral")) return "";
-  return `When one of your lines has a visible expression, you may start that paragraph with [expression:label]. Available labels: ${labels.join(", ")}. Use at most one expression label per paragraph. Leave the tag out when neutral fits. The tag changes the picture only; it does not change how you write.`;
+  const slots = describeSpriteExpressions(village.villagers.find((entry) => entry.characterId === characterId)?.sprite);
+  if (!slots) return "";
+  return `When a line has a visible expression, you may start its paragraph with [expression:id]. Filled expressions: ${slots}. Choose a listed stable id, using its name and Use when guidance. Omit the tag for the default scene image. Use a pose-specific image only when that action is already happening in the scene; choosing a picture does not cause an action.`;
 }
 
 /**

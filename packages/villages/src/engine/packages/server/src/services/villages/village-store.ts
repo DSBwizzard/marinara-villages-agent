@@ -281,7 +281,6 @@ function coerceResidentSprite(value: unknown): VillageVillager["sprite"] {
       ? asString(raw.sideAssetId)
       : undefined;
   const seen = new Set<string>();
-  const counts = { front: 0, side: 0 };
   const expressions = (Array.isArray(raw.expressions) ? raw.expressions : [])
     .map((value) => {
       const entry = asRecord(value);
@@ -299,13 +298,26 @@ function coerceResidentSprite(value: unknown): VillageVillager["sprite"] {
         typeof entry.revision === "number" && Number.isSafeInteger(entry.revision) && entry.revision > 0
           ? entry.revision
           : undefined;
-      return { view, label, filename, ...(revision ? { revision } : {}) };
+      return {
+        view,
+        label,
+        filename,
+        ...(revision ? { revision } : {}),
+        ...(/^villages-[a-f0-9-]{36}$/i.test(asString(entry.assetId)) ? { assetId: asString(entry.assetId) } : {}),
+        ...(/^[a-z0-9_-]{1,80}$/.test(asString(entry.expressionId))
+          ? { expressionId: asString(entry.expressionId) }
+          : {}),
+        ...(/^[a-z0-9_-]{1,100}$/.test(asString(entry.cutoutId)) ? { cutoutId: asString(entry.cutoutId) } : {}),
+        name: asString(entry.name).slice(0, 100),
+        pose: asString(entry.pose).slice(0, 500),
+        useWhen: asString(entry.useWhen).slice(0, 1000),
+        aliases: (Array.isArray(entry.aliases) ? entry.aliases : []).filter(
+          (item): item is string => typeof item === "string" && /^[a-z0-9_-]{1,40}$/.test(item),
+        ),
+      };
     })
-    .filter(
-      (entry): entry is { view: "front" | "side"; label: string; filename: string; revision?: number } =>
-        entry !== null,
-    )
-    .filter((entry) => (entry.view === "front" || sideAssetId !== undefined) && ++counts[entry.view] <= 24);
+    .filter((entry) => entry !== null)
+    .filter((entry) => entry.view === "front" || entry.assetId !== undefined || sideAssetId !== undefined);
   if (expressions.length === 0) return null;
   const framing = asRecord(raw.framing);
   const cropPercent =
@@ -316,6 +328,11 @@ function coerceResidentSprite(value: unknown): VillageVillager["sprite"] {
     assetId,
     ...(sideAssetId ? { sideAssetId } : {}),
     expressions,
+    ...(typeof raw.defaultExpressionId === "string" &&
+    raw.defaultExpressionId &&
+    expressions.some((entry) => entry.expressionId === raw.defaultExpressionId)
+      ? { defaultExpressionId: asString(raw.defaultExpressionId) }
+      : {}),
     framing: { mode: framing.mode === "half" ? "half" : "full", cropPercent },
   };
 }

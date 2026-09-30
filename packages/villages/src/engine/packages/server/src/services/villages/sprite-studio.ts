@@ -1,14 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { badRequest, notFound } from "./errors.js";
-import { villageEngineJson } from "./engine-loopback.js";
+import { villageEngineJson, deleteVillageSpriteFile } from "./engine-loopback.js";
 import { villagesDocuments, VILLAGES_PACKAGE_ID, villagesLogger } from "./package-runtime.js";
 import { mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
-import {
-  approveResidentSprite,
-  readSpriteExpression,
-  readSpriteView,
-  removeResidentSprite,
-} from "./resident-sprites.js";
+import { readSpriteExpression, readSpriteView, removeResidentSprite } from "./resident-sprites.js";
 import { resolveVillageImageConnectionId, inspectVillageImage } from "./image-generation.js";
 import { captureSpriteReference, saveStudioImage } from "./sprite-reference.js";
 import { asRecord, asString } from "./coerce.js";
@@ -16,6 +11,9 @@ import {
   defaultStudioState,
   validateStudioCell,
   SPRITE_STYLES,
+  STUDIO_MEANINGS,
+  type StudioExpression,
+  type StudioAssignment,
   type StudioState,
   type StudioPlan,
   type StudioCell,
@@ -42,8 +40,8 @@ const slot = {
   label: () => "Sprite Studio",
   coerce: (raw: unknown): StudioState => {
     const record = asRecord(raw);
-    return record.version === 1 && Array.isArray(record.jobs) && record.settings
-      ? (structuredClone(record) as unknown as StudioState)
+    return (record.version === 1 || record.version === 2) && Array.isArray(record.jobs) && record.settings
+      ? ({ ...defaultStudioState(), ...structuredClone(record), version: 2 } as unknown as StudioState)
       : defaultStudioState();
   },
 };
@@ -65,8 +63,134 @@ async function mutate(id: string, change: (state: StudioState) => void) {
 }
 const safeMessage = (error: unknown) => (error instanceof Error ? error.message : "Sprite work could not be saved.");
 
+const imageUrl = (
+  sprite: NonNullable<Awaited<ReturnType<typeof owner>>["sprite"]>,
+  entry: (typeof sprite.expressions)[number],
+) =>
+  `/api/sprites/${entry.assetId ?? (entry.view === "side" ? sprite.sideAssetId : sprite.assetId)}/file/${entry.filename}`;
+const fileStem = (url: string) =>
+  url
+    .split("?")[0]!
+    .split("/")
+    .at(-1)!
+    .replace(/\.[^.]+$/, "");
+const cellFingerprint = (cell: StudioCell) => {
+  const { rendered: _rendered, pending: _pending, status: _status, ...drawing } = cell;
+  return hash(JSON.stringify(drawing));
+};
+function definition(label: string, pose = "", id = "e-" + hash(label).slice(0, 24)): StudioExpression {
+  return {
+    id,
+    label,
+    name: label.replaceAll("_", " "),
+    pose,
+    useWhen: STUDIO_MEANINGS[label] ?? pose,
+    aliases: [label],
+  };
+}
+function retainFile(state: StudioState, assetId: string, expression: string, url: string) {
+  const prior = state.files.find((file) => file.assetId === assetId && file.expression === expression);
+  if (prior) prior.url = url;
+  else state.files.push({ assetId, expression, url });
+}
+/** Migration uses only recorded artwork paths. Historical orphan directories are never scanned. */
+async function ensureLibrary(characterId: string, id: string) {
+  const resident = await owner(characterId);
+  const current = await read(id);
+  const needs =
+    current.jobs.some((job) =>
+      job.sheets.some((sheet) => sheet.cells.some((cell) => !cell.expressionId || cell.pending === undefined)),
+    ) ||
+    (resident.sprite?.expressions.some((entry) => !entry.expressionId || !entry.cutoutId) ?? false);
+  if (!needs) return;
+  await mutate(id, (state) => {
+    const add = (label: string, pose: string) => {
+      let slot = state.expressions.find((item) => item.label === label || item.aliases.includes(label));
+      if (!slot) {
+        slot = definition(label, pose);
+        state.expressions.push(slot);
+      }
+      return slot;
+    };
+    for (const job of state.jobs)
+      for (const sheet of job.sheets) {
+        retainFile(state, sheet.assetId, fileStem(sheet.url), sheet.url);
+        for (const cell of sheet.cells) {
+          cell.expressionId ??= add(cell.label, cell.pose).id;
+          cell.pending ??= cell.status === "candidate";
+        }
+      }
+    for (const entry of resident.sprite?.expressions ?? []) {
+      const slot = add(entry.label, entry.pose ?? "");
+      const url = imageUrl(resident.sprite!, entry);
+      const cellId = entry.cutoutId ?? "c-" + hash(url).slice(0, 24);
+      if (state.jobs.some((job) => job.sheets.some((sheet) => sheet.cells.some((cell) => cell.id === cellId))))
+        continue;
+      const assetId =
+        entry.assetId ?? (entry.view === "side" ? resident.sprite!.sideAssetId! : resident.sprite!.assetId);
+      const cell: StudioCell = {
+        id: cellId,
+        expressionId: entry.expressionId ?? slot.id,
+        label: entry.label,
+        pose: entry.pose ?? "",
+        view: entry.view,
+        x: 0,
+        y: 0,
+        width: 512,
+        height: 768,
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        status: "approved",
+        pending: false,
+      };
+      cell.rendered = { assetId, filename: entry.filename, url, fingerprint: cellFingerprint(cell) };
+      let job = state.jobs.find((item) => item.id === "legacy");
+      if (!job) {
+        job = {
+          id: "legacy",
+          fingerprint: "",
+          createdAt: resident.addedAt,
+          status: "ready",
+          error: "",
+          planned: 0,
+          attempted: 0,
+          sheets: [],
+          view: entry.view,
+          connectionId: "",
+          model: "Existing artwork",
+          style: "Existing artwork",
+        };
+        state.jobs.unshift(job);
+      }
+      job.sheets.push({ assetId, url, width: 512, height: 768, attempts: 0, usage: null, cells: [cell], baseScale: 1 });
+      retainFile(state, assetId, fileStem(url), url);
+    }
+  });
+  const library = await read(id);
+  await mutateVillageState((state) => {
+    const sprite = state.villagers.find((item) => item.characterId === characterId)?.sprite;
+    if (!sprite) return;
+    for (const entry of sprite.expressions) {
+      const slot = library.expressions.find((item) => item.label === entry.label || item.aliases.includes(entry.label));
+      if (!slot) continue;
+      entry.expressionId ??= slot.id;
+      entry.cutoutId ??= "c-" + hash(imageUrl(sprite, entry)).slice(0, 24);
+      entry.name ||= slot.name;
+      entry.useWhen ||= slot.useWhen;
+      entry.pose ||= slot.pose;
+      if (!entry.aliases?.length) entry.aliases = slot.aliases;
+    }
+    sprite.defaultExpressionId ??=
+      sprite.expressions.find((entry) => entry.label === "neutral")?.expressionId ??
+      sprite.expressions[0]?.expressionId;
+  });
+}
+
 export async function readSpriteStudio(characterId: string) {
-  const { id, resident } = await scope(characterId);
+  const { id } = await scope(characterId);
+  await ensureLibrary(characterId, id);
+  const resident = await owner(characterId);
   let state = await read(id);
   // Process-local ownership is evidence of activity; persisted running jobs alone are not.
   for (const job of state.jobs.filter((item) => item.status === "running" && !active.has(id + ":" + item.id))) {
@@ -89,11 +213,29 @@ export async function readSpriteStudio(characterId: string) {
   } catch {
     /* Import and review work without a generation connection. */
   }
-  return { ...state, connections, reference: resident.cardSnapshot.spriteReference ?? null };
+  const assignments: StudioAssignment[] = (resident.sprite?.expressions ?? []).flatMap((entry) =>
+    entry.expressionId && entry.cutoutId
+      ? [{ expressionId: entry.expressionId, view: entry.view, cellId: entry.cutoutId }]
+      : [],
+  );
+  return {
+    ...state,
+    assignments,
+    defaultExpressionId: resident.sprite?.defaultExpressionId,
+    connections,
+    reference: resident.cardSnapshot.spriteReference ?? null,
+  };
 }
 
 export async function saveSpriteStudioSettings(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
+  const settings = readSettings(raw);
+  await mutate(id, (state) => {
+    state.settings = settings;
+  });
+  return readSpriteStudio(characterId);
+}
+function readSettings(raw: unknown): StudioSettings {
   const body = asRecord(raw);
   const style = body.style;
   const prompts = asRecord(body.prompts);
@@ -103,14 +245,11 @@ export async function saveSpriteStudioSettings(characterId: string, raw: unknown
       throw badRequest("Each style prompt must be at most 6,000 characters.");
   const connectionId = asString(body.connectionId);
   if (connectionId.length > 200) throw badRequest("Invalid connection.");
-  await mutate(id, (state) => {
-    state.settings = {
-      style,
-      prompts: { PAPERCRAFT: prompts.PAPERCRAFT, BATTLEHIGHWAY: prompts.BATTLEHIGHWAY, Custom: prompts.Custom },
-      connectionId,
-    } as StudioSettings;
-  });
-  return readSpriteStudio(characterId);
+  return {
+    style,
+    prompts: { PAPERCRAFT: prompts.PAPERCRAFT, BATTLEHIGHWAY: prompts.BATTLEHIGHWAY, Custom: prompts.Custom },
+    connectionId,
+  } as StudioSettings;
 }
 export async function captureStudioReference(characterId: string, raw: unknown) {
   const resident = await owner(characterId);
@@ -135,39 +274,26 @@ function selection(raw: unknown) {
     const entry = asRecord(item);
     const pose = asString(entry.pose);
     if (pose.length > 500) throw badRequest("Pose instructions must be at most 500 characters.");
-    return { label: readSpriteExpression(entry.label), pose };
+    return { label: readSpriteExpression(entry.label), pose, expressionId: asString(entry.expressionId) || undefined };
   });
-  if (
-    !expressions.length ||
-    expressions.length > 24 ||
-    new Set(expressions.map((item) => item.label)).size !== expressions.length
-  )
-    throw badRequest("Choose 1–24 distinct expressions.");
+  if (!expressions.length || new Set(expressions.map((item) => item.label)).size !== expressions.length)
+    throw badRequest("Choose at least one distinct expression.");
   return { view, expressions, individual: body.individual === true };
 }
 async function prepare(characterId: string, raw: unknown) {
   const { id, resident } = await scope(characterId);
+  await ensureLibrary(characterId, id);
   const state = await read(id);
+  if (asRecord(raw).settings) state.settings = readSettings(asRecord(raw).settings);
   const input = selection(raw);
-  const approved = resident.sprite?.expressions ?? [];
-  const front = approved.find((item) => item.view === "front" && item.label === "neutral");
-  const neutral = approved.find((item) => item.view === input.view && item.label === "neutral");
-  if (input.view === "side" && !front) throw badRequest("Approve a front neutral first.");
-  if (input.expressions.some((item) => item.label !== "neutral") && !neutral)
-    throw badRequest("Approve this view’s neutral before generating expressions.");
-  const labels = new Set(approved.filter((item) => item.view === input.view).map((item) => item.label));
-  input.expressions.forEach((item) => labels.add(item.label));
-  if (labels.size > 24) throw badRequest("Each view supports 24 expressions.");
-  const neutralOnly = input.expressions.length === 1 && input.expressions[0]!.label === "neutral";
-  const reference = input.view === "side" && (neutralOnly || !neutral) ? front : neutral;
-  const assetId =
-    input.view === "side" && reference === neutral ? resident.sprite?.sideAssetId : resident.sprite?.assetId;
-  const referenceUrl =
-    neutralOnly && input.view === "front" && resident.cardSnapshot.spriteReference
-      ? resident.cardSnapshot.spriteReference.url
-      : reference && assetId
-        ? `/api/sprites/${assetId}/file/${reference.filename}`
-        : resident.cardSnapshot.spriteReference?.url;
+  for (const entry of input.expressions) {
+    const slot = entry.expressionId
+      ? state.expressions.find((item) => item.id === entry.expressionId)
+      : state.expressions.find((item) => item.label === entry.label);
+    if (entry.expressionId && !slot) throw badRequest("That expression slot no longer exists.");
+    entry.expressionId = slot?.id ?? definition(entry.label, entry.pose).id;
+  }
+  const referenceUrl = resident.cardSnapshot.spriteReference?.url;
   if (!referenceUrl) throw badRequest("Capture or upload this villager’s identity reference first.");
   const connectionId = await resolveVillageImageConnectionId(state.settings.connectionId);
   const identity = {
@@ -198,7 +324,7 @@ function cellsFor(
   jobId: string,
   batchIndex: number,
   view: "front" | "side",
-  expressions: Array<{ label: string; pose: string }>,
+  expressions: Array<{ label: string; pose: string; expressionId?: string }>,
   cols: number,
   rows: number,
   width: number,
@@ -219,6 +345,8 @@ function cellsFor(
       offsetX: 0,
       offsetY: 0,
       status: "candidate",
+      pending: true,
+      cleanup: true,
     };
   });
 }
@@ -237,7 +365,7 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   const { plan, input, identity, connectionId } = prepared;
   // Confirm the exact displayed plan, including connection and request count.
   if (JSON.stringify(body.plan) !== JSON.stringify(plan))
-    throw badRequest("The generation plan changed. Review it again before generating.");
+    throw badRequest("The generation plan changed. Refresh the request summary before generating.");
   let claimed = false;
   if (active.has(id + ":" + jobId)) return readSpriteStudio(characterId);
   active.add(id + ":" + jobId);
@@ -247,7 +375,20 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
       if (next.jobs.some((job) => job.id === jobId)) return;
       if (next.jobs.some((job) => job.status === "running"))
         throw badRequest("This villager already has a generation running.");
+      next.settings = prepared.state.settings;
+      for (const entry of input.expressions) {
+        const slot = next.expressions.find((item) => item.id === entry.expressionId);
+        if (!slot) next.expressions.push(definition(entry.label, entry.pose, entry.expressionId));
+        else if (!slot.pose && entry.pose) {
+          slot.pose = entry.pose;
+          if (!slot.useWhen) slot.useWhen = STUDIO_MEANINGS[slot.label] ?? entry.pose;
+        }
+      }
       next.jobs.push({
+        requestedExpressions: input.expressions,
+        individual: input.individual,
+        style: prepared.state.settings.style,
+        stylePrompt: prepared.state.settings.prompts[prepared.state.settings.style],
         id: jobId,
         fingerprint,
         createdAt: new Date().toISOString(),
@@ -289,12 +430,14 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
               job.pendingAssetId = assetId;
               job.pendingBatch = batch;
               job.pendingExpressions = expressions;
+              retainFile(next, assetId, "original", `/api/sprites/${assetId}/file/original.png`);
               job.attempted += 1;
             }),
         });
         // Persist the untouched output before interpreting crops or approvals.
         const output = await saveStudioImage(image, "original", assetId);
         await mutate(id, (next) => {
+          retainFile(next, assetId, fileStem(output.url), output.url);
           const job = next.jobs.find((item) => item.id === jobId)!;
           job.sheets.push({
             ...output,
@@ -324,13 +467,15 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   })().catch((error) => villagesLogger().error(error, "Could not persist sprite job status"));
   return readSpriteStudio(characterId);
 }
-export async function importStudioSheet(characterId: string, raw: unknown) {
+export const importStudioSheet = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, () => importStudioSheetUnlocked(characterId, raw));
+async function importStudioSheetUnlocked(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
   const body = asRecord(raw);
   const image = asString(body.image);
   const size = await inspectVillageImage(image);
   const supplied = Array.isArray(body.cells) ? body.cells : [];
-  if (!supplied.length || supplied.length > 48) throw badRequest("Import between 1 and 48 sprite cells.");
+  if (!supplied.length) throw badRequest("Import at least one sprite cell.");
   const jobId = randomUUID();
   const cells = supplied.map((rawCell, index): StudioCell => {
     const cell = asRecord(rawCell);
@@ -351,8 +496,22 @@ export async function importStudioSheet(characterId: string, raw: unknown) {
     validateStudioCell(result, size);
     return result;
   });
-  const saved = await saveStudioImage(image);
+  const importAssetId = `villages-${randomUUID()}`;
+  await mutate(id, (state) =>
+    retainFile(state, importAssetId, "original", `/api/sprites/${importAssetId}/file/original.png`),
+  );
+  const saved = await saveStudioImage(image, "original", importAssetId);
   await mutate(id, (state) => {
+    retainFile(state, saved.assetId, fileStem(saved.url), saved.url);
+    for (const cell of cells) {
+      let slot = state.expressions.find((item) => item.label === cell.label);
+      if (!slot) {
+        slot = definition(cell.label, cell.pose);
+        state.expressions.push(slot);
+      }
+      cell.expressionId = slot.id;
+      cell.pending = true;
+    }
     state.jobs.push({
       id: jobId,
       fingerprint: "",
@@ -376,6 +535,7 @@ export async function importStudioSheet(characterId: string, raw: unknown) {
       view: cells[0]!.view,
       connectionId: "",
       model: "Imported",
+      style: "Imported",
     });
   });
   return readSpriteStudio(characterId);
@@ -393,9 +553,9 @@ export const editStudioCell = (characterId: string, raw: unknown) =>
 async function editStudioCellUnlocked(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
   const body = asRecord(raw);
+  const adjustedCellId = randomUUID();
   await mutate(id, (state) => {
     const { cell, sheet } = findCell(state, asString(body.id));
-    if (cell.status !== "candidate") throw badRequest("Only unapproved candidates can be edited.");
     const patch = asRecord(body.cell);
     const next = {
       ...cell,
@@ -412,50 +572,114 @@ async function editStudioCellUnlocked(characterId: string, raw: unknown) {
       offsetY: Number(patch.offsetY),
     };
     validateStudioCell(next, sheet);
-    Object.assign(cell, next);
+    // Adjustments create another saved option, keeping the prior artwork and cache.
+    const changed = { ...next, id: adjustedCellId, pending: true, status: "candidate" as const };
+    delete changed.rendered;
+    sheet.cells.push(changed);
   });
-  return readSpriteStudio(characterId);
+  return { ...(await readSpriteStudio(characterId)), adjustedCellId };
 }
-export const approveStudioCells = (characterId: string, raw: unknown) =>
-  serializeCells(characterId, () => approveStudioCellsUnlocked(characterId, raw));
-async function approveStudioCellsUnlocked(characterId: string, raw: unknown) {
+export const approveStudioCells = (characterId: string, raw: unknown) => assignStudioCells(characterId, raw);
+export const assignStudioCells = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, () => assignStudioCellsUnlocked(characterId, raw));
+async function assignStudioCellsUnlocked(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
+  await ensureLibrary(characterId, id);
   const body = asRecord(raw);
   const entries = (Array.isArray(body.cells) ? body.cells : []).map(asRecord);
-  if (!entries.length || entries.length > 48) throw badRequest("Choose sprites to approve.");
+  if (!entries.length) throw badRequest("Choose cutouts to assign.");
   const state = await read(id);
+  const batch = body.batchId ? state.jobs.find((job) => job.id === body.batchId) : undefined;
+  if (body.batchId && (!batch || batch.status === "running"))
+    throw badRequest("Wait for this batch to finish before using it.");
   const selected = entries.map((entry) => ({
     ...findCell(state, asString(entry.id)),
     image: asString(entry.image),
     expected: entry.expected,
+    expressionId: asString(entry.expressionId) || findCell(state, asString(entry.id)).cell.expressionId!,
   }));
-  // Neutral bases precede expressions, and front precedes side.
-  selected.sort(
-    (a, b) =>
-      (a.cell.view === "side" ? 2 : 0) +
-      (a.cell.label === "neutral" ? 0 : 1) -
-      ((b.cell.view === "side" ? 2 : 0) + (b.cell.label === "neutral" ? 0 : 1)),
-  );
+  if (batch && selected.some((item) => item.job.id !== batch.id)) throw badRequest("Choose artwork from this batch.");
   const unique = new Set<string>();
-  for (const { cell, sheet, image, expected } of selected) {
-    if (cell.status !== "approved" && JSON.stringify(expected) !== JSON.stringify(cell))
-      throw badRequest("This candidate changed. Refresh Review before approving.");
-    if (cell.status === "discarded") throw badRequest("A discarded cell cannot be approved.");
+  for (const { cell, sheet, image, expected, expressionId } of selected) {
+    if (expected !== undefined && cellFingerprint(expected as StudioCell) !== cellFingerprint(cell))
+      throw badRequest("This cutout changed. Refresh Review before assigning.");
+    if (!state.expressions.some((item) => item.id === expressionId))
+      throw badRequest("Choose an existing expression slot.");
     validateStudioCell(cell, sheet);
-    const key = cell.view + ":" + cell.label;
-    if (unique.has(key)) throw badRequest("Choose only one candidate for each expression and view.");
+    const key = cell.view + ":" + expressionId;
+    if (unique.has(key)) throw badRequest("Choose one cutout per expression and view.");
     unique.add(key);
+    if (cell.rendered?.fingerprint === cellFingerprint(cell)) continue;
+    if (expected === undefined || cellFingerprint(expected as StudioCell) !== cellFingerprint(cell))
+      throw badRequest("Refresh the cutout before saving its image.");
     const size = await inspectVillageImage(image);
-    if (size.width !== 512 || size.height !== 768)
-      throw badRequest("Approved cells must use the shared 512 by 768 canvas.");
+    if (size.width !== 512 || size.height !== 768) throw badRequest("Cutouts must use the shared 512 by 768 canvas.");
   }
-  for (const { cell, image } of selected) {
-    if (cell.status === "approved") continue;
-    await approveResidentSprite(characterId, { view: cell.view, expression: cell.label, image });
+  // Save every image and its ownership receipt before publishing ANY assignment.
+  // A failed image or Village write leaves the prior scene collection untouched.
+  for (const { cell, sheet, image } of selected) {
+    if (cell.rendered?.fingerprint === cellFingerprint(cell)) continue;
+    const expression = "s-" + randomUUID().replaceAll("-", "");
+    await mutate(id, (next) =>
+      retainFile(next, sheet.assetId, expression, `/api/sprites/${sheet.assetId}/file/${expression}.png`),
+    );
+    const output = await saveStudioImage(image, expression, sheet.assetId);
+    cell.rendered = {
+      assetId: output.assetId,
+      filename: output.filename,
+      url: output.url,
+      fingerprint: cellFingerprint(cell),
+    };
     await mutate(id, (next) => {
-      findCell(next, cell.id).cell.status = "approved";
+      findCell(next, cell.id).cell.rendered = cell.rendered;
+      const file = next.files.find((item) => item.assetId === output.assetId && item.expression === expression)!;
+      file.url = output.url;
     });
   }
+  await mutate(id, (next) => {
+    for (const { cell, job, expressionId } of selected) {
+      const current = findCell(next, cell.id);
+      current.cell.pending = false;
+      current.cell.status = "approved";
+      const batch = next.jobs.find((item) => item.id === job.id)!;
+      batch.assignments = [
+        ...(batch.assignments ?? []).filter((item) => item.expressionId !== expressionId || item.view !== cell.view),
+        { expressionId, view: cell.view, cellId: cell.id },
+      ];
+    }
+  });
+  await mutateVillageState((village) => {
+    const resident = village.villagers.find((item) => item.characterId === characterId);
+    if (!resident) throw notFound("That resident no longer lives here.");
+    const prior = resident.sprite;
+    const expressions = [...(prior?.expressions ?? [])];
+    for (const { cell, expressionId } of selected) {
+      const slot = state.expressions.find((item) => item.id === expressionId)!;
+      const index = expressions.findIndex((item) => item.view === cell.view && item.expressionId === expressionId);
+      const entry = {
+        view: cell.view,
+        expressionId,
+        label: slot.label,
+        name: slot.name,
+        pose: cell.pose,
+        useWhen: slot.useWhen,
+        aliases: slot.aliases,
+        cutoutId: cell.id,
+        filename: cell.rendered!.filename,
+        assetId: cell.rendered!.assetId,
+      };
+      if (index >= 0) expressions[index] = entry;
+      else expressions.push(entry);
+    }
+    resident.sprite = {
+      assetId: prior?.assetId ?? selected[0]!.cell.rendered!.assetId,
+      expressions,
+      framing: prior?.framing ?? { mode: "full", cropPercent: 58 },
+      defaultExpressionId: expressions.some((item) => item.expressionId === prior?.defaultExpressionId)
+        ? prior!.defaultExpressionId
+        : (expressions.find((item) => item.label === "neutral")?.expressionId ?? expressions[0]?.expressionId),
+    };
+  });
   return { studio: await readSpriteStudio(characterId), snapshot: await buildVillageSnapshot() };
 }
 export const discardStudioCell = (characterId: string, raw: unknown) =>
@@ -464,8 +688,7 @@ async function discardStudioCellUnlocked(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
   await mutate(id, (state) => {
     const found = findCell(state, asString(asRecord(raw).id));
-    if (found.cell.status === "approved") throw badRequest("Approved art remains in use.");
-    found.cell.status = "discarded";
+    found.cell.pending = false;
   });
   return readSpriteStudio(characterId);
 }
@@ -478,6 +701,175 @@ export const removeStudioApprovedSprite = (characterId: string, raw: unknown) =>
       expectedUrl: body.url,
     });
     return { studio: await readSpriteStudio(characterId), snapshot };
+  });
+
+export const saveStudioExpression = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, async () => {
+    const { id } = await scope(characterId);
+    await ensureLibrary(characterId, id);
+    const body = asRecord(raw);
+    const resident = await owner(characterId);
+    if (body.removeId) {
+      const expressionId = asString(body.removeId);
+      if (resident.sprite?.expressions.some((entry) => entry.expressionId === expressionId))
+        throw badRequest("Remove this expression's scene assignments before removing the slot.");
+      await mutate(id, (state) => {
+        state.expressions = state.expressions.filter((item) => item.id !== expressionId);
+      });
+    } else if (body.defaultId) {
+      const expressionId = asString(body.defaultId);
+      if (!resident.sprite?.expressions.some((entry) => entry.expressionId === expressionId))
+        throw badRequest("Choose a filled expression as the default.");
+      await mutateVillageState((state) => {
+        const sprite = state.villagers.find((item) => item.characterId === characterId)?.sprite;
+        if (sprite) sprite.defaultExpressionId = expressionId;
+      });
+    } else {
+      const label = readSpriteExpression(body.label ?? body.name);
+      const name = asString(body.name).trim() || label.replaceAll("_", " ");
+      const pose = asString(body.pose),
+        useWhen = asString(body.useWhen);
+      if (name.length > 100 || pose.length > 500 || useWhen.length > 1000)
+        throw badRequest("Keep names within 100 characters, poses within 500, and Use when within 1,000.");
+      let saved: StudioExpression;
+      await mutate(id, (state) => {
+        const prior = body.id
+          ? state.expressions.find((item) => item.id === body.id)
+          : state.expressions.find((item) => item.label === label);
+        if (body.id && !prior) throw notFound("That expression slot no longer exists.");
+        if (state.expressions.some((item) => item.label === label && item.id !== prior?.id))
+          throw badRequest("Choose a distinct expression name.");
+        saved = {
+          ...definition(label, pose, prior?.id),
+          name,
+          useWhen: body.useWhen === undefined ? (STUDIO_MEANINGS[label] ?? pose) : useWhen,
+          aliases: [...new Set([...(prior?.aliases ?? []), label])],
+        };
+        if (prior) Object.assign(prior, saved);
+        else state.expressions.push(saved);
+      });
+      await mutateVillageState((state) => {
+        for (const entry of state.villagers.find((item) => item.characterId === characterId)?.sprite?.expressions ?? [])
+          if (entry.expressionId === saved!.id)
+            Object.assign(entry, {
+              label: saved!.label,
+              name: saved!.name,
+              useWhen: saved!.useWhen,
+              aliases: saved!.aliases,
+            });
+      });
+    }
+    return { studio: await readSpriteStudio(characterId), snapshot: await buildVillageSnapshot() };
+  });
+
+export const clearStudioReview = (characterId: string) =>
+  serializeCells(characterId, async () => {
+    const { id } = await scope(characterId);
+    await ensureLibrary(characterId, id);
+    await mutate(id, (state) => {
+      for (const job of state.jobs)
+        for (const sheet of job.sheets) for (const cell of sheet.cells) cell.pending = false;
+    });
+    return readSpriteStudio(characterId);
+  });
+
+function retainedUrls(state: StudioState, resident: Awaited<ReturnType<typeof owner>>) {
+  const keep = new Set<string>();
+  const reference = resident.cardSnapshot.spriteReference?.url;
+  if (reference) keep.add(reference.split("?")[0]!);
+  for (const entry of resident.sprite?.expressions ?? []) keep.add(imageUrl(resident.sprite!, entry));
+  for (const job of state.jobs) {
+    if (job.pendingAssetId) keep.add(`/api/sprites/${job.pendingAssetId}/file/original.png`);
+    for (const sheet of job.sheets)
+      if (sheet.cells.length) {
+        keep.add(sheet.url.split("?")[0]!);
+        for (const cell of sheet.cells) if (cell.rendered) keep.add(cell.rendered.url);
+      }
+  }
+  return keep;
+}
+async function cleanUnusedFiles(characterId: string, id: string) {
+  const state = await read(id),
+    resident = await owner(characterId);
+  const keep = retainedUrls(state, resident);
+  for (const other of (await readVillageState()).villagers) {
+    if (other.cardSnapshot.spriteReference) keep.add(other.cardSnapshot.spriteReference.url.split("?")[0]!);
+    for (const entry of other.sprite?.expressions ?? []) keep.add(imageUrl(other.sprite!, entry));
+  }
+  const failures: Array<{ url: string; error: string }> = [];
+  let deleted = 0;
+  for (const file of state.files) {
+    if (keep.has(file.url)) continue;
+    try {
+      await deleteVillageSpriteFile(file.assetId, file.expression);
+      await mutate(id, (next) => {
+        next.files = next.files.filter((item) => item.assetId !== file.assetId || item.expression !== file.expression);
+      });
+      deleted++;
+    } catch (error) {
+      const detail = safeMessage(error);
+      failures.push({ url: file.url, error: detail });
+      await mutate(id, (next) => {
+        const record = next.files.find((item) => item.assetId === file.assetId && item.expression === file.expression);
+        if (record) record.error = detail;
+      });
+    }
+  }
+  return { studio: await readSpriteStudio(characterId), deleted, failures };
+}
+export const deleteUnusedStudioFiles = (characterId: string) =>
+  serializeCells(characterId, async () => {
+    const { id } = await scope(characterId);
+    await ensureLibrary(characterId, id);
+    return cleanUnusedFiles(characterId, id);
+  });
+export const deleteStudioArtwork = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, async () => {
+    const { id } = await scope(characterId);
+    await ensureLibrary(characterId, id);
+    const body = asRecord(raw);
+    if (body.confirmed !== true) throw badRequest("Confirm deletion of the selected saved artwork.");
+    const state = await read(id),
+      resident = await owner(characterId);
+    const job = body.batchId ? state.jobs.find((item) => item.id === body.batchId) : undefined;
+    if (body.batchId && !job) throw notFound("That batch no longer exists.");
+    if (job?.status === "running") throw badRequest("Wait for this batch to finish before deleting it.");
+    const ids = new Set(
+      job
+        ? job.sheets.flatMap((sheet) => sheet.cells.map((cell) => cell.id))
+        : Array.isArray(body.ids)
+          ? body.ids.filter((item): item is string => typeof item === "string")
+          : [],
+    );
+    if (!ids.size && !job) throw badRequest("Select saved cutouts to delete.");
+    for (const cellId of ids) findCell(state, cellId);
+    if (resident.sprite?.expressions.some((item) => item.cutoutId && ids.has(item.cutoutId)))
+      throw badRequest("This artwork is in use. Remove or replace its assignments before deleting it.");
+    const protectedReference = resident.cardSnapshot.spriteReference?.url.split("?")[0];
+    if (
+      protectedReference &&
+      state.jobs.some((item) =>
+        item.sheets.some((sheet) =>
+          sheet.cells.some((cell) => ids.has(cell.id) && cell.rendered?.url === protectedReference),
+        ),
+      )
+    )
+      throw badRequest("The captured identity reference is protected.");
+    await mutate(id, (next) => {
+      for (const item of next.jobs) {
+        for (const sheet of item.sheets) sheet.cells = sheet.cells.filter((cell) => !ids.has(cell.id));
+        item.assignments = item.assignments?.filter((entry) => !ids.has(entry.cellId));
+        item.sheets = item.sheets.filter((sheet) => sheet.cells.length > 0);
+      }
+      next.jobs = next.jobs.filter(
+        (item) =>
+          item.id !== job?.id &&
+          (item.sheets.length || item.status === "running" || item.pendingAssetId || item.status === "interrupted"),
+      );
+    });
+    return body.deleteFiles === true
+      ? cleanUnusedFiles(characterId, id)
+      : { studio: await readSpriteStudio(characterId), deleted: 0, failures: [] };
   });
 export async function recoverStudioJob(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
@@ -499,6 +891,7 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
     const current = next.jobs.find((item) => item.id === job.id)!;
     if (current.pendingAssetId !== job.pendingAssetId) return;
     const batch = job.pendingBatch!;
+    retainFile(next, job.pendingAssetId!, fileStem(original.url), original.url.split("?")[0]!);
     current.sheets.push({
       assetId: job.pendingAssetId!,
       url: original.url.split("?")[0]!,

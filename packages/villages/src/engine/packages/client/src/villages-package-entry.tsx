@@ -173,7 +173,14 @@ type VillageVillagerView = {
 type ResidentSprite = {
   assetId: string;
   expressions: Array<{ view: "front" | "side"; label: string; filename: string }>;
-  images: Array<{ view: "front" | "side"; label: string; url: string }>;
+  images: Array<{
+    view: "front" | "side";
+    label: string;
+    url: string;
+    expressionId?: string;
+    isDefault?: boolean;
+    aliases?: string[];
+  }>;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
 
@@ -9909,7 +9916,7 @@ function RoomPanel({
             const sprite = sprites[villager.characterId];
             const isSpeaker = villager.characterId === speaker?.characterId;
             const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
-            const wanted = isSpeaker ? (step?.expression ?? "neutral") : (aside?.expression ?? "neutral");
+            const wanted = isSpeaker ? (step?.expression ?? "") : (aside?.expression ?? "");
             const gazeAt = isSpeaker
               ? step?.gazeAt
               : (aside?.gazeAt ?? (villager.characterId === step?.gazeAt ? speaker?.characterId : undefined));

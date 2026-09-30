@@ -180,3 +180,15 @@ export async function villageEngineForm<T>(path: string, form: FormData): Promis
   });
   return readEngineJson<T>(path, response);
 }
+
+/** The sprite deletion route returns 204. A missing owned file is already clean. */
+export async function deleteVillageSpriteFile(assetId: string, expression: string): Promise<void> {
+  if (!/^villages-[a-f0-9-]{36}$/i.test(assetId) || !/^[a-z0-9_-]{1,40}$/.test(expression))
+    throw new Error("Invalid Studio-owned file.");
+  try {
+    await villageEngineFetch(`/api/sprites/${assetId}/${expression}`, { method: "DELETE" });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("(404)")) return;
+    throw error;
+  }
+}
