@@ -112,7 +112,7 @@ assert.ok(source.includes("aria-label={`Noticeboard (${snapshot?.noticeboard.len
 assert.ok(source.includes('aria-label="Events (NYI)"'));
 assert.ok(source.includes("Force Village Update"));
 assert.ok(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"));
-assert.ok(source.includes("bypasses Story pace for one visual Events update"));
+assert.ok(source.includes("bypasses Background events and wishes for one visual Events update"));
 assert.ok(source.includes("data-section={menuSection}"));
 assert.ok(source.includes('onClick={() => openMenu("general")}'));
 assert.ok(source.includes('onClick={() => openMenu("village")}'));

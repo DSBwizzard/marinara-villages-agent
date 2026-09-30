@@ -20,6 +20,16 @@ Identical submissions share running work and replay completed exchanges. Server-
 
 If a server interruption or provider failure leaves a paid request's outcome uncertain, Villages preserves the operation and makes no automatic paid retry. **Retry saved request** authorizes recovery of that exact input and resumes missing stages. The previous request may already have been billed. Unknown attempt receipts remain in the visit after explicit retry; a provider completion lost before durable storage cannot be recovered or refunded by Villages. Existing explicit opening bypass and debug discard cancel ownership before changing the visit.
 
+## Finite wishes
+
+0.6.85 separates wishes from ordinary routines. Founding can supply one initial wish, including none on a quiet day. Afterward each resident gets at most one generation attempt per local date and at least 24 elapsed hours apart, with two active wishes maximum. Fulfillment does not immediately replace a wish or rewrite the week. Missed days never accumulate a backlog. Repeatable needs have a seven-day fulfillment cooldown; lasting achievements stay settled.
+
+Each daily attempt uses at most one generation request and one comparison request, with no automatic blank-output retry. One shortlist of at most twelve needs includes every active wish plus recent and locally relevant history. Retrieval can miss unusual paraphrases; it is not a guarantee of semantic uniqueness. Saved candidates and verdicts replay without regenerating them, and an interrupted request with an unknown outcome consumes its allowance. The DEBUG wishes view shows the latest attempt, request reservations, token usage when available, and a paginated outcome history. Provider-internal retries and billing remain outside the package's visibility.
+
+Ordinary weeks and native translations do not contain unresolved wish errands. A new wish may add one dated adjustment to an explicitly flexible future block. Commitments, construction, availability, venue access, and current activities remain authoritative. Removing a wish clears future adjustments locally. Outcomes are archived in fifty-record pages through a replayable outbox; no unpaginated history scan or legacy migration is performed.
+
+**Background events and wishes** replaces the Story pace label. Off pauses automatic Events, their resident housing proposals, and new wishes. Time, schedules, approved moves, construction, and existing wish expiry continue. Quiet, Balanced, and Lively keep their Events allowances and share the same daily wish limits. Explicit visits and other generation features retain their own controls.
+
 ## Venue projects
 
 ### Progress Engine foundation
