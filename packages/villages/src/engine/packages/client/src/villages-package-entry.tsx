@@ -1,3 +1,4 @@
+import { VillagesRelationships } from "./villages-relationships.js";
 import {
   DEFAULT_PLAYER_ROLE,
   PlayerRoleFields,
@@ -240,6 +241,7 @@ type VillageNotice = {
  * one of the four parts of a day.
  */
 type VillageHappening = {
+  socialOutcome?: { id: string; changes: string[] };
   id: string;
   kind: string;
   actorIds: string[];
@@ -390,6 +392,7 @@ type VillageSnapshot = {
   /** What the village has been doing, newest first. Empty until it does something. */
   happenings: VillageHappening[];
   villagers: VillageVillagerView[];
+  relationshipStartingPending?: boolean;
   /**
    * Whether the village has been founded yet. Not part of the settings: it is a
    * fact about the village, not something the player can edit.
@@ -670,6 +673,7 @@ export type VillageVenue = {
   zones?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       name: string;
+      relationshipAccess?: boolean;
       kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
       closed?: boolean;
       upgradeId?: string;
@@ -1178,7 +1182,7 @@ type RoomView = {
 
 type RoomRecordEvent = {
   id: string;
-  kind: "memory" | "wish" | "venue" | "request" | "project";
+  kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
   text: string;
   detail?: string;
 };
@@ -7369,6 +7373,15 @@ function VillageEvents({
             {happenings.map((entry) => (
               <li key={entry.id} className={`${ELEMENT_TAG}-news-item`}>
                 {entry.text}
+                {entry.socialOutcome ? (
+                  <details>
+                    <summary>Social encounter recorded</summary>
+                    <p>This interaction was recorded separately from its visual description.</p>
+                    {entry.socialOutcome.changes.map((text) => (
+                      <p key={text}>{text}</p>
+                    ))}
+                  </details>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -9798,7 +9811,9 @@ function RoomPanel({
   useEffect(() => {
     const nextIds = new Set(notices.map((notice) => notice.id));
     const hasNewMemory = notices.some(
-      (notice) => notice.kind === "memory" && !previousNoticeIds.current.has(notice.id),
+      (notice) =>
+        (notice.kind === "memory" || notice.kind === "relationship-up" || notice.kind === "relationship-down") &&
+        !previousNoticeIds.current.has(notice.id),
     );
     previousNoticeIds.current = nextIds;
     if (hasNewMemory) setNoticesOpen(true);
@@ -10224,8 +10239,13 @@ function RoomPanel({
             <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
               {notices.map((notice) => (
                 <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-                  <span aria-hidden="true">✦</span>
-                  {notice.kind === "memory" && notice.detail ? (
+                  <span aria-hidden="true">
+                    {notice.kind === "relationship-up" ? "♥" : notice.kind === "relationship-down" ? "♡" : "★"}
+                  </span>
+                  {(notice.kind === "memory" ||
+                    notice.kind === "relationship-up" ||
+                    notice.kind === "relationship-down") &&
+                  notice.detail ? (
                     <button
                       type="button"
                       className={`${ELEMENT_TAG}-room-star-detail`}
@@ -10233,8 +10253,8 @@ function RoomPanel({
                         memoryTriggerRef.current = event.currentTarget;
                         setOpenMemory(notice);
                       }}
-                      aria-label={`View memory: ${notice.text}`}
-                      title="View saved memory"
+                      aria-label={`View ${notice.kind === "memory" ? "memory" : "relationship change"}: ${notice.text}`}
+                      title={notice.kind === "memory" ? "View saved memory" : "View relationship change"}
                     >
                       {notice.text}
                     </button>
@@ -10274,7 +10294,12 @@ function RoomPanel({
           >
             <div className={`${ELEMENT_TAG}-memory-dialog-head`}>
               <h2 id={`${ELEMENT_TAG}-memory-dialog-title`}>{openMemory.text}</h2>
-              <button ref={memoryCloseRef} type="button" onClick={closeMemory} aria-label="Close memory">
+              <button
+                ref={memoryCloseRef}
+                type="button"
+                onClick={closeMemory}
+                aria-label={openMemory.kind === "memory" ? "Close memory" : "Close relationship change"}
+              >
                 ×
               </button>
             </div>
@@ -10590,7 +10615,7 @@ function RoomPanel({
         {room.status === "closing" || room.memoryPending ? (
           <p className={`${ELEMENT_TAG}-hint`}>
             {room.memoryPending
-              ? `Memory review ${reviewing ? "in progress" : "pending"} · ${room.memoryReview?.nextRecollection ?? 0}/${reviewTotal} recollections reviewed. You can leave with memory pending and retry from Memories.`
+              ? `Closing review ${reviewing ? "in progress" : "pending"} · ${room.memoryReview?.nextRecollection ?? 0}/${reviewTotal} evidence groups reviewed. Memories and relationships settle independently; you can leave while review is pending and retry from Memories.`
               : "Closing this visit…"}
           </p>
         ) : null}
@@ -10761,6 +10786,7 @@ type MenuTab =
   | "venueRequests"
   | "projects"
   | "memories"
+  | "relationships"
   | "village"
   | "general"
   | "chatlogs"
@@ -10783,6 +10809,7 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   venueRequests: "Venue Requests",
   projects: "Projects",
   memories: "Memories",
+  relationships: "Relationships",
   village: "Village Settings",
   general: "General Settings",
   chatlogs: "Venue Visits",
@@ -16184,6 +16211,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             !(place.occupancy.playerHome && zone.kind === "shared-residence") &&
             !(activeRoom?.placeId === place.id && activeRoom.zoneId === zone.id);
           const invited =
+            zone.relationshipAccess ||
             place.playerInvitations?.some((invitation) => invitation.zoneId === zone.id) ||
             (activeRoom?.placeId === place.id && activeRoom.grantedZoneIds?.includes(zone.id));
           const canEnter =
@@ -16225,15 +16253,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               ? "Closed for Renovation"
               : zone.kind === "exterior" || zone.kind === "public"
                 ? "Open to everyone"
-                : invited
-                  ? "Permission for this visit"
-                  : zone.kind === "private-residence"
-                    ? "Owner's invitation required"
-                    : zone.kind === "staff"
-                      ? "Workers and invited guests"
-                      : zone.kind === "restricted"
-                        ? "Assigned controllers and invited guests"
-                        : "Residents and invited guests",
+                : zone.relationshipAccess
+                  ? "Ongoing relationship access"
+                  : invited
+                    ? "Permission for this visit"
+                    : zone.kind === "private-residence"
+                      ? "Owner's invitation required"
+                      : zone.kind === "staff"
+                        ? "Workers and invited guests"
+                        : zone.kind === "restricted"
+                          ? "Assigned controllers and invited guests"
+                          : "Residents and invited guests",
           };
         })
       : legacyZones;
@@ -17242,6 +17272,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <button
                 type="button"
                 className={ELEMENT_TAG + "-button"}
+                aria-pressed={menuPage === "relationships"}
+                aria-label="Relationships"
+                data-active={menuPage === "relationships" ? "true" : "false"}
+                disabled={!snapshot || busy}
+                onClick={() => openMenu("relationships")}
+              >
+                Relationships
+                {snapshot?.relationshipStartingPending ? " · review ties" : ""}
+              </button>
+              <button
+                type="button"
+                className={ELEMENT_TAG + "-button"}
                 aria-pressed={menuPage === "memories"}
                 data-active={menuPage === "memories" ? "true" : "false"}
                 disabled={!snapshot || busy}
@@ -18163,6 +18205,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </p>
                 ) : null}
               </section>
+            ) : null}
+            {menuPage === "relationships" ? (
+              <VillagesRelationships
+                request={request}
+                prefix={ELEMENT_TAG}
+                onVenue={(id) => {
+                  const venue = snapshot?.settings.venues.find((place) => place.id === id);
+                  if (venue) openVenue(venue);
+                }}
+              />
             ) : null}
             {menuPage === "villagers" &&
             spriteEditorId &&

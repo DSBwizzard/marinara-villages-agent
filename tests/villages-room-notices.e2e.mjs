@@ -94,6 +94,48 @@ const snapshot = {
 let turn = 0;
 let serverExpired = false;
 let releaseReview = null;
+const improvement = {
+  id: "warmth-up",
+  kind: "relationship-up",
+  text: "Bob's warmth toward you increased (0 → 2).",
+  detail: "Bob shared that he enjoyed your company.",
+};
+const deterioration = {
+  id: "trust-down",
+  kind: "relationship-down",
+  text: "Bob's trust toward you decreased (0 → -5).",
+};
+const relationships = {
+  profiles: [
+    {
+      characterId: "bob",
+      name: "Bob",
+      warmth: 2,
+      trust: -5,
+      warmthLabel: "Neutral",
+      trustLabel: "Neutral",
+      familiarity: 1,
+      friend: false,
+      close: false,
+      knownAt: now,
+      closeKnownAt: now,
+      routine: ["08:00 · Reading"],
+      interests: "Books",
+      wishes: ["A garden"],
+      ties: [{ toId: "ives", name: "Ives", warmth: 50, trust: -25, reasons: [] }],
+      learned: [],
+      access: [],
+    },
+  ],
+  starting: {
+    pending: true,
+    spoilers: false,
+    summaries: [{ fromId: "bob", toId: "ives", fromName: "Bob", toName: "Ives", status: "Mixed" }],
+  },
+};
+const creatorValues = [
+  { fromId: "bob", toId: "ives", fromName: "Bob", toName: "Ives", warmth: 50, trust: -25, proposed: true },
+];
 await page.route("**/api/villages**", async (route) => {
   const path = new URL(route.request().url()).pathname;
   let value = snapshot;
@@ -129,7 +171,12 @@ await page.route("**/api/villages**", async (route) => {
       session.id === "visit-natural" ? naturalMemory : session.id === "visit-leave" ? leaveMemory : endMemory;
     value = {
       session,
-      recordEvents: session.id === "visit-pending" || session.id === "visit-none" ? [] : [event, event],
+      recordEvents:
+        session.id === "visit-pending" || session.id === "visit-none"
+          ? []
+          : session.id === "visit-mixed"
+            ? [event, improvement, deterioration, improvement, deterioration]
+            : [event, event],
     };
   } else if (path.endsWith(`/rooms/archive/${session.id}`))
     value = { visit: { ...session, status: "closed", endReason: "inactivity" } };
@@ -197,7 +244,26 @@ await page.route("**/api/villages**", async (route) => {
     value = { session, recordEvents: [] };
   } else if (path.endsWith("/rooms/leave-pending")) {
     value = { session };
-  } else if (path.endsWith("/catalog")) value = { characters: [] };
+  } else if (path.endsWith("/relationships/creator")) {
+    const body = route.request().postDataJSON();
+    if (body.action === "acknowledge") {
+      assert.equal(body.spoilerAcknowledged, true);
+      relationships.starting.spoilers = true;
+      relationships.starting.values = creatorValues;
+    }
+    if (body.action === "hide") {
+      relationships.starting.spoilers = false;
+      delete relationships.starting.values;
+    }
+    if (body.action === "edit") {
+      assert.equal(body.fromId, "bob");
+      assert.equal(body.toId, "ives");
+      creatorValues[0].warmth = body.warmth;
+      creatorValues[0].trust = body.trust;
+    }
+    value = relationships;
+  } else if (path.endsWith("/relationships")) value = relationships;
+  else if (path.endsWith("/catalog")) value = { characters: [] };
   await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
 });
 await page.route("http://villages.test/", (route) =>
@@ -252,7 +318,7 @@ try {
   await send("Ordinary chat");
   await expect(tray).toHaveCount(0, "ordinary chat-time recollections stay silent");
   await send("Natural ending");
-  await expect(page.getByText(/Memory review in progress/u)).toBeVisible();
+  await expect(page.getByText(/Closing review in progress/u)).toBeVisible();
   await expect(tray).toHaveCount(0, "the farewell is readable before review finishes");
   await completeReview();
   await expectMemory(naturalMemory);
@@ -280,6 +346,25 @@ try {
   await expect(memoryDialog).toHaveCount(0);
   await page.getByRole("button", { name: `Dismiss ${naturalMemory.text}` }).click();
   await expect(tray).toHaveCount(0, "dismissed durable-memory cards leave no empty tray");
+  await returnToMap();
+
+  await mountVisit("visit-mixed");
+  await composer.waitFor();
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await page.getByRole("menuitem", { name: "End visit now" }).click();
+  await completeReview();
+  await expect(stack).toContainText(improvement.text);
+  await expect(stack).toContainText(deterioration.text);
+  await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(3);
+  await expect(stack).toContainText("♥");
+  await expect(stack).toContainText("♡");
+  await page.getByRole("button", { name: "View relationship change: " + improvement.text }).click();
+  const heartDialog = page.getByRole("dialog", { name: improvement.text });
+  await expect(heartDialog).toContainText(improvement.detail);
+  await page.getByRole("button", { name: "Close relationship change" }).click();
+  await page.getByRole("button", { name: "Dismiss " + improvement.text }).click();
+  await page.getByRole("button", { name: "Dismiss " + deterioration.text }).click();
+  await expect(stack).not.toContainText(improvement.text);
   await returnToMap();
 
   await mountVisit("visit-leave");
@@ -349,6 +434,38 @@ try {
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect(composer).toHaveCount(0, "a phone refresh after expiry opens on the map");
+  await page.getByRole("button", { name: "Open settings menu" }).click();
+  await page.getByRole("button", { name: "Relationships", exact: true }).click();
+  await expect(page.getByRole("meter", { name: /Warmth toward you/u })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Directional relationship to edit" })).toHaveCount(0);
+  const reveal = page.getByRole("button", { name: "Reveal and edit relationship values" });
+  await expect(reveal).toBeDisabled();
+  await page.getByRole("checkbox", { name: /gameplay spoilers/u }).check();
+  await reveal.click();
+  await page.getByRole("combobox", { name: "Directional relationship to edit" }).selectOption("bob:ives");
+  await page.getByRole("spinbutton", { name: "Warmth", exact: true }).fill("60");
+  await page.getByRole("button", { name: "Save suggestion" }).click();
+  await expect(page.getByRole("spinbutton", { name: "Warmth", exact: true })).toHaveValue("60");
+  await page.getByRole("button", { name: "Hide spoiler values" }).click();
+  await expect(page.getByRole("combobox", { name: "Directional relationship to edit" })).toHaveCount(0);
+  await page.getByText("Review starting ties", { exact: true }).click();
+  await page.getByText("Feelings toward other villagers", { exact: true }).click();
+  await expect(page.getByText("Why: Not yet shared.")).toBeVisible();
+  await page.getByText("Personal life", { exact: true }).click();
+  await expect(page.getByText(/Last known information/u)).toBeVisible();
+  const profile = page.locator(".villages-relationships");
+  assert.ok(
+    await profile.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+    "relationship controls fit phone width",
+  );
+  await page.screenshot({ path: "artifacts/relationships-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole("meter", { name: /Warmth toward you/u })).toBeVisible();
+  assert.ok(
+    await profile.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+    "relationship controls fit desktop width",
+  );
+  await page.screenshot({ path: "artifacts/relationships-desktop.png" });
   assert.deepEqual(errors, []);
   console.log("villages-room-notices: durable ending receipts, popup controls, pending review and stale input ok");
 } finally {
