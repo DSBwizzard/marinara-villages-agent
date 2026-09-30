@@ -113,10 +113,12 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
         villagers: residents.slice(0, 1),
         settings: {
           ...snapshot.settings,
-          venues: snapshot.settings.venues.map((venue) => ({
-            ...venue,
-            presentation: venue.id === "mill" ? { ...venue.presentation, x: 0.5, y: 0.5 } : venue.presentation,
-          })),
+          venues: snapshot.settings.venues
+            .filter((venue) => venue.id === "mill")
+            .map((venue) => ({
+              ...venue,
+              presentation: { ...venue.presentation, x: 0.5, y: 0.5 },
+            })),
         },
       };
     else value = [];
@@ -128,7 +130,9 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     await expect(page.locator(".marinara-capability-villages-root").first()).toHaveAttribute("data-mobile", "true");
   }
   async function start() {
-    await page.locator('[data-pin-id="mill"]').press("Enter");
+    // Clicking waits for the map pin to remain attached and settle after the
+    // initial image/layout read; a key press can lose focus during that render.
+    await page.locator('[data-pin-id="mill"]').click();
     await page
       .locator(".marinara-capability-villages-doors")
       .getByRole("button", { name: "Visit", exact: true })
