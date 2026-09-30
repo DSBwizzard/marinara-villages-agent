@@ -1,3 +1,4 @@
+import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import { DEFAULT_SCENERY_STYLE, sceneryImageKey, readSceneryStyle } from "./scenery-context.js";
 import { preparePrivateSpaces } from "./private-space-preparation.js";
@@ -394,6 +395,7 @@ export function villageSettings(
     foundingReason: village.foundingReason,
     foundingDetails: village.foundingDetails,
     foundingGuidance: village.foundingGuidance,
+    playerRole: village.playerRole,
     scenarioImprint: village.scenarioImprint,
     worldFacts: village.worldFacts,
     selectedLorebookIds: village.selectedLorebookIds,
@@ -3573,6 +3575,7 @@ export async function runVillageSetup(input: {
   foundingReason?: unknown;
   foundingDetails?: unknown;
   foundingGuidance?: unknown;
+  playerRole?: unknown;
   scenarioImprint?: unknown;
   worldFacts?: unknown;
   selectedLorebookIds?: unknown;
@@ -3623,6 +3626,7 @@ export async function runVillageSetup(input: {
   }
   const village = await readVillageState();
   const founding = !isVillageFounded(village);
+  const playerRole = playerRoleForSetup(village.playerRole, input.playerRole, founding);
   validateFirstDayDescription(foundingDetails, founding);
   if (!founding)
     assertFoundingScenarioLocked(village, {
@@ -3767,6 +3771,8 @@ export async function runVillageSetup(input: {
       throw conflict("The village map changed during setup. Reload it before saving.");
     if (!founding)
       assertFoundingScenarioLocked(state, { foundingReason, foundingDetails, foundingGuidance, scenarioImprint });
+    if (!founding) assertPlayerRoleLocked(state.playerRole, playerRole);
+    state.playerRole = playerRole;
     state.name = name;
     state.setting = setting;
     state.foundingReason = foundingReason;
@@ -4028,6 +4034,8 @@ export function prepareFoundedVillage(): Promise<void> {
           const result = await proposeCompactFounding(
             {
               village: currentState.name,
+              playerRole: currentState.playerRole,
+              playerPersonaName: currentState.playerPersonaName,
               setting,
               card,
               venues,
@@ -4609,6 +4617,8 @@ export async function reconcileVillage(
   );
   const context: VillageTickContext = {
     village: village.name,
+    playerRole: village.playerRole,
+    playerPersonaName: village.playerPersonaName,
     setting: village.setting,
     worldFacts: village.worldFacts,
     lore: await readVillageLore(

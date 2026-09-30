@@ -59,6 +59,7 @@ const CLIENT_ROOT = resolve(repoRoot, "packages/villages/src/engine/packages/cli
 const CLIENT_SOURCES = [
   "villages-package-entry.tsx",
   "villages-founding-editor.tsx",
+  "villages-player-role.tsx",
   "villages-chat-paragraphs.ts",
   "villages-inline-markdown.ts",
   "villages-room-reading.ts",

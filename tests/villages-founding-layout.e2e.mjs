@@ -76,6 +76,18 @@ try {
   ]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
     const homeCount = width === 390 ? (height === 650 ? 3 : 2) : height === 500 ? 3 : 1;
+    const expectedRole = {
+      enabled: true,
+      title: "Village Steward",
+      explanation:
+        "The village recognizes you as its trusted coordinator. Residents bring you proposals for improvements, and you help organize Projects, find willing builders, and see agreed plans through.",
+    };
+    const roleMode =
+      width === 1917 && height === 655 && fontSize === 20
+        ? "default"
+        : width === 390 && height === 650
+          ? "disabled"
+          : "custom";
     let imageCalls = 0;
     let releaseImage;
     const imageRef = {
@@ -221,6 +233,7 @@ try {
     await root.getByText("Choose lorebooks (0/24)").click();
     await root.getByRole("searchbox", { name: "Search lorebooks" }).fill("Lorebook 37");
     await root.getByRole("checkbox", { name: "Lorebook 37" }).check();
+    await expect(root.getByText(/In the next step, choose your place in this community/)).toBeVisible();
     await expect(root.getByRole("button", { name: "Remove Lorebook 37" })).toBeVisible();
     await (await visibleForward()).click();
 
@@ -231,6 +244,40 @@ try {
     await root.getByPlaceholder("Search Personas").fill("patient");
     await personaCards.first().click();
     await expect(root.getByRole("heading", { name: "Ada" })).toBeVisible();
+    const roleToggle = root.getByRole("checkbox", { name: "Recognized village role" });
+    const roleTitle = root.getByRole("textbox", { name: "Role title", exact: true });
+    const roleExplanation = root.getByRole("textbox", { name: "Why villagers turn to you", exact: true });
+    await expect(roleToggle).toBeChecked();
+    await expect(roleTitle).toHaveValue(expectedRole.title);
+    await expect(roleExplanation).toHaveValue(expectedRole.explanation);
+    await expect(roleTitle).toHaveAttribute("maxlength", "80");
+    await expect(roleExplanation).toHaveAttribute("maxlength", "1000");
+    if (roleMode !== "default") {
+      await roleTitle.fill(" ");
+      await (await visibleForward()).click();
+      await expect(root.getByRole("alert")).toContainText("Give your village role a title");
+      await expect(root.getByText("Step 2 of 5 · Connections & Persona")).toBeVisible();
+      expectedRole.title = "Harbor Patron";
+      expectedRole.explanation = "Neighbors bring me plans because I coordinate harbor repairs.";
+      await roleTitle.fill(expectedRole.title);
+      await roleExplanation.fill(expectedRole.explanation);
+      await roleToggle.focus();
+      await page.keyboard.press("Space");
+      await expect(roleToggle).not.toBeChecked();
+      await expect(roleTitle).toHaveCount(0);
+      await expect(root.getByText(/You participate as an ordinary resident/)).toBeVisible();
+      await page.keyboard.press("Space");
+      await expect(roleTitle).toHaveValue(expectedRole.title);
+      await expect(roleExplanation).toHaveValue(expectedRole.explanation);
+      if (roleMode === "disabled") {
+        await roleToggle.uncheck();
+        expectedRole.enabled = false;
+      }
+    }
+    await (await visibleForward("← Back")).click();
+    await (await visibleForward()).click();
+    await expect(roleToggle).toBeChecked({ checked: expectedRole.enabled });
+    if (expectedRole.enabled) await expect(roleTitle).toHaveValue(expectedRole.title);
     for (const name of ["System", "Narration", "Images"])
       await expect(root.getByLabel(name, { exact: true })).toBeVisible();
     await (await visibleForward()).click();
@@ -407,6 +454,11 @@ try {
     await expect(root.getByText("Step 5 of 5 · Review")).toBeVisible();
     await checkTheme();
     await expect(root.getByText("On Day 1, neighbors arrive with damaged boats.", { exact: false })).toBeVisible();
+    const roleReview = root.getByRole("region", { name: "Your place in the village" });
+    await expect(roleReview).toContainText(expectedRole.enabled ? expectedRole.title : "Ordinary resident");
+    if (expectedRole.enabled) await expect(roleReview).toContainText(expectedRole.explanation);
+    else await expect(roleReview).not.toContainText(expectedRole.explanation);
+    await expect(roleReview.getByRole("textbox")).toHaveCount(0);
     await expect(root.getByText("Starting details", { exact: true })).toHaveCount(0);
     await expect(root.getByText("Lorebook 37", { exact: false })).toBeVisible();
     await expect(root.getByRole("button", { name: "Found the village" })).toBeVisible();
@@ -416,6 +468,11 @@ try {
     assert.equal(foundingPayload.setting, "A fishing village on sea cliffs.");
     assert.equal(foundingPayload.foundingDetails, "On Day 1, neighbors arrive with damaged boats.");
     assert.equal(foundingPayload.scenarioImprint, null);
+    assert.deepEqual(
+      foundingPayload.playerRole,
+      expectedRole,
+      "the reviewed role is submitted, including retained inactive text",
+    );
     assert.deepEqual(foundingPayload.selectedLorebookIds, ["lore-37"]);
     assert.deepEqual(
       foundingPayload.venues.map((venue) => venue.form),

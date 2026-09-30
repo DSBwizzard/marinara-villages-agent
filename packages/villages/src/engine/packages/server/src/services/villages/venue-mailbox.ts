@@ -1,3 +1,4 @@
+import { renderPlayerRoleContext } from "./player-role.js";
 import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "./background-work.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -355,6 +356,8 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
         due,
         now: now.toISOString(),
         villageName: village.name,
+        playerRole: village.playerRole,
+        playerPersonaName: village.playerPersonaName,
         venueName: village.venues.find((entry) => entry.id === due.venueId)?.name,
         villagers: village.villagers
           .filter((entry) => due.affectedIds.includes(entry.characterId))
@@ -379,8 +382,12 @@ registerBackgroundHandler("mail", {
     const messages: CapabilityLanguageModelMessage[] = [
       {
         role: "system",
-        content:
+        content: [
           'Answer as each affected villager to a grounded Venue proposal. Each can accept or decline. Keep each reply short and in character. Return JSON only: {"decisions":[{"characterId":"exact ID","accepted":true,"reply":"short message"}]}. Include every listed person exactly once.',
+          renderPlayerRoleContext(input),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       },
       {
         role: "user",

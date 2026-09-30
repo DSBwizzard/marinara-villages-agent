@@ -1,3 +1,4 @@
+import { renderPlayerRoleContext } from "./player-role.js";
 // Villages — shared resident prompt and memory helpers.
 //
 // This is the package's own dialogue system. It borrows the *shape* of the
@@ -413,6 +414,7 @@ function narrationTurn(
     // and the direction are all statements about the turn in hand. See
     // `sideLineDirection` for why it is here rather than in the preset.
     sideLineDirection(village.playerName),
+    renderPlayerRoleContext(village),
     "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Never write or imply a new player response. You may refer only to what the player explicitly said or chose in the supplied turn or what the village has already verified. Leave the player's next response to them.",
     spriteExpressionDirection(village, card.id),
     narration.voiceGuidance,
@@ -489,13 +491,17 @@ export function renderSceneContextBlock(
   context: VillagePromptContext,
 ): string {
   const body = renderVillagePrompt(village.promptKnowledge, promptValuesFor(card, village, context));
-  if (body.length === 0) return "";
+  const playerRoleContext = renderPlayerRoleContext(village);
+  if (body.length === 0 && !playerRoleContext) return "";
   return [
     `## ${village.name}, and ${card.name}'s part in it`,
     `You are ${card.name}, and you live in ${village.name}. Everything below is true at this moment, and it is what you know about the place you are in.`,
     "It is background, not a script. Nobody here is waiting for you to say any particular thing, and nothing below is a line to repeat.",
     body,
-  ].join("\n\n");
+    playerRoleContext,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /**

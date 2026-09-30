@@ -107,6 +107,7 @@ import type {
   VillageVillagerCardSnapshot,
   VillageWish,
 } from "./types.js";
+import { coercePlayerRole } from "./player-role.js";
 import { randomVillageSeed, VILLAGE_CLOCKS, villageClockIndex } from "./village-clock.js";
 
 const VILLAGE_DOC_ID = "villages-village";
@@ -165,6 +166,7 @@ export function defaultVillageState(): VillageState {
     foundingReason: "",
     foundingDetails: "",
     foundingGuidance: "",
+    playerRole: null,
     scenarioImprint: null,
     worldFacts: [],
     selectedLorebookIds: [],
@@ -2413,6 +2415,7 @@ export function coerceVillageState(value: unknown): VillageState {
     foundingReason: boundText(raw.foundingReason, 40),
     foundingDetails: boundText(raw.foundingDetails, 2_000),
     foundingGuidance: boundText(raw.foundingGuidance, 500),
+    playerRole: coercePlayerRole(raw.playerRole),
     scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
     worldFacts: coerceWorldFacts(raw.worldFacts),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),

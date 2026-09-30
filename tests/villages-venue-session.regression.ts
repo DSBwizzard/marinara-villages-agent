@@ -1,5 +1,9 @@
 import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
+import {
+  DEFAULT_PLAYER_ROLE,
+  renderPlayerRoleContext,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
 import { requestProjectMailbox } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
 import { proposeHappenings } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
@@ -165,6 +169,8 @@ let narrationOnlyOnce = false;
 let featureProposal: Record<string, string> | null = null;
 let creativeActorIds = ["bob", "tina"];
 let lastVenueSystem = "";
+let lastEventsSystem = "";
+let lastMailboxSystem = "";
 let lastJudgeSystem = "";
 let venueReplyCalls = 0;
 let concurrencyStarted: (() => void) | null = null;
@@ -314,6 +320,7 @@ const release = configureVillagesRuntime({
             };
           }
           if (system.includes("Answer as each affected villager")) {
+            lastMailboxSystem = system;
             const people = JSON.parse(user).people as Array<{ id: string }>;
             return {
               content: JSON.stringify({
@@ -447,6 +454,7 @@ const release = configureVillagesRuntime({
             };
           }
           if (system.startsWith("Write a brief visual Events update")) {
+            lastEventsSystem = system;
             assert.match(system, /Do not give them a new turn in an Event/u);
             return {
               content: JSON.stringify({
@@ -1126,6 +1134,7 @@ async function main() {
     );
     await mutateVillageState((state) => {
       state.name = "Fixture village";
+      state.playerRole = { ...DEFAULT_PLAYER_ROLE };
       state.setupAt = now.toISOString();
       state.foundedAt = now.toISOString();
       state.setting = "A quiet village";
@@ -1271,6 +1280,10 @@ async function main() {
     assert.equal(calls, callsAfterEmpty, "entry itself spends no model call");
     assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
     group = await greetVenue(group.id);
+    assert.ok(
+      lastVenueSystem.includes(renderPlayerRoleContext(await readVillageState())),
+      "venue greetings know the recognized role",
+    );
     assert.doesNotMatch(
       lastVenueSystem,
       /LEGACY_EVENT_POISON/u,
@@ -2245,6 +2258,16 @@ async function main() {
     });
     const unlockedFeatureId = featureVenue.state.features![0]!.id;
     featureProposal = { who: "bob", venueId: "park", featureId: unlockedFeatureId, text: "Bob repainted the wall" };
+    for (const playerRole of [DEFAULT_PLAYER_ROLE, { ...DEFAULT_PLAYER_ROLE, enabled: false }, null]) {
+      const roleContext = { ...featureContext(), playerRole, playerPersonaName: "Robin" };
+      await proposeHappenings(roleContext as any);
+      if (playerRole)
+        assert.ok(
+          lastEventsSystem.includes(renderPlayerRoleContext(roleContext)),
+          "Events receive role context separately from scenery",
+        );
+      else assert.equal(lastEventsSystem.includes("Player's place in the village:"), false);
+    }
     const visualProposal = await proposeHappenings(featureContext() as any);
     assert.equal(visualProposal.happenings.length, 1);
     assert.deepEqual(visualProposal.featureEdits, [], "visual Events cannot edit venue features");
@@ -2946,6 +2969,10 @@ async function main() {
     await settleBackgroundWork();
     mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "approved");
+    assert.ok(
+      lastMailboxSystem.includes(renderPlayerRoleContext(await readVillageState())),
+      "Mailbox replies receive the same narrative framing",
+    );
     assert.equal(
       (await readVillageState()).projects.find((entry) => entry.id === firstRenovation.id)?.lifecycle?.phase,
       "builder",

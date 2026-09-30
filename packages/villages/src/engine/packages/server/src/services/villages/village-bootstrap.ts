@@ -1,3 +1,5 @@
+import { renderPlayerRoleContext } from "./player-role.js";
+import type { VillagePlayerRole } from "./types.js";
 import { backgroundCalls, requireBackgroundSuccess } from "./background-context.js";
 import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — the two model calls the package makes.
@@ -431,6 +433,8 @@ export type VillageTickResident = {
 
 /** Everything the happening writer is told about the village it is writing for. */
 export type VillageTickContext = {
+  playerRole?: VillagePlayerRole | null;
+  playerPersonaName?: string;
   village: string;
   /** The player's description of the place. Empty is allowed: the village still has a name. */
   setting: string;
@@ -722,6 +726,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
       `Write a brief visual Events update for ${context.village}, a small fictional village. This feed has no effect on the village or its residents.`,
       "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
       context.setting.trim() ? `Setting: ${boundText(context.setting, 500)}` : "",
+      renderPlayerRoleContext(context),
       context.worldFacts?.length ? `Current world facts: ${context.worldFacts.join("; ")}` : "",
       `Now: ${describeMoment(context.moment)}; weather: ${context.moment.weather}.`,
       `Elapsed time: ${describeGap(gapSince(context.lastSimulatedAt, context.moment, context.forced))}`,
@@ -773,6 +778,7 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
       `It is ${describeMoment(context.moment)}, and the weather is ${context.moment.weather}.`,
       describeGap(gap),
     ].join("\n"),
+    renderPlayerRoleContext(context),
     residents.length > 0
       ? renderResidentsBlock(residents)
       : "Nobody lives here yet, so nothing that happens can be about a person.",

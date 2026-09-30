@@ -162,6 +162,8 @@ const villagesOwnedSourcePaths = [
   "packages/client/src/villages-chat-paragraphs.ts",
   "packages/client/src/villages-inline-markdown.ts",
   "packages/client/src/villages-package-entry.tsx",
+  "packages/client/src/villages-player-role.tsx",
+  "packages/client/src/villages-founding-editor.tsx",
   "packages/client/src/villages-room-reading.ts",
   "packages/client/src/villages-sprite-stage.ts",
   "packages/client/src/villages-sprite-studio.tsx",
@@ -3098,7 +3100,7 @@ const features = [
     // 0.2.x still renders.
     // 0.6.0: continuous device-local time, exact repeating agenda intervals,
     // durable restart reconciliation, bounded story pacing, and return recaps.
-    version: "0.6.92",
+    version: "0.6.93",
     minEngineVersion: "2.4.6",
     maxEngineExclusive: MAX_ENGINE_EXCLUSIVE,
     name: "Villages",

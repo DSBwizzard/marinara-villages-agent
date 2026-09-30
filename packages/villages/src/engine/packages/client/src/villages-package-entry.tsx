@@ -1,4 +1,11 @@
 import {
+  DEFAULT_PLAYER_ROLE,
+  PlayerRoleFields,
+  PlayerRoleSummary,
+  playerRoleProblem,
+  type PlayerRole,
+} from "./villages-player-role.js";
+import {
   FoundingVenueEditor,
   PrivateSpaceFields,
   personalSpaceDraft,
@@ -831,6 +838,7 @@ type VillageSettings = {
   foundingReason: string;
   foundingDetails: string;
   foundingGuidance: string;
+  playerRole?: PlayerRole | null;
   scenarioImprint: ScenarioImprint | null;
   worldFacts: string[];
   selectedLorebookIds: string[];
@@ -12369,6 +12377,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("rebuild");
   const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>(foundingScenario("rebuild").premise);
   const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
+  const [setupPlayerRole, setSetupPlayerRole] = useState<PlayerRole | null>({ ...DEFAULT_PLAYER_ROLE });
   const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
   const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
@@ -14722,6 +14731,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
       setSetupFoundingGuidance(reason === "none" ? "" : guidance);
+      setSetupPlayerRole(
+        fresh
+          ? { ...DEFAULT_PLAYER_ROLE }
+          : village?.isFounded
+            ? (village.settings.playerRole ?? null)
+            : { ...(village?.settings.playerRole ?? DEFAULT_PLAYER_ROLE) },
+      );
       setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
       const foundingPlaces =
@@ -14797,6 +14813,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         }
       }
       if (setupStep === 1 && step > 1) {
+        if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) {
+          setSetupProblem(playerRoleProblem(setupPlayerRole));
+          return;
+        }
         if (!personaDraft.trim()) {
           setSetupProblem("Choose the Persona who lives in this village.");
           return;
@@ -14920,6 +14940,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupMapSrc,
       setupName,
       setupFoundingDetails,
+      setupPlayerRole,
       snapshot?.isFounded,
       setupSetting,
       setupStep,
@@ -15112,6 +15133,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     if (setupName.trim().length === 0) return "Give the village a name.";
     if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
     if (!snapshot?.isFounded && !setupFoundingDetails.trim()) return "Describe the village's first day.";
+    if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) return playerRoleProblem(setupPlayerRole);
     const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
     if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
       return "Use at most four current world facts of 160 characters each.";
@@ -15151,6 +15173,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupMapSrc,
     setupName,
     setupFoundingDetails,
+    setupPlayerRole,
     snapshot?.isFounded,
     setupWorldFacts,
     setupSetting,
@@ -15192,6 +15215,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
           foundingGuidance: snapshot?.isFounded ? snapshot.settings.foundingGuidance : setupFoundingGuidance.trim(),
+          playerRole: snapshot?.isFounded ? (snapshot.settings.playerRole ?? null) : setupPlayerRole,
           scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
           selectedLorebookIds: setupLorebookDraft,
@@ -15229,6 +15253,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     snapshot?.settings.foundingReason,
     snapshot?.settings.foundingDetails,
     snapshot?.settings.foundingGuidance,
+    snapshot?.settings.playerRole,
     snapshot?.settings.scenarioImprint,
     personaDraft,
     savedTownMapView,
@@ -15243,6 +15268,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setupFoundingReason,
     setupFoundingDetails,
     setupFoundingGuidance,
+    setupPlayerRole,
     setupWorldFacts,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -18045,6 +18071,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   storedMissing={snapshot.settings.playerPersonaMissing}
                   disabled={busy}
                 />
+                <PlayerRoleSummary role={snapshot.settings.playerRole} />
 
                 <div className={`${ELEMENT_TAG}-row`}>
                   <button
@@ -19484,6 +19511,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     onDraft={setPersonaDraft}
                     disabled={busy}
                   />
+                  {snapshot?.isFounded ? (
+                    <PlayerRoleSummary role={setupPlayerRole} />
+                  ) : (
+                    <PlayerRoleFields
+                      role={setupPlayerRole ?? { ...DEFAULT_PLAYER_ROLE }}
+                      onChange={setSetupPlayerRole}
+                      disabled={busy}
+                    />
+                  )}
                   <AgentConnections
                     onSetupProblem={setConnectionSetupProblem}
                     onImageWarningChange={setImageConnectionWarning}
@@ -19574,7 +19610,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       />
                       <span className={`${ELEMENT_TAG}-hint`}>
                         Required for every village, including Open beginning. Describe what the group faces and the
-                        feeling of its first day. This guides founding, then becomes history.
+                        feeling of its first day. This guides founding, then becomes history. In the next step, choose
+                        your place in this community.
                       </span>
                     </div>
                   )}
@@ -19988,6 +20025,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         <strong>Original founding direction:</strong> {setupFoundingGuidance}
                       </p>
                     ) : null}
+                  </section>
+                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                    <PlayerRoleSummary role={setupPlayerRole} />
                   </section>
                   <section className={`${ELEMENT_TAG}-setup-review-card`}>
                     <h3>Map and lore</h3>
