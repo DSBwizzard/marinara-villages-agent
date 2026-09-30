@@ -153,6 +153,9 @@ export function buildLocationPrompt(
       : `A wide, empty interior view of ${spaceLabel || "the described space"} at ${venue.name} in ${village.name}. Show the room from inside; do not show the building exterior.`,
     building ? `Building type: ${building}.` : "",
     venue.classes?.length ? `Venue roles: ${venue.classes.join(" and ")}.` : "",
+    venue.layoutVersion === 1
+      ? `Physical layout: ${JSON.stringify(venueZones(venue).map((zone) => ({ kind: zone.kind, role: zone.venueClass })))}. Do not invent absent or adjoining interiors, or reveal private contents outside this depicted area.`
+      : "",
     venue.occupancy.residentCharacterId && !building ? "This venue is also a villager's residence." : "",
     form ? `Venue form: ${form}.` : "",
     approvedDescription
@@ -232,7 +235,7 @@ export async function generateVillageLocationImage(
   const targetZone = zoneId
     ? resolveVenueZone(found.venue, zoneId)
     : privateOwnerId
-      ? resolveVenueZone(found.venue, "private:" + privateOwnerId)
+      ? venueZones(found.venue).find((zone) => zone.kind === "private-residence" && zone.ownerId === privateOwnerId)
       : undefined;
   const character = sceneryCharacterContext(
     village,
@@ -278,7 +281,7 @@ export async function generateVillageLocationImage(
     privateOwnerId
       ? `${village.villagers.find((person) => person.characterId === privateOwnerId)?.cardSnapshot.name ?? "a resident"}'s private space`
       : spaceClass
-        ? `${spaceClass} shared space`
+        ? `${spaceClass} Common Area`
         : "",
   );
 
@@ -325,7 +328,11 @@ export async function generateFirstPrivateSpaceImage(venueId: string, ownerId: s
   await mutateVillageState((state) => {
     claimed = false;
     const venue = state.venues.find((entry) => entry.id === venueId);
-    const space = venue && venueZones(venue).find((entry) => entry.id === ownerId || entry.id === "private:" + ownerId);
+    const space =
+      venue &&
+      venueZones(venue).find(
+        (entry) => entry.id === ownerId || (entry.kind === "private-residence" && entry.ownerId === ownerId),
+      );
     if (
       !space?.seen ||
       !["private-residence", "staff", "restricted"].includes(space.kind) ||

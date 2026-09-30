@@ -1556,13 +1556,22 @@ export async function villagesRoutes(engine: FastifyInstance) {
     },
   );
 
-  app.post<{ Body: { characterId?: unknown; venueId?: unknown } }>("/residences/proposals", async (request, reply) => {
-    try {
-      return await proposeVillageResidence(request.body?.characterId, request.body?.venueId);
-    } catch (error) {
-      return fail(reply, error, "proposing a residence");
-    }
-  });
+  app.post<{ Body: { characterId?: unknown; venueId?: unknown; privateZoneId?: string } }>(
+    "/residences/proposals",
+    async (request, reply) => {
+      try {
+        return await proposeVillageResidence(
+          request.body?.characterId,
+          request.body?.venueId,
+          "player",
+          "",
+          typeof request.body?.privateZoneId === "string" ? request.body.privateZoneId : "",
+        );
+      } catch (error) {
+        return fail(reply, error, "proposing a residence");
+      }
+    },
+  );
 
   app.post<{ Params: { venueId: string }; Body: unknown }>(
     "/locations/venue/:venueId/proposals",
@@ -1576,14 +1585,20 @@ export async function villagesRoutes(engine: FastifyInstance) {
     },
   );
 
-  app.post<{ Params: { venueId: string } }>("/locations/venue/:venueId/player-move", async (request, reply) => {
-    try {
-      await proposePlayerMove(readVenueId(request.params.venueId));
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "requesting a player move");
-    }
-  });
+  app.post<{ Params: { venueId: string }; Body: { privateZoneId?: string } }>(
+    "/locations/venue/:venueId/player-move",
+    async (request, reply) => {
+      try {
+        await proposePlayerMove(
+          readVenueId(request.params.venueId),
+          typeof request.body?.privateZoneId === "string" ? request.body.privateZoneId : "",
+        );
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "requesting a player move");
+      }
+    },
+  );
 
   app.post<{
     Params: { mailId: string };

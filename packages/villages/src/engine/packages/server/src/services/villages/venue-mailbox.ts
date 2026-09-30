@@ -1,3 +1,5 @@
+import { assertResidencePrivateDestination } from "./venue-layout.js";
+import { venueZones } from "./venue-zones.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 import { relationshipPrompt } from "./relationships.js";
 import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "./background-work.js";
@@ -51,7 +53,12 @@ function validateMail(state: VillageState, mail: VillageVenueMail): VillageVenue
   if (mail.kind === "player-move") {
     if (!hasVenueClass(venue, "residence")) throw conflict("The destination is no longer a Residence.");
     if (venue.occupancy.playerHome) throw conflict("You already live here.");
-    if (venueAssignedCount(venue) >= venueCapacity(venue)) throw conflict("This Residence has no available bed.");
+    const reserved = state.residences.filter(
+      (move) => move.proposedVenueId === venue.id && move.status === "moving",
+    ).length;
+    if (venueAssignedCount(venue) + reserved >= venueCapacity(venue))
+      throw conflict("This Residence has no available resident slot.");
+    assertResidencePrivateDestination(state, venue, "player", mail.proposedPrivateZoneId);
     return venue;
   }
   if (mail.kind === "villager-move") {
@@ -64,6 +71,13 @@ function validateMail(state: VillageState, mail: VillageVenueMail): VillageVenue
     if (!residence) throw conflict("That villager's move is no longer pending.");
     if (!hasVenueClass(venue, "residence") || venueAssignedCount(venue) >= venueCapacity(venue))
       throw conflict("The destination no longer has an available bed.");
+    assertResidencePrivateDestination(state, venue, residence.characterId, residence.proposedPrivateZoneId);
+    const reserved = state.residences.filter(
+      (move) =>
+        move.characterId !== residence.characterId && move.proposedVenueId === venue.id && move.status === "moving",
+    ).length;
+    if (venueAssignedCount(venue) + reserved >= venueCapacity(venue))
+      throw conflict("The destination no longer has an available resident slot.");
     return venue;
   }
   const classes = mail.proposedClasses ?? venue.classes ?? ["other"];
@@ -100,8 +114,36 @@ function applyMail(state: VillageState, mail: VillageVenueMail, at: string): voi
     residence.approvedAt = at;
     residence.completesAt = new Date(Date.parse(at) + 24 * 60 * 60_000).toISOString();
   } else if (mail.kind === "player-move") {
-    for (const current of state.venues) current.occupancy.playerHome = false;
+    for (const current of state.venues) {
+      if (!current.occupancy.playerHome && current.id !== venue!.id) continue;
+      current.zones ??= venueZones(current);
+      current.layoutVersion = 1;
+      const personal = current.zones.find((zone) => zone.kind === "private-residence" && zone.ownerId === "player");
+      if (personal) {
+        current.archivedZones = [
+          ...(current.archivedZones ?? []),
+          { zone: structuredClone(personal), archivedAt: at },
+        ].slice(-64);
+        personal.ownerId = undefined;
+        personal.seen = false;
+        personal.image = null;
+        personal.preparation = undefined;
+        personal.adaptationPending = false;
+        personal.description = personal.purpose || "Vacant residential Private Area.";
+        personal.state.publicFacts = [];
+        personal.state.traces = [];
+        current.playerInvitations = current.playerInvitations?.filter((invite) => invite.zoneId !== personal.id);
+        current.editProposals = current.editProposals?.filter((proposal) => proposal.zoneId !== personal.id);
+      }
+      current.occupancy.playerHome = false;
+    }
     venue!.occupancy.playerHome = true;
+    if (mail.proposedPrivateZoneId) {
+      const personal = venue!.zones!.find((zone) => zone.id === mail.proposedPrivateZoneId)!;
+      personal.ownerId = "player";
+      personal.seen = true;
+      personal.preparation = undefined;
+    }
   } else {
     const project = draftRenovationProject(state, mail.venueId, {
       title: mail.title,
@@ -146,7 +188,7 @@ export async function proposeVenueChange(venueId: string, value: unknown): Promi
   await createRenovationProject(venueId, value);
 }
 
-export async function proposePlayerMove(venueId: string): Promise<void> {
+export async function proposePlayerMove(venueId: string, privateZoneId = ""): Promise<void> {
   const id = randomVillageSeed();
   const at = new Date();
   await mutateVillageState((state) => {
@@ -156,6 +198,7 @@ export async function proposePlayerMove(venueId: string): Promise<void> {
       id,
       venueId,
       kind: "player-move",
+      proposedPrivateZoneId: privateZoneId,
       title: `Move to ${venue.name}`,
       detail: "The player requests a bed in this Residence.",
       status: "awaiting-villagers",

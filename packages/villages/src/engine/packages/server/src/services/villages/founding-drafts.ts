@@ -22,6 +22,8 @@ type DraftRow = {
   spaceDescription: string;
   venueClass: "residence" | "gathering" | "workplace" | "other";
   residentCharacterId: string;
+  layout?: string;
+  areas?: unknown;
 };
 
 function record(value: unknown): Record<string, unknown> {
@@ -46,6 +48,8 @@ function rowsOf(value: unknown): DraftRow[] {
       spaceDescription: asTrimmedString(row.spaceDescription).slice(0, 1000),
       venueClass: venueClass as DraftRow["venueClass"],
       residentCharacterId: asTrimmedString(row.residentCharacterId).slice(0, 100),
+      layout: asTrimmedString(row.layout),
+      areas: row.areas,
     };
   });
 }
@@ -87,6 +91,13 @@ export async function seedFoundingVenueDetails(
         form: venue.form,
         description: venue.description,
         spaceDescription: venue.spaces?.[0]?.description,
+        layout:
+          venue.layoutVersion === 1
+            ? venue.zones?.filter((zone) => zone.kind !== "exterior").length
+              ? "Explicit saved zones"
+              : "Exterior only"
+            : undefined,
+        areas: venue.zones?.map((zone) => ({ id: zone.id, name: zone.name, kind: zone.kind })),
         venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
         residentCharacterId: venue.occupancy.residentCharacterId,
       })),
@@ -111,6 +122,7 @@ export async function seedFoundingVenueDetails(
         "Use Day 1 selectively for plausible initial condition; do not repeat it in every Venue.",
         "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
         'Return JSON only: {"venues":[{"id":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
+        "Respect the actual layout. Exterior-only venues have no interior. A Private Area can be the entire interior with no Common Area. Seed only observable exterior/Common Area details, never private contents.",
         "Use short concrete details. Empty lists and an empty condition are valid where nothing is established.",
       ].join("\n"),
     },
@@ -170,6 +182,12 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
     : personality && row.resident
       ? sceneryCardsContext([row.resident])
       : "";
+  if (
+    (row.layout === "exterior" && area !== "exterior") ||
+    (row.layout === "private" && area === "interior") ||
+    (row.layout === "common" && area === "private")
+  )
+    throw badRequest("That area is absent from the selected layout.");
   if (!areaDescription) throw badRequest(`Add an ${area} description before generating its image.`);
   const imprint = coerceScenarioImprint(input.scenarioImprint);
   const setting = [
@@ -195,6 +213,9 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
         ? "Show the building and approach from outside, not an interior."
         : "Show the described enterable space from inside, not the exterior.",
       `${area} description, follow closely: ${areaDescription}.`,
+      row.layout
+        ? `Selected layout: ${row.layout}. Only these areas exist: ${JSON.stringify(row.areas ?? [])}. Do not invent other interiors or adjoining rooms. Do not reveal hidden private contents.`
+        : "",
       "No people, lettering, numerals, signs, labels, or interface graphics.",
     ],
     [

@@ -1435,7 +1435,7 @@ async function generateOnce(
       !(
         invitationZoneId &&
         invitation.entry.privateOwnerId &&
-        invitationZoneId !== "private:" + invitation.entry.privateOwnerId
+        invitationZoneId !== legacyZoneId(invitedVenue, "private", "residence", invitation.entry.privateOwnerId)
       ) &&
       !/\b(no|not|never|don't|can't|cannot|won't|unless|if|maybe|perhaps)\b/iu.test(invitationQuote) &&
       privateScopeSupported &&
@@ -2012,6 +2012,7 @@ async function enterVenueOnce(
     requestedZoneId ??
     legacyZoneId(place, entryArea ?? (spaceClass === "residence" ? "shared" : "public"), spaceClass, privateOwnerId);
   let zone = resolveVenueZone(place, requested);
+  if (!zone && !requestedZoneId && !entryArea && place.layoutVersion === 1) zone = resolveVenueZone(place, "exterior");
   if (!zone) throw notFound("That zone is not in this Venue.");
   if (zoneClosed(village, place, zone)) {
     if (place.constructionStatus === "worksite" && !requestedZoneId && !entryArea)
@@ -2119,7 +2120,11 @@ export async function enterResidencePrivateSpace(
   ownerId: string,
   expectedSceneRevision?: number,
 ): Promise<VenueSession> {
-  return moveVenueZone(sessionId, "private:" + ownerId, expectedSceneRevision);
+  const session = await readSession(sessionId);
+  const village = await readVillageState();
+  const venue = village.venues.find((venue) => venue.id === session.placeId);
+  if (!venue) throw conflict("That Residence is no longer here.");
+  return moveVenueZone(sessionId, legacyZoneId(venue, "private", "residence", ownerId), expectedSceneRevision);
 }
 
 export async function greetVenue(id: string, retryOfAttemptId?: string): Promise<VenueSession> {

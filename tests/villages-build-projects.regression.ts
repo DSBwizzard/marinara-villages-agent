@@ -313,8 +313,11 @@ async function main() {
       ),
     );
     assert.equal((await readVillageState()).projects.find((row) => row.id === id)?.lifecycle?.phase, "finishing");
-    await assert.rejects(openFinishedProject(id, { form: "hall" }), /form, exterior, and interior/u);
+    await assert.rejects(openFinishedProject(id, { form: "hall" }), /form and exterior/u);
     await openFinishedProject(id, {
+      layoutVersion: 1,
+      layout: "common",
+      spaces: [{ venueClass: "gathering", description: "Tables gather round a hearth." }],
       form: "A low timber hall",
       exteriorDescription: "Warm light at the door.",
       interiorDescription: "Tables gather round a hearth.",

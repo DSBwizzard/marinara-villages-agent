@@ -352,12 +352,16 @@ async function main() {
     const workEnd = state.projects.find((entry) => entry.id === projectId)!.lifecycle!.workOrder!.completesAt;
     await mutateVillageState((current) => reconcileProjectLifecycles(current, new Date(workEnd)));
     await openFinishedProject(projectId, {
+      layoutVersion: 1,
+      layout: "both",
+      spaces: [{ venueClass: "gathering", description: "Tables and a hearth." }],
       form: "A timber hall",
       exteriorDescription: "Warm windows.",
       interiorDescription: "Tables and a hearth.",
       privateSpaces: [
         {
           id: "restricted:archive",
+          venueClass: "gathering",
           name: "Archive",
           purpose: "Store records",
           controllerIds: ["player"],

@@ -809,17 +809,28 @@ function coerceVenue(value: unknown): VillageVenue | null {
       adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
     };
   };
-  const privateSpaces = classes.includes("residence")
-    ? [...residentIds, ...(playerHome ? ["player"] : [])].map((ownerId) =>
-        privateSpaceFor(
-          ownerId,
-          Array.isArray(raw.privateSpaces)
-            ? raw.privateSpaces.find((entry) => asTrimmedString(asRecord(entry).ownerId) === ownerId)
-            : null,
-        ),
-      )
-    : [];
-  const spaces = (validVenueClasses(raw.baseClasses) ? raw.baseClasses : classes).map((venueClass) => {
+  const explicitLayout = raw.layoutVersion === 1;
+  const privateSpaces =
+    !explicitLayout && classes.includes("residence")
+      ? [...residentIds, ...(playerHome ? ["player"] : [])].map((ownerId) =>
+          privateSpaceFor(
+            ownerId,
+            Array.isArray(raw.privateSpaces)
+              ? raw.privateSpaces.find((entry) => asTrimmedString(asRecord(entry).ownerId) === ownerId)
+              : null,
+          ),
+        )
+      : [];
+  const spaceClasses = explicitLayout
+    ? Array.isArray(raw.spaces)
+      ? raw.spaces
+          .map((entry) => asRecord(entry).venueClass)
+          .filter((entry): entry is VillageVenueClass => validVenueClasses([entry]))
+      : []
+    : validVenueClasses(raw.baseClasses)
+      ? raw.baseClasses
+      : classes;
+  const spaces = spaceClasses.map((venueClass) => {
     const row = Array.isArray(raw.spaces)
       ? asRecord(raw.spaces.find((entry) => asRecord(entry).venueClass === venueClass))
       : {};
@@ -915,6 +926,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     form: boundText(raw.form, MAX_VENUE_NOTE_LENGTH),
     classes,
     baseClasses: validVenueClasses(raw.baseClasses) ? raw.baseClasses : classes,
+    layoutVersion: explicitLayout ? 1 : undefined,
     spaces,
     residenceCapacity:
       Number.isInteger(raw.residenceCapacity) &&
@@ -1045,12 +1057,17 @@ function coerceVenue(value: unknown): VillageVenue | null {
       updatedAt: asIsoString(state.updatedAt) ?? "",
     },
   };
-  const readZone = (value: unknown): VillageVenueZone | null => {
+  const readZone = (value: unknown, archived = false): VillageVenueZone | null => {
     const row = asRecord(value);
     const id = asTrimmedString(row.id);
     if (!id || !ZONE_KINDS.includes(row.kind as VillageVenueZone["kind"])) return null;
     const ownerId = asTrimmedString(row.ownerId);
-    if (row.kind === "private-residence" && !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome)))
+    if (
+      !archived &&
+      row.kind === "private-residence" &&
+      !(explicitLayout && !ownerId) &&
+      !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome))
+    )
       return null;
     const upgradeId = asTrimmedString(row.upgradeId);
     if (upgradeId && !improvements.some((upgrade) => upgrade?.id === upgradeId)) return null;
@@ -1086,7 +1103,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ids.add(zone.id);
       return [zone];
     });
-    for (const legacy of legacyVenueZones(venue))
+    for (const legacy of explicitLayout ? [] : legacyVenueZones(venue))
       if (!venue.zones.some((zone) => zone.id === legacy.id)) venue.zones.push(legacy);
     const exterior = venue.zones.find((zone) => zone.kind === "exterior");
     if (exterior) {
@@ -1094,9 +1111,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
       venue.presentation.image = exterior.image;
       venue.description = exterior.description;
     }
-    venue.spaces = venue.zones.filter(
-      (zone) => !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence",
-    );
+    venue.spaces = venue.zones.filter((zone) => !zone.upgradeId && ["public", "shared-residence"].includes(zone.kind));
     venue.privateSpaces = venue.zones
       .filter((zone) => zone.kind === "private-residence")
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
@@ -1108,7 +1123,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           const row = asRecord(value),
             zone = asRecord(row.zone),
             archivedAt = asIsoString(row.archivedAt);
-          const parsed = readZone({ ...zone, upgradeId: undefined });
+          const parsed = readZone({ ...zone, upgradeId: undefined }, true);
           return parsed && archivedAt
             ? [{ zone: { ...parsed, upgradeId: asTrimmedString(zone.upgradeId) || undefined }, archivedAt }]
             : [];
@@ -1123,7 +1138,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
   venue.playerInvitations = venue.playerInvitations?.filter((invitation) => {
     invitation.zoneId ??=
       invitation.scope === "private"
-        ? "private:" + invitation.ownerId
+        ? (venue.zones?.find((zone) => zone.kind === "private-residence" && zone.ownerId === invitation.ownerId)?.id ??
+          "private:" + invitation.ownerId)
         : venue.zones?.find((zone) => zone.kind === "shared-residence")?.id;
     const zone = venue.zones?.find((zone) => zone.id === invitation.zoneId);
     return (
@@ -1145,8 +1161,10 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
     if (
       !id ||
       !name ||
-      (!description && !["staff", "restricted"].includes(String(row.kind))) ||
-      !["public", "shared-residence", "staff", "restricted"].includes(String(row.kind))
+      (!description &&
+        !row.preserveDescription &&
+        !["private-residence", "staff", "restricted"].includes(String(row.kind))) ||
+      !["public", "shared-residence", "private-residence", "staff", "restricted"].includes(String(row.kind))
     )
       return [];
     return [
@@ -1156,6 +1174,8 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         description,
         purpose: boundText(row.purpose, 240),
         controllerIds: coerceVenueIds(row.controllerIds),
+        ownerId: asTrimmedString(row.ownerId) || undefined,
+        preserveDescription: row.preserveDescription === true,
         kind: row.kind as VillageZoneDraft["kind"],
         venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
       },
@@ -1348,6 +1368,7 @@ function coerceResidence(value: unknown): VillageResidence | null {
     characterId,
     status,
     proposedVenueId: status !== "current" ? asTrimmedString(raw.proposedVenueId) : "",
+    proposedPrivateZoneId: status !== "current" ? asTrimmedString(raw.proposedPrivateZoneId) : "",
     requestedAt: asIsoString(raw.requestedAt) ?? "",
     requestedBy: raw.requestedBy === "player" ? "player" : "villager",
     villagerDecision:
@@ -1892,6 +1913,7 @@ function coerceProjects(value: unknown): VillageProject[] {
                 ? {
                     ...(validVenueClasses(change.classes) ? { classes: change.classes } : {}),
                     ...(Number.isInteger(change.capacity) ? { capacity: Number(change.capacity) } : {}),
+                    ...(Array.isArray(change.baseZones) ? { baseZones: coerceZoneDrafts(change.baseZones) } : {}),
                     ...(isHomeBuildingKind(change.homeKind) ? { homeKind: change.homeKind } : {}),
                     ...(change.slot === 0 || change.slot === 1 ? { slot: change.slot } : {}),
                     ...(change.improvement === null
@@ -2346,6 +2368,7 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
           resolvedAt: asIsoString(row.resolvedAt) ?? "",
           requesterCharacterId: asTrimmedString(row.requesterCharacterId),
           movingCharacterId: asTrimmedString(row.movingCharacterId) || undefined,
+          proposedPrivateZoneId: asTrimmedString(row.proposedPrivateZoneId) || undefined,
           counterofferRequestId: asTrimmedString(row.counterofferRequestId) || undefined,
           counterofferDraft: (() => {
             const draft = asRecord(row.counterofferDraft);
@@ -2435,7 +2458,10 @@ export function coerceVillageState(value: unknown): VillageState {
       const retention = asRecord(raw.visitRetention);
       const value = Number(retention.value);
       if (retention.mode === "count" && Number.isInteger(value) && value >= 1 && value <= 1_000)
-        return { mode: "count" as const, value };
+        return {
+          mode: "count" as const,
+          value,
+        };
       if (retention.mode === "days" && Number.isInteger(value) && value >= 30 && value <= 3_650)
         return { mode: "days" as const, value };
       return { mode: "forever" as const, value: 0 };

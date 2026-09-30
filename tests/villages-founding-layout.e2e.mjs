@@ -366,6 +366,32 @@ try {
         .getByLabel("Venue form", { exact: true })
         .fill(index === homeCount + 1 ? "A communal fire pit" : "A modest stone home");
       await forward.click();
+      const layout =
+        index === 0 ? "both" : index === 1 ? "private" : index === 2 && index <= homeCount ? "common" : "exterior";
+      await forward.click();
+      await expect(dialog.getByRole("alert")).toContainText("Choose a venue layout");
+      const layoutLabels = {
+        exterior: "Exterior only",
+        common: "Common Area only",
+        private: "Private Area only",
+        both: "Common Area and Private Area",
+      };
+      await dialog.getByRole("radio", { name: layoutLabels[layout], exact: true }).check();
+      if (index === 0) {
+        await dialog.getByRole("button", { name: "Remove Private Area", exact: true }).click();
+        await expect(dialog.getByRole("status")).toContainText("0 Private Areas");
+        await dialog.getByRole("button", { name: "Add Private Area", exact: true }).click();
+        await expect(dialog.getByLabel("Your personal-space description")).toBeFocused();
+        await dialog.getByLabel("Your personal-space description").fill("Draft preserved through remove and add.");
+        for (let back = 0; back < 3; back++) await dialog.getByRole("button", { name: "Back", exact: true }).click();
+        await dialog.getByRole("button", { name: "Remove Private Area", exact: true }).click();
+        await dialog.getByRole("button", { name: "Add Private Area", exact: true }).click();
+        await expect(dialog.getByLabel("Your personal-space description")).toHaveValue(
+          "Draft preserved through remove and add.",
+        );
+        for (let back = 0; back < 3; back++) await dialog.getByRole("button", { name: "Back", exact: true }).click();
+      }
+      await forward.click();
       await dialog.getByLabel("Exterior description", { exact: true }).fill("This place stands above the sea.");
       if (index === 1) {
         await dialog.getByRole("checkbox", { name: "Use assigned villager’s personality", exact: true }).uncheck();
@@ -413,16 +439,19 @@ try {
           await dialog.getByRole("button", { name: "Remove image", exact: true }).click();
         }
       }
-      await forward.click();
-      await dialog
-        .getByLabel(index > 0 && index <= homeCount ? "Shared interior description" : "Interior description", {
-          exact: true,
-        })
-        .fill("A bright, simple room.");
-      await forward.click();
-      if (index === 0)
-        await dialog.getByLabel("Your personal-space description").fill("My hammock and traveling journal.");
-      if (index > 0 && index <= homeCount) await expect(dialog.getByText(/details stay hidden/)).toBeVisible();
+      if (layout === "common" || layout === "both") {
+        await forward.click();
+        await dialog.getByLabel("Common Area description", { exact: true }).fill("A bright, simple room.");
+      }
+      if (layout === "private" || layout === "both") {
+        await forward.click();
+        if (index === 0)
+          await dialog.getByLabel("Your personal-space description").fill("My hammock and traveling journal.");
+        else {
+          await expect(dialog.getByText(/details stay hidden/)).toBeVisible();
+          await expect(dialog.getByLabel("Description · optional")).toHaveCount(0);
+        }
+      }
       const done = dialog.getByRole("button", { name: "Done", exact: true });
       const box = await done.boundingBox();
       assert.ok(box && box.y >= 0 && box.y + box.height <= height + 1, "editor navigation stays in viewport");
