@@ -375,6 +375,7 @@ async function main() {
       const shop = current.venues[0]!;
       resolveVenueZone(shop, stockId)!.id = "stock";
       shop.improvements![0]!.zones![0]!.id = "stock";
+      resolveVenueZone(shop, "stock")!.preparation = { status: "ready" };
       shop.workerIds = ["chef"];
       const block = current.villagers[0]!.agenda!.activeDay!.blocks[0]!;
       block.zoneId = "gathering";
@@ -408,7 +409,10 @@ async function main() {
       .zones!.find((entry) => entry.id === "stock")!;
     assert.equal(hidden.description, "");
     assert.deepEqual(hidden.state.items, []);
-    await assert.rejects(() => setVillageVenueImage("cafe", null, undefined, "", false, "stock"), /Visit this zone/);
+    await assert.rejects(
+      () => setVillageVenueImage("cafe", null, undefined, "", false, "stock"),
+      /Visit this zone|current invitation/,
+    );
     response = "invite-now";
     inviterId = "guest";
     const unauthorized = await sendVenueTurn({

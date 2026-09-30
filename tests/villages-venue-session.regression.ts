@@ -3010,6 +3010,10 @@ async function main() {
       for (const resident of state.villagers)
         if (resident.characterId === "bob" || resident.characterId === "tina") resident.agenda = agenda("home");
     });
+    await mutateVillageState((state) => {
+      for (const room of state.venues.find((venue) => venue.id === "home")!.zones ?? [])
+        if (room.preparation) room.preparation = { status: "ready" };
+    });
     const redacted = await buildVillageSnapshot();
     const hiddenHome = redacted.settings.venues.find((place) => place.id === "home")!;
     assert.equal(
@@ -3199,18 +3203,22 @@ async function main() {
       "resident approval of room text does not overwrite a player-chosen image",
     );
     await leaveVenueSession(outside.id, "home-leave");
-    await setVillageVenueImage(
-      "home",
-      { id: "private-redraw", ref: "global-gallery:private-redraw", url: "/redraw.webp" },
-      "residence",
-      "bob",
+    await assert.rejects(
+      () =>
+        setVillageVenueImage(
+          "home",
+          { id: "private-redraw", ref: "global-gallery:private-redraw", url: "/redraw.webp" },
+          "residence",
+          "bob",
+        ),
+      /current invitation/,
     );
     assert.equal(
       (await readVillageState()).venues
         .find((place) => place.id === "home")
-        ?.privateSpaces?.find((space) => space.ownerId === "bob")?.image?.id,
-      "private-redraw",
-      "the player may redraw after the invited visit ends",
+        .privateSpaces.find((space) => space.ownerId === "bob").image.id,
+      "private-image",
+      "discovery preserves artwork without granting future room actions",
     );
     const persistedForMigration = await readVillageState();
     const homeForMigration = persistedForMigration.venues.find((place) => place.id === "home")!;
@@ -3332,7 +3340,7 @@ async function main() {
     assert.ok(!destination.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt);
     await assert.rejects(
       () => setVillageVenueImage("new-home", null, "residence", "bob"),
-      /Visit this Residence space/u,
+      /Visit this Residence space|current invitation/u,
       "a move creates a fresh private room that has not been discovered",
     );
     const parkExterior = await enterVenue("park", "workplace", "", "outside");

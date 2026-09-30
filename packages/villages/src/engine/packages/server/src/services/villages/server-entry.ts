@@ -34,6 +34,8 @@ export async function activate({ api }: ActivationContext) {
     // never leaves a timer behind pointing at a village nobody can reach.
     cleanups.push(startVillageRefreshScheduler());
     cleanups.push(startProgressRecovery());
+    const { startPrivateSpacePreparation } = await import("./private-space-preparation.js");
+    cleanups.push(startPrivateSpacePreparation());
     active = true;
   } catch (error) {
     // Never leave a half-wired package holding a runtime slot.

@@ -132,6 +132,11 @@ async function main() {
     );
     const visual = await readVillageVisualLore(["world"], "harbor", 60);
     assert.ok(visual.length <= 60);
+    assert.equal(
+      visual,
+      "Bridge: The bridge is painted blue now.",
+      "relevant entries are complete and precede generic constants",
+    );
     assert.match(
       buildTownMapPrompt(undefined, "harbor village", undefined, visual),
       /Visual details from selected lore/,

@@ -133,6 +133,8 @@ export async function actAtVenue(
   if (active.area === "private" || (active.area === "shared" && venueResidentIds(storedPlace).length > 0))
     throw badRequest("Private and shared Residence changes require the residents' specific approval.");
   const zone = active.zoneId ? resolveVenueZone(storedPlace, active.zoneId) : undefined;
+  if (zone?.kind === "staff" || zone?.kind === "restricted")
+    throw badRequest("Private work areas require their controllers’ specific approval.");
   if (zone && zoneClosed(village, storedPlace, zone)) throw badRequest("This zone is closed for Renovation.");
   const place = active.zoneId
     ? venueInZone(storedPlace, active.zoneId)

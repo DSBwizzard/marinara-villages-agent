@@ -79,3 +79,16 @@ jobs:
           npx tsx tests/villages-venue-coordinator.regression.ts
           npx tsx tests/villages-agenda-movement.regression.ts
           npx tsx tests/villages-scene-staging.regression.ts
+
+      - name: Verify founding, scenery and private spaces
+        run: |
+          npx tsx tests/villages-client-scope.regression.ts
+          npx tsx tests/villages-founding-flow.regression.ts
+          npx tsx tests/villages-private-spaces.regression.ts
+          npx tsx tests/villages-lorebooks.regression.ts
+          npx tsx tests/villages-town-map-image.regression.ts
+
+      - name: Verify desktop and mobile founding
+        run: |
+          npx playwright install --with-deps chromium
+          node tests/villages-founding-layout.e2e.mjs

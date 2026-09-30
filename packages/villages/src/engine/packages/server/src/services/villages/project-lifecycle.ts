@@ -1,3 +1,6 @@
+import { outsideVenueOperation } from "./venue-coordinator.js";
+import { readCreationPrivateZones, readVenueImageContext } from "./village.js";
+import { preparePrivateSpaces } from "./private-space-preparation.js";
 import { venueZones, effectiveVenueClasses } from "./venue-zones.js";
 import { randomUUID } from "node:crypto";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
@@ -307,9 +310,9 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
           description = boundText(zone.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
         if (
           !name ||
-          !description ||
+          (!description && !["staff", "restricted"].includes(String(zone.kind))) ||
           ids.has(id) ||
-          !["public", "shared-residence", "staff"].includes(String(zone.kind))
+          !["public", "shared-residence", "staff", "restricted"].includes(String(zone.kind))
         )
           throw badRequest("Give every zone a name, description, and supported kind.");
         ids.add(id);
@@ -317,6 +320,10 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
           id,
           name,
           description,
+          purpose: boundText(zone.purpose, 240),
+          controllerIds: Array.isArray(zone.controllerIds)
+            ? [...new Set(zone.controllerIds.filter((id): id is string => typeof id === "string"))]
+            : [],
           kind: zone.kind as VillageZoneDraft["kind"],
           venueClass: validVenueClasses([zone.venueClass])
             ? (zone.venueClass as VillageVenueClass)
@@ -335,6 +342,14 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
     (zone) => zone.upgradeId && zone.upgradeId !== priorUpgrade?.id,
   );
   for (const zone of [...(improvement?.zones ?? []), ...survivingUpgradeZones]) {
+    if (
+      zone.kind === "restricted" &&
+      (!zone.controllerIds?.length ||
+        zone.controllerIds.some(
+          (id) => id !== "player" && !state.villagers.some((person) => person.characterId === id),
+        ))
+    )
+      throw badRequest("Choose current villagers as private-space controllers.");
     if (
       !nextClasses.includes(zone.venueClass) ||
       (zone.kind === "shared-residence" && zone.venueClass !== "residence") ||
@@ -796,6 +811,20 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
         if (!form || !exterior || !interior)
           throw badRequest("Define the Venue form, exterior, and interior before opening it.");
         venue.form = form;
+        venue.imageContext = readVenueImageContext(row.imageContext);
+        const privateZones = readCreationPrivateZones(row.privateSpaces, venue.classes ?? ["other"]);
+        if (
+          privateZones.some((zone) =>
+            zone.controllerIds?.some(
+              (id) => id !== "player" && !state.villagers.some((person) => person.characterId === id),
+            ),
+          )
+        )
+          throw badRequest("Choose current villagers as private-space controllers.");
+        venue.zones = [
+          ...venueZones(venue).filter((zone) => !privateZones.some((room) => room.id === zone.id)),
+          ...privateZones,
+        ];
         venue.description = exterior;
         venue.presentation.image = validImage(row.exteriorImage);
         venue.spaces =
@@ -841,6 +870,10 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
               ...defaultVenueSpace(draft.venueClass, draft.description),
               ...previous,
               ...draft,
+              preparation:
+                ["staff", "restricted"].includes(draft.kind) && !previous
+                  ? { status: "pending" as const }
+                  : previous?.preparation,
               upgradeId: change.improvement.id,
               image: previous?.image ?? null,
             };
@@ -882,6 +915,9 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
     };
     if (state.progressEngineVersion === 1) recordProjectProgress(state, project, "opened", evidence, "", applyOpening);
     else applyOpening();
+  });
+  outsideVenueOperation(() => {
+    void preparePrivateSpaces().catch(() => {});
   });
 }
 

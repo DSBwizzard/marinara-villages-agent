@@ -403,6 +403,7 @@ async function main() {
       "exteriorState",
       "form",
       "id",
+      "imageContext",
       "improvements",
       "name",
       "occupancy",
@@ -634,6 +635,7 @@ async function main() {
     }
     if (url.pathname === AVATAR_PATH) return json({ image: TINY_PNG, prompt: body?.appearance });
     if (url.pathname === "/api/connections") return json(connectionRows);
+    if (url.pathname === "/api/image-metadata/inspect") return json({ width: 1, height: 1 });
     throw new Error(`the test's Engine does not serve ${url.pathname}`);
   }) as any;
 
@@ -1232,6 +1234,35 @@ async function main() {
   );
   assert.match(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
   assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof/u);
+
+  // One saved style applies to maps, founding areas and later venue areas.
+  await mutateVillageState((state) => {
+    state.sceneryArtStyle = "Pixel art with a restrained sea-green palette";
+  });
+  const styledVenue = await asksFor();
+  assert.equal(styledVenue.answered.statusCode, 200, styledVenue.answered.body);
+  assert.match(styledVenue.call.body.appearance, /Pixel art with a restrained sea-green palette/);
+  assert.doesNotMatch(styledVenue.call.body.appearance, /Painted background art/);
+  assert.ok(styledVenue.call.body.appearance.length <= 4000);
+  for (const area of ["exterior", "interior"]) {
+    const styledFounding = await post("/api/villages/setup/venue-image/generate", {
+      ...foundingImageInput,
+      sceneryArtStyle: "Pixel art with a restrained sea-green palette",
+      area,
+      venue: foundingVenue,
+    });
+    assert.equal(styledFounding.statusCode, 200, styledFounding.body);
+    assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
+    assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
+  }
+  const styledMap = await post("/api/villages/setup/town-map/generate", {
+    setting: "Misty cliffs",
+    sceneryArtStyle: "Pixel art with a restrained sea-green palette",
+    useVisualLore: false,
+  });
+  assert.equal(styledMap.statusCode, 200, styledMap.body);
+  assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
+  assert.ok(draws().at(-1).body.appearance.length <= 4000);
 
   // The package must not have grown a private Engine import to do any of this.
   // The image connection, the gallery and the drawing are all the Engine's own

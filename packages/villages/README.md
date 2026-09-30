@@ -30,6 +30,16 @@ Ordinary weeks and native translations do not contain unresolved wish errands. A
 
 **Background events and wishes** replaces the Story pace label. Off pauses automatic Events, their resident housing proposals, and new wishes. Time, schedules, approved moves, construction, and existing wish expiry continue. Quiet, Balanced, and Lively keep their Events allowances and share the same daily wish limits. Explicit visits and other generation features retain their own controls.
 
+## Founding, scenery, and private spaces
+
+Step 4 places your home, one to three villager homes, and the Gathering Venue in sequence. Select a map spot, complete one stage at a time, and press Done to return to placement. Existing pins reopen their editor. Cancelling a new venue removes its unfinished draft; count changes retain completed venues. The editor fills the phone screen and keeps navigation visible while typing. Arrow keys choose a map spot and Enter places it.
+
+Choose Scenery art style before map generation or in Village Settings. Painted illustration, Watercolor, Cartoon, Pixel art, Photorealism, and Custom have editable descriptions. Saved styles apply to future scenery only; Sprite Studio remains independent. Homes default to personalized images, with independent personality and selected-lore controls on each venue. Lore selection keeps complete relevant entries within the image budget. Owner personality always informs personal rooms; the player uses their Persona. Changed descriptions, assignments, style, or image context invalidate an in-flight generation result.
+
+Every resident has a personal space; every Workplace has a restricted work area. All current workers control every work area, including vaults and offices. Gathering and Other can have optional private spaces with named controllers. A room invitation is evidenced and specific to that room. Lasting changes require every current controller’s approval. Worker assignment changes revoke removed workers’ invitations and approvals; discovery never grants later entry. Unseen descriptions, physical state, images, archives, and proposals stay out of ordinary views.
+
+Private details are prepared once through the System connection, with saved pending, ready, or failed status and explicit retry. Founding waits for preparation; later public venues can open while private areas are unavailable. Hidden room images get one durable attempt after first invited entry; failures never automatically spend another image request. New Venue finishing defines optional rooms, while adding or removing physical rooms at an open venue uses a Renovation Upgrade. Existing bedrooms, images, discovery, and archives are preserved.
+
 ## Venue projects
 
 ### Progress Engine foundation

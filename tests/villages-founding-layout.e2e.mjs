@@ -8,55 +8,12 @@ const browser = await chromium.launch({
   headless: true,
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-const residenceHints = [
-  "A modest stone home, with ivy growing on the walls",
-  "A tent and hammock pitched in the shade between two pine trees",
-  "A mighty castle, with imposing obsidian pillars and multiple dungeons",
-  "A dumpster behind the supermarket",
-  "An armored cash transport car, converted into a mobile home",
-];
-const gatheringHints = [
-  "A communal fire pit, with logs and stumps arranged around it in a semicircle",
-  "A decommissioned pizzeria, complete with inert animatronic performers",
-  "The situation room, with a round table bearing strategic maps",
-  "The hardy Brandythrone tavern, where ale and fistfights are plentiful",
-  "A meticulously-landscaped public park, where trampling the roses is punishable by fine",
-];
-
-const seededVenue = (id, name, venueClass, x, y, playerHome = false, residentCharacterId = null) => ({
-  id,
-  name,
-  form: "",
-  classes: [venueClass],
-  spaces: [
-    {
-      id: venueClass,
-      venueClass,
-      description: "",
-      image: null,
-      state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
-    },
-  ],
-  residenceCapacity: 1,
-  residentIds: residentCharacterId ? [residentCharacterId] : [],
-  improvements: [null, null],
-  description: "",
-  category: venueClass === "gathering" ? "public-center" : "",
-  presentation: { image: null, x, y },
-  occupancy: { playerHome, residentCharacterId, homeKind: null },
-  capabilities: [],
-  state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-});
-const startingVenues = [
-  seededVenue("home-player", "Your residence", "residence", 0.25, 0.3, true),
-  seededVenue("home-finn", "Finn's residence", "residence", 0.65, 0.35, false, "finn"),
-  seededVenue("gathering", "Gathering Place", "gathering", 0.5, 0.7),
-];
 const snapshot = {
   status: "ready",
   isFounded: false,
   village: { name: "", setting: "" },
   noticeboard: [],
+  projects: [],
   venueRequests: [],
   upgradeRequests: [],
   residences: [],
@@ -64,7 +21,7 @@ const snapshot = {
   villagers: [],
   recap: null,
   settings: {
-    venues: startingVenues,
+    venues: [],
     foundingReason: "",
     foundingDetails: "",
     foundingGuidance: "",
@@ -117,14 +74,42 @@ try {
     { width: 390, height: 844, fontSize: 16 },
     { width: 390, height: 650, fontSize: 20 },
   ]) {
-    const page = await browser.newPage({ viewport: { width, height } });
+    const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
+    const homeCount = width === 390 ? (height === 650 ? 3 : 2) : height === 500 ? 3 : 1;
+    let imageCalls = 0;
+    let releaseImage;
+    const imageRef = {
+      id: "test-art",
+      ref: "global-gallery:test-art",
+      url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AGtLQAAAABJRU5ErkJggg==",
+    };
     const availablePersonas = personas;
     let connectionSettings = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
     let foundingPayload = null;
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
-    await page.route("**/api/villages**", (route) => {
+    await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/setup/venue-image/generate")) {
+        imageCalls++;
+        if (imageCalls === 2)
+          await new Promise((resolve) => {
+            releaseImage = resolve;
+          });
+        if (imageCalls > 1)
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(imageRef) });
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Optional image unavailable" }),
+        });
+      }
+      if (path.endsWith("/setup/venue-image") && route.request().method() === "PUT")
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ...imageRef, id: "uploaded-art" }),
+        });
       if (path.endsWith("/setup") && route.request().method() === "POST") {
         foundingPayload = JSON.parse(route.request().postData() ?? "{}");
       }
@@ -154,7 +139,13 @@ try {
                 : path.endsWith("/lorebooks")
                   ? { books: lorebooks }
                   : path.endsWith("/catalog")
-                    ? { characters: [{ id: "finn", name: "Finn" }] }
+                    ? {
+                        characters: [
+                          { id: "finn", name: "Finn" },
+                          { id: "rosa", name: "Rosa" },
+                          { id: "lee", name: "Lee" },
+                        ],
+                      }
                     : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
@@ -246,6 +237,10 @@ try {
 
     await expect(root.getByText("Step 3 of 5 · Village Map")).toBeVisible();
     await checkTheme();
+    await expect(root.getByRole("combobox", { name: "Scenery style preset" })).toHaveValue("Painted illustration");
+    await root.getByRole("combobox", { name: "Scenery style preset" }).selectOption("Pixel art");
+    await expect(root.getByLabel("Scenery style description")).toHaveValue(/Pixel art/);
+    await root.getByRole("combobox", { name: "Scenery style preset" }).selectOption("Painted illustration");
     await root.getByRole("button", { name: "Generate with AI" }).click();
     await root.getByText("Advanced map elements").click();
     for (const name of ["Roads and paths", "Structures", "Water"])
@@ -255,80 +250,159 @@ try {
 
     await expect(root.getByText("Step 4 of 5 · Build the Village")).toBeVisible();
     await checkTheme();
-    const place = async (button, x, y, name, count) => {
-      await root.getByRole("button", { name: button }).click();
-      const canvas = root.locator(
-        ".marinara-capability-villages-setup-map-viewport .marinara-capability-villages-canvas",
-      );
+
+    await root.getByLabel("Number of villager homes", { exact: true }).selectOption(String(homeCount));
+    const canvas = root.locator(
+      ".marinara-capability-villages-setup-map-viewport .marinara-capability-villages-canvas",
+    );
+    const spot = async (x, y) => {
       await canvas.scrollIntoViewIfNeeded();
+      if (width < 600) await expect(canvas.locator(".marinara-capability-villages-mobile-logical")).toBeVisible();
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const box = await canvas.boundingBox();
       assert.ok(box);
-      await canvas.click({ position: { x: box.width * x, y: box.height * y } });
-      await expect(root.locator(".marinara-capability-villages-setup-venue-card")).toHaveCount(count);
-      await root.getByLabel("Name", { exact: true }).fill(name);
+      if (width < 600) await canvas.tap({ position: { x: box.width * x, y: box.height * y } });
+      else await canvas.click({ position: { x: box.width * x, y: box.height * y } });
+      await expect(root.getByRole("dialog")).toBeVisible();
     };
-    await place("Place a Residence", 0.3, 0.35, "Your residence", 1);
-    await place("Place a Residence", 0.7, 0.35, "Finn's residence", 2);
-    await root.locator(".marinara-capability-villages-setup-venue-editor select").last().selectOption("finn");
-    await place("Place a Gathering Place", 0.5, 0.7, "Gathering Place", 3);
-    await expect(root.locator(".marinara-capability-villages-setup-venue-card")).toHaveCount(3);
-    await root.locator(".marinara-capability-villages-setup-venue-card").first().click();
-    await expect(root.getByText("What the Venue actually is")).toBeVisible();
-    const form = root.locator("#marinara-capability-villages-setup-form");
-    await expect(form).toHaveValue("");
-    await expect(form).toHaveAttribute("placeholder", residenceHints[0]);
-    if (width === 1917 && height === 655 && fontSize === 20) {
-      await root.getByRole("button", { name: "Generate Exterior Image" }).click();
-      await expect(root.getByRole("alert")).toContainText("exterior description");
-      await expect(root.locator("#marinara-capability-villages-setup-exterior-description")).toBeFocused();
-      await page.waitForTimeout(3000);
-      await expect(form).toHaveAttribute("placeholder", residenceHints[0]);
-      await expect(form).toHaveAttribute("placeholder", residenceHints[1], { timeout: 2500 });
-      await form.focus();
-      const paused = await form.getAttribute("placeholder");
-      await page.waitForTimeout(4200);
-      assert.equal(await form.getAttribute("placeholder"), paused, "focused Form pauses its examples");
-      await form.blur();
-      for (const hint of [...residenceHints.slice(2), residenceHints[0]])
-        await expect(form).toHaveAttribute("placeholder", hint, { timeout: 5500 });
+    if (width >= 600) {
+      const map = root.locator(".marinara-capability-villages-setup-map-viewport");
+      await map.focus();
+      await page.keyboard.press("ArrowLeft");
+      await expect(canvas.locator(".marinara-capability-villages-placement-cursor")).toBeVisible();
+      await page.keyboard.press("Enter");
+      await expect(root.getByRole("dialog")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(root.getByRole("dialog")).toHaveCount(0);
     }
-    await (await visibleForward()).click();
-    await expect(root.getByRole("alert")).toContainText("form");
-    await expect(form).toBeFocused();
-    for (let index = 0; index < 3; index++) {
-      await root.locator(".marinara-capability-villages-setup-venue-card").nth(index).click();
-      const name = index === 0 ? "Your residence" : index === 1 ? "Finn's residence" : "Gathering Place";
-      const selectedForm = root.locator("#marinara-capability-villages-setup-form");
-      await expect(selectedForm).toHaveValue("");
-      if (index === 2) {
-        await expect(selectedForm).toHaveAttribute("placeholder", gatheringHints[0]);
-        if (width === 1917 && height === 655 && fontSize === 20)
-          for (const hint of [...gatheringHints.slice(1), gatheringHints[0]])
-            await expect(selectedForm).toHaveAttribute("placeholder", hint, { timeout: 5500 });
+    await spot(0.15, 0.3);
+    await root.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(root.getByRole("dialog")).toHaveCount(0);
+    await expect(root.getByRole("button", { name: /Your residence/ })).toHaveCount(0);
+    const positions = [
+      [0.15, 0.3],
+      [0.7, 0.3],
+      [0.15, 0.65],
+      [0.7, 0.65],
+      [0.45, 0.85],
+    ];
+    for (let index = 0; index < homeCount + 2; index++) {
+      await spot(...positions[index]);
+      if (index === 1) {
+        await root.getByRole("dialog").getByRole("button", { name: "Move on map", exact: true }).click();
+        await root.getByRole("button", { name: /Your residence ·/ }).click();
+        await root.getByRole("dialog").getByLabel("Venue name", { exact: true }).fill("Discard while moving draft");
+        await page.keyboard.press("Escape");
+        await expect(root.getByRole("button", { name: /Your residence ·/ })).toBeVisible();
+        await spot(...positions[index]);
       }
-      await selectedForm.fill(index === 2 ? "A communal fire pit" : "A modest stone home");
-      if (index === 0 && width === 1917 && height === 655 && fontSize === 20) {
-        const filledHint = await selectedForm.getAttribute("placeholder");
-        await page.waitForTimeout(4200);
-        assert.equal(await selectedForm.getAttribute("placeholder"), filledHint, "filled Form pauses its examples");
-        await expect(selectedForm).toHaveValue("A modest stone home");
-        await (await visibleForward()).click();
-        await expect(root.getByRole("alert")).toContainText("exterior description");
-        await expect(root.locator("#marinara-capability-villages-setup-exterior-description")).toBeFocused();
+      const dialog = root.getByRole("dialog");
+      const forward = dialog.getByRole("button", { name: "Continue", exact: true });
+      if (index > 0 && index <= homeCount) {
+        await dialog.getByLabel("Assigned villager").selectOption(["finn", "rosa", "lee"][index - 1]);
+        await forward.click();
       }
-      await root
-        .locator("#marinara-capability-villages-setup-exterior-description")
-        .fill(`${name} stands above the sea.`);
-      if (index === 0 && width === 1917 && height === 655 && fontSize === 20) {
-        await (await visibleForward()).click();
-        await expect(root.getByRole("alert")).toContainText("interior description");
-        await expect(root.locator("#marinara-capability-villages-setup-interior-description")).toBeFocused();
-        await root.getByRole("button", { name: "Generate Interior Image" }).click();
-        await expect(root.getByRole("alert")).toContainText("interior description");
+      await dialog
+        .getByLabel("Venue name", { exact: true })
+        .fill(
+          index === 0
+            ? "Your residence"
+            : index <= homeCount
+              ? ["Finn", "Rosa", "Lee"][index - 1] + "'s residence"
+              : "Gathering Place",
+        );
+      if (index === 0) {
+        await forward.click();
+        await expect(dialog.getByRole("alert")).toContainText("form");
       }
-      await root.locator("#marinara-capability-villages-setup-interior-description").fill("A bright, simple room.");
+      await dialog
+        .getByLabel("Venue form", { exact: true })
+        .fill(index === homeCount + 1 ? "A communal fire pit" : "A modest stone home");
+      await forward.click();
+      await dialog.getByLabel("Exterior description", { exact: true }).fill("This place stands above the sea.");
+      if (index === 1) {
+        await dialog.getByRole("checkbox", { name: "Use assigned villager’s personality", exact: true }).uncheck();
+        await dialog.getByRole("checkbox", { name: "Use selected visual lore", exact: true }).uncheck();
+      }
+      if (index === 0) {
+        if (width < 600) {
+          await page.setViewportSize({ width, height: 400 });
+          await dialog.getByLabel("Exterior description").focus();
+          await expect
+            .poll(async () => (await forward.boundingBox()).y + (await forward.boundingBox()).height)
+            .toBeLessThanOrEqual(400);
+          await page.setViewportSize({ width, height });
+        }
+        if (
+          process.env.VILLAGES_SCREENSHOT_DIR &&
+          ((width === 1366 && height === 768) || (width === 390 && fontSize === 16))
+        ) {
+          await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "founding-" + width + ".png") });
+        }
+        await dialog.getByRole("button", { name: "Generate exterior image", exact: true }).click();
+        await expect(dialog.getByRole("alert")).toContainText("Optional image unavailable");
+        await expect(dialog.getByLabel("Exterior description")).toHaveValue("This place stands above the sea.");
+        if (width === 1366 && height === 768) {
+          await dialog.getByRole("button", { name: "Generate exterior image", exact: true }).click();
+          await expect.poll(() => !!releaseImage).toBe(true);
+          await dialog.getByLabel("Exterior description").fill("Changed during image generation.");
+          releaseImage();
+          await expect(dialog.getByRole("button", { name: "Generate exterior image", exact: true })).toBeEnabled();
+          await expect(dialog.locator("img")).toHaveCount(0);
+          await dialog.getByLabel("Exterior description").fill("This place stands above the sea.");
+          await dialog.getByRole("button", { name: "Generate exterior image", exact: true }).click();
+          await expect(dialog.locator("img")).toHaveCount(1);
+          await expect(dialog.getByRole("button", { name: "Regenerate exterior image", exact: true })).toBeEnabled();
+          await dialog.getByRole("button", { name: "Regenerate exterior image", exact: true }).click();
+          await expect(dialog.getByRole("button", { name: "Regenerate exterior image", exact: true })).toBeEnabled();
+          await dialog.getByRole("button", { name: "Remove image", exact: true }).click();
+          await expect(dialog.locator("img")).toHaveCount(0);
+          await dialog.getByLabel("Upload exterior image").setInputFiles({
+            name: "own-home.png",
+            mimeType: "image/png",
+            buffer: Buffer.from(imageRef.url.split(",")[1], "base64"),
+          });
+          await expect(dialog.locator("img")).toHaveCount(1);
+          await dialog.getByRole("button", { name: "Remove image", exact: true }).click();
+        }
+      }
+      await forward.click();
+      await dialog
+        .getByLabel(index > 0 && index <= homeCount ? "Shared interior description" : "Interior description", {
+          exact: true,
+        })
+        .fill("A bright, simple room.");
+      await forward.click();
+      if (index === 0)
+        await dialog.getByLabel("Your personal-space description").fill("My hammock and traveling journal.");
+      if (index > 0 && index <= homeCount) await expect(dialog.getByText(/details stay hidden/)).toBeVisible();
+      const done = dialog.getByRole("button", { name: "Done", exact: true });
+      const box = await done.boundingBox();
+      assert.ok(box && box.y >= 0 && box.y + box.height <= height + 1, "editor navigation stays in viewport");
+      await done.focus();
+      await page.keyboard.press("Enter");
+      await expect(dialog).toHaveCount(0);
+      await expect(root.locator(".marinara-capability-villages-setup-map-viewport")).toBeFocused();
+      if (index === 2 && homeCount > 1) {
+        await root.getByLabel("Number of villager homes", { exact: true }).selectOption("1");
+        await expect(root.getByRole("button", { name: /Rosa's residence ·/ })).toBeVisible();
+        await root.getByLabel("Number of villager homes", { exact: true }).selectOption(String(homeCount));
+      }
+      if (index === 0) {
+        await root.getByLabel("Number of villager homes", { exact: true }).selectOption("3");
+        await root.getByLabel("Number of villager homes", { exact: true }).selectOption(String(homeCount));
+      }
     }
-    await (await visibleForward()).click();
+    // Reopening and cancelling an edit keeps the completed venue and next placement intact.
+    await root.getByRole("button", { name: /Your residence ·/ }).click();
+    await root.getByRole("dialog").getByLabel("Venue name", { exact: true }).fill("Discard this edit");
+    await page.keyboard.press("Escape");
+    await expect(root.getByRole("button", { name: /Your residence ·/ })).toBeVisible();
+    if (homeCount > 1) {
+      await root.getByLabel("Number of villager homes", { exact: true }).selectOption("1");
+      await expect(root.getByRole("button", { name: /Rosa's residence ·/ })).toBeVisible();
+    }
+    await (await visibleForward("Review village")).click();
 
     await expect(root.getByText("Step 5 of 5 · Review")).toBeVisible();
     await checkTheme();
@@ -345,8 +419,16 @@ try {
     assert.deepEqual(foundingPayload.selectedLorebookIds, ["lore-37"]);
     assert.deepEqual(
       foundingPayload.venues.map((venue) => venue.form),
-      ["A modest stone home", "A modest stone home", "A communal fire pit"],
+      [...Array(1 + homeCount).fill("A modest stone home"), "A communal fire pit"],
     );
+    assert.equal(imageCalls, width === 1366 && height === 768 ? 4 : 1);
+    assert.deepEqual(foundingPayload.venues[1].imageContext, {
+      useAssignedVillagerContext: false,
+      useVisualLore: false,
+    });
+    assert.deepEqual(foundingPayload.venues[0].imageContext, { useAssignedVillagerContext: true, useVisualLore: true });
+    assert.match(foundingPayload.sceneryArtStyle, /Painted/);
+    assert.equal(foundingPayload.venues[0].privateSpaces[0].description, "My hammock and traveling journal.");
     assert.deepEqual(errors, []);
     await page.close();
   }

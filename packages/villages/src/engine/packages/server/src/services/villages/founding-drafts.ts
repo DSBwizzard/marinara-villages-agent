@@ -1,3 +1,5 @@
+import { readSceneryStyle, sceneryPrompt, sceneryCardsContext } from "./scenery-context.js";
+import { readLinkedPersona } from "./village.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { findVillagerCard } from "./catalog.js";
 import { asTrimmedString } from "./coerce.js";
@@ -18,7 +20,7 @@ type DraftRow = {
   form: string;
   description: string;
   spaceDescription: string;
-  venueClass: "residence" | "gathering";
+  venueClass: "residence" | "gathering" | "workplace" | "other";
   residentCharacterId: string;
 };
 
@@ -32,7 +34,8 @@ function rowsOf(value: unknown): DraftRow[] {
   return value.map((raw) => {
     const row = record(raw);
     const venueClass = row.venueClass;
-    if (venueClass !== "residence" && venueClass !== "gathering") throw badRequest("Choose a founding Venue Class.");
+    if (!["residence", "gathering", "workplace", "other"].includes(String(venueClass)))
+      throw badRequest("Choose a founding Venue Class.");
     const id = asTrimmedString(row.id).slice(0, 100);
     if (!id) throw badRequest("A founding venue needs an id.");
     return {
@@ -41,7 +44,7 @@ function rowsOf(value: unknown): DraftRow[] {
       form: asTrimmedString(row.form).slice(0, 240),
       description: asTrimmedString(row.description).slice(0, 1000),
       spaceDescription: asTrimmedString(row.spaceDescription).slice(0, 1000),
-      venueClass,
+      venueClass: venueClass as DraftRow["venueClass"],
       residentCharacterId: asTrimmedString(row.residentCharacterId).slice(0, 100),
     };
   });
@@ -145,8 +148,28 @@ export async function seedFoundingVenueDetails(
 export async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
   const input = record(value);
   const row = await withResident(rowsOf([input.venue])[0]!);
-  const area = input.area === "interior" ? "interior" : "exterior";
-  const areaDescription = area === "exterior" ? row.description : row.spaceDescription;
+  const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
+  const areaDescription =
+    area === "private"
+      ? asTrimmedString(input.privateDescription).slice(0, 1000)
+      : area === "exterior"
+        ? row.description
+        : row.spaceDescription;
+  if (area === "private" && input.privateOwnerId !== "player")
+    throw badRequest("Hidden personal spaces are drawn only after an invited entry.");
+  const personality = input.useAssignedVillagerContext !== false;
+  if (
+    [input.useVisualLore, input.useAssignedVillagerContext].some(
+      (value) => value !== undefined && typeof value !== "boolean",
+    )
+  )
+    throw badRequest("Image context controls must be on or off.");
+  const persona = area === "private" ? await readLinkedPersona(input.playerPersonaId) : null;
+  const character = persona
+    ? `${persona.name}; ${persona.identity.slice(0, 900)}`
+    : personality && row.resident
+      ? sceneryCardsContext([row.resident])
+      : "";
   if (!areaDescription) throw badRequest(`Add an ${area} description before generating its image.`);
   const imprint = coerceScenarioImprint(input.scenarioImprint);
   const setting = [
@@ -157,28 +180,33 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
     .filter(Boolean)
     .join("; ");
   if (!setting) throw badRequest("Describe what the village is like first.");
-  const lore = await readVillageVisualLore(
-    readSelectedLorebookIds(input.selectedLorebookIds ?? []),
-    `${setting}\n${row.name}\n${row.form}\n${areaDescription}`,
-    300,
+  const lore =
+    input.useVisualLore === false
+      ? ""
+      : await readVillageVisualLore(
+          readSelectedLorebookIds(input.selectedLorebookIds ?? []),
+          `${setting}\n${row.name}\n${row.form}\n${areaDescription}\n${character}`,
+          900,
+        );
+  const prompt = sceneryPrompt(
+    [
+      `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
+      area === "exterior"
+        ? "Show the building and approach from outside, not an interior."
+        : "Show the described enterable space from inside, not the exterior.",
+      `${area} description, follow closely: ${areaDescription}.`,
+      "No people, lettering, numerals, signs, labels, or interface graphics.",
+    ],
+    [
+      `Setting: ${setting}.`,
+      character ? `Occupant context, reflect preferences in the space without depicting people: ${character}.` : "",
+      lore ? `Established lore: ${lore}.` : "",
+      asTrimmedString(input.foundingDetails)
+        ? `Day 1 context where visually relevant: ${asTrimmedString(input.foundingDetails).slice(0, 600)}`
+        : "",
+    ],
+    input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
   );
-  const prompt = [
-    `Wide, empty ${area} illustration of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
-    area === "exterior"
-      ? "Show the building and its approach from outside, not an interior."
-      : "Show its enterable room from inside, not the building exterior.",
-    `Setting: ${setting}.`,
-    `${area === "exterior" ? "Exterior" : "Interior"} description, follow closely: ${areaDescription}.`,
-    asTrimmedString(input.foundingDetails) &&
-      `Day 1 context, use only if visually relevant to this venue: ${asTrimmedString(input.foundingDetails).slice(0, 600)}.`,
-    row.resident &&
-      `Resident: ${row.resident.name}; ${row.resident.description}; ${row.resident.personality}; ${row.resident.appearance}.`,
-    lore && `Established lore: ${lore}.`,
-    "No people, lettering, numerals, signs, labels, or interface graphics.",
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .slice(0, 4000);
   const decoded = await generateVillageImage({
     name: row.name || "Founding venue",
     prompt,

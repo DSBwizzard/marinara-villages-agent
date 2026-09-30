@@ -590,8 +590,11 @@ export type VillageVenueSpace = {
   };
 };
 
-export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff";
+export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
 export type VillageVenueZone = VillageVenueSpace & {
+  purpose?: string;
+  controllerIds?: string[];
+  preparation?: { status: "pending" | "ready" | "failed"; error?: string };
   closed?: boolean;
   name: string;
   kind: VillageZoneKind;
@@ -602,9 +605,13 @@ export type VillageVenueZone = VillageVenueSpace & {
   adaptationPending?: boolean;
   adaptationSourceArchiveAt?: string;
 };
-export type VillageZoneDraft = Pick<VillageVenueZone, "id" | "name" | "kind" | "description" | "venueClass">;
+export type VillageZoneDraft = Pick<
+  VillageVenueZone,
+  "id" | "name" | "kind" | "description" | "venueClass" | "purpose" | "controllerIds"
+>;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
+  preparation?: { status: "pending" | "ready" | "failed"; error?: string };
   ownerId: string;
   /** A first-entry picture is attempted once; later drawing is player controlled. */
   initialImageAttemptedAt?: string;
@@ -615,6 +622,7 @@ export type VillagePrivateSpace = VillageVenueSpace & {
 export type VillageVenueEditProposal = {
   id: string;
   target: "shared" | "private";
+  privateSpaceId?: string;
   zoneId?: string;
   ownerId: string;
   baseUpdatedAt: string;
@@ -639,6 +647,7 @@ export type VillageVenueImprovement = {
 };
 
 export type VillageVenue = {
+  imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
   /** Stable within one village; every literal location reference uses this id. */
   id: string;
   /** Only a completed project may expose this venue's interior and capabilities. */
@@ -661,6 +670,7 @@ export type VillageVenue = {
   usedInvitationIds?: string[];
   playerInvitations?: {
     residentId: string;
+    privateSpaceId?: string;
     zoneId?: string;
     recordedAt: string;
     scope?: "shared" | "private";
@@ -1220,6 +1230,9 @@ export type VillageState = {
   worldFacts: string[];
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
+  sceneryArtStyle: string;
+  personalizeVenueImagesByDefault: boolean;
+  useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
   /**
    * Every place the village has: the houses people live in, the player's own
@@ -1708,6 +1721,9 @@ export type VillageSettingsView = {
   scenarioImprint: VillageScenarioImprint | null;
   worldFacts: string[];
   selectedLorebookIds: string[];
+  sceneryArtStyle: string;
+  personalizeVenueImagesByDefault: boolean;
+  useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;

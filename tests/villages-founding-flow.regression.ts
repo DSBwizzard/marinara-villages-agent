@@ -236,11 +236,13 @@ async function main() {
   assert.ok(client.includes("What happens on the village&apos;s first day?"));
   assert.ok(client.includes("Open beginning"));
   assert.ok(client.includes("Search lorebooks"));
-  assert.ok(client.includes("Reset all venues"));
-  assert.ok(client.includes("Place a Residence"));
-  assert.ok(client.includes("Place a Gathering Place"));
-  assert.ok(client.includes("What the Venue actually is"));
-  assert.ok(client.includes('(["exterior", "interior"] as const).map((area)'));
+  const editor = await readFile(join(clientRoot, "villages-founding-editor.tsx"), "utf8");
+  assert.ok(client.includes("FoundingVenueEditor"));
+  assert.ok(client.includes("resumeSetupPlacement"));
+  assert.ok(client.includes("Review village"));
+  assert.ok(editor.includes("Assigned villager"));
+  assert.ok(editor.includes("Venue form"));
+  assert.ok(editor.includes("Private spaces"));
   assert.ok(client.includes("generateSetupImage(selectedSetupVenue, area)"));
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");

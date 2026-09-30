@@ -1,4 +1,8 @@
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
+import { setScenerySettings } from "../services/villages/village.js";
+import { retryPrivateSpaces } from "../services/villages/private-space-preparation.js";
+import { privateTarget } from "../services/villages/venue-zones.js";
+import { readVillageState as readPrivateTargetState } from "../services/villages/village-store.js";
 import { moveVenueZone } from "../services/villages/venue-session.js";
 import { readWishHistoryPage } from "../services/villages/wish-archive.js";
 import { updateVillageZone } from "../services/villages/village.js";
@@ -715,6 +719,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       venueId?: unknown;
       spaceClass?: unknown;
       zoneId?: unknown;
+      privateSpaceId?: unknown;
       privateOwnerId?: unknown;
       entryArea?: unknown;
       expectedSceneRevision?: unknown;
@@ -746,7 +751,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
           spaceClass,
           typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
           entryArea,
-          typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+          await imageTarget(request.body),
           request.body?.expectedSceneRevision === undefined
             ? undefined
             : readSceneRevision(request.body.expectedSceneRevision),
@@ -760,16 +765,19 @@ export async function villagesRoutes(engine: FastifyInstance) {
     Body: {
       sessionId?: unknown;
       zoneId?: unknown;
+      privateSpaceId?: unknown;
       expectedSceneRevision?: unknown;
       retryOfAttemptId?: string;
       operationId?: unknown;
     };
   }>("/rooms/zone", async (request, reply) => {
     try {
+      if (request.body?.zoneId && request.body?.privateSpaceId && request.body.zoneId !== request.body.privateSpaceId)
+        throw conflict("Conflicting private space targets.");
       return {
         session: await moveVenueZone(
           readChatId(request.body?.sessionId),
-          readPlaceId(request.body?.zoneId),
+          readPlaceId(request.body?.privateSpaceId ?? request.body?.zoneId),
           readSceneRevision(request.body?.expectedSceneRevision),
           request.body?.retryOfAttemptId,
           request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
@@ -777,6 +785,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
       };
     } catch (error) {
       return fail(reply, error, "moving between zones");
+    }
+  });
+  app.post("/private-spaces/retry", async (_request, reply) => {
+    try {
+      await retryPrivateSpaces();
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "preparing private spaces");
     }
   });
   app.put<{ Params: { venueId: string; zoneId: string }; Body: unknown }>(
@@ -991,6 +1007,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
       name?: unknown;
       promptKnowledge?: unknown;
       selectedLorebookIds?: unknown;
+      sceneryArtStyle?: unknown;
+      personalizeVenueImagesByDefault?: unknown;
+      useVisualLoreByDefault?: unknown;
+      useVisualLore?: unknown;
       loreTokenBudget?: unknown;
       playerPersonaId?: unknown;
       setting?: unknown;
@@ -1009,6 +1029,12 @@ export async function villagesRoutes(engine: FastifyInstance) {
       if (body.townMapImage !== undefined || body.townMapView !== undefined)
         throw conflict("Edit the village map in Village Settings.");
       let snapshot = await buildVillageSnapshot();
+      if (
+        body.sceneryArtStyle !== undefined ||
+        body.personalizeVenueImagesByDefault !== undefined ||
+        body.useVisualLoreByDefault !== undefined
+      )
+        snapshot = await setScenerySettings(body);
       if (body.name !== undefined) snapshot = await setVillageName(body.name);
       if (body.promptKnowledge !== undefined) {
         snapshot = await setVillagePromptKnowledge(body.promptKnowledge);
@@ -1102,6 +1128,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
       scenarioImprint?: unknown;
       worldFacts?: unknown;
       selectedLorebookIds?: unknown;
+      sceneryArtStyle?: unknown;
+      personalizeVenueImagesByDefault?: unknown;
+      useVisualLoreByDefault?: unknown;
+      useVisualLore?: unknown;
       loreTokenBudget?: unknown;
       playerPersonaId?: unknown;
       venues?: unknown;
@@ -1121,6 +1151,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
         scenarioImprint: body.scenarioImprint,
         worldFacts: body.worldFacts,
         selectedLorebookIds: body.selectedLorebookIds,
+        sceneryArtStyle: body.sceneryArtStyle,
+        personalizeVenueImagesByDefault: body.personalizeVenueImagesByDefault,
+        useVisualLoreByDefault: body.useVisualLoreByDefault,
         loreTokenBudget: body.loreTokenBudget,
         playerPersonaId: body.playerPersonaId,
         venues: body.venues,
@@ -1152,6 +1185,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
       options?: unknown;
       connectionId?: unknown;
       selectedLorebookIds?: unknown;
+      sceneryArtStyle?: unknown;
+      personalizeVenueImagesByDefault?: unknown;
+      useVisualLoreByDefault?: unknown;
+      useVisualLore?: unknown;
       scenarioImprint?: unknown;
     };
   }>("/setup/town-map/generate", async (request, reply) => {
@@ -1263,6 +1300,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       venueId?: unknown;
       connectionId?: unknown;
       spaceClass?: unknown;
+      privateSpaceId?: unknown;
       privateOwnerId?: unknown;
       zoneId?: unknown;
     };
@@ -1278,7 +1316,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
         readVenueSpaceClass(request.body?.spaceClass),
         typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
         false,
-        typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+        await imageTarget(request.body),
       );
     } catch (error) {
       return fail(reply, error, "drawing a place");
@@ -1289,7 +1327,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // the gallery and the village keeps a reference, so a village with twenty
   // photographed places weighs the same as one with none.
   app.put<{
-    Body: { venueId?: unknown; image?: unknown; spaceClass?: unknown; privateOwnerId?: unknown; zoneId?: unknown };
+    Body: {
+      venueId?: unknown;
+      image?: unknown;
+      spaceClass?: unknown;
+      privateSpaceId?: unknown;
+      privateOwnerId?: unknown;
+      zoneId?: unknown;
+    };
   }>("/locations/venue/image", { bodyLimit: VENUE_IMAGE_BODY_LIMIT }, async (request, reply) => {
     try {
       return await storeVillageVenueImage(
@@ -1297,7 +1342,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
         request.body?.image,
         readVenueSpaceClass(request.body?.spaceClass),
         typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-        typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+        await imageTarget(request.body),
       );
     } catch (error) {
       return fail(reply, error, "keeping a place's picture");
@@ -1308,24 +1353,29 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // gallery is the player's, and an image that lands there is theirs to keep or
   // delete; a package that reached in and removed it would be deleting from a
   // library it does not own. It costs a reference on one venue and nothing else.
-  app.delete<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown; zoneId?: unknown } }>(
-    "/locations/venue/image",
-    async (request, reply) => {
-      try {
-        await setVillageVenueImage(
-          readVenueId(request.body?.venueId),
-          null,
-          readVenueSpaceClass(request.body?.spaceClass),
-          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-          false,
-          typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
-        );
-        return await buildVillageSnapshot();
-      } catch (error) {
-        return fail(reply, error, "taking a place's picture away");
-      }
-    },
-  );
+  app.delete<{
+    Body: {
+      venueId?: unknown;
+      spaceClass?: unknown;
+      privateSpaceId?: unknown;
+      privateOwnerId?: unknown;
+      zoneId?: unknown;
+    };
+  }>("/locations/venue/image", async (request, reply) => {
+    try {
+      await setVillageVenueImage(
+        readVenueId(request.body?.venueId),
+        null,
+        readVenueSpaceClass(request.body?.spaceClass),
+        typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+        false,
+        await imageTarget(request.body),
+      );
+      return await buildVillageSnapshot();
+    } catch (error) {
+      return fail(reply, error, "taking a place's picture away");
+    }
+  });
 
   app.post<{ Body: unknown }>("/locations/venue", async (request, reply) => {
     try {
@@ -1909,4 +1959,22 @@ export async function villagesRoutes(engine: FastifyInstance) {
    * metadata rather than anything about a scene, and the spawn popup needs it
    * either way. Only its service function was renamed.
    */
+}
+
+async function imageTarget(
+  body: { venueId?: unknown; zoneId?: unknown; privateSpaceId?: unknown; privateOwnerId?: unknown } | undefined,
+): Promise<string | undefined> {
+  for (const key of ["zoneId", "privateSpaceId", "privateOwnerId"] as const)
+    if (body?.[key] !== undefined && body[key] !== null && typeof body[key] !== "string")
+      throw badRequest("Room targets must be text IDs.");
+  if (!body?.privateSpaceId && !body?.zoneId && !body?.privateOwnerId) return undefined;
+  const state = await readPrivateTargetState(),
+    venue = state.venues.find((entry) => entry.id === body.venueId);
+  if (!venue) throw badRequest("That Venue no longer exists.");
+  return privateTarget(
+    venue,
+    typeof body.zoneId === "string" ? body.zoneId : undefined,
+    typeof body.privateSpaceId === "string" ? body.privateSpaceId : undefined,
+    typeof body.privateOwnerId === "string" ? body.privateOwnerId : "",
+  );
 }

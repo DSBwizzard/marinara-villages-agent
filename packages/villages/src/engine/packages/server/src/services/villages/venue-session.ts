@@ -1,4 +1,5 @@
 import { fulfillResidentWish } from "./wish-lifecycle.js";
+import { zoneControllerIds } from "./venue-zones.js";
 import {
   coordinateVenue,
   cancelVenueOperation,
@@ -200,6 +201,7 @@ type VenueSubmission = {
     residentId: string;
     venueId: string;
     scope: "shared" | "private";
+    privateSpaceId?: string;
     zoneId?: string;
     area?: VenueSession["area"];
     spaceClass?: VillageVenueClass;
@@ -277,6 +279,8 @@ export type VenueSession = {
   zoneId?: string;
   legacyCast?: boolean;
   grantedZoneIds?: string[];
+  zoneGrants?: { zoneId: string; controllerId: string }[];
+  privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   departedIds?: string[];
   area: "outside" | "shared" | "private" | "public";
@@ -426,6 +430,13 @@ function coerceSession(value: unknown): VenueSession {
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),
     zoneId: asTrimmedString(raw.zoneId) || undefined,
+    privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
+    zoneGrants: Array.isArray(raw.zoneGrants)
+      ? raw.zoneGrants
+          .map(asRecord)
+          .filter((grant) => typeof grant.zoneId === "string" && typeof grant.controllerId === "string")
+          .map((grant) => ({ zoneId: String(grant.zoneId), controllerId: String(grant.controllerId) }))
+      : [],
     legacyCast: raw.legacyCast === true,
     grantedZoneIds: Array.isArray(raw.grantedZoneIds)
       ? raw.grantedZoneIds.filter((id): id is string => typeof id === "string")
@@ -1121,14 +1132,16 @@ async function generateOnce(
             .join("; ")
         : "none"
     }. An invitation never admits anyone to another zone. Include accompanies=true only when the quoted speaker explicitly offers to accompany the player. Permission alone does not move anyone.`,
-    "If an authorized controller explicitly invites the player into a listed restricted zone, return invitation with speakerId, venueId, zoneId (the exact listed zone), scope (shared or private), timing (now or later), and an exact quote from that resident's spoken dialogue. Private entry may be granted only by that private space's owner. Later means one future visit; conditional, vague, sarcastic, or third-party permission is not an invitation. Omit invitation unless the resident actually says it. Entry never grants permission to change the space.",
+    "If an authorized controller explicitly invites the player into a listed restricted zone, return invitation with speakerId, venueId, zoneId (the exact listed zone), scope (shared or private), timing (now or later), and an exact quote from that resident's spoken dialogue. Personal entry may be granted only by its owner. A staff or restricted zone admits invitations from any listed current controller. Later means one future visit; conditional, vague, sarcastic, or third-party permission is not an invitation. Omit invitation unless the resident actually says it. Entry never grants permission to change the space.",
     `Pending exact Residence edit proposals: ${
       (storedPlace?.editProposals ?? [])
         .filter(
           (proposal) =>
             !proposal.declined &&
             (!proposal.zoneId || proposal.zoneId === session.zoneId) &&
-            (proposal.target === "shared" || proposal.ownerId === session.privateOwnerId),
+            (proposal.zoneId === session.zoneId ||
+              proposal.target === "shared" ||
+              proposal.ownerId === session.privateOwnerId),
         )
         .map(
           (proposal) =>
@@ -1140,7 +1153,10 @@ async function generateOnce(
       ? `The action was checked separately. Its settled outcome is: ${actionOutcome}. React to this outcome; do not redo or contradict the action judgment.`
       : "",
     "Targeting is intent, not isolation. Decide contextually who heard the player's words and each reply; moving aside is narrative and does not guarantee privacy.",
-    (mode === "chat" || mode === "ask") && (session.area === "shared" || session.area === "private")
+    (mode === "chat" || mode === "ask") &&
+    (session.area === "shared" ||
+      session.area === "private" ||
+      (storedPlace && zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length > 0))
       ? "This is a resident-controlled Residence space. Player actions may be attempted and residents may react, but do not return sceneChange or narrate a lasting change until the exact room edit proposal has every required resident's explicit approval. Entry is not edit consent."
       : "",
     mode === "chat" || mode === "ask"
@@ -1314,7 +1330,7 @@ async function generateOnce(
   const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
   const invitedVenue = village.venues.find((venue) => venue.id === invitedVenueId);
   let invitationScope: "shared" | "private" = invitation?.entry.scope === "private" ? "private" : "shared";
-  const invitationZoneId = asTrimmedString(invitation?.entry.zoneId);
+  const invitationZoneId = asTrimmedString(invitation?.entry.privateSpaceId ?? invitation?.entry.zoneId);
   const invitationZone = invitedVenue
     ? resolveVenueZone(
         invitedVenue,
@@ -1327,7 +1343,8 @@ async function generateOnce(
           ),
       )
     : undefined;
-  invitationScope = invitationZone?.kind === "private-residence" ? "private" : invitationScope;
+  invitationScope =
+    invitationZone?.kind === "private-residence" ? "private" : invitationZone ? "shared" : invitationScope;
   const invitationOwnerId =
     invitationScope === "private" ? (invitationZone?.ownerId ?? asTrimmedString(invitation?.entry.ownerId)) : "";
   const invitationQuote = asTrimmedString(invitation?.entry.quote).toLowerCase();
@@ -1385,6 +1402,16 @@ async function generateOnce(
       invitation &&
       invitedVenue &&
       invitationTimingSupported &&
+      !(
+        invitation.entry.privateSpaceId &&
+        invitation.entry.zoneId &&
+        invitation.entry.privateSpaceId !== invitation.entry.zoneId
+      ) &&
+      !(
+        invitationZoneId &&
+        invitation.entry.privateOwnerId &&
+        invitationZoneId !== "private:" + invitation.entry.privateOwnerId
+      ) &&
       !/\b(no|not|never|don't|can't|cannot|won't|unless|if|maybe|perhaps)\b/iu.test(invitationQuote) &&
       privateScopeSupported &&
       !!invitationZone &&
@@ -1396,6 +1423,10 @@ async function generateOnce(
             venueId: invitedVenueId,
             scope: invitationScope,
             zoneId: invitationZone?.id,
+            privateSpaceId:
+              invitationZone && ["private-residence", "staff", "restricted"].includes(invitationZone.kind)
+                ? invitationZone.id
+                : undefined,
             area: invitationZone ? zoneArea(invitationZone) : undefined,
             spaceClass: invitationZone?.venueClass,
             accompanies:
@@ -1456,8 +1487,37 @@ async function generate(
       );
       const integrity = venueReplyIntegrity(message, session.lines, reply.lines);
       if (integrity) throw new VenueReplyFailure(integrity);
-      if ((session.area === "shared" || session.area === "private") && reply.sceneChange)
+      const currentVillage = await readVillageState();
+      const controlledVenue = currentVillage.venues.find((venue) => venue.id === session.placeId);
+      const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, session.zoneId ?? "");
+      if (
+        (session.area === "shared" ||
+          session.area === "private" ||
+          controlledZone?.kind === "staff" ||
+          controlledZone?.kind === "restricted") &&
+        reply.sceneChange
+      )
         throw new VenueReplyFailure("residence-consent");
+      const currentSession = await refreshZoneParticipants(session, true);
+      if (
+        currentSession.zoneId !==
+        (session.zoneId ??
+          (controlledVenue
+            ? legacyZoneId(controlledVenue, session.area, session.spaceClass, session.privateOwnerId)
+            : undefined))
+      )
+        throw conflict("Room access changed while the reply was being prepared. You returned to the exterior.");
+      if (reply.invitationSignal) {
+        const invited = currentVillage.venues.find((venue) => venue.id === reply.invitationSignal!.venueId);
+        const target = invited && resolveVenueZone(invited, reply.invitationSignal.zoneId ?? "");
+        if (
+          !invited ||
+          !target ||
+          zoneClosed(currentVillage, invited, target) ||
+          !canInviteToZone(invited, target, reply.invitationSignal.residentId)
+        )
+          reply.invitationSignal = null;
+      }
       return reply;
     } catch (cause) {
       if (!(cause instanceof VenueReplyFailure)) throw cause;
@@ -1683,15 +1743,30 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
   if (!venue || session.status === "closed") return session;
   const zoneId = session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId);
   const zone = resolveVenueZone(venue, zoneId);
-  if (!zone || zoneClosed(village, venue, zone)) {
+  const revoked = session.zoneGrants?.some(
+    (grant) => grant.zoneId === zoneId && (!zone || !canInviteToZone(venue, zone, grant.controllerId)),
+  );
+  if (!zone || zoneClosed(village, venue, zone) || revoked) {
     const displaced = await changeSession(session.id, (state) => {
       if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = "exterior";
       state.area = "outside";
       state.privateOwnerId = "";
+      state.privateSpaceId = undefined;
       state.recap = "";
       state.legacyCast = false;
-      state.grantedZoneIds = state.grantedZoneIds?.filter((id) => !!resolveVenueZone(venue, id));
+      state.grantedZoneIds = state.grantedZoneIds?.filter(
+        (id) =>
+          !!resolveVenueZone(venue, id) &&
+          !session.zoneGrants?.some(
+            (grant) => grant.zoneId === id && !canInviteToZone(venue, resolveVenueZone(venue, id)!, grant.controllerId),
+          ),
+      );
+      state.zoneGrants = state.zoneGrants?.filter(
+        (grant) =>
+          !!resolveVenueZone(venue, grant.zoneId) &&
+          canInviteToZone(venue, resolveVenueZone(venue, grant.zoneId)!, grant.controllerId),
+      );
       appendLine(state, {
         id: randomUUID(),
         kind: "narration",
@@ -1704,6 +1779,20 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
       });
     });
     return refreshZoneParticipants(displaced, completing);
+  }
+  const invalidGrants =
+    session.zoneGrants?.filter((grant) => {
+      const target = resolveVenueZone(venue, grant.zoneId);
+      return !target || !canInviteToZone(venue, target, grant.controllerId);
+    }) ?? [];
+  if (invalidGrants.length) {
+    const refreshed = await changeSession(session.id, (state) => {
+      state.zoneGrants = state.zoneGrants?.filter(
+        (grant) => !invalidGrants.some((invalid) => invalid.zoneId === grant.zoneId),
+      );
+      state.grantedZoneIds = state.grantedZoneIds?.filter((id) => !invalidGrants.some((grant) => grant.zoneId === id));
+    });
+    return refreshZoneParticipants(refreshed);
   }
   if (!session.zoneId)
     return changeSession(session.id, (state) => {
@@ -1777,7 +1866,10 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   const zone = venue && resolveVenueZone(venue, zoneId);
   if (!venue || !zone) throw notFound("That zone is not in this Venue.");
   if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
-  if (!canOccupyZone(venue, zone, "player") && !session.grantedZoneIds?.includes(zone.id)) {
+  let controllerId = "";
+  const priorGrant = session.zoneGrants?.find((grant) => grant.zoneId === zone.id);
+  const revokedGrant = priorGrant && !canInviteToZone(venue, zone, priorGrant.controllerId);
+  if (!canOccupyZone(venue, zone, "player") && (!session.grantedZoneIds?.includes(zone.id) || revokedGrant)) {
     const invitation = await venueCheckpoint("move-invitation", async () => {
       const selected = venue.playerInvitations?.find(
         (entry) => entry.zoneId === zone.id && canInviteToZone(venue, zone, entry.residentId),
@@ -1785,6 +1877,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
       if (!selected) throw conflict("This zone needs its controller's invitation.");
       return selected;
     });
+    controllerId = invitation.residentId;
     await mutateVillageState((state) => {
       const current = state.venues.find((entry) => entry.id === venue.id)!;
       const target = resolveVenueZone(current, zone.id);
@@ -1806,6 +1899,12 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   }
   const moved = await changeSession(sessionId, (state) => {
     state.zoneId = zone.id;
+    state.privateSpaceId = ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined;
+    if (controllerId)
+      state.zoneGrants = [
+        ...(state.zoneGrants ?? []).filter((grant) => grant.zoneId !== zone.id),
+        { zoneId: zone.id, controllerId },
+      ];
     state.legacyCast = false;
     state.spaceClass = zone.venueClass;
     state.area = zoneArea(zone);
@@ -1830,6 +1929,15 @@ async function markZoneSeen(session: VenueSession): Promise<void> {
     if (zone) zone.seen = true;
   });
   if (session.area === "private") await markResidenceSeen(session);
+  const village = await readVillageState(),
+    venue = village.venues.find((entry) => entry.id === session.placeId),
+    zone = venue && resolveVenueZone(venue, session.zoneId ?? "");
+  if (zone && ["staff", "restricted"].includes(zone.kind))
+    outsideVenueOperation(() => {
+      void import("./location-image.js")
+        .then(({ generateFirstPrivateSpaceImage }) => generateFirstPrivateSpaceImage(session.placeId, zone.id))
+        .catch(() => {});
+    });
 }
 
 export function enterVenue(
@@ -1890,6 +1998,7 @@ async function enterVenueOnce(
     );
   }
   const grantedZoneIds: string[] = [];
+  const zoneGrants: { zoneId: string; controllerId: string }[] = [];
   if (!canOccupyZone(place, zone, "player")) {
     const target = zone;
     const invitation = place.playerInvitations?.find(
@@ -1906,13 +2015,15 @@ async function enterVenueOnce(
             (entry) =>
               entry.zoneId === target.id &&
               entry.sourceLineId === invitation.sourceLineId &&
-              entry.residentId === invitation.residentId,
+              entry.residentId === invitation.residentId &&
+              canInviteToZone(current, resolveVenueZone(current, target.id)!, entry.residentId),
           ) ?? -1;
         if (index < 0) throw conflict("That invitation has already been used.");
         const consumed = current.playerInvitations!.splice(index, 1)[0]!;
         current.usedInvitationIds = [...new Set([...(current.usedInvitationIds ?? []), consumed.sourceLineId])];
       });
       grantedZoneIds.push(target.id);
+      zoneGrants.push({ zoneId: target.id, controllerId: invitation.residentId });
     }
   }
   const participants = castAtEntry(village, placeId, new Date(), zone.id);
@@ -1926,6 +2037,8 @@ async function enterVenueOnce(
     placeName: place.name,
     zoneId: zone.id,
     grantedZoneIds,
+    zoneGrants,
+    privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
     accompanying: [],
     departedIds: [],
     spaceClass: zone.venueClass,
@@ -2485,6 +2598,12 @@ function applyImmediateZoneInvitation(
 ): void {
   session.zoneId = signal.zoneId ?? (signal.scope === "private" ? "private:" + signal.ownerId : "residence");
   session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), session.zoneId])];
+  session.privateSpaceId =
+    signal.privateSpaceId ?? (signal.scope === "private" || signal.area === "private" ? session.zoneId : undefined);
+  session.zoneGrants = [
+    ...(session.zoneGrants ?? []).filter((grant) => grant.zoneId !== session.zoneId),
+    { zoneId: session.zoneId, controllerId: signal.residentId },
+  ];
   session.recap = "";
   session.area = signal.area ?? (signal.scope === "private" ? "private" : "shared");
   session.spaceClass = signal.spaceClass ?? "residence";
@@ -2515,8 +2634,8 @@ async function recordSpokenInvitation(
       signal.zoneId ??
         legacyZoneId(venue, signal.scope === "private" ? "private" : "shared", "residence", signal.ownerId),
     );
-    if (!zone || !canInviteToZone(venue, zone, signal.residentId)) return;
-    if (signal.scope === "private" && signal.ownerId !== signal.residentId) return;
+    if (!zone || zoneClosed(state, venue, zone) || !canInviteToZone(venue, zone, signal.residentId)) return;
+    if (zone.kind === "private-residence" && signal.ownerId !== signal.residentId) return;
     if (
       venue.usedInvitationIds?.includes(spoken.id) ||
       venue.playerInvitations?.some((entry) => entry.sourceLineId === spoken.id)
@@ -2527,6 +2646,7 @@ async function recordSpokenInvitation(
       {
         residentId: signal.residentId,
         zoneId: zone.id,
+        privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
         recordedAt: new Date().toISOString(),
         scope: signal.scope,
         ownerId: signal.ownerId,
@@ -2638,6 +2758,9 @@ async function applyVenueTurnChange(session: VenueSession, submission: VenueSubm
       state.venues.some((venue) => venue.id === session.placeId && venueResidentIds(venue).length > 0)
     )
       return;
+    const controlledVenue = state.venues.find((venue) => venue.id === session.placeId);
+    const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
+    if (controlledZone?.kind === "staff" || controlledZone?.kind === "restricted") return;
     if (state.venueEvents.some((event) => event.id === id)) return;
     const change = readVenueSceneChange(
       { happened: true, ...submission.sceneChange },
