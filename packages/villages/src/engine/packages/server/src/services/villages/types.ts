@@ -451,7 +451,20 @@ export type VillageVillager = {
 export type VillageResidentSprite = {
   assetId: string;
   sideAssetId?: string;
-  expressions: Array<{ view: "front" | "side"; label: string; filename: string; revision?: number }>;
+  defaultExpressionId?: string;
+  expressions: Array<{
+    view: "front" | "side";
+    label: string;
+    filename: string;
+    revision?: number;
+    assetId?: string;
+    expressionId?: string;
+    cutoutId?: string;
+    name?: string;
+    pose?: string;
+    useWhen?: string;
+    aliases?: string[];
+  }>;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
 
@@ -1569,7 +1582,18 @@ export type VillageVillagerView = {
   characterId: string;
   nameColor: string;
   dialogueColor: string;
-  sprite: (VillageResidentSprite & { images: Array<{ view: "front" | "side"; label: string; url: string }> }) | null;
+  sprite:
+    | (VillageResidentSprite & {
+        images: Array<{
+          view: "front" | "side";
+          label: string;
+          url: string;
+          expressionId?: string;
+          isDefault?: boolean;
+          aliases?: string[];
+        }>;
+      })
+    | null;
   name: string;
   summary: string;
   tags: string[];

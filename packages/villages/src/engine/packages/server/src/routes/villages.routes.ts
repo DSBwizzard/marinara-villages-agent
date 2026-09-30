@@ -1,5 +1,10 @@
 import {
   readSpriteStudio,
+  assignStudioCells,
+  saveStudioExpression,
+  clearStudioReview,
+  deleteStudioArtwork,
+  deleteUnusedStudioFiles,
   saveSpriteStudioSettings,
   captureStudioReference,
   planSpriteStudio,
@@ -456,6 +461,11 @@ export async function villagesRoutes(engine: FastifyInstance) {
     approve: approveStudioCells,
     discard: discardStudioCell,
     remove: removeStudioApprovedSprite,
+    assign: assignStudioCells,
+    expression: saveStudioExpression,
+    "clear-review": clearStudioReview,
+    delete: deleteStudioArtwork,
+    "delete-unused": deleteUnusedStudioFiles,
     recover: recoverStudioJob,
   };
   for (const [action, handler] of Object.entries(studioActions)) {

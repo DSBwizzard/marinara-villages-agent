@@ -8,9 +8,31 @@ export const SPRITE_STYLES = {
 export type StudioStyle = keyof typeof SPRITE_STYLES;
 export type StudioView = "front" | "side";
 export const STUDIO_EXPRESSIONS = ["neutral", "happy", "sad", "angry", "surprised", "thinking"];
+export const STUDIO_MEANINGS: Record<string, string> = {
+  neutral: "Relaxed, listening, or ordinary conversation.",
+  happy: "Feeling happy, pleased, or cheerful.",
+  sad: "Feeling sad, disappointed, or downhearted.",
+  angry: "Feeling angry, frustrated, or annoyed.",
+  surprised: "Reacting to something unexpected.",
+  thinking: "Considering an idea or deciding what to do.",
+};
+export type StudioExpression = {
+  id: string;
+  label: string;
+  name: string;
+  pose: string;
+  useWhen: string;
+  aliases: string[];
+};
+export type StudioRendered = { assetId: string; filename: string; url: string; fingerprint: string };
+export type StudioAssignment = { expressionId: string; view: StudioView; cellId: string };
+export type StudioFile = { assetId: string; expression: string; url: string; error?: string };
 export type StudioSettings = { style: StudioStyle; prompts: Record<StudioStyle, string>; connectionId: string };
 export type StudioCell = {
   id: string;
+  expressionId?: string;
+  pending?: boolean;
+  rendered?: StudioRendered;
   view: StudioView;
   label: string;
   pose: string;
@@ -46,6 +68,11 @@ export type StudioPlan = {
   localWorkflow: boolean;
 };
 export type StudioJob = {
+  requestedExpressions?: Array<{ label: string; pose: string; expressionId?: string }>;
+  individual?: boolean;
+  style?: string;
+  stylePrompt?: string;
+  assignments?: StudioAssignment[];
   id: string;
   fingerprint: string;
   createdAt: string;
@@ -61,15 +88,33 @@ export type StudioJob = {
   connectionId: string;
   model: string;
 };
-export type StudioState = { version: 1; settings: StudioSettings; jobs: StudioJob[] };
+export type StudioState = {
+  version: 2;
+  settings: StudioSettings;
+  jobs: StudioJob[];
+  expressions: StudioExpression[];
+  files: StudioFile[];
+};
 export type StudioData = StudioState & {
+  adjustedCellId?: string;
+  assignments: StudioAssignment[];
+  defaultExpressionId?: string;
   reference: { url: string; capturedAt: string; origin: string } | null;
   connections: Array<{ id: string; name: string; model: string }>;
 };
 export const defaultStudioState = (): StudioState => ({
-  version: 1,
+  version: 2,
   settings: { style: "PAPERCRAFT", prompts: { ...SPRITE_STYLES }, connectionId: "" },
   jobs: [],
+  expressions: STUDIO_EXPRESSIONS.map((label) => ({
+    id: "e-" + label,
+    label,
+    name: label,
+    pose: "",
+    useWhen: STUDIO_MEANINGS[label] ?? "",
+    aliases: [label],
+  })),
+  files: [],
 });
 
 export function validateStudioCell(cell: StudioCell, sheet: Pick<StudioSheet, "width" | "height">): void {

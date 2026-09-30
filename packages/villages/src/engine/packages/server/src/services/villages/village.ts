@@ -204,11 +204,16 @@ function projectVillager(
     sprite: villager.sprite
       ? {
           ...villager.sprite,
-          images: villager.sprite.expressions.map(({ view, label, filename, revision }) => ({
-            view,
-            label,
-            url: `/api/sprites/${view === "side" ? villager.sprite!.sideAssetId : villager.sprite!.assetId}/file/${encodeURIComponent(filename)}${revision ? `?v=${revision}` : ""}`,
-          })),
+          images: villager.sprite.expressions.map(
+            ({ view, label, filename, revision, assetId, expressionId, aliases }) => ({
+              view,
+              label,
+              expressionId,
+              aliases,
+              isDefault: Boolean(expressionId) && expressionId === villager.sprite!.defaultExpressionId,
+              url: `/api/sprites/${assetId ?? (view === "side" ? villager.sprite!.sideAssetId : villager.sprite!.assetId)}/file/${encodeURIComponent(filename)}${revision ? `?v=${revision}` : ""}`,
+            }),
+          ),
         }
       : null,
     name: cardName ?? villager.cardSnapshot.name,

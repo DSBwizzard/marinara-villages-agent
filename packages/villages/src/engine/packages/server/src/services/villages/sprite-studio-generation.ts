@@ -128,17 +128,9 @@ export async function planVillageStudioSheets(
   const connection = await studioImageConnection(connectionId);
   const batches: StudioBatch[] = [];
   for (let offset = 0; offset < expressions.length;) {
-    let chosen: StudioBatch | null = null;
-    for (let count = Math.min(individual ? 1 : 6, expressions.length - offset); count >= 1 && !chosen; count--) {
-      for (const [cols, rows] of layouts[count]!) {
-        const candidate = await preview(connectionId, identity, expressions.slice(offset, offset + count), cols, rows);
-        if (candidate.width / cols >= 512 && candidate.height / rows >= 768) {
-          chosen = candidate;
-          break;
-        }
-      }
-    }
-    if (!chosen) throw badRequest("This image connection cannot meet the 512 by 768 sprite target.");
+    const count = Math.min(individual ? 1 : 6, expressions.length - offset);
+    const [cols, rows] = count === 3 ? [2, 2] : layouts[count]![0]!;
+    const chosen = await preview(connectionId, identity, expressions.slice(offset, offset + count), cols!, rows!);
     batches.push(chosen);
     offset += chosen.count;
   }

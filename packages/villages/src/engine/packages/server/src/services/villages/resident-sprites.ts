@@ -87,17 +87,8 @@ export async function generateResidentSprite(
   const owner = await resident(characterId);
   const view = readSpriteView(input.view);
   const expression = readSpriteExpression(input.expression);
-  if (
-    !owner.sprite?.expressions.some((entry) => entry.view === view && entry.label === expression) &&
-    (owner.sprite?.expressions.filter((entry) => entry.view === view).length ?? 0) >= 24
-  ) {
-    throw badRequest(`This resident already has the maximum of 24 ${view} expressions.`);
-  }
   const frontNeutral = owner.sprite?.expressions.find((entry) => entry.view === "front" && entry.label === "neutral");
   const neutral = owner.sprite?.expressions.find((entry) => entry.view === view && entry.label === "neutral");
-  if (view === "side" && !frontNeutral) throw badRequest("Approve a front neutral sprite before drawing a side view.");
-  if (expression !== "neutral" && !neutral)
-    throw badRequest(`Approve a ${view} neutral sprite before generating expressions.`);
   const appearance =
     typeof input.appearance === "string" && input.appearance.trim()
       ? input.appearance.trim()
@@ -119,7 +110,9 @@ export async function generateResidentSprite(
     appearance,
     view,
     expression,
-    referenceUrl: reference && referenceAssetId ? spriteUrl(referenceAssetId, reference.filename) : null,
+    referenceUrl:
+      owner.cardSnapshot.spriteReference?.url ??
+      (reference && referenceAssetId ? spriteUrl(reference.assetId ?? referenceAssetId, reference.filename) : null),
     portrait,
   });
   const generated = await villageEngineJson<unknown>("/api/sprites/generate-sheet", { body });
@@ -145,24 +138,6 @@ export async function approveResidentSprite(
   const owner = await resident(characterId);
   const view = readSpriteView(input.view);
   const expression = readSpriteExpression(input.expression);
-  if (
-    !owner.sprite?.expressions.some((entry) => entry.view === view && entry.label === expression) &&
-    (owner.sprite?.expressions.filter((entry) => entry.view === view).length ?? 0) >= 24
-  ) {
-    throw badRequest(`This resident already has the maximum of 24 ${view} expressions.`);
-  }
-  if (
-    view === "side" &&
-    !owner.sprite?.expressions.some((entry) => entry.view === "front" && entry.label === "neutral")
-  ) {
-    throw badRequest("Approve a front neutral sprite before saving a side view.");
-  }
-  if (
-    expression !== "neutral" &&
-    !owner.sprite?.expressions.some((entry) => entry.view === view && entry.label === "neutral")
-  ) {
-    throw badRequest(`Approve a ${view} neutral sprite before saving expressions.`);
-  }
   const image = typeof input.image === "string" ? input.image : "";
   decodeVillageImageDataUrl(image, { label: "sprite", maxBase64Length: MAX_SPRITE_DATA_URL });
   await inspectVillageImage(image);
@@ -186,6 +161,7 @@ export async function approveResidentSprite(
     if (!current) throw notFound("That resident no longer lives in this village.");
     const prior = current.sprite;
     current.sprite = {
+      ...prior,
       assetId: prior?.assetId ?? assetId,
       ...(view === "side" || prior?.sideAssetId ? { sideAssetId: prior?.sideAssetId ?? assetId } : {}),
       expressions: [
@@ -211,10 +187,14 @@ export async function removeResidentSprite(
     const sprite = current.sprite;
     const approved = sprite?.expressions.find((entry) => entry.view === view && entry.label === expression);
     if (!sprite || !approved) throw notFound("That approved sprite is no longer active.");
-    const assetId = view === "side" ? sprite.sideAssetId : sprite.assetId;
+    const assetId = approved.assetId ?? (view === "side" ? sprite.sideAssetId : sprite.assetId);
     const url = `/api/sprites/${assetId}/file/${encodeURIComponent(approved.filename)}${approved.revision ? `?v=${approved.revision}` : ""}`;
     if (expectedUrl !== url) throw badRequest("This sprite changed. Refresh Sprite Studio before removing it.");
     sprite.expressions = sprite.expressions.filter((entry) => entry !== approved);
+    if (!sprite.expressions.some((entry) => entry.expressionId === sprite.defaultExpressionId))
+      sprite.defaultExpressionId =
+        sprite.expressions.find((entry) => entry.label === "neutral")?.expressionId ??
+        sprite.expressions[0]?.expressionId;
     if (sprite.expressions.length === 0) current.sprite = null;
   });
   return buildVillageSnapshot();
