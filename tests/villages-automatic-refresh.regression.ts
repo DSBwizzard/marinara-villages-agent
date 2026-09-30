@@ -326,6 +326,37 @@ async function main() {
     await reconcileVillage({ now: new Date(later.getTime() + 10 * 60_000) });
     assert.equal(modelCalls, callsBefore + 1, "repeated reconciliation on one local day is idempotent");
 
+    // Completed ledger payloads may be pruned; the Village date remains a durable spending floor.
+    for (const [key, record] of documentsByKey)
+      if (record.kind === "background-work" && (record.data as any).kind === "story") documentsByKey.delete(key);
+    const storyDateBeforeRollback = (await readVillageState()).lastCreativeDate;
+    const callsBeforeRollback = modelCalls;
+    const olderDay = new Date(later.getTime() - 2 * 24 * 60 * 60_000);
+    await reconcileVillage({ now: olderDay });
+    await settleBackgroundWork();
+    assert.equal(modelCalls, callsBeforeRollback, "clock rollback cannot reopen an older day after ledger pruning");
+    const rollbackAttempt = (await backgroundWorkSummaries()).find((job) => job.kind === "story")?.attempt ?? 0;
+    await reconcileVillage({
+      now: olderDay,
+      forceStory: true,
+      actionId: "manual-rollback-story",
+      expectedAttempt: rollbackAttempt,
+    });
+    await settleBackgroundWork();
+    assert.equal(modelCalls, callsBeforeRollback + 1, "Write now remains a deliberate action on an earlier date");
+    await reconcileVillage({ now: new Date(later.getTime() + 60 * 60_000) });
+    await settleBackgroundWork();
+    assert.equal(
+      modelCalls,
+      callsBeforeRollback + 1,
+      "returning to an already-written day cannot authorize another request",
+    );
+    assert.equal(
+      (await readVillageState()).lastCreativeDate,
+      storyDateBeforeRollback,
+      "manual work cannot lower the spending floor",
+    );
+
     failModel = true;
     const tomorrow = new Date("2026-09-23T13:00:00.000Z");
     await reconcileVillage({ now: tomorrow });
