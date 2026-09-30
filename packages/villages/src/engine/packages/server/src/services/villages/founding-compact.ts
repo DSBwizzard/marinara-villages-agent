@@ -267,8 +267,8 @@ export async function proposeCompactFounding(
     model.name,
     context.card.name,
     Math.round(performance.now() - started),
-    completion.usage?.promptTokens ?? fitted.estimatedTokensAfter,
-    completion.usage?.completionTokens ?? "unreported",
+    completion.usage?.promptTokens ?? "unavailable",
+    completion.usage?.completionTokens ?? "unavailable",
   );
   const payload = extractJsonObject(completion.content ?? "");
   if (!payload) throw new Error("The System model returned empty or invalid JSON for founding.");
