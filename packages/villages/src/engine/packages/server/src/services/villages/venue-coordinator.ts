@@ -425,8 +425,10 @@ export async function recoverVenueOperations(recover: (id: string, operation: Ve
     );
   }
 }
-export function stopVenueCoordinator() {
+export async function stopVenueCoordinator() {
   accepting = false;
-  for (const task of live.values())
+  const tasks = [...live.values()];
+  for (const task of tasks)
     task.controller.abort(venueRefusal("OPERATION_INTERRUPTED", "Villages stopped before this scene completed."));
+  await Promise.allSettled(tasks.map((task) => task.task));
 }

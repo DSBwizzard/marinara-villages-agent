@@ -251,7 +251,7 @@ async function main() {
     );
     const denied = assert.rejects(pending, refused("OPERATION_INTERRUPTED"));
     await alive.promise;
-    stopVenueCoordinator();
+    await stopVenueCoordinator();
     await denied;
     stopped.resolve("late opening");
     await recoverVenueOperations(() => Promise.resolve());
