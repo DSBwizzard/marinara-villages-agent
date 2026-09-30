@@ -1498,7 +1498,7 @@ async function generate(
         reply.sceneChange
       )
         throw new VenueReplyFailure("residence-consent");
-      const currentSession = await refreshZoneParticipants(session);
+      const currentSession = await refreshZoneParticipants(session, true);
       if (
         currentSession.zoneId !==
         (session.zoneId ??
@@ -1867,7 +1867,9 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   if (!venue || !zone) throw notFound("That zone is not in this Venue.");
   if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
   let controllerId = "";
-  if (!canOccupyZone(venue, zone, "player") && !session.grantedZoneIds?.includes(zone.id)) {
+  const priorGrant = session.zoneGrants?.find((grant) => grant.zoneId === zone.id);
+  const revokedGrant = priorGrant && !canInviteToZone(venue, zone, priorGrant.controllerId);
+  if (!canOccupyZone(venue, zone, "player") && (!session.grantedZoneIds?.includes(zone.id) || revokedGrant)) {
     const invitation = await venueCheckpoint("move-invitation", async () => {
       const selected = venue.playerInvitations?.find(
         (entry) => entry.zoneId === zone.id && canInviteToZone(venue, zone, entry.residentId),
@@ -1875,6 +1877,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
       if (!selected) throw conflict("This zone needs its controller's invitation.");
       return selected;
     });
+    controllerId = invitation.residentId;
     await mutateVillageState((state) => {
       const current = state.venues.find((entry) => entry.id === venue.id)!;
       const target = resolveVenueZone(current, zone.id);
@@ -1891,7 +1894,6 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
         ) ?? -1;
       if (index < 0) throw conflict("This zone needs its controller's invitation.");
       const consumed = current.playerInvitations!.splice(index, 1)[0]!;
-      controllerId = consumed.residentId;
       current.usedInvitationIds = [...new Set([...(current.usedInvitationIds ?? []), consumed.sourceLineId])];
     });
   }

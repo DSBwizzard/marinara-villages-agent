@@ -101,6 +101,16 @@ park.zones = readCreationPrivateZones(
 state.venues = [home, own, work, combined, park, venue("other", ["other"])];
 const migrated = coerceVillageState(state);
 assert.deepEqual(coerceVillageState(structuredClone(migrated)).venues, migrated.venues, "migration is idempotent");
+const collision = structuredClone(migrated);
+collision.venues[2].zones = collision.venues[2].zones.filter((zone) => zone.kind !== "staff");
+collision.venues[2].zones.push({ ...collision.venues[2].zones.find((zone) => zone.kind === "public"), id: "staff" });
+const repaired = coerceVillageState(collision).venues[2].zones;
+assert.equal(repaired.filter((zone) => zone.kind === "staff").length, 1);
+assert.equal(
+  new Set(repaired.map((zone) => zone.id)).size,
+  repaired.length,
+  "migration preserves existing IDs without collisions",
+);
 assert.equal(resolveVenueZone(migrated.venues[1]!, "private:player")!.description, "My journal and hammock");
 assert.equal(resolveVenueZone(migrated.venues[1]!, "private:player")!.image!.id, "art");
 assert.equal(migrated.venues[2]!.zones!.filter((z) => z.kind === "staff").length, 1);
@@ -328,6 +338,11 @@ async function main() {
       throw Error("Image offline");
     };
     try {
+      await mutateVillageState((current) => {
+        resolveVenueZone(current.venues[1], "private:player")!.image = null;
+      });
+      await generateFirstPrivateSpaceImage("own", "player");
+      assert.equal(draws, 0, "the player's known personal space keeps image generation optional");
       const { saveVillageConnections } =
         await import("../packages/villages/src/engine/packages/server/src/services/villages/connections.js");
       await saveVillageConnections({ imageConnectionId: "fixture-image" });

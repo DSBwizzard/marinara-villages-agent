@@ -221,10 +221,12 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       seen: true,
       purpose: "Personal space",
     });
-  if (effectiveVenueClasses(venue).includes("workplace") && !zones.some((zone) => zone.kind === "staff"))
+  if (effectiveVenueClasses(venue).includes("workplace") && !zones.some((zone) => zone.kind === "staff")) {
+    let id = "staff";
+    for (let suffix = 1; zones.some((zone) => zone.id === id); suffix++) id = "staff:default:" + suffix;
     zones.push({
       ...defaultVenueSpace("workplace"),
-      id: "staff",
+      id,
       name: "Private work area",
       kind: "staff",
       purpose: "Restricted work area appropriate to the venue form",
@@ -237,6 +239,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       adaptationPending: false,
       adaptationSourceArchiveAt: "",
     });
+  }
   zones = zones.filter(
     (zone) =>
       zone.kind !== "private-residence" ||

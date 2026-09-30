@@ -1964,6 +1964,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
 async function imageTarget(
   body: { venueId?: unknown; zoneId?: unknown; privateSpaceId?: unknown; privateOwnerId?: unknown } | undefined,
 ): Promise<string | undefined> {
+  for (const key of ["zoneId", "privateSpaceId", "privateOwnerId"] as const)
+    if (body?.[key] !== undefined && body[key] !== null && typeof body[key] !== "string")
+      throw badRequest("Room targets must be text IDs.");
   if (!body?.privateSpaceId && !body?.zoneId && !body?.privateOwnerId) return undefined;
   const state = await readPrivateTargetState(),
     venue = state.venues.find((entry) => entry.id === body.venueId);

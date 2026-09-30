@@ -329,6 +329,7 @@ export async function generateFirstPrivateSpaceImage(venueId: string, ownerId: s
     if (
       !space?.seen ||
       !["private-residence", "staff", "restricted"].includes(space.kind) ||
+      (space.kind === "private-residence" && space.ownerId === "player") ||
       space.image ||
       space.initialImageAttemptedAt ||
       space.preparation?.status === "pending" ||

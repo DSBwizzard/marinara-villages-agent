@@ -614,6 +614,7 @@ export type VillageVenue = {
   residenceCapacity?: number;
   residentIds?: string[];
   playerInvitations?: {
+    privateSpaceId?: string;
     zoneId?: string;
     residentId: string;
     recordedAt: string;
@@ -634,6 +635,7 @@ export type VillageVenue = {
   editProposals?: Array<{
     id: string;
     target: "shared" | "private";
+    privateSpaceId?: string;
     zoneId?: string;
     ownerId: string;
     proposed: NonNullable<VillageVenue["spaces"]>[number];
@@ -1055,6 +1057,8 @@ type RoomView = {
   spaceClass?: VenueClass;
   zoneId?: string;
   grantedZoneIds?: string[];
+  privateSpaceId?: string;
+  zoneGrants?: { zoneId: string; controllerId: string }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;
   privateAccessOwnerId?: string;

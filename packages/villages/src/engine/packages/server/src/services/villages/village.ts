@@ -2223,7 +2223,16 @@ export async function assertVenueImageAccess(
     ) {
       const { activeVenueSession } = await import("./venue-session.js");
       const session = await activeVenueSession();
-      if (!session || session.placeId !== venueId || session.zoneId !== zone.id)
+      const controllers = zoneControllerIds(venue!, zone);
+      const grant = session?.zoneGrants?.find((entry) => entry.zoneId === zone.id);
+      if (
+        !session ||
+        session.placeId !== venueId ||
+        session.zoneId !== zone.id ||
+        !controllers.length ||
+        (grant && !controllers.includes(grant.controllerId)) ||
+        zoneClosed(village, venue!, zone)
+      )
         throw conflict("Enter this private space with a current invitation before changing its image.");
     }
     if (zone.kind === "exterior" || zone.seen || (zone.kind === "shared-residence" && venue!.occupancy.playerHome))
@@ -2825,6 +2834,12 @@ export async function proposeResidenceSpaceEdit(venueId: string, value: unknown)
         ? venueSpaces(venue).find((space) => space.venueClass === "residence")
         : venue.privateSpaces?.find((space) => space.ownerId === ownerId);
     if (!current) throw notFound("That Residence space is no longer here.");
+    if (zoneId) {
+      const zone = resolveVenueZone(venue, zoneId)!;
+      const grant = session.zoneGrants?.find((entry) => entry.zoneId === zoneId);
+      if (zoneClosed(state, venue, zone) || (grant && !zoneControllerIds(venue, zone).includes(grant.controllerId)))
+        throw conflict("This space's invitation is no longer valid.");
+    }
     const requiredIds = zoneId
       ? zoneControllerIds(venue, resolveVenueZone(venue, zoneId)!)
       : target === "shared"
