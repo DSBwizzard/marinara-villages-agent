@@ -4584,7 +4584,7 @@ export async function reconcileVillage(
   await reconcileWishLifecycle(now);
   const village = await readVillageState();
   const dateKey = localDateKey(now);
-  const shouldCreateStory = forced || (village.storyPace !== "off" && village.lastCreativeDate !== dateKey);
+  const shouldCreateStory = forced || (village.storyPace !== "off" && village.lastCreativeDate < dateKey);
   if (!shouldCreateStory) {
     const snapshot = await buildVillageSnapshot(now);
     return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
@@ -4737,13 +4737,13 @@ registerBackgroundHandler("story", {
     (!input.opportunity.venueId || state.venues.some((venue) => venue.id === input.opportunity.venueId)) &&
     (input.forced ||
       (state.storyPace !== "off" &&
-        state.lastCreativeDate !== input.dateKey &&
+        state.lastCreativeDate < input.dateKey &&
         localDateKey(new Date(state.simulatedThrough)) <= input.dateKey)),
   apply(state, input, proposal) {
     const { forced, dateKey, opportunity, moment } = input;
     const now = new Date(input.now);
 
-    if (!forced && (state.storyPace === "off" || state.lastCreativeDate === dateKey)) return;
+    if (!forced && (state.storyPace === "off" || state.lastCreativeDate >= dateKey)) return;
     const allowance = forced ? 3 : storyAllowance(state.storyPace, state.seed, dateKey);
     const opportunityId = opportunity.id;
     if (state.processedOpportunityIds.includes(opportunityId)) return;
@@ -4877,7 +4877,7 @@ registerBackgroundHandler("story", {
         if (kept.length !== entry.agenda.wishes.length) entry.agenda = { ...entry.agenda, wishes: kept };
       }
     }
-    state.lastCreativeDate = dateKey;
+    if (state.lastCreativeDate < dateKey) state.lastCreativeDate = dateKey;
     if (!state.processedOpportunityIds.includes(opportunityId)) {
       state.processedOpportunityIds = [...state.processedOpportunityIds, opportunityId].slice(-256);
     }
