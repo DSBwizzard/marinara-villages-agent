@@ -318,7 +318,7 @@ try {
     await studioButton.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { name: "Mara’s Sprite Studio" })).toBeFocused();
-    await expect(page.getByRole("button", { name: "Review generation plan" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await expect(studioButton).toBeFocused();
     await page.getByRole("button", { name: "Back to menu" }).click();

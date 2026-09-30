@@ -10,7 +10,7 @@
   },
   "id": "villages",
   "name": "Villages",
-  "version": "0.6.81",
+  "version": "0.6.82",
   "description": "A text-first slice-of-life village that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
   "engine": {
     "min": "2.4.6",
@@ -55,13 +55,13 @@
     },
     {
       "path": "server.mjs",
-      "sha256": "371e3db5cb6419cd58770d2115d4d4a9b8574badbd01403d196c0a2cf1b42c7a",
-      "bytes": 475590
+      "sha256": "7d43d2a0175d37ffa7323326646929efc7a40bd892d709aa2bc35879e8267d57",
+      "bytes": 481224
     },
     {
       "path": "client.js",
-      "sha256": "fc9a5ca14f2cd03cced70cb0fbc2866c8596b9d1a4aa6ebe699f72204dc6b7f9",
-      "bytes": 748496
+      "sha256": "d5b06c67c93212e7124648f95e4a1a01f6be5124690baa78becd0c682648be91",
+      "bytes": 752638
     },
     {
       "path": "villages-icon.png",

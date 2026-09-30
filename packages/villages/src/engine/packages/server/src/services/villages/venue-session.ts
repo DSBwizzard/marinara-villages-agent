@@ -1,4 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  initialStaging,
+  readStagingCues,
+  replayStaging,
+  stagingTranscriptEvents,
+  stagingLayout,
+  type StagingCue,
+} from "../../../../shared/src/villages/scene-staging.js";
 import { describeSpriteExpressions, validateSpriteExpression } from "./sprite-expressions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { agendaAt } from "./agenda-plan.js";
@@ -73,6 +81,7 @@ export type VenueLine = {
   kind?: "narration" | "dialogue" | "side" | "whisper";
   expression?: string;
   gazeAt?: string;
+  staging?: StagingCue[];
   targetId?: string;
   asideFor?: string;
 };
@@ -123,6 +132,7 @@ type VenueSubmission = {
   areaAtTurn?: VenueSession["area"];
   privateOwnerIdAtTurn?: string;
   activeIdsAtTurn?: string[];
+  activeIdsAfterTurn?: string[];
   replyLineIds?: string[];
   projectContexts?: ProjectSpeechContext[];
   projectSpeech?: ProjectSpeechProposal[];
@@ -203,6 +213,7 @@ type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 /** One document is both the active transcript and the player's durable visit archive. */
 export type VenueSession = {
   version: 1;
+  stagingVersion?: 1;
   id: string;
   placeId: string;
   placeName: string;
@@ -332,6 +343,7 @@ function coerceSession(value: unknown): VenueSession {
               ? { kind: row.kind as VenueLine["kind"] }
               : {}),
             ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
+            ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, [...participantIds]) } : {}),
             ...(row.gazeAt === "player" || (typeof row.gazeAt === "string" && participantIds.has(row.gazeAt))
               ? { gazeAt: row.gazeAt as string }
               : {}),
@@ -371,6 +383,7 @@ function coerceSession(value: unknown): VenueSession {
       raw.endReason === "debug"
         ? raw.endReason
         : "",
+    ...(raw.stagingVersion === 1 ? { stagingVersion: 1 as const } : {}),
     memoryMode: raw.memoryMode === "tiered" ? "tiered" : raw.memoryMode === "turn" ? "turn" : "end",
     status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
     participants,
@@ -421,6 +434,13 @@ function coerceSession(value: unknown): VenueSession {
                 : {}),
               ...(Array.isArray(row.activeIdsAtTurn)
                 ? { activeIdsAtTurn: row.activeIdsAtTurn.filter((id): id is string => typeof id === "string") }
+                : {}),
+              ...(Array.isArray(row.activeIdsAfterTurn)
+                ? {
+                    activeIdsAfterTurn: row.activeIdsAfterTurn.filter(
+                      (id): id is string => typeof id === "string" && participantIds.has(id),
+                    ),
+                  }
                 : {}),
               ...(Array.isArray(row.replyLineIds)
                 ? { replyLineIds: row.replyLineIds.filter((id): id is string => typeof id === "string") }
@@ -830,6 +850,10 @@ async function generateOnce(
       .join("\n");
   });
   const history = venueSceneHistory(session.lines, player.name);
+  const stageIds = session.participants.map((person) => person.characterId);
+  const stage = replayStaging(stageIds, stagingTranscriptEvents(session.lines, session.submissions)).at(-1)?.state;
+  const stageState = stage ?? initialStaging(stageIds);
+  const layout = stagingLayout(session.activeIds, stageState);
   const audience = active.map((person) => person.characterId);
   const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
   const place = storedPlace
@@ -922,6 +946,12 @@ async function generateOnce(
         ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
         : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
     ...profiles,
+    session.stagingVersion === 1
+      ? "Current presentation state: " +
+        JSON.stringify(
+          session.activeIds.map((characterId) => ({ characterId, ...stageState[characterId], ...layout[characterId] })),
+        )
+      : "",
     `Earlier visit recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
     `Recent scene history:\n${history || "The visit has just begun."}`,
     mode === "greet"
@@ -972,7 +1002,13 @@ async function generateOnce(
     repairHint
       ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
       : "",
-    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
+    session.stagingVersion !== 1
+      ? "Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player."
+      : "",
+    session.stagingVersion === 1
+      ? 'Any segment, including narration, may include staging: [{characterId, position?, expression?, look?}]. position is "left", "center", or "right". expression is that character’s filled expression ID. look is {target:"player"}, {target:"villager",characterId:"active ID"}, or {target:"direction",direction:"left"|"right"}. Use at most one cue per active character per segment. Position, expression, and attention persist until changed; omitted fields preserve state. You may cue silent listeners, but reactions must respect who witnessed the moment. Move sides only when motivated by the scene, such as approaching, withdrawing, making room, or joining an interaction; changing speakers alone never moves anyone. Turns and expressions need no walking. A lone villager may look away left or right. Select the default expression ID or look toward the player explicitly to reset. Staging is presentation only, never proof of knowledge, consent, memory, or world changes. Use existing artwork and grounded actions. Main cues appear at the first paragraph; side and whisper cues appear with their attached chatter. Prefer staging over the older expression/gazeAt fields; omission does not reset attention in this visit.'
+      : "",
+    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Legacy gazeAt may name another active resident ID or player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
   ].join("\n\n");
   const messages: CapabilityLanguageModelMessage[] = [
     { role: "system", content: system },
@@ -1017,7 +1053,9 @@ async function generateOnce(
   const raw = extractJsonObject(completion.content ?? "");
   let parsed: ReturnType<typeof parseVenueReply>;
   try {
-    parsed = parseVenueReply(raw, audience);
+    parsed = parseVenueReply(raw, audience, (characterId, requested) =>
+      validateSpriteExpression(village.villagers.find((item) => item.characterId === characterId)?.sprite, requested),
+    );
     for (const line of parsed.lines) {
       if (!line.expression) continue;
       const expression = validateSpriteExpression(
@@ -1259,6 +1297,7 @@ type VenueReplyLine = {
   heardBy: string[];
   expression?: string;
   gazeAt?: string;
+  staging?: StagingCue[];
   targetId?: string;
   anchorIndex?: number;
 };
@@ -1266,6 +1305,7 @@ type VenueReplyLine = {
 export function parseVenueReply(
   raw: Record<string, unknown> | null,
   audience: readonly string[],
+  expressionId?: (characterId: string, requested: string) => string,
 ): {
   lines: VenueReplyLine[];
   heardPlayerBy: string[];
@@ -1323,6 +1363,7 @@ export function parseVenueReply(
           : [...new Set([speakerId, ...ids(row.heardBy), ...(kind === "whisper" ? [targetId] : [])])],
       ...(expression ? { expression } : {}),
       ...(gazeAt ? { gazeAt } : {}),
+      ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, audience, expressionId) } : {}),
       ...(targetId ? { targetId } : {}),
     };
   });
@@ -1363,6 +1404,7 @@ function appendVenueReply(session: VenueSession, lines: ReturnType<typeof parseV
       kind: line.kind,
       ...(line.expression ? { expression: line.expression } : {}),
       ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
+      ...(line.staging?.length ? { staging: line.staging } : {}),
       ...(line.targetId ? { targetId: line.targetId } : {}),
       ...(line.anchorIndex !== undefined ? { asideFor: lineIds[line.anchorIndex]! } : {}),
     }),
@@ -1537,6 +1579,7 @@ export async function enterVenue(
   const id = randomUUID();
   const session: VenueSession = {
     version: 1,
+    stagingVersion: 1,
     id,
     placeId,
     placeName: place.name,
@@ -1966,6 +2009,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       areaAtTurn: session.area,
       privateOwnerIdAtTurn: session.privateOwnerId,
       activeIdsAtTurn: [...session.activeIds],
+      activeIdsAfterTurn: session.activeIds.filter((id) => !reply.departures.includes(id)),
       replyLineIds,
       projectContexts: reply.projectContexts,
       projectSpeech: reply.projectSpeech.map((proposal) => ({
@@ -3259,6 +3303,7 @@ export async function recordVenueAction(
       action: result,
       areaAtTurn: state.area,
       activeIdsAtTurn: [...state.activeIds],
+      activeIdsAfterTurn: [...state.activeIds],
       replyLineIds: [sceneLineId],
       at,
     });

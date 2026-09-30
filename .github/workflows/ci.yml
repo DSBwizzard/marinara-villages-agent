@@ -53,6 +53,9 @@ jobs:
       - name: Run formatting and lint checks
         run: npm run check
 
+      - name: Verify scene staging
+        run: npx tsx tests/villages-scene-staging.regression.ts
+
       - name: Verify Progress Engine and automatic Project evidence
         run: |
           npx tsx tests/villages-progress-engine.regression.ts

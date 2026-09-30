@@ -665,7 +665,20 @@ const release = configureVillagesRuntime({
               content: JSON.stringify({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [
-                  { kind: "narration", text: "The room quiets.", heardBy: ["bob", "tina"] },
+                  {
+                    kind: "narration",
+                    text: "The room quiets.",
+                    heardBy: ["bob", "tina"],
+                    staging: [
+                      {
+                        characterId: "bob",
+                        position: "right",
+                        expression: "e-scene-test",
+                        look: { target: "direction", direction: "left" },
+                      },
+                      { characterId: "tina", position: "center", expression: "e-scene-test" },
+                    ],
+                  },
                   {
                     kind: "dialogue",
                     speakerId: "tina",
@@ -1319,6 +1332,23 @@ async function main() {
         ?.lineIds.includes(asked.session.lines.at(-2)!.id),
     );
     await saveVillageWriting({ person: "first" });
+    await mutateVillageState((state) => {
+      state.villagers.find((person) => person.characterId === "bob")!.sprite = {
+        assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
+        expressions: [
+          {
+            view: "front",
+            label: "quiet",
+            filename: "quiet.png",
+            expressionId: "e-scene-test",
+            name: "Quiet",
+            useWhen: "Quietly reacting.",
+          },
+        ],
+        defaultExpressionId: "e-scene-test",
+        framing: { mode: "full", cropPercent: 0 },
+      };
+    });
     const lively = await sendVenueTurn({
       sessionId: group.id,
       message: "A lively scene",
@@ -1337,6 +1367,31 @@ async function main() {
     const main = lively.session.lines.find((line) => line.id === aside.asideFor)!;
     assert.equal(main.speakerId, "tina", "side chatter stays attached to the preceding dialogue");
     assert.equal(aside.speakerId, "bob", "the aside keeps its own speaker");
+    assert.equal(lively.session.stagingVersion, 1);
+    const stagedLine = lively.session.lines.find((line) => line.content === "The room quiets.")!;
+    assert.equal(stagedLine.staging?.[0].expression, "e-scene-test", "a filled silent listener expression is accepted");
+    assert.deepEqual(
+      stagedLine.staging?.[1],
+      { characterId: "tina", position: "center" },
+      "another character's expression is dropped without losing movement",
+    );
+    assert.match(lastVenueSystem, /Current presentation state/u);
+    assert.match(lastVenueSystem, /A lone villager may look away/u);
+    assert.deepEqual(
+      (await activeVenueSession())?.lines.find((line) => line.id === stagedLine.id)?.staging,
+      stagedLine.staging,
+      "cues survive session reload",
+    );
+    const beforeStageRetry = venueReplyCalls;
+    const duplicateStage = await sendVenueTurn({
+      sessionId: group.id,
+      message: "A lively scene",
+      mode: "chat",
+      targetId: "",
+      submissionId: "lively-1",
+    });
+    assert.equal(venueReplyCalls, beforeStageRetry, "duplicate submissions do not regenerate staging");
+    assert.equal(duplicateStage.session.lines.length, lively.session.lines.length);
     assert.equal(aside.expression, undefined, "an unfilled sprite expression is dropped without losing the aside");
     assert.deepEqual(aside.heardBy, ["bob"], "a side remark keeps its own audience");
     assert.deepEqual(lively.session.lines.find((line) => line.kind === "whisper")?.heardBy, ["tina", "bob"]);
@@ -1351,6 +1406,11 @@ async function main() {
     });
     assert.equal(calls - beforeQuietReply, 1, "a nonverbal reply does not trigger a second model call");
     assert.equal(answered.session.lines.at(-1)?.content, "Tina glanced over.");
+    assert.match(
+      lastVenueSystem,
+      /"characterId":"bob","position":"right","expression":"e-scene-test"/u,
+      "the next reply receives saved visual continuity",
+    );
     const beforeQuietAsk = calls;
     const quietAsk = await sendVenueTurn({
       sessionId: group.id,
@@ -2400,6 +2460,13 @@ async function main() {
       submissionId: "departure-bob",
     });
     assert.deepEqual(departedBob.session.activeIds, ["tina"]);
+    assert.deepEqual(departedBob.session.submissions.at(-1)?.activeIdsAtTurn, ["bob", "tina"]);
+    assert.deepEqual(departedBob.session.submissions.at(-1)?.activeIdsAfterTurn, ["tina"]);
+    assert.deepEqual(
+      (await activeVenueSession())?.submissions.at(-1)?.activeIdsAfterTurn,
+      ["tina"],
+      "departure snapshots survive active-session reads",
+    );
     const departedTina = await sendVenueTurn({
       sessionId: current.id,
       message: "Tina says goodbye",
@@ -2409,6 +2476,11 @@ async function main() {
     });
     assert.equal(departedTina.session.status, "closed");
     assert.equal(departedTina.session.endReason, "scene");
+    assert.deepEqual(
+      (await readVenueVisit(current.id)).submissions.at(-1)?.activeIdsAfterTurn,
+      [],
+      "final cast survives archive reads",
+    );
     assert.equal(await activeVenueSession(), null);
     assert.equal(memoryCalls, beforeTurnMemory, "tiered visits do not run the retired transcript distiller");
     assert.equal(reviewCalls, 0, "the completed farewell returns before durable review starts");
