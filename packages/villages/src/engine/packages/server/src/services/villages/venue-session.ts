@@ -50,6 +50,15 @@ import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
 import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
 import { recordProjectConversation } from "./project-lifecycle.js";
 import { ingestSavedProgressEvent } from "./progress-runtime.js";
+import { processProjectSpeechTurn } from "./project-evidence.js";
+import {
+  bindProjectSpeech,
+  coerceProjectSpeech,
+  projectSpeechContexts,
+  projectSpeechPrompt,
+  type ProjectSpeechContext,
+  type ProjectSpeechProposal,
+} from "./project-interpretation.js";
 import { readVenueRequestCore } from "./venue-requests.js";
 import type { VillageVenueClass } from "./types.js";
 
@@ -84,6 +93,17 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
     areaAtTurn: submission.areaAtTurn ?? session.area,
     activeIdsAtTurn: submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId),
     action: submission.action ?? null,
+    projectContexts: submission.projectContexts ?? [],
+    projectSpeech: submission.projectSpeech ?? [],
+    contextLines: session.lines
+      .slice(
+        0,
+        Math.max(
+          0,
+          session.lines.findIndex((line) => submission.replyLineIds?.includes(line.id)),
+        ),
+      )
+      .slice(-12),
     lines: session.lines.filter((line) =>
       submission.replyLineIds?.length
         ? submission.replyLineIds.includes(line.id) &&
@@ -104,6 +124,8 @@ type VenueSubmission = {
   privateOwnerIdAtTurn?: string;
   activeIdsAtTurn?: string[];
   replyLineIds?: string[];
+  projectContexts?: ProjectSpeechContext[];
+  projectSpeech?: ProjectSpeechProposal[];
   progressProcessedAt?: string;
   progressError?: string;
   verdict: { fulfilled: boolean; reason: string } | null;
@@ -171,7 +193,7 @@ type VenueMemoryReview = {
 };
 export type VenueRecordEvent = {
   id: string;
-  kind: "memory" | "wish" | "venue" | "request";
+  kind: "memory" | "wish" | "venue" | "request" | "project";
   text: string;
   /** The exact saved memory behind a short memory receipt. Older persisted receipts may omit it. */
   detail?: string;
@@ -404,6 +426,19 @@ function coerceSession(value: unknown): VenueSession {
                 ? { replyLineIds: row.replyLineIds.filter((id): id is string => typeof id === "string") }
                 : {}),
               ...(typeof row.progressProcessedAt === "string" ? { progressProcessedAt: row.progressProcessedAt } : {}),
+              ...(Array.isArray(row.projectContexts)
+                ? {
+                    projectContexts: row.projectContexts.slice(0, 2).map((value) => {
+                      const context = asRecord(value);
+                      return {
+                        projectId: asTrimmedString(context.projectId),
+                        revision: Number(context.revision),
+                        phase: asTrimmedString(context.phase),
+                      };
+                    }),
+                  }
+                : {}),
+              ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
               ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
@@ -547,6 +582,7 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
   )
     return;
   try {
+    await processProjectSpeechTurn(sessionId, submissionId);
     const hasAutomaticRoute = village.progressTasks.some((task) =>
       task.definition.phases[task.phaseIndex]?.requirements.some((requirement) =>
         requirement.routes.some(
@@ -827,11 +863,18 @@ async function generateOnce(
     });
   const [lore, model] = await Promise.all([lorePromise, modelPromise]);
   signal?.throwIfAborted();
-  const progressProjects =
-    village.progressEngineVersion === 1
-      ? village.projects
-          .filter((project) => project.lifecycle && project.status !== "complete" && project.status !== "abandoned")
-          .slice(0, 2)
+  const projectContexts =
+    mode === "chat" || mode === "ask"
+      ? projectSpeechContexts(
+          village,
+          audience,
+          `${session.lines
+            .slice(-12)
+            .map((line) => line.content)
+            .join("\n")}\n${message}`,
+          message,
+          session.placeId,
+        )
       : [];
   const system = [
     VENUE_SCENE_WRITING_FOUNDATION,
@@ -839,21 +882,7 @@ async function generateOnce(
     venueWritingDirection(village.narrationStyle, player.name),
     venueAdditionalWritingGuidance(village.narrationStyle),
     `The player is ${player.name}. ${player.description}`,
-    progressProjects.length
-      ? `Current public Projects: ${progressProjects
-          .map((project) => {
-            const flow = project.lifecycle!;
-            return `${project.title} (${project.id}), phase ${flow.phase}, Builder ${flow.builderId || "unassigned"}, needed supplies ${
-              flow.requirements
-                .filter((entry) => entry.needed)
-                .map((entry) => entry.title)
-                .join(", ") || "not yet defined"
-            }`;
-          })
-          .join(
-            " | ",
-          )}. Residents may discuss these naturally. When an assigned Builder is asked for the Project checklist, have them state all three categories in one spoken line using the exact labels "Structure: …; Equipment: …; Finish: …"; say "not needed" for a category with no supply. A supply offer or handoff must be explicit in a resident's spoken words and name the exact item. A player's claim alone changes no Project state.`
-      : "",
+    projectSpeechPrompt(village, projectContexts),
     `Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
       place?.state.traces
         ?.filter((trace) => trace.kind !== "note" && (!trace.expiresAt || Date.parse(trace.expiresAt) > now.getTime()))
@@ -1106,6 +1135,12 @@ async function generateOnce(
     : null;
   return {
     ...parsed,
+    projectContexts,
+    projectSpeech: bindProjectSpeech(
+      raw?.projectSpeech,
+      projectContexts,
+      parsed.lines.map((line, index) => ({ ...line, id: String(index) })),
+    ),
     sceneChange: mode === "chat" || mode === "ask" ? readVenueSceneChange(raw?.sceneChange, place) : null,
     residenceSignal:
       (mode === "chat" || mode === "ask") &&
@@ -1762,6 +1797,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
           : [],
       };
+    try {
+      await processSavedProgressSubmission(session.id, prior.id);
+    } catch (error) {
+      villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", prior.id, String(error));
+    }
     await applyVenueTurnChange(session, prior);
     if (await applyFulfilledWish(session, prior)) await refreshAgendaAfterWish(prior.targetId);
     await applyVenueRequests(session, prior);
@@ -1927,6 +1967,14 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       privateOwnerIdAtTurn: session.privateOwnerId,
       activeIdsAtTurn: [...session.activeIds],
       replyLineIds,
+      projectContexts: reply.projectContexts,
+      projectSpeech: reply.projectSpeech.map((proposal) => ({
+        ...proposal,
+        citations: proposal.citations.map((citation) => ({
+          ...citation,
+          lineId: /^\d+$/u.test(citation.lineId) ? (replyLineIds[Number(citation.lineId)] ?? "") : "",
+        })),
+      })),
       verdict,
       wishId,
       wishMemory,
@@ -2371,15 +2419,12 @@ async function applyTurnMemories(session: VenueSession, submission: VenueSubmiss
 }
 
 async function receiptForTurn(session: VenueSession, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
-  if (submission.recordEvents?.every((event) => event.kind !== "memory" || event.detail))
-    return submission.recordEvents;
   const village = await readVillageState();
-  if (submission.recordEvents)
-    return submission.recordEvents.map((event) => {
-      if (event.kind !== "memory" || event.detail) return event;
-      const memory = village.chronicle.find((entry) => entry.id === event.id);
-      return memory ? { ...event, detail: memory.text } : event;
-    });
+  const cached = (submission.recordEvents ?? []).map((event) => {
+    if (event.kind !== "memory" || event.detail) return event;
+    const memory = village.chronicle.find((entry) => entry.id === event.id);
+    return memory ? { ...event, detail: memory.text } : event;
+  });
   const events: VenueRecordEvent[] = [];
   for (const memory of submission.turnMemories ?? []) {
     const id = `${session.id}:turn:${submission.id}:memory:${memory.characterId}`;
@@ -2398,6 +2443,27 @@ async function receiptForTurn(session: VenueSession, submission: VenueSubmission
   const venueId = `venue-chat:${session.id}:${submission.id}`;
   const change = village.venueEvents.find((entry) => entry.id === venueId);
   if (change) events.push({ id: venueId, kind: "venue", text: change.text });
+  for (const project of village.projects) {
+    const flow = project.lifecycle;
+    const proofs =
+      flow?.spokenProofs.filter((proof) => proof.sessionId === session.id && proof.submissionId === submission.id) ??
+      [];
+    if (!flow || !proofs.length) continue;
+    const lineIds = new Set(proofs.map((proof) => proof.lineId));
+    const id = `project:${project.id}:${submission.id}`;
+    const checklist = lineIds.has(flow.requirementsEvidenceId);
+    const builder = flow.candidates.find((entry) => lineIds.has(entry.evidenceId));
+    const name =
+      session.participants.find((person) => person.characterId === builder?.residentId)?.name ?? "A villager";
+    const text = checklist
+      ? `The builder's checklist for ${project.title} is ready to review.`
+      : builder
+        ? `${name} agreed to build ${project.title}.`
+        : flow.approvals.some((entry) => lineIds.has(entry.evidenceId))
+          ? `Approval for ${project.title} was confirmed.`
+          : `Supply progress for ${project.title} was updated.`;
+    events.push({ id, kind: "project", text });
+  }
   const request = submission.residenceSignal;
   if (request?.kind === "request" && village.processedOpportunityIds.includes(`venue-move:${submission.id}`)) {
     const name =
@@ -2414,11 +2480,13 @@ async function receiptForTurn(session: VenueSession, submission: VenueSubmission
       text: `${name} suggested a Venue improvement.`,
     });
   }
-  await changeSession(session.id, (state) => {
-    const saved = state.submissions.find((entry) => entry.id === submission.id);
-    if (saved && !saved.recordEvents) saved.recordEvents = events;
-  });
-  return events;
+  const combined = [...new Map([...events, ...cached].map((event) => [event.id, event])).values()];
+  if (JSON.stringify(combined) !== JSON.stringify(submission.recordEvents))
+    await changeSession(session.id, (state) => {
+      const saved = state.submissions.find((entry) => entry.id === submission.id);
+      if (saved) saved.recordEvents = combined;
+    });
+  return combined;
 }
 
 const MEMORY_REVIEW_ERROR = "This visit is safely archived, but its memory review is still pending.";

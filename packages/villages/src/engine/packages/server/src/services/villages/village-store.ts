@@ -13,7 +13,7 @@ import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "./nar
 import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "./native-remap.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./package-runtime.js";
-import { coerceProgressTasks } from "./progress-engine.js";
+import { coerceProgressTasks, readProgressInterpretation } from "./progress-engine.js";
 import { defaultVenueSpace, validVenueClasses, validVenueImprovements } from "./venue-model.js";
 import {
   boundText,
@@ -1802,6 +1802,7 @@ function coerceProjects(value: unknown): VillageProject[] {
                       venueId: asTrimmedString(proof.venueId),
                       quote: boundText(proof.quote, 300),
                       at: asIsoString(proof.at) ?? "",
+                      ...readProgressInterpretation(proof),
                     },
                   ];
                 })

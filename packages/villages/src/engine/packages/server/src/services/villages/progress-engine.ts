@@ -27,7 +27,26 @@ export type ProgressEvidence = {
   venueId?: string;
   area?: string;
   excerpt?: string;
+  grade?: "cited-interpretation";
+  interpretationVersion?: number;
+  citations?: { lineId: string; quote: string }[];
 };
+export function readProgressInterpretation(
+  value: unknown,
+): Pick<ProgressEvidence, "grade" | "interpretationVersion" | "citations"> {
+  const row = asRecord(value);
+  if (row.grade !== "cited-interpretation") return {};
+  return {
+    grade: "cited-interpretation",
+    interpretationVersion: Number(row.interpretationVersion),
+    citations: Array.isArray(row.citations)
+      ? row.citations.slice(0, 6).map((value) => {
+          const citation = asRecord(value);
+          return { lineId: asTrimmedString(citation.lineId), quote: asTrimmedString(citation.quote).slice(0, 1200) };
+        })
+      : [],
+  };
+}
 export type ProgressReceipt = {
   id: string;
   definitionRevision: number;
@@ -432,6 +451,7 @@ export function coerceProgressTasks(value: unknown): ProgressTask[] {
                   venueId: asTrimmedString(evidence.venueId),
                   ...(asTrimmedString(evidence.area) ? { area: asTrimmedString(evidence.area) } : {}),
                   excerpt: asTrimmedString(evidence.excerpt).slice(0, 300),
+                  ...readProgressInterpretation(evidence),
                 },
               },
             ];

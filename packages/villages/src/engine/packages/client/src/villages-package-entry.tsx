@@ -430,19 +430,6 @@ type BuildProject = {
   };
 };
 
-type ProjectEvidenceCandidate = {
-  sessionId: string;
-  submissionId: string;
-  lineId: string;
-  residentId: string;
-  residentName: string;
-  venueId: string;
-  venueName: string;
-  at: string;
-  playerMessage: string;
-  quote: string;
-};
-
 type ProgressDebugView = {
   engineVersion: 0 | 1;
   tasks: Array<{
@@ -454,7 +441,15 @@ type ProgressDebugView = {
     };
     revisionHistory: Array<{
       definition: { revision: number; phases: Array<{ id: string; title: string }> };
-      receipts: Array<{ requirementId: string; evidence: { sourceId: string; excerpt?: string } }>;
+      receipts: Array<{
+        requirementId: string;
+        evidence: {
+          sourceId: string;
+          excerpt?: string;
+          grade?: string;
+          citations?: { lineId: string; quote: string }[];
+        };
+      }>;
       transitions: Array<{ phaseId: string; at: string }>;
     }>;
     visibleAt: string;
@@ -466,7 +461,14 @@ type ProgressDebugView = {
       requirementId: string;
       routeId: string;
       definitionRevision: number;
-      evidence: { sourceId: string; lineId?: string; excerpt?: string; at: string };
+      evidence: {
+        sourceId: string;
+        lineId?: string;
+        excerpt?: string;
+        at: string;
+        grade?: string;
+        citations?: { lineId: string; quote: string }[];
+      };
     }>;
     attempts: Array<{ phaseId: string; requirementId: string; status: string; reason: string; evidenceId: string }>;
     transitions: Array<{ phaseId: string; at: string; evidenceId: string }>;
@@ -474,6 +476,13 @@ type ProgressDebugView = {
     resolutionKey: string;
   }>;
   backlog: Array<{ sessionId: string; submissionId: string; at: string; error: string }>;
+  speechProofs?: Array<{
+    projectId: string;
+    lineId: string;
+    quote: string;
+    grade?: string;
+    citations?: { lineId: string; quote: string }[];
+  }>;
 };
 
 type SetupVenueDraft = VillageVenue;
@@ -1021,7 +1030,7 @@ type RoomView = {
 
 type RoomRecordEvent = {
   id: string;
-  kind: "memory" | "wish" | "venue" | "request";
+  kind: "memory" | "wish" | "venue" | "request" | "project";
   text: string;
   detail?: string;
 };
@@ -10439,7 +10448,6 @@ function ProjectsPanelV2({
   const [finishingVisit, setFinishingVisit] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [evidenceCandidates, setEvidenceCandidates] = useState<ProjectEvidenceCandidate[]>([]);
   useEffect(() => {
     if (focusProjectId) setSelectedId(focusProjectId);
   }, [focusProjectId]);
@@ -10448,21 +10456,6 @@ function ProjectsPanelV2({
   );
   const project = active.find((entry) => entry.id === selectedId) ?? null;
   const flow = project?.lifecycle;
-  const refreshEvidence = useCallback(async (projectId: string) => {
-    try {
-      const result = await request<{ candidates: ProjectEvidenceCandidate[] }>(
-        `/projects/${encodeURIComponent(projectId)}/evidence`,
-      );
-      setEvidenceCandidates(result.candidates);
-    } catch (cause) {
-      setEvidenceCandidates([]);
-      setError(messageFrom(cause, "Saved conversation evidence could not be loaded."));
-    }
-  }, []);
-  useEffect(() => {
-    if (snapshot.progressEngineVersion === 1 && project?.id) void refreshEvidence(project.id);
-    else setEvidenceCandidates([]);
-  }, [project?.id, flow?.phase, snapshot.progressEngineVersion, refreshEvidence]);
   const target = snapshot.settings.venues.find((entry) => entry.id === project?.venueId);
   const selectedVenue = snapshot.settings.venues.find((entry) => entry.id === venueId);
   const extraClass = (["residence", "workplace", "gathering", "other"] as VenueClass[])
@@ -10558,73 +10551,6 @@ function ProjectsPanelV2({
     }
   };
   const phase = flow?.phase;
-  const renderEvidence = (
-    kind: "approval" | "builder" | "requirements" | "offer" | "handoff",
-    requirementId = "",
-    itemName = "",
-  ) => {
-    if (snapshot.progressEngineVersion !== 1 || !project) return null;
-    const likely = evidenceCandidates.filter((candidate) => {
-      const text = candidate.quote.toLocaleLowerCase();
-      if (itemName && !text.includes(itemName.toLocaleLowerCase())) return false;
-      return kind === "approval"
-        ? /\b(?:yes|agree|approve|fine|okay|can|may)\b/iu.test(text)
-        : kind === "builder"
-          ? /\b(?:build|construct|renovat\w*|work on|do it|take it on|handle it)\b/iu.test(text)
-          : kind === "requirements"
-            ? /\b(?:structure|equipment|finish)\b/iu.test(text)
-            : kind === "offer"
-              ? /\b(?:have|supply|bring|provide)\b/iu.test(text)
-              : /\b(?:here|give|hand|take)\b/iu.test(text);
-    });
-    const rows = (likely.length ? likely : evidenceCandidates).slice(0, 12);
-    return (
-      <details className={`${ELEMENT_TAG}-project-evidence`}>
-        <summary>
-          Record{" "}
-          {kind === "requirements"
-            ? "Builder checklist"
-            : kind === "handoff"
-              ? "supply handoff"
-              : kind === "offer"
-                ? "supply offer"
-                : kind === "approval"
-                  ? "approval"
-                  : "Builder agreement"}{" "}
-          from a saved visit
-        </summary>
-        {rows.length ? (
-          rows.map((candidate) => (
-            <div key={`${candidate.sessionId}:${candidate.lineId}`} className={`${ELEMENT_TAG}-notice-row`}>
-              <p>
-                <strong>{candidate.residentName || candidate.residentId}</strong> at {candidate.venueName}: “
-                {candidate.quote}”
-              </p>
-              <small>After: “{candidate.playerMessage}”</small>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy}
-                onClick={() =>
-                  void action("record", {
-                    kind,
-                    requirementId,
-                    sessionId: candidate.sessionId,
-                    submissionId: candidate.submissionId,
-                    lineId: candidate.lineId,
-                  })
-                }
-              >
-                Record this line
-              </button>
-            </div>
-          ))
-        ) : (
-          <p>No saved resident lines yet. Talk to a villager, then return here.</p>
-        )}
-      </details>
-    );
-  };
   if (project && phase === "finishing" && finishingVisit)
     return (
       <div className={`${ELEMENT_TAG}-project-finish-visit`}>
@@ -10951,7 +10877,6 @@ function ProjectsPanelV2({
                     {flow.approvals.some((entry) => entry.residentId === id) ? "Approved" : "Awaiting approval"}
                   </p>
                 ))}
-                {renderEvidence("approval")}
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
@@ -10967,9 +10892,8 @@ function ProjectsPanelV2({
                 <h3>Find a Builder</h3>
                 <p>
                   Find villagers on the map and ask them about this Project in a real conversation. Their clear
-                  agreements appear here.
+                  agreements appear here automatically.
                 </p>
-                {renderEvidence("builder")}
                 {snapshot.progressEngineVersion !== 1 ? (
                   <button
                     type="button"
@@ -11004,7 +10928,8 @@ function ProjectsPanelV2({
                 <p>
                   Ask{" "}
                   {snapshot.villagers.find((entry) => entry.characterId === flow?.builderId)?.name ?? "your Builder"}{" "}
-                  what this job needs. They decide the materials, functional equipment, and finishing supplies.
+                  what this job needs. They decide the materials, functional equipment, and finishing supplies. Their
+                  checklist appears here automatically.
                 </p>
                 {flow?.requirements.length ? (
                   <div>
@@ -11026,8 +10951,6 @@ function ProjectsPanelV2({
                 ) : (
                   <p>Waiting for the Builder's plan.</p>
                 )}
-                {renderEvidence("requirements")}
-                {snapshot.progressEngineVersion === 1 ? renderEvidence("builder") : null}
                 {flow?.candidates
                   .filter((entry) => entry.residentId !== flow.builderId)
                   .map((entry) => (
@@ -11049,8 +10972,8 @@ function ProjectsPanelV2({
               <>
                 <h3>Prepare materials</h3>
                 <p>
-                  Find each supply in the Village, then bring it to this blueprint site. Deliveries update the list
-                  here.
+                  Find each supply in the Village, then bring it to this blueprint site. Offers and handoffs are
+                  recognized during your visits. Deliveries update the list here.
                 </p>
                 {flow?.requirements
                   .filter((entry) => entry.needed)
@@ -11076,7 +10999,7 @@ function ProjectsPanelV2({
                                       void action("existing-source", { requirementId: entry.id, venueId: item.venueId })
                                     }
                                   >
-                                    Record existing item at{" "}
+                                    Choose available item at{" "}
                                     {snapshot.settings.venues.find((venue) => venue.id === item.venueId)?.name ??
                                       "Venue"}
                                   </button>
@@ -11101,10 +11024,9 @@ function ProjectsPanelV2({
                                     {held.deliveredAt ? " (already delivered)" : ""}
                                   </button>
                                 ))}
-                              {renderEvidence("offer", entry.id, entry.title)}
                             </>
                           ) : (
-                            renderEvidence("handoff", entry.id, entry.title)
+                            <p>The supplier’s handoff will be recognized during your visit.</p>
                           )}
                         </>
                       ) : null}
@@ -11123,17 +11045,6 @@ function ProjectsPanelV2({
                       ) : null}
                     </div>
                   ))}
-                {snapshot.progressEngineVersion === 1 ? (
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => void refreshEvidence(project.id)}
-                  >
-                    Refresh saved visit lines
-                  </button>
-                ) : null}
-                {snapshot.progressEngineVersion === 1 ? renderEvidence("builder") : null}
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
@@ -11155,9 +11066,6 @@ function ProjectsPanelV2({
                   <p>Expected completion: {new Date(flow.workOrder.completesAt).toLocaleString()}</p>
                 ) : null}
                 {flow?.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
-                {snapshot.progressEngineVersion === 1 && project.status === "blocked"
-                  ? renderEvidence("builder")
-                  : null}
                 {project.status === "blocked"
                   ? flow?.candidates
                       .filter((entry) => entry.residentId !== flow.builderId)
@@ -17018,6 +16926,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 ) : (
                   <p>No saved turns await replay.</p>
                 )}
+                {progressDebug?.speechProofs?.length ? (
+                  <section>
+                    <h3>Captured Project speech</h3>
+                    {progressDebug.speechProofs.map((proof) => (
+                      <p key={`${proof.projectId}:${proof.lineId}`}>
+                        {proof.projectId} · {proof.grade ?? "typed"} · {proof.lineId}: “{proof.quote}”
+                        {proof.citations?.map((citation, index) => (
+                          <span key={`${citation.lineId}:${index}`}>
+                            {" "}
+                            · {citation.lineId}: “{citation.quote}”
+                          </span>
+                        ))}
+                      </p>
+                    ))}
+                  </section>
+                ) : null}
                 {progressDebug?.tasks.map((task) => (
                   <details key={task.definition.id} open>
                     <summary>
@@ -17042,7 +16966,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 ? receipts
                                     .map(
                                       (receipt) =>
-                                        `${receipt.routeId}: ${receipt.evidence.sourceId} ${receipt.evidence.excerpt ?? ""}`,
+                                        `${receipt.routeId} [${receipt.evidence.grade ?? "typed"}]: ${receipt.evidence.sourceId} ${receipt.evidence.excerpt ?? ""} ${(receipt.evidence.citations ?? []).map((citation) => `${citation.lineId}: ${citation.quote}`).join("; ")}`,
                                     )
                                     .join("; ")
                                 : "pending"}
@@ -17078,7 +17002,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         </summary>
                         {prior.receipts.map((receipt) => (
                           <p key={`${receipt.requirementId}:${receipt.evidence.sourceId}`}>
-                            {receipt.requirementId} · {receipt.evidence.sourceId} · {receipt.evidence.excerpt ?? ""}
+                            {receipt.requirementId} · {receipt.evidence.grade ?? "typed"} · {receipt.evidence.sourceId}{" "}
+                            · {receipt.evidence.excerpt ?? ""}
+                            {receipt.evidence.citations?.map((citation) => (
+                              <span key={`${citation.lineId}:${citation.quote}`}>
+                                {" "}
+                                · {citation.lineId}: “{citation.quote}”
+                              </span>
+                            ))}
                           </p>
                         ))}
                         {prior.transitions.map((transition, index) => (

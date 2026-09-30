@@ -1,5 +1,6 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { badRequest, conflict, notFound } from "./errors.js";
+import { VillagesRequestError, badRequest, conflict, notFound } from "./errors.js";
+import { validateProjectSpeech } from "./project-interpretation.js";
 import { progressProject, projectProgressPhase, recordProjectProgress } from "./project-progress.js";
 import { rejectProgressEvidence, type ProgressEvidence } from "./progress-engine.js";
 import type { VillageProject, VillageState } from "./types.js";
@@ -8,10 +9,15 @@ import { mutateVillageState, readVillageState } from "./village-store.js";
 
 const negative = /\b(?:not|never|don't|can't|won't|refuse|maybe|perhaps|if)\b/iu;
 const offerVerb =
-  /\b(?:i have|we have|i can supply|we can supply|i can bring|we can bring|i can provide|we can provide)\b/iu;
+  /\b(?:i have|we have|i've got|we've got|i can supply|we can supply|i can bring|we can bring|i can provide|we can provide)\b/iu;
 const handoffVerb =
-  /\b(?:here is|here are|i give you|i hand you|i hand over|i'm giving you|you may take|you can take)\b/iu;
+  /\b(?:here is|here are|here's|i give you|i hand you|i hand over|i'm giving you|you may take|you can take)\b/iu;
 const agreementVerb = /\b(?:yes|i agree|i approve|i will|i'll|i can|count me in)\b/iu;
+class ProjectEvidenceRejected extends VillagesRequestError {
+  constructor(reason: string) {
+    super(409, reason);
+  }
+}
 
 function projectFor(state: VillageState, projectId: string): VillageProject {
   const project = state.projects.find((entry) => entry.id === projectId && entry.lifecycle);
@@ -41,7 +47,7 @@ function parseChecklist(content: string) {
   for (const part of content.split(/[;\n]/u)) {
     const match = part
       .trim()
-      .match(/^(?:the\s+)?(structure|equipment|finish(?:ing)?)(?:\s+(?:materials|supplies))?\s*:\s*(.+)$/iu);
+      .match(/\b(?:the\s+)?(structure|equipment|finish(?:ing)?)(?:\s+(?:materials|supplies))?\s*:\s*(.+)$/iu);
     if (!match) continue;
     const category = match[1]!.toLocaleLowerCase().startsWith("finish")
       ? "finish"
@@ -96,6 +102,10 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
     throw error;
   }
   const line = turn.lines.find((entry) => entry.id === lineId);
+  // Only persisted proposals can be selected. A request cannot submit its own interpretation.
+  const interpreted = Number.isInteger(input.interpretationIndex)
+    ? turn.projectSpeech[Number(input.interpretationIndex)]
+    : undefined;
   const proof: ProgressEvidence = {
     id: `visit:${sessionId}:${submissionId}:${lineId}`,
     kind: `project-${kind}`,
@@ -106,12 +116,16 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
     venueId: turn.venueId,
     area: turn.areaAtTurn,
     excerpt: line?.content,
+    ...(interpreted
+      ? { grade: "cited-interpretation" as const, interpretationVersion: 1, citations: interpreted.citations }
+      : {}),
   };
   let failure = "";
   await mutateVillageState((state) => {
     failure = "";
     const project = projectFor(state, projectId);
     const flow = project.lifecycle!;
+    if (flow.spokenProofs.some((entry) => entry.lineId === lineId)) return;
     if (
       state.progressTasks.some(
         (task) =>
@@ -172,28 +186,96 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       !state.villagers.some((resident) => resident.characterId === line.speakerId)
     )
       return fail("A current resident must have spoken that line while present in the saved turn.");
+    const speech = line.content.normalize("NFKC").replace(/[’‘]/gu, "'");
     const task = progressProject(state, project)!;
+    if (interpreted) {
+      if (
+        interpreted.projectId !== projectId ||
+        interpreted.kind !== kind ||
+        interpreted.speakerId !== line.speakerId ||
+        interpreted.citations[0]?.lineId !== lineId ||
+        interpreted.revision !== task.definition.revision ||
+        interpreted.phase !== phase
+      )
+        return fail("Interpretation no longer matches this Project revision, phase, or speaker.");
+      const reason = validateProjectSpeech(interpreted, turn.lines);
+      if (reason) return fail(reason);
+    } else if (Number.isInteger(input.interpretationIndex)) return fail("The saved interpretation is unavailable.");
+    const context = turn.projectContexts.find((entry) => entry.projectId === projectId);
+    if (
+      input.automatic === true &&
+      context &&
+      (context.revision !== task.definition.revision || context.phase !== phase)
+    )
+      return fail("The saved turn belongs to an earlier Project revision or phase.");
     const currentPhaseStartedAt = task.transitions.at(-1)?.at ?? task.definedAt;
     if (!Number.isFinite(Date.parse(turn.at)) || Date.parse(turn.at) < Date.parse(currentPhaseStartedAt))
       return fail("Use a fresh visit after this Project reached its current phase.");
-    if (kind !== "requirements" && negative.test(line.content))
+    const citedIds = interpreted?.citations.map((citation) => citation.lineId) ?? [lineId];
+    if (
+      state.projects.some((other) =>
+        other.lifecycle?.spokenProofs.some((proof) =>
+          [proof.lineId, ...(proof.citations?.map((citation) => citation.lineId) ?? [])].some((id) =>
+            citedIds.includes(id),
+          ),
+        ),
+      )
+    )
+      return fail("That spoken source was already reserved as Project proof.");
+    if (!interpreted && kind !== "requirements" && negative.test(speech))
       return fail("Conditional or refusing speech is not an agreement or transfer.");
     if (
       state.progressTasks.some((task) =>
-        [...task.receipts, ...task.revisionHistory.flatMap((revision) => revision.receipts)].some(
-          (receipt) => receipt.evidence.lineId === lineId,
+        [...task.receipts, ...task.revisionHistory.flatMap((revision) => revision.receipts)].some((receipt) =>
+          [receipt.evidence.lineId, ...(receipt.evidence.citations?.map((citation) => citation.lineId) ?? [])].some(
+            (id) => id === lineId || interpreted?.citations.some((citation) => citation.lineId === id),
+          ),
         ),
       )
     )
       return fail("That spoken line was already used as Project proof.");
     const named = `${turn.message} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
-    if (!named && kind !== "offer" && kind !== "handoff")
+    const contextual =
+      context &&
+      (turn.contextLines.some(
+        (entry) =>
+          entry.heardBy.includes(line.speakerId) &&
+          entry.content.toLocaleLowerCase().includes(project.title.toLocaleLowerCase()),
+      ) ||
+        (project.venueId === turn.venueId &&
+          state.projects.filter(
+            (entry) =>
+              entry.lifecycle &&
+              entry.venueId === turn.venueId &&
+              entry.status !== "complete" &&
+              entry.status !== "abandoned",
+          ).length === 1) ||
+        (kind === "requirements" &&
+          flow.builderId === line.speakerId &&
+          state.projects.filter(
+            (entry) => entry.lifecycle?.phase === "requirements" && entry.lifecycle.builderId === line.speakerId,
+          ).length === 1));
+    if (!named && !contextual && kind !== "offer" && kind !== "handoff")
       return fail("The saved conversation must identify this specific Project.");
+    if (
+      !named &&
+      contextual &&
+      state.projects.filter(
+        (entry) =>
+          entry.lifecycle &&
+          turn.contextLines.some(
+            (context) =>
+              context.heardBy.includes(line.speakerId) &&
+              context.content.toLocaleLowerCase().includes(entry.title.toLocaleLowerCase()),
+          ),
+      ).length > 1
+    )
+      return fail("The saved conversation ambiguously refers to more than one Project.");
     if (kind === "approval") {
       if (
         project.kind !== "renovation" ||
         !flow.affectedIds.includes(line.speakerId) ||
-        !agreementVerb.test(line.content)
+        (!interpreted && !agreementVerb.test(speech))
       )
         return fail("An affected resident must explicitly approve this Renovation.");
       if (flow.approvals.some((entry) => entry.residentId === line.speakerId)) return;
@@ -201,8 +283,9 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       recordProjectProgress(state, project, `approval:${line.speakerId}`, { ...proof, kind: "project-approval" });
     } else if (kind === "builder") {
       if (
-        !/\b(?:build|construct|renovat\w*|work on|do it|take it on|handle it)\b/iu.test(line.content) ||
-        !agreementVerb.test(line.content)
+        !interpreted &&
+        (!/\b(?:build|construct|renovat\w*|work on|do it|take it on|handle it)\b/iu.test(speech) ||
+          !agreementVerb.test(speech))
       )
         return fail("The resident must clearly agree to build this Project.");
       const candidate = flow.candidates.find((entry) => entry.residentId === line.speakerId);
@@ -213,8 +296,8 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       flow.evidenceIds = [...new Set([...flow.evidenceIds, line.id])];
     } else if (kind === "requirements") {
       if (line.speakerId !== flow.builderId) return fail("The assigned Builder must state the checklist.");
-      const items = parseChecklist(line.content);
-      if (!items) return fail("Ask the Builder for one spoken list: Structure: …; Equipment: …; Finish: … .");
+      const items = interpreted?.checklist ?? parseChecklist(line.content);
+      if (!items) return fail("The saved builder speech does not yet define a complete checklist.");
       flow.requirements = items.map((item, index) => ({
         id: `${project.id}:${index}:${item.category}`,
         category: item.category,
@@ -231,7 +314,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       if (!line.content.toLocaleLowerCase().includes(requirement.title.toLocaleLowerCase()))
         return fail("The resident must name this exact supply.");
       if (kind === "offer") {
-        if (!offerVerb.test(line.content)) return fail("The resident must explicitly offer this finite supply.");
+        if (!offerVerb.test(speech)) return fail("The resident must explicitly offer this finite supply.");
         if (flow.sources.some((entry) => entry.requirementId === requirementId))
           return fail("This supply already has a selected source. Revise its route before replacing it.");
         const key = sourceClaimKey(turn.venueId, line.speakerId, requirement.title);
@@ -258,7 +341,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
         const source = flow.sources.find((entry) => entry.requirementId === requirementId);
         if (!source || source.venueId !== turn.venueId || source.acquiredAt)
           return fail("Record an available source at this venue before its handoff.");
-        if (!handoffVerb.test(line.content)) return fail("The resident must explicitly hand over the named supply.");
+        if (!handoffVerb.test(speech)) return fail("The resident must explicitly hand over the named supply.");
         if (source.kind === "resident-offer") {
           if (source.supplierId !== line.speakerId || Date.parse(turn.at) < Date.parse(source.at))
             return fail("The original supplier must hand over the offered item after the offer.");
@@ -294,10 +377,104 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
         venueId: turn.venueId,
         quote: line.content.slice(0, 300),
         at: turn.at,
+        ...(interpreted
+          ? { grade: "cited-interpretation" as const, interpretationVersion: 1, citations: interpreted.citations }
+          : {}),
       });
     project.updatedAt = turn.at;
   });
-  if (failure) throw conflict(failure);
+  if (failure) throw new ProjectEvidenceRejected(failure);
+}
+
+/** Automatic saved-turn processing. Expected evidence rejections are diagnostics, not replay failures. */
+export async function processProjectSpeechTurn(sessionId: string, submissionId: string): Promise<void> {
+  const turn = await readProjectTurnEvidence(sessionId, submissionId);
+  if (turn.mode !== "chat" && turn.mode !== "ask") return;
+  const tryRecord = async (projectId: string, input: Record<string, unknown>) => {
+    try {
+      await recordProjectSpokenEvidence(projectId, { ...input, sessionId, submissionId, automatic: true });
+    } catch (error) {
+      if (
+        !(error instanceof ProjectEvidenceRejected) &&
+        !(error instanceof VillagesRequestError && error.statusCode === 404)
+      )
+        throw error;
+    }
+  };
+  for (const [interpretationIndex, proposal] of turn.projectSpeech.entries())
+    await tryRecord(proposal.projectId, {
+      kind: proposal.kind,
+      lineId: proposal.citations[0]?.lineId ?? "",
+      interpretationIndex,
+    });
+  const state = await readVillageState();
+  if (state.progressEngineVersion !== 1) return;
+  const projects = state.projects.filter(
+    (entry) => entry.lifecycle && entry.status !== "complete" && entry.status !== "abandoned",
+  );
+  for (const project of projects) {
+    const flow = project.lifecycle!;
+    for (const line of turn.lines) {
+      if (line.kind === "narration" || !line.speakerId) continue;
+      const speech = line.content.normalize("NFKC").replace(/[’‘]/gu, "'");
+      if (
+        flow.spokenProofs.some(
+          (proof) => proof.lineId === line.id || proof.citations?.some((citation) => citation.lineId === line.id),
+        )
+      )
+        continue;
+      const input = { lineId: line.id };
+      const context =
+        turn.projectContexts.some((entry) => entry.projectId === project.id) ||
+        `${turn.message} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
+      if (
+        context &&
+        flow.phase === "approval" &&
+        flow.affectedIds.includes(line.speakerId) &&
+        (/\b(?:i approve|i agree|you have my permission)\b/iu.test(speech) ||
+          (/\b(?:approve|permission|consent|agree|okay with)\b/iu.test(turn.message) &&
+            /\b(?:yes|okay|fine)\b/iu.test(speech)))
+      )
+        await tryRecord(project.id, { ...input, kind: "approval" });
+      else if (
+        context &&
+        flow.phase === "requirements" &&
+        line.speakerId === flow.builderId &&
+        /\b(?:structure|equipment|finish)\s*:/iu.test(speech)
+      )
+        await tryRecord(project.id, { ...input, kind: "requirements" });
+      else if (
+        context &&
+        ["builder", "requirements", "materials", "construction"].includes(flow.phase) &&
+        /\b(?:build|construct|renovat\w*|work on|do it|take it on|handle it)\b/iu.test(speech) &&
+        /\b(?:i will|i'll|i agree to|count me in)\b/iu.test(speech)
+      )
+        await tryRecord(project.id, { ...input, kind: "builder" });
+      if (flow.phase !== "materials") continue;
+      for (const requirement of flow.requirements.filter((entry) => entry.needed && !entry.carriedAt)) {
+        if (!line.content.toLocaleLowerCase().includes(requirement.title.toLocaleLowerCase())) continue;
+        const ambiguous = projects.some(
+          (other) =>
+            other.id !== project.id &&
+            other.lifecycle?.phase === "materials" &&
+            other.lifecycle.requirements.some(
+              (entry) =>
+                entry.needed &&
+                !entry.carriedAt &&
+                entry.title.toLocaleLowerCase() === requirement.title.toLocaleLowerCase(),
+            ),
+        );
+        if (ambiguous && !context) continue;
+        const source = (await readVillageState()).projects
+          .find((entry) => entry.id === project.id)
+          ?.lifecycle?.sources.find((entry) => entry.requirementId === requirement.id);
+        if (!source && offerVerb.test(speech))
+          await tryRecord(project.id, { ...input, kind: "offer", requirementId: requirement.id });
+        else if (source && handoffVerb.test(speech))
+          await tryRecord(project.id, { ...input, kind: "handoff", requirementId: requirement.id });
+      }
+    }
+  }
 }
 
 export async function recordExistingProjectSource(projectId: string, value: unknown): Promise<void> {

@@ -1337,7 +1337,7 @@ async function main() {
     const main = lively.session.lines.find((line) => line.id === aside.asideFor)!;
     assert.equal(main.speakerId, "tina", "side chatter stays attached to the preceding dialogue");
     assert.equal(aside.speakerId, "bob", "the aside keeps its own speaker");
-    assert.equal(aside.expression, "thinking");
+    assert.equal(aside.expression, undefined, "an unfilled sprite expression is dropped without losing the aside");
     assert.deepEqual(aside.heardBy, ["bob"], "a side remark keeps its own audience");
     assert.deepEqual(lively.session.lines.find((line) => line.kind === "whisper")?.heardBy, ["tina", "bob"]);
     narrationOnlyOnce = true;

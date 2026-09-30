@@ -1230,6 +1230,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return {
         engineVersion: village.progressEngineVersion,
         tasks: village.progressTasks,
+        speechProofs: village.projects.flatMap((project) =>
+          (project.lifecycle?.spokenProofs ?? []).map((proof) => ({ projectId: project.id, ...proof })),
+        ),
         backlog: await progressBacklog(),
       };
     } catch (error) {

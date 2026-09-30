@@ -52,3 +52,9 @@ jobs:
 
       - name: Run formatting and lint checks
         run: npm run check
+
+      - name: Verify Progress Engine and automatic Project evidence
+        run: |
+          npx tsx tests/villages-progress-engine.regression.ts
+          npx tsx tests/villages-progress-projects.regression.ts
+          npx tsx tests/villages-project-interpretation.regression.ts
