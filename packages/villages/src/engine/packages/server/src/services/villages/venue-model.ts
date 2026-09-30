@@ -45,8 +45,8 @@ export function defaultVenueSpace(venueClass: VillageVenueClass, description = "
 }
 
 export function venueSpaces(venue: VillageVenue): VillageVenueSpace[] {
-  return venue.spaces?.length
-    ? venue.spaces
+  return venue.layoutVersion === 1 || venue.spaces?.length
+    ? (venue.spaces ?? [])
     : venueClasses(venue).map((venueClass) => ({
         ...defaultVenueSpace(venueClass, venue.description),
         image: venue.presentation.image,

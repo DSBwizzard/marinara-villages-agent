@@ -3484,12 +3484,16 @@ async function main() {
       false,
     );
     assert.equal(destination.playerSeenPrivateIds?.includes("bob"), false);
-    assert.equal(destination.privateSpaces?.find((space) => space.ownerId === "bob")?.image, null);
+    assert.equal(
+      destination.privateSpaces?.find((space) => space.ownerId === "bob"),
+      undefined,
+      "no physical Private Area is created by a move",
+    );
     assert.ok(!destination.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt);
     await assert.rejects(
       () => setVillageVenueImage("new-home", null, "residence", "bob"),
-      /Visit this Residence space|current invitation/u,
-      "a move creates a fresh private room that has not been discovered",
+      /Visit this Residence space|current invitation|no longer exists/u,
+      "images cannot target a Private Area that was never assigned",
     );
     const parkExterior = await enterVenue("park", "workplace", "", "outside");
     assert.equal(parkExterior.area, "outside", "a public Venue also supports an explicit exterior visit");

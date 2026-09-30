@@ -11,6 +11,8 @@ import type { VillageVenue, VillageVenueZone } from "./types.js";
 export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone): string {
   return JSON.stringify([
     venue.form,
+    venue.layoutVersion,
+    venueZones(venue).map((area) => [area.id, area.kind, area.venueClass]),
     venue.imageContext,
     zone.name,
     zone.purpose,
@@ -31,7 +33,12 @@ async function prepare(signal?: AbortSignal): Promise<void> {
   const village = await readVillageState();
   const allRooms = village.venues.flatMap((venue) =>
     venueZones(venue)
-      .filter((zone) => zone.preparation?.status === "pending" && venue.constructionStatus !== "worksite")
+      .filter(
+        (zone) =>
+          zone.preparation?.status === "pending" &&
+          (zone.kind !== "private-residence" || !!zone.ownerId) &&
+          venue.constructionStatus !== "worksite",
+      )
       .map((zone) => {
         const owners = zoneControllerIds(venue, zone);
         return {
@@ -42,7 +49,8 @@ async function prepare(signal?: AbortSignal): Promise<void> {
           purpose: zone.purpose,
           form: venue.form,
           exterior: venue.description,
-          sharedInterior: venue.spaces?.[0]?.description,
+          commonArea: venue.spaces?.[0]?.description,
+          layout: venueZones(venue).map((area) => ({ id: area.id, kind: area.kind, name: area.name })),
           authoredDescription: zone.description,
           characters: village.villagers
             .filter((person) => owners.includes(person.characterId))
@@ -78,7 +86,7 @@ async function prepare(signal?: AbortSignal): Promise<void> {
       {
         role: "system",
         content:
-          'Define private spaces that already belong to these venues. Respect each venue form, world facts, authored description, selected lore and the occupants\' personalities. A tent corner is valid; never assume a bedroom. Derive an appropriate short name for a Private work area (vault, office, staff room, storage, etc.). Keep spaces distinct from shared interiors. Do not invent named people or exceptional possessions. Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"brief condition","items":["ordinary item"],"facts":["grounded physical detail"]}]}.',
+          'Define private spaces that already belong to these venues. Respect each venue form, world facts, authored description, selected lore and the occupants\' personalities. A tent corner is valid; never assume a bedroom. Derive an appropriate short name for a Private work area (vault, office, staff room, storage, etc.). Respect the actual saved zones. A Private Area can occupy the entire interior with no Common Area. Exterior-only venues have no interior. Do not invent adjoining rooms. Do not invent named people or exceptional possessions. Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"brief condition","items":["ordinary item"],"facts":["grounded physical detail"]}]}.',
       },
       {
         role: "user",
@@ -126,7 +134,7 @@ async function prepare(signal?: AbortSignal): Promise<void> {
         zone.state = {
           ...zone.state,
           condition: asTrimmedString(generated.condition).slice(0, 240),
-          items: list("items"),
+          items: venue.layoutVersion === 1 ? [...new Set([...zone.state.items, ...list("items")])] : list("items"),
           publicFacts: list("facts"),
           updatedAt: new Date().toISOString(),
         };

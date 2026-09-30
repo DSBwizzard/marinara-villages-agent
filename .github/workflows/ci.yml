@@ -90,6 +90,7 @@ jobs:
           npx tsx tests/villages-founding-flow.regression.ts
           npx tsx tests/villages-player-role.regression.ts
           npx tsx tests/villages-private-spaces.regression.ts
+          npx tsx tests/villages-optional-layouts.regression.ts
           npx tsx tests/villages-lorebooks.regression.ts
           npx tsx tests/villages-town-map-image.regression.ts
 
@@ -97,6 +98,7 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node tests/villages-founding-layout.e2e.mjs
+          node tests/villages-venue-layout.e2e.mjs
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs
 

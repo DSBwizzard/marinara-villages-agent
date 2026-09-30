@@ -641,11 +641,9 @@ async function main() {
       false,
     );
     assert.equal(
-      movedState.venues[1]?.privateSpaces
-        ?.find((space) => space.ownerId === "housing-resident")
-        ?.state.items.includes("shared table"),
+      (movedState.venues[1]?.privateSpaces ?? []).some((space) => space.ownerId === "housing-resident"),
       false,
-      "a new private space never copies shared furnishings",
+      "moving without a selected Private Area never creates a room",
     );
     assert.match(
       renderHomesBlock(projectHomeLines(await readVillageState(), new Map()), "Player"),

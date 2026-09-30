@@ -8,6 +8,11 @@ import {
 } from "./villages-player-role.js";
 import {
   FoundingVenueEditor,
+  VenueLayoutFields,
+  BaseZoneFields,
+  AreaClassField,
+  venueHasCommon,
+  venueHasPrivate,
   PrivateSpaceFields,
   personalSpaceDraft,
   SceneryStyleFields,
@@ -369,6 +374,7 @@ type VillageSnapshot = {
     characterId: string;
     venueId: string;
     proposedVenueId: string;
+    proposedPrivateZoneId?: string;
     status: "current" | "pending" | "moving";
     requestedBy?: "player" | "villager";
     completesAt?: string;
@@ -444,6 +450,7 @@ type BuildProject = {
     change: {
       classes?: VenueClass[];
       capacity?: number;
+      baseZones?: NonNullable<VillageVenue["zones"]>;
       slot?: number;
       improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
       detail: string;
@@ -586,19 +593,13 @@ function newSetupVenue(
   index = 1,
 ): SetupVenueDraft {
   const name = venueClass === "gathering" ? "Gathering Place" : playerHome ? "Your residence" : `Residence ${index}`;
-  const space = {
-    id: venueClass,
-    venueClass,
-    description: "",
-    image: null,
-    state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
-  };
   return {
     id,
     name,
     form: "",
     classes: [venueClass],
-    spaces: [space],
+    layoutVersion: 1,
+    spaces: [],
     residenceCapacity: 1,
     residentIds: [],
     improvements: [null, null],
@@ -662,6 +663,8 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  layoutVersion?: 1;
+  layout?: "exterior" | "common" | "private" | "both";
   imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
   id: string;
   constructionStatus?: "worksite" | "complete";
@@ -742,7 +745,8 @@ export type VillageVenue = {
     zones?: Array<{
       id?: string;
       name: string;
-      kind: "public" | "shared-residence" | "staff" | "restricted";
+      kind: "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
+      ownerId?: string;
       purpose?: string;
       controllerIds?: string[];
       description: string;
@@ -6751,8 +6755,9 @@ function VenueDraftFields({
   onChange: (next: VillageVenue) => void;
 }) {
   const classes = venueClassesFor(draft);
+  const spaceClasses = draft.layoutVersion === 1 ? (draft.spaces ?? []).map((space) => space.venueClass) : classes;
   const changeSpace = (venueClass: VenueClass, patch: Partial<NonNullable<VillageVenue["spaces"]>[number]>) => {
-    const spaces = classes.map((item) =>
+    const spaces = spaceClasses.map((item) =>
       item === venueClass ? { ...venueSpaceFor(draft, item), ...patch } : venueSpaceFor(draft, item),
     );
     onChange({ ...draft, spaces, description: spaces[0]?.description ?? draft.description });
@@ -6872,7 +6877,7 @@ function VenueDraftFields({
           {villagers.length === 0 ? <p className={`${ELEMENT_TAG}-hint`}>No villagers are available yet.</p> : null}
         </fieldset>
       ) : null}
-      {classes
+      {spaceClasses
         .filter((item) => !editableClasses || editableClasses.includes(item))
         .map((item) => {
           const space = venueSpaceFor(draft, item);
@@ -10841,11 +10846,15 @@ const PROJECT_PHASE_NAMES: Record<(typeof PROJECT_PHASES)[number], string> = {
 };
 
 function RenovationRevisionEditor({
+  venue,
+  people,
   project,
   busy,
   onSave,
 }: {
   project: BuildProject;
+  venue?: VillageVenue;
+  people: { id: string; name: string }[];
   busy: boolean;
   onSave: (body: unknown) => Promise<unknown>;
 }) {
@@ -10906,6 +10915,14 @@ function RenovationRevisionEditor({
             onChange={(event) => setChange({ ...change, capacity: Number(event.target.value) })}
           />
         </label>
+      ) : null}
+      {change.baseZones && venue ? (
+        <BaseZoneFields
+          venue={venue}
+          people={people}
+          zones={change.baseZones}
+          onChange={(baseZones) => setChange({ ...change, baseZones })}
+        />
       ) : null}
       {upgrade ? (
         <>
@@ -11000,7 +11017,8 @@ function RenovationRevisionEditor({
                                 venueClass:
                                   event.target.value === "staff"
                                     ? "workplace"
-                                    : event.target.value === "shared-residence"
+                                    : event.target.value === "shared-residence" ||
+                                        event.target.value === "private-residence"
                                       ? "residence"
                                       : (upgrade.classContribution ?? item.venueClass),
                               }
@@ -11011,10 +11029,39 @@ function RenovationRevisionEditor({
                   }
                 >
                   <option value="public">Public</option>
-                  <option value="shared-residence">Shared residential</option>
+                  <option value="shared-residence">Residential Common Area</option>
+                  <option value="private-residence">Residential Private Area · assigned resident</option>
                   <option value="staff">Staff</option>
                 </select>
               </label>
+              {zone.kind === "private-residence" ? (
+                <label>
+                  Assigned resident
+                  <select
+                    value={zone.ownerId ?? ""}
+                    disabled={!!venue?.zones?.some((area) => area.id === zone.id)}
+                    onChange={(event) =>
+                      setChange({
+                        ...change,
+                        improvement: {
+                          ...upgrade,
+                          zones: upgrade.zones!.map((area, i) =>
+                            i === index ? { ...area, ownerId: event.target.value || undefined } : area,
+                          ),
+                        },
+                      })
+                    }
+                  >
+                    <option value="">Vacant</option>
+                    {venue?.occupancy.playerHome ? <option value="player">You</option> : null}
+                    {venue?.residentIds?.map((id) => (
+                      <option key={id} value={id}>
+                        {people.find((person) => person.id === id)?.name ?? id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <button
                 type="button"
                 className={ELEMENT_TAG + "-button"}
@@ -11102,7 +11149,10 @@ function ProjectsPanelV2({
   const [venueClass, setVenueClass] = useState<VenueClass>("gathering");
   const [description, setDescription] = useState("");
   const [venueId, setVenueId] = useState("");
-  const [changeKind, setChangeKind] = useState<"class" | "capacity" | "upgrade" | "remove-upgrade">("upgrade");
+  const [changeKind, setChangeKind] = useState<"class" | "capacity" | "layout" | "upgrade" | "remove-upgrade">(
+    "upgrade",
+  );
+  const [baseZoneDrafts, setBaseZoneDrafts] = useState<NonNullable<VillageVenue["zones"]>>([]);
   const [baseClasses, setBaseClasses] = useState<VenueClass[]>(["gathering"]);
   const [upgradeTarget, setUpgradeTarget] = useState("");
   const [capacity, setCapacity] = useState(2);
@@ -11119,10 +11169,26 @@ function ProjectsPanelV2({
   const [exteriorImage, setExteriorImage] = useState<VillageVenueImage | null>(null);
   const [interiorImage, setInteriorImage] = useState<VillageVenueImage | null>(null);
   const [zoneImages, setZoneImages] = useState<Record<string, VillageVenueImage>>({});
-  const [imagePreview, setImagePreview] = useState<{ area: "exterior" | "interior"; image: VillageVenueImage } | null>(
-    null,
-  );
+  const [imagePreview, setImagePreview] = useState<{
+    area: "exterior" | "interior";
+    image: VillageVenueImage;
+    key: string;
+  } | null>(null);
   const [finishingVisit, setFinishingVisit] = useState(false);
+  const [openingLayout, setOpeningLayout] = useState<VillageVenue["layout"]>();
+  const [openingFocusArea, setOpeningFocusArea] = useState<"common" | "private">();
+  const openingEditors = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!openingFocusArea) return;
+    const area = openingEditors.current?.querySelector<HTMLElement>(`[data-layout-editor="${openingFocusArea}"]`);
+    area?.scrollIntoView({ block: "nearest" });
+    (area?.matches("input,textarea,select")
+      ? area
+      : area?.querySelector<HTMLElement>("input,textarea,select")
+    )?.focus();
+    setOpeningFocusArea(undefined);
+  }, [openingFocusArea, openingLayout]);
+  const [openingCommonClass, setOpeningCommonClass] = useState<VenueClass>();
   const [openingPrivateSpaces, setOpeningPrivateSpaces] = useState<NonNullable<VillageVenue["privateSpaces"]>>([]);
   const [openingPersonality, setOpeningPersonality] = useState(
     snapshot.settings.personalizeVenueImagesByDefault !== false,
@@ -11130,6 +11196,13 @@ function ProjectsPanelV2({
   const [openingLore, setOpeningLore] = useState(snapshot.settings.useVisualLoreByDefault !== false);
   useEffect(() => {
     setOpeningPrivateSpaces([]);
+    setOpeningLayout(undefined);
+    setOpeningCommonClass(undefined);
+    setForm("");
+    setExterior("");
+    setInterior("");
+    setExteriorImage(null);
+    setInteriorImage(null);
   }, [selectedId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -11143,6 +11216,37 @@ function ProjectsPanelV2({
   const flow = project?.lifecycle;
   const target = snapshot.settings.venues.find((entry) => entry.id === project?.venueId);
   const selectedVenue = snapshot.settings.venues.find((entry) => entry.id === venueId);
+  const openingVenue: VillageVenue | null = target
+    ? {
+        ...target,
+        layoutVersion: 1,
+        layout: openingLayout,
+        form,
+        description: exterior,
+        spaces:
+          openingLayout === "common" || openingLayout === "both"
+            ? [
+                {
+                  id: "common:base",
+                  venueClass: openingCommonClass || target.classes?.[0] || "other",
+                  description: interior,
+                  image: interiorImage,
+                  state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+                },
+              ]
+            : [],
+        privateSpaces: openingPrivateSpaces,
+      }
+    : null;
+  const patchOpeningLayout = (venue: VillageVenue) => {
+    setOpeningLayout(venue.layout);
+    setOpeningPrivateSpaces(venue.privateSpaces ?? []);
+    if (venue.spaces?.[0]) {
+      setOpeningCommonClass(venue.spaces[0].venueClass);
+      setInterior(venue.spaces[0].description);
+    }
+  };
+
   const selectedUpgrade = JSON.stringify(selectedVenue?.improvements?.[slot] ?? null);
   useEffect(() => {
     const upgrade = JSON.parse(selectedUpgrade) as NonNullable<VillageVenue["improvements"]>[number];
@@ -11159,6 +11263,12 @@ function ProjectsPanelV2({
       setUpgradeZones([]);
     }
   }, [selectedVenue?.id, selectedUpgrade, slot, upgradeMode]);
+  const selectedBaseZones = JSON.stringify(
+    selectedVenue?.zones?.filter((zone) => !zone.upgradeId && zone.kind !== "exterior") ?? [],
+  );
+  useEffect(() => {
+    setBaseZoneDrafts(JSON.parse(selectedBaseZones));
+  }, [selectedBaseZones]);
   const selectedBaseClasses = JSON.stringify(selectedVenue?.baseClasses ?? selectedVenue?.classes ?? ["gathering"]);
   useEffect(() => {
     setBaseClasses(JSON.parse(selectedBaseClasses) as VenueClass[]);
@@ -11188,6 +11298,7 @@ function ProjectsPanelV2({
             detail: description,
             ...(changeKind === "class" && selectedVenue ? { classes: baseClasses } : {}),
             ...(changeKind === "capacity" ? { capacity } : {}),
+            ...(changeKind === "layout" ? { baseZones: baseZoneDrafts } : {}),
             ...(changeKind === "upgrade"
               ? {
                   slot,
@@ -11214,7 +11325,19 @@ function ProjectsPanelV2({
       setDraftType("");
     }
   };
+  const openingImageKey = JSON.stringify([
+    project?.id,
+    openingVenue,
+    openingLore,
+    openingPersonality,
+    snapshot.settings.setting,
+    snapshot.settings.worldFacts,
+    snapshot.settings.sceneryArtStyle,
+  ]);
+  const openingImageKeyRef = useRef(openingImageKey);
+  openingImageKeyRef.current = openingImageKey;
   const generateImage = async (area: "exterior" | "interior") => {
+    const expectedKey = openingImageKey;
     if (!project) return;
     setBusy(true);
     setError("");
@@ -11228,6 +11351,14 @@ function ProjectsPanelV2({
             form: form || project.title,
             description: exterior || project.venueDraft?.description || target?.description,
             spaceDescription: interior || target?.spaces?.[0]?.description || exterior,
+            layout: project.kind === "new-venue" ? openingLayout : undefined,
+            areas: openingVenue
+              ? [...(openingVenue.spaces ?? []), ...(openingVenue.privateSpaces ?? [])].map((area) => ({
+                  role: area.venueClass,
+                  name: area.name,
+                  purpose: area.purpose,
+                }))
+              : [],
             venueClass: project.venueDraft?.classes?.[0] ?? target?.classes?.[0] ?? "other",
           },
           area,
@@ -11240,7 +11371,11 @@ function ProjectsPanelV2({
           useAssignedVillagerContext: openingPersonality,
         }),
       });
-      setImagePreview({ area, image });
+      if (openingImageKeyRef.current !== expectedKey) {
+        setError("The Venue changed while the image was being prepared. Generate a fresh image.");
+        return;
+      }
+      setImagePreview({ area, image, key: expectedKey });
     } catch (cause) {
       setError(messageFrom(cause, "The Venue image could not be generated."));
     } finally {
@@ -11248,6 +11383,7 @@ function ProjectsPanelV2({
     }
   };
   const uploadImage = async (area: "exterior" | "interior", file?: File) => {
+    const expectedKey = openingImageKey;
     if (!file || !project) return;
     setBusy(true);
     setError("");
@@ -11256,7 +11392,11 @@ function ProjectsPanelV2({
         method: "PUT",
         body: JSON.stringify({ name: project.title, image: await readFileAsDataUrl(file) }),
       });
-      setImagePreview({ area, image });
+      if (openingImageKeyRef.current !== expectedKey) {
+        setError("The Venue changed while the image was being prepared. Generate a fresh image.");
+        return;
+      }
+      setImagePreview({ area, image, key: expectedKey });
     } catch (cause) {
       setError(messageFrom(cause, "The Venue image could not be uploaded."));
     } finally {
@@ -11266,7 +11406,7 @@ function ProjectsPanelV2({
   const phase = flow?.phase;
   if (project && phase === "finishing" && finishingVisit)
     return (
-      <div className={`${ELEMENT_TAG}-project-finish-visit`}>
+      <div className={`${ELEMENT_TAG}-project-finish-visit`} ref={openingEditors}>
         <header>
           <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setFinishingVisit(false)}>
             Back to Project
@@ -11300,14 +11440,26 @@ function ProjectsPanelV2({
                 placeholder="What is this place, physically?"
               />
             </label>
+            {openingVenue ? (
+              <VenueLayoutFields venue={openingVenue} onChange={patchOpeningLayout} onReveal={setOpeningFocusArea} />
+            ) : null}
             <label>
               Exterior description
               <textarea value={exterior} onChange={(event) => setExterior(event.target.value)} />
             </label>
-            <label>
-              Interior description
-              <textarea value={interior} onChange={(event) => setInterior(event.target.value)} />
-            </label>
+            {openingVenue && venueHasCommon(openingVenue) ? (
+              <>
+                <AreaClassField venue={openingVenue} privateArea={false} onChange={patchOpeningLayout} />
+                <label>
+                  Common Area description
+                  <textarea
+                    data-layout-editor="common"
+                    value={interior}
+                    onChange={(event) => setInterior(event.target.value)}
+                  />
+                </label>
+              </>
+            ) : null}
             <label>
               <input
                 type="checkbox"
@@ -11321,55 +11473,72 @@ function ProjectsPanelV2({
               Use selected visual lore
             </label>
             {target?.classes?.includes("residence") ? (
-              <p>Each occupant receives a personal space when they move in.</p>
+              <p>
+                Capacity starts at one resident. A residential Private Area is assigned explicitly when someone moves
+                in.
+              </p>
             ) : null}
-            <PrivateSpaceFields
-              rooms={openingPrivateSpaces}
-              onChange={setOpeningPrivateSpaces}
-              workplace={target?.classes?.includes("workplace")}
-              people={[
-                { id: "player", name: "You" },
-                ...snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name })),
-              ]}
-            />
+            {openingVenue && venueHasPrivate(openingVenue) ? (
+              <>
+                <AreaClassField venue={openingVenue} privateArea onChange={patchOpeningLayout} />
+                <div data-layout-editor="private">
+                  <PrivateSpaceFields
+                    allowAdd={false}
+                    rooms={openingPrivateSpaces}
+                    onChange={(rooms) => {
+                      setOpeningPrivateSpaces(rooms);
+                      if (!rooms.length) setOpeningLayout(openingLayout === "both" ? "common" : "exterior");
+                    }}
+                    workplace={openingPrivateSpaces[0]?.venueClass === "workplace"}
+                    people={[
+                      { id: "player", name: "You" },
+                      ...snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name })),
+                    ]}
+                  />
+                </div>
+              </>
+            ) : null}
           </>
         ) : (
           <p>{flow?.change?.detail}</p>
         )}
-        {(["exterior", ...(project.kind === "new-venue" ? ["interior"] : [])] as Array<"exterior" | "interior">).map(
-          (area) => {
-            const image = area === "exterior" ? exteriorImage : interiorImage;
-            return (
-              <section key={area} className={`${ELEMENT_TAG}-project-image`}>
-                <h3>{area === "exterior" ? "Exterior" : "Interior"} image · optional</h3>
-                {image ? (
-                  <img src={image.url} alt={`${area} preview`} />
-                ) : (
-                  <p>No image chosen. A placeholder will be used.</p>
-                )}
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy}
-                  onClick={() => void generateImage(area)}
-                >
-                  Generate image
-                </button>
-                <input
-                  type="file"
-                  accept="image/*"
-                  aria-label={`Upload ${area} image`}
-                  disabled={busy}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    void uploadImage(area, file);
-                  }}
-                />
-              </section>
-            );
-          },
-        )}
+        {(
+          [
+            "exterior",
+            ...(project.kind === "new-venue" && openingVenue && venueHasCommon(openingVenue) ? ["interior"] : []),
+          ] as Array<"exterior" | "interior">
+        ).map((area) => {
+          const image = area === "exterior" ? exteriorImage : interiorImage;
+          return (
+            <section key={area} className={`${ELEMENT_TAG}-project-image`}>
+              <h3>{area === "exterior" ? "Exterior" : "Common Area"} image · optional</h3>
+              {image ? (
+                <img src={image.url} alt={`${area} preview`} />
+              ) : (
+                <p>No image chosen. A placeholder will be used.</p>
+              )}
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={busy}
+                onClick={() => void generateImage(area)}
+              >
+                Generate image
+              </button>
+              <input
+                type="file"
+                accept="image/*"
+                aria-label={`Upload ${area} image`}
+                disabled={busy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void uploadImage(area, file);
+                }}
+              />
+            </section>
+          );
+        })}
         {project.kind === "renovation"
           ? (flow?.change?.improvement?.zones ?? []).map((zone) => (
               <section key={zone.id} className={ELEMENT_TAG + "-project-image"}>
@@ -11410,7 +11579,7 @@ function ProjectsPanelV2({
               </section>
             ))
           : null}
-        {imagePreview ? (
+        {imagePreview && imagePreview.key === openingImageKey ? (
           <section className={`${ELEMENT_TAG}-project-image`}>
             <img src={imagePreview.image.url} alt="Generated Venue candidate" />
             <button
@@ -11432,7 +11601,14 @@ function ProjectsPanelV2({
         <button
           type="button"
           className={`${ELEMENT_TAG}-button`}
-          disabled={busy || (project.kind === "new-venue" && (!form.trim() || !exterior.trim() || !interior.trim()))}
+          disabled={
+            busy ||
+            (project.kind === "new-venue" &&
+              (!form.trim() ||
+                !exterior.trim() ||
+                !openingLayout ||
+                ((openingLayout === "common" || openingLayout === "both") && !interior.trim())))
+          }
           onClick={async () => {
             const next = await action("open", {
               form,
@@ -11441,6 +11617,9 @@ function ProjectsPanelV2({
               exteriorImage,
               interiorImage,
               zoneImages,
+              layoutVersion: 1,
+              layout: openingLayout,
+              spaces: openingVenue?.spaces ?? [],
               privateSpaces: openingPrivateSpaces,
               imageContext: { useAssignedVillagerContext: openingPersonality, useVisualLore: openingLore },
             });
@@ -11526,6 +11705,7 @@ function ProjectsPanelV2({
                       <option value="upgrade">Add or replace an Upgrade</option>
                       <option value="remove-upgrade">Remove an Upgrade</option>
                       <option value="class">Change base Classes</option>
+                      <option value="layout">Change base layout</option>
                       <option value="capacity">Change Residence capacity</option>
                     </select>
                   </label>
@@ -11550,6 +11730,14 @@ function ProjectsPanelV2({
                         </label>
                       ))}
                     </fieldset>
+                  ) : null}
+                  {changeKind === "layout" && selectedVenue ? (
+                    <BaseZoneFields
+                      venue={selectedVenue}
+                      people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
+                      zones={baseZoneDrafts}
+                      onChange={setBaseZoneDrafts}
+                    />
                   ) : null}
                   {changeKind === "capacity" ? (
                     <label>
@@ -11644,7 +11832,8 @@ function ProjectsPanelV2({
                                           ...item,
                                           kind: event.target.value as typeof zone.kind,
                                           venueClass:
-                                            event.target.value === "shared-residence"
+                                            event.target.value === "shared-residence" ||
+                                            event.target.value === "private-residence"
                                               ? "residence"
                                               : event.target.value === "staff"
                                                 ? "workplace"
@@ -11656,12 +11845,13 @@ function ProjectsPanelV2({
                               }
                             >
                               <option value="public">Public · everyone</option>
-                              <option value="shared-residence">Shared living · residents and guests</option>
+                              <option value="shared-residence">Common Area · residents and guests</option>
+                              <option value="private-residence">Residential Private Area · assigned resident</option>
                               <option value="staff">Staff · all current workers and guests</option>
                               <option value="restricted">Private · assigned controllers and guests</option>
                             </select>
                           </label>
-                          {["staff", "restricted"].includes(zone.kind) ? (
+                          {["private-residence", "staff", "restricted"].includes(zone.kind) ? (
                             <label>
                               Purpose
                               <input
@@ -11675,6 +11865,28 @@ function ProjectsPanelV2({
                                   )
                                 }
                               />
+                            </label>
+                          ) : null}
+                          {zone.kind === "private-residence" ? (
+                            <label>
+                              Assigned resident
+                              <select
+                                value={zone.ownerId || ""}
+                                onChange={(event) =>
+                                  setUpgradeZones((current) =>
+                                    current?.map((item, i) =>
+                                      i === index ? { ...item, ownerId: event.target.value || undefined } : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <option value="">Vacant · assign on move-in</option>
+                                {selectedVenue?.residentIds?.map((id) => (
+                                  <option key={id} value={id}>
+                                    {snapshot.villagers.find((person) => person.characterId === id)?.name || id}
+                                  </option>
+                                ))}
+                              </select>
                             </label>
                           ) : null}
                           {zone.kind === "restricted" ? (
@@ -11824,6 +12036,8 @@ function ProjectsPanelV2({
               <RenovationRevisionEditor
                 key={project.id + project.updatedAt}
                 project={project}
+                venue={target}
+                people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
                 busy={busy}
                 onSave={(body) => run(`/projects/${encodeURIComponent(project.id)}/revise`, body)}
               />
@@ -12307,6 +12521,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [venueEditError, setVenueEditError] = useState("");
   const [venueEditNotice, setVenueEditNotice] = useState("");
   const [moveTargetId, setMoveTargetId] = useState("");
+  const [playerMovePrivateZoneId, setPlayerMovePrivateZoneId] = useState("");
+  const [movePrivateZoneId, setMovePrivateZoneId] = useState("");
   /**
    * Which pin on the map is showing its doors.
    *
@@ -14129,9 +14345,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * happens, so the pin is the door and the place decides what is behind it.
    *
    * Every place offers both its details and an entrance. When nobody is present,
-   * Enter opens the place's own action view; otherwise it opens the shared room.
+   * Enter opens the place's own action view; otherwise it opens the Common Area.
    */
   const openVenue = useCallback((place: VillageVenue) => {
+    setPlayerMovePrivateZoneId("");
+    setMovePrivateZoneId("");
     setPlacesOpen(false);
     setOpenPlaceId(place.id);
     setScreen("home");
@@ -14937,7 +15155,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 ? "form"
                 : !venue.description.trim()
                   ? "exterior-description"
-                  : !venue.spaces?.[0]?.description.trim()
+                  : (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
+                      (venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim())
                     ? "interior-description"
                     : "",
           }))
@@ -15021,6 +15240,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     form: venue.form ?? "",
     description: venue.description,
     spaceDescription: venue.spaces?.[0]?.description ?? "",
+    layout: venue.layout,
+    layoutVersion: venue.layoutVersion,
+    areas: [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].map((area) => ({
+      name: "name" in area ? area.name : "Common Area",
+      purpose: "purpose" in area ? area.purpose : "",
+      venueClass: area.venueClass,
+    })),
     venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
     residentCharacterId: venue.occupancy.residentCharacterId ?? "",
   });
@@ -15152,15 +15378,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       !selectedSetupVenue.name.trim() ||
       !selectedSetupVenue.form?.trim() ||
       !selectedSetupVenue.description.trim() ||
-      !selectedSetupVenue.spaces?.[0]?.description.trim()
+      (!snapshot?.isFounded && selectedSetupVenue.layoutVersion === 1 && !selectedSetupVenue.layout) ||
+      (venueHasCommon(selectedSetupVenue) && !selectedSetupVenue.spaces?.[0]?.description.trim())
     ) {
-      setSetupProblem("Complete this venue’s name, form, exterior, and interior.");
+      setSetupProblem("Complete this venue’s name, form, layout, exterior, and selected Common Area.");
       return;
     }
     if (
       selectedSetupVenue.privateSpaces?.some(
         (room) =>
-          room.ownerId !== "player" && (!room.name?.trim() || !room.purpose?.trim() || !room.controllerIds?.length),
+          !room.name?.trim() ||
+          !room.purpose?.trim() ||
+          (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
       )
     ) {
       setSetupProblem("Give each private room a name, purpose, and controller.");
@@ -15206,10 +15435,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.name.trim() ||
           !venue.form?.trim() ||
           !venue.description.trim() ||
-          !venue.spaces?.[0]?.description.trim(),
+          (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
+          (venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()),
       )
     )
-      return "Complete each venue's Form, Exterior Description, and Interior Description in Step 4.";
+      return "Complete each venue's Form, Layout, Exterior, and selected Common Area in Step 4.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -15240,7 +15470,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.name.trim() ||
           !venue.form?.trim() ||
           !venue.description.trim() ||
-          !venue.spaces?.[0]?.description.trim(),
+          (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
+          (venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()),
       );
       if (incomplete) {
         const field = !incomplete.name.trim()
@@ -16136,7 +16367,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       {
         key: "exterior",
         label: "Exterior",
-        subtitle: "Outside the building",
+        subtitle: "Exterior / grounds",
         area: "outside",
         spaceClass: classes[0]!,
         ownerId: "",
@@ -16156,8 +16387,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         const canEnter = !residence || !occupiedResidence || place.occupancy.playerHome || sharedInvitation;
         return {
           key: `class:${item}`,
-          label: classes.length === 1 ? "Interior" : `${item[0]!.toUpperCase()}${item.slice(1)} interior`,
-          subtitle: residence ? "Shared living space" : `${item[0]!.toUpperCase()}${item.slice(1)} space`,
+          label: "Common Area",
+          subtitle: residence ? "Common Area" : `${item[0]!.toUpperCase()}${item.slice(1)} space`,
           area: residence ? "shared" : "public",
           spaceClass: item,
           ownerId: "",
@@ -16180,7 +16411,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           );
           return {
             key: `private:${space.ownerId}`,
-            label: `${ownerName}'s Private Space`,
+            label: `${ownerName}'s Private Area`,
             subtitle: "Restricted area",
             area: "private",
             spaceClass: "residence",
@@ -16228,18 +16459,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             label:
               zone.kind === "private-residence"
                 ? zone.ownerId === "player"
-                  ? "Your personal space"
-                  : nameOfCharacter(zone.ownerId ?? "") + "'s Private Space"
+                  ? "Your Private Area"
+                  : zone.ownerId
+                    ? nameOfCharacter(zone.ownerId) + "'s Private Area"
+                    : zone.name + " (vacant)"
                 : zone.name,
             subtitle:
               zone.kind === "staff"
                 ? "Staff area"
                 : zone.kind === "shared-residence"
-                  ? "Shared living space"
+                  ? "Common Area"
                   : zone.kind === "private-residence"
-                    ? "Resident's personal space"
+                    ? "Residential Private Area"
                     : zone.kind === "exterior"
-                      ? "Outside the building"
+                      ? "Exterior / grounds"
                       : "Public area",
             area,
             spaceClass: zone.venueClass,
@@ -16404,16 +16637,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       form: venue.form,
       workerIds: venue.workerIds,
       position: { x: venue.presentation.x, y: venue.presentation.y },
-      spaces: classes.map((item) => {
-        const space = venueSpaceFor(venue, item);
-        return {
-          description: space.description,
-          condition: space.state.condition,
-          items: space.state.items,
-          publicFacts: space.state.publicFacts,
-          features: space.state.features.map(({ id, text, locked }) => ({ id, text, locked })),
-        };
-      }),
+      spaces: (venue.layoutVersion === 1 ? (venue.spaces ?? []).map((space) => space.venueClass) : classes).map(
+        (item) => {
+          const space = venueSpaceFor(venue, item);
+          return {
+            description: space.description,
+            condition: space.state.condition,
+            items: space.state.items,
+            publicFacts: space.state.publicFacts,
+            features: space.state.features.map(({ id, text, locked }) => ({ id, text, locked })),
+          };
+        },
+      ),
       privateSpaces: venue.privateSpaces?.map((space) => ({
         ownerId: space.ownerId,
         description: space.description,
@@ -16523,7 +16758,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           method: "POST",
           body: JSON.stringify({ target, ownerId, description: space.description, state: space.state }),
         });
-        refreshEditor(next, `${target === "private" ? "Private" : "Shared"} room edit proposed.`);
+        refreshEditor(next, `${target === "private" ? "Private Area" : "Common Area"} edit proposed.`);
       } catch (cause) {
         setVenueEditError(messageFrom(cause, "That room edit could not be proposed."));
       } finally {
@@ -16567,20 +16802,56 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     Edit Venue
                   </button>
                   {classes.includes("residence") && !place.occupancy.playerHome ? (
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      onClick={() => {
-                        setVenueEditError("");
-                        void request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}/player-move`, {
-                          method: "POST",
-                        })
-                          .then(setSnapshot)
-                          .catch((cause) => setVenueEditError(messageFrom(cause, "The move could not be requested.")));
-                      }}
-                    >
-                      Request to live here
-                    </button>
+                    <>
+                      <label>
+                        Your destination Private Area
+                        <select
+                          aria-label="Your destination Private Area"
+                          value={playerMovePrivateZoneId}
+                          onChange={(event) => setPlayerMovePrivateZoneId(event.target.value)}
+                        >
+                          <option value="">No Private Area</option>
+                          {place.zones
+                            ?.filter(
+                              (zone) =>
+                                zone.kind === "private-residence" &&
+                                !zone.ownerId &&
+                                !zone.closed &&
+                                !snapshot.residences.some(
+                                  (move) =>
+                                    move.status === "moving" &&
+                                    move.proposedVenueId === place.id &&
+                                    move.proposedPrivateZoneId === zone.id,
+                                ),
+                            )
+                            .map((zone) => (
+                              <option key={zone.id} value={zone.id}>
+                                {zone.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        onClick={() => {
+                          setVenueEditError("");
+                          void request<VillageSnapshot>(
+                            `/locations/venue/${encodeURIComponent(place.id)}/player-move`,
+                            {
+                              method: "POST",
+                              body: JSON.stringify({ privateZoneId: playerMovePrivateZoneId }),
+                            },
+                          )
+                            .then(setSnapshot)
+                            .catch((cause) =>
+                              setVenueEditError(messageFrom(cause, "The move could not be requested.")),
+                            );
+                        }}
+                      >
+                        Request to live here
+                      </button>
+                    </>
                   ) : null}
                   <button
                     type="button"
@@ -16837,7 +17108,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 />
                 {occupiedResidence ? (
                   <p className={`${ELEMENT_TAG}-hint`}>
-                    Save Venue details updates the public fields. Changes to the shared Residence room require a
+                    Save Venue details updates the public fields. Changes to the residential Common Area require a
                     separate proposal during an invited visit.
                   </p>
                 ) : null}
@@ -16857,13 +17128,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       disabled={venueEditBusy || !venueSpaceFor(venueEditDraft, "residence").description.trim()}
                       onClick={() => void proposeRoomEdit("shared")}
                     >
-                      Propose shared room edit
+                      Propose Common Area edit
                     </button>
                   ) : null}
                 </div>
                 {occupiedResidence && !liveShared ? (
                   <p className={`${ELEMENT_TAG}-hint`}>
-                    Enter with a resident's invitation to propose changes to the shared room's contents.
+                    Enter with a resident's invitation to propose changes to the Common Area's contents.
                   </p>
                 ) : null}
               </section>
@@ -16990,7 +17261,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <h2 className={`${ELEMENT_TAG}-panel-title`}>Resident moves</h2>
                 <select
                   value={moveTargetId}
-                  onChange={(event) => setMoveTargetId(event.target.value)}
+                  onChange={(event) => {
+                    setMoveTargetId(event.target.value);
+                    setMovePrivateZoneId("");
+                  }}
                   aria-label="Destination for resident move"
                 >
                   <option value="">Choose a Residence with an available bed</option>
@@ -17007,6 +17281,35 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       </option>
                     ))}
                 </select>
+                <label>
+                  Destination Private Area
+                  <select
+                    aria-label="Destination Private Area"
+                    value={movePrivateZoneId}
+                    onChange={(event) => setMovePrivateZoneId(event.target.value)}
+                  >
+                    <option value="">No Private Area</option>
+                    {snapshot.settings.venues
+                      .find((venue) => venue.id === moveTargetId)
+                      ?.zones?.filter(
+                        (zone) =>
+                          zone.kind === "private-residence" &&
+                          !zone.ownerId &&
+                          !zone.closed &&
+                          !snapshot.residences.some(
+                            (move) =>
+                              move.status === "moving" &&
+                              move.proposedVenueId === moveTargetId &&
+                              move.proposedPrivateZoneId === zone.id,
+                          ),
+                      )
+                      .map((zone) => (
+                        <option key={zone.id} value={zone.id}>
+                          {zone.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
                 {(place.residentIds ?? []).map((residentId) => {
                   const move = snapshot.residences.find(
                     (entry) => entry.characterId === residentId && entry.status !== "current",
@@ -17027,7 +17330,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             setVenueEditBusy(true);
                             void request<VillageSnapshot>("/residences/proposals", {
                               method: "POST",
-                              body: JSON.stringify({ characterId: residentId, venueId: moveTargetId }),
+                              body: JSON.stringify({
+                                characterId: residentId,
+                                venueId: moveTargetId,
+                                privateZoneId: movePrivateZoneId,
+                              }),
                             })
                               .then(setSnapshot)
                               .catch((cause) =>
@@ -20048,6 +20355,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     <FoundingVenueEditor
                       key={selectedSetupVenue.id}
                       venue={selectedSetupVenue}
+                      existing={snapshot.isFounded}
                       tag={ELEMENT_TAG}
                       people={wizardVillagers}
                       assignedIds={setupVenues
@@ -20149,7 +20457,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </div>
                     {setupVenues.map((venue) => (
                       <p key={`${venue.id}-summary`} className={`${ELEMENT_TAG}-hint`}>
-                        <strong>{venue.name}:</strong> {venue.description} {venue.spaces?.[0]?.description}
+                        <strong>{venue.name}:</strong> Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Areas ·{" "}
+                        {venueHasPrivate(venue) ? "1" : "0"} Private Areas. {venue.description}{" "}
+                        {venue.spaces?.[0]?.description}
                       </p>
                     ))}
                   </section>

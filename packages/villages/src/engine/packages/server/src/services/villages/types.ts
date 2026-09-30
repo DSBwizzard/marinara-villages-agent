@@ -609,9 +609,9 @@ export type VillageVenueZone = VillageVenueSpace & {
   adaptationPending?: boolean;
   adaptationSourceArchiveAt?: string;
 };
-export type VillageZoneDraft = Pick<
+export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   VillageVenueZone,
-  "id" | "name" | "kind" | "description" | "venueClass" | "purpose" | "controllerIds"
+  "id" | "name" | "kind" | "description" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
 >;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
@@ -651,6 +651,8 @@ export type VillageVenueImprovement = {
 };
 
 export type VillageVenue = {
+  /** Explicit layouts never synthesize absent interiors. */
+  layoutVersion?: 1;
   imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
   /** Stable within one village; every literal location reference uses this id. */
   id: string;
@@ -724,6 +726,7 @@ export type VillageVenue = {
 
 /** A durable Venue decision shown in the player's Mailbox. */
 export type VillageVenueMail = {
+  proposedPrivateZoneId?: string;
   id: string;
   venueId: string;
   title: string;
@@ -811,6 +814,7 @@ export type VillageVenueDraft = {
 
 /** A home is now an occupancy fact on a venue, never a second place system. */
 export type VillageResidence = {
+  proposedPrivateZoneId?: string;
   venueId: string;
   characterId: string;
   status: "current" | "pending" | "moving";
@@ -1065,6 +1069,7 @@ export type VillageProjectLifecycle = {
   change: {
     classes?: VillageVenueClass[];
     capacity?: number;
+    baseZones?: VillageZoneDraft[];
     homeKind?: HomeBuildingKind;
     slot?: number;
     improvement?: VillageVenueImprovement | null;

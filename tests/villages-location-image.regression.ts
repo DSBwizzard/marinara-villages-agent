@@ -405,6 +405,7 @@ async function main() {
       "id",
       "imageContext",
       "improvements",
+      "layoutVersion",
       "name",
       "occupancy",
       "playerInvitations",
