@@ -11,9 +11,9 @@ const output = resolve(".build-tmp/sprite-studio-browser");
 await mkdir(output, { recursive: true });
 await build({
   stdin: {
-    contents: `import React from "react"; import {createRoot} from "react-dom/client"; import {SpriteStudio,clearStudioMatte,renderStudioCell,studioRenderKey} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-studio.tsx").replaceAll("\\", "/")}"; import {SPRITE_STYLES,defaultStudioState} from "${resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts").replaceAll("\\", "/")}";
+    contents: `import React from "react"; import {createRoot} from "react-dom/client"; import {SpriteStudio,clearStudioMatte,renderStudioCell,studioRenderKey} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-studio.tsx").replaceAll("\\", "/")}"; import {SPRITE_STYLES,STUDIO_NEGATIVE_PROMPT,studioPrompt,defaultStudioState} from "${resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts").replaceAll("\\", "/")}";
 import {createStudioRenderCache} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-render-cache.ts").replaceAll("\\", "/")}";
-  window.makeRenderCache=createStudioRenderCache; window.renderKey=studioRenderKey; window.styleExamples=SPRITE_STYLES; window.defaultStudio=defaultStudioState; window.renderCell=renderStudioCell; window.clearMatte=clearStudioMatte;
+  window.makeRenderCache=createStudioRenderCache; window.renderKey=studioRenderKey; window.styleExamples=SPRITE_STYLES; window.studioPrompt=studioPrompt; window.studioNegativePrompt=STUDIO_NEGATIVE_PROMPT; window.defaultStudio=defaultStudioState; window.renderCell=renderStudioCell; window.clearMatte=clearStudioMatte;
   const root=createRoot(document.getElementById("root"));
   let villager={characterId:"mara",name:"Mara",sprite:null};
   const request=async(path,init)=>{const r=await fetch("/api"+path,init);const data=await r.json();if(!r.ok)throw Error(data.error);return data;};
@@ -75,6 +75,8 @@ for (const profile of browserProfiles) {
     generated = 0,
     previewed = 0,
     seq = 0;
+  let planRevision = "first";
+  const submittedPlans = [];
   const cellsOf = (job) => job.sheets.flatMap((sheet) => sheet.cells);
   const allCells = () => state.jobs.flatMap(cellsOf);
   const snapshot = () => ({
@@ -125,12 +127,36 @@ for (const profile of browserProfiles) {
       for (let offset = 0; offset < body.expressions.length;) {
         const count = Math.min(body.individual ? 1 : 6, body.expressions.length - offset);
         const [cols, rows] = count === 1 ? [1, 1] : count === 2 ? [2, 1] : count < 5 ? [2, 2] : [3, 2];
-        result.batches.push({ count, cols, rows, width: 1536, height: 1536 });
+        const batch = { count, cols, rows, width: 1536, height: 1536 };
+        batch.request = await page.evaluate(
+          ({ batch, body, offset, planRevision }) => {
+            const prompt = window.studioPrompt({
+              name: "Mara",
+              appearance: "Test character " + planRevision,
+              style: body.settings.prompts[body.settings.style],
+              view: body.view,
+              expressions: body.expressions.slice(offset, offset + batch.count),
+              batch,
+              matteHex: "#FF00FF",
+            });
+            return {
+              pipelineVersion: 2,
+              matteHex: "#FF00FF",
+              draftPrompt: prompt,
+              prompt,
+              negativePrompt: window.studioNegativePrompt,
+              fingerprint: "fixture",
+            };
+          },
+          { batch, body, offset, planRevision },
+        );
+        result.batches.push(batch);
         offset += count;
       }
     }
     if (action === "/jobs" && !state.jobs.some((job) => job.id === body.submissionId)) {
       generated++;
+      submittedPlans.push(body.plan);
       state.settings = body.settings;
       const job = {
         id: body.submissionId,
@@ -312,9 +338,36 @@ for (const profile of browserProfiles) {
     await page.getByLabel("Art style", { exact: true }).selectOption("BATTLEHIGHWAY");
     await page.getByText("Style prompt", { exact: true }).click();
     await expect(page.getByLabel("Drawing instructions")).toContainText("Sonic Battle");
+    await page.getByText("Image request", { exact: true }).click();
+    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText("Sonic Battle");
+    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText(
+      "exactly 3 columns and 2 rows",
+    );
+    await expect(page.getByLabel("Sheet 1 negative prompt", { exact: true })).toContainText("overlapping sprites");
     await page.getByLabel("Art style", { exact: true }).selectOption("PAPERCRAFT");
+    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText(
+      "handcrafted 2D papercraft",
+    );
+    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
+    planRevision = "changed";
+    await page.getByRole("button", { name: "Generate", exact: true }).click();
+    await expect(
+      page.getByText("Summary refreshed. Review the image request and click Generate again.", { exact: true }),
+    ).toBeVisible();
+    assert.equal(generated, 0, "a changed plan needs review before generation");
+    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText("Test character changed");
+    if (!(await page.getByLabel("Sheet 1 positive prompt", { exact: true }).isVisible()))
+      await page.getByText("Image request", { exact: true }).click();
+    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Sheet 1 negative prompt", { exact: true })).toBeVisible();
+    await page.screenshot({ path: join(output, profile.name + "-request.png"), fullPage: true });
+    const displayedPrompt = await page.getByLabel("Sheet 1 positive prompt", { exact: true }).textContent();
+    const displayedNegative = await page.getByLabel("Sheet 1 negative prompt", { exact: true }).textContent();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
     await page.getByRole("button", { name: "Generate", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Saved artwork", exact: true })).toBeVisible();
+    assert.equal(submittedPlans[0].batches[0].request.prompt, displayedPrompt);
+    assert.equal(submittedPlans[0].batches[0].request.negativePrompt, displayedNegative);
     assert.equal(generated, 1);
     assert.ok(previewed >= 2, "plan refreshes automatically");
     await expect(page.locator(".vss-card")).toHaveCount(6);

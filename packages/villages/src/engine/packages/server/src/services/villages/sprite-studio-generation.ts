@@ -7,6 +7,7 @@ import { asRecord, asString } from "./coerce.js";
 import { decodeVillageImageDataUrl, imagePromptId } from "./image-generation.js";
 import {
   studioPrompt,
+  STUDIO_NEGATIVE_PROMPT,
   type StudioBatch,
   type StudioPlan,
   type StudioView,
@@ -16,7 +17,7 @@ import {
 type Expression = { label: string; pose: string };
 type Identity = { name: string; appearance: string; style: string; view: StudioView; referenceUrl: string };
 type Connection = { id: string; name: string; model: string; source: string };
-export const STUDIO_PIPELINE_VERSION = 1;
+export const STUDIO_PIPELINE_VERSION = 2;
 const PATH = "/api/characters/avatar-generation";
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const enabled = (value: unknown) => value === true || value === "true";
@@ -80,7 +81,7 @@ function requestBody(
   reference: string,
   batch: StudioBatch,
   prompt: string,
-  negativePrompt = "",
+  negativePrompt = STUDIO_NEGATIVE_PROMPT,
 ) {
   return {
     connectionId,
@@ -101,15 +102,12 @@ async function preview(body: ReturnType<typeof requestBody>) {
   if (items.length !== 1 || !item || item.id !== body.promptOverrides[0]!.id)
     throw badRequest("This image model cannot preview one sheet request. Choose a different image connection.");
   const width = Number(item.width),
-    height = Number(item.height),
-    prompt = asString(item.prompt);
-  if (
-    ![width, height].every((v) => Number.isInteger(v) && v > 0 && v <= 4096) ||
-    width * height > 16_000_000 ||
-    !prompt
-  )
+    height = Number(item.height);
+  if (![width, height].every((v) => Number.isInteger(v) && v > 0 && v <= 4096) || width * height > 16_000_000)
     throw badRequest("The image connection did not report a usable sprite request.");
-  return { width, height, prompt, negativePrompt: asString(item.negativePrompt) };
+  // Character-sheet previews ignore overrides and return a generic design-sheet
+  // prompt. Only their dimensions describe our request; Villages owns its text.
+  return { width, height };
 }
 
 function fingerprint(connection: Connection, body: ReturnType<typeof requestBody>, matteHex: string) {
@@ -140,13 +138,13 @@ export async function planVillageStudioSheets(
         target = { ...target, width: compiled.width, height: compiled.height };
         continue;
       }
-      const body = requestBody(connectionId, identity, reference, target, compiled.prompt, compiled.negativePrompt);
+      const body = requestBody(connectionId, identity, reference, target, draftPrompt);
       target.request = {
         pipelineVersion: STUDIO_PIPELINE_VERSION,
         matteHex,
         draftPrompt,
-        prompt: compiled.prompt,
-        negativePrompt: compiled.negativePrompt,
+        prompt: draftPrompt,
+        negativePrompt: STUDIO_NEGATIVE_PROMPT,
         fingerprint: fingerprint(connection, body, matteHex),
       };
       break;
@@ -181,7 +179,7 @@ export async function generateVillageStudioSheet(input: {
   batch: StudioBatch;
   onSubmit: () => Promise<void>;
 }): Promise<{ image: string; source: StudioSource }> {
-  const { connectionId, expectedModel, identity, batch, onSubmit } = input;
+  const { connectionId, expectedModel, identity, expressions, batch, onSubmit } = input;
   const connection = await studioImageConnection(connectionId);
   if (connection.model !== expectedModel)
     throw badRequest("The image model changed. Review the generation plan again.");
@@ -189,9 +187,15 @@ export async function generateVillageStudioSheet(input: {
   if (!request || request.pipelineVersion !== STUDIO_PIPELINE_VERSION)
     throw badRequest("The generation plan changed. Refresh the request summary.");
   const reference = await readReference(identity.referenceUrl);
-  const compiled = await preview(requestBody(connectionId, identity, reference, batch, request.draftPrompt));
-  const body = requestBody(connectionId, identity, reference, batch, compiled.prompt, compiled.negativePrompt);
+  const prompt = studioPrompt({ ...identity, expressions, batch, matteHex: request.matteHex });
+  const body = requestBody(connectionId, identity, reference, batch, prompt);
+  const compiled = await preview(body);
   if (
+    expressions.length !== batch.count ||
+    request.matteHex !== selectStudioMatte(identity.name + " " + identity.appearance) ||
+    request.draftPrompt !== prompt ||
+    request.prompt !== prompt ||
+    request.negativePrompt !== STUDIO_NEGATIVE_PROMPT ||
     compiled.width !== batch.width ||
     compiled.height !== batch.height ||
     fingerprint(connection, body, request.matteHex) !== request.fingerprint

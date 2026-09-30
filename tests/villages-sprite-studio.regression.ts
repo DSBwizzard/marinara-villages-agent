@@ -174,7 +174,7 @@ globalThis.fetch = async (url, init) => {
           id: body.promptOverrides[0].id,
           width: constrainedCanvas && body.width > 1024 ? 1536 : body.width,
           height: constrainedCanvas && body.width > 1024 ? 1024 : body.height,
-          prompt: body.promptOverrides[0].prompt + "\nFrozen host settings",
+          prompt: "Generic character reference sheet, hero view, turnarounds and palette.",
           negativePrompt: "no labels",
         },
       ],
@@ -379,7 +379,7 @@ async function main() {
     const source = a.job.sheets[0].source!;
     assert.equal(source.kind, "generated-raw");
     assert.equal(source.matteHex, "#FF00FF");
-    assert.equal(source.pipelineVersion, 1);
+    assert.equal(source.pipelineVersion, 2);
     assert.equal(
       source.sha256,
       createHash("sha256")
