@@ -1,4 +1,19 @@
 import {
+  coordinateVenue,
+  cancelVenueOperation,
+  hasVenueOperation,
+  venueCheckpoint,
+  venueSavedCheckpoint,
+  outsideVenueOperation,
+  venueOperationSignal,
+  venueOperationSnapshot,
+  assertVenueOwnership,
+  sceneRevision,
+  venueRefusal,
+  recoverVenueOperations,
+  type VenueOperation,
+} from "./venue-coordinator.js";
+import {
   venueZones,
   resolveVenueZone,
   legacyZoneId,
@@ -244,6 +259,15 @@ type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 /** One document is both the active transcript and the player's durable visit archive. */
 export type VenueSession = {
   version: 1;
+  sceneRevision: number;
+  operation?: VenueOperation;
+  generationReceipts?: {
+    operationId: string;
+    attemptId: string;
+    stages: string[];
+    outcome: "unknown";
+    acknowledgedAt: string;
+  }[];
   stagingVersion?: 1;
   id: string;
   placeId: string;
@@ -392,6 +416,11 @@ function coerceSession(value: unknown): VenueSession {
     : [];
   return {
     version: 1,
+    sceneRevision: sceneRevision(raw),
+    operation: raw.operation as VenueOperation | undefined,
+    generationReceipts: Array.isArray(raw.generationReceipts)
+      ? (raw.generationReceipts as VenueSession["generationReceipts"])
+      : [],
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),
@@ -626,11 +655,26 @@ async function readSession(id: string): Promise<VenueSession> {
   return coerceSession(record.data);
 }
 
+function sceneFingerprint(session: VenueSession): string {
+  return JSON.stringify([
+    session.status,
+    session.zoneId,
+    session.area,
+    session.privateOwnerId,
+    session.activeIds,
+    session.participants,
+    session.lines.map((line) => line.id),
+    session.recap,
+  ]);
+}
+
 async function changeSession(id: string, change: (session: VenueSession) => void): Promise<VenueSession> {
   let result: VenueSession | null = null;
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
     if (session.id !== id) throw notFound("That venue conversation is no longer available.");
+    const before = sceneFingerprint(session);
     change(session);
+    if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
     result = session;
   });
   return result!;
@@ -1556,6 +1600,7 @@ export async function activeVenueSession(): Promise<VenueSession | null> {
     await clearActivePointer(session.id);
     return null;
   }
+  if (hasVenueOperation(session.id)) return session;
   if (isInactive(session)) {
     await interruptInactiveVisit(session.id);
     const latest = await readSession(session.id).catch(() => null);
@@ -1569,6 +1614,7 @@ function isInactive(session: VenueSession, now = Date.now()): boolean {
 }
 
 async function interruptInactiveVisit(id: string): Promise<void> {
+  if (hasVenueOperation(id)) return;
   const closed = await changeSession(id, (state) => {
     if (state.status === "closed" || !isInactive(state)) return;
     state.status = "closed";
@@ -1590,11 +1636,14 @@ async function interruptInactiveVisit(id: string): Promise<void> {
 
 async function requireLiveVenueSession(id: string): Promise<VenueSession> {
   let session = await readSession(id);
-  if (session.status !== "closed" && isInactive(session)) {
+  if (session.status !== "closed" && isInactive(session) && !hasVenueOperation(id)) {
     await interruptInactiveVisit(id);
     session = await readSession(id).catch(() => session);
   }
-  if (session.endReason === "inactivity" || (session.status !== "closed" && isInactive(session)))
+  if (
+    session.endReason === "inactivity" ||
+    (session.status !== "closed" && isInactive(session) && !hasVenueOperation(id))
+  )
     throw new VillagesRequestError(
       410,
       "Interrupted: Inactivity. This visit ended while you were away; its completed exchanges were saved.",
@@ -1610,7 +1659,7 @@ export async function touchVenueSession(id: string): Promise<VenueSession> {
   if (Date.now() - Date.parse(session.lastActivityAt) < ACTIVITY_WRITE_MS) return session;
   return changeSession(id, (state) => {
     if (state.status === "closed") throw conflict("That venue conversation has already ended.");
-    if (isInactive(state))
+    if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
     if (Date.now() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
       state.lastActivityAt = new Date().toISOString();
@@ -1626,7 +1675,8 @@ async function clearActivePointer(id: string): Promise<void> {
   });
 }
 
-async function refreshZoneParticipants(session: VenueSession): Promise<VenueSession> {
+async function refreshZoneParticipants(session: VenueSession, completing = false): Promise<VenueSession> {
+  if (!completing && hasVenueOperation(session.id)) return session;
   const village = await readVillageState(),
     venue = village.venues.find((entry) => entry.id === session.placeId);
   if (!venue || session.status === "closed") return session;
@@ -1651,7 +1701,7 @@ async function refreshZoneParticipants(session: VenueSession): Promise<VenueSess
         at: new Date().toISOString(),
       });
     });
-    return refreshZoneParticipants(displaced);
+    return refreshZoneParticipants(displaced, completing);
   }
   if (!session.zoneId)
     return changeSession(session.id, (state) => {
@@ -1694,19 +1744,31 @@ function serializedNavigation<T>(operation: () => Promise<T>): Promise<T> {
   navigationQueue = task.catch(() => {});
   return task;
 }
-export function moveVenueZone(sessionId: string, zoneId: string): Promise<VenueSession> {
-  return serializedNavigation(async () => {
-    movingSessions.add(sessionId);
-    try {
-      return await moveVenueZoneOnce(sessionId, zoneId);
-    } finally {
-      movingSessions.delete(sessionId);
-    }
-  });
+export function moveVenueZone(
+  sessionId: string,
+  zoneId: string,
+  expectedSceneRevision?: number,
+): Promise<VenueSession> {
+  return coordinateVenue(
+    sessionId,
+    `move:${zoneId}:${expectedSceneRevision}`,
+    "move",
+    { zoneId },
+    expectedSceneRevision,
+    undefined,
+    () =>
+      serializedNavigation(async () => {
+        movingSessions.add(sessionId);
+        try {
+          return await moveVenueZoneOnce(sessionId, zoneId);
+        } finally {
+          movingSessions.delete(sessionId);
+        }
+      }),
+  );
 }
 async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<VenueSession> {
-  if ([...turnTasks.values()].some((task) => task.input.sessionId === sessionId) || greetingTasks.has(sessionId))
-    throw conflict("Wait for the current scene reply before moving.");
+  assertVenueOwnership();
   const session = await requireLiveVenueSession(sessionId);
   if (session.status !== "active") throw conflict("Wait for the current scene to finish opening.");
   if (session.submissions.some((entry) => entry.mode === "act" && entry.action && !entry.actionReplyDone))
@@ -1739,7 +1801,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
     state.recap = "";
   });
   await markZoneSeen(moved);
-  return refreshZoneParticipants(moved);
+  return refreshZoneParticipants(moved, true);
 }
 
 async function markZoneSeen(session: VenueSession): Promise<void> {
@@ -1773,6 +1835,9 @@ async function enterVenueOnce(
   entryArea?: VenueSession["area"],
   requestedZoneId?: string,
 ): Promise<VenueSession> {
+  const pointer = await readActive();
+  if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
+    throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another area.");
   await rollActiveAgendas(new Date());
   const village = await readVillageState(),
     place = village.venues.find((entry) => entry.id === placeId);
@@ -1794,7 +1859,15 @@ async function enterVenueOnce(
   if (existing) {
     if (existing.placeId !== placeId) throw conflict(`Finish the conversation in ${existing.placeName} first.`);
     if (existing.zoneId === zone.id) return existing;
-    return moveVenueZoneOnce(existing.id, zone.id);
+    return coordinateVenue(
+      existing.id,
+      `move:${zone.id}:${existing.sceneRevision}`,
+      "move",
+      { zoneId: zone.id },
+      existing.sceneRevision,
+      undefined,
+      () => moveVenueZoneOnce(existing.id, zone.id),
+    );
   }
   const grantedZoneIds: string[] = [];
   if (!canOccupyZone(place, zone, "player")) {
@@ -1826,6 +1899,7 @@ async function enterVenueOnce(
   const id = randomUUID();
   const session: VenueSession = {
     version: 1,
+    sceneRevision: 0,
     stagingVersion: 1,
     id,
     placeId,
@@ -1865,11 +1939,15 @@ async function enterVenueOnce(
   return session;
 }
 
-export async function enterResidencePrivateSpace(sessionId: string, ownerId: string): Promise<VenueSession> {
-  return moveVenueZone(sessionId, "private:" + ownerId);
+export async function enterResidencePrivateSpace(
+  sessionId: string,
+  ownerId: string,
+  expectedSceneRevision?: number,
+): Promise<VenueSession> {
+  return moveVenueZone(sessionId, "private:" + ownerId, expectedSceneRevision);
 }
 
-export async function greetVenue(id: string): Promise<VenueSession> {
+export async function greetVenue(id: string, retryOfAttemptId?: string): Promise<VenueSession> {
   const inFlight = greetingTasks.get(id);
   if (inFlight) return inFlight.task;
   const started = performance.now();
@@ -1886,7 +1964,9 @@ export async function greetVenue(id: string): Promise<VenueSession> {
     rejectAbort = (current) => reject(current.reason);
     signal.addEventListener("abort", onAbort, { once: true });
   });
-  const task = Promise.race([greetVenueOnce(id, signal, trace), aborted]);
+  const task = coordinateVenue(id, "greeting", "greet", {}, undefined, retryOfAttemptId, () =>
+    Promise.race([greetVenueOnce(id, signal, trace), aborted]),
+  );
   greetingTasks.set(id, { task, abort: () => controller.abort() });
   try {
     return await task;
@@ -1918,12 +1998,12 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
   trace("session read", performance.now() - readStarted);
   if (session.status !== "opening") return session;
   signal.throwIfAborted();
-  const reply = await generate(session, "", "greet", "", null, signal, trace);
+  const reply = await venueCheckpoint("greeting-reply", () => generate(session, "", "greet", "", null, signal, trace));
   signal.throwIfAborted();
   const greeted = await changeSession(id, (state) => {
     signal.throwIfAborted();
     if (state.status !== "opening") return;
-    if (isInactive(state))
+    if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
     const at = new Date().toISOString();
     appendVenueReply(state, reply.lines, at);
@@ -1947,13 +2027,14 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
       await applyResidenceEditApproval(greeted.placeId, approval.proposalId, approval.residentId, approval.approved);
   }
   await markZoneSeen(greeted);
-  return refreshZoneParticipants(greeted);
+  return refreshZoneParticipants(greeted, true);
 }
 
 export async function continueVenueWithoutGreeting(id: string): Promise<VenueSession> {
+  await cancelVenueOperation(id);
   await requireLiveVenueSession(id);
   const session = await changeSession(id, (state) => {
-    if (isInactive(state))
+    if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
     if (state.status === "opening") state.status = "active";
     else if (state.status !== "active") throw conflict("That venue conversation has already ended.");
@@ -1968,33 +2049,50 @@ type VenueTurnInput = {
   mode: "chat" | "ask" | "fulfill" | "act" | "leave";
   targetId: string;
   submissionId: string;
+  expectedSceneRevision?: number;
+  retryOfAttemptId?: string;
 };
 
-const turnTasks = new Map<string, { input: VenueTurnInput; task: ReturnType<typeof sendVenueTurnOnce> }>();
-
 export async function sendVenueTurn(input: VenueTurnInput) {
-  const key = `${input.sessionId}:${input.submissionId}`;
-  const inFlight = turnTasks.get(key);
-  if (inFlight) {
-    if (
-      inFlight.input.message !== input.message ||
-      inFlight.input.mode !== input.mode ||
-      inFlight.input.targetId !== input.targetId
-    )
-      throw conflict("That submission ID belongs to a different line.");
-    return inFlight.task;
-  }
-  const task = sendVenueTurnOnce(input);
-  turnTasks.set(key, { input, task });
-  try {
-    return await task;
-  } finally {
-    turnTasks.delete(key);
-  }
+  const prior = (await readSession(input.sessionId)).submissions.find((entry) => entry.id === input.submissionId);
+  if (!prior) await requireLiveVenueSession(input.sessionId);
+  const payload = { message: input.message, mode: input.mode, targetId: input.targetId };
+  if (prior && (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId))
+    throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
+  return coordinateVenue(
+    input.sessionId,
+    input.submissionId,
+    "turn",
+    payload,
+    input.expectedSceneRevision,
+    input.retryOfAttemptId,
+    () => sendVenueTurnOnce(input),
+    { replay: !!prior },
+  );
 }
 
 /** Generate a final beat once, then use the ordinary visit filing path. */
-export async function leaveVenueSession(sessionId: string, submissionId: string, message = "") {
+export async function leaveVenueSession(
+  sessionId: string,
+  submissionId: string,
+  message = "",
+  expectedSceneRevision?: number,
+  retryOfAttemptId?: string,
+) {
+  const prior = (await readSession(sessionId)).submissions.find((entry) => entry.id === submissionId);
+  if (!prior) await requireLiveVenueSession(sessionId);
+  return coordinateVenue(
+    sessionId,
+    submissionId,
+    "turn",
+    { message, mode: "leave", targetId: "" },
+    expectedSceneRevision,
+    retryOfAttemptId,
+    () => leaveVenueSessionOnce(sessionId, submissionId, message),
+    { replay: !!prior },
+  );
+}
+async function leaveVenueSessionOnce(sessionId: string, submissionId: string, message: string) {
   const started = performance.now();
   const result = await sendVenueTurn({
     sessionId,
@@ -2033,7 +2131,18 @@ async function finishActReply(
   }
   const reply =
     preparedReply ??
-    (await generate(session, message, "act", "", null, AbortSignal.timeout(90_000), undefined, action.narration));
+    (await venueCheckpoint("action-reply", () =>
+      generate(
+        session,
+        message,
+        "act",
+        "",
+        null,
+        venueOperationSignal() ?? AbortSignal.timeout(90_000),
+        undefined,
+        action.narration,
+      ),
+    ));
   return changeSession(session.id, (state) => {
     const entry = state.submissions.find((item) => item.id === submissionId);
     if (!entry || entry.actionReplyDone) return;
@@ -2066,6 +2175,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     await applyVenueTurnChange(session, prior);
     if (await applyFulfilledWish(session, prior)) await refreshAgendaAfterWish(prior.targetId);
     await applyVenueRequests(session, prior);
+    await processLegacyProjectTurn(session, prior);
     if (prior.invitationSignal && prior.invitationSignal.timing === "later")
       await recordSpokenInvitation(session, prior.invitationSignal);
     await applyTurnMemories(session, prior);
@@ -2081,6 +2191,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     };
   }
   session = await requireLiveVenueSession(session.id);
+  session = venueOperationSnapshot<VenueSession>() ?? session;
   if (session.status !== "active") throw conflict("That venue conversation is not active.");
   if (input.mode !== "leave" && session.zoneId) {
     const village = await readVillageState(),
@@ -2102,15 +2213,17 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     let preparedReply: Awaited<ReturnType<typeof generate>> | undefined;
     const action = await actAtVenue(session.placeId, input.message, input.submissionId, async (result) => {
       if (session.activeIds.length)
-        preparedReply = await generate(
-          session,
-          input.message,
-          "act",
-          "",
-          null,
-          AbortSignal.timeout(90_000),
-          undefined,
-          result.narration,
+        preparedReply = await venueCheckpoint("action-reply", () =>
+          generate(
+            session,
+            input.message,
+            "act",
+            "",
+            null,
+            venueOperationSignal() ?? AbortSignal.timeout(90_000),
+            undefined,
+            result.narration,
+          ),
         );
     });
     const completed = await finishActReply(
@@ -2142,60 +2255,67 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     if (!wishes.length) throw badRequest(`${resident.cardSnapshot.name} is not waiting on anything at the moment.`);
     const player = readPlayerIdentity(village);
     const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() });
-    const judged = await proposeWishVerdict({
-      village: village.name,
-      setting: villageCurrentSetting(village),
-      moment,
-      card: readEffectiveVillagerCard(resident),
-      playerName: player.name,
-      playerDescription: player.description,
-      wishes,
-      claim: input.message,
-      transcript: heardLines(session, input.targetId).map((line) => ({
-        role: line.role,
-        content: line.content,
-        at: line.at,
-      })),
-      happenings: village.venueEvents.slice(0, 20),
-      worldState: (() => {
-        const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
-        const place = storedPlace
-          ? venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
-          : undefined;
-        if (!place) return [];
-        return [
-          `Current condition of ${place.name}: ${place.state.condition}`,
-          ...place.state.publicFacts.slice(0, 12),
-          ...(place.state.features ?? []).slice(0, 8).map((feature) => feature.text),
-          ...place.state.furniture.slice(0, 12).map((item) => `Present item: ${item}`),
-        ];
-      })(),
-      memory: memoryForVillager(
-        village.chronicle,
-        input.targetId,
-        `${input.message} ${wishes.map((wish) => wish.wish).join(" ")}`,
+    const judged = await venueCheckpoint("wish-verdict", () =>
+      proposeWishVerdict(
+        {
+          village: village.name,
+          setting: villageCurrentSetting(village),
+          moment,
+          card: readEffectiveVillagerCard(resident),
+          playerName: player.name,
+          playerDescription: player.description,
+          wishes,
+          claim: input.message,
+          transcript: heardLines(session, input.targetId).map((line) => ({
+            role: line.role,
+            content: line.content,
+            at: line.at,
+          })),
+          happenings: village.venueEvents.slice(0, 20),
+          worldState: (() => {
+            const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
+            const place = storedPlace
+              ? venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
+              : undefined;
+            if (!place) return [];
+            return [
+              `Current condition of ${place.name}: ${place.state.condition}`,
+              ...place.state.publicFacts.slice(0, 12),
+              ...(place.state.features ?? []).slice(0, 8).map((feature) => feature.text),
+              ...place.state.furniture.slice(0, 12).map((item) => `Present item: ${item}`),
+            ];
+          })(),
+          memory: memoryForVillager(
+            village.chronicle,
+            input.targetId,
+            `${input.message} ${wishes.map((wish) => wish.wish).join(" ")}`,
+          ),
+        },
+        { signal: venueOperationSignal() },
       ),
-    });
+    );
     verdict = judged.verdict;
     wishId = judged.wish?.id ?? "";
     wishMemory = judged.memory;
     wishText = judged.wish?.wish ?? "";
   }
   const responseTargetId = input.targetId || (session.activeIds.length === 1 ? session.activeIds[0]! : "");
-  const reply = await generate(
-    session,
-    input.message,
-    input.mode,
-    responseTargetId,
-    verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
-    AbortSignal.timeout(90_000),
+  const reply = await venueCheckpoint("turn-reply", () =>
+    generate(
+      session,
+      input.message,
+      input.mode,
+      responseTargetId,
+      verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
+      venueOperationSignal() ?? AbortSignal.timeout(90_000),
+    ),
   );
   const updated = await changeSession(session.id, (state) => {
     if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
     if (state.status !== "active") throw conflict("That conversation has already ended.");
-    if (isInactive(state))
+    if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
-    if (state.lines.length !== session.lines.length)
+    if (state.sceneRevision !== session.sceneRevision)
       throw conflict("The conversation moved on. Try sending that line again.");
     const at = new Date().toISOString();
     state.lastActivityAt = at;
@@ -2318,28 +2438,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   await applyVenueTurnChange(updated, submission);
   if (await applyFulfilledWish(updated, submission)) await refreshAgendaAfterWish(submission.targetId);
   await applyVenueRequests(updated, submission);
-  if (submission.mode === "chat" || submission.mode === "ask")
-    await recordProjectConversation({
-      submissionId: submission.id,
-      venueId: updated.placeId,
-      playerMessage: submission.message,
-      lines: updated.lines
-        .filter((line) => line.at === submission.at && !!line.speakerId)
-        .map((line) => ({
-          id: line.id,
-          speakerId: line.speakerId,
-          content: line.content,
-        })),
-      context: updated.lines
-        .slice(-12)
-        .filter((line) => !!line.speakerId)
-        .map((line) => ({
-          id: line.id,
-          speakerId: line.speakerId,
-          content: line.content,
-        })),
-      at: submission.at ?? new Date().toISOString(),
-    });
+  await processLegacyProjectTurn(updated, submission);
   if (submission.invitationSignal && submission.invitationSignal.timing === "later")
     await recordSpokenInvitation(updated, submission.invitationSignal);
   await markZoneSeen(updated);
@@ -2353,7 +2452,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     recordEvents = [...byId.values()];
   }
   return {
-    session: await refreshZoneParticipants(await readSession(finalSession.id)),
+    session: await refreshZoneParticipants(await readSession(finalSession.id), true),
     verdict,
     action: null,
     recordEvents,
@@ -2430,11 +2529,13 @@ async function markResidenceSeen(session: VenueSession): Promise<void> {
       venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
   });
   if (session.area === "private" && session.privateOwnerId) {
-    void import("./location-image.js")
-      .then(({ generateFirstPrivateSpaceImage }) =>
-        generateFirstPrivateSpaceImage(session.placeId, session.privateOwnerId),
-      )
-      .catch((error) => villagesLogger().warn("[villages] private-space image could not start: %s", String(error)));
+    outsideVenueOperation(() => {
+      void import("./location-image.js")
+        .then(({ generateFirstPrivateSpaceImage }) =>
+          generateFirstPrivateSpaceImage(session.placeId, session.privateOwnerId),
+        )
+        .catch((error) => villagesLogger().warn("[villages] private-space image could not start: %s", String(error)));
+    });
   }
 }
 
@@ -3359,7 +3460,12 @@ async function distill(session: VenueSession, signal: AbortSignal): Promise<Venu
   return entries;
 }
 
-export async function endVenueSession(id: string): Promise<VenueSession> {
+export async function endVenueSession(id: string, retryOfAttemptId?: string): Promise<VenueSession> {
+  return coordinateVenue(id, "memory-review", "memory", {}, undefined, retryOfAttemptId, () =>
+    endVenueSessionCoordinated(id),
+  );
+}
+async function endVenueSessionCoordinated(id: string): Promise<VenueSession> {
   const inFlight = closingTasks.get(id);
   if (inFlight) return inFlight;
   const controller = new AbortController();
@@ -3375,19 +3481,32 @@ export async function endVenueSession(id: string): Promise<VenueSession> {
 }
 
 /** Complete or retry a review and return only committed durable memories. */
-export async function endVenueSessionWithReceipts(id: string) {
-  const session = await endVenueSession(id);
+export async function endVenueSessionWithReceipts(id: string, retryOfAttemptId?: string) {
+  const session = await endVenueSession(id, retryOfAttemptId);
   return { session, recordEvents: reviewReceipts(session) };
 }
 
 /** Close a visit promptly so its final beat can be read before memory review. */
-export async function closeVenueSession(id: string): Promise<VenueSession> {
+export async function closeVenueSession(
+  id: string,
+  expectedSceneRevision?: number,
+  retryOfAttemptId?: string,
+): Promise<VenueSession> {
+  return coordinateVenue(id, "close", "close", {}, expectedSceneRevision, retryOfAttemptId, () =>
+    closeVenueSessionOnce(id),
+  );
+}
+async function closeVenueSessionOnce(id: string): Promise<VenueSession> {
   const session = await readSession(id);
   return session.memoryMode === "tiered" ? closeTieredVenueSession(session) : endVenueSession(id);
 }
 
-export async function closeVenueSessionWithReceipts(id: string) {
-  const session = await closeVenueSession(id);
+export async function closeVenueSessionWithReceipts(
+  id: string,
+  expectedSceneRevision?: number,
+  retryOfAttemptId?: string,
+) {
+  const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId);
   return { session, recordEvents: reviewReceipts(session) };
 }
 
@@ -3515,6 +3634,13 @@ async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<Ven
 
 /** Release the player when extraction is unavailable; the exact transcript stays retriable. */
 export async function leaveVenueMemoryPending(id: string): Promise<VenueSession> {
+  const current = await readSession(id);
+  if (hasVenueOperation(id) && current.operation?.kind !== "memory" && current.operation?.kind !== "close")
+    throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before leaving with memory pending.");
+  await cancelVenueOperation(id);
+  return coordinateVenue(id, "leave-pending", "close", {}, undefined, undefined, () => leaveVenueMemoryPendingOnce(id));
+}
+async function leaveVenueMemoryPendingOnce(id: string): Promise<VenueSession> {
   const session = await readSession(id);
   if (session.memoryMode === "turn") return endVenueSession(id);
   if (session.status !== "closed" && isInactive(session)) {
@@ -3545,7 +3671,7 @@ export async function recordVenueAction(
   if (!session || session.placeId !== placeId || session.status !== "active")
     throw conflict("That venue visit is not active.");
   await changeSession(session.id, (state) => {
-    if (isInactive(state))
+    if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
     if (state.submissions.some((entry) => entry.id === submissionId)) return;
     const at = new Date().toISOString();
@@ -3569,6 +3695,8 @@ export async function recordVenueAction(
       at,
       heardBy: [...state.activeIds],
     });
+    const prepared = venueSavedCheckpoint<Awaited<ReturnType<typeof generate>>>("action-reply");
+    if (prepared) appendVenueReply(state, prepared.lines, at);
     state.submissions.push({
       id: submissionId,
       message: action,
@@ -3578,11 +3706,15 @@ export async function recordVenueAction(
       wishId: "",
       wishMemory: "",
       action: result,
+      actionReplyDone: !!prepared || state.activeIds.length === 0,
       areaAtTurn: state.area,
       zoneIdAtTurn: state.zoneId,
       activeIdsAtTurn: [...state.activeIds],
       activeIdsAfterTurn: [...state.activeIds],
-      replyLineIds: [sceneLineId],
+      replyLineIds: [
+        sceneLineId,
+        ...(prepared ? state.lines.slice(-prepared.lines.length).map((line) => line.id) : []),
+      ],
       at,
     });
   });
@@ -3595,6 +3727,7 @@ export async function recordVenueAction(
 
 export async function discardVenueVisitDebug(id: string): Promise<void> {
   if (!villagesDebugAgentsEnabled()) throw notFound("That debug action is unavailable.");
+  await cancelVenueOperation(id);
   const session = await requireLiveVenueSession(id);
   greetingTasks.get(id)?.abort();
   closingControllers.get(id)?.abort();
@@ -3837,4 +3970,72 @@ export async function resetVenueSessions(): Promise<void> {
   const pointer = await documents.getById(VILLAGES_PACKAGE_ID, ACTIVE_ID);
   if (pointer && !(await documents.remove(VILLAGES_PACKAGE_ID, ACTIVE_ID, pointer.revision)))
     throw conflict("The active venue changed while the village was being reset. Try again.");
+}
+
+export async function recoverVenueSceneWork() {
+  await recoverVenueOperations(async (id, operation) => {
+    if (operation.kind === "turn") {
+      const input = { ...operation.input, sessionId: id, submissionId: operation.id } as VenueTurnInput;
+      return coordinateVenue(
+        id,
+        operation.id,
+        operation.kind,
+        operation.input,
+        undefined,
+        undefined,
+        () =>
+          input.mode === "leave"
+            ? leaveVenueSessionOnce(id, input.submissionId, input.message)
+            : sendVenueTurnOnce(input),
+        { recovery: true, replay: true },
+      );
+    }
+    if (operation.kind === "memory" || operation.kind === "close")
+      return coordinateVenue(
+        id,
+        operation.id,
+        operation.kind,
+        operation.input,
+        undefined,
+        undefined,
+        () => (operation.kind === "memory" ? endVenueSessionCoordinated(id) : closeVenueSessionOnce(id)),
+        { recovery: true },
+      );
+    if (operation.kind === "greet")
+      return coordinateVenue(
+        id,
+        operation.id,
+        "greet",
+        operation.input,
+        undefined,
+        undefined,
+        () => greetVenueOnce(id, venueOperationSignal()!, () => {}),
+        { recovery: true },
+      );
+  });
+}
+
+async function processLegacyProjectTurn(session: VenueSession, submission: VenueSubmission) {
+  if (submission.mode !== "chat" && submission.mode !== "ask") return;
+  await venueCheckpoint("legacy-project", async () => {
+    await recordProjectConversation({
+      submissionId: submission.id,
+      venueId: session.placeId,
+      playerMessage: submission.message,
+      lines: session.lines
+        .filter((line) => submission.replyLineIds?.includes(line.id) && !!line.speakerId)
+        .map((line) => ({ id: line.id, speakerId: line.speakerId, content: line.content })),
+      context: session.lines
+        .slice(
+          0,
+          session.lines.findIndex((line) => submission.replyLineIds?.includes(line.id)) +
+            (submission.replyLineIds?.length ?? 0),
+        )
+        .slice(-12)
+        .filter((line) => !!line.speakerId)
+        .map((line) => ({ id: line.id, speakerId: line.speakerId, content: line.content })),
+      at: submission.at ?? new Date().toISOString(),
+    });
+    return true;
+  });
 }

@@ -1,3 +1,4 @@
+import { outsideVenueOperation } from "./venue-coordinator.js";
 import {
   venueZones,
   resolveVenueZone,
@@ -926,21 +927,23 @@ async function queueVillagerAgenda(characterId: string): Promise<void> {
     }
   });
   agendaWork.add(characterId);
-  queueMicrotask(() => {
-    void (async () => {
-      try {
-        await writeVillagerAgenda(characterId);
-      } catch (error) {
-        villagesLogger().warn("[villages] could not work out %s's agenda: %s", characterId, String(error));
-      } finally {
+  queueMicrotask(() =>
+    outsideVenueOperation(() => {
+      void (async () => {
         try {
-          await translateVillagerWeek(characterId);
+          await writeVillagerAgenda(characterId);
+        } catch (error) {
+          villagesLogger().warn("[villages] could not work out %s's agenda: %s", characterId, String(error));
         } finally {
-          agendaWork.delete(characterId);
+          try {
+            await translateVillagerWeek(characterId);
+          } finally {
+            agendaWork.delete(characterId);
+          }
         }
-      }
-    })();
-  });
+      })();
+    }),
+  );
 }
 
 function activateVillagerDay(villager: VillageVillager, now: Date): void {

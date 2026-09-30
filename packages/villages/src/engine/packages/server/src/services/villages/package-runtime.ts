@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 // Villages — the handle on the Engine services this package is allowed to use.
 //
 // `activate` receives the runtime host on its context, hands it here, and the
 // routes read it back through these accessors. Holding it in a module slot
 // instead of threading it through every route keeps the route file readable and
 // matches how the other first-party packages do it.
+import { coordinatedCompletion } from "./venue-coordinator.js";
 import type {
   CapabilityDocumentStore,
   CapabilityLanguageModelCompletion,
@@ -180,17 +182,36 @@ export async function completeWithRoom(
   const ask = async (tokens: number) => {
     options.signal?.throwIfAborted();
     const started = performance.now();
-    const completion = await model.chatComplete(messages, {
-      // Left off entirely when the caller has no temperature to ask for, which is
-      // what a preset with temperature switched off means. Sending a number here
-      // would be the package overruling a switch it had already read.
-      ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
-      ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-      ...(options.verbosity ? { verbosity: options.verbosity } : {}),
-      maxTokens: tokens,
-      debugMode: options.debugMode,
-      signal: options.signal,
-    });
+    const completion = await coordinatedCompletion(
+      createHash("sha256")
+        .update(
+          JSON.stringify([
+            model.connectionId,
+            model.model,
+            messages,
+            tokens,
+            options.temperature,
+            options.reasoningEffort,
+            options.verbosity,
+          ]),
+        )
+        .digest("hex"),
+      (operationSignal) =>
+        model.chatComplete(messages, {
+          // Left off entirely when the caller has no temperature to ask for, which is
+          // what a preset with temperature switched off means. Sending a number here
+          // would be the package overruling a switch it had already read.
+          ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+          ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+          ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+          maxTokens: tokens,
+          debugMode: options.debugMode,
+          signal:
+            operationSignal && options.signal
+              ? AbortSignal.any([operationSignal, options.signal])
+              : (operationSignal ?? options.signal),
+        }),
+    );
     options.onAttempt?.(completion, performance.now() - started, tokens);
     return completion;
   };

@@ -6,7 +6,8 @@ import { villagesRoutes } from "../../routes/villages.routes.js";
 import { configureVillagesRuntime } from "./package-runtime.js";
 import { startVillageRefreshScheduler } from "./village-refresh-scheduler.js";
 import { readVillageState } from "./village-store.js";
-import { startProgressRecovery } from "./venue-session.js";
+import { stopVenueCoordinator } from "./venue-coordinator.js";
+import { startProgressRecovery, recoverVenueSceneWork } from "./venue-session.js";
 
 type ActivationContext = {
   api: {
@@ -26,6 +27,8 @@ export async function activate({ api }: ActivationContext) {
     for (const cleanup of cleanups.reverse()) await cleanup();
   };
   try {
+    await recoverVenueSceneWork();
+    cleanups.push(stopVenueCoordinator);
     cleanups.push(await api.registerPrivilegedRoutes(villagesRoutes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.

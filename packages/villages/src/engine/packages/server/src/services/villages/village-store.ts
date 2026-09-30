@@ -1,4 +1,5 @@
 import { venueResidentIds } from "./venue-model.js";
+import { assertVenueOwnership } from "./venue-coordinator.js";
 import {
   synchronizeVenueZones,
   legacyZoneId,
@@ -2572,8 +2573,12 @@ export async function mutateDocument<T>(
   const documents = villagesDocuments();
   for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
     const record = await documents.getById(VILLAGES_PACKAGE_ID, documentId);
+    assertVenueOwnership(
+      documentId.startsWith("villages-venue-visit-") ? (record?.data as Record<string, unknown>) : undefined,
+    );
     const state = slot.coerce(record?.data);
     mutate(state);
+    assertVenueOwnership();
     const stamp = new Date().toISOString();
     try {
       if (!record) {

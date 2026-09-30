@@ -12,6 +12,14 @@ Find the package in **Agents → Download Agents**. Installation requires a rest
 
 Villages is a first-class downloadable agent in the normal catalog channels. It remains under active development while this release is exercised.
 
+## Conversation coordination
+
+Each live visit admits one scene operation at a time. Another tab's send is refused before any reply, action judgement, or Wish call; its draft stays available. Sends and movement identify the scene revision the player saw. A stale draft requires reading the updated scene and deliberately sending again. Refreshes, activity timestamps, and bookkeeping do not invalidate admitted work.
+
+Identical submissions share running work and replay completed exchanges. Server-owned work continues if a browser disconnects. Completed generation stages are saved so recovery can reuse them; cancelled or replaced owners cannot append a late response. Snapshot reads reconcile attendance between turns, preserving the admitted turn's witnesses.
+
+If a server interruption or provider failure leaves a paid request's outcome uncertain, Villages preserves the operation and makes no automatic paid retry. **Retry saved request** authorizes recovery of that exact input and resumes missing stages. The previous request may already have been billed. Unknown attempt receipts remain in the visit after explicit retry; a provider completion lost before durable storage cannot be recovered or refunded by Villages. Existing explicit opening bypass and debug discard cancel ownership before changing the visit.
+
 ## Venue projects
 
 ### Progress Engine foundation

@@ -421,7 +421,7 @@ async function main() {
       submissionId: "pending-navigation",
     });
     await started;
-    await assert.rejects(() => moveVenueZone(visit.id, "exterior"), /current scene reply/);
+    await assert.rejects(() => moveVenueZone(visit.id, "exterior"), /conversation is responding/);
     resumeReply!();
     await pending;
     signalReplyStarted = null;

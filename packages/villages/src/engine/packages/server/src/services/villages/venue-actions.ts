@@ -1,3 +1,4 @@
+import { venueCheckpoint, venueOperationSignal, assertVenueOwnership } from "./venue-coordinator.js";
 import { venueInZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -158,15 +159,19 @@ export async function actAtVenue(
     ),
     { maxTokens },
   );
-  const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
-    temperature: 0.3,
+  const result = await venueCheckpoint("action-outcome", async () => {
+    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
+      temperature: 0.3,
+      signal: venueOperationSignal(),
+    });
+    return readVenueActionResult(
+      extractJsonObject(completion.content ?? ""),
+      place.state.furniture,
+      place.state.traces?.map((trace) => trace.id) ?? [],
+      village.villagers.map((resident) => resident.characterId),
+    );
   });
-  const result = readVenueActionResult(
-    extractJsonObject(completion.content ?? ""),
-    place.state.furniture,
-    place.state.traces?.map((trace) => trace.id) ?? [],
-    village.villagers.map((resident) => resident.characterId),
-  );
+  assertVenueOwnership();
   // A resident reaction must pass scene validation before this action changes the venue or transcript.
   await beforeRecord?.(result);
   const now = new Date();
