@@ -11,6 +11,7 @@ import {
   sceneRevision,
   venueRefusal,
   recoverVenueOperations,
+  rejectVenueCompletion,
   type VenueOperation,
 } from "./venue-coordinator.js";
 import {
@@ -1616,7 +1617,7 @@ function isInactive(session: VenueSession, now = Date.now()): boolean {
 async function interruptInactiveVisit(id: string): Promise<void> {
   if (hasVenueOperation(id)) return;
   const closed = await changeSession(id, (state) => {
-    if (state.status === "closed" || !isInactive(state)) return;
+    if (state.status === "closed" || !isInactive(state) || hasVenueOperation(id)) return;
     state.status = "closed";
     state.endedAt = new Date().toISOString();
     state.endReason = "inactivity";
@@ -1684,6 +1685,7 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
   const zone = resolveVenueZone(venue, zoneId);
   if (!zone || zoneClosed(village, venue, zone)) {
     const displaced = await changeSession(session.id, (state) => {
+      if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = "exterior";
       state.area = "outside";
       state.privateOwnerId = "";
@@ -1705,6 +1707,7 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
   }
   if (!session.zoneId)
     return changeSession(session.id, (state) => {
+      if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = zoneId;
       state.legacyCast = true;
       if (state.area !== "outside") state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zoneId])];
@@ -1725,6 +1728,7 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
   const activeIds = people.map((person) => person.characterId);
   if (session.zoneId === zoneId && JSON.stringify(activeIds) === JSON.stringify(session.activeIds)) return session;
   return changeSession(session.id, (state) => {
+    if (!completing && hasVenueOperation(session.id)) return;
     state.zoneId = zoneId;
     for (const person of people) {
       if (!state.participants.some((entry) => entry.characterId === person.characterId))
@@ -1748,23 +1752,18 @@ export function moveVenueZone(
   sessionId: string,
   zoneId: string,
   expectedSceneRevision?: number,
+  retryOfAttemptId?: string,
+  operationId = `move:${zoneId}:${expectedSceneRevision}`,
 ): Promise<VenueSession> {
-  return coordinateVenue(
-    sessionId,
-    `move:${zoneId}:${expectedSceneRevision}`,
-    "move",
-    { zoneId },
-    expectedSceneRevision,
-    undefined,
-    () =>
-      serializedNavigation(async () => {
-        movingSessions.add(sessionId);
-        try {
-          return await moveVenueZoneOnce(sessionId, zoneId);
-        } finally {
-          movingSessions.delete(sessionId);
-        }
-      }),
+  return coordinateVenue(sessionId, operationId, "move", { zoneId }, expectedSceneRevision, retryOfAttemptId, () =>
+    serializedNavigation(async () => {
+      movingSessions.add(sessionId);
+      try {
+        return await moveVenueZoneOnce(sessionId, zoneId);
+      } finally {
+        movingSessions.delete(sessionId);
+      }
+    }),
   );
 }
 async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<VenueSession> {
@@ -1779,11 +1778,26 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   if (!venue || !zone) throw notFound("That zone is not in this Venue.");
   if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
   if (!canOccupyZone(venue, zone, "player") && !session.grantedZoneIds?.includes(zone.id)) {
+    const invitation = await venueCheckpoint("move-invitation", async () => {
+      const selected = venue.playerInvitations?.find(
+        (entry) => entry.zoneId === zone.id && canInviteToZone(venue, zone, entry.residentId),
+      );
+      if (!selected) throw conflict("This zone needs its controller's invitation.");
+      return selected;
+    });
     await mutateVillageState((state) => {
       const current = state.venues.find((entry) => entry.id === venue.id)!;
+      const target = resolveVenueZone(current, zone.id);
+      if (!target || zoneClosed(state, current, target) || !canInviteToZone(current, target, invitation.residentId))
+        throw conflict("This zone's invitation is no longer valid.");
+      // The Village receipt closes the crash gap between consuming access and committing the scene.
+      if (current.usedInvitationIds?.includes(invitation.sourceLineId)) return;
       const index =
         current.playerInvitations?.findIndex(
-          (invitation) => invitation.zoneId === zone.id && canInviteToZone(current, zone, invitation.residentId),
+          (entry) =>
+            entry.zoneId === zone.id &&
+            entry.sourceLineId === invitation.sourceLineId &&
+            entry.residentId === invitation.residentId,
         ) ?? -1;
       if (index < 0) throw conflict("This zone needs its controller's invitation.");
       const consumed = current.playerInvitations!.splice(index, 1)[0]!;
@@ -1824,8 +1838,11 @@ export function enterVenue(
   privateOwnerId = "",
   entryArea?: "outside" | "public" | "shared" | "private",
   requestedZoneId?: string,
+  expectedSceneRevision?: number,
 ): Promise<VenueSession> {
-  return serializedNavigation(() => enterVenueOnce(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId));
+  return serializedNavigation(() =>
+    enterVenueOnce(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId, expectedSceneRevision),
+  );
 }
 
 async function enterVenueOnce(
@@ -1834,11 +1851,13 @@ async function enterVenueOnce(
   privateOwnerId = "",
   entryArea?: VenueSession["area"],
   requestedZoneId?: string,
+  expectedSceneRevision?: number,
 ): Promise<VenueSession> {
   const pointer = await readActive();
   if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
     throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another area.");
-  await rollActiveAgendas(new Date());
+  const existing = await activeVenueSession();
+  if (!existing) await rollActiveAgendas(new Date());
   const village = await readVillageState(),
     place = village.venues.find((entry) => entry.id === placeId);
   if (!place) throw notFound("That place is not in this village.");
@@ -1855,16 +1874,17 @@ async function enterVenueOnce(
       zone = resolveVenueZone(place, "exterior")!;
     else throw conflict("This Venue zone is closed for Renovation. Other zones remain open.");
   }
-  const existing = await activeVenueSession();
   if (existing) {
     if (existing.placeId !== placeId) throw conflict(`Finish the conversation in ${existing.placeName} first.`);
     if (existing.zoneId === zone.id) return existing;
+    if (expectedSceneRevision === undefined)
+      throw venueRefusal("SCENE_STALE", "Refresh this visit before moving to another area.");
     return coordinateVenue(
       existing.id,
-      `move:${zone.id}:${existing.sceneRevision}`,
+      `move:${zone.id}:${expectedSceneRevision}`,
       "move",
       { zoneId: zone.id },
-      existing.sceneRevision,
+      expectedSceneRevision,
       undefined,
       () => moveVenueZoneOnce(existing.id, zone.id),
     );
@@ -3411,13 +3431,19 @@ async function distill(session: VenueSession, signal: AbortSignal): Promise<Venu
     const raw = extractJsonObject(completion.content ?? "");
     const saturated = completion.finishReason === "length" || raw?.more === true || raw?.complete !== true;
     if (saturated) {
-      if (end - start < 2) throw new Error(MEMORY_ERROR);
+      if (end - start < 2) {
+        await rejectVenueCompletion();
+        throw new Error(MEMORY_ERROR);
+      }
       const middle = start + Math.floor((end - start) / 2);
       await process(start, middle);
       await process(middle, end);
       return;
     }
-    if (!Array.isArray(raw?.memories)) throw new Error(MEMORY_ERROR);
+    if (!Array.isArray(raw?.memories)) {
+      await rejectVenueCompletion();
+      throw new Error(MEMORY_ERROR);
+    }
     const chunkIds = new Set(units.slice(start, end).map((unit) => unit.lineId));
     const fresh: VenueMemory[] = [];
     for (const value of raw.memories) {
@@ -3432,8 +3458,10 @@ async function distill(session: VenueSession, signal: AbortSignal): Promise<Venu
         !text ||
         !lineIds.length ||
         lineIds.some((id) => !chunkIds.has(id) || !heardByLine.get(id)?.has(characterId))
-      )
+      ) {
+        await rejectVenueCompletion();
         throw new Error(MEMORY_ERROR);
+      }
       if (
         !entries.some(
           (entry) => entry.characterId === characterId && entry.text.toLowerCase() === text.toLowerCase(),
@@ -3974,6 +4002,17 @@ export async function resetVenueSessions(): Promise<void> {
 
 export async function recoverVenueSceneWork() {
   await recoverVenueOperations(async (id, operation) => {
+    if (operation.kind === "move")
+      return coordinateVenue(
+        id,
+        operation.id,
+        "move",
+        operation.input,
+        undefined,
+        undefined,
+        () => moveVenueZoneOnce(id, String(operation.input.zoneId)),
+        { recovery: true },
+      );
     if (operation.kind === "turn") {
       const input = { ...operation.input, sessionId: id, submissionId: operation.id } as VenueTurnInput;
       return coordinateVenue(

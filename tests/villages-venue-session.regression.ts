@@ -3030,7 +3030,7 @@ async function main() {
     const selectedExterior = await enterVenue("home", "residence", "", "outside");
     assert.equal(selectedExterior.area, "outside");
     await assert.rejects(
-      () => enterVenue("home", "residence", "", "shared"),
+      () => enterVenue("home", "residence", "", "shared", undefined, selectedExterior.sceneRevision),
       /finish opening/u,
       "navigation waits for the exterior scene to finish opening",
     );

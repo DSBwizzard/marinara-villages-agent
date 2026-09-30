@@ -31,6 +31,7 @@ import {
   moveVenueZone,
   activeVenueSession,
   endVenueSession,
+  recoverVenueSceneWork,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 import { applyVenueSceneChange } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
 import {
@@ -233,6 +234,8 @@ assert.equal(
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: migrated, revision: 1 });
 let inviterId = "chef";
+let failMovementCommit = false;
+let paidCalls = 0;
 let replyGate: Promise<void> | null = null,
   signalReplyStarted: (() => void) | null = null;
 let lastPrompt = "",
@@ -260,6 +263,9 @@ const release = configureVillagesRuntime({
         return row;
       },
       async update(input: any) {
+        if (failMovementCommit && input.data.operation?.kind === "move" && input.data.zoneId === "stock") {
+          throw new Error("movement commit interrupted");
+        }
         const prior = records.get(input.id);
         if (!prior || prior.revision !== input.expectedRevision) return null;
         const row = { ...prior, ...input, revision: prior.revision + 1 };
@@ -280,6 +286,7 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
+          paidCalls++;
           if (replyGate) {
             const gate = replyGate;
             replyGate = null;
@@ -380,6 +387,15 @@ async function main() {
     await assert.rejects(() => enterVenue("cafe", undefined, "", undefined, "stock"), /invitation/);
     let visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
     assert.deepEqual(visit.activeIds, ["chef", "guest"]);
+    await assert.rejects(
+      () => enterVenue("cafe", undefined, "", undefined, "exterior"),
+      (error: any) => error.code === "SCENE_STALE",
+      "legacy entry cannot bypass movement's scene revision",
+    );
+    await assert.rejects(
+      () => enterVenue("cafe", undefined, "", undefined, "exterior", visit.sceneRevision! + 1),
+      (error: any) => error.code === "SCENE_STALE",
+    );
     await sendVenueTurn({
       sessionId: visit.id,
       message: "A conversation only on the cafe floor",
@@ -567,6 +583,33 @@ async function main() {
     const future = await enterVenue("cafe", undefined, "", undefined, "stock");
     assert.ok(future.grantedZoneIds?.includes("stock"));
     await endVenueSession(future.id);
+    const recoveringMove = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
+    await mutateVillageState((current) => {
+      current.venues
+        .find((entry) => entry.id === "cafe")!
+        .playerInvitations!.push({
+          residentId: "chef",
+          scope: "shared",
+          zoneId: "stock",
+          ownerId: "",
+          recordedAt: stamp,
+          sourceLineId: "movement-crash",
+        });
+    });
+    failMovementCommit = true;
+    await assert.rejects(
+      () => moveVenueZone(recoveringMove.id, "stock", recoveringMove.sceneRevision),
+      /village kept changing/,
+    );
+    failMovementCommit = false;
+    assert.ok((await readVillageState()).venues[0]!.usedInvitationIds!.includes("movement-crash"));
+    const callsBeforeMoveRecovery = paidCalls;
+    await recoverVenueSceneWork();
+    const recoveredMove = (await activeVenueSession())!;
+    assert.equal(recoveredMove.zoneId, "stock", "saved invitation authorizes completing the interrupted scene commit");
+    assert.equal(paidCalls, callsBeforeMoveRecovery, "movement recovery spends no model calls");
+    assert.equal(recoveredMove.operation?.status, "complete");
+    await endVenueSession(recoveredMove.id);
     await sendVenueTurn({
       sessionId: visit.id,
       message: "Can I visit later?",

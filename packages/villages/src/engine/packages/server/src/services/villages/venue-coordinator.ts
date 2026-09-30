@@ -15,7 +15,7 @@ export type VenueOperation = {
   sceneRevision: number;
   snapshot: Record<string, unknown> | null;
   checkpoints: Record<string, unknown>;
-  attempts: Record<string, { status: "dispatching" | "complete" | "interrupted"; result?: unknown }>;
+  attempts: Record<string, { status: "dispatching" | "complete" | "interrupted" | "rejected"; result?: unknown }>;
   error: string;
 };
 type Context = {
@@ -28,7 +28,10 @@ type Context = {
   blocked: Set<string>;
 };
 const context = new AsyncLocalStorage<Context>();
-const live = new Map<string, { id: string; input: string; task: Promise<unknown>; controller: AbortController }>();
+const live = new Map<
+  string,
+  { id: string; input: string; task: Promise<unknown>; drained: Promise<void>; controller: AbortController }
+>();
 const prefix = "villages-venue-visit-";
 let accepting = true;
 
@@ -165,6 +168,22 @@ export async function coordinatedCompletion<T>(
   return result;
 }
 
+/** A returned but invalid result has a known outcome; explicit retry may replace it. */
+export async function rejectVenueCompletion(): Promise<void> {
+  const current = context.getStore();
+  if (!current) return;
+  assertVenueOwnership();
+  const index = (current.counts.get(current.scope) ?? 0) - 1;
+  const key = Object.keys(current.operation.attempts).find(
+    (entry) =>
+      entry.startsWith(`${current.scope}:${index}:`) && current.operation.attempts[entry]?.status === "complete",
+  );
+  if (key && current.operation.attempts[key]?.status === "complete") {
+    current.operation.attempts[key] = { status: "rejected" };
+    await persist(current);
+  }
+}
+
 export async function coordinateVenue<T>(
   sessionId: string,
   id: string,
@@ -209,6 +228,7 @@ export async function coordinateVenue<T>(
     let operation!: VenueOperation;
     let authorizedRetry = false;
     await update(sessionId, (data) => {
+      controller.signal.throwIfAborted();
       const prior = data.operation as VenueOperation | undefined;
       if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
         throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
@@ -327,6 +347,9 @@ export async function coordinateVenue<T>(
             operation.checkpoints["turn-reply"] ||
             operation.checkpoints["action-reply"] ||
             operation.checkpoints["greeting-reply"] ||
+            operation.checkpoints["move-invitation"] ||
+            ((operation.kind === "memory" || operation.kind === "close") &&
+              Object.keys(operation.attempts).length > 0) ||
             (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
               ? "interrupted"
               : "complete";
@@ -343,7 +366,11 @@ export async function coordinateVenue<T>(
     controller.signal.addEventListener("abort", onAbort, { once: true });
   });
   const settled = Promise.race([task, aborted]);
-  live.set(sessionId, { id, input: fingerprint, task: settled, controller });
+  let drain!: () => void;
+  const drained = new Promise<void>((resolve) => {
+    drain = resolve;
+  });
+  live.set(sessionId, { id, input: fingerprint, task: settled, drained, controller });
   try {
     return await settled;
   } finally {
@@ -359,6 +386,7 @@ export async function coordinateVenue<T>(
         }
       }).catch(() => {});
     if (live.get(sessionId)?.task === settled) live.delete(sessionId);
+    drain();
   }
 }
 
@@ -430,5 +458,5 @@ export async function stopVenueCoordinator() {
   const tasks = [...live.values()];
   for (const task of tasks)
     task.controller.abort(venueRefusal("OPERATION_INTERRUPTED", "Villages stopped before this scene completed."));
-  await Promise.allSettled(tasks.map((task) => task.task));
+  await Promise.allSettled(tasks.map((task) => task.drained));
 }

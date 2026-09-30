@@ -252,6 +252,11 @@ async function main() {
     const denied = assert.rejects(pending, refused("OPERATION_INTERRUPTED"));
     await alive.promise;
     await stopVenueCoordinator();
+    assert.equal(
+      row("teardown").data.operation.status,
+      "interrupted",
+      "teardown persists revocation before releasing the host",
+    );
     await denied;
     stopped.resolve("late opening");
     await recoverVenueOperations(() => Promise.resolve());

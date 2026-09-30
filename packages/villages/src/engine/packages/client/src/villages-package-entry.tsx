@@ -26,11 +26,13 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useReducer,
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
@@ -12193,7 +12195,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * `roomOpen` is a flag of its own for the same reason `chatOpen` is: the drawer
    * is animated by an attribute and a panel that is not there cannot slide.
    */
-  const [room, setRoom] = useState<RoomView | null>(null);
+  const [room, setRoom] = useReducer((current: RoomView | null, next: SetStateAction<RoomView | null>) => {
+    const candidate = typeof next === "function" ? next(current) : next;
+    if (current?.id && current.id === candidate?.id && (current.sceneRevision ?? 0) > (candidate.sceneRevision ?? 0))
+      return current;
+    return candidate;
+  }, null);
   const [mailboxOpen, setMailboxOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   /** What has been typed into the room's box and not yet said. */
@@ -12740,7 +12747,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     return () => {
       disposed = true;
     };
-  }, [room?.id, room?.operation?.id, room?.operation?.status]);
+  }, [room?.id, room?.operation?.id, room?.operation?.status, room?.submissions]);
 
   // An app reload does not end a venue visit. The server owns the one active
   // session; the client restores it instead of opening another conversation.
@@ -13438,21 +13445,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
       );
       const path =
-        operation.kind === "memory"
-          ? `/rooms/archive/${encodeURIComponent(room.id)}/retry-memory`
-          : operation.kind === "greet"
-            ? "/rooms/greet"
-            : operation.kind === "turn"
-              ? operation.input?.mode === "leave"
-                ? "/rooms/leave"
-                : "/rooms/turn"
-              : "/rooms/end";
+        operation.kind === "move"
+          ? "/rooms/zone"
+          : operation.kind === "memory"
+            ? `/rooms/archive/${encodeURIComponent(room.id)}/retry-memory`
+            : operation.kind === "greet"
+              ? "/rooms/greet"
+              : operation.kind === "turn"
+                ? operation.input?.mode === "leave"
+                  ? "/rooms/leave"
+                  : "/rooms/turn"
+                : "/rooms/end";
       const answer = await request<{ session: RoomView; recordEvents?: RoomRecordEvent[] }>(path, {
         method: "POST",
         body: JSON.stringify({
           ...operation.input,
           sessionId: room.id,
           submissionId: operation.id,
+          operationId: operation.id,
           expectedSceneRevision: room.sceneRevision ?? 0,
           retryOfAttemptId: operation.attemptId,
         }),
@@ -13554,7 +13564,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       try {
         const { session } = await request<{ session: RoomView }>("/rooms", {
           method: "POST",
-          body: JSON.stringify({ venueId: place.id, spaceClass, privateOwnerId, entryArea, zoneId }),
+          body: JSON.stringify({
+            venueId: place.id,
+            spaceClass,
+            privateOwnerId,
+            entryArea,
+            zoneId,
+            expectedSceneRevision: room?.sceneRevision,
+          }),
           signal: AbortSignal.timeout(20_000),
         });
         setRoom(currentRoom(session));

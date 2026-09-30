@@ -55,13 +55,13 @@
     },
     {
       "path": "server.mjs",
-      "sha256": "18ff96f5d176d5b1c0ca0e717ef3560491128361899a0761ca18cd785e4d822f",
-      "bytes": 521396
+      "sha256": "7c30c81668de001c84c055b369c5e45189fe2a33375df7c08c665b8313b28ce8",
+      "bytes": 522746
     },
     {
       "path": "client.js",
-      "sha256": "c895d12a68ce24738f9641402f0b49c8a4a2c9e7b96ad705576ae861bbab3b32",
-      "bytes": 771420
+      "sha256": "3de9033ccbe250001f5a6deb0454eb896af260b4110df15958af7448dc536ac0",
+      "bytes": 771640
     },
     {
       "path": "villages-icon.png",

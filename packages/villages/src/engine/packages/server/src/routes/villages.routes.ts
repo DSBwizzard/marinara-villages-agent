@@ -710,7 +710,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
   app.post<{
-    Body: { venueId?: unknown; spaceClass?: unknown; zoneId?: unknown; privateOwnerId?: unknown; entryArea?: unknown };
+    Body: {
+      venueId?: unknown;
+      spaceClass?: unknown;
+      zoneId?: unknown;
+      privateOwnerId?: unknown;
+      entryArea?: unknown;
+      expectedSceneRevision?: unknown;
+    };
   }>("/rooms", async (request, reply) => {
     try {
       await assertFoundedVillageReady();
@@ -739,28 +746,38 @@ export async function villagesRoutes(engine: FastifyInstance) {
           typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
           entryArea,
           typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+          request.body?.expectedSceneRevision === undefined
+            ? undefined
+            : readSceneRevision(request.body.expectedSceneRevision),
         ),
       };
     } catch (error) {
       return fail(reply, error, "entering a venue");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; zoneId?: unknown; expectedSceneRevision?: unknown } }>(
-    "/rooms/zone",
-    async (request, reply) => {
-      try {
-        return {
-          session: await moveVenueZone(
-            readChatId(request.body?.sessionId),
-            readPlaceId(request.body?.zoneId),
-            readSceneRevision(request.body?.expectedSceneRevision),
-          ),
-        };
-      } catch (error) {
-        return fail(reply, error, "moving between zones");
-      }
-    },
-  );
+  app.post<{
+    Body: {
+      sessionId?: unknown;
+      zoneId?: unknown;
+      expectedSceneRevision?: unknown;
+      retryOfAttemptId?: string;
+      operationId?: unknown;
+    };
+  }>("/rooms/zone", async (request, reply) => {
+    try {
+      return {
+        session: await moveVenueZone(
+          readChatId(request.body?.sessionId),
+          readPlaceId(request.body?.zoneId),
+          readSceneRevision(request.body?.expectedSceneRevision),
+          request.body?.retryOfAttemptId,
+          request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
+        ),
+      };
+    } catch (error) {
+      return fail(reply, error, "moving between zones");
+    }
+  });
   app.put<{ Params: { venueId: string; zoneId: string }; Body: unknown }>(
     "/venues/:venueId/zones/:zoneId",
     async (request, reply) => {
