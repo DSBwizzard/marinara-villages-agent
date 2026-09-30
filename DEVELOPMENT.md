@@ -16,7 +16,7 @@ Change `MARINARA_ENGINE_ROOT` if your Engine checkout is elsewhere. Before packa
 
 ## Install into the existing Engine
 
-Sprite Studio uses the Engine's existing public sprite preview and generation endpoints. Its planning, jobs, references, review, and approval belong to Villages; no Engine source patch is needed. The standing restriction in [AGENTS.md](AGENTS.md) forbids Engine code changes. Sideloading a merged, validated Villages package through the helper below is allowed.
+Sprite Studio uses the Engine's existing raw character-sheet image preview and generation endpoints; Villages preserves the returned source and owns sprite cleanup. Its planning, jobs, references, review, and approval belong to Villages; no Engine source patch is needed. The standing restriction in [AGENTS.md](AGENTS.md) forbids Engine code changes. Sideloading a merged, validated Villages package through the helper below is allowed.
 
 The sideload helper installs Villages into either an existing package registry or a fresh data directory. It preserves other installed package records and saves a registry backup when one already exists. After the package has merged to `staging` and passed checks and build, run:
 

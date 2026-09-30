@@ -1,41 +1,26 @@
-// The Villages studio uses the Engine's existing public sprite endpoint. One
-// full-body sheet request is one image submission; the Engine's optional
-// fullBodyExpressionMode is deliberately false because that mode loops over cells.
+// Villages owns the sheet and all derivatives. The raw image endpoint performs
+// one image submission and never applies the Engine's sprite matte cleanup.
+import { createHash } from "node:crypto";
 import { badRequest } from "./errors.js";
-import { villageEngineJson } from "./engine-loopback.js";
+import { villageEngineJson, villageEngineBaseUrl } from "./engine-loopback.js";
 import { asRecord, asString } from "./coerce.js";
-import { generatedMime } from "./resident-sprites.js";
-import { studioPrompt, type StudioBatch, type StudioPlan, type StudioView } from "./sprite-studio-model.js";
+import { decodeVillageImageDataUrl, imagePromptId } from "./image-generation.js";
+import {
+  studioPrompt,
+  type StudioBatch,
+  type StudioPlan,
+  type StudioView,
+  type StudioSource,
+} from "./sprite-studio-model.js";
 
 type Expression = { label: string; pose: string };
 type Identity = { name: string; appearance: string; style: string; view: StudioView; referenceUrl: string };
 type Connection = { id: string; name: string; model: string; source: string };
-
+export const STUDIO_PIPELINE_VERSION = 1;
+const PATH = "/api/characters/avatar-generation";
+const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const enabled = (value: unknown) => value === true || value === "true";
-const layouts: Record<number, Array<[number, number]>> = {
-  1: [[1, 1]],
-  2: [
-    [2, 1],
-    [1, 2],
-  ],
-  3: [
-    [3, 1],
-    [1, 3],
-    [2, 2],
-  ],
-  4: [
-    [2, 2],
-    [4, 1],
-  ],
-  5: [
-    [3, 2],
-    [2, 3],
-  ],
-  6: [
-    [3, 2],
-    [2, 3],
-  ],
-};
+const layouts: Record<number, [number, number]> = { 1: [1, 1], 2: [2, 1], 3: [2, 2], 4: [2, 2], 5: [3, 2], 6: [3, 2] };
 
 /** A separate configured fallback would let the host switch providers after a failure. */
 export async function studioImageConnection(connectionId: string): Promise<Connection> {
@@ -58,65 +43,77 @@ export async function studioImageConnection(connectionId: string): Promise<Conne
   };
 }
 
-function overrideId(cols: number, rows: number, expressions: Expression[]) {
-  const label = `${cols}x${rows}-${expressions.map((item) => item.label).join(",")}`
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9,_-]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 120);
-  return `sprite:full-body:sheet:${label || "request"}`;
+export function selectStudioMatte(appearance: string): string {
+  const candidates: Array<[string, RegExp]> = [
+    ["#FF00FF", /\b(?:pink|magenta|fuchsia|purple|violet|lavender|rose|mauve)\b/gi],
+    [
+      "#00FF00",
+      /\b(?:green|lime|emerald|olive|mint|chartreuse|blue|cyan|aqua|teal|turquoise|azure|cobalt|navy|indigo)\b/gi,
+    ],
+    ["#00FFFF", /\b(?:blue|cyan|aqua|turquoise|teal|navy|azure|cobalt|indigo|green|lime|emerald|mint)\b/gi],
+  ];
+  return candidates
+    .map(([hex, pattern]) => ({ hex, conflicts: [...appearance.matchAll(pattern)].length }))
+    .sort((a, b) => a.conflicts - b.conflicts)[0]!.hex;
 }
 
-function requestBody(connectionId: string, identity: Identity, expressions: Expression[], batch: StudioBatch) {
+async function readReference(url: string): Promise<string> {
+  if (url.startsWith("data:")) {
+    const decoded = decodeVillageImageDataUrl(url, { label: "identity reference", maxBase64Length: 16_000_000 });
+    return `data:${decoded.mime};base64,${Buffer.from(decoded.bytes).toString("base64")}`;
+  }
+  if (!/^\/api\/sprites\/villages-[a-f0-9-]{36}\/file\/[a-z0-9_-]+\.(png|jpeg|jpg|webp)(\?[^#]*)?$/i.test(url))
+    throw badRequest("The captured identity reference is unavailable. Capture it again.");
+  const response = await fetch(villageEngineBaseUrl() + url);
+  if (!response.ok) throw badRequest("The captured identity reference could not be read.");
+  if (Number(response.headers.get("content-length")) > 12_000_000)
+    throw badRequest("The identity reference is too large.");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > 12_000_000) throw badRequest("The identity reference is too large.");
+  const mime = response.headers.get("content-type")?.split(";")[0] || "image/png";
+  return readReference(`data:${mime};base64,${bytes.toString("base64")}`);
+}
+
+function requestBody(
+  connectionId: string,
+  identity: Identity,
+  reference: string,
+  batch: StudioBatch,
+  prompt: string,
+  negativePrompt = "",
+) {
   return {
     connectionId,
+    name: identity.name,
     appearance: `${identity.name}. ${identity.appearance}`.slice(0, 2000),
-    referenceImage: identity.referenceUrl,
-    expressions: expressions.map((item) => item.label),
-    cols: batch.cols,
-    rows: batch.rows,
-    spriteType: "full-body",
-    fullBodyExpressionMode: false,
-    noBackground: true,
-    nativeTransparentPng: true,
-    promptOverrides: [
-      {
-        id: overrideId(batch.cols, batch.rows, expressions),
-        prompt: studioPrompt({
-          name: identity.name,
-          appearance: identity.appearance,
-          style: identity.style,
-          view: identity.view,
-          expressions,
-          batch,
-        }),
-      },
-    ],
+    purpose: "character-sheet",
+    width: batch.width,
+    height: batch.height,
+    referenceImages: [reference],
+    promptOverrides: [{ id: imagePromptId(identity.name, "character-sheet"), prompt, negativePrompt }],
   };
 }
 
-async function preview(
-  connectionId: string,
-  identity: Identity,
-  expressions: Expression[],
-  cols: number,
-  rows: number,
-) {
-  const target = { cols, rows, count: expressions.length, width: cols * 512, height: rows * 768 };
-  const body = requestBody(connectionId, identity, expressions, target);
-  const answer = asRecord(await villageEngineJson<unknown>("/api/sprites/generate-sheet/preview", { body }));
+async function preview(body: ReturnType<typeof requestBody>) {
+  const answer = asRecord(await villageEngineJson<unknown>(PATH + "/preview", { body }));
   const items = Array.isArray(answer.items) ? answer.items.map(asRecord) : [];
   const item = items[0];
   if (items.length !== 1 || !item || item.id !== body.promptOverrides[0]!.id)
-    throw badRequest(
-      "This image model cannot provide a one-request sprite sheet. Choose a different image connection.",
-    );
+    throw badRequest("This image model cannot preview one sheet request. Choose a different image connection.");
   const width = Number(item.width),
-    height = Number(item.height);
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1)
-    throw badRequest("The image connection did not report a usable sprite size.");
-  return { cols, rows, count: expressions.length, width, height };
+    height = Number(item.height),
+    prompt = asString(item.prompt);
+  if (
+    ![width, height].every((v) => Number.isInteger(v) && v > 0 && v <= 4096) ||
+    width * height > 16_000_000 ||
+    !prompt
+  )
+    throw badRequest("The image connection did not report a usable sprite request.");
+  return { width, height, prompt, negativePrompt: asString(item.negativePrompt) };
+}
+
+function fingerprint(connection: Connection, body: ReturnType<typeof requestBody>, matteHex: string) {
+  return digest(JSON.stringify({ pipelineVersion: STUDIO_PIPELINE_VERSION, connection, matteHex, body }));
 }
 
 export async function planVillageStudioSheets(
@@ -126,20 +123,53 @@ export async function planVillageStudioSheets(
   individual: boolean,
 ): Promise<StudioPlan> {
   const connection = await studioImageConnection(connectionId);
+  const reference = await readReference(identity.referenceUrl);
+  const matteHex = selectStudioMatte(identity.name + " " + identity.appearance);
   const batches: StudioBatch[] = [];
   for (let offset = 0; offset < expressions.length;) {
     const count = Math.min(individual ? 1 : 6, expressions.length - offset);
-    const [cols, rows] = count === 3 ? [2, 2] : layouts[count]![0]!;
-    const chosen = await preview(connectionId, identity, expressions.slice(offset, offset + count), cols!, rows!);
-    batches.push(chosen);
-    offset += chosen.count;
+    const [cols, rows] = layouts[count]!;
+    const chosen = expressions.slice(offset, offset + count);
+    let target: StudioBatch = { cols, rows, count, width: cols * 512, height: rows * 768 };
+    // A provider may constrain the requested dimensions. Compile the layout at
+    // that actual size and require it to settle before displaying the plan.
+    for (let pass = 0; pass < 3; pass++) {
+      const draftPrompt = studioPrompt({ ...identity, expressions: chosen, batch: target, matteHex });
+      const compiled = await preview(requestBody(connectionId, identity, reference, target, draftPrompt));
+      if (compiled.width !== target.width || compiled.height !== target.height) {
+        target = { ...target, width: compiled.width, height: compiled.height };
+        continue;
+      }
+      const body = requestBody(connectionId, identity, reference, target, compiled.prompt, compiled.negativePrompt);
+      target.request = {
+        pipelineVersion: STUDIO_PIPELINE_VERSION,
+        matteHex,
+        draftPrompt,
+        prompt: compiled.prompt,
+        negativePrompt: compiled.negativePrompt,
+        fingerprint: fingerprint(connection, body, matteHex),
+      };
+      break;
+    }
+    if (!target.request) throw badRequest("The image size changed during planning. Refresh the request summary.");
+    batches.push(target);
+    offset += count;
   }
   return {
-    protocol: 2,
+    protocol: 3,
     connection,
     batches,
     estimatedCost: null,
     localWorkflow: /comfy|swarm|runpod|local/i.test(connection.source),
+  };
+}
+
+export function studioImageSource(image: string, kind: StudioSource["kind"], batch?: StudioBatch): StudioSource {
+  const decoded = decodeVillageImageDataUrl(image, { label: "sprite source", maxBase64Length: 16_000_000 });
+  return {
+    kind,
+    sha256: digest(decoded.bytes),
+    ...(batch?.request ? { matteHex: batch.request.matteHex, pipelineVersion: batch.request.pipelineVersion } : {}),
   };
 }
 
@@ -150,22 +180,26 @@ export async function generateVillageStudioSheet(input: {
   expressions: Expression[];
   batch: StudioBatch;
   onSubmit: () => Promise<void>;
-}): Promise<string> {
-  const { connectionId, expectedModel, identity, expressions, batch, onSubmit } = input;
+}): Promise<{ image: string; source: StudioSource }> {
+  const { connectionId, expectedModel, identity, batch, onSubmit } = input;
   const connection = await studioImageConnection(connectionId);
   if (connection.model !== expectedModel)
     throw badRequest("The image model changed. Review the generation plan again.");
-  const current = await preview(connectionId, identity, expressions, batch.cols, batch.rows);
-  if (current.width !== batch.width || current.height !== batch.height || current.count !== batch.count)
-    throw badRequest("The image size changed. Review the generation plan again.");
+  const request = batch.request;
+  if (!request || request.pipelineVersion !== STUDIO_PIPELINE_VERSION)
+    throw badRequest("The generation plan changed. Refresh the request summary.");
+  const reference = await readReference(identity.referenceUrl);
+  const compiled = await preview(requestBody(connectionId, identity, reference, batch, request.draftPrompt));
+  const body = requestBody(connectionId, identity, reference, batch, compiled.prompt, compiled.negativePrompt);
+  if (
+    compiled.width !== batch.width ||
+    compiled.height !== batch.height ||
+    fingerprint(connection, body, request.matteHex) !== request.fingerprint
+  )
+    throw badRequest("The generation plan changed. Refresh the request summary before generating.");
   await onSubmit();
-  const answer = asRecord(
-    await villageEngineJson<unknown>("/api/sprites/generate-sheet", {
-      body: requestBody(connectionId, identity, expressions, batch),
-    }),
-  );
-  const base64 = asString(answer.sheetBase64);
-  if (!base64 || !Array.isArray(answer.cells) || answer.cells.length !== expressions.length)
-    throw new Error("The image connection did not return one complete sheet. No other generation was attempted.");
-  return `data:${generatedMime(Buffer.from(base64, "base64"))};base64,${base64}`;
+  const answer = asRecord(await villageEngineJson<unknown>(PATH, { body }));
+  const image = asString(answer.image);
+  const source = studioImageSource(image, "generated-raw", batch);
+  return { image, source };
 }

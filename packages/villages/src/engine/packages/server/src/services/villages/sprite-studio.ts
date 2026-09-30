@@ -20,7 +20,7 @@ import {
   type StudioCell,
   type StudioSettings,
 } from "./sprite-studio-model.js";
-import { planVillageStudioSheets, generateVillageStudioSheet } from "./sprite-studio-generation.js";
+import { planVillageStudioSheets, generateVillageStudioSheet, studioImageSource } from "./sprite-studio-generation.js";
 import { buildVillageSnapshot } from "./village.js";
 
 const active = new Set<string>();
@@ -341,12 +341,10 @@ async function prepare(characterId: string, raw: unknown) {
     plan = await planVillageStudioSheets(connectionId, identity, input.expressions, input.individual);
   } catch (error) {
     if (safeMessage(error).includes("(404)"))
-      throw badRequest("This Marinara version cannot preview sprite requests. Import and review remain available.");
+      throw badRequest("This Marinara version cannot preview raw image requests. Import and review remain available.");
     throw error;
   }
-  plan.reviewToken = hash(
-    JSON.stringify({ input, settings: state.settings, referenceUrl, model: plan.connection.model }),
-  );
+  plan.reviewToken = hash(JSON.stringify({ input, settings: state.settings, identity, plan }));
   return { id, state, input, identity, connectionId, plan };
 }
 export async function planSpriteStudio(characterId: string, raw: unknown) {
@@ -456,7 +454,7 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
         const expressions = input.expressions.slice(offset, offset + batch.count);
         offset += batch.count;
         const assetId = `villages-${randomUUID()}`;
-        const image = await generateVillageStudioSheet({
+        const { image, source } = await generateVillageStudioSheet({
           connectionId,
           expectedModel: plan.connection.model,
           identity,
@@ -472,13 +470,17 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
               job.attempted += 1;
             }),
         });
-        // Persist the untouched output before interpreting crops or approvals.
+        // Save paid artwork before any further document write can fail.
         const output = await saveStudioImage(image, "original", assetId);
+        await mutate(id, (next) => {
+          next.jobs.find((item) => item.id === jobId)!.pendingSource = source;
+        });
         await mutate(id, (next) => {
           retainFile(next, assetId, fileStem(output.url), output.url);
           const job = next.jobs.find((item) => item.id === jobId)!;
           job.sheets.push({
             ...output,
+            source,
             attempts: 1,
             usage: null,
             baseScale: Math.min(512 / (output.width / batch.cols), 768 / (output.height / batch.rows)),
@@ -487,6 +489,7 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
           delete job.pendingAssetId;
           delete job.pendingBatch;
           delete job.pendingExpressions;
+          delete job.pendingSource;
         });
       }
       await mutate(id, (next) => {
@@ -538,6 +541,7 @@ async function importStudioSheetUnlocked(characterId: string, raw: unknown) {
   await mutate(id, (state) =>
     retainFile(state, importAssetId, "original", `/api/sprites/${importAssetId}/file/original.png`),
   );
+  const source = studioImageSource(image, "imported");
   const saved = await saveStudioImage(image, "original", importAssetId);
   await mutate(id, (state) => {
     retainFile(state, saved.assetId, fileStem(saved.url), saved.url);
@@ -561,6 +565,7 @@ async function importStudioSheetUnlocked(characterId: string, raw: unknown) {
       sheets: [
         {
           ...saved,
+          source,
           baseScale: Math.min(
             512 / Math.max(...cells.map((cell) => cell.width)),
             768 / Math.max(...cells.map((cell) => cell.height)),
@@ -970,6 +975,9 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
     return `data:${response.headers.get("content-type")?.split(";")[0] || "image/png"};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;
   });
   const size = await inspectVillageImage(image);
+  const source = studioImageSource(image, job.pendingBatch.request ? "generated-raw" : "legacy", job.pendingBatch);
+  if (job.pendingSource?.sha256 && job.pendingSource.sha256 !== source.sha256)
+    throw badRequest("The saved source changed. Recovery left existing artwork untouched.");
   await mutate(id, (next) => {
     const current = next.jobs.find((item) => item.id === job.id)!;
     if (current.pendingAssetId !== job.pendingAssetId) return;
@@ -978,6 +986,7 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
     current.sheets.push({
       assetId: job.pendingAssetId!,
       url: original.url.split("?")[0]!,
+      source,
       ...size,
       attempts: 1,
       usage: null,
@@ -996,6 +1005,7 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
     delete current.pendingAssetId;
     delete current.pendingBatch;
     delete current.pendingExpressions;
+    delete current.pendingSource;
     current.status = "ready";
     current.error = "Recovered saved artwork. Unsubmitted sheets were not generated.";
   });

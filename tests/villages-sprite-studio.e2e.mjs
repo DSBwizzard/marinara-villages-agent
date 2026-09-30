@@ -11,12 +11,13 @@ const output = resolve(".build-tmp/sprite-studio-browser");
 await mkdir(output, { recursive: true });
 await build({
   stdin: {
-    contents: `import React from "react"; import {createRoot} from "react-dom/client"; import {SpriteStudio,clearStudioMatte,renderStudioCell} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-studio.tsx").replaceAll("\\", "/")}"; import {SPRITE_STYLES,defaultStudioState} from "${resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts").replaceAll("\\", "/")}";
-  window.styleExamples=SPRITE_STYLES; window.defaultStudio=defaultStudioState; window.renderCell=renderStudioCell; window.clearMatte=clearStudioMatte;
+    contents: `import React from "react"; import {createRoot} from "react-dom/client"; import {SpriteStudio,clearStudioMatte,renderStudioCell,studioRenderKey} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-studio.tsx").replaceAll("\\", "/")}"; import {SPRITE_STYLES,defaultStudioState} from "${resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts").replaceAll("\\", "/")}";
+import {createStudioRenderCache} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-render-cache.ts").replaceAll("\\", "/")}";
+  window.makeRenderCache=createStudioRenderCache; window.renderKey=studioRenderKey; window.styleExamples=SPRITE_STYLES; window.defaultStudio=defaultStudioState; window.renderCell=renderStudioCell; window.clearMatte=clearStudioMatte;
   const root=createRoot(document.getElementById("root"));
   let villager={characterId:"mara",name:"Mara",sprite:null};
   const request=async(path,init)=>{const r=await fetch("/api"+path,init);const data=await r.json();if(!r.ok)throw Error(data.error);return data;};
-  const open=()=>root.render(<SpriteStudio villager={villager} request={request} onSaved={next=>{villager=next;open();}} onBack={()=>root.render(<button onClick={open}>Mara · Sprite Studio</button>)} onExport={async()=>{window.exported=true}}/>);
+  const open=()=>root.render(<React.StrictMode><SpriteStudio villager={villager} request={request} onSaved={next=>{villager=next;open();}} onBack={()=>root.render(<button onClick={open}>Mara · Sprite Studio</button>)} onExport={async()=>{window.exported=true}}/></React.StrictMode>);
   window.openStudio=open;open();`,
     loader: "tsx",
     resolveDir: process.cwd(),
@@ -115,7 +116,7 @@ for (const profile of browserProfiles) {
     if (action === "/plan") {
       previewed++;
       result = {
-        protocol: 2,
+        protocol: 3,
         connection: { id: "mock", name: "Mock images", model: "fixture", source: "openai" },
         batches: [],
         estimatedCost: null,
@@ -179,15 +180,15 @@ for (const profile of browserProfiles) {
       const repairedCells = [];
       for (const sheet of job.sheets)
         for (const cell of [...sheet.cells]) {
-          if (cell.repairedFrom && cell.cleanupVersion === 3) continue;
+          if (cell.repairedFrom && cell.cleanupVersion === 4) continue;
           const originalId = cell.repairedFrom ?? cell.id;
-          let repaired = sheet.cells.find((item) => item.repairedFrom === originalId && item.cleanupVersion === 3);
+          let repaired = sheet.cells.find((item) => item.repairedFrom === originalId && item.cleanupVersion === 4);
           if (!repaired) {
             repaired = {
               ...cell,
               id: "repair-" + seq++,
               repairedFrom: originalId,
-              cleanupVersion: 3,
+              cleanupVersion: 4,
               cleanup: true,
               pending: true,
               rendered: undefined,
@@ -447,6 +448,85 @@ for (const profile of browserProfiles) {
       return baseline;
     }, source);
     assert.deepEqual(alignment, [751, 751], "distinct cell margins share the same foot baseline");
+    const cacheProof = await page.evaluate(async (source) => {
+      const cache = window.makeRenderCache();
+      const sheet = {
+        url: source,
+        source: { kind: "generated-raw", sha256: "original" },
+        width: 1536,
+        height: 1536,
+        baseScale: 1,
+        cells: [],
+      };
+      const cell = {
+        id: "cache",
+        view: "front",
+        label: "happy",
+        pose: "",
+        x: 0,
+        y: 0,
+        width: 512,
+        height: 768,
+        scale: 1,
+        offsetX: 0,
+        offsetY: 0,
+        status: "candidate",
+      };
+      let reads = 0;
+      const original = CanvasRenderingContext2D.prototype.getImageData;
+      CanvasRenderingContext2D.prototype.getImageData = function (...args) {
+        reads++;
+        return original.apply(this, args);
+      };
+      try {
+        const [a, b] = await Promise.all([
+          window.renderCell(sheet, cell, true, cache),
+          window.renderCell(sheet, { ...cell, pending: true, label: "other" }, true, cache),
+        ]);
+        const afterShared = reads;
+        a.width = 1;
+        const again = await window.renderCell(sheet, cell, true, cache);
+        const afterReuse = reads;
+        const key = window.renderKey(sheet, cell, true);
+        const variants = [
+          { ...cell, scale: 0.9 },
+          { ...cell, offsetX: 1 },
+          { ...cell, offsetY: 1 },
+          { ...cell, x: 1, width: 511 },
+          { ...cell, y: 1, height: 767 },
+        ];
+        const changed =
+          variants.every((v) => window.renderKey(sheet, v, true) !== key) &&
+          window.renderKey({ ...sheet, source: { ...sheet.source, sha256: "changed" } }, cell, true) !== key &&
+          window.renderKey({ ...sheet, baseScale: 0.5 }, cell, true) !== key &&
+          window.renderKey(sheet, cell, false) !== key;
+        await window.renderCell(sheet, { ...cell, scale: 0.9 }, true, cache);
+        const invalidated = reads > afterReuse;
+        cache.dispose();
+        let closed = false;
+        try {
+          await window.renderCell(sheet, cell, true, cache);
+        } catch {
+          closed = true;
+        }
+        return {
+          afterShared,
+          afterReuse,
+          independent: a !== b && b.width === 512 && again.width === 512,
+          changed,
+          invalidated,
+          closed,
+        };
+      } finally {
+        CanvasRenderingContext2D.prototype.getImageData = original;
+      }
+    }, source);
+    assert.equal(cacheProof.afterShared, 2, "two consumers share one crop/cleanup pass");
+    assert.equal(cacheProof.afterReuse, 2, "completed derivatives are reused");
+    assert.equal(cacheProof.independent, true, "resizing one consumer cannot corrupt another");
+    assert.equal(cacheProof.changed, true, "drawing changes invalidate render keys");
+    assert.equal(cacheProof.invalidated, true);
+    assert.equal(cacheProof.closed, true);
     const originalAssignments = structuredClone(state.assignments);
     await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
     await expect(
