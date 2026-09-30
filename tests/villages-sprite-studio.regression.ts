@@ -31,6 +31,7 @@ import {
 
 const records = new Map<string, any>();
 let failVillageWrite = false;
+let failSourceWrite = false;
 const documents = {
   async getById(_package: string, id: string) {
     return structuredClone(records.get(id) ?? null);
@@ -46,6 +47,9 @@ const documents = {
   },
   async update(input: any) {
     if (failVillageWrite && input.id === "villages-village") throw new Error("Disk unavailable");
+    if (failSourceWrite && input.data?.jobs?.some((job: any) => job.pendingSource)) {
+      throw new Error("Source metadata disk unavailable");
+    }
     const prior = records.get(input.id);
     if (!prior || prior.revision !== input.expectedRevision) return null;
     const row = { ...prior, ...structuredClone(input), revision: prior.revision + 1 };
@@ -609,6 +613,26 @@ async function main() {
       delightedSlot.id,
       "default falls back after removing its last view",
     );
+
+    const beforeSourceFailure = activeSprite();
+    const beforeSourceCalls = calls;
+    failSourceWrite = true;
+    const savedButInterrupted = await generateBatch(1, "source_write_failure");
+    failSourceWrite = false;
+    assert.equal(savedButInterrupted.job.status, "interrupted");
+    assert.equal(savedButInterrupted.job.sheets.length, 0);
+    assert.equal(
+      storedFiles.get("/api/sprites/" + savedButInterrupted.job.pendingAssetId + "/original"),
+      png,
+      "paid source bytes survive a failed provenance document write",
+    );
+    const recoveredSource = await recoverStudioJob("mara", { id: savedButInterrupted.job.id });
+    assert.equal(
+      recoveredSource.jobs.find((job) => job.id === savedButInterrupted.job.id)!.sheets[0]!.source?.kind,
+      "generated-raw",
+    );
+    assert.equal(calls, beforeSourceCalls + 1, "recovery never repeats generation");
+    assert.deepEqual(activeSprite(), beforeSourceFailure);
 
     generationRelease = undefined;
     failGeneration = true;
