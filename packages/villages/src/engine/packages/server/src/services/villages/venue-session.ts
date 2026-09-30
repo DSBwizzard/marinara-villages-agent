@@ -1931,9 +1931,11 @@ async function markZoneSeen(session: VenueSession): Promise<void> {
     venue = village.venues.find((entry) => entry.id === session.placeId),
     zone = venue && resolveVenueZone(venue, session.zoneId ?? "");
   if (zone && ["staff", "restricted"].includes(zone.kind))
-    void import("./location-image.js")
-      .then(({ generateFirstPrivateSpaceImage }) => generateFirstPrivateSpaceImage(session.placeId, zone.id))
-      .catch(() => {});
+    outsideVenueOperation(() => {
+      void import("./location-image.js")
+        .then(({ generateFirstPrivateSpaceImage }) => generateFirstPrivateSpaceImage(session.placeId, zone.id))
+        .catch(() => {});
+    });
 }
 
 export function enterVenue(

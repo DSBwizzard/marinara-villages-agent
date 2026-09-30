@@ -1,3 +1,4 @@
+import { outsideVenueOperation } from "./venue-coordinator.js";
 import { readCreationPrivateZones, readVenueImageContext } from "./village.js";
 import { preparePrivateSpaces } from "./private-space-preparation.js";
 import { venueZones, effectiveVenueClasses } from "./venue-zones.js";
@@ -915,7 +916,9 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
     if (state.progressEngineVersion === 1) recordProjectProgress(state, project, "opened", evidence, "", applyOpening);
     else applyOpening();
   });
-  void preparePrivateSpaces().catch(() => {});
+  outsideVenueOperation(() => {
+    void preparePrivateSpaces().catch(() => {});
+  });
 }
 
 export function reconcileProjectLifecycles(state: VillageState, now: Date): void {

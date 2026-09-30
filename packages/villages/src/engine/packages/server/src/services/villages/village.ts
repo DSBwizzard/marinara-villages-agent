@@ -3138,7 +3138,9 @@ export async function completeVillageResidence(
   });
   if (moved) {
     await retryResidencePrivateSpaceAdaptation(characterId);
-    void preparePrivateSpaces().catch(() => {});
+    outsideVenueOperation(() => {
+      void preparePrivateSpaces().catch(() => {});
+    });
   }
   return buildVillageSnapshot(now);
 }
