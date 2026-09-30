@@ -48,7 +48,22 @@ export type StudioCell = {
   repairedFrom?: string;
   status: "candidate" | "approved" | "discarded";
 };
+export type StudioSource = {
+  kind: "generated-raw" | "imported" | "legacy";
+  sha256?: string;
+  matteHex?: string;
+  pipelineVersion?: number;
+};
+export type StudioGenerationRequest = {
+  pipelineVersion: number;
+  matteHex: string;
+  draftPrompt: string;
+  prompt: string;
+  negativePrompt: string;
+  fingerprint: string;
+};
 export type StudioSheet = {
+  source?: StudioSource;
   baseScale?: number;
   assetId: string;
   url: string;
@@ -58,7 +73,14 @@ export type StudioSheet = {
   usage: Record<string, unknown> | null;
   cells: StudioCell[];
 };
-export type StudioBatch = { width: number; height: number; cols: number; rows: number; count: number };
+export type StudioBatch = {
+  width: number;
+  height: number;
+  cols: number;
+  rows: number;
+  count: number;
+  request?: StudioGenerationRequest;
+};
 export type StudioPlan = {
   protocol: number;
   reviewToken?: string;
@@ -83,6 +105,7 @@ export type StudioJob = {
   planned: number;
   attempted: number;
   sheets: StudioSheet[];
+  pendingSource?: StudioSource;
   pendingAssetId?: string;
   pendingBatch?: StudioBatch;
   pendingExpressions?: Array<{ label: string; pose: string }>;
@@ -154,6 +177,7 @@ export function studioPrompt(input: {
   view: StudioView;
   expressions: Array<{ label: string; pose: string }>;
   batch: StudioBatch;
+  matteHex?: string;
 }): string {
   const gaze =
     input.view === "front"
@@ -170,6 +194,6 @@ export function studioPrompt(input: {
       (item, i) =>
         `Cell ${i + 1}: ${item.label.replace(/_/g, " ")}. ${item.pose || (item.label === "neutral" ? "Relaxed neutral standing pose." : "Use a readable facial expression and fitting expressive body gesture.")}`,
     ),
-    "Transparent background with real alpha. If unavailable, use one flat saturated chroma background chosen to avoid the character’s colors, with no checkerboard, gradient, or color spill. Preserve intentional character outlines and internal shading in the chosen style.",
+    `Use one perfectly flat, uniform solid background ${input.matteHex ?? "#FF00FF"} across the entire canvas, including gutters and unused cells. Do not generate transparency, checkerboards, gradients, grid lines, background texture, or color spill. Keep character colors fully opaque, including internal highlights and shadows. Preserve intentional character outlines in the chosen style. Background removal happens after generation.`,
   ].join("\n\n");
 }

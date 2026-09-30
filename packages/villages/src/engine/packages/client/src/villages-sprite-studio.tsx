@@ -1,5 +1,7 @@
+import { STUDIO_CLEANUP_VERSION } from "../../server/src/services/villages/sprite-studio-matte.js";
+import { createStudioRenderCache, type StudioRenderCache } from "./villages-sprite-render-cache.js";
 import { removeStudioMatte } from "../../server/src/services/villages/sprite-studio-matte.js";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   SPRITE_STYLES,
   STUDIO_EXPRESSIONS,
@@ -26,6 +28,7 @@ type Props = {
   onBack: () => void;
   onExport: () => Promise<void>;
 };
+const STUDIO_RENDER_VERSION = 1;
 type Candidate = { sheet: StudioSheet; cell: StudioCell };
 const message = (error: unknown) => (error instanceof Error ? error.message : "The sprite action failed.");
 // LAN HTTP is common on phones; randomUUID requires a secure context, getRandomValues does not.
@@ -57,7 +60,43 @@ export function clearStudioMatte(context: CanvasRenderingContext2D, width: numbe
   if (removeStudioMatte(pixels.data, width, height)) context.putImageData(pixels, 0, 0);
 }
 
+export function studioRenderKey(sheet: StudioSheet, cell: StudioCell, cleanup = false): string {
+  return JSON.stringify({
+    source: [sheet.url, sheet.source?.sha256],
+    sheetSize: [sheet.width, sheet.height],
+    baseScale:
+      sheet.baseScale ??
+      Math.min(
+        512 / Math.max(...sheet.cells.map((item) => item.width)),
+        768 / Math.max(...sheet.cells.map((item) => item.height)),
+      ),
+    crop: [cell.x, cell.y, cell.width, cell.height],
+    transform: [cell.scale, cell.offsetX, cell.offsetY],
+    canvas: [512, 768],
+    cleanup,
+    cleanupVersion: cleanup ? STUDIO_CLEANUP_VERSION : 0,
+    rendererVersion: STUDIO_RENDER_VERSION,
+  });
+}
 export async function renderStudioCell(
+  sheet: StudioSheet,
+  cell: StudioCell,
+  cleanup = false,
+  cache?: StudioRenderCache<HTMLCanvasElement>,
+): Promise<HTMLCanvasElement> {
+  validateStudioCell(cell, sheet);
+  if (!cache) return renderUncachedStudioCell(sheet, cell, cleanup);
+  const cached = await cache.get(studioRenderKey(sheet, cell, cleanup), () =>
+    renderUncachedStudioCell(sheet, cell, cleanup),
+  );
+  // Consumers may draw, resize, or attach their canvas without changing the cache.
+  const copy = document.createElement("canvas");
+  copy.width = cached.width;
+  copy.height = cached.height;
+  copy.getContext("2d")!.drawImage(cached, 0, 0);
+  return copy;
+}
+async function renderUncachedStudioCell(
   sheet: StudioSheet,
   cell: StudioCell,
   cleanup = false,
@@ -115,13 +154,21 @@ export async function renderStudioCell(
   return canvas;
 }
 
-function CellPreview({ candidate, mirrored = false }: { candidate: Candidate; mirrored?: boolean }) {
+function CellPreview({
+  candidate,
+  mirrored = false,
+  renderCache,
+}: {
+  candidate: Candidate;
+  mirrored?: boolean;
+  renderCache: StudioRenderCache<HTMLCanvasElement>;
+}) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState("");
   useEffect(() => {
     if (candidate.cell.rendered) return;
     let cancelled = false;
-    void renderStudioCell(candidate.sheet, candidate.cell, candidate.cell.cleanup)
+    void renderStudioCell(candidate.sheet, candidate.cell, candidate.cell.cleanup, renderCache)
       .then((canvas) => {
         if (!cancelled && ref.current) {
           ref.current.getContext("2d")!.clearRect(0, 0, 512, 768);
@@ -135,7 +182,7 @@ function CellPreview({ candidate, mirrored = false }: { candidate: Candidate; mi
     return () => {
       cancelled = true;
     };
-  }, [candidate.sheet, candidate.cell]);
+  }, [candidate.sheet, candidate.cell, renderCache]);
   if (candidate.cell.rendered)
     return (
       <img
@@ -188,6 +235,15 @@ const css = `
 `;
 
 export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: Props) {
+  const renderCache = useMemo(() => createStudioRenderCache<HTMLCanvasElement>(), []);
+  const disposal = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    // Strict Mode rehearses cleanup/setup on mount. Cancel that deferred dispose.
+    if (disposal.current !== null) clearTimeout(disposal.current);
+    return () => {
+      disposal.current = setTimeout(() => renderCache.dispose(), 0);
+    };
+  }, [renderCache]);
   const base = "/villagers/" + encodeURIComponent(villager.characterId) + "/sprites";
   const [data, setData] = useState<StudioData | null>(null);
   const [settings, setSettings] = useState<StudioSettings | null>(null);
@@ -361,7 +417,11 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
         expected: item.cell,
         ...(item.cell.rendered
           ? {}
-          : { image: (await renderStudioCell(item.sheet, item.cell, item.cell.cleanup)).toDataURL("image/png") }),
+          : {
+              image: (await renderStudioCell(item.sheet, item.cell, item.cell.cleanup, renderCache)).toDataURL(
+                "image/png",
+              ),
+            }),
       });
     saved(await call<{ studio: StudioData; snapshot: unknown }>("assign", { cells, batchId }));
     setNote("Assigned. These images are now used in scenes.");
@@ -551,7 +611,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                   const item = candidates.find((candidate) => candidate.cell.id === entry.cellId);
                   return item ? (
                     <div key={entry.view} className="vss-mini">
-                      <CellPreview candidate={item} />
+                      <CellPreview renderCache={renderCache} candidate={item} />
                       <small>{entry.view}</small>
                     </div>
                   ) : null;
@@ -1074,6 +1134,13 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                             </button>
                           ) : null}
                         </div>
+                        {job.sheets.some((sheet) => !sheet.source || sheet.source.kind === "legacy") ? (
+                          <p>
+                            Earlier saved sources may already contain transparency damage. Repair backgrounds cannot
+                            restore missing opacity. Generate a new batch to review replacements; existing artwork stays
+                            saved.
+                          </p>
+                        ) : null}
                         <div className="vss-originals">
                           {job.sheets.map((sheet, index) => (
                             <details key={sheet.assetId + ":" + index}>
@@ -1114,7 +1181,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                   aria-pressed={picked === item.cell.id}
                                   onClick={() => pick(item)}
                                 >
-                                  <CellPreview candidate={item} />
+                                  <CellPreview renderCache={renderCache} candidate={item} />
                                 </button>
                                 <strong>{item.cell.label.replaceAll("_", " ")}</strong>
                                 <small>{item.cell.view}</small>
@@ -1167,7 +1234,10 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                   <h3>Adjust image · saves another cutout</h3>
                   <div className="vss-adjust">
                     <div className="vss-stage" data-background="checker">
-                      <CellPreview candidate={{ sheet: adjusting.sheet, cell: { ...draft, rendered: undefined } }} />
+                      <CellPreview
+                        renderCache={renderCache}
+                        candidate={{ sheet: adjusting.sheet, cell: { ...draft, rendered: undefined } }}
+                      />
                     </div>
                     <svg
                       className="vss-source"

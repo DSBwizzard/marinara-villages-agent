@@ -1,5 +1,5 @@
 /** Shared, local chroma cleanup. No provider call or style-specific segmentation. */
-export const STUDIO_CLEANUP_VERSION = 3;
+export const STUDIO_CLEANUP_VERSION = 4;
 
 export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height: number): boolean {
   const count = width * height;
@@ -179,10 +179,9 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
           if (error < 0.000001) break search;
         }
       }
-    if (!foreground) {
-      if (keyHue && distance(index) < 180) rgba[index * 4 + 3] = 0;
-      continue;
-    }
+    // Without a local foreground match, a chroma-tinted costume is ambiguous.
+    // Detached matte specks have already been removed by component evidence.
+    if (!foreground) continue;
     if (keyHue) {
       // Compression and color spill need not lie on a perfect RGB mixture
       // line. Estimate coverage from the evidenced key's channel dominance.
@@ -190,6 +189,7 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
         Math.min(...high.map(({ index: channel }) => foreground![channel]!)) -
         Math.max(...low.map(({ index: channel }) => foreground![channel]!));
       const matteDominance = Math.min(...high.map(({ value }) => value)) - Math.max(...low.map(({ value }) => value));
+      if (error > 64 && dominance(index) < matteDominance * 0.45) continue;
       coverage = Math.max(0, Math.min(1, (matteDominance - dominance(index)) / (matteDominance - fgDominance)));
     } else if (error > 64 || coverage >= 0.98) continue;
     rgba[index * 4 + 3] = Math.round(original[index * 4 + 3]! * coverage);

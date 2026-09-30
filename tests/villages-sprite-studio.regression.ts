@@ -144,7 +144,7 @@ let savedWrites = 0,
   failDelete = false;
 const storedFiles = new Map<string, string>();
 const deletions: string[] = [];
-const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAMACAIAAABfake";
+const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAMACAIAAABfakc=";
 globalThis.fetch = async (url, init) => {
   const path = new URL(String(url)).pathname;
   const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -163,18 +163,19 @@ globalThis.fetch = async (url, init) => {
           ]
         : []),
     ]);
-  if (path === "/api/sprites/generate-sheet/preview")
+  if (path === "/api/characters/avatar-generation/preview")
     return Response.json({
       items: [
         {
           id: body.promptOverrides[0].id,
-          width: constrainedCanvas && body.cols === 3 ? 1536 : body.cols * 512,
-          height:
-            constrainedCanvas && body.cols === 3 ? 1024 : constrainedCanvas && body.rows === 3 ? 1536 : body.rows * 768,
+          width: constrainedCanvas && body.width > 1024 ? 1536 : body.width,
+          height: constrainedCanvas && body.width > 1024 ? 1024 : body.height,
+          prompt: body.promptOverrides[0].prompt + "\nFrozen host settings",
+          negativePrompt: "no labels",
         },
       ],
     });
-  if (path === "/api/sprites/generate-sheet") {
+  if (path === "/api/characters/avatar-generation") {
     calls++;
     requests.push(body);
     await new Promise<void>((resolve) => {
@@ -182,8 +183,8 @@ globalThis.fetch = async (url, init) => {
     });
     if (failGeneration) return Response.json({ error: "Provider timeout" }, { status: 504 });
     return Response.json({
-      sheetBase64: png.split(",")[1],
-      cells: body.expressions.map((expression: string) => ({ expression, base64: png.split(",")[1] })),
+      image: png,
+      prompt: body.promptOverrides[0].prompt,
     });
   }
   if (path === "/api/image-metadata/inspect") {
@@ -196,7 +197,7 @@ globalThis.fetch = async (url, init) => {
     return new Response(Buffer.concat([Buffer.from(png.split(",")[1]!, "base64"), Buffer.from("legacy-large")]), {
       headers: { "content-type": "image/png" },
     });
-  if (/^\/api\/sprites\/villages-[^/]+\/file\/original\.png$/.test(path))
+  if (/^\/api\/sprites\/villages-[^/]+\/file\/(original|reference)\.png$/.test(path))
     return new Response(Buffer.from(png.split(",")[1]!, "base64"), { headers: { "content-type": "image/png" } });
   if (/^\/api\/sprites\/villages-[^/]+$/.test(path) && !init?.body)
     return Response.json(
@@ -364,10 +365,28 @@ async function main() {
         }),
       /different selection/,
     );
-    assert.equal(requests[0].referenceImage, reference.url);
-    assert.equal(requests[0].noBackground, true);
-    assert.equal(requests[0].nativeTransparentPng, true);
-    assert.equal(requests[0].fullBodyExpressionMode, false);
+    assert.deepEqual(requests[0].referenceImages, [png]);
+    assert.equal(requests[0].purpose, "character-sheet");
+    assert.equal(requests[0].noBackground, undefined);
+    assert.equal(requests[0].nativeTransparentPng, undefined);
+    assert.equal(requests[0].fullBodyExpressionMode, undefined);
+    assert.equal(requests[0].promptOverrides[0].prompt, a.plan.batches[0].request!.prompt);
+    assert.equal(requests[0].promptOverrides[0].negativePrompt, a.plan.batches[0].request!.negativePrompt);
+    const source = a.job.sheets[0].source!;
+    assert.equal(source.kind, "generated-raw");
+    assert.equal(source.matteHex, "#FF00FF");
+    assert.equal(source.pipelineVersion, 1);
+    assert.equal(
+      source.sha256,
+      createHash("sha256")
+        .update(Buffer.from(png.split(",")[1]!, "base64"))
+        .digest("hex"),
+    );
+    assert.equal(
+      storedFiles.get("/api/sprites/" + a.job.sheets[0].assetId + "/original"),
+      png,
+      "source bytes are saved without cleanup",
+    );
     assert.match(requests[0].promptOverrides[0].prompt, /Running with arms raised/);
     await assignBatch(a.job.id);
     const aActive = activeSprite(),
@@ -455,7 +474,7 @@ async function main() {
       activeSprite().expressions.length,
     );
     assert.ok(
-      requests.every((request) => request.referenceImage === reference.url),
+      requests.every((request) => request.referenceImages[0] === png),
       "all views/styles keep the original identity reference",
     );
     const standalone = await generateBatch(1, "single");
@@ -514,7 +533,7 @@ async function main() {
     for (const mapping of repaired.repairedCells) {
       const cell = cellsOf(repairedJob).find((item) => item.id === mapping.cellId)!;
       assert.equal(cell.cleanup, true);
-      assert.equal(cell.cleanupVersion, 3);
+      assert.equal(cell.cleanupVersion, 4);
       assert.equal(cell.rendered, undefined, "old rendered files cannot bypass new cleanup");
       assert.ok(cellsOf(repairedJob).some((item) => item.id === mapping.originalId));
     }
@@ -551,7 +570,7 @@ async function main() {
     const upgraded = await repairStudioBackgrounds("mara", { batchId: a.job.id });
     assert.deepEqual(activeSprite(), priorVersionSprite, "preparing an upgrade leaves old assignments intact");
     const upgradedJob = upgraded.jobs.find((job) => job.id === a.job.id)!;
-    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 3);
+    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 4);
     assert.equal(upgradedCells.length, originalCount, "each root artwork gets one current-version repair");
     for (const entry of repairedAssignments) {
       const replacement = upgraded.repairedCells.find((item) => item.originalId === entry.id);
@@ -627,15 +646,25 @@ async function main() {
       pendingAssetId: a.job.sheets[0]!.assetId,
       pendingBatch: a.plan.batches[0],
       pendingExpressions: a.input.expressions,
+      pendingSource: { ...a.job.sheets[0]!.source, sha256: "wrong" },
     });
     const beforeRecovery = calls;
-    await recoverStudioJob("mara", { id: recoverId });
+    const beforeRecoveryActive = activeSprite();
+    await assert.rejects(() => recoverStudioJob("mara", { id: recoverId }), /saved source changed/);
+    assert.deepEqual(activeSprite(), beforeRecoveryActive);
+    stored.data.jobs.find((job: any) => job.id === recoverId).pendingSource = a.job.sheets[0]!.source;
+    const recovered = await recoverStudioJob("mara", { id: recoverId });
+    assert.deepEqual(recovered.jobs.find((job) => job.id === recoverId)!.sheets[0]!.source, a.job.sheets[0]!.source);
+    assert.deepEqual(activeSprite(), beforeRecoveryActive);
     assert.equal(calls, beforeRecovery, "recovery does not generate images");
     await importStudioSheet("mara", {
       image: png,
       cells: [{ view: "side", label: "nervous", x: 0, y: 0, width: 512, height: 768 }],
     });
-    assert.ok((await readSpriteStudio("mara")).expressions.some((slot) => slot.label === "nervous"));
+    const imported = await readSpriteStudio("mara");
+    assert.ok(imported.expressions.some((slot) => slot.label === "nervous"));
+    assert.equal(imported.jobs.at(-1)!.sheets[0]!.source?.kind, "imported");
+    assert.ok(imported.jobs.at(-1)!.sheets[0]!.source?.sha256);
     const side = studioPrompt({
       name: "Bird",
       appearance: "",

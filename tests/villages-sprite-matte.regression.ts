@@ -48,6 +48,8 @@ assert.ok(fringe.pixel(13, 20)[3]! > 100 && fringe.pixel(13, 20)[3]! < 160, "edg
 assert.ok(fringe.pixel(13, 20)[1]! > 220, "magenta is unmixed from the light outline");
 assert.deepEqual(fringe.pixel(14, 20), paper);
 const transparent = fixture([0, 0, 0, 0]);
+transparent.set(16, 25, [35, 226, 244, 128]);
+transparent.set(17, 25, [35, 226, 244, 1]);
 transparent.set(19, 30, magenta); // intentional costume detail on an already transparent sprite
 const native = transparent.rgba.slice();
 assert.equal(removeStudioMatte(transparent.rgba, width, height), false);
@@ -102,3 +104,27 @@ shaded.set(14, 25, blue);
 removeStudioMatte(shaded.rgba, width, height);
 assert.deepEqual(shaded.pixel(14, 25), blue, "legitimate colored shading beside the boundary is not treated as spill");
 console.log("Colored shading protection passed.");
+// Aqua's cyan feathers must stay opaque beside green too: green brightness
+// relative to average red/blue is not evidence that cyan belongs to the matte.
+for (const background of [magenta, [55, 245, 19, 255] as Color]) {
+  for (const body of [
+    [35, 226, 244, 255],
+    [29, 231, 245, 255],
+    [52, 222, 248, 255],
+    blue,
+    [86, 112, 64, 255],
+  ] as Color[]) {
+    const image = fixture(background);
+    for (let y = 10; y <= 49; y++) for (let x = 14; x <= 25; x++) image.set(x, y, body);
+    removeStudioMatte(image.rgba, width, height);
+    for (let y = 10; y <= 49; y++)
+      for (let x = 14; x <= 25; x++)
+        assert.deepEqual(
+          image.pixel(x, y),
+          body,
+          "opaque Aqua/Buster/Shchema-like colors survive, including unoutlined boundaries",
+        );
+    assert.equal(image.pixel(3, 3)[3], 0, "surrounding matte is removed");
+  }
+}
+console.log("Cyan feather and character palette preservation passed on magenta and green.");

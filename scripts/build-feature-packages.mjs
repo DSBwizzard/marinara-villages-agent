@@ -165,6 +165,7 @@ const villagesOwnedSourcePaths = [
   "packages/client/src/villages-room-reading.ts",
   "packages/client/src/villages-sprite-stage.ts",
   "packages/client/src/villages-sprite-studio.tsx",
+  "packages/client/src/villages-sprite-render-cache.ts",
   "packages/client/src/villages-venue-send.ts",
   "packages/client/src/villages-mobile-map.ts",
   "packages/client/src/villages-snapshot-normalization.ts",
