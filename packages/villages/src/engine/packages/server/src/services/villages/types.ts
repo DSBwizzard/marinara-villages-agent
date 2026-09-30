@@ -1065,6 +1065,9 @@ export type VillageProjectLifecycle = {
     venueId: string;
     quote: string;
     at: string;
+    grade?: "cited-interpretation";
+    interpretationVersion?: number;
+    citations?: { lineId: string; quote: string }[];
   }[];
   evidenceIds: string[];
   workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;

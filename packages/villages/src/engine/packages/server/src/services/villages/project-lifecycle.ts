@@ -410,7 +410,7 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
       const since =
         flow.phase === "construction" ? (flow.workOrder?.pausedAt ?? currentPhaseStartedAt) : currentPhaseStartedAt;
       if (Date.parse(candidate.at) < Date.parse(since))
-        throw conflict("Ask this Builder again after the current phase began, then Record their new agreement.");
+        throw conflict("Ask this Builder again after the current phase began for a fresh agreement.");
     }
     flow.builderId = residentId;
     project.participantIds = [...new Set([...project.participantIds, residentId])];
@@ -463,6 +463,9 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
         speakerId: residentId,
         venueId: spoken?.venueId,
         excerpt: spoken?.quote,
+        ...(spoken?.grade
+          ? { grade: spoken.grade, interpretationVersion: spoken.interpretationVersion, citations: spoken.citations }
+          : {}),
       });
     }
     flow.blockedReason = "";
@@ -506,6 +509,9 @@ export async function acceptProjectRequirements(id: string): Promise<void> {
       speakerId: flow.builderId,
       venueId: spoken?.venueId,
       excerpt: spoken?.quote,
+      ...(spoken?.grade
+        ? { grade: spoken.grade, interpretationVersion: spoken.interpretationVersion, citations: spoken.citations }
+        : {}),
     });
   });
 }
