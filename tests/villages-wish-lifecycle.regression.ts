@@ -38,6 +38,10 @@ import {
   readWishOutcome,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-archive.js";
 import { remapSignature } from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
+import {
+  coordinateVenue,
+  venueOperationSignal,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
 import type {
   VillageState,
   VillageVenue,
@@ -317,6 +321,31 @@ async function run() {
     put(initial);
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 0, "an empty initial wish still consumes today's allowance");
+    seed();
+    docs.set("villages-venue-visit-background-wish", {
+      id: "villages-venue-visit-background-wish",
+      packageId: "villages",
+      kind: "venue-visit",
+      name: "Visit",
+      description: "",
+      revision: 1,
+      data: { id: "background-wish", status: "active", sceneRevision: 0, lines: [], submissions: [] },
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+    onModel = async () => {
+      assert.equal(
+        venueOperationSignal(),
+        undefined,
+        "background wishes have independent ownership and billing journals",
+      );
+    };
+    await coordinateVenue("background-wish", "wish-integration", "turn", {}, 0, undefined, async () => {
+      assert.ok(venueOperationSignal());
+      await reconcileWishLifecycle(now, false, () => now);
+    });
+    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 1);
+    assert.deepEqual((docs.get("villages-venue-visit-background-wish")!.data as any).operation.attempts, {});
 
     // Interrupted provider calls are not silently sent again; persisted candidates and verdicts replay.
     seed();

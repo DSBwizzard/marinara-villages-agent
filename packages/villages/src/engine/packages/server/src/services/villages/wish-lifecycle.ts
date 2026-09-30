@@ -30,6 +30,7 @@ import {
 import type { VillageState, VillageVillager, VillageWish } from "./types.js";
 import type { WishActivity, WishAttempt } from "./wish-types.js";
 import { notFound } from "./errors.js";
+import { outsideVenueOperation } from "./venue-coordinator.js";
 
 const inFlight = new Set<string>();
 const MAX_ACTIVE = 2;
@@ -673,8 +674,10 @@ export async function reconcileWishLifecycle(
     for (const item of work) await processWishAttempt(item.characterId, item.id, now, clock);
   };
   if (background)
-    queueMicrotask(() => {
-      void run().catch((error) => villagesLogger().warn("[villages] wish worker: %s", String(error)));
+    outsideVenueOperation(() => {
+      queueMicrotask(() => {
+        void run().catch((error) => villagesLogger().warn("[villages] wish worker: %s", String(error)));
+      });
     });
-  else await run();
+  else await outsideVenueOperation(run);
 }
