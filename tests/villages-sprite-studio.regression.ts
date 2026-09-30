@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
 import {
   defaultVillageState,
@@ -20,8 +20,12 @@ import {
   captureStudioReference,
   discardStudioCell,
   removeStudioApprovedSprite,
-  approveStudioCells,
   recoverStudioJob,
+  assignStudioCells,
+  saveStudioExpression,
+  clearStudioReview,
+  deleteStudioArtwork,
+  deleteUnusedStudioFiles,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio.ts";
 
 const records = new Map<string, any>();
@@ -70,6 +74,57 @@ village.villagers = coerceVillageState({
   ],
 }).villagers;
 records.set("villages-village", { id: "villages-village", data: village, revision: 1 });
+const legacyAsset = "villages-" + randomUUID();
+const studioId = "sprite-studio-" + createHash("sha256").update("mara:2026-09-29T00:00:00Z").digest("hex");
+records.set(studioId, {
+  id: studioId,
+  kind: "sprite-studio",
+  revision: 1,
+  data: {
+    version: 1,
+    settings: defaultStudioState().settings,
+    jobs: [
+      {
+        id: "old-job",
+        fingerprint: "",
+        createdAt: "2026-09-29T00:00:00Z",
+        status: "ready",
+        error: "",
+        planned: 1,
+        attempted: 1,
+        view: "front",
+        connectionId: "image",
+        model: "old-model",
+        sheets: [
+          {
+            assetId: legacyAsset,
+            url: "/api/sprites/" + legacyAsset + "/file/original.png",
+            width: 512,
+            height: 768,
+            attempts: 1,
+            usage: null,
+            cells: [
+              {
+                id: "old-happy",
+                view: "front",
+                label: "happy",
+                pose: "Waving",
+                x: 0,
+                y: 0,
+                width: 512,
+                height: 768,
+                scale: 1,
+                offsetX: 0,
+                offsetY: 0,
+                status: "candidate",
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+});
 const release = configureVillagesRuntime({
   resources: { listCharacters: async () => [] },
   persistence: { documents },
@@ -83,6 +138,11 @@ let calls = 0,
   fallbackConfigured = false,
   generationRelease: (() => void) | undefined;
 const requests: any[] = [];
+let savedWrites = 0,
+  failSaveAt = 0,
+  failDelete = false;
+const storedFiles = new Map<string, string>();
+const deletions: string[] = [];
 const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAMACAIAAABfake";
 globalThis.fetch = async (url, init) => {
   const path = new URL(String(url)).pathname;
@@ -129,9 +189,23 @@ globalThis.fetch = async (url, init) => {
   if (/^\/api\/sprites\/villages-[^/]+\/file\/original\.png$/.test(path))
     return new Response(Buffer.from(png.split(",")[1]!, "base64"), { headers: { "content-type": "image/png" } });
   if (/^\/api\/sprites\/villages-[^/]+$/.test(path) && !init?.body)
-    return Response.json([{ expression: "original", url: path + "/file/original.png" }]);
-  if (/^\/api\/sprites\/villages-/.test(path))
+    return Response.json(
+      [...storedFiles.keys()]
+        .filter((key) => key.startsWith(path + "/"))
+        .map((key) => ({ expression: key.split("/").at(-1), url: path + "/file/" + key.split("/").at(-1) + ".png" })),
+    );
+  if (init?.method === "DELETE") {
+    if (failDelete) return Response.json({ error: "Locked file" }, { status: 500 });
+    deletions.push(path);
+    storedFiles.delete(path);
+    return new Response(null, { status: 204 });
+  }
+  if (/^\/api\/sprites\/villages-/.test(path)) {
+    savedWrites++;
+    if (savedWrites === failSaveAt) return Response.json({ error: "Image disk unavailable" }, { status: 507 });
+    storedFiles.set(path + "/" + body.expression, body.image);
     return Response.json({ filename: (body.expression || "original") + ".png" });
+  }
   throw new Error("Unexpected Engine call: " + path);
 };
 async function settle() {
@@ -146,160 +220,323 @@ async function waitForCall() {
   for (let i = 0; i < 100 && !generationRelease; i++) await new Promise((resolve) => setTimeout(resolve, 2));
   assert.ok(generationRelease);
 }
+async function generateBatch(count: number, prefix = "expression") {
+  const input = {
+    view: "side",
+    expressions: Array.from({ length: count }, (_, i) => ({
+      label: prefix + "_" + i,
+      pose: i === 0 ? "Running with arms raised" : "",
+    })),
+  };
+  const plan = await planSpriteStudio("mara", input),
+    submissionId = randomUUID();
+  generationRelease = undefined;
+  await Promise.all([
+    startSpriteStudioJob("mara", { ...input, plan, submissionId }),
+    startSpriteStudioJob("mara", { ...input, plan, submissionId }),
+  ]);
+  for (const _sheet of plan.batches) {
+    await waitForCall();
+    const done = generationRelease!;
+    generationRelease = undefined;
+    done();
+  }
+  const data = await settle();
+  return { input, plan, submissionId, job: data.jobs.find((job) => job.id === submissionId)! };
+}
+const activeSprite = () => structuredClone(records.get("villages-village").data.villagers[0].sprite);
+const cellsOf = (job: any) => job.sheets.flatMap((sheet: any) => sheet.cells);
+async function assignBatch(jobId: string, overrides: Record<string, string> = {}) {
+  const job = (await readSpriteStudio("mara")).jobs.find((item) => item.id === jobId)!;
+  return assignStudioCells("mara", {
+    batchId: jobId,
+    cells: cellsOf(job).map((cell: any) => ({
+      id: cell.id,
+      expressionId: overrides[cell.id] ?? cell.expressionId,
+      expected: cell,
+      ...(cell.rendered ? {} : { image: png }),
+    })),
+  });
+}
 async function main() {
   try {
-    assert.equal((await readSpriteStudio("mara")).settings.style, "PAPERCRAFT");
+    const initial = await readSpriteStudio("mara");
+    assert.equal(initial.version, 2);
+    assert.equal(initial.assignments.length, 1, "legacy active artwork migrated without generation");
+    assert.equal(initial.jobs[0]?.model, "Existing artwork");
+    assert.equal(initial.defaultExpressionId, initial.assignments[0]?.expressionId);
+    assert.equal(activeSprite().expressions[0].filename, "neutral.png");
+    assert.equal(
+      initial.jobs.find((job) => job.id === "old-job")!.sheets[0]!.url,
+      "/api/sprites/" + legacyAsset + "/file/original.png",
+    );
+    assert.equal(initial.jobs.find((job) => job.id === "old-job")!.sheets[0]!.cells[0]!.pending, true);
+    const withoutReference = await importStudioSheet("mara", {
+      image: png,
+      cells: [{ view: "front", label: "nervous", x: 0, y: 0, width: 512, height: 768 }],
+    });
+    const importedId = withoutReference.jobs.at(-1)!.id;
+    await deleteStudioArtwork("mara", { batchId: importedId, confirmed: true, deleteFiles: true });
+    await captureStudioReference("mara", { image: png });
+    const reference = (await readSpriteStudio("mara")).reference!;
+    await assert.rejects(() => captureStudioReference("mara", { image: png }), /already/);
+    const oldSprite = activeSprite();
+    await removeStudioApprovedSprite("mara", {
+      view: "front",
+      label: "neutral",
+      url: "/api/sprites/" + oldSprite.assetId + "/file/neutral.png",
+    });
+    assert.equal(activeSprite(), null);
     const settings = defaultStudioState().settings;
     settings.connectionId = "image";
     settings.prompts.Custom = "Ink";
     await saveSpriteStudioSettings("mara", settings);
-    assert.equal((await readSpriteStudio("mara")).settings.prompts.Custom, "Ink");
     await assert.rejects(() => saveSpriteStudioSettings("mara", { ...settings, style: "__proto__" }));
-    const input = {
-      view: "front",
-      expressions: ["happy", "sad", "angry", "surprised", "thinking"].map((label) => ({
-        label,
-        pose: label === "happy" ? "Arms raised" : "",
-      })),
-    };
-    const plan = await planSpriteStudio("mara", input),
-      submissionId = randomUUID();
-    assert.equal(plan.protocol, 2);
-    assert.equal(plan.batches.length, 1);
-    assert.equal(plan.batches[0]?.count, 5);
-    assert.equal(plan.estimatedCost, null);
-    const individualPlan = await planSpriteStudio("mara", { ...input, individual: true });
-    assert.deepEqual(
-      individualPlan.batches.map((batch) => batch.count),
-      [1, 1, 1, 1, 1],
-    );
-    await Promise.all([
-      startSpriteStudioJob("mara", { ...input, plan, submissionId }),
-      startSpriteStudioJob("mara", { ...input, plan, submissionId }),
-    ]);
-    await waitForCall();
-    assert.equal(calls, 1);
-    generationRelease!();
-    let data = await settle();
-    assert.equal(data.jobs.length, 1);
-    assert.equal(data.jobs[0]!.sheets[0]!.cells.length, 5);
-    assert.equal(data.jobs[0]!.sheets[0]!.usage, null);
-    assert.match(requests[0].promptOverrides[0].prompt, /Arms raised/);
-    assert.equal(requests[0].fullBodyExpressionMode, false);
-    assert.equal(requests[0].noBackground, true);
-    assert.equal(requests[0].nativeTransparentPng, true);
+    for (const count of [1, 5, 6, 11]) {
+      const input = {
+        view: "side",
+        expressions: Array.from({ length: count }, (_, i) => ({ label: "pose_" + i, pose: "" })),
+      };
+      const plan = await planSpriteStudio("mara", input);
+      assert.deepEqual(
+        plan.batches.map((batch) => batch.count),
+        count > 6 ? [6, 5] : [count],
+      );
+    }
     constrainedCanvas = true;
-    const split = await planSpriteStudio("mara", input);
+    const lowSource = await planSpriteStudio("mara", {
+      expressions: Array.from({ length: 6 }, (_, i) => ({ label: "p_" + i })),
+    });
     assert.deepEqual(
-      split.batches.map((batch) => batch.count),
-      [4, 1],
+      lowSource.batches.map((batch) => batch.count),
+      [6],
+      "source-cell resolution does not add requests",
     );
     constrainedCanvas = false;
+    const individual = await planSpriteStudio("mara", {
+      individual: true,
+      expressions: Array.from({ length: 5 }, (_, i) => ({ label: "p_" + i })),
+    });
+    assert.equal(individual.batches.length, 5);
     fallbackConfigured = true;
-    await assert.rejects(() => planSpriteStudio("mara", input), /automatic fallback/);
+    await assert.rejects(() => planSpriteStudio("mara", { expressions: [{ label: "happy" }] }), /automatic fallback/);
     fallbackConfigured = false;
-    await startSpriteStudioJob("mara", { ...input, plan, submissionId });
-    assert.equal(calls, 1);
+
+    const a = await generateBatch(6, "a");
+    assert.equal(a.job.sheets.length, 1);
+    assert.equal(a.job.style, "PAPERCRAFT");
+    const callsAfterA = calls;
+    await startSpriteStudioJob("mara", { ...a.input, plan: a.plan, submissionId: a.submissionId });
+    assert.equal(calls, callsAfterA, "submission deduplication survives completion");
     await assert.rejects(
-      () => startSpriteStudioJob("mara", { ...input, expressions: [{ label: "happy" }], plan, submissionId }),
+      () =>
+        startSpriteStudioJob("mara", {
+          ...a.input,
+          expressions: [{ label: "different" }],
+          plan: a.plan,
+          submissionId: a.submissionId,
+        }),
       /different selection/,
     );
-    const sheet = data.jobs[0]!.sheets[0]!,
-      cell = sheet.cells[0]!;
-    assert.throws(() => validateStudioCell({ ...cell, width: 99999 }, sheet), /crop/);
-    await editStudioCell("mara", { id: cell.id, cell: { ...cell, offsetX: 15, cleanup: true } });
-    assert.equal((await readSpriteStudio("mara")).jobs[0]!.sheets[0]!.cells[0]!.offsetX, 15);
-    await assert.rejects(
-      () => approveStudioCells("mara", { cells: [{ id: cell.id, expected: cell, image: png }] }),
-      /changed/,
+    assert.equal(requests[0].referenceImage, reference.url);
+    assert.equal(requests[0].noBackground, true);
+    assert.equal(requests[0].nativeTransparentPng, true);
+    assert.equal(requests[0].fullBodyExpressionMode, false);
+    assert.match(requests[0].promptOverrides[0].prompt, /Running with arms raised/);
+    await assignBatch(a.job.id);
+    const aActive = activeSprite(),
+      writesAfterA = savedWrites;
+    assert.equal(
+      aActive.defaultExpressionId,
+      cellsOf(a.job)[0].expressionId,
+      "first filled slot is the default when neutral is absent",
     );
-    const currentCell = (await readSpriteStudio("mara")).jobs[0]!.sheets[0]!.cells[0]!;
-    const beforeApproval = structuredClone(records.get("villages-village").data.villagers[0].sprite);
-    failVillageWrite = true;
-    await assert.rejects(
-      () => approveStudioCells("mara", { cells: [{ id: cell.id, expected: currentCell, image: png }] }),
-      /kept changing/,
+    const b = await generateBatch(5, "a");
+    await assignBatch(b.job.id);
+    const bActive = activeSprite(),
+      afterGeneration = calls,
+      afterB = savedWrites;
+    assert.notDeepEqual(bActive.expressions, aActive.expressions);
+    await assignBatch(a.job.id);
+    assert.deepEqual(
+      activeSprite().expressions,
+      aActive.expressions,
+      "A → B → A restores exact cached image assignments",
     );
-    assert.deepEqual(records.get("villages-village").data.villagers[0].sprite, beforeApproval);
-    failVillageWrite = false;
-    await approveStudioCells("mara", { cells: [{ id: cell.id, expected: currentCell, image: png }] });
-    await approveStudioCells("mara", { cells: [{ id: cell.id, expected: currentCell, image: png }] });
-    assert.equal(calls, 1, "approval retry makes no image-generation call");
-    assert.match(
-      records.get("villages-village").data.villagers[0].sprite.expressions.find((entry: any) => entry.label === "happy")
-        .filename,
-      /^s-[a-f0-9]{32}\.png$/,
+    assert.equal(savedWrites, afterB, "swapping writes no images");
+    assert.equal(calls, afterGeneration, "swapping generates no images");
+    assert.equal(
+      activeSprite().expressions.filter((item: any) => item.label === "a_5").length,
+      1,
+      "batch B retained a slot absent from B",
     );
-    const approved = records.get("villages-village").data.villagers[0].sprite;
-    const happy = approved.expressions.find((entry: any) => entry.label === "happy");
-    const happyUrl = `/api/sprites/${approved.assetId}/file/${happy.filename}?v=${happy.revision}`;
-    await assert.rejects(
-      () => removeStudioApprovedSprite("mara", { view: "front", label: "happy", url: happyUrl + "-stale" }),
-      /changed/,
+    assert.ok(writesAfterA > 0);
+    const delighted = await saveStudioExpression("mara", {
+      name: "Delighted",
+      pose: "Clapping",
+      useWhen: "Celebrating a small success.",
+    });
+    const delightedSlot = delighted.studio.expressions.find((slot) => slot.label === "delighted")!;
+    const bCell = cellsOf((await readSpriteStudio("mara")).jobs.find((job) => job.id === b.job.id)!)[0];
+    await assignStudioCells("mara", { cells: [{ id: bCell.id, expressionId: delightedSlot.id }] });
+    assert.equal(
+      activeSprite().expressions.find((entry: any) => entry.expressionId === delightedSlot.id).cutoutId,
+      bCell.id,
     );
-    assert.ok(records.get("villages-village").data.villagers[0].sprite.expressions.includes(happy));
-    const removed = await removeStudioApprovedSprite("mara", { view: "front", label: "happy", url: happyUrl });
+    assert.equal(activeSprite().expressions.find((entry: any) => entry.label === "a_0").cutoutId, cellsOf(a.job)[0].id);
+    await saveStudioExpression("mara", { id: delightedSlot.id, name: "Thrilled", pose: "Clapping", useWhen: "" });
+    assert.equal(
+      activeSprite().expressions.find((entry: any) => entry.expressionId === delightedSlot.id).pose,
+      bCell.pose,
+      "scene pose describes the assigned artwork rather than a different generation hint",
+    );
     assert.ok(
-      !records
-        .get("villages-village")
-        .data.villagers[0].sprite.expressions.some((entry: any) => entry.label === "happy"),
+      activeSprite()
+        .expressions.find((entry: any) => entry.expressionId === delightedSlot.id)
+        .aliases.includes("delighted"),
     );
-    assert.ok(removed.snapshot);
-    await discardStudioCell("mara", { id: sheet.cells[1]!.id });
+    await saveStudioExpression("mara", { defaultId: delightedSlot.id });
+    assert.equal(activeSprite().defaultExpressionId, delightedSlot.id);
+    await assert.rejects(() => saveStudioExpression("mara", { removeId: delightedSlot.id }), /Remove/);
+
+    const c = await generateBatch(11, "c");
+    const prior = activeSprite();
+    failSaveAt = savedWrites + 2;
+    await assert.rejects(() => assignBatch(c.job.id), /disk unavailable/);
+    assert.deepEqual(activeSprite(), prior, "a failed second image write leaves every prior assignment intact");
+    failSaveAt = 0;
+    failVillageWrite = true;
+    await assert.rejects(() => assignBatch(c.job.id), /kept changing/);
+    assert.deepEqual(activeSprite(), prior, "a failed Village commit leaves every prior assignment intact");
+    failVillageWrite = false;
+    const beforeRetryWrites = savedWrites;
+    await assignBatch(c.job.id);
+    assert.equal(savedWrites, beforeRetryWrites, "explicit assignment retry reuses fully persisted cutouts");
+    const large = await generateBatch(31, "many");
+    await assignBatch(large.job.id);
+    assert.equal(activeSprite().expressions.filter((entry: any) => entry.label.startsWith("many_")).length, 31);
+    assert.equal(
+      coerceVillageState(records.get("villages-village").data).villagers[0]!.sprite!.expressions.length,
+      activeSprite().expressions.length,
+    );
+    assert.ok(
+      requests.every((request) => request.referenceImage === reference.url),
+      "all views/styles keep the original identity reference",
+    );
+    const standalone = await generateBatch(1, "single");
+    assert.equal(standalone.job.sheets[0]?.cells.length, 1);
+    const five = await generateBatch(5, "five");
+    assert.equal(five.job.sheets[0]?.cells.length, 5);
+
+    // Active assignments and the reference survive both gallery and disk cleanup.
+    await assert.rejects(
+      () => deleteStudioArtwork("mara", { batchId: a.job.id, confirmed: true, deleteFiles: true }),
+      /in use/,
+    );
+    await clearStudioReview("mara");
+    let data = await readSpriteStudio("mara");
+    assert.ok(data.jobs.some((job) => job.id === five.job.id));
+    assert.ok(data.jobs.every((job) => job.sheets.every((sheet) => sheet.cells.every((cell) => !cell.pending))));
+    const beforeCleanup = deletions.length;
+    await deleteUnusedStudioFiles("mara");
+    assert.equal(
+      deletions.length,
+      beforeCleanup + 1,
+      "only failed-save ownership intent is unused; inactive alternatives stay retained",
+    );
+    const fiveSheet = five.job.sheets[0]!;
+    const firstFive = fiveSheet.cells[0]!;
+    await deleteStudioArtwork("mara", { ids: [firstFive.id], confirmed: true, deleteFiles: true });
+    assert.ok(
+      !deletions.includes("/api/sprites/" + fiveSheet.assetId + "/original"),
+      "shared original retained for four remaining cutouts",
+    );
+    failDelete = true;
+    const partial = await deleteStudioArtwork("mara", { batchId: five.job.id, confirmed: true, deleteFiles: true });
+    assert.equal(partial.failures.length, 1);
+    assert.ok(!partial.studio.jobs.some((job) => job.id === five.job.id));
+    failDelete = false;
+    const retryCleanup = await deleteUnusedStudioFiles("mara");
+    assert.equal(retryCleanup.failures.length, 0);
+    assert.equal(retryCleanup.deleted, 1);
+    assert.ok(!deletions.some((path) => reference.url.startsWith(path)), "reference never deleted");
+    assert.ok(
+      !deletions.some((path) => !path.startsWith("/api/sprites/villages-")),
+      "no character-card assets touched",
+    );
+
+    // Adjustments retain both the prior cutout and its current scene assignment.
+    const beforeAdjust = activeSprite(),
+      originalCell = cellsOf((await readSpriteStudio("mara")).jobs.find((job) => job.id === a.job.id)!)[0];
+    await editStudioCell("mara", { id: originalCell.id, cell: { ...originalCell, offsetX: 15 } });
+    assert.deepEqual(activeSprite(), beforeAdjust);
+    data = await readSpriteStudio("mara");
+    assert.equal(cellsOf(data.jobs.find((job) => job.id === a.job.id)!).at(-1).offsetX, 15);
+    assert.throws(() => validateStudioCell({ ...originalCell, width: 99999 }, a.job.sheets[0]!), /crop/);
+    await discardStudioCell("mara", { id: originalCell.id });
+    assert.deepEqual(activeSprite(), beforeAdjust, "clearing one review flag does not remove an active image");
+    const activeEntry = activeSprite().expressions.find((entry: any) => entry.expressionId === delightedSlot.id);
+    const activeUrl = "/api/sprites/" + activeEntry.assetId + "/file/" + activeEntry.filename;
+    await assert.rejects(
+      () =>
+        removeStudioApprovedSprite("mara", {
+          view: activeEntry.view,
+          label: activeEntry.label,
+          url: activeUrl + "-stale",
+        }),
+      /changed/,
+    );
+    await removeStudioApprovedSprite("mara", { view: activeEntry.view, label: activeEntry.label, url: activeUrl });
+    assert.notEqual(
+      activeSprite().defaultExpressionId,
+      delightedSlot.id,
+      "default falls back after removing its last view",
+    );
+
     generationRelease = undefined;
     failGeneration = true;
-    await startSpriteStudioJob("mara", { ...input, plan, submissionId: randomUUID() });
+    const failedInput = { expressions: [{ label: "happy", pose: "" }] },
+      failedPlan = await planSpriteStudio("mara", failedInput),
+      failedId = randomUUID();
+    await startSpriteStudioJob("mara", { ...failedInput, plan: failedPlan, submissionId: failedId });
     await waitForCall();
     generationRelease!();
     data = await settle();
-    assert.equal(calls, 2);
-    assert.equal(data.jobs[1]!.status, "interrupted");
-    assert.match(data.jobs[1]!.error, /No automatic retry/);
-    assert.equal(data.jobs[0]!.sheets.length, 1);
-    const persisted = [...records.values()].find((row) => row.kind === "sprite-studio");
+    failGeneration = false;
+    assert.equal(data.jobs.find((job) => job.id === failedId)!.status, "interrupted");
+    assert.match(data.jobs.find((job) => job.id === failedId)!.error, /No automatic retry/);
+    await deleteStudioArtwork("mara", { batchId: failedId, confirmed: true, deleteFiles: true });
+    const stored = [...records.values()].find((row) => row.kind === "sprite-studio");
     const recoverId = randomUUID();
-    persisted.data.jobs.push({
-      ...structuredClone(data.jobs[0]),
+    stored.data.jobs.push({
+      ...structuredClone(a.job),
       id: recoverId,
       status: "interrupted",
       sheets: [],
-      pendingAssetId: data.jobs[0]!.sheets[0]!.assetId,
-      pendingBatch: plan.batches[0],
-      pendingExpressions: input.expressions,
+      pendingAssetId: a.job.sheets[0]!.assetId,
+      pendingBatch: a.plan.batches[0],
+      pendingExpressions: a.input.expressions,
     });
+    const beforeRecovery = calls;
     await recoverStudioJob("mara", { id: recoverId });
-    assert.equal(calls, 2, "saved-sheet recovery makes no image-generation call");
-    assert.equal((await readSpriteStudio("mara")).jobs.find((job) => job.id === recoverId)?.sheets.length, 1);
+    assert.equal(calls, beforeRecovery, "recovery does not generate images");
     await importStudioSheet("mara", {
       image: png,
-      cells: [{ view: "side", label: "neutral", x: 0, y: 0, width: 512, height: 768 }],
+      cells: [{ view: "side", label: "nervous", x: 0, y: 0, width: 512, height: 768 }],
     });
-    await captureStudioReference("mara", { image: png });
-    const ref = (await readSpriteStudio("mara")).reference!;
-    assert.equal(ref.origin, "upload");
-    assert.equal(
-      coerceVillageState(records.get("villages-village").data).villagers[0]!.cardSnapshot.spriteReference?.url,
-      ref.url,
-    );
-    await assert.rejects(() => captureStudioReference("mara", { image: png }), /already/);
-    const stored = [...records.values()].find((row) => row.kind === "sprite-studio");
-    stored.data.jobs.push({ ...structuredClone(stored.data.jobs[0]), id: randomUUID(), status: "running" });
-    assert.equal((await readSpriteStudio("mara")).jobs.at(-1)?.status, "interrupted");
-    assert.equal(calls, 2);
-    assert.ok(!JSON.stringify(records.get("villages-village").data).includes("original.png"));
+    assert.ok((await readSpriteStudio("mara")).expressions.some((slot) => slot.label === "nervous"));
     const side = studioPrompt({
       name: "Bird",
       appearance: "",
       style: "",
       view: "side",
       expressions: [{ label: "happy", pose: "" }],
-      batch: plan.batches[0]!,
+      batch: a.plan.batches[0]!,
     });
     assert.match(side, /OFF-CANVAS TO THE RIGHT/);
-    assert.match(side, /Do NOT make eye contact/);
     assert.match(side, /off-white/);
     console.log(
-      "Sprite Studio regression passed: persistence, deduplication, failures, import, geometry, frozen reference and gaze.",
+      "Sprite Studio regression passed: generation counts, optional neutral, migration, stable meanings, mixed batches, cached swaps, atomic failures, shared-file protection and cleanup retries.",
     );
   } finally {
     globalThis.fetch = previousFetch;
