@@ -598,13 +598,17 @@ export async function reserveWishAttempts(now: Date): Promise<{ characterId: str
     work = [];
     if (state.storyPace === "off" || (state.foundingPreparation && state.foundingPreparation.status !== "ready"))
       return;
+    // A clock rollback must not reopen an earlier phase's batch for other residents.
+    // Existing durable timestamps act as a compact high-water mark without a date backlog.
+    if (state.villagers.some((resident) => Date.parse(resident.wishLifecycle?.attempt?.at ?? "") > now.getTime()))
+      return;
     const dateKey = agendaDateKey(now),
       moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now }),
       phaseKey = `${dateKey}:${moment.dayPhase}`;
     let occupied = state.villagers.filter((resident) => resident.wishLifecycle?.lastPhaseKey === phaseKey).length;
-    const pending = state.villagers.filter(
-      (resident) => resident.wishLifecycle?.attempt && resident.wishLifecycle.attempt.stage !== "done",
-    );
+    const pending = state.villagers
+      .filter((resident) => resident.wishLifecycle?.attempt && resident.wishLifecycle.attempt.stage !== "done")
+      .sort((a, b) => a.wishLifecycle!.attempt!.at.localeCompare(b.wishLifecycle!.attempt!.at));
     for (const resident of pending) {
       const lifecycle = resident.wishLifecycle!;
       if (inFlight.has(lifecycle.attempt!.id)) continue;

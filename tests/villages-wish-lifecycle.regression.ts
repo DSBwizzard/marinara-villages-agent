@@ -299,6 +299,14 @@ async function run() {
       0,
       "clock rollback cannot mint an allowance",
     );
+    seed(6);
+    await reconcileWishLifecycle(now, false, () => now);
+    await reconcileWishLifecycle(nextDay, false, () => nextDay);
+    assert.equal(
+      (await reserveWishAttempts(now)).length,
+      0,
+      "rollback cannot reopen an older phase for deferred residents",
+    );
     seed();
     debugEnabled = true;
     await reconcileWishLifecycle(now, false, () => now);
