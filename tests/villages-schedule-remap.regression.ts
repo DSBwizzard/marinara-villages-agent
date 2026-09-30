@@ -1005,7 +1005,9 @@ async function main() {
     "which is a list rather than the one paragraph it used to be joined into",
   );
   assert.ok(
-    rules.includes('{"agenda":"...","moves":[{"day":"...","time":"...","here":"...","place":1}]}'),
+    rules.includes(
+      '{"agenda":"...","moves":[{"day":"...","time":"...","here":"...","place":1,"zoneId":"exact zone id"}]}',
+    ),
     "and the JSON shape is sent as itself, on its own line, rather than inside a sentence",
   );
   assert.ok(/(^|\n)\{"agenda"/.test(rules), "starting at the beginning of a line, so it can be copied out");

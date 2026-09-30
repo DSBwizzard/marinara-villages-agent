@@ -4,6 +4,8 @@ import {
   acceptProjectRequirements,
   createNewVenueProject,
   createRenovationProject,
+  reviseRenovationProject,
+  renewRenovationApprovals,
   deliverProjectMaterial,
   lockProjectBuilder,
   openFinishedProject,
@@ -71,6 +73,7 @@ village.progressEngineVersion = 1;
 const mill: VillageVenue = {
   id: "mill",
   name: "Old Mill",
+  playerSeenPublic: true,
   classes: ["workplace"],
   spaces: [defaultVenueSpace("workplace", "A working mill.")],
   description: "A working mill.",
@@ -391,6 +394,28 @@ async function main() {
     assert.equal(state.projects.find((entry) => entry.id === renovationId)?.lifecycle?.phase, "approval");
     const approval = saveTurn("Do you approve Mill roof?", "Yes, I approve Mill roof.");
     await recordProjectSpokenEvidence(renovationId, { kind: "approval", ...approval });
+    await reviseRenovationProject(renovationId, {
+      title: "Mill roof",
+      detail: "Weatherproof with improved beams.",
+      slot: 0,
+      improvement: { title: "New roof", description: "A sound timber roof with stronger beams.", extraBeds: 0 },
+    });
+    state = await readVillageState();
+    assert.deepEqual(
+      state.projects.find((entry) => entry.id === renovationId)!.lifecycle!.approvals,
+      [],
+      "revised terms clear old approvals",
+    );
+    assert.equal(state.projects.find((entry) => entry.id === renovationId)!.lifecycle!.phase, "approval");
+    await assert.rejects(
+      recordProjectSpokenEvidence(renovationId, { kind: "approval", ...approval }),
+      /revision|used|phase|definition|already/i,
+    );
+    const revisedApproval = saveTurn(
+      "Do you approve Mill roof with stronger beams?",
+      "Yes, I approve Mill roof with stronger beams.",
+    );
+    await recordProjectSpokenEvidence(renovationId, { kind: "approval", ...revisedApproval });
     const renovationBuilder = saveTurn("Will you build Mill roof?", "I will build Mill roof.");
     await recordProjectSpokenEvidence(renovationId, { kind: "builder", ...renovationBuilder });
     await lockProjectBuilder(renovationId, { residentId: "rosa" });
@@ -407,6 +432,41 @@ async function main() {
         current,
         new Date(current.projects.find((entry) => entry.id === renovationId)!.lifecycle!.workOrder!.completesAt),
       ),
+    );
+    await assert.rejects(openFinishedProject(renovationId, { improvement: null }), /Reviewed structural terms/);
+    await mutateVillageState((current) => {
+      current.villagers.push({
+        ...structuredClone(current.villagers.find((entry) => entry.characterId === "rosa")!),
+        characterId: "new-worker",
+        cardSnapshot: {
+          ...current.villagers.find((entry) => entry.characterId === "rosa")!.cardSnapshot,
+          id: "new-worker",
+        },
+      });
+      current.venues.find((entry) => entry.id === "mill")!.workerIds!.push("new-worker");
+    });
+    await assert.rejects(openFinishedProject(renovationId, {}), /Renew.*approvals/);
+    const completedReceipts = (await readVillageState()).progressTasks
+      .find((task) => task.definition.owner.id === renovationId)!
+      .receipts.filter((receipt) => receipt.phaseId !== "approval")
+      .map((receipt) => receipt.id);
+    await renewRenovationApprovals(renovationId);
+    state = await readVillageState();
+    assert.equal(state.projects.find((entry) => entry.id === renovationId)!.lifecycle!.phase, "approval");
+    const renewedApproval = saveTurn("Do you approve Mill roof?", "Yes, I approve Mill roof.", "new-worker");
+    await recordProjectSpokenEvidence(renovationId, { kind: "approval", ...renewedApproval });
+    state = await readVillageState();
+    assert.equal(
+      state.projects.find((entry) => entry.id === renovationId)!.lifecycle!.phase,
+      "finishing",
+      "renewed roster preserves completed construction",
+    );
+    assert.deepEqual(
+      state.progressTasks
+        .find((task) => task.definition.owner.id === renovationId)!
+        .receipts.filter((receipt) => receipt.phaseId !== "approval")
+        .map((receipt) => receipt.id),
+      completedReceipts,
     );
     await openFinishedProject(renovationId, {});
     state = await readVillageState();

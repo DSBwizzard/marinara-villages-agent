@@ -1,3 +1,4 @@
+import { venueInZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, notFound } from "./errors.js";
@@ -130,7 +131,11 @@ export async function actAtVenue(
     throw badRequest("Visit this venue before acting here.");
   if (active.area === "private" || (active.area === "shared" && venueResidentIds(storedPlace).length > 0))
     throw badRequest("Private and shared Residence changes require the residents' specific approval.");
-  const place = venueInArea(storedPlace, active.area, active.spaceClass, active.privateOwnerId);
+  const zone = active.zoneId ? resolveVenueZone(storedPlace, active.zoneId) : undefined;
+  if (zone && zoneClosed(village, storedPlace, zone)) throw badRequest("This zone is closed for Renovation.");
+  const place = active.zoneId
+    ? venueInZone(storedPlace, active.zoneId)
+    : venueInArea(storedPlace, active.area, active.spaceClass, active.privateOwnerId);
   const people =
     active?.participants
       .filter((person) => active.activeIds.includes(person.characterId))
@@ -186,9 +191,14 @@ export async function actAtVenue(
       const current = state.venues.find((entry) => entry.id === placeId);
       if (!current) throw notFound("That place is not in this village.");
       const originalState = current.state;
-      const space =
-        active.area === "outside" ? undefined : current.spaces?.find((entry) => entry.venueClass === active.spaceClass);
-      const areaState = active.area === "outside" ? current.exteriorState : space?.state;
+      const space = active.zoneId
+        ? resolveVenueZone(current, active.zoneId)
+        : active.area === "outside"
+          ? undefined
+          : current.spaces?.find((entry) => entry.venueClass === active.spaceClass);
+      if (active.zoneId && (!space || zoneClosed(state, current, space)))
+        throw badRequest("That zone is unavailable during this action.");
+      const areaState = space?.state ?? (active.area === "outside" ? current.exteriorState : undefined);
       if (areaState)
         current.state = {
           ...current.state,
@@ -208,7 +218,7 @@ export async function actAtVenue(
       if (result.addItem && !current.state.furniture.includes(result.addItem)) {
         if (current.state.furniture.length >= 24) throw badRequest("There is no room for another item here.");
         current.state.furniture.push(result.addItem);
-        state.narrativeItems.push({ venueId: placeId, itemName: result.addItem });
+        state.narrativeItems.push({ venueId: placeId, zoneId: active.zoneId, itemName: result.addItem });
       }
       if (result.resolveTraceId) {
         current.state.traces = (current.state.traces ?? []).filter((trace) => trace.id !== result.resolveTraceId);
@@ -235,7 +245,10 @@ export async function actAtVenue(
         traces: [...(current.state.traces ?? [])],
         updatedAt: current.state.updatedAt,
       };
-      if (active.area === "outside") {
+      if (active.zoneId && space) {
+        space.state = nextState;
+        current.state = originalState;
+      } else if (active.area === "outside") {
         current.exteriorState = nextState;
         current.state = originalState;
       } else if (space) space.state = nextState;
@@ -244,6 +257,7 @@ export async function actAtVenue(
         {
           id: happening.id,
           venueId: placeId,
+          zoneId: active.zoneId,
           venueName: current.name,
           text: result.traceKind === "note" ? "A note was left here." : result.narration,
           at: moment.instant,

@@ -271,7 +271,7 @@ const venueSource = readFileSync(
   resolve("packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts"),
   "utf8",
 );
-assert.match(venueSource, /const participants = castAtEntry\(village, placeId, new Date\(\)\)/u);
+assert.match(venueSource, /const participants = castAtEntry\(village, placeId, new Date\(\), zone.id\)/u);
 assert.match(venueSource, /activeIds: participants\.map\(\(person\) => person\.characterId\)/u);
 assert.doesNotMatch(venueSource, /roomPresenceLines|repairRoomMirrors/u);
 console.log("villages-agenda-movement: ok");

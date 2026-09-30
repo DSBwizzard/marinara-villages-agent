@@ -1,3 +1,4 @@
+import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { badGateway, conflict } from "./errors.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
 import type { VillageState, VillageVenue, VillageVenueClass } from "./types.js";
@@ -85,18 +86,22 @@ export function applyVenueSceneChange(
   spaceClass?: VillageVenueClass,
   area: "outside" | "shared" | "private" | "public" = "public",
   privateOwnerId = "",
+  zoneId?: string,
 ): void {
   const venue = state.venues.find((place) => place.id === placeId);
   if (!venue) throw conflict("That place is no longer in the village.");
   const originalState = venue.state;
-  const space =
-    area === "private"
+  const space = zoneId
+    ? resolveVenueZone(venue, zoneId)
+    : area === "private"
       ? venue.privateSpaces?.find((entry) => entry.ownerId === privateOwnerId)
       : area === "outside"
         ? undefined
         : venue.spaces?.find((entry) => entry.venueClass === spaceClass);
+  if (zoneId && (!space || zoneClosed(state, venue, space)))
+    throw conflict("That zone is unavailable during this turn.");
   if (area === "private" && !space) throw conflict("That private space is no longer here.");
-  const areaState = area === "outside" ? venue.exteriorState : space?.state;
+  const areaState = space?.state ?? (area === "outside" ? venue.exteriorState : undefined);
   if (areaState)
     venue.state = {
       ...venue.state,
@@ -140,7 +145,7 @@ export function applyVenueSceneChange(
   if (change.addItem && !venue.state.furniture.includes(change.addItem)) {
     if (venue.state.furniture.length >= 24) throw conflict("There is no room for another item here.");
     venue.state.furniture.push(change.addItem);
-    state.narrativeItems.push({ venueId: placeId, itemName: change.addItem });
+    state.narrativeItems.push({ venueId: placeId, zoneId, itemName: change.addItem });
   }
   if (change.sceneNote) {
     const notes = (venue.state.traces ?? []).filter((trace) => trace.kind === "scene-note");
@@ -166,7 +171,8 @@ export function applyVenueSceneChange(
     traces: [...(venue.state.traces ?? [])],
     updatedAt: at,
   };
-  if (area === "outside") venue.exteriorState = nextState;
+  if (zoneId && space) space.state = nextState;
+  else if (area === "outside") venue.exteriorState = nextState;
   else if (space) space.state = nextState;
-  if (area !== "public") venue.state = originalState;
+  if (zoneId || area !== "public") venue.state = originalState;
 }

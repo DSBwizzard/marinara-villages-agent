@@ -308,7 +308,7 @@ type VillageSnapshot = {
     decisions: { characterId: string; accepted: boolean; reply: string }[];
     error: string;
     improvementSlot?: number;
-    improvement?: { title: string; description: string; extraBeds: number } | null;
+    improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
   }>;
   /** What the village has been doing, newest first. Empty until it does something. */
   happenings: VillageHappening[];
@@ -345,6 +345,7 @@ type VenueRequest = {
 
 type BuildProject = {
   id: string;
+  updatedAt: string;
   kind?: "build-venue" | "new-venue" | "renovation";
   title: string;
   venueId: string;
@@ -364,7 +365,7 @@ type BuildProject = {
       classes?: VenueClass[];
       capacity?: number;
       slot?: number;
-      improvement?: { title: string; description: string; extraBeds: number } | null;
+      improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
       detail: string;
     } | null;
     affectedIds: string[];
@@ -381,7 +382,7 @@ type BuildProject = {
     }[];
     requirementsEvidenceId: string;
     requirementsAcceptedAt: string;
-    recordedItems: { venueId: string; itemName: string }[];
+    recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
     sources: {
       requirementId: string;
       kind: "existing-item" | "resident-offer" | "held-supply";
@@ -587,6 +588,17 @@ type VillageVenue = {
   name: string;
   form?: string;
   classes?: Array<"residence" | "workplace" | "gathering" | "other">;
+  baseClasses?: Array<"residence" | "workplace" | "gathering" | "other">;
+  zones?: Array<
+    NonNullable<VillageVenue["spaces"]>[number] & {
+      name: string;
+      kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff";
+      closed?: boolean;
+      upgradeId?: string;
+      ownerId?: string;
+      seen?: boolean;
+    }
+  >;
   spaces?: Array<{
     id: string;
     venueClass: "residence" | "workplace" | "gathering" | "other";
@@ -603,7 +615,13 @@ type VillageVenue = {
   }>;
   residenceCapacity?: number;
   residentIds?: string[];
-  playerInvitations?: { residentId: string; recordedAt: string; scope?: "shared" | "private"; ownerId?: string }[];
+  playerInvitations?: {
+    zoneId?: string;
+    residentId: string;
+    recordedAt: string;
+    scope?: "shared" | "private";
+    ownerId?: string;
+  }[];
   exteriorState?: NonNullable<VillageVenue["spaces"]>[number]["state"];
   privateSpaces?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
@@ -615,6 +633,7 @@ type VillageVenue = {
   editProposals?: Array<{
     id: string;
     target: "shared" | "private";
+    zoneId?: string;
     ownerId: string;
     proposed: NonNullable<VillageVenue["spaces"]>[number];
     requiredIds: string[];
@@ -629,6 +648,14 @@ type VillageVenue = {
     title: string;
     description: string;
     spaceId: string | null;
+    classContribution?: "residence" | "workplace" | "gathering" | "other";
+    zones?: Array<{
+      id?: string;
+      name: string;
+      kind: "public" | "shared-residence" | "staff";
+      description: string;
+      venueClass: "residence" | "workplace" | "gathering" | "other";
+    }>;
     extraBeds: number;
     approvedAt: string;
   } | null>;
@@ -1009,6 +1036,8 @@ type RoomView = {
   /** The name that place had when the room opened, for the plate. */
   placeName: string;
   spaceClass?: VenueClass;
+  zoneId?: string;
+  grantedZoneIds?: string[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;
   privateAccessOwnerId?: string;
@@ -1916,6 +1945,7 @@ function venuePictureOf(venues: readonly VillageVenue[], room: RoomView): string
   const venue = venues.find((entry) => entry.id === room.placeId);
   if (!venue) return "";
   if (room.area === "outside") return venue.presentation.image?.url ?? "";
+  if (room.zoneId && venue.zones) return venue.zones.find((zone) => zone.id === room.zoneId)?.image?.url ?? "";
   if (room.area === "private")
     return venue.privateSpaces?.find((entry) => entry.ownerId === room.privateOwnerId)?.image?.url ?? "";
   return (room.spaceClass ? venueSpaceFor(venue, room.spaceClass).image : null)?.url ?? "";
@@ -6062,7 +6092,9 @@ function readAvatarCrop(value: unknown): AvatarCrop | null {
   const { zoom, offsetX, offsetY, fullImage } = stored;
   if (!isFiniteNumber(zoom) || zoom <= 0 || !isFiniteNumber(offsetX) || !isFiniteNumber(offsetY)) return null;
   if (fullImage !== undefined && typeof fullImage !== "boolean") return null;
-  return fullImage === undefined ? { zoom, offsetX, offsetY } : { zoom, offsetX, offsetY, fullImage };
+  return fullImage === undefined
+    ? { zoom, offsetX, offsetY }
+    : { zoom, offsetX, offsetY, fullImage: fullImage as boolean };
 }
 
 /**
@@ -6413,6 +6445,7 @@ function isHouse(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
 type VenueClass = NonNullable<VillageVenue["classes"]>[number];
 type VenueViewZone = {
   key: string;
+  zoneId?: string;
   label: string;
   subtitle: string;
   area: "outside" | "shared" | "private" | "public";
@@ -6426,6 +6459,68 @@ type VenueViewZone = {
   accessLabel: string;
   adaptationPending?: boolean;
 };
+function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave: (body: unknown) => Promise<void> }) {
+  const [description, setDescription] = useState(zone.description);
+  const [features, setFeatures] = useState(zone.state?.features.map((feature) => feature.text).join("\n") ?? "");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  return (
+    <section className={ELEMENT_TAG + "-venue-card"}>
+      <h2>{zone.label} details</h2>
+      <label>
+        Description
+        <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
+      </label>
+      <label>
+        Features · one per line
+        <textarea value={features} onChange={(event) => setFeatures(event.target.value)} />
+      </label>
+      <p>
+        {zone.area === "shared" || zone.area === "private"
+          ? "Resident-controlled changes become exact proposals during an invited visit."
+          : "These details describe this zone."}
+      </p>
+      <button
+        type="button"
+        className={ELEMENT_TAG + "-button"}
+        disabled={busy || !description.trim()}
+        onClick={async () => {
+          setBusy(true);
+          setNotice("");
+          try {
+            await onSave({
+              description,
+              state: {
+                features: features
+                  .split("\n")
+                  .map((text) => text.trim())
+                  .filter(Boolean)
+                  .map((text) => ({ ...zone.state?.features.find((feature) => feature.text === text), text })),
+              },
+            });
+            setNotice(
+              zone.area === "shared" || zone.area === "private"
+                ? "Saved. Any required resident approvals appear in the Venue."
+                : "Zone saved.",
+            );
+          } catch {
+            setNotice("The zone could not be saved. See the message above.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy
+          ? "Saving…"
+          : zone.area === "shared" || zone.area === "private"
+            ? "Save / propose zone changes"
+            : "Save zone details"}
+      </button>
+      {notice ? <p role="status">{notice}</p> : null}
+    </section>
+  );
+}
+
 const VENUE_CLASS_CHOICES: VenueClass[] = ["residence", "workplace", "gathering", "other"];
 
 function venueClassesFor(place: VillageVenue): VenueClass[] {
@@ -10504,6 +10599,239 @@ const PROJECT_PHASE_NAMES: Record<(typeof PROJECT_PHASES)[number], string> = {
   finishing: "Finishing visit",
 };
 
+function RenovationRevisionEditor({
+  project,
+  busy,
+  onSave,
+}: {
+  project: BuildProject;
+  busy: boolean;
+  onSave: (body: unknown) => Promise<unknown>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(project.title);
+  const [change, setChange] = useState(() => structuredClone(project.lifecycle!.change!));
+  const upgrade = change.improvement;
+  if (!editing)
+    return (
+      <button type="button" className={ELEMENT_TAG + "-button"} disabled={busy} onClick={() => setEditing(true)}>
+        Revise reviewed proposal
+      </button>
+    );
+  return (
+    <section className={ELEMENT_TAG + "-project-card"}>
+      <p>
+        Changing reviewed terms requires fresh affected-person approvals, a Builder agreement, and a checklist. Acquired
+        supplies remain available.
+      </p>
+      <label>
+        Project name
+        <input value={title} onChange={(event) => setTitle(event.target.value)} />
+      </label>
+      <label>
+        Reviewed change
+        <textarea value={change.detail} onChange={(event) => setChange({ ...change, detail: event.target.value })} />
+      </label>
+      {change.classes ? (
+        <label>
+          Base Classes
+          {VENUE_CLASS_CHOICES.map((role) => (
+            <label key={role}>
+              <input
+                type="checkbox"
+                checked={change.classes!.includes(role)}
+                onChange={(event) =>
+                  setChange({
+                    ...change,
+                    classes: event.target.checked
+                      ? [...change.classes!, role]
+                      : change.classes!.filter((item) => item !== role),
+                  })
+                }
+              />
+              {role}
+            </label>
+          ))}
+        </label>
+      ) : null}
+      {change.capacity !== undefined ? (
+        <label>
+          Residential capacity
+          <input
+            type="number"
+            min={1}
+            max={4}
+            value={change.capacity}
+            onChange={(event) => setChange({ ...change, capacity: Number(event.target.value) })}
+          />
+        </label>
+      ) : null}
+      {upgrade ? (
+        <>
+          <label>
+            Upgrade title
+            <input
+              value={upgrade.title}
+              onChange={(event) => setChange({ ...change, improvement: { ...upgrade, title: event.target.value } })}
+            />
+          </label>
+          <label>
+            Upgrade description
+            <textarea
+              value={upgrade.description}
+              onChange={(event) =>
+                setChange({ ...change, improvement: { ...upgrade, description: event.target.value } })
+              }
+            />
+          </label>
+          <label>
+            Contributed Class
+            <select
+              value={upgrade.classContribution ?? ""}
+              onChange={(event) =>
+                setChange({
+                  ...change,
+                  improvement: {
+                    ...upgrade,
+                    classContribution: (event.target.value || undefined) as VenueClass | undefined,
+                  },
+                })
+              }
+            >
+              <option value="">No additional Class</option>
+              {VENUE_CLASS_CHOICES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(upgrade.zones ?? []).map((zone, index) => (
+            <section key={zone.id || index}>
+              <label>
+                Zone name
+                <input
+                  value={zone.name}
+                  onChange={(event) =>
+                    setChange({
+                      ...change,
+                      improvement: {
+                        ...upgrade,
+                        zones: upgrade.zones!.map((item, i) =>
+                          i === index ? { ...item, name: event.target.value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Zone description
+                <textarea
+                  value={zone.description}
+                  onChange={(event) =>
+                    setChange({
+                      ...change,
+                      improvement: {
+                        ...upgrade,
+                        zones: upgrade.zones!.map((item, i) =>
+                          i === index ? { ...item, description: event.target.value } : item,
+                        ),
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Zone kind
+                <select
+                  value={zone.kind}
+                  onChange={(event) =>
+                    setChange({
+                      ...change,
+                      improvement: {
+                        ...upgrade,
+                        zones: upgrade.zones!.map((item, i) =>
+                          i === index
+                            ? {
+                                ...item,
+                                kind: event.target.value as typeof zone.kind,
+                                venueClass:
+                                  event.target.value === "staff"
+                                    ? "workplace"
+                                    : event.target.value === "shared-residence"
+                                      ? "residence"
+                                      : (upgrade.classContribution ?? item.venueClass),
+                              }
+                            : item,
+                        ),
+                      },
+                    })
+                  }
+                >
+                  <option value="public">Public</option>
+                  <option value="shared-residence">Shared residential</option>
+                  <option value="staff">Staff</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className={ELEMENT_TAG + "-button"}
+                onClick={() =>
+                  setChange({
+                    ...change,
+                    improvement: { ...upgrade, zones: upgrade.zones!.filter((_, i) => i !== index) },
+                  })
+                }
+              >
+                Remove this zone
+              </button>
+            </section>
+          ))}
+          <button
+            type="button"
+            className={ELEMENT_TAG + "-button"}
+            disabled={(upgrade.zones?.length ?? 0) >= 16}
+            onClick={() =>
+              setChange({
+                ...change,
+                improvement: {
+                  ...upgrade,
+                  zones: [
+                    ...(upgrade.zones ?? []),
+                    {
+                      id: "",
+                      name: "",
+                      description: "",
+                      kind: "public",
+                      venueClass: upgrade.classContribution ?? "other",
+                    },
+                  ],
+                },
+              })
+            }
+          >
+            Add a zone
+          </button>
+        </>
+      ) : null}
+      <button
+        type="button"
+        className={ELEMENT_TAG + "-button"}
+        disabled={busy}
+        onClick={async () => {
+          if (await onSave({ title, ...change })) setEditing(false);
+        }}
+      >
+        Submit revised proposal
+      </button>
+      <button type="button" className={ELEMENT_TAG + "-button"} disabled={busy} onClick={() => setEditing(false)}>
+        Cancel revision
+      </button>
+    </section>
+  );
+}
+
 function ProjectsPanelV2({
   snapshot,
   room,
@@ -10534,15 +10862,22 @@ function ProjectsPanelV2({
   const [description, setDescription] = useState("");
   const [venueId, setVenueId] = useState("");
   const [changeKind, setChangeKind] = useState<"class" | "capacity" | "upgrade" | "remove-upgrade">("upgrade");
-  const [secondClass, setSecondClass] = useState<VenueClass>("workplace");
+  const [baseClasses, setBaseClasses] = useState<VenueClass[]>(["gathering"]);
+  const [upgradeTarget, setUpgradeTarget] = useState("");
   const [capacity, setCapacity] = useState(2);
   const [slot, setSlot] = useState(0);
   const [extraBeds, setExtraBeds] = useState(0);
+  const [upgradeMode, setUpgradeMode] = useState<"replace" | "modify">("replace");
+  const [upgradeClass, setUpgradeClass] = useState<VenueClass | "">("");
+  const [upgradeZones, setUpgradeZones] = useState<
+    NonNullable<NonNullable<VillageVenue["improvements"]>[number]>["zones"]
+  >([]);
   const [form, setForm] = useState("");
   const [exterior, setExterior] = useState("");
   const [interior, setInterior] = useState("");
   const [exteriorImage, setExteriorImage] = useState<VillageVenueImage | null>(null);
   const [interiorImage, setInteriorImage] = useState<VillageVenueImage | null>(null);
+  const [zoneImages, setZoneImages] = useState<Record<string, VillageVenueImage>>({});
   const [imagePreview, setImagePreview] = useState<{ area: "exterior" | "interior"; image: VillageVenueImage } | null>(
     null,
   );
@@ -10559,13 +10894,26 @@ function ProjectsPanelV2({
   const flow = project?.lifecycle;
   const target = snapshot.settings.venues.find((entry) => entry.id === project?.venueId);
   const selectedVenue = snapshot.settings.venues.find((entry) => entry.id === venueId);
-  const extraClass = (["residence", "workplace", "gathering", "other"] as VenueClass[])
-    .filter((item) => !selectedVenue?.classes?.includes(item))
-    .includes(secondClass)
-    ? secondClass
-    : (["residence", "workplace", "gathering", "other"] as VenueClass[]).find(
-        (item) => !selectedVenue?.classes?.includes(item),
-      );
+  const selectedUpgrade = JSON.stringify(selectedVenue?.improvements?.[slot] ?? null);
+  useEffect(() => {
+    const upgrade = JSON.parse(selectedUpgrade) as NonNullable<VillageVenue["improvements"]>[number];
+    if (upgradeMode === "modify" && upgrade) {
+      setName(upgrade.title);
+      setDescription(upgrade.description);
+      setExtraBeds(upgrade.extraBeds);
+      setUpgradeTarget(upgrade.spaceId ?? "");
+      setUpgradeClass(upgrade.classContribution ?? "");
+      setUpgradeZones(upgrade.zones ?? []);
+    } else {
+      setUpgradeClass("");
+      setUpgradeTarget("");
+      setUpgradeZones([]);
+    }
+  }, [selectedVenue?.id, selectedUpgrade, slot, upgradeMode]);
+  const selectedBaseClasses = JSON.stringify(selectedVenue?.baseClasses ?? selectedVenue?.classes ?? ["gathering"]);
+  useEffect(() => {
+    setBaseClasses(JSON.parse(selectedBaseClasses) as VenueClass[]);
+  }, [selectedVenue?.id, selectedBaseClasses]);
   const run = async (path: string, body: unknown = {}) => {
     setBusy(true);
     setError("");
@@ -10589,11 +10937,22 @@ function ProjectsPanelV2({
         : {
             title: name,
             detail: description,
-            ...(changeKind === "class" && selectedVenue && extraClass
-              ? { classes: [...new Set([...(selectedVenue.classes ?? []), extraClass])] }
-              : {}),
+            ...(changeKind === "class" && selectedVenue ? { classes: baseClasses } : {}),
             ...(changeKind === "capacity" ? { capacity } : {}),
-            ...(changeKind === "upgrade" ? { slot, improvement: { title: name, description, extraBeds } } : {}),
+            ...(changeKind === "upgrade"
+              ? {
+                  slot,
+                  improvement: {
+                    id: upgradeMode === "modify" ? selectedVenue?.improvements?.[slot]?.id : undefined,
+                    title: name,
+                    description,
+                    extraBeds,
+                    spaceId: upgradeTarget || null,
+                    classContribution: upgradeClass || undefined,
+                    zones: upgradeZones,
+                  },
+                }
+              : {}),
             ...(changeKind === "remove-upgrade" ? { slot, improvement: null } : {}),
           };
     const next = await run(
@@ -10663,9 +11022,21 @@ function ProjectsPanelV2({
           <p>
             {project.kind === "new-venue"
               ? "Give the finished place its form, exterior, and interior. Images are optional."
-              : "Review the finished change and update its exterior image if you wish."}
+              : "Review the approved zone names, access, and descriptions, then choose final images if you wish."}
           </p>
         </header>
+        {project.kind === "renovation" ? (
+          <button
+            type="button"
+            className={ELEMENT_TAG + "-button"}
+            disabled={busy}
+            onClick={async () => {
+              if (await action("renew-approvals")) setFinishingVisit(false);
+            }}
+          >
+            Renew approvals for current residents and workers
+          </button>
+        ) : null}
         {project.kind === "new-venue" ? (
           <>
             <label>
@@ -10722,6 +11093,46 @@ function ProjectsPanelV2({
             );
           },
         )}
+        {project.kind === "renovation"
+          ? (flow?.change?.improvement?.zones ?? []).map((zone) => (
+              <section key={zone.id} className={ELEMENT_TAG + "-project-image"}>
+                <h3>
+                  {zone.name} · {zone.kind}
+                </h3>
+                <p>{zone.description}</p>
+                {zoneImages[zone.id!] ? (
+                  <img src={zoneImages[zone.id!]!.url} alt={zone.name + " preview"} />
+                ) : (
+                  <p>Image optional. Existing images are preserved.</p>
+                )}
+                <label>
+                  Upload final zone image
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={busy}
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (!file) return;
+                      setBusy(true);
+                      try {
+                        const image = await request<VillageVenueImage>("/setup/venue-image", {
+                          method: "PUT",
+                          body: JSON.stringify({ name: zone.name, image: await readFileAsDataUrl(file) }),
+                        });
+                        setZoneImages((current) => ({ ...current, [zone.id!]: image }));
+                      } catch (cause) {
+                        setError(messageFrom(cause, "The zone image could not be uploaded."));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  />
+                </label>
+              </section>
+            ))
+          : null}
         {imagePreview ? (
           <section className={`${ELEMENT_TAG}-project-image`}>
             <img src={imagePreview.image.url} alt="Generated Venue candidate" />
@@ -10752,6 +11163,7 @@ function ProjectsPanelV2({
               interiorDescription: interior,
               exteriorImage,
               interiorImage,
+              zoneImages,
             });
             if (next) setFinishingVisit(false);
           }}
@@ -10834,30 +11246,31 @@ function ProjectsPanelV2({
                     >
                       <option value="upgrade">Add or replace an Upgrade</option>
                       <option value="remove-upgrade">Remove an Upgrade</option>
-                      <option value="class">Add a second Class</option>
+                      <option value="class">Change base Classes</option>
                       <option value="capacity">Change Residence capacity</option>
                     </select>
                   </label>
                   {changeKind === "class" ? (
-                    (selectedVenue?.classes?.length ?? 0) >= 2 ? (
-                      <p>This Venue already has two Classes.</p>
-                    ) : (
-                      <label>
-                        Second Class
-                        <select
-                          value={extraClass ?? ""}
-                          onChange={(event) => setSecondClass(event.target.value as VenueClass)}
-                        >
-                          {(["residence", "workplace", "gathering", "other"] as const)
-                            .filter((item) => !selectedVenue?.classes?.includes(item))
-                            .map((item) => (
-                              <option key={item} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                    )
+                    <fieldset>
+                      <legend>Base Classes</legend>
+                      <p>
+                        Choose one or two base Classes. Upgrade contributions also count toward the two-Class limit.
+                      </p>
+                      {VENUE_CLASS_CHOICES.map((item) => (
+                        <label key={item}>
+                          <input
+                            type="checkbox"
+                            checked={baseClasses.includes(item)}
+                            onChange={(event) =>
+                              setBaseClasses((current) =>
+                                event.target.checked ? [...current, item] : current.filter((entry) => entry !== item),
+                              )
+                            }
+                          />
+                          {item}
+                        </label>
+                      ))}
+                    </fieldset>
                   ) : null}
                   {changeKind === "capacity" ? (
                     <label>
@@ -10879,6 +11292,135 @@ function ProjectsPanelV2({
                         <option value={1}>Slot 2 · {selectedVenue?.improvements?.[1]?.title ?? "empty"}</option>
                       </select>
                     </label>
+                  ) : null}
+                  {changeKind === "upgrade" ? (
+                    <>
+                      <label>
+                        Upgrade action
+                        <select
+                          value={upgradeMode}
+                          onChange={(event) => setUpgradeMode(event.target.value as "replace" | "modify")}
+                        >
+                          <option value="replace">Add or replace this Upgrade</option>
+                          {selectedVenue?.improvements?.[slot] ? (
+                            <option value="modify">Modify the existing Upgrade</option>
+                          ) : null}
+                        </select>
+                      </label>
+                      <label>
+                        Class contributed
+                        <select
+                          value={upgradeClass}
+                          onChange={(event) => setUpgradeClass(event.target.value as VenueClass | "")}
+                        >
+                          <option value="">No additional Class</option>
+                          {VENUE_CLASS_CHOICES.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Existing area improved (optional)
+                        <select value={upgradeTarget} onChange={(event) => setUpgradeTarget(event.target.value)}>
+                          <option value="">No existing area</option>
+                          {selectedVenue?.zones
+                            ?.filter((zone) => zone.kind !== "private-residence")
+                            .map((zone) => (
+                              <option key={zone.id} value={zone.id}>
+                                {zone.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <p>
+                        A Venue supports at most two distinct Classes, including its Upgrades. An Upgrade can add zones
+                        or improve an existing area.
+                      </p>
+                      {(upgradeZones ?? []).map((zone, index) => (
+                        <section className={ELEMENT_TAG + "-project-card"} key={zone.id ?? index}>
+                          <label>
+                            Zone name
+                            <input
+                              value={zone.name}
+                              onChange={(event) =>
+                                setUpgradeZones((current) =>
+                                  current?.map((item, i) =>
+                                    i === index ? { ...item, name: event.target.value } : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <label>
+                            Area
+                            <select
+                              value={zone.kind}
+                              onChange={(event) =>
+                                setUpgradeZones((current) =>
+                                  current?.map((item, i) =>
+                                    i === index
+                                      ? {
+                                          ...item,
+                                          kind: event.target.value as typeof zone.kind,
+                                          venueClass:
+                                            event.target.value === "shared-residence"
+                                              ? "residence"
+                                              : event.target.value === "staff"
+                                                ? "workplace"
+                                                : upgradeClass || selectedVenue?.classes?.[0] || "other",
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="public">Public · everyone</option>
+                              <option value="shared-residence">Shared living · residents and guests</option>
+                              <option value="staff">Staff · workers and guests</option>
+                            </select>
+                          </label>
+                          <label>
+                            Description
+                            <textarea
+                              value={zone.description}
+                              onChange={(event) =>
+                                setUpgradeZones((current) =>
+                                  current?.map((item, i) =>
+                                    i === index ? { ...item, description: event.target.value } : item,
+                                  ),
+                                )
+                              }
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className={ELEMENT_TAG + "-button"}
+                            onClick={() => setUpgradeZones((current) => current?.filter((_, i) => i !== index))}
+                          >
+                            Remove from proposal
+                          </button>
+                        </section>
+                      ))}
+                      <button
+                        type="button"
+                        className={ELEMENT_TAG + "-button"}
+                        onClick={() =>
+                          setUpgradeZones((current) => [
+                            ...(current ?? []),
+                            {
+                              name: "",
+                              kind: "public",
+                              description: "",
+                              venueClass: upgradeClass || selectedVenue?.classes?.[0] || "other",
+                            },
+                          ])
+                        }
+                      >
+                        Add a Zone to this Upgrade
+                      </button>
+                    </>
                   ) : null}
                   {changeKind === "upgrade" ? (
                     <label>
@@ -10924,8 +11466,7 @@ function ProjectsPanelV2({
                   !name.trim() ||
                   !description.trim() ||
                   (draftType === "renovation" &&
-                    (!venueId ||
-                      (changeKind === "class" && (!extraClass || (selectedVenue?.classes?.length ?? 0) >= 2))))
+                    (!venueId || (changeKind === "class" && (!baseClasses.length || baseClasses.length > 2))))
                 }
                 onClick={() => void create()}
               >
@@ -10955,6 +11496,14 @@ function ProjectsPanelV2({
             )}
           </nav>
           <main className={`${ELEMENT_TAG}-project-card`}>
+            {project.kind === "renovation" && !["construction", "finishing", "complete"].includes(phase ?? "") ? (
+              <RenovationRevisionEditor
+                key={project.id + project.updatedAt}
+                project={project}
+                busy={busy}
+                onSave={(body) => run(`/projects/${encodeURIComponent(project.id)}/revise`, body)}
+              />
+            ) : null}
             {phase === "concept" ? (
               <>
                 <h3>Place the blueprint</h3>
@@ -10968,6 +11517,12 @@ function ProjectsPanelV2({
             {phase === "approval" ? (
               <>
                 <h3>People affected by this change</h3>
+                <p>{flow?.change?.detail}</p>
+                {(flow?.change?.improvement?.zones ?? []).map((zone) => (
+                  <p key={zone.id}>
+                    <strong>{zone.name}</strong> · {zone.kind}: {zone.description}
+                  </p>
+                ))}
                 <p>
                   They may approve in conversation or reply through Mailbox. Every affected resident or worker must
                   agree before you ask for a Builder.
@@ -11092,17 +11647,27 @@ function ProjectsPanelV2({
                                 .filter((item) => item.itemName.toLocaleLowerCase() === entry.title.toLocaleLowerCase())
                                 .map((item) => (
                                   <button
-                                    key={item.venueId}
+                                    key={item.venueId + ":" + item.zoneId + ":" + item.itemName}
                                     type="button"
                                     className={`${ELEMENT_TAG}-button`}
                                     disabled={busy}
                                     onClick={() =>
-                                      void action("existing-source", { requirementId: entry.id, venueId: item.venueId })
+                                      void action("existing-source", {
+                                        requirementId: entry.id,
+                                        venueId: item.venueId,
+                                        zoneId: item.zoneId,
+                                      })
                                     }
                                   >
                                     Choose available item at{" "}
                                     {snapshot.settings.venues.find((venue) => venue.id === item.venueId)?.name ??
                                       "Venue"}
+                                    {item.zoneId
+                                      ? " · " +
+                                        (snapshot.settings.venues
+                                          .find((venue) => venue.id === item.venueId)
+                                          ?.zones?.find((zone) => zone.id === item.zoneId)?.name ?? "Zone")
+                                      : ""}
                                   </button>
                                 ))}
                               {(flow.heldSupplies ?? [])
@@ -11305,16 +11870,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   useEffect(() => {
     if (venueZoneKey === "exterior") return;
     const venue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
-    const available = venueZoneKey.startsWith("class:")
-      ? Boolean(venue && venueClassesFor(venue).includes(venueZoneKey.slice(6) as VenueClass))
-      : Boolean(
-          venue &&
-          venueZoneKey.startsWith("private:") &&
-          (
-            venue.residentIds ?? (venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [])
-          ).includes(venueZoneKey.slice(8)) &&
-          venue.privateSpaces?.some((space) => space.ownerId === venueZoneKey.slice(8)),
-        );
+    const available =
+      venue?.zones?.some((zone) => zone.id === venueZoneKey) ||
+      (venueZoneKey.startsWith("class:")
+        ? Boolean(venue && venueClassesFor(venue).includes(venueZoneKey.slice(6) as VenueClass))
+        : Boolean(
+            venue &&
+            venueZoneKey.startsWith("private:") &&
+            (
+              venue.residentIds ?? (venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [])
+            ).includes(venueZoneKey.slice(8)) &&
+            venue.privateSpaces?.some((space) => space.ownerId === venueZoneKey.slice(8)),
+          ));
     if (!available) setVenueZoneKey("exterior");
   }, [snapshot, venueId, venueZoneKey]);
   const [venueEditDraft, setVenueEditDraft] = useState<VillageVenue | null>(null);
@@ -12775,7 +13342,28 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       spaceClass?: VenueClass,
       privateOwnerId = "",
       entryArea?: "outside" | "shared" | "private" | "public",
+      zoneId?: string,
     ) => {
+      if (room?.id && room.status === "active" && room.placeId === place.id && zoneId) {
+        setRoomBusy(true);
+        setRoomError("");
+        try {
+          const { session } = await request<{ session: RoomView }>("/rooms/zone", {
+            method: "POST",
+            body: JSON.stringify({ sessionId: room.id, zoneId }),
+          });
+          setRoom(currentRoom(session));
+          setRoomTargetId("");
+          setScreen("room");
+          setRoomOpen(true);
+          void loadSnapshot();
+        } catch (cause) {
+          setRoomError(messageFrom(cause, "That zone could not be entered."));
+        } finally {
+          setRoomBusy(false);
+        }
+        return;
+      }
       leavingRoomPendingRef.current = false;
       roomCompletionRef.current = null;
       setOpenPlaceId(null);
@@ -12805,7 +13393,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       try {
         const { session } = await request<{ session: RoomView }>("/rooms", {
           method: "POST",
-          body: JSON.stringify({ venueId: place.id, spaceClass, privateOwnerId, entryArea }),
+          body: JSON.stringify({ venueId: place.id, spaceClass, privateOwnerId, entryArea, zoneId }),
           signal: AbortSignal.timeout(20_000),
         });
         setRoom(currentRoom(session));
@@ -12822,7 +13410,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setRoomBusy(false);
       }
     },
-    [greetRoom, loadSnapshot],
+    [greetRoom, loadSnapshot, room],
   );
 
   /**
@@ -13252,7 +13840,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   /** Draw a picture for one place. The only path in this package that spends money. */
   const drawPlaceImage = useCallback(
-    async (venueId: string, spaceClass?: VenueClass, privateOwnerId = "") => {
+    async (venueId: string, spaceClass?: VenueClass, privateOwnerId = "", zoneId?: string) => {
       if (placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -13261,7 +13849,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "POST",
-            body: JSON.stringify({ venueId, spaceClass, privateOwnerId }),
+            body: JSON.stringify({ venueId, spaceClass, privateOwnerId, zoneId }),
           }),
         );
       } catch (cause) {
@@ -13283,7 +13871,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * turned down should not first be made a third larger.
    */
   const keepPlaceImage = useCallback(
-    async (venueId: string, file: File | undefined, spaceClass?: VenueClass, privateOwnerId = "") => {
+    async (venueId: string, file: File | undefined, spaceClass?: VenueClass, privateOwnerId = "", zoneId?: string) => {
       if (!file || !snapshot || placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -13303,7 +13891,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "PUT",
-            body: JSON.stringify({ venueId, image, spaceClass, privateOwnerId }),
+            body: JSON.stringify({ venueId, image, spaceClass, privateOwnerId, zoneId }),
           }),
         );
       } catch (cause) {
@@ -13325,7 +13913,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * theirs to keep, reuse or throw away from the Engine's own gallery.
    */
   const dropPlaceImage = useCallback(
-    async (venueId: string, spaceClass?: VenueClass, privateOwnerId = "") => {
+    async (venueId: string, spaceClass?: VenueClass, privateOwnerId = "", zoneId?: string) => {
       if (placeBusyId) return;
       setPlaceBusyId(venueId);
       setPlaceProblem(null);
@@ -13334,7 +13922,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSnapshot(
           await request<VillageSnapshot>("/locations/venue/image", {
             method: "DELETE",
-            body: JSON.stringify({ venueId, spaceClass, privateOwnerId }),
+            body: JSON.stringify({ venueId, spaceClass, privateOwnerId, zoneId }),
           }),
         );
       } catch (cause) {
@@ -14663,12 +15251,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const liveShared = room?.placeId === place.id && (room.area === "shared" || room.area === "private");
     const livePrivateOwner = room?.placeId === place.id && room.area === "private" ? room.privateOwnerId : "";
     const canViewShared = place.occupancy.playerHome || place.playerSeenShared || liveShared;
-    const privateSpaces = (place.privateSpaces ?? []).filter(
+    const _privateSpaces = (place.privateSpaces ?? []).filter(
       (space) => place.playerSeenPrivateIds?.includes(space.ownerId) || space.ownerId === livePrivateOwner,
     );
     const activeRoom = room?.status !== "closed" && room?.id ? room : null;
     const sharedInvitation = (place.playerInvitations ?? []).some((entry) => residentIds.includes(entry.residentId));
-    const zones: VenueViewZone[] = [
+    const legacyZones: VenueViewZone[] = [
       {
         key: "exterior",
         label: "Exterior",
@@ -14731,11 +15319,76 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           };
         }),
     ];
+    const zones: VenueViewZone[] = place.zones
+      ? place.zones.map((zone) => {
+          const area =
+            zone.kind === "exterior"
+              ? "outside"
+              : zone.kind === "private-residence"
+                ? "private"
+                : zone.kind === "shared-residence"
+                  ? "shared"
+                  : "public";
+          const locked =
+            zone.kind !== "exterior" &&
+            !zone.seen &&
+            !(place.occupancy.playerHome && zone.kind === "shared-residence") &&
+            !(activeRoom?.placeId === place.id && activeRoom.zoneId === zone.id);
+          const invited =
+            place.playerInvitations?.some((invitation) => invitation.zoneId === zone.id) ||
+            (activeRoom?.placeId === place.id && activeRoom.grantedZoneIds?.includes(zone.id));
+          const canEnter =
+            !zone.closed &&
+            (zone.kind === "exterior" ||
+              zone.kind === "public" ||
+              (zone.kind === "shared-residence" && place.occupancy.playerHome) ||
+              !!invited);
+          return {
+            key: zone.id,
+            zoneId: zone.id,
+            label:
+              zone.kind === "private-residence" ? nameOfCharacter(zone.ownerId ?? "") + "'s Private Space" : zone.name,
+            subtitle:
+              zone.kind === "staff"
+                ? "Staff area"
+                : zone.kind === "shared-residence"
+                  ? "Shared living space"
+                  : zone.kind === "private-residence"
+                    ? "Resident's personal space"
+                    : zone.kind === "exterior"
+                      ? "Outside the building"
+                      : "Public area",
+            area,
+            spaceClass: zone.venueClass,
+            ownerId: zone.ownerId ?? "",
+            image: locked ? null : zone.image,
+            description: locked ? "" : zone.description,
+            state: locked ? undefined : zone.state,
+            locked,
+            canEnter,
+            accessLabel: zone.closed
+              ? "Closed for Renovation"
+              : zone.kind === "exterior" || zone.kind === "public"
+                ? "Open to everyone"
+                : invited
+                  ? "Permission for this visit"
+                  : zone.kind === "private-residence"
+                    ? "Owner's invitation required"
+                    : zone.kind === "staff"
+                      ? "Workers and invited guests"
+                      : "Residents and invited guests",
+          };
+        })
+      : legacyZones;
     const selectedZone = zones.find((zone) => zone.key === venueZoneKey) ?? zones[0]!;
     const zoneProposals = (place.editProposals ?? []).filter((proposal) =>
-      selectedZone.area === "shared"
-        ? proposal.target === "shared"
-        : selectedZone.area === "private" && proposal.target === "private" && proposal.ownerId === selectedZone.ownerId,
+      proposal.zoneId
+        ? proposal.zoneId === selectedZone.zoneId
+        : selectedZone.area === "shared"
+          ? proposal.target === "shared"
+          : selectedZone.area === "private" &&
+            proposal.target === "private" &&
+            proposal.ownerId === selectedZone.ownerId,
     );
     const zoneDescription =
       selectedZone.description && selectedZone.description !== place.form && selectedZone.description !== building
@@ -14755,12 +15408,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       );
     const activeZoneIsSelected = Boolean(
       activeRoom?.placeId === place.id &&
-      activeRoom.area === selectedZone.area &&
-      (selectedZone.area === "outside" || activeRoom.spaceClass === selectedZone.spaceClass) &&
+      (selectedZone.zoneId ? activeRoom.zoneId === selectedZone.zoneId : activeRoom.area === selectedZone.area) &&
+      (selectedZone.zoneId
+        ? activeRoom.zoneId === selectedZone.zoneId
+        : selectedZone.area === "outside" || activeRoom.spaceClass === selectedZone.spaceClass) &&
       (selectedZone.area !== "private" || activeRoom.privateOwnerId === selectedZone.ownerId),
     );
-    const imagePanel = (label: string, image: VillageVenueImage | null, spaceClass?: VenueClass, ownerId = "") => (
-      <section className={`${ELEMENT_TAG}-venue-card`} key={ownerId || spaceClass || "exterior"}>
+    const imagePanel = (
+      label: string,
+      image: VillageVenueImage | null,
+      spaceClass?: VenueClass,
+      ownerId = "",
+      zoneId?: string,
+    ) => (
+      <section className={`${ELEMENT_TAG}-venue-card`} key={zoneId || ownerId || spaceClass || "exterior"}>
         <h3 className={`${ELEMENT_TAG}-panel-title`}>{label}</h3>
         {image ? (
           <img className={`${ELEMENT_TAG}-venue-space-picture`} src={image.url} alt={`${label} at ${place.name}`} />
@@ -14772,7 +15433,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             type="button"
             className={`${ELEMENT_TAG}-button`}
             disabled={Boolean(placeBusyId) || busy}
-            onClick={() => void drawPlaceImage(place.id, spaceClass, ownerId)}
+            onClick={() => void drawPlaceImage(place.id, spaceClass, ownerId, zoneId)}
           >
             {image ? "Redraw image" : "Draw image"}
           </button>
@@ -14785,7 +15446,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              void keepPlaceImage(place.id, file, spaceClass, ownerId);
+              void keepPlaceImage(place.id, file, spaceClass, ownerId, zoneId);
             }}
           />
           {image ? (
@@ -14793,7 +15454,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               type="button"
               className={`${ELEMENT_TAG}-button`}
               disabled={Boolean(placeBusyId) || busy}
-              onClick={() => void dropPlaceImage(place.id, spaceClass, ownerId)}
+              onClick={() => void dropPlaceImage(place.id, spaceClass, ownerId, zoneId)}
             >
               Remove image
             </button>
@@ -15113,18 +15774,26 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </p>
                 ) : null}
                 {activeRoom && !activeZoneIsSelected ? (
-                  <p className={ELEMENT_TAG + "-venue-zone-guidance"}>
-                    Finish the active visit before entering another area.
-                  </p>
+                  <p className={ELEMENT_TAG + "-venue-zone-guidance"}>Move between zones to continue this visit.</p>
                 ) : null}
                 <button
                   type="button"
                   className={ELEMENT_TAG + "-venue-visit"}
-                  disabled={roomBusy || (!activeZoneIsSelected && (Boolean(activeRoom) || !selectedZone.canEnter))}
+                  disabled={
+                    roomBusy ||
+                    (!activeZoneIsSelected &&
+                      ((Boolean(activeRoom) && activeRoom?.placeId !== place.id) || !selectedZone.canEnter))
+                  }
                   onClick={() =>
                     activeZoneIsSelected
                       ? setScreen("room")
-                      : void openRoom(place, selectedZone.spaceClass, selectedZone.ownerId, selectedZone.area)
+                      : void openRoom(
+                          place,
+                          selectedZone.spaceClass,
+                          selectedZone.ownerId,
+                          selectedZone.area,
+                          selectedZone.zoneId,
+                        )
                   }
                 >
                   {roomBusy ? "Opening visit…" : activeZoneIsSelected ? "Return to scene →" : "Visit this area →"}
@@ -15135,30 +15804,42 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         ) : venuePage === "edit" ? (
           <main className={`${ELEMENT_TAG}-venue-editor-page`}>
             <div className={`${ELEMENT_TAG}-venue-space-grid`}>
-              {imagePanel("Exterior image", place.presentation.image)}
-              {classes
-                .filter((item) => item !== "residence" || canViewShared)
-                .map((item) =>
+              {zones
+                .filter((zone) => !zone.locked)
+                .map((zone) =>
                   imagePanel(
-                    item === "residence" ? "Shared Residence image" : `${item} space image`,
-                    venueSpaceFor(place, item).image,
-                    item,
+                    zone.label + " image",
+                    zone.image,
+                    zone.area === "outside" ? undefined : zone.spaceClass,
+                    zone.ownerId,
+                    zone.zoneId,
                   ),
                 )}
-              {privateSpaces.map((space) =>
-                imagePanel(
-                  `${nameOfCharacter(space.ownerId)}'s private image`,
-                  space.image,
-                  "residence",
-                  space.ownerId,
-                ),
-              )}
             </div>
             {placeBusyId === place.id ? <p className={`${ELEMENT_TAG}-hint`}>Drawing or saving the image…</p> : null}
             {placeProblem?.id === place.id ? (
               <p className={`${ELEMENT_TAG}-error`} role="alert">
                 {placeProblem.text}
               </p>
+            ) : null}
+            {selectedZone.zoneId && !selectedZone.locked ? (
+              <VenueZoneEditor
+                key={selectedZone.zoneId}
+                zone={selectedZone}
+                onSave={async (body) => {
+                  try {
+                    setSnapshot(
+                      await request<VillageSnapshot>(
+                        `/venues/${encodeURIComponent(place.id)}/zones/${encodeURIComponent(selectedZone.zoneId!)}`,
+                        { method: "PUT", body: JSON.stringify(body) },
+                      ),
+                    );
+                  } catch (cause) {
+                    setPlaceProblem({ id: place.id, text: messageFrom(cause, "The zone could not be saved.") });
+                    throw cause;
+                  }
+                }}
+              />
             ) : null}
             {venueEditDraft ? (
               <section className={`${ELEMENT_TAG}-venue-card`}>

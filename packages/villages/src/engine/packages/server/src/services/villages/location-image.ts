@@ -1,3 +1,4 @@
+import { venueInZone, resolveVenueZone } from "./venue-zones.js";
 // Villages — how a place gets its picture.
 //
 // Two ways in, and the difference between them is the whole point of this file:
@@ -212,23 +213,26 @@ export async function generateVillageLocationImage(
   spaceClass?: VillageVenueClass,
   privateOwnerId = "",
   onlyIfEmpty = false,
+  zoneId?: string,
 ): Promise<VillageSnapshot> {
   const found = await requireVenue(venueId);
   const village = found.village;
   if (spaceClass && !venueClasses(found.venue).includes(spaceClass))
     throw notFound("That Venue space no longer exists.");
-  await assertVenueImageAccess(venueId, spaceClass, privateOwnerId);
-  const venue = privateOwnerId
-    ? venueInArea(found.venue, "private", "residence", privateOwnerId)
-    : spaceClass
-      ? venueInSpace(found.venue, spaceClass)
-      : found.venue;
+  await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
+  const venue = zoneId
+    ? venueInZone(found.venue, zoneId)
+    : privateOwnerId
+      ? venueInArea(found.venue, "private", "residence", privateOwnerId)
+      : spaceClass
+        ? venueInSpace(found.venue, spaceClass)
+        : found.venue;
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
     seed: village.seed,
     now: new Date(),
   });
-  const exterior = !spaceClass && !privateOwnerId;
+  const exterior = zoneId ? resolveVenueZone(found.venue, zoneId)?.kind === "exterior" : !spaceClass && !privateOwnerId;
   const exteriorContext = [venue.name, venue.form, venue.description, venue.exteriorState?.condition ?? ""].join("\n");
   const lore = await readVillageVisualLore(
     village.selectedLorebookIds,
@@ -240,7 +244,7 @@ export async function generateVillageLocationImage(
     venue,
     moment,
     lore,
-    spaceClass || privateOwnerId ? "interior" : "exterior",
+    exterior ? "exterior" : "interior",
     privateOwnerId
       ? `${village.villagers.find((person) => person.characterId === privateOwnerId)?.cardSnapshot.name ?? "a resident"}'s private space`
       : spaceClass
@@ -265,7 +269,7 @@ export async function generateVillageLocationImage(
     width: LOCATION_IMAGE_WIDTH,
     height: LOCATION_IMAGE_HEIGHT,
   });
-  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, onlyIfEmpty);
+  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, onlyIfEmpty, zoneId);
 }
 
 /** One automatic drawing after the player first enters this particular private room. */
@@ -303,6 +307,7 @@ export async function storeVillageVenueImage(
   dataUrl: unknown,
   spaceClass?: VillageVenueClass,
   privateOwnerId = "",
+  zoneId?: string,
 ): Promise<VillageSnapshot> {
   const { venue } = await requireVenue(venueId);
   if (spaceClass && !venueClasses(venue).includes(spaceClass)) throw notFound("That Venue space no longer exists.");
@@ -314,5 +319,5 @@ export async function storeVillageVenueImage(
     name: venue.name,
     prompt: "",
   });
-  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId);
+  return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, false, zoneId);
 }

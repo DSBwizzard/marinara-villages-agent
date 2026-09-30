@@ -143,6 +143,7 @@ export function completeAgendaWeek(
                 typeof row.reason === "string" ? row.reason.slice(0, 240) : "",
                 row.status,
               ),
+              zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
               ...(typeof row.sourceTime === "string" ? { sourceTime: row.sourceTime } : {}),
             },
           ];
@@ -177,7 +178,10 @@ export function legacyAgendaWeek(
   fallback: Record<string, VillageAgendaBlock[]>,
 ): Record<string, VillageAgendaBlock[]> {
   if (agenda.week) return completeAgendaWeek(agenda.week, fallback);
-  const day = agenda.day.map((entry) => block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity));
+  const day = agenda.day.map((entry) => ({
+    ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
+    zoneId: entry.zoneId,
+  }));
   if (!day.length) return fallback;
   return completeAgendaWeek(Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, day])), fallback);
 }
@@ -213,6 +217,9 @@ export function scheduleInformedWeek(
             entry.status,
           ),
           sourceTime: entry.time,
+          zoneId:
+            move?.zoneId ??
+            (move?.venueId && move.venueId !== villageBlock?.venueId ? undefined : villageBlock?.zoneId),
         });
       };
       if (range.end > range.start) {
@@ -238,7 +245,10 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
       ? agenda.activeDay.blocks
       : ((ingestSchedule ? agenda.scheduleWeek?.[weekday] : undefined) ??
         agenda.week?.[weekday] ??
-        agenda.day.map((entry) => block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity)));
+        agenda.day.map((entry) => ({
+          ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
+          zoneId: entry.zoneId,
+        })));
   const work = agenda.projectWork;
   if (!work) return ordinary;
   const dayStart = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
@@ -277,6 +287,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
         startMinute: cursor,
         endMinute: breakBlock.startMinute,
         venueId: work.venueId,
+        zoneId: work.zoneId ?? "exterior",
         activity: "Build the agreed venue",
         reason: "Committed project work order",
         status: "online",
@@ -289,6 +300,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
       startMinute: cursor,
       endMinute: through,
       venueId: work.venueId,
+      zoneId: work.zoneId ?? "exterior",
       activity: "Build the agreed venue",
       reason: "Committed project work order",
       status: "online",

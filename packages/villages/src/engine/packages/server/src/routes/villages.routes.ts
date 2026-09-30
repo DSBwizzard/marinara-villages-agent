@@ -1,3 +1,5 @@
+import { moveVenueZone } from "../services/villages/venue-session.js";
+import { updateVillageZone } from "../services/villages/village.js";
 import {
   readSpriteStudio,
   assignStudioCells,
@@ -64,6 +66,8 @@ import {
   startProjectConstruction,
   debugCompleteProjectConstruction,
   openFinishedProject,
+  reviseRenovationProject,
+  renewRenovationApprovals,
 } from "../services/villages/project-lifecycle.js";
 import {
   listProjectEvidenceCandidates,
@@ -656,39 +660,60 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading the active venue");
     }
   });
-  app.post<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown; entryArea?: unknown } }>(
-    "/rooms",
+  app.post<{
+    Body: { venueId?: unknown; spaceClass?: unknown; zoneId?: unknown; privateOwnerId?: unknown; entryArea?: unknown };
+  }>("/rooms", async (request, reply) => {
+    try {
+      await assertFoundedVillageReady();
+      const spaceClass = request.body?.spaceClass;
+      if (
+        spaceClass !== undefined &&
+        spaceClass !== "residence" &&
+        spaceClass !== "workplace" &&
+        spaceClass !== "gathering" &&
+        spaceClass !== "other"
+      )
+        throw badRequest("Choose a valid Venue Class space.");
+      const entryArea = request.body?.entryArea;
+      if (
+        entryArea !== undefined &&
+        entryArea !== "outside" &&
+        entryArea !== "shared" &&
+        entryArea !== "private" &&
+        entryArea !== "public"
+      )
+        throw badRequest("Choose a valid Venue area.");
+      return {
+        session: await enterVenue(
+          readPlaceId(request.body?.venueId),
+          spaceClass,
+          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+          entryArea,
+          typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+        ),
+      };
+    } catch (error) {
+      return fail(reply, error, "entering a venue");
+    }
+  });
+  app.post<{ Body: { sessionId?: unknown; zoneId?: unknown } }>("/rooms/zone", async (request, reply) => {
+    try {
+      return { session: await moveVenueZone(readChatId(request.body?.sessionId), readPlaceId(request.body?.zoneId)) };
+    } catch (error) {
+      return fail(reply, error, "moving between zones");
+    }
+  });
+  app.put<{ Params: { venueId: string; zoneId: string }; Body: unknown }>(
+    "/venues/:venueId/zones/:zoneId",
     async (request, reply) => {
       try {
-        await assertFoundedVillageReady();
-        const spaceClass = request.body?.spaceClass;
-        if (
-          spaceClass !== undefined &&
-          spaceClass !== "residence" &&
-          spaceClass !== "workplace" &&
-          spaceClass !== "gathering" &&
-          spaceClass !== "other"
-        )
-          throw badRequest("Choose a valid Venue Class space.");
-        const entryArea = request.body?.entryArea;
-        if (
-          entryArea !== undefined &&
-          entryArea !== "outside" &&
-          entryArea !== "shared" &&
-          entryArea !== "private" &&
-          entryArea !== "public"
-        )
-          throw badRequest("Choose a valid Venue area.");
-        return {
-          session: await enterVenue(
-            readPlaceId(request.body?.venueId),
-            spaceClass,
-            typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-            entryArea,
-          ),
-        };
+        return await updateVillageZone(
+          readPlaceId(request.params.venueId),
+          readPlaceId(request.params.zoneId),
+          request.body,
+        );
       } catch (error) {
-        return fail(reply, error, "entering a venue");
+        return fail(reply, error, "editing a zone");
       }
     },
   );
@@ -1111,51 +1136,57 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // private room uses the same generator once in the background, with a
   // persisted attempt marker so visits and refreshes cannot repeat it.
 
-  app.post<{ Body: { venueId?: unknown; connectionId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
-    "/locations/venue/image",
-    async (request, reply) => {
-      try {
-        return await generateVillageLocationImage(
-          readVenueId(request.body?.venueId),
-          // A connection the tab named wins; anything else is left to the
-          // package's own choice. The value is not validated here because
-          // whether it draws images is a question only the Engine can answer,
-          // and it already answers it with a better message than this could.
-          typeof request.body?.connectionId === "string" ? request.body.connectionId : undefined,
-          readVenueSpaceClass(request.body?.spaceClass),
-          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-        );
-      } catch (error) {
-        return fail(reply, error, "drawing a place");
-      }
-    },
-  );
+  app.post<{
+    Body: {
+      venueId?: unknown;
+      connectionId?: unknown;
+      spaceClass?: unknown;
+      privateOwnerId?: unknown;
+      zoneId?: unknown;
+    };
+  }>("/locations/venue/image", async (request, reply) => {
+    try {
+      return await generateVillageLocationImage(
+        readVenueId(request.body?.venueId),
+        // A connection the tab named wins; anything else is left to the
+        // package's own choice. The value is not validated here because
+        // whether it draws images is a question only the Engine can answer,
+        // and it already answers it with a better message than this could.
+        typeof request.body?.connectionId === "string" ? request.body.connectionId : undefined,
+        readVenueSpaceClass(request.body?.spaceClass),
+        typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+        false,
+        typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+      );
+    } catch (error) {
+      return fail(reply, error, "drawing a place");
+    }
+  });
 
   // A picture the player already has. Same road past the drawing: it goes to
   // the gallery and the village keeps a reference, so a village with twenty
   // photographed places weighs the same as one with none.
-  app.put<{ Body: { venueId?: unknown; image?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
-    "/locations/venue/image",
-    { bodyLimit: VENUE_IMAGE_BODY_LIMIT },
-    async (request, reply) => {
-      try {
-        return await storeVillageVenueImage(
-          readVenueId(request.body?.venueId),
-          request.body?.image,
-          readVenueSpaceClass(request.body?.spaceClass),
-          typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-        );
-      } catch (error) {
-        return fail(reply, error, "keeping a place's picture");
-      }
-    },
-  );
+  app.put<{
+    Body: { venueId?: unknown; image?: unknown; spaceClass?: unknown; privateOwnerId?: unknown; zoneId?: unknown };
+  }>("/locations/venue/image", { bodyLimit: VENUE_IMAGE_BODY_LIMIT }, async (request, reply) => {
+    try {
+      return await storeVillageVenueImage(
+        readVenueId(request.body?.venueId),
+        request.body?.image,
+        readVenueSpaceClass(request.body?.spaceClass),
+        typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+        typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+      );
+    } catch (error) {
+      return fail(reply, error, "keeping a place's picture");
+    }
+  });
 
   // Taking the picture away leaves the gallery entry where it is. The Engine's
   // gallery is the player's, and an image that lands there is theirs to keep or
   // delete; a package that reached in and removed it would be deleting from a
   // library it does not own. It costs a reference on one venue and nothing else.
-  app.delete<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown } }>(
+  app.delete<{ Body: { venueId?: unknown; spaceClass?: unknown; privateOwnerId?: unknown; zoneId?: unknown } }>(
     "/locations/venue/image",
     async (request, reply) => {
       try {
@@ -1164,6 +1195,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
           null,
           readVenueSpaceClass(request.body?.spaceClass),
           typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
+          false,
+          typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
         );
         return await buildVillageSnapshot();
       } catch (error) {
@@ -1211,6 +1244,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
   projectAction("start", (projectId) => startProjectConstruction(projectId));
   projectAction("debug-complete", (projectId) => debugCompleteProjectConstruction(projectId));
   projectAction("open", openFinishedProject);
+  projectAction("revise", reviseRenovationProject);
+  projectAction("renew-approvals", (id) => renewRenovationApprovals(id));
   projectAction("record", recordProjectSpokenEvidence);
   projectAction("existing-source", recordExistingProjectSource);
   projectAction("reallocate-held", reallocateHeldProjectSupply);

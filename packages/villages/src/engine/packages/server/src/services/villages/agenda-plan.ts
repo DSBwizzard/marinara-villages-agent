@@ -107,6 +107,7 @@ export function agendaDayPlan(
       reason: entry.reason,
       translated: true,
       venueId: entry.venueId,
+      zoneId: entry.zoneId,
       wishId: "",
       status: entry.status,
       current: minuteOfDay >= entry.startMinute && minuteOfDay < entry.endMinute,
