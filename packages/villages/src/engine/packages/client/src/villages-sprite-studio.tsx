@@ -371,8 +371,14 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     setPlan(refreshed);
     submission.current ??= submissionId();
     try {
-      setData(await call<StudioData>("jobs", { ...payload, plan: refreshed, submissionId: submission.current }));
+      const submittedId = submission.current;
+      const next = await call<StudioData>("jobs", { ...payload, plan: refreshed, submissionId: submittedId });
+      setData(next);
       submission.current = null;
+      if (!next.jobs.some((job) => job.id === submittedId)) {
+        setNote("This submission already completed and its artwork was removed. Click Generate to start a new batch.");
+        return;
+      }
       setTab("Review");
       setNote("Drawing a saved batch. Existing scene images stay active.");
     } catch (cause) {
@@ -437,6 +443,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     });
     setData(result.studio);
     setDeletion(null);
+    submission.current = null;
     setSelected([]);
     setPicked("");
     setDraft(null);

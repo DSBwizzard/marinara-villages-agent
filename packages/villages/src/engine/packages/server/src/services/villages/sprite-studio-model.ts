@@ -94,6 +94,7 @@ export type StudioState = {
   jobs: StudioJob[];
   expressions: StudioExpression[];
   files: StudioFile[];
+  submissions: Array<{ id: string; fingerprint: string }>;
 };
 export type StudioData = StudioState & {
   adjustedCellId?: string;
@@ -115,6 +116,7 @@ export const defaultStudioState = (): StudioState => ({
     aliases: [label],
   })),
   files: [],
+  submissions: [],
 });
 
 export function validateStudioCell(cell: StudioCell, sheet: Pick<StudioSheet, "width" | "height">): void {

@@ -97,12 +97,15 @@ function retainFile(state: StudioState, assetId: string, expression: string, url
 async function ensureLibrary(characterId: string, id: string) {
   const resident = await owner(characterId);
   const current = await read(id);
-  const needs =
+  const needsMigration =
     current.jobs.some((job) =>
       job.sheets.some((sheet) => sheet.cells.some((cell) => !cell.expressionId || cell.pending === undefined)),
     ) ||
     (resident.sprite?.expressions.some((entry) => !entry.expressionId || !entry.cutoutId) ?? false);
-  if (!needs) return;
+  const needsReceipts = current.jobs.some(
+    (job) => /^[a-f0-9-]{36}$/i.test(job.id) && !current.submissions.some((entry) => entry.id === job.id),
+  );
+  if (!needsMigration && !needsReceipts) return;
   const legacySizes = new Map<string, { width: number; height: number }>();
   for (const entry of resident.sprite?.expressions ?? []) {
     if (entry.cutoutId) continue;
@@ -120,6 +123,9 @@ async function ensureLibrary(characterId: string, id: string) {
     }
   }
   await mutate(id, (state) => {
+    for (const job of state.jobs)
+      if (/^[a-f0-9-]{36}$/i.test(job.id) && !state.submissions.some((entry) => entry.id === job.id))
+        state.submissions.push({ id: job.id, fingerprint: job.fingerprint });
     const add = (label: string, pose: string) => {
       let slot = state.expressions.find((item) => item.label === label || item.aliases.includes(label));
       if (!slot) {
@@ -192,6 +198,7 @@ async function ensureLibrary(characterId: string, id: string) {
       retainFile(state, assetId, fileStem(url), url);
     }
   });
+  if (!needsMigration) return;
   const library = await read(id);
   await mutateVillageState((state) => {
     const sprite = state.villagers.find((item) => item.characterId === characterId)?.sprite;
@@ -383,7 +390,8 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   const fingerprint = hash(
     JSON.stringify({ ...selection(raw), ...(body.settings ? { settings: readSettings(body.settings) } : {}) }),
   );
-  const prior = (await read(id)).jobs.find((job) => job.id === jobId);
+  const stored = await read(id);
+  const prior = stored.submissions.find((entry) => entry.id === jobId) ?? stored.jobs.find((job) => job.id === jobId);
   if (prior) {
     if (prior.fingerprint !== fingerprint) throw badRequest("This submission id belongs to a different selection.");
     return readSpriteStudio(characterId);
@@ -399,10 +407,11 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   try {
     await mutate(id, (next) => {
       claimed = false;
-      if (next.jobs.some((job) => job.id === jobId)) return;
+      if (next.submissions.some((entry) => entry.id === jobId) || next.jobs.some((job) => job.id === jobId)) return;
       if (next.jobs.some((job) => job.status === "running"))
         throw badRequest("This villager already has a generation running.");
       next.settings = prepared.state.settings;
+      next.submissions.push({ id: jobId, fingerprint });
       for (const entry of input.expressions) {
         const slot = next.expressions.find((item) => item.id === entry.expressionId);
         if (!slot) next.expressions.push(definition(entry.label, entry.pose, entry.expressionId));

@@ -371,6 +371,15 @@ async function main() {
     await assignBatch(a.job.id);
     const aActive = activeSprite(),
       writesAfterA = savedWrites;
+    delete records.get(studioId).data.submissions;
+    failVillageWrite = true;
+    const migratedReceipts = await readSpriteStudio("mara");
+    assert.ok(
+      migratedReceipts.submissions.some((entry) => entry.id === a.job.id),
+      "existing batches migrate submission receipts",
+    );
+    assert.deepEqual(activeSprite(), aActive, "receipt-only migration leaves scene assignments untouched");
+    failVillageWrite = false;
     assert.equal(
       aActive.defaultExpressionId,
       cellsOf(a.job)[0].expressionId,
@@ -531,6 +540,19 @@ async function main() {
     assert.equal(data.jobs.find((job) => job.id === failedId)!.status, "interrupted");
     assert.match(data.jobs.find((job) => job.id === failedId)!.error, /No automatic retry/);
     await deleteStudioArtwork("mara", { batchId: failedId, confirmed: true, deleteFiles: true });
+    const afterDeletedSubmission = calls;
+    const replay = await startSpriteStudioJob("mara", { ...failedInput, plan: failedPlan, submissionId: failedId });
+    assert.equal(
+      calls,
+      afterDeletedSubmission,
+      "deleting a batch cannot turn a transport replay into a fresh image request",
+    );
+    assert.ok(!replay.jobs.some((job) => job.id === failedId));
+    assert.ok(replay.submissions.some((entry) => entry.id === failedId));
+    await assert.rejects(
+      () => startSpriteStudioJob("mara", { expressions: [{ label: "sad" }], plan: failedPlan, submissionId: failedId }),
+      /different selection/,
+    );
     const stored = [...records.values()].find((row) => row.kind === "sprite-studio");
     const recoverId = randomUUID();
     stored.data.jobs.push({
