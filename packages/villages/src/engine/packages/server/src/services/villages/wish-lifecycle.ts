@@ -53,6 +53,19 @@ export function registerInitialWish(resident: VillageVillager, now: Date): void 
   };
 }
 
+/** Claim founding's optional wish before its shared preparation request can leave the process. */
+export async function reserveInitialWishAllowance(characterId: string, now: Date): Promise<string | undefined> {
+  let id: string | undefined;
+  await mutateVillageState((state) => {
+    id = undefined;
+    const resident = state.villagers.find((entry) => entry.characterId === characterId);
+    if (!resident || resident.wishLifecycle?.attempt) return;
+    registerInitialWish(resident, now);
+    id = resident.wishLifecycle!.attempt!.id;
+  });
+  return id;
+}
+
 export function expireResidentWishes(resident: VillageVillager, now: Date): void {
   if (!resident.agenda) return;
   resident.agenda.wishes = resident.agenda.wishes.filter((wish) => {

@@ -23,6 +23,7 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-policy.js";
 import {
   registerInitialWish,
+  reserveInitialWishAllowance,
   reconcileWishLifecycle,
   reserveWishAttempts,
   processWishAttempt,
@@ -321,6 +322,19 @@ async function run() {
     put(initial);
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 0, "an empty initial wish still consumes today's allowance");
+    seed();
+    const initialClaims = await Promise.all([
+      reserveInitialWishAllowance("r0", now),
+      reserveInitialWishAllowance("r0", now),
+    ]);
+    assert.equal(initialClaims.filter(Boolean).length, 1, "one founding request owns the initial allowance");
+    assert.equal(
+      await reserveInitialWishAllowance("r0", now),
+      undefined,
+      "a restart cannot repeat an uncertain initial request",
+    );
+    await reconcileWishLifecycle(now, false, () => now);
+    assert.equal(modelCalls.length, 0);
     seed();
     docs.set("villages-venue-visit-background-wish", {
       id: "villages-venue-visit-background-wish",

@@ -105,6 +105,11 @@ async function main() {
     0,
     "a quiet founding day needs no wish",
   );
+  assert.equal(
+    parseCompactFounding(payload(0), { ...context(null), allowInitialWish: false } as any).agenda.wishes.length,
+    0,
+    "an interrupted preparation retry cannot replenish its initial wish",
+  );
   assert.throws(
     () => parseCompactFounding({ ...payload(1), native: [] }, context(schedule(1, true)) as any),
     /mapped 0 of 1/,

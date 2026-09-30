@@ -4,6 +4,7 @@ import {
   expireResidentWishes,
   reconcileWishLifecycle,
   registerInitialWish,
+  reserveInitialWishAllowance,
 } from "./wish-lifecycle.js";
 import {
   venueZones,
@@ -868,24 +869,27 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
  * is right in that case — the call was made for a villager who no longer
  * exists, and there is no error a player could act on.
  */
-async function storeAgenda(characterId: string, agenda: VillageAgenda): Promise<void> {
+async function storeAgenda(characterId: string, agenda: VillageAgenda, initialWishAttemptId?: string): Promise<void> {
   await mutateVillageState((state) => {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     const previous = villager.agenda;
     const now = new Date();
+    const initialAttempt = villager.wishLifecycle?.attempt;
+    const acceptsInitialWish =
+      !initialAttempt ||
+      (initialAttempt.id === initialWishAttemptId &&
+        initialAttempt.dateKey === agendaDateKey(now) &&
+        !initialAttempt.candidate);
     const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
     const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
     villager.agenda = {
       ...agenda,
       // Initial preparation alone may add a wish. A routine result cannot resurrect stale wishes.
-      wishes: [...(previous?.wishes ?? []), ...(villager.wishLifecycle?.attempt ? [] : agenda.wishes)]
+      wishes: [...(previous?.wishes ?? []), ...(acceptsInitialWish ? agenda.wishes : [])]
         .filter((wish) => !villager.completedWishes.some((entry) => entry.wish.id === wish.id))
         .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
-        .slice(
-          0,
-          previous?.wishes.length ? Math.max(previous.wishes.length, 2) : villager.wishLifecycle?.attempt ? 0 : 1,
-        ),
+        .slice(0, previous?.wishes.length ? Math.max(previous.wishes.length, 2) : acceptsInitialWish ? 1 : 0),
       wishActivities: previous?.wishActivities ?? [],
       activeDay: {
         dateKey: agendaDateKey(now),
@@ -899,6 +903,12 @@ async function storeAgenda(characterId: string, agenda: VillageAgenda): Promise<
       personalizationAttemptDate: agendaDateKey(now),
     };
     registerInitialWish(villager, now);
+    if (initialAttempt && initialAttempt.id === initialWishAttemptId) {
+      initialAttempt.candidate = villager.agenda.wishes[0];
+      initialAttempt.reason = initialAttempt.candidate
+        ? "Initial wish granted during preparation."
+        : "No initial wish today.";
+    }
     assertVillagePresence(state);
   });
 }
@@ -3860,6 +3870,7 @@ export function prepareFoundedVillage(): Promise<void> {
             true,
           );
           await stage("resolving", attempt, lore.length);
+          const initialWishAttemptId = await reserveInitialWishAllowance(id, new Date());
           const result = await proposeCompactFounding(
             {
               village: currentState.name,
@@ -3872,7 +3883,7 @@ export function prepareFoundedVillage(): Promise<void> {
                 return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
               })(),
               completedWishes: current.completedWishes,
-              allowInitialWish: !current.wishLifecycle?.attempt,
+              allowInitialWish: !!initialWishAttemptId,
               activeWishes: current.agenda?.generatedAt ? current.agenda.wishes : [],
               schedule,
             },
@@ -3882,7 +3893,7 @@ export function prepareFoundedVillage(): Promise<void> {
             attempt === 1,
           );
           await stage("saving", attempt);
-          await storeAgenda(id, result.agenda);
+          await storeAgenda(id, result.agenda, initialWishAttemptId);
           if (schedule && current.ingestSchedule !== false) {
             await stage("applying", attempt);
             const withAgenda = await readVillageState();
