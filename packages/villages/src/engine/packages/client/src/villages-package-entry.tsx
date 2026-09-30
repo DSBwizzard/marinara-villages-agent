@@ -12598,6 +12598,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const roomSendInFlightRef = useRef(false);
   /** What the room's last attempt had to say, and empty when it has nothing to. */
   const [roomError, setRoomError] = useState("");
+  const [roomGreetingError, setRoomGreetingError] = useState<{ sessionId: string; message: string } | null>(null);
   const [roomGreetingNotice, setRoomGreetingNotice] = useState("");
   /**
    * Whether the room has been ended, which is a fact about the CONVERSATION rather
@@ -13175,6 +13176,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     };
   }, [room?.id, room?.status, room?.lastActivityAt, room?.startedAt, screen, loadSnapshot]);
 
+  // Opening failures belong only to the visit that is still opening. A later
+  // authoritative read can recover it even when the original fetch and its
+  // recovery read failed; a delayed failure must not revive the old warning.
+  useEffect(() => {
+    if (roomGreetingError && (roomGreetingError.sessionId !== room?.id || room?.status !== "opening"))
+      setRoomGreetingError(null);
+  }, [room?.id, room?.status, roomGreetingError]);
+
   useEffect(() => {
     if (!room?.id || room.operation?.status !== "running" || roomBusy) return;
     let stopped = false;
@@ -13244,14 +13253,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             signal: AbortSignal.timeout(30_000),
           })
             .then(({ session: greeted }) => {
-              if (!controller.signal.aborted) setRoom(currentRoom(greeted));
+              if (!controller.signal.aborted) {
+                setRoom((current) => (current?.id === session.id ? currentRoom(greeted) : current));
+                setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
+              }
             })
             .catch(async (cause) => {
               if (controller.signal.aborted) return;
               const recovered = await completedGreetingAfterFailure(session.id);
               if (controller.signal.aborted) return;
-              if (recovered) setRoom(recovered);
-              else setRoomError(openingFailureMessage(cause));
+              if (recovered) {
+                setRoom((current) => (current?.id === session.id ? recovered : current));
+                setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
+              } else
+                setRoomGreetingError((current) =>
+                  current && current.sessionId !== session.id
+                    ? current
+                    : { sessionId: session.id, message: openingFailureMessage(cause) },
+                );
             })
             .finally(() => {
               if (!controller.signal.aborted) setRoomBusy(false);
@@ -13893,6 +13912,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     async (sessionId: string) => {
       setRoomBusy(true);
       setRoomError("");
+      setRoomGreetingError(null);
       setRoomGreetingNotice("");
       try {
         const answer = await request<{ session: RoomView }>("/rooms/greet", {
@@ -13900,12 +13920,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           body: JSON.stringify({ sessionId }),
           signal: AbortSignal.timeout(30_000),
         });
-        setRoom(currentRoom(answer.session));
+        setRoom((current) => (current?.id === sessionId ? currentRoom(answer.session) : current));
+        setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
         void loadSnapshot();
       } catch (cause) {
         const recovered = await completedGreetingAfterFailure(sessionId);
-        if (recovered) setRoom(recovered);
-        else setRoomError(openingFailureMessage(cause));
+        if (recovered) {
+          setRoom((current) => (current?.id === sessionId ? recovered : current));
+          setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
+        } else
+          setRoomGreetingError((current) =>
+            current && current.sessionId !== sessionId ? current : { sessionId, message: openingFailureMessage(cause) },
+          );
       } finally {
         setRoomBusy(false);
       }
@@ -15852,7 +15878,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             mode={roomMode}
             targetId={roomTargetId}
             busy={roomBusy || room.operation?.status === "running"}
-            error={roomError}
+            error={
+              roomError ||
+              (room.status === "opening" && roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "")
+            }
             greetingNotice={roomGreetingNotice}
             ruling={roomRuling}
             open={roomOpen}
