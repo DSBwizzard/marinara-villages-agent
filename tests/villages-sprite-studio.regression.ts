@@ -441,7 +441,7 @@ async function main() {
     assert.deepEqual(activeSprite(), prior, "a failed second image write leaves every prior assignment intact");
     failSaveAt = 0;
     failVillageWrite = true;
-    await assert.rejects(() => assignBatch(c.job.id), /kept changing/);
+    await assert.rejects(() => assignBatch(c.job.id), /Disk unavailable/);
     assert.deepEqual(activeSprite(), prior, "a failed Village commit leaves every prior assignment intact");
     failVillageWrite = false;
     const beforeRetryWrites = savedWrites;

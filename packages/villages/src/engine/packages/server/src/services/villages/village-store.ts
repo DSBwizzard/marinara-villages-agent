@@ -153,6 +153,8 @@ export function sceneDocumentId(characterId: string): string {
 export function defaultVillageState(): VillageState {
   return {
     version: 2,
+    backgroundReceipts: {},
+    wishRefillIntents: {},
     progressEngineVersion: 0,
     name: "Willowbrook",
     narrationStyle: defaultVillageNarrationStyle(),
@@ -268,6 +270,8 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
   return {
     characterId,
+    agendaGeneration: asString(raw.agendaGeneration),
+    translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
     sprite: coerceResidentSprite(raw.sprite),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
@@ -2390,6 +2394,17 @@ export function coerceVillageState(value: unknown): VillageState {
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
   const state: VillageState = {
     version: 2,
+    backgroundReceipts: Object.fromEntries(
+      Object.entries(asRecord(raw.backgroundReceipts)).filter(([, value]) => typeof value === "string"),
+    ),
+    wishRefillIntents: Object.fromEntries(
+      Object.entries(asRecord(raw.wishRefillIntents)).flatMap(([id, value]) => {
+        const row = asRecord(value);
+        return typeof row.id === "string" && typeof row.settled === "string"
+          ? [[id, { id: row.id, settled: row.settled }]]
+          : [];
+      }),
+    ),
     progressEngineVersion: raw.progressEngineVersion === 1 ? 1 : 0,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
@@ -2662,7 +2677,8 @@ export async function mutateDocument<T>(
         updatedAt: stamp,
       });
       if (updated) return;
-    } catch {
+    } catch (error) {
+      if (record || !(await documents.getById(VILLAGES_PACKAGE_ID, documentId))) throw error;
       // Most likely a concurrent create claimed the id between our read and our
       // write. Re-read and try the whole mutation again.
     }

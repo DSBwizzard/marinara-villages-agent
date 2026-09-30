@@ -1,3 +1,4 @@
+import { backgroundCalls, requireBackgroundSuccess } from "./background-context.js";
 import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — the two model calls the package makes.
 //
@@ -261,7 +262,7 @@ export async function proposeVillage(
   });
   const requestedMaxTokens = Math.min(model.maxOutputTokens ?? BOOTSTRAP_MAX_TOKENS, BOOTSTRAP_MAX_TOKENS);
   const fitted = model.fitContext(buildBootstrapMessages(world, options.lore ?? []), { maxTokens: requestedMaxTokens });
-  const debugEnabled = villagesDebugAgentsEnabled();
+  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
   villagesLogger().debugOverride(debugEnabled, "[villages] bootstrap prompt: %s", JSON.stringify(fitted.messages));
 
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
@@ -1212,7 +1213,7 @@ export async function proposeHappenings(
   });
   const requestedMaxTokens = Math.min(model.maxOutputTokens ?? TICK_MAX_TOKENS, TICK_MAX_TOKENS);
   const fitted = model.fitContext(buildTickMessages(context), { maxTokens: requestedMaxTokens });
-  const debugEnabled = villagesDebugAgentsEnabled();
+  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
   villagesLogger().debugOverride(debugEnabled, "[villages] creative prompt: %s", JSON.stringify(fitted.messages));
 
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
@@ -1375,7 +1376,7 @@ export async function proposeReaction(
   });
   const requestedMaxTokens = Math.min(model.maxOutputTokens ?? REACTION_MAX_TOKENS, REACTION_MAX_TOKENS);
   const fitted = model.fitContext(buildReactionMessages(context), { maxTokens: requestedMaxTokens });
-  const debugEnabled = villagesDebugAgentsEnabled();
+  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
   villagesLogger().debugOverride(debugEnabled, "[villages] reaction prompt: %s", JSON.stringify(fitted.messages));
 
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
@@ -1581,7 +1582,7 @@ export async function proposeAgenda(
   });
   const requestedMaxTokens = Math.min(model.maxOutputTokens ?? AGENDA_MAX_TOKENS, AGENDA_MAX_TOKENS);
   const fitted = model.fitContext(buildAgendaMessages(context), { maxTokens: requestedMaxTokens });
-  const debugEnabled = villagesDebugAgentsEnabled();
+  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
   villagesLogger().debugOverride(debugEnabled, "[villages] agenda prompt: %s", JSON.stringify(fitted.messages));
 
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
@@ -1593,7 +1594,7 @@ export async function proposeAgenda(
 
   const payload = extractJsonObject(completion.content ?? "");
   const agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
-  if (!agenda)
+  if (!agenda || (backgroundCalls.getStore() && !agenda.routineSummary))
     throw new Error(completionFailure("Village routine", completion, fitted.maxTokens ?? requestedMaxTokens));
   agenda.wishes = [...(context.activeWishes ?? [])];
   const proposedWeek: Record<string, unknown> = {};
@@ -1621,6 +1622,7 @@ export async function proposeAgenda(
       if (!day) throw new Error(completionFailure(`${weekday} agenda`, dayCompletion, dayFit.maxTokens ?? requested));
       proposedWeek[weekday] = day[weekday];
     } catch (error) {
+      requireBackgroundSuccess(error);
       failures.push(String(error));
       if (failures.length >= 2) break;
     }

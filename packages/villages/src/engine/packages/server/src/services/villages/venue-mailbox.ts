@@ -1,7 +1,8 @@
+import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "./background-work.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, conflict, notFound } from "./errors.js";
-import { completeWithRoom, villagesLanguageModels, villagesLogger } from "./package-runtime.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import {
   boundText,
   MAX_PLACES,
@@ -319,18 +320,60 @@ export async function decideVillagerVenueImprovement(mailId: string, approved: b
   });
 }
 
+function mailRevision(mail: VillageVenueMail): string {
+  return backgroundRevision([
+    mail.kind,
+    mail.title,
+    mail.detail,
+    mail.affectedIds,
+    mail.projectId,
+    mail.proposedCapacity,
+    mail.proposedClasses,
+    mail.venueId,
+    mail.counterofferDraft,
+    mail.counterofferRequestId,
+    mail.movingCharacterId,
+    mail.improvement,
+    mail.improvementSlot,
+  ]);
+}
 export async function respondDueVenueMail(now = new Date()): Promise<void> {
   const village = await readVillageState();
-  const due = village.venueMail.find(
+  const dueMail = village.venueMail.filter(
     (entry) => entry.status === "awaiting-villagers" && Date.parse(entry.dueAt) <= now.getTime(),
   );
-  if (!due) return;
-  try {
+  for (const due of dueMail)
+    await queueBackgroundJob({
+      kind: "mail",
+      subjectId: due.id,
+      seed: village.seed,
+      revision: mailRevision(due),
+      finite: true,
+      label: due.title,
+      legacyError: due.error,
+      input: {
+        due,
+        now: now.toISOString(),
+        villageName: village.name,
+        venueName: village.venues.find((entry) => entry.id === due.venueId)?.name,
+        villagers: village.villagers
+          .filter((entry) => due.affectedIds.includes(entry.characterId))
+          .map((entry) => ({
+            characterId: entry.characterId,
+            capturedAt: entry.cardSnapshot.capturedAt,
+            cardSnapshot: { name: entry.cardSnapshot.name, summary: entry.cardSnapshot.summary },
+          })),
+      },
+    });
+}
+registerBackgroundHandler("mail", {
+  async generate(input) {
+    const due: VillageVenueMail = input.due;
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
     const people = due.affectedIds.map((id) => {
-      const villager = village.villagers.find((entry) => entry.characterId === id);
+      const villager = input.villagers.find((entry: any) => entry.characterId === id);
       return { id, name: villager?.cardSnapshot.name ?? id, summary: villager?.cardSnapshot.summary ?? "" };
     });
     const messages: CapabilityLanguageModelMessage[] = [
@@ -342,8 +385,8 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
       {
         role: "user",
         content: JSON.stringify({
-          village: village.name,
-          venue: village.venues.find((entry) => entry.id === due.venueId)?.name,
+          village: input.villageName,
+          venue: input.venueName,
           title: due.title,
           detail: due.detail,
           kind: due.kind,
@@ -364,50 +407,69 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
         throw new Error("The Venue reply was incomplete.");
       return { characterId: id, accepted: row.accepted, reply: boundText(row.reply, MAX_VENUE_NOTE_LENGTH) };
     });
-    await mutateVillageState((state) => {
-      const current = state.venueMail.find((entry) => entry.id === due.id);
-      if (!current || current.status !== "awaiting-villagers") return;
-      current.decisions = decisions;
-      current.error = "";
-      if (current.kind === "project-approval" && current.projectId) {
-        applyProjectMailboxDecisions(state, current.projectId, current.id, decisions, now.toISOString());
-        current.status = decisions.every((entry) => entry.accepted) ? "approved" : "declined";
-        current.resolvedAt = now.toISOString();
-        return;
-      }
-      if (decisions.every((entry) => entry.accepted)) {
-        try {
-          applyMail(state, current, now.toISOString());
-        } catch (error) {
-          current.status = "declined";
-          current.resolvedAt = now.toISOString();
-          current.error = boundText(error instanceof Error ? error.message : String(error), MAX_VENUE_NOTE_LENGTH);
-        }
-      } else {
+
+    return decisions;
+  },
+  valid: (state, input) =>
+    input.due.affectedIds.every((id: string) =>
+      state.villagers.some(
+        (resident) =>
+          resident.characterId === id &&
+          resident.cardSnapshot.capturedAt ===
+            input.villagers.find((person: any) => person.characterId === id)?.capturedAt,
+      ),
+    ) &&
+    (input.due.kind === "counteroffer"
+      ? state.pendingDecisions.some(
+          (entry) => entry.id === input.due.counterofferRequestId && entry.status === "countered",
+        )
+      : input.due.kind === "project-approval"
+        ? state.projects.some((entry) => entry.id === input.due.projectId && entry.lifecycle?.phase === "approval")
+        : state.venues.some((venue) => venue.id === input.due.venueId)) &&
+    state.venueMail.some(
+      (entry) =>
+        entry.id === input.due.id &&
+        entry.status === "awaiting-villagers" &&
+        mailRevision(entry) === mailRevision(input.due),
+    ),
+  apply(state, input, decisions) {
+    const due: VillageVenueMail = input.due;
+    const now = new Date(input.now);
+
+    const current = state.venueMail.find((entry) => entry.id === due.id);
+    if (!current || current.status !== "awaiting-villagers") return;
+    current.decisions = decisions;
+    current.error = "";
+    if (current.kind === "project-approval" && current.projectId) {
+      applyProjectMailboxDecisions(state, current.projectId, current.id, decisions, now.toISOString());
+      current.status = decisions.every((entry) => entry.accepted) ? "approved" : "declined";
+      current.resolvedAt = now.toISOString();
+      return;
+    }
+    if (decisions.every((entry) => entry.accepted)) {
+      try {
+        applyMail(state, current, now.toISOString());
+      } catch (error) {
         current.status = "declined";
         current.resolvedAt = now.toISOString();
+        current.error = boundText(error instanceof Error ? error.message : String(error), MAX_VENUE_NOTE_LENGTH);
       }
-      if (current.status === "declined" && current.kind === "villager-move")
-        state.residences = state.residences.filter(
-          (entry) =>
-            !(
-              entry.characterId === current.movingCharacterId &&
-              entry.proposedVenueId === current.venueId &&
-              entry.status === "pending"
-            ),
-        );
-      if (current.status === "declined" && current.kind === "counteroffer") {
-        const request = state.pendingDecisions.find((entry) => entry.id === current.counterofferRequestId);
-        if (request?.status === "countered") request.status = "denied";
-      }
-    });
-  } catch (error) {
-    villagesLogger().warn("[villages] Venue Mailbox reply will retry: %s", String(error));
-    await mutateVillageState((state) => {
-      const current = state.venueMail.find((entry) => entry.id === due.id);
-      if (!current || current.status !== "awaiting-villagers") return;
-      current.error = boundText(error instanceof Error ? error.message : String(error), MAX_VENUE_NOTE_LENGTH);
-      current.dueAt = new Date(now.getTime() + 30 * 60_000).toISOString();
-    });
-  }
-}
+    } else {
+      current.status = "declined";
+      current.resolvedAt = now.toISOString();
+    }
+    if (current.status === "declined" && current.kind === "villager-move")
+      state.residences = state.residences.filter(
+        (entry) =>
+          !(
+            entry.characterId === current.movingCharacterId &&
+            entry.proposedVenueId === current.venueId &&
+            entry.status === "pending"
+          ),
+      );
+    if (current.status === "declined" && current.kind === "counteroffer") {
+      const request = state.pendingDecisions.find((entry) => entry.id === current.counterofferRequestId);
+      if (request?.status === "countered") request.status = "denied";
+    }
+  },
+});

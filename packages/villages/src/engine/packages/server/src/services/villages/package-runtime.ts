@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 // instead of threading it through every route keeps the route file readable and
 // matches how the other first-party packages do it.
 import { coordinatedCompletion } from "./venue-coordinator.js";
+import { backgroundCalls } from "./background-context.js";
 import type {
   CapabilityDocumentStore,
   CapabilityLanguageModelCompletion,
@@ -179,6 +180,8 @@ export async function completeWithRoom(
   maxTokens: number,
   options: VillageCompletionOptions,
 ): Promise<CapabilityLanguageModelCompletion> {
+  const background = backgroundCalls.getStore();
+  if (background) return background(model, messages, maxTokens, options);
   const ask = async (tokens: number) => {
     options.signal?.throwIfAborted();
     const started = performance.now();

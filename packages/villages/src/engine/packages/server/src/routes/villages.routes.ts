@@ -3,6 +3,11 @@ import { setScenerySettings } from "../services/villages/village.js";
 import { retryPrivateSpaces } from "../services/villages/private-space-preparation.js";
 import { privateTarget } from "../services/villages/venue-zones.js";
 import { readVillageState as readPrivateTargetState } from "../services/villages/village-store.js";
+import {
+  villageBackgroundPresence,
+  retryBackgroundJob,
+  backgroundWorkSummaries,
+} from "../services/villages/background-work.js";
 import { moveVenueZone } from "../services/villages/venue-session.js";
 import { readWishHistoryPage } from "../services/villages/wish-archive.js";
 import { updateVillageZone } from "../services/villages/village.js";
@@ -1623,16 +1628,65 @@ export async function villagesRoutes(engine: FastifyInstance) {
 
   // Advance deterministic village state to the current exact instant, then
   // optionally make the day's bounded creative call. Posted because it can
-  // write. Snapshot GETs remain free of hidden persistence.
-  app.post<{ Body: { forceStory?: unknown } }>("/reconcile", async (request, reply) => {
-    try {
-      return await reconcileVillage({ forceStory: request.body?.forceStory === true });
-    } catch (error) {
-      return fail(reply, error, "writing down what has been happening");
-    }
-  });
+  // write. Snapshot GETs never dispatch paid generation.
+  app.post<{ Body: { forceStory?: unknown; actionId?: unknown; expectedAttempt?: unknown } }>(
+    "/reconcile",
+    async (request, reply) => {
+      try {
+        const forced = request.body?.forceStory === true;
+        if (
+          forced &&
+          (typeof request.body?.actionId !== "string" ||
+            !/^[a-zA-Z0-9-]{1,100}$/.test(request.body.actionId) ||
+            !Number.isInteger(request.body.expectedAttempt))
+        )
+          throw badRequest("Refresh before requesting a village event.");
+        return await reconcileVillage({
+          forceStory: forced,
+          actionId: request.body?.actionId as string,
+          expectedAttempt: request.body?.expectedAttempt as number,
+        });
+      } catch (error) {
+        return fail(reply, error, "writing down what has been happening");
+      }
+    },
+  );
 
   // ── The village story ──────────────────────────────────────────────────────
+  app.post<{ Body: { sessionId?: unknown; visible?: unknown } }>("/background/presence", async (request, reply) => {
+    try {
+      if (typeof request.body?.sessionId !== "string" || typeof request.body.visible !== "boolean")
+        throw badRequest("Choose a browser session and visibility.");
+      // Catch up before admitting recurring work. An old paused story must not spend on a missed day.
+      const snapshot = await villageBackgroundPresence(request.body.sessionId, request.body.visible, {
+        beforeResume: () => reconcileVillage(),
+      });
+      return {
+        status: "ready",
+        snapshot: snapshot ? { ...snapshot, backgroundWork: await backgroundWorkSummaries() } : null,
+      };
+    } catch (error) {
+      return fail(reply, error, "updating village presence");
+    }
+  });
+  app.post<{ Body: { id?: unknown; expectedAttempt?: unknown; actionId?: unknown } }>(
+    "/background/retry",
+    async (request, reply) => {
+      try {
+        if (
+          typeof request.body?.id !== "string" ||
+          typeof request.body.actionId !== "string" ||
+          !Number.isInteger(request.body.expectedAttempt)
+        )
+          throw badRequest("Choose a background job to retry.");
+        await retryBackgroundJob(request.body.id, request.body.expectedAttempt as number, request.body.actionId);
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "retrying village background work");
+      }
+    },
+  );
+
   // The debug surface for the village's memory, and nothing else reads these two
   // routes yet. They are on their own path rather than on the snapshot for the
   // same reason the town map is: the story is the one part of the record that
@@ -1747,14 +1801,19 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
-  app.post<{ Params: CharacterParams }>("/agendas/:characterId/regenerate", async (request, reply) => {
-    try {
-      await clearVillagerAgenda(readCharacterId(request.params.characterId));
-      return { villagers: await buildVillageAgendas() };
-    } catch (error) {
-      return fail(reply, error, "regenerating a villager's agenda");
-    }
-  });
+  app.post<{ Params: CharacterParams; Body: { actionId?: unknown } }>(
+    "/agendas/:characterId/regenerate",
+    async (request, reply) => {
+      try {
+        if (typeof request.body?.actionId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(request.body.actionId))
+          throw badRequest("Choose an agenda request identity.");
+        await clearVillagerAgenda(readCharacterId(request.params.characterId), request.body.actionId);
+        return { villagers: await buildVillageAgendas() };
+      } catch (error) {
+        return fail(reply, error, "regenerating a villager's agenda");
+      }
+    },
+  );
 
   app.post<{ Params: CharacterParams & { wishId: string } }>(
     "/agendas/:characterId/completed/:wishId/correct",
