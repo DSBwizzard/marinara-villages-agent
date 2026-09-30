@@ -388,6 +388,11 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   async function generate() {
     const refreshed = await call<StudioPlan>("plan", payload);
     setPlan(refreshed);
+    if (JSON.stringify(refreshed) !== JSON.stringify(plan)) {
+      submission.current = null;
+      setNote("Summary refreshed. Review the image request and click Generate again.");
+      return;
+    }
     submission.current ??= submissionId();
     try {
       const submittedId = submission.current;
@@ -924,6 +929,22 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                           {batch.height}px source
                         </small>
                       ))}
+                      <details className="vss-request">
+                        <summary>Image request</summary>
+                        {plan.batches.map((batch, index) =>
+                          batch.request ? (
+                            <section key={index} aria-label={"Sheet " + (index + 1) + " image request"}>
+                              <strong>Sheet {index + 1}</strong>
+                              <p>Positive prompt</p>
+                              <pre aria-label={"Sheet " + (index + 1) + " positive prompt"}>{batch.request.prompt}</pre>
+                              <p>Negative prompt</p>
+                              <pre aria-label={"Sheet " + (index + 1) + " negative prompt"}>
+                                {batch.request.negativePrompt}
+                              </pre>
+                            </section>
+                          ) : null,
+                        )}
+                      </details>
                       <small>
                         Cutouts saved at 512 × 768.{" "}
                         {plan.localWorkflow ? "Local workflow internal steps and costs are unavailable. " : ""}No
@@ -1438,6 +1459,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   );
 }
 const libraryCss = `
+.vss-request{min-width:0}.vss-request pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:.85rem;max-height:20rem;overflow:auto;background:#0c1524;padding:.7rem;border-radius:.5rem}
 .vss-create{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:1rem;align-items:start}
 .vss-create>div:last-child{display:grid;gap:1rem}.vss-library{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}
 .vss-gallery{display:grid;gap:1.25rem;min-width:0}.vss-slots{position:sticky;top:1rem}.vss-slot-list{display:grid;gap:.75rem;max-height:65vh;overflow:auto;padding:.2rem}

@@ -6,6 +6,10 @@ import {
   planVillageStudioSheets,
   selectStudioMatte,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-generation.ts";
+import {
+  SPRITE_STYLES,
+  STUDIO_NEGATIVE_PROMPT,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts";
 import { createStudioRenderCache } from "../packages/villages/src/engine/packages/client/src/villages-sprite-render-cache.ts";
 
 // Real RGBA PNG fixture includes an opaque feather, half alpha, and native
@@ -61,7 +65,7 @@ globalThis.fetch = async (url, init) => {
       items: [
         {
           id: body.promptOverrides[0].id,
-          prompt: body.promptOverrides[0].prompt + "\nHost " + revision,
+          prompt: "Generic character reference sheet, hero view, turnarounds and palette. Host " + revision,
           negativePrompt: "no labels " + revision,
           width: constrained ? 1024 : body.width,
           height: constrained ? 1024 : body.height,
@@ -118,6 +122,24 @@ async function main() {
       assert.equal(body.purpose, "character-sheet");
       assert.equal(body.promptOverrides[0].prompt, batch.request!.prompt);
       assert.equal(body.promptOverrides[0].negativePrompt, batch.request!.negativePrompt);
+      assert.equal(body.promptOverrides[0].negativePrompt, STUDIO_NEGATIVE_PROMPT);
+      assert.match(body.promptOverrides[0].prompt, /Custom art with no outline/);
+      assert.match(body.promptOverrides[0].prompt, /Front view/);
+      assert.match(body.promptOverrides[0].prompt, /1024 by 1024/);
+      assert.ok(
+        body.promptOverrides[0].prompt.includes("exactly " + batch.cols + " columns and " + batch.rows + " rows"),
+      );
+      assert.match(body.promptOverrides[0].prompt, /shared character scale and foot baseline/);
+      assert.match(body.promptOverrides[0].prompt, /gutters and margins/);
+      for (let cell = 0; cell < batch.count; cell++) {
+        const expression = expressions[offset - batch.count + cell]!;
+        assert.ok(
+          body.promptOverrides[0].prompt.includes(
+            "Cell " + (cell + 1) + ": " + expression.label.replace(/_/g, " ") + ". " + expression.pose,
+          ),
+        );
+      }
+      assert.doesNotMatch(body.promptOverrides[0].prompt, /hero view|turnarounds|palette|Host/);
       assert.match(body.promptOverrides[0].prompt, /#FF00FF/);
       assert.doesNotMatch(body.promptOverrides[0].prompt, /transparent background/i);
       assert.equal(body.width, batch.width);
@@ -138,9 +160,7 @@ async function main() {
           submissions++;
         },
       });
-    revision = "changed";
-    await assert.rejects(run, /plan changed/);
-    revision = "first";
+    revision = "changed"; // Generic Engine wording does not control Studio submissions.
     model = "changed";
     await assert.rejects(run, /model changed/);
     model = "test-image";
@@ -153,9 +173,26 @@ async function main() {
     reference = `data:image/png;base64,${Buffer.concat([bytes, Buffer.from("changed")]).toString("base64")}`;
     await assert.rejects(run, /plan changed/);
     reference = png;
-    plan.batches[0]!.request!.pipelineVersion = 0;
-    await assert.rejects(run, /plan changed/);
     plan.batches[0]!.request!.pipelineVersion = 1;
+    await assert.rejects(run, /plan changed/);
+    plan.batches[0]!.request!.pipelineVersion = 2;
+    const frozen = plan.batches[0]!.request!;
+    const originalPrompt = frozen.prompt;
+    frozen.prompt = "Generic character reference sheet";
+    await assert.rejects(run, /plan changed/);
+    frozen.prompt = originalPrompt;
+    const originalNegative = frozen.negativePrompt;
+    frozen.negativePrompt = "Host style";
+    await assert.rejects(run, /plan changed/);
+    frozen.negativePrompt = originalNegative;
+    const originalStyle = identity.style;
+    identity.style = SPRITE_STYLES.BATTLEHIGHWAY;
+    await assert.rejects(run, /plan changed/);
+    identity.style = originalStyle;
+    const originalPose = expressions[0]!.pose;
+    expressions[0]!.pose = "Different pose";
+    await assert.rejects(run, /plan changed/);
+    expressions[0]!.pose = originalPose;
     assert.equal(generated, 3);
     assert.equal(submissions, 3, "stale plans never increment attempted requests");
     fail = true;
@@ -176,6 +213,38 @@ async function main() {
     const individual = await planVillageStudioSheets("image", identity, expressions.slice(0, 3), true);
     assert.equal(individual.batches.length, 3);
     assert.ok(individual.batches.every((b) => b.cols === 1 && b.rows === 1));
+    for (const style of [SPRITE_STYLES.PAPERCRAFT, SPRITE_STYLES.BATTLEHIGHWAY, "Custom watercolor ink"]) {
+      const styled = { ...identity, style, view: "side" as const };
+      const chosen = [
+        { label: "happy", pose: "Running with arms raised" },
+        { label: "thinking", pose: "Hand on chin" },
+      ];
+      const styledPlan = await planVillageStudioSheets("image", styled, chosen, false);
+      await generateVillageStudioSheet({
+        connectionId: "image",
+        expectedModel: model,
+        identity: styled,
+        expressions: chosen,
+        batch: styledPlan.batches[0]!,
+        onSubmit: async () => {
+          submissions++;
+        },
+      });
+      const submitted = requests.at(-1).promptOverrides[0];
+      assert.ok(submitted.prompt.includes(style));
+      assert.match(submitted.prompt, /OFF-CANVAS TO THE RIGHT/);
+      assert.match(submitted.prompt, /Cell 1: happy\. Running with arms raised/);
+      assert.match(submitted.prompt, /Cell 2: thinking\. Hand on chin/);
+      assert.equal(submitted.prompt, styledPlan.batches[0]!.request!.prompt);
+      assert.equal(submitted.negativePrompt, STUDIO_NEGATIVE_PROMPT);
+      assert.doesNotMatch(submitted.prompt, /hero view|turnarounds|palette|Host/);
+    }
+    for (let count = 1; count <= 6; count++) {
+      const sized = await planVillageStudioSheets("image", identity, expressions.slice(0, count), false);
+      assert.equal(sized.batches[0]!.count, count);
+      assert.equal(sized.batches.length, 1);
+      assert.equal(sized.batches[0]!.request!.pipelineVersion, 2);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
