@@ -1,3 +1,4 @@
+import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
 import { moveVenueZone } from "../services/villages/venue-session.js";
 import { updateVillageZone } from "../services/villages/village.js";
 import {
@@ -200,6 +201,12 @@ function readMessage(value: unknown): string {
   return message;
 }
 
+function readSceneRevision(value: unknown): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0)
+    throw venueRefusal("SCENE_STALE", "Refresh the scene before sending. Your draft is preserved.");
+  return Number(value);
+}
+
 function readSubmissionId(value: unknown): string {
   const submissionId = typeof value === "string" ? value.trim() : "";
   if (submissionId.length === 0 || submissionId.length > MAX_SUBMISSION_ID_LENGTH) {
@@ -232,7 +239,7 @@ function fail(reply: FastifyReply, error: unknown, context: string) {
   const statusCode = statusCodeOf(error);
   const message = error instanceof Error ? error.message : "The village could not do that.";
   if (statusCode >= 500) villagesLogger().error(error, "[villages] %s failed", context);
-  return reply.code(statusCode).send({ error: message });
+  return reply.code(statusCode).send({ error: message, code: (error as { code?: string })?.code });
 }
 
 type CharacterParams = { characterId: string };
@@ -242,6 +249,8 @@ type VenueTurnBody = {
   mode?: unknown;
   targetId?: unknown;
   submissionId?: unknown;
+  expectedSceneRevision?: unknown;
+  retryOfAttemptId?: string;
 };
 
 /**
@@ -437,8 +446,41 @@ export function sceneLockedRoutes(engine: FastifyInstance): FastifyInstance {
   } as unknown as FastifyInstance;
 }
 
+function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
+  const surface = Object.create(engine) as FastifyInstance;
+  for (const method of ["get", "post", "put", "patch", "delete"] as const) {
+    const register = engine[method].bind(engine);
+    const wrap =
+      (handler: VillageRouteHandler): VillageRouteHandler =>
+      async (request, reply) => {
+        const result = await handler(request, reply);
+        if (result && typeof result === "object") {
+          const payload = result as Record<string, unknown>;
+          for (const key of ["session", "visit"]) {
+            const scene = payload[key] as Record<string, unknown> | undefined;
+            if (scene)
+              payload[key] = {
+                ...scene,
+                operation: operationSummary(
+                  scene.operation as import("../services/villages/venue-coordinator.js").VenueOperation | undefined,
+                ),
+              };
+          }
+        }
+        return result;
+      };
+    surface[method] = ((path: string, options: unknown, handler?: VillageRouteHandler) =>
+      handler
+        ? register(path, options as never, wrap(handler) as never)
+        : register(path, wrap(options as VillageRouteHandler) as never)) as (typeof engine)[typeof method];
+  }
+  return surface;
+}
+
 export async function villagesRoutes(engine: FastifyInstance) {
-  // `app` is the object the host handed over, unchanged. It used to be the locked
+  engine = publicSceneRoutes(engine);
+  // The response wrapper exposes coordination summaries through the host collector.
+  // The former locked
   // surface — `sceneLockedRoutes(engine)` — and that is the whole of what 0.4.43
   // removed from this file's behaviour: routes are registered on the collector the
   // host built, exactly as every other package does it, and nothing stands between
@@ -657,13 +699,25 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // One active venue visit, restored across reloads and archived when it ends.
   app.get("/rooms/active", async (_request, reply) => {
     try {
-      return { session: await activeVenueSession(), debugDiscardEnabled: villagesDebugAgentsEnabled() };
+      const session = await activeVenueSession();
+      return {
+        session,
+        operation: operationSummary(session?.operation),
+        debugDiscardEnabled: villagesDebugAgentsEnabled(),
+      };
     } catch (error) {
       return fail(reply, error, "reading the active venue");
     }
   });
   app.post<{
-    Body: { venueId?: unknown; spaceClass?: unknown; zoneId?: unknown; privateOwnerId?: unknown; entryArea?: unknown };
+    Body: {
+      venueId?: unknown;
+      spaceClass?: unknown;
+      zoneId?: unknown;
+      privateOwnerId?: unknown;
+      entryArea?: unknown;
+      expectedSceneRevision?: unknown;
+    };
   }>("/rooms", async (request, reply) => {
     try {
       await assertFoundedVillageReady();
@@ -692,15 +746,34 @@ export async function villagesRoutes(engine: FastifyInstance) {
           typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
           entryArea,
           typeof request.body?.zoneId === "string" ? request.body.zoneId : undefined,
+          request.body?.expectedSceneRevision === undefined
+            ? undefined
+            : readSceneRevision(request.body.expectedSceneRevision),
         ),
       };
     } catch (error) {
       return fail(reply, error, "entering a venue");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; zoneId?: unknown } }>("/rooms/zone", async (request, reply) => {
+  app.post<{
+    Body: {
+      sessionId?: unknown;
+      zoneId?: unknown;
+      expectedSceneRevision?: unknown;
+      retryOfAttemptId?: string;
+      operationId?: unknown;
+    };
+  }>("/rooms/zone", async (request, reply) => {
     try {
-      return { session: await moveVenueZone(readChatId(request.body?.sessionId), readPlaceId(request.body?.zoneId)) };
+      return {
+        session: await moveVenueZone(
+          readChatId(request.body?.sessionId),
+          readPlaceId(request.body?.zoneId),
+          readSceneRevision(request.body?.expectedSceneRevision),
+          request.body?.retryOfAttemptId,
+          request.body?.operationId === undefined ? undefined : readSubmissionId(request.body.operationId),
+        ),
+      };
     } catch (error) {
       return fail(reply, error, "moving between zones");
     }
@@ -719,10 +792,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Body: { sessionId?: unknown } }>("/rooms/greet", async (request, reply) => {
+  app.post<{ Body: { sessionId?: unknown; retryOfAttemptId?: string } }>("/rooms/greet", async (request, reply) => {
     try {
       await assertFoundedVillageReady();
-      return { session: await greetVenue(readChatId(request.body?.sessionId)) };
+      return { session: await greetVenue(readChatId(request.body?.sessionId), request.body?.retryOfAttemptId) };
     } catch (error) {
       return fail(reply, error, "opening a venue scene");
     }
@@ -742,19 +815,23 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "updating venue activity");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; ownerId?: unknown } }>("/rooms/enter-private", async (request, reply) => {
-    try {
-      await assertFoundedVillageReady();
-      return {
-        session: await enterResidencePrivateSpace(
-          readChatId(request.body?.sessionId),
-          readCharacterId(request.body?.ownerId),
-        ),
-      };
-    } catch (error) {
-      return fail(reply, error, "entering a private Residence space");
-    }
-  });
+  app.post<{ Body: { sessionId?: unknown; ownerId?: unknown; expectedSceneRevision?: unknown } }>(
+    "/rooms/enter-private",
+    async (request, reply) => {
+      try {
+        await assertFoundedVillageReady();
+        return {
+          session: await enterResidencePrivateSpace(
+            readChatId(request.body?.sessionId),
+            readCharacterId(request.body?.ownerId),
+            readSceneRevision(request.body?.expectedSceneRevision),
+          ),
+        };
+      } catch (error) {
+        return fail(reply, error, "entering a private Residence space");
+      }
+    },
+  );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/debug/discard", async (request, reply) => {
     try {
       await discardVenueVisitDebug(readChatId(request.body?.sessionId));
@@ -763,6 +840,29 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "discarding a debug venue visit");
     }
   });
+
+  app.get<{ Params: { id: string } }>("/rooms/:id/operation", async (request, reply) => {
+    try {
+      return { operation: await readVenueOperation(readChatId(request.params.id)) };
+    } catch (error) {
+      return fail(reply, error, "reading scene operation");
+    }
+  });
+  app.get<{ Params: { id: string; operationId: string } }>(
+    "/rooms/:id/operations/:operationId",
+    async (request, reply) => {
+      try {
+        return {
+          operation: await readVenueOperation(
+            readChatId(request.params.id),
+            readSubmissionId(request.params.operationId),
+          ),
+        };
+      } catch (error) {
+        return fail(reply, error, "reading scene operation");
+      }
+    },
+  );
 
   app.post<{ Body: VenueTurnBody }>("/rooms/turn", async (request, reply) => {
     try {
@@ -776,32 +876,48 @@ export async function villagesRoutes(engine: FastifyInstance) {
         mode,
         targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
         submissionId: readSubmissionId(request.body?.submissionId),
+        expectedSceneRevision: readSceneRevision(request.body?.expectedSceneRevision),
+        retryOfAttemptId: request.body?.retryOfAttemptId,
       });
     } catch (error) {
       return fail(reply, error, "sending a venue turn");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; submissionId?: unknown; message?: unknown } }>(
-    "/rooms/leave",
+  app.post<{
+    Body: {
+      sessionId?: unknown;
+      submissionId?: unknown;
+      message?: unknown;
+      expectedSceneRevision?: unknown;
+      retryOfAttemptId?: string;
+    };
+  }>("/rooms/leave", async (request, reply) => {
+    try {
+      return await leaveVenueSession(
+        readChatId(request.body?.sessionId),
+        readSubmissionId(request.body?.submissionId),
+        typeof request.body?.message === "string" ? request.body.message : "",
+        readSceneRevision(request.body?.expectedSceneRevision),
+        request.body?.retryOfAttemptId,
+      );
+    } catch (error) {
+      return fail(reply, error, "leaving a venue naturally");
+    }
+  });
+  app.post<{ Body: { sessionId?: unknown; expectedSceneRevision?: unknown; retryOfAttemptId?: string } }>(
+    "/rooms/end",
     async (request, reply) => {
       try {
-        return await leaveVenueSession(
+        return await closeVenueSessionWithReceipts(
           readChatId(request.body?.sessionId),
-          readSubmissionId(request.body?.submissionId),
-          typeof request.body?.message === "string" ? request.body.message : "",
+          readSceneRevision(request.body?.expectedSceneRevision),
+          request.body?.retryOfAttemptId,
         );
       } catch (error) {
-        return fail(reply, error, "leaving a venue naturally");
+        return fail(reply, error, "ending a venue conversation");
       }
     },
   );
-  app.post<{ Body: { sessionId?: unknown } }>("/rooms/end", async (request, reply) => {
-    try {
-      return await closeVenueSessionWithReceipts(readChatId(request.body?.sessionId));
-    } catch (error) {
-      return fail(reply, error, "ending a venue conversation");
-    }
-  });
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/leave-pending", async (request, reply) => {
     try {
       return { session: await leaveVenueMemoryPending(readChatId(request.body?.sessionId)) };
@@ -832,13 +948,16 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading a venue visit");
     }
   });
-  app.post<{ Params: { id: string } }>("/rooms/archive/:id/retry-memory", async (request, reply) => {
-    try {
-      return await endVenueSessionWithReceipts(request.params.id);
-    } catch (error) {
-      return fail(reply, error, "retrying venue memory");
-    }
-  });
+  app.post<{ Params: { id: string }; Body: { retryOfAttemptId?: string } }>(
+    "/rooms/archive/:id/retry-memory",
+    async (request, reply) => {
+      try {
+        return await endVenueSessionWithReceipts(request.params.id, request.body?.retryOfAttemptId);
+      } catch (error) {
+        return fail(reply, error, "retrying venue memory");
+      }
+    },
+  );
   app.delete<{ Params: { id: string } }>("/rooms/archive/:id", async (request, reply) => {
     try {
       await deleteVenueVisit(request.params.id);

@@ -26,11 +26,13 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useReducer,
   useState,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import {
@@ -1028,8 +1030,19 @@ type RoomMemoryDecision = {
 };
 
 /** One venue visit: its cast stays fixed until the player leaves. */
+type RoomOperation = {
+  id: string;
+  kind: string;
+  attemptId: string;
+  status: "running" | "interrupted" | "complete";
+  stage?: string;
+  error?: string;
+  input?: { message?: string; mode?: string; targetId?: string };
+};
 type RoomView = {
   version: 1;
+  sceneRevision?: number;
+  operation?: RoomOperation | null;
   stagingVersion?: 1;
   id: string;
   placeId: string;
@@ -5958,13 +5971,22 @@ const PRIVILEGED_ACCESS_HINT =
  * Auth, an untrusted host, a loopback-only rule) and is passed through
  * untouched, because the tab has nothing to add to it.
  */
+class VillageApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+  ) {
+    super(message);
+  }
+}
 function requestRefusal(payload: unknown, status: number, fallback: string): Error {
   const detail = (payload as { error?: unknown } | null)?.error;
   const message = typeof detail === "string" && detail ? detail : fallback;
   if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
     return new Error(`${PRIVILEGED_ACCESS_HINT} (${message})`);
   }
-  return new Error(message);
+  return new VillageApiError(message, status, (payload as { code?: string } | null)?.code);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -6265,6 +6287,25 @@ async function completedGreetingAfterFailure(sessionId: string): Promise<RoomVie
       signal: AbortSignal.timeout(5_000),
     });
     return session?.id === sessionId && session.status !== "opening" ? currentRoom(session) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshSceneAfterFailure(sessionId: string, submissionId?: string): Promise<RoomView | null> {
+  try {
+    if (submissionId)
+      await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+    const { session } = await request<{ session: RoomView | null }>("/rooms/active", {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (session?.id === sessionId) return session;
+    const { visit } = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    return visit;
   } catch {
     return null;
   }
@@ -12154,7 +12195,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * `roomOpen` is a flag of its own for the same reason `chatOpen` is: the drawer
    * is animated by an attribute and a panel that is not there cannot slide.
    */
-  const [room, setRoom] = useState<RoomView | null>(null);
+  const [room, setRoom] = useReducer((current: RoomView | null, next: SetStateAction<RoomView | null>) => {
+    const candidate = typeof next === "function" ? next(current) : next;
+    if (current?.id && current.id === candidate?.id && (current.sceneRevision ?? 0) > (candidate.sceneRevision ?? 0))
+      return current;
+    return candidate;
+  }, null);
   const [mailboxOpen, setMailboxOpen] = useState(false);
   const [roomOpen, setRoomOpen] = useState(false);
   /** What has been typed into the room's box and not yet said. */
@@ -12606,6 +12652,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         .then(async ({ session }) => {
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
           if (session?.id === room.id) {
+            setRoom(currentRoom(session));
             if (touchAfter) {
               await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
               lastRoomDeliberateAtRef.current = Date.now();
@@ -12654,6 +12701,53 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         window.removeEventListener(type, deliberate, true);
     };
   }, [room?.id, room?.status, room?.lastActivityAt, room?.startedAt, screen, loadSnapshot]);
+
+  useEffect(() => {
+    if (!room?.id || room.operation?.status !== "running" || roomBusy) return;
+    let stopped = false;
+    let reading = false;
+    const poll = async () => {
+      if (stopped || reading || document.hidden) return;
+      reading = true;
+      const latest = await refreshSceneAfterFailure(room.id, room.operation?.id);
+      reading = false;
+      if (!stopped && latest) {
+        setRoom(currentRoom(latest));
+        setRoomEnded(latest.status === "closed");
+        if (latest.operation?.status !== "running") setRoomError("");
+      }
+    };
+    const timer = window.setInterval(() => void poll(), 1500);
+    window.addEventListener("focus", poll);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", poll);
+      document.removeEventListener("visibilitychange", poll);
+    };
+  }, [room?.id, room?.operation?.id, room?.operation?.status, roomBusy]);
+
+  useEffect(() => {
+    if (
+      !room?.id ||
+      room.operation?.status !== "interrupted" ||
+      room.submissions?.some((entry) => entry.id === room.operation?.id)
+    )
+      return;
+    let disposed = false;
+    void request<{ operation: RoomOperation | null }>(
+      `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
+    )
+      .then(({ operation }) => {
+        if (disposed || !operation?.input?.message) return;
+        setRoomDraft((current) => current || operation.input?.message || "");
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+    };
+  }, [room?.id, room?.operation?.id, room?.operation?.status, room?.submissions]);
 
   // An app reload does not end a venue visit. The server owns the one active
   // session; the client restores it instead of opening another conversation.
@@ -12734,7 +12828,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     async (id: string) => {
       setBusy(true);
       try {
-        await request(`/rooms/archive/${encodeURIComponent(id)}/retry-memory`, { method: "POST" });
+        const saved = await request<{ operation: RoomOperation | null }>(`/rooms/${encodeURIComponent(id)}/operation`);
+        await request(`/rooms/archive/${encodeURIComponent(id)}/retry-memory`, {
+          method: "POST",
+          body: JSON.stringify({ retryOfAttemptId: saved.operation?.attemptId }),
+        });
         await openVisit(id);
         setArchiveVersion((version) => version + 1);
         setArchiveError("");
@@ -12996,7 +13094,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     try {
       const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/end", {
         method: "POST",
-        body: JSON.stringify({ sessionId: room.id }),
+        body: JSON.stringify({ sessionId: room.id, expectedSceneRevision: room.sceneRevision ?? 0 }),
       });
       if (leavingRoomPendingRef.current) return;
       setRoom(currentRoom(answer.session));
@@ -13024,6 +13122,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         void loadSnapshot();
         return;
       }
+      const authoritative = await refreshSceneAfterFailure(room.id);
+      if (authoritative) {
+        setRoom(currentRoom(authoritative));
+        setRoomEnded(authoritative.status === "closed");
+      }
       setRoomError(messageFrom(cause, "You could not leave the venue."));
       setEndFailed(true);
     } finally {
@@ -13042,7 +13145,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     try {
       const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/leave", {
         method: "POST",
-        body: JSON.stringify({ sessionId: room.id, submissionId, message: roomDraft }),
+        body: JSON.stringify({
+          sessionId: room.id,
+          submissionId,
+          message: roomDraft,
+          expectedSceneRevision: room.sceneRevision ?? 0,
+        }),
         signal: AbortSignal.timeout(300_000),
       });
       setRoom(currentRoom(answer.session));
@@ -13053,11 +13161,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomDraft("");
       void loadSnapshot();
     } catch (cause) {
-      const recovered = await completedRoomAfterFailure(room.id, submissionId);
+      const latest = await refreshSceneAfterFailure(room.id, submissionId);
+      if (latest) setRoom(currentRoom(latest));
+      const recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
+        ? latest
+        : await completedRoomAfterFailure(room.id, submissionId);
       if (recovered) {
         setRoom(currentRoom(recovered));
-        setRoomEnded(true);
-        startRoomReview(recovered);
+        setRoomEnded(recovered.status === "closed");
+        if (recovered.status === "closed") startRoomReview(recovered);
         setRoomDraft("");
         setRoomError("");
         setEndFailed(false);
@@ -13198,6 +13310,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           mode: roomMode,
           targetId: roomMode === "fulfill" ? roomTargetId : "",
           submissionId,
+          expectedSceneRevision: room.sceneRevision ?? 0,
         }),
         signal: AbortSignal.timeout(300_000),
       });
@@ -13213,12 +13326,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomGreetingNotice("");
       void loadSnapshot();
     } catch (cause) {
-      const recovered = await completedRoomAfterFailure(room.id, submissionId);
+      const latest = await refreshSceneAfterFailure(room.id, submissionId);
+      if (latest) setRoom(currentRoom(latest));
+      const recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
+        ? latest
+        : await completedRoomAfterFailure(room.id, submissionId);
       if (recovered) {
         setRoom(currentRoom(recovered));
-        setRoomEnded(true);
-        startRoomReview(recovered);
+        setRoomEnded(recovered.status === "closed");
+        if (recovered.status === "closed") startRoomReview(recovered);
         setRoomError("");
+        setRoomDraft("");
         roomSubmissionIdRef.current = null;
         setRoomGreetingNotice("");
         void loadSnapshot();
@@ -13240,7 +13358,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         void loadSnapshot();
         return;
       }
-      setRoom(before);
+      const authoritative = await refreshSceneAfterFailure(room.id, submissionId);
+      if (authoritative) setRoom(currentRoom(authoritative));
+      else if (!(cause instanceof VillageApiError)) setRoom(before);
+      if (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
+        roomSubmissionIdRef.current = null;
       setRoomDraft(text);
       setRoomError(messageFrom(cause, "That line could not be sent."));
     } finally {
@@ -13315,6 +13437,55 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     [loadSnapshot],
   );
 
+  const retrySavedScene = useCallback(async () => {
+    if (!room?.id || !room.operation || roomBusy) return;
+    setRoomBusy(true);
+    try {
+      const { operation } = await request<{ operation: RoomOperation }>(
+        `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
+      );
+      const path =
+        operation.kind === "move"
+          ? "/rooms/zone"
+          : operation.kind === "memory"
+            ? `/rooms/archive/${encodeURIComponent(room.id)}/retry-memory`
+            : operation.kind === "greet"
+              ? "/rooms/greet"
+              : operation.kind === "turn"
+                ? operation.input?.mode === "leave"
+                  ? "/rooms/leave"
+                  : "/rooms/turn"
+                : "/rooms/end";
+      const answer = await request<{ session: RoomView; recordEvents?: RoomRecordEvent[] }>(path, {
+        method: "POST",
+        body: JSON.stringify({
+          ...operation.input,
+          sessionId: room.id,
+          submissionId: operation.id,
+          operationId: operation.id,
+          expectedSceneRevision: room.sceneRevision ?? 0,
+          retryOfAttemptId: operation.attemptId,
+        }),
+        signal: AbortSignal.timeout(300_000),
+      });
+      setRoom(currentRoom(answer.session));
+      setRoomEnded(answer.session.status === "closed");
+      receiveRoomRecordEvents(answer.recordEvents ?? []);
+      if (roomDraft.trim() === operation.input?.message) setRoomDraft("");
+      roomSubmissionIdRef.current = null;
+      roomLeaveSubmissionIdRef.current = null;
+      roomCompletionRef.current = null;
+      setRoomError("");
+      void loadSnapshot();
+    } catch (cause) {
+      const latest = await refreshSceneAfterFailure(room.id);
+      if (latest) setRoom(currentRoom(latest));
+      setRoomError(messageFrom(cause, "The saved request could not be recovered."));
+    } finally {
+      setRoomBusy(false);
+    }
+  }, [room, roomBusy, roomDraft, receiveRoomRecordEvents, loadSnapshot]);
+
   const continueRoomWithoutGreeting = useCallback(async (sessionId: string) => {
     setRoomBusy(true);
     try {
@@ -13350,7 +13521,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         try {
           const { session } = await request<{ session: RoomView }>("/rooms/zone", {
             method: "POST",
-            body: JSON.stringify({ sessionId: room.id, zoneId }),
+            body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
           });
           setRoom(currentRoom(session));
           setRoomTargetId("");
@@ -13393,7 +13564,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       try {
         const { session } = await request<{ session: RoomView }>("/rooms", {
           method: "POST",
-          body: JSON.stringify({ venueId: place.id, spaceClass, privateOwnerId, entryArea, zoneId }),
+          body: JSON.stringify({
+            venueId: place.id,
+            spaceClass,
+            privateOwnerId,
+            entryArea,
+            zoneId,
+            expectedSceneRevision: room?.sceneRevision,
+          }),
           signal: AbortSignal.timeout(20_000),
         });
         setRoom(currentRoom(session));
@@ -15016,6 +15194,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   if (screen === "room") {
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
+        {room?.operation?.status === "running" ? (
+          <div role="status">This conversation is responding. Your draft stays here.</div>
+        ) : null}
+        {room?.operation?.status === "interrupted" ? (
+          <div role="alert" className={`${ELEMENT_TAG}-room-error`}>
+            <p>
+              The previous request may have been billed. Retry the saved request only when you are ready to authorize
+              further work.
+            </p>
+            <button className={`${ELEMENT_TAG}-button`} disabled={roomBusy} onClick={() => void retrySavedScene()}>
+              Retry saved request
+            </button>
+          </div>
+        ) : null}
         {room ? (
           <RoomPanel
             room={room}
@@ -15035,7 +15227,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             draft={roomDraft}
             mode={roomMode}
             targetId={roomTargetId}
-            busy={roomBusy}
+            busy={roomBusy || room.operation?.status === "running"}
             error={roomError}
             greetingNotice={roomGreetingNotice}
             ruling={roomRuling}
@@ -15073,7 +15265,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     setRoomBusy(true);
                     void request<{ session: RoomView }>("/rooms/enter-private", {
                       method: "POST",
-                      body: JSON.stringify({ sessionId: room.id, ownerId: room.privateAccessOwnerId }),
+                      body: JSON.stringify({
+                        sessionId: room.id,
+                        ownerId: room.privateAccessOwnerId,
+                        expectedSceneRevision: room.sceneRevision ?? 0,
+                      }),
                     })
                       .then(({ session }) => {
                         setRoom(currentRoom(session));

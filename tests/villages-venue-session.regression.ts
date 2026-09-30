@@ -30,14 +30,14 @@ import {
 import {
   activeVenueSession,
   continueVenueWithoutGreeting,
-  endVenueSession,
-  endVenueSessionWithReceipts,
+  endVenueSession as endVenueSessionRaw,
+  endVenueSessionWithReceipts as endVenueSessionWithReceiptsRaw,
   closeVenueSessionWithReceipts,
   leaveVenueMemoryPending,
   enterVenue,
   enterResidencePrivateSpace,
   leaveVenueSession,
-  greetVenue,
+  greetVenue as greetVenueRaw,
   listVenueVisits,
   listVenueVisitSummaries,
   readVenueVisit,
@@ -48,7 +48,7 @@ import {
   parseVenueReply,
   venueCardProfile,
   resetVenueSessions,
-  sendVenueTurn,
+  sendVenueTurn as sendVenueTurnRaw,
   touchVenueSession,
   discardVenueVisitDebug,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
@@ -67,6 +67,31 @@ import {
   proposeResidenceSpaceEdit,
   setVillageVenueImage,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+
+// These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
+async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
+  const session = records.get(key("villages", `villages-venue-visit-${input.sessionId}`))?.data ?? {};
+  return sendVenueTurnRaw({
+    ...input,
+    expectedSceneRevision: session.sceneRevision,
+    retryOfAttemptId: session.operation?.status === "interrupted" ? session.operation.attemptId : undefined,
+  });
+}
+async function greetVenue(id: string) {
+  const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
+  return greetVenueRaw(id, session.operation?.status === "interrupted" ? session.operation.attemptId : undefined);
+}
+async function endVenueSession(id: string) {
+  const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
+  return endVenueSessionRaw(id, session.operation?.status === "interrupted" ? session.operation.attemptId : undefined);
+}
+async function endVenueSessionWithReceipts(id: string) {
+  const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
+  return endVenueSessionWithReceiptsRaw(
+    id,
+    session.operation?.status === "interrupted" ? session.operation.attemptId : undefined,
+  );
+}
 
 const records = new Map<string, any>();
 const key = (packageId: string, id: string) => `${packageId}:${id}`;
@@ -141,6 +166,8 @@ let creativeActorIds = ["bob", "tina"];
 let lastVenueSystem = "";
 let lastJudgeSystem = "";
 let venueReplyCalls = 0;
+let concurrencyStarted: (() => void) | null = null;
+let releaseConcurrent: (() => void) | null = null;
 let malformedTurnOnce = false;
 let exhaustEcho = false;
 let wishJudgeCalls = 0;
@@ -173,6 +200,8 @@ const release = configureVillagesRuntime({
           calls += 1;
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");
+          if (system.startsWith("Identify explicit Project events"))
+            return { content: JSON.stringify({ events: [] }), finishReason: "stop" };
           if (user.startsWith("The player arrives outside this Residence"))
             return {
               content: JSON.stringify({
@@ -485,6 +514,26 @@ const release = configureVillagesRuntime({
           }
           lastVenueSystem = system;
           venueReplyCalls += 1;
+          if (user === "Hold concurrent scene") {
+            concurrencyStarted?.();
+            await new Promise<void>((resolve) => {
+              releaseConcurrent = resolve;
+            });
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "bob",
+                    text: "We can take a moment together.",
+                    heardBy: ["bob", "tina"],
+                  },
+                ],
+              }),
+              finishReason: "stop",
+            };
+          }
           if (system.includes("Nobody is present."))
             return {
               content: JSON.stringify({
@@ -1281,6 +1330,60 @@ async function main() {
     await assert.rejects(() => resetVenueSessions(), /Finish the active venue conversation/u);
     assert.deepEqual(group.activeIds, ["bob", "tina"]);
     assert.equal(calls, callsAfterEmpty + 1, "one opening call writes one shared scene");
+    const sceneBeforeRace = (await activeVenueSession())!;
+    const providerStarted = new Promise<void>((resolve) => {
+      concurrencyStarted = resolve;
+    });
+    const raceInput = {
+      sessionId: group.id,
+      submissionId: "coordinated-once",
+      message: "Hold concurrent scene",
+      mode: "chat" as const,
+      targetId: "",
+      expectedSceneRevision: sceneBeforeRace.sceneRevision,
+    };
+    const raceCalls = calls;
+    const ownedTurn = sendVenueTurnRaw(raceInput);
+    await providerStarted;
+    const identicalTurn = sendVenueTurnRaw(raceInput);
+    for (const mode of ["chat", "fulfill", "act", "leave"] as const) {
+      await assert.rejects(
+        () =>
+          sendVenueTurnRaw({
+            ...raceInput,
+            submissionId: `competing-${mode}`,
+            mode,
+            targetId: mode === "fulfill" ? "bob" : "",
+          }),
+        (error: any) => error.code === "SCENE_BUSY",
+      );
+    }
+    await assert.rejects(
+      () => closeVenueSessionWithReceipts(group.id, sceneBeforeRace.sceneRevision),
+      (error: any) => error.code === "SCENE_BUSY",
+    );
+    await touchVenueSession(group.id);
+    assert.equal(
+      (await activeVenueSession())!.lines.length,
+      sceneBeforeRace.lines.length,
+      "snapshot and activity do not mutate the admitted transcript",
+    );
+    assert.equal(calls, raceCalls + 1, "competing submissions do not spend judgement, action, or reply calls");
+    releaseConcurrent!();
+    const [firstRace, secondRace] = await Promise.all([ownedTurn, identicalTurn]);
+    assert.equal(firstRace.session.lines.length, secondRace.session.lines.length);
+    assert.equal(firstRace.session.submissions.filter((entry) => entry.id === raceInput.submissionId).length, 1);
+    const afterRaceCalls = calls;
+    await assert.rejects(
+      () => sendVenueTurnRaw({ ...raceInput, submissionId: "stale-scene", message: "Old-tab draft" }),
+      (error: any) => error.code === "SCENE_STALE",
+    );
+    assert.equal(calls, afterRaceCalls, "a stale tab is refused before provider dispatch");
+    await sendVenueTurnRaw(raceInput);
+    assert.equal(calls, afterRaceCalls, "completed identical retries ignore their old scene revision");
+    concurrencyStarted = null;
+    releaseConcurrent = null;
+
     await sendVenueTurn({
       sessionId: group.id,
       message: "What new venue do we need?",
@@ -1649,7 +1752,11 @@ async function main() {
       targetId: "",
       submissionId: "uncertain-action",
     });
-    assert.equal(calls - beforeUncertainAction, 4, "retry judges the uncommitted action and regenerates its reaction");
+    assert.equal(
+      calls - beforeUncertainAction,
+      3,
+      "retry reuses the saved action judgement and regenerates only its reaction",
+    );
     assert.ok(
       completedQuietAction.session.lines.some(
         (line) => line.content === "Bob makes room for the lantern on the table.",
@@ -2011,7 +2118,7 @@ async function main() {
     const continued = await continueVenueWithoutGreeting(bypassed.id);
     assert.equal(continued.status, "active", "the player may speak after a failed or stalled greeting");
     assert.deepEqual(continued.lines, [], "continuing does not invent a villager line");
-    await assert.rejects(pendingGreeting, /aborted/u);
+    await assert.rejects(pendingGreeting, (error: any) => error.code === "OPERATION_INTERRUPTED");
     releaseHeldGreeting?.();
     await new Promise<void>((resolve) => setImmediate(resolve));
     assert.equal((await activeVenueSession())?.lines.length, 0, "a late greeting cannot enter the transcript");
@@ -2258,7 +2365,7 @@ async function main() {
     const leftWhileSaving = await leaveVenueMemoryPending(heldVisit.id);
     assert.equal(leftWhileSaving.memoryPending, true);
     assert.equal(await activeVenueSession(), null, "leaving pending releases the room during a model call");
-    await assert.rejects(ending, /memory aborted/u);
+    await assert.rejects(ending, (error: any) => error.code === "OPERATION_INTERRUPTED");
     assert.equal((await readVenueVisit(heldVisit.id)).lines.length, 1, "cancellation retains the exact transcript");
     signalMemoryStarted = null;
     const retried = await endVenueSession(heldVisit.id);
@@ -2923,7 +3030,7 @@ async function main() {
     const selectedExterior = await enterVenue("home", "residence", "", "outside");
     assert.equal(selectedExterior.area, "outside");
     await assert.rejects(
-      () => enterVenue("home", "residence", "", "shared"),
+      () => enterVenue("home", "residence", "", "shared", undefined, selectedExterior.sceneRevision),
       /finish opening/u,
       "navigation waits for the exterior scene to finish opening",
     );
