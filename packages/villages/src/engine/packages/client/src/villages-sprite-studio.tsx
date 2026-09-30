@@ -1,3 +1,4 @@
+import { removeStudioMatte } from "../../server/src/services/villages/sprite-studio-matte.js";
 import { useEffect, useRef, useState } from "react";
 import {
   SPRITE_STYLES,
@@ -50,48 +51,10 @@ const loadImage = (url: string): Promise<HTMLImageElement> =>
     image.src = url;
   });
 
-/** Only remove a saturated edge-connected matte. White paper borders are never keyed out. */
+/** Cleanup is shared by gallery previews, scene assignment, and PNG export. */
 export function clearStudioMatte(context: CanvasRenderingContext2D, width: number, height: number) {
   const pixels = context.getImageData(0, 0, width, height);
-  const rgba = pixels.data;
-  const corners = [0, width - 1, width * (height - 1), width * height - 1];
-  const sample = corners.find((index) => {
-    const p = index * 4;
-    return (
-      rgba[p + 3]! > 240 &&
-      Math.max(rgba[p]!, rgba[p + 1]!, rgba[p + 2]!) - Math.min(rgba[p]!, rgba[p + 1]!, rgba[p + 2]!) > 120
-    );
-  });
-  if (sample === undefined) return;
-  const rgb = [rgba[sample * 4]!, rgba[sample * 4 + 1]!, rgba[sample * 4 + 2]!];
-  const seen = new Uint8Array(width * height);
-  const queue = new Int32Array(width * height);
-  let head = 0,
-    tail = 0;
-  const add = (index: number) => {
-    if (seen[index]) return;
-    seen[index] = 1;
-    const p = index * 4;
-    if (rgba[p + 3]! < 16 || Math.hypot(rgba[p]! - rgb[0]!, rgba[p + 1]! - rgb[1]!, rgba[p + 2]! - rgb[2]!) < 75)
-      queue[tail++] = index;
-  };
-  for (let x = 0; x < width; x++) {
-    add(x);
-    add((height - 1) * width + x);
-  }
-  for (let y = 0; y < height; y++) {
-    add(y * width);
-    add(y * width + width - 1);
-  }
-  while (head < tail) {
-    const index = queue[head++]!;
-    rgba[index * 4 + 3] = 0;
-    if (index % width > 0) add(index - 1);
-    if (index % width < width - 1) add(index + 1);
-    if (index >= width) add(index - width);
-    if (index < width * (height - 1)) add(index + width);
-  }
-  context.putImageData(pixels, 0, 0);
+  if (removeStudioMatte(pixels.data, width, height)) context.putImageData(pixels, 0, 0);
 }
 
 export async function renderStudioCell(
@@ -425,6 +388,21 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
         choices.set(entry.view + ":" + entry.expressionId, { candidate: item, expressionId: entry.expressionId });
     }
     await assign([...choices.values()], job.id);
+  }
+  async function repairBatch(job: StudioJob) {
+    const next = await call<StudioData>("repair-background", { batchId: job.id });
+    setData(next);
+    const replacements = new Map((next.repairedCells ?? []).map((item) => [item.originalId, item.cellId]));
+    const active = next.assignments.flatMap((entry) => {
+      const cellId = replacements.get(entry.cellId);
+      const sheet = next.jobs
+        .flatMap((batch) => batch.sheets)
+        .find((item) => item.cells.some((cell) => cell.id === cellId));
+      const cell = sheet?.cells.find((item) => item.id === cellId);
+      return sheet && cell ? [{ candidate: { sheet, cell }, expressionId: entry.expressionId }] : [];
+    });
+    if (active.length) await assign(active, job.id);
+    setNote("Backgrounds repaired. Original artwork retained; active sprites updated.");
   }
   function pick(item: Candidate) {
     setPicked(item.cell.id);
@@ -1074,6 +1052,12 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                           >
                             Delete batch
                           </button>
+                          <button
+                            disabled={busy || job.status === "running" || !items.length}
+                            onClick={() => void perform(() => repairBatch(job))}
+                          >
+                            Repair backgrounds
+                          </button>
                           {job.status === "interrupted" ? (
                             <button disabled={busy || running} onClick={() => retry(job)}>
                               Prepare retry
@@ -1232,7 +1216,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                       checked={draft.cleanup ?? false}
                       onChange={(event) => setDraft({ ...draft, cleanup: event.target.checked })}
                     />
-                    Remove edge-connected color background · preserves paper borders
+                    Remove background
                   </label>
                   <div className="vss-row">
                     <button

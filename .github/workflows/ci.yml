@@ -53,6 +53,11 @@ jobs:
       - name: Run formatting and lint checks
         run: npm run check
 
+      - name: Verify sprite background cleanup
+        run: |
+          npx tsx tests/villages-sprite-matte.regression.ts
+          npx tsx tests/villages-sprite-studio.regression.ts
+
       - name: Verify scene staging
         run: npx tsx tests/villages-scene-staging.regression.ts
 

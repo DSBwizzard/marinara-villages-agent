@@ -56,6 +56,13 @@ for (const profile of browserProfiles) {
     for (let i = 0; i < 6; i++) {
       const x = (i % 3) * 512,
         y = Math.floor(i / 3) * 768;
+      c.clearRect(x, y, 512, 768);
+      if (i % 2) {
+        c.fillStyle = "#141414";
+        c.fillRect(x, y, 512, 768);
+      }
+      c.fillStyle = "#ff00ff";
+      c.fillRect(x + 3, y + 3, 506, 762);
       c.fillStyle = "#f4ecd6";
       c.fillRect(x + 146, y + 110, 220, 540 + i * 8);
       c.fillStyle = i % 2 ? "#5278bb" : "#7a54ba";
@@ -166,6 +173,28 @@ for (const profile of browserProfiles) {
         });
       }
       state.jobs.push(job);
+    }
+    if (action === "/repair-background") {
+      const job = state.jobs.find((item) => item.id === body.batchId);
+      const repairedCells = [];
+      for (const sheet of job.sheets)
+        for (const cell of [...sheet.cells]) {
+          if (cell.repairedFrom) continue;
+          let repaired = sheet.cells.find((item) => item.repairedFrom === cell.id);
+          if (!repaired) {
+            repaired = {
+              ...cell,
+              id: "repair-" + seq++,
+              repairedFrom: cell.id,
+              cleanup: true,
+              pending: true,
+              rendered: undefined,
+            };
+            sheet.cells.push(repaired);
+          }
+          repairedCells.push({ originalId: cell.id, cellId: repaired.id });
+        }
+      result = { ...state, repairedCells };
     }
     if (action === "/assign") {
       for (const entry of body.cells) {
@@ -384,7 +413,7 @@ for (const profile of browserProfiles) {
       window.clearMatte(c, 4, 4);
       return [c.getImageData(0, 0, 1, 1).data[3], c.getImageData(1, 1, 1, 1).data[3]];
     });
-    assert.deepEqual(pixelProof, [0, 255], "cleanup preserves paper borders");
+    assert.deepEqual(pixelProof, [0, 255], "cleanup preserves intentional outlines");
     const alignment = await page.evaluate(async (source) => {
       const sheet = { url: source, width: 1536, height: 1536, baseScale: 1, cells: [] };
       const baseline = [];
@@ -416,6 +445,29 @@ for (const profile of browserProfiles) {
       return baseline;
     }, source);
     assert.deepEqual(alignment, [751, 751], "distinct cell margins share the same foot baseline");
+    const originalAssignments = structuredClone(state.assignments);
+    await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
+    await expect(
+      page.getByText("Backgrounds repaired. Original artwork retained; active sprites updated.", { exact: true }),
+    ).toBeVisible();
+    assert.equal(generated, 2, "batch repair makes no generation requests");
+    for (const prior of originalAssignments) {
+      const current = state.assignments.find(
+        (entry) => entry.expressionId === prior.expressionId && entry.view === prior.view,
+      );
+      assert.notEqual(current.cellId, prior.cellId, "active image switches to the repaired cutout");
+      assert.ok(
+        allCells().some((cell) => cell.id === prior.cellId),
+        "original retained",
+      );
+    }
+    const repairedCount = allCells().length;
+    await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
+    await expect(
+      page.getByText("Backgrounds repaired. Original artwork retained; active sprites updated.", { exact: true }),
+    ).toBeVisible();
+    assert.equal(allCells().length, repairedCount, "repeated repair reuses candidates");
+    await page.screenshot({ path: join(output, profile.name + "-repaired.png"), fullPage: true });
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Mara · Sprite Studio" }).click();
     await expect(page.locator(".vss-gallery article")).toHaveCount(1);
