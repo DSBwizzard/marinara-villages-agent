@@ -141,10 +141,21 @@ export function chooseAgendaZone(
   actorId: string,
   activity = "",
   requestedId = "",
-  state?: Pick<VillageState, "projects">,
+  state?: Pick<VillageState, "projects" | "relationshipContext">,
 ): VillageVenueZone {
   const eligible = venueZones(venue).filter(
-    (zone) => canOccupyZone(venue, zone, actorId) && (!state || !zoneClosed(state, venue, zone)),
+    (zone) =>
+      (canOccupyZone(venue, zone, actorId) ||
+        Object.values(state?.relationshipContext?.grants ?? {}).some(
+          (grant) =>
+            grant.visitorId === actorId &&
+            grant.venueId === venue.id &&
+            grant.zoneId === zone.id &&
+            grant.active &&
+            !grant.revoked &&
+            canInviteToZone(venue, zone, grant.controllerId),
+        )) &&
+      (!state || !zoneClosed(state, venue, zone)),
   );
   const requested = eligible.find((zone) => zone.id === requestedId);
   if (requested) return requested;

@@ -115,6 +115,7 @@ export type VillageCompletedWish = {
  */
 export type VillageAgenda = {
   wishActivities?: import("./wish-types.js").WishActivity[];
+  socialActivities?: import("./wish-types.js").WishActivity[];
   wishes: VillageWish[];
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
@@ -594,6 +595,7 @@ export type VillageVenueSpace = {
 
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
 export type VillageVenueZone = VillageVenueSpace & {
+  relationshipAccess?: boolean;
   purpose?: string;
   controllerIds?: string[];
   preparation?: { status: "pending" | "ready" | "failed"; error?: string };
@@ -1209,6 +1211,8 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  relationshipContext?: import("./relationship-types.js").RelationshipState;
+  socialOutbox?: import("./relationship-social.js").SocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   wishRefillIntents: Record<string, { id: string; settled: string }>;
   version: 2;
@@ -1845,6 +1849,7 @@ export type VillageMomentView = {
 };
 
 export type VillageSnapshot = {
+  relationshipStartingPending?: boolean;
   backgroundWork: import("./background-work.js").BackgroundSummary[];
   status: "ready";
   progressEngineVersion: 0 | 1;

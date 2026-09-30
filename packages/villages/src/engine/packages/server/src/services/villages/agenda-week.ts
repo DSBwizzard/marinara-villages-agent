@@ -256,7 +256,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
           zoneId: entry.zoneId,
         })));
   const revision = routineRevision(agenda);
-  for (const adjustment of agenda.wishActivities ?? []) {
+  for (const adjustment of [...(agenda.wishActivities ?? []), ...(agenda.socialActivities ?? [])]) {
     if (adjustment.dateKey !== key) continue;
     const started = agenda.activeDay?.dateKey === key && adjustment.startMinute <= at.getHours() * 60 + at.getMinutes();
     if (adjustment.baseRevision !== revision && !started) continue;

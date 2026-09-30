@@ -1,3 +1,6 @@
+import { relationshipZoneController } from "./relationship-store.js";
+import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
+import { relationshipPrompt, relationshipClosingNotices } from "./relationships.js";
 import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import { DEFAULT_SCENERY_STYLE, sceneryImageKey, readSceneryStyle } from "./scenery-context.js";
@@ -412,7 +415,17 @@ export function villageSettings(
     settingMaxLength: MAX_SETTING_LENGTH,
     venues: village.venues.map((venue) => {
       const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
-      const zones = venueZones(venue).map((zone) => {
+      const zones = venueZones(venue).map((originalZone) => {
+        const zone = {
+          ...originalZone,
+          relationshipAccess: !!relationshipZoneController(
+            village.relationshipContext,
+            village,
+            venue,
+            originalZone,
+            "player",
+          ),
+        };
         const visible =
           zone.kind === "exterior" ||
           zone.seen ||
@@ -708,8 +721,30 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
     residences: village.residences,
     venueMail: village.venueMail,
     noticeboard: village.noticeboard,
-    happenings: village.happenings,
+    happenings: village.happenings.map((entry) => {
+      const encounter = village.relationshipContext?.socialEncounters.find(
+        (row) => row.id === entry.sourceOpportunityId + ":social",
+      );
+      return encounter
+        ? {
+            ...entry,
+            socialOutcome: {
+              id: encounter.id,
+              changes: relationshipClosingNotices(
+                Object.values(village.relationshipContext!.receipts).filter(
+                  (receipt) => receipt.sourceId === encounter.id && receipt.before !== receipt.after,
+                ),
+                village.relationshipContext!,
+                village,
+              ).map((notice) => notice.text),
+            },
+          }
+        : entry;
+    }),
     villagers,
+    relationshipStartingPending: village.villagers.some(
+      (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
+    ),
     isFounded: isVillageFounded(village),
     settings: villageSettings(village, player, residenceAccess),
     recap: null,
@@ -4592,14 +4627,40 @@ export async function reconcileVillage(
   await reconcileWishLifecycle(now);
   const village = await readVillageState();
   const dateKey = localDateKey(now);
-  const shouldCreateStory = forced || (village.storyPace !== "off" && village.lastCreativeDate < dateKey);
+  const remainingSocialEvents =
+    storyAllowance(village.storyPace, village.seed, dateKey) -
+    village.happenings.filter((entry) => localDateKey(new Date(entry.occurredAt)) === dateKey).length;
+  const activeSocialPlan =
+    !forced && village.storyPace !== "off" && remainingSocialEvents > 0
+      ? village.relationshipContext?.socialPlans.find(
+          (plan) =>
+            plan.status === "planned" &&
+            plan.kind === "meeting" &&
+            plan.dateKey === dateKey &&
+            plan.startMinute <= moment.minuteOfDay &&
+            plan.endMinute > moment.minuteOfDay,
+        )
+      : undefined;
+  const shouldCreateStory =
+    forced || (village.storyPace !== "off" && (village.lastCreativeDate < dateKey || !!activeSocialPlan));
   if (!shouldCreateStory) {
     const snapshot = await buildVillageSnapshot(now);
     return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
   }
 
   const routines = new Map<string, NativeRoutine>();
-  const opportunity = creativeOpportunity(village, routines, moment, previousThrough);
+  const opportunity: VillageOpportunity | null = activeSocialPlan
+    ? {
+        id: activeSocialPlan.id + ":encounter",
+        kind: "encounter",
+        startsAt: now.toISOString(),
+        endsAt: now.toISOString(),
+        actorIds: activeSocialPlan.actorIds,
+        venueId: activeSocialPlan.venueId,
+        zoneId: activeSocialPlan.zoneId,
+        facts: [activeSocialPlan.activity, "An accepted free-time plan is happening now."],
+      }
+    : creativeOpportunity(village, routines, moment, previousThrough);
   if (!opportunity) {
     const snapshot = await buildVillageSnapshot(now);
     return { ...snapshot, recap: buildReturnRecap(village, previousThrough, moment.instant, elapsedMs) };
@@ -4703,13 +4764,23 @@ export async function reconcileVillage(
         .filter((decision) => decision.kind === "venue-upgrade" && decision.status === "pending")
         .map((decision) => decision.requesterCharacterId ?? ""),
     ],
+    social:
+      !forced && village.storyPace !== "off"
+        ? {
+            candidates:
+              !activeSocialPlan && storyAllowance(village.storyPace, village.seed, dateKey) > 1
+                ? socialPlanCandidates(village, now)
+                : [],
+            relationships: opportunity.actorIds.map((actorId) => relationshipPrompt(village, actorId)),
+          }
+        : undefined,
     opportunities: [opportunity],
     lastSimulatedAt: previousThrough,
     forced,
   };
   await queueBackgroundJob({
     kind: "story",
-    subjectId: "village",
+    subjectId: activeSocialPlan ? "social:" + activeSocialPlan.id : "village",
     seed: village.seed,
     revision: forced ? "manual:" + (options.actionId ?? opportunity.id) : dateKey,
     finite: forced,
@@ -4719,6 +4790,8 @@ export async function reconcileVillage(
     input: {
       context,
       forced,
+      socialPlanId: activeSocialPlan?.id,
+      socialPlan: activeSocialPlan,
       dateKey,
       opportunity,
       moment,
@@ -4747,18 +4820,41 @@ registerBackgroundHandler("story", {
     (!input.opportunity.venueId || state.venues.some((venue) => venue.id === input.opportunity.venueId)) &&
     (input.forced ||
       (state.storyPace !== "off" &&
-        state.lastCreativeDate < input.dateKey &&
+        (state.lastCreativeDate < input.dateKey ||
+          (input.socialPlanId && socialContinuationValid(state, input.socialPlanId, input.socialPlan))) &&
         localDateKey(new Date(state.simulatedThrough)) <= input.dateKey)),
   apply(state, input, proposal) {
     const { forced, dateKey, opportunity, moment } = input;
     const now = new Date(input.now);
 
-    if (!forced && (state.storyPace === "off" || state.lastCreativeDate >= dateKey)) return;
-    const allowance = forced ? 3 : storyAllowance(state.storyPace, state.seed, dateKey);
+    if (!forced && (state.storyPace === "off" || (!input.socialPlanId && state.lastCreativeDate >= dateKey))) return;
+    const dailyAllowance = storyAllowance(state.storyPace, state.seed, dateKey);
+    const used = state.happenings.filter((entry) => localDateKey(new Date(entry.occurredAt)) === dateKey).length;
+    const offeredPlan = input.context.social?.candidates.some((plan) => plan.id === proposal.social?.planId);
+    const allowance = forced
+      ? 3
+      : input.socialPlanId
+        ? Math.max(0, dailyAllowance - used)
+        : Math.max(1, dailyAllowance - (offeredPlan ? 1 : 0));
+    if (!allowance) return;
     const opportunityId = opportunity.id;
     if (state.processedOpportunityIds.includes(opportunityId)) return;
     const happenings = proposal.happenings.slice(0, allowance);
     state.happenings = [...happenings, ...state.happenings].slice(0, MAX_HAPPENINGS);
+    if (!forced && proposal.social && input.context.social) {
+      const id = opportunity.id + ":social";
+      state.socialOutbox ??= [];
+      if (!state.socialOutbox.some((entry) => entry.id === id))
+        state.socialOutbox.push({
+          id,
+          seed: state.seed,
+          at: input.now,
+          opportunity,
+          candidates: input.context.social.candidates,
+          proposal: proposal.social,
+          requiredPlanId: input.socialPlanId,
+        });
+    }
     for (const request of proposal.housingRequests) {
       if (!opportunity.actorIds.includes(request.characterId)) continue;
       const resident = state.villagers.find((entry) => entry.characterId === request.characterId);

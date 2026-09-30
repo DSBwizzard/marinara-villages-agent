@@ -433,6 +433,7 @@ export type VillageTickResident = {
 
 /** Everything the happening writer is told about the village it is writing for. */
 export type VillageTickContext = {
+  social?: { candidates: import("./relationship-types.js").SocialPlan[]; relationships: string[] };
   playerRole?: VillagePlayerRole | null;
   playerPersonaName?: string;
   village: string;
@@ -493,6 +494,7 @@ export type VillageTickContext = {
 
 /** What one creative planning call produced. The caller decides what reaches the record. */
 export type VillageTickProposal = {
+  social?: { planId?: unknown; encounter?: unknown };
   happenings: VillageHappening[];
   /**
    * What the village should now remember, newest first. Empty is a perfectly
@@ -749,10 +751,14 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
             `${opportunity.id} (${opportunity.kind}; actors ${opportunity.actorIds.join(",")}; venue ${opportunity.venueId || "none"}; ${opportunity.facts.join("; ")})`,
         )
         .join(" | ")}.`,
+      context.social
+        ? `Structured social simulation is separate from visual prose. You may choose one offered future plan with social:{planId:"exact offered ID"}. Offered plans: ${JSON.stringify(context.social.candidates)}. Participants' own feelings: ${context.social.relationships.join("\n")}.
+For a CURRENT encounter opportunity with at least two actors in the same zone, social may also include encounter:{opportunityId:"exact ID",lines:[{speakerId:"present actor ID",text:"brief spoken line"}],relationshipReview:{changes:[],permissions:[],disclosures:[]}}. Write two to eight short spoken lines grounded in the current moment. Never invent past betrayals, fulfilled promises, new secrets, player actions, possessions, injuries, or physical effects. Only these structured lines establish this small interaction; visual prose has no authority. Changes use {fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason:"grounded reason",evidence:[0,1]}. Ordinary company can increase warmth only. Trust needs demonstrated behavior. Cite zero-based indexes into these lines. Any permission needs explicit standing grant/revocation speech by a current controller naming the exact zone and present visitor, and evidence indexes. Nobody can grant for the absent player. disclosures must be empty. Do not force conflict or a score change. Omit social when no interaction or offered plan fits. Social is an additional allowed response key only when this section is present.`
+        : "",
       housingOptions.length
         ? `Housing options for people in the offered opportunity: ${housingOptions.join(" | ")}.`
         : "No housing request options are available.",
-      `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move","venueId":"destination id"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move. Never treat a player request as their consent. No other keys.`,
+      `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move","venueId":"destination id"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move. Never treat a player request as their consent. ${context.social ? "Social may be included using the structured schema above." : "No other keys."}`,
     ];
     return [
       { role: "system", content: sections.filter(Boolean).join("\n\n") },
@@ -1055,6 +1061,7 @@ function coerceTickProposal(
   venueRequests: { characterId: string; core: VenueRequestCore }[];
   featureEdits: { characterId: string; venueId: string; featureId: string; text: string }[];
   housingRequests: VillageTickProposal["housingRequests"];
+  social?: VillageTickProposal["social"];
   lapsed: VillageLapsedWish[];
 } {
   const alreadySaid = new Set(seen.map((line) => line.trim().toLowerCase()));
@@ -1179,6 +1186,10 @@ function coerceTickProposal(
     venueRequests,
     featureEdits,
     housingRequests: readHousingRequests(payload.housingRequests, context),
+    social:
+      context.social && payload.social && typeof payload.social === "object"
+        ? (payload.social as VillageTickProposal["social"])
+        : undefined,
     lapsed,
   };
 }
@@ -1247,6 +1258,10 @@ export async function proposeHappenings(
         venueRequests: [],
         featureEdits: [],
         housingRequests: readHousingRequests(payload.housingRequests, context),
+        social:
+          context.social && payload.social && typeof payload.social === "object"
+            ? (payload.social as VillageTickProposal["social"])
+            : undefined,
         lapsed: [],
       };
   // Only the happenings are required. A reply that wrote news and remembered

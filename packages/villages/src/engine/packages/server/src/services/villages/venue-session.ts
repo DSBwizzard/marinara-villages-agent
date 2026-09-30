@@ -1,3 +1,12 @@
+import { relationshipZoneController, mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
+import { relationshipPrompt, relationshipClosingNotices, captureRelationshipKnowledge } from "./relationships.js";
+import {
+  emptyRelationshipReview,
+  parseRelationshipReview,
+  substantiveContact,
+  RELATIONSHIP_REVIEW_INSTRUCTION,
+} from "./relationship-review.js";
+import type { RelationshipReview, RelationshipEvidenceLine, RelationshipReceipt } from "./relationship-types.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
 import { zoneControllerIds } from "./venue-zones.js";
@@ -227,6 +236,7 @@ type VenueSubmission = {
 
 type VenueMemory = { characterId: string; text: string; lineIds?: string[] };
 type VenueRecollection = {
+  relationshipOnly?: boolean;
   id: string;
   text: string;
   subjectCharacterIds: string[];
@@ -245,6 +255,7 @@ type VenueMemoryDecision = {
   lineIds?: string[];
 };
 type VenueMemoryReview = {
+  applied?: boolean;
   status: "none" | "pending" | "complete";
   attempts: number;
   error: string;
@@ -253,7 +264,7 @@ type VenueMemoryReview = {
 };
 export type VenueRecordEvent = {
   id: string;
-  kind: "memory" | "wish" | "venue" | "request" | "project";
+  kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
   text: string;
   /** The exact saved memory behind a short memory receipt. Older persisted receipts may omit it. */
   detail?: string;
@@ -280,7 +291,7 @@ export type VenueSession = {
   zoneId?: string;
   legacyCast?: boolean;
   grantedZoneIds?: string[];
-  zoneGrants?: { zoneId: string; controllerId: string }[];
+  zoneGrants?: { zoneId: string; controllerId: string; source?: "relationship" }[];
   privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
   departedIds?: string[];
@@ -302,6 +313,7 @@ export type VenueSession = {
   memoryProgress: MemoryProgress | null;
   memoryPending: boolean;
   memoryReview: VenueMemoryReview;
+  relationshipReview?: { seed: string; applied: boolean; batches: RelationshipReview[]; receipts: VenueRecordEvent[] };
   recap: string;
 };
 
@@ -436,7 +448,11 @@ function coerceSession(value: unknown): VenueSession {
       ? raw.zoneGrants
           .map(asRecord)
           .filter((grant) => typeof grant.zoneId === "string" && typeof grant.controllerId === "string")
-          .map((grant) => ({ zoneId: String(grant.zoneId), controllerId: String(grant.controllerId) }))
+          .map((grant) => ({
+            zoneId: String(grant.zoneId),
+            controllerId: String(grant.controllerId),
+            source: grant.source === "relationship" ? ("relationship" as const) : undefined,
+          }))
       : [],
     legacyCast: raw.legacyCast === true,
     grantedZoneIds: Array.isArray(raw.grantedZoneIds)
@@ -625,12 +641,17 @@ function coerceSession(value: unknown): VenueSession {
               : [],
           }
         : null,
+    relationshipReview:
+      raw.relationshipReview && typeof raw.relationshipReview === "object"
+        ? (structuredClone(raw.relationshipReview) as VenueSession["relationshipReview"])
+        : undefined,
     memoryPending: raw.memoryPending === true,
     memoryReview: (() => {
       const review = asRecord(raw.memoryReview);
       const status = review.status === "pending" ? "pending" : review.status === "complete" ? "complete" : "none";
       return {
         status,
+        applied: review.applied === true || status === "complete",
         attempts:
           typeof review.attempts === "number" && Number.isFinite(review.attempts)
             ? Math.max(0, Math.floor(review.attempts))
@@ -960,6 +981,8 @@ async function generateOnce(
     return [
       `${card.name} (${person.characterId})`,
       venueCardProfile(card),
+      relationshipPrompt(village, person.characterId),
+      "Relationships influence new Project requests alongside personal benefit and availability. A neutral resident may volunteer. Existing accepted commitments remain binding until explicitly withdrawn. Do not treat high scores as automatic romance.",
       `Current agenda: ${block?.activity ?? "unspecified"}; availability: ${block?.status ?? "unspecified"}; due at ${village.venues.find((venue) => venue.id === block?.venueId)?.name ?? "elsewhere"}. A resident may leave naturally after saying so.`,
       `Current Residence: ${
         village.venues
@@ -1686,8 +1709,9 @@ async function interruptInactiveVisit(id: string): Promise<void> {
     const hasRecollections = sessionRecollections(state).length > 0;
     state.memoryPending =
       (state.memoryMode === "end" && state.lines.some((line) => line.role === "user")) ||
-      (state.memoryMode === "tiered" && hasRecollections);
-    if (state.memoryMode === "tiered") state.memoryReview.status = hasRecollections ? "pending" : "complete";
+      ((state.memoryMode === "tiered" || state.relationshipReview) && hasRecollections);
+    if (state.memoryMode === "tiered" || state.relationshipReview)
+      state.memoryReview.status = hasRecollections ? "pending" : "complete";
   });
   if (closed.status !== "closed") return;
   await clearActivePointer(id);
@@ -1870,8 +1894,18 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
   let controllerId = "";
   const priorGrant = session.zoneGrants?.find((grant) => grant.zoneId === zone.id);
-  const revokedGrant = priorGrant && !canInviteToZone(venue, zone, priorGrant.controllerId);
-  if (!canOccupyZone(venue, zone, "player") && (!session.grantedZoneIds?.includes(zone.id) || revokedGrant)) {
+  const revokedGrant =
+    priorGrant &&
+    (!canInviteToZone(venue, zone, priorGrant.controllerId) ||
+      (priorGrant.source === "relationship" &&
+        !relationshipZoneController(village.relationshipContext, village, venue, zone, "player")));
+  const ongoingController = relationshipZoneController(village.relationshipContext, village, venue, zone, "player");
+  if (ongoingController) controllerId = ongoingController;
+  if (
+    !canOccupyZone(venue, zone, "player") &&
+    !ongoingController &&
+    (!session.grantedZoneIds?.includes(zone.id) || revokedGrant)
+  ) {
     const invitation = await venueCheckpoint("move-invitation", async () => {
       const selected = venue.playerInvitations?.find(
         (entry) => entry.zoneId === zone.id && canInviteToZone(venue, zone, entry.residentId),
@@ -1905,7 +1939,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
     if (controllerId)
       state.zoneGrants = [
         ...(state.zoneGrants ?? []).filter((grant) => grant.zoneId !== zone.id),
-        { zoneId: zone.id, controllerId },
+        { zoneId: zone.id, controllerId, source: ongoingController ? "relationship" : undefined },
       ];
     state.legacyCast = false;
     state.spaceClass = zone.venueClass;
@@ -2000,8 +2034,13 @@ async function enterVenueOnce(
     );
   }
   const grantedZoneIds: string[] = [];
-  const zoneGrants: { zoneId: string; controllerId: string }[] = [];
-  if (!canOccupyZone(place, zone, "player")) {
+  const zoneGrants: { zoneId: string; controllerId: string; source?: "relationship" }[] = [];
+  const ongoingController = relationshipZoneController(village.relationshipContext, village, place, zone, "player");
+  if (ongoingController) {
+    grantedZoneIds.push(zone.id);
+    zoneGrants.push({ zoneId: zone.id, controllerId: ongoingController, source: "relationship" });
+  }
+  if (!canOccupyZone(place, zone, "player") && !ongoingController) {
     const target = zone;
     const invitation = place.playerInvitations?.find(
       (entry) => entry.zoneId === target.id && canInviteToZone(place, target, entry.residentId),
@@ -2062,6 +2101,7 @@ async function enterVenueOnce(
     memoryProgress: null,
     memoryPending: false,
     memoryReview: { status: "none", attempts: 0, error: "", nextRecollection: 0, decisions: [] },
+    relationshipReview: { seed: village.seed, applied: false, batches: [], receipts: [] },
     recap: "",
   };
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => Object.assign(value, session));
@@ -2551,7 +2591,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
         : {}),
       at,
     });
-    if (recollections.length && state.memoryMode === "turn") state.memoryMode = "tiered";
+    if ((recollections.length || state.relationshipReview) && state.memoryMode === "turn") state.memoryMode = "tiered";
     if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
       applyImmediateZoneInvitation(state, reply.invitationSignal);
       state.privateOwnerId = reply.invitationSignal.scope === "private" ? reply.invitationSignal.ownerId : "";
@@ -3044,13 +3084,56 @@ const MEMORY_REVIEW_ERROR = "This visit is safely archived, but its memory revie
 
 function sessionRecollections(session: VenueSession): VenueRecollection[] {
   const seen = new Set<string>();
-  return session.submissions.flatMap((submission) =>
+  const memories = session.submissions.flatMap((submission) =>
     (submission.recollections ?? []).filter((entry) => {
       if (seen.has(entry.id)) return false;
       seen.add(entry.id);
       return true;
     }),
   );
+  if (!session.relationshipReview) return memories;
+  const represented = new Set(memories.flatMap((entry) => entry.lineIds));
+  const contacts: VenueRecollection[] = [];
+  for (const line of session.lines) {
+    if (
+      line.role !== "assistant" ||
+      line.kind === "narration" ||
+      !line.speakerId ||
+      represented.has(line.id) ||
+      !/\b(?:standing permission|always welcome|whenever|anytime|from now on|revoke|no longer welcome)\b/iu.test(
+        line.content,
+      )
+    )
+      continue;
+    contacts.push({
+      id: session.id + ":permission-input:" + line.id,
+      relationshipOnly: true,
+      text: "Review any explicit standing permission independently; reject memory promotion.",
+      subjectCharacterIds: [line.speakerId],
+      knownByCharacterIds: [line.speakerId],
+      lineIds: [line.id],
+    });
+    represented.add(line.id);
+  }
+  for (const submission of session.submissions) {
+    if (submission.mode === "greet") continue;
+    const ids = [submission.playerLineId, ...(submission.replyLineIds ?? [])].filter((id): id is string => !!id);
+    const lines = session.lines.filter((line) => ids.includes(line.id));
+    const witnesses = session.participants.filter((person) => substantiveContact(lines, person.characterId, "player"));
+    if (!witnesses.length || lines.every((line) => represented.has(line.id))) continue;
+    for (const person of witnesses) {
+      const heard = lines.filter((line) => line.heardBy.includes(person.characterId));
+      contacts.push({
+        id: session.id + ":contact-input:" + submission.id + ":" + person.characterId,
+        relationshipOnly: true,
+        text: "Substantive contact: review warmth/trust independently; reject memory promotion.",
+        subjectCharacterIds: [person.characterId],
+        knownByCharacterIds: [person.characterId],
+        lineIds: heard.map((line) => line.id),
+      });
+    }
+  }
+  return [...memories, ...contacts];
 }
 
 function durableMemoryId(visitId: string, recollectionIds: readonly string[]): string {
@@ -3107,11 +3190,33 @@ function memoryReviewMessages(
     {
       role: "system",
       content:
-        'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once by its batch-local index. Consolidate related recollections when they describe one event, but do not combine recollections whose witnesses did not hear the same evidence. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state or previous promotions. There is NO promotion quota. Return JSON only: {"decisions":[{"action":"promote","indices":[0],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event"},{"action":"reject","indices":[1],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. Every index must appear in exactly one decision. Do not invent evidence or indices.',
+        'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once by its batch-local index. Consolidate related recollections when they describe one event, but do not combine recollections whose witnesses did not hear the same evidence. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state or previous promotions. There is NO promotion quota. Return JSON only: {"decisions":[{"action":"promote","indices":[0],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event"},{"action":"reject","indices":[1],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. Every index must appear in exactly one decision. Do not invent evidence or indices.' +
+        "\n\n" +
+        (session.relationshipReview ? RELATIONSHIP_REVIEW_INSTRUCTION : ""),
     },
     {
       role: "user",
       content: JSON.stringify({
+        relationshipActors: ["player", ...village.villagers.map((person) => person.characterId)],
+        relationshipContext: session.participants.map((person) => relationshipPrompt(village, person.characterId)),
+        controlledZones: village.venues.flatMap((place) =>
+          venueZones(place).map((zone) => ({
+            venueId: place.id,
+            zoneId: zone.id,
+            name: zone.name,
+            controllers: village.villagers
+              .filter((person) => canInviteToZone(place, zone, person.characterId))
+              .map((person) => person.characterId),
+          })),
+        ),
+        verifiedEffects: session.submissions
+          .filter((row) => row.action || row.sceneChange || row.verdict?.fulfilled)
+          .map((row) => ({
+            submissionId: row.id,
+            action: row.action,
+            sceneChange: row.sceneChange,
+            fulfilledWishId: row.verdict?.fulfilled ? row.wishId : undefined,
+          })),
         visitId: session.id,
         venue: session.placeName,
         participants: session.participants,
@@ -3126,6 +3231,7 @@ function memoryReviewMessages(
         ),
         recollections: recollections.map((entry, index) => ({
           index,
+          relationshipOnly: entry.relationshipOnly === true,
           text: entry.text,
           subjects: entry.subjectCharacterIds,
           knownBy: entry.knownByCharacterIds,
@@ -3133,6 +3239,10 @@ function memoryReviewMessages(
             const line = lines.get(lineId);
             return line
               ? {
+                  id: line.id,
+                  speakerId: line.role === "user" ? "player" : line.speakerId,
+                  kind: line.kind,
+                  playerHeard: line.kind !== "whisper" || line.targetId === "player",
                   speaker: line.name || "Player",
                   text:
                     line.content.length <= 1_600
@@ -3178,10 +3288,10 @@ function parseMemoryReview(
     const entries = indices.map((index) => source[index]!);
     const recollectionIds = entries.map((entry) => entry.id);
     const reason = asTrimmedString(row.reason).slice(0, 240) || "other";
-    if (action === "reject") {
+    if (action === "reject" || entries.some((entry) => entry.relationshipOnly)) {
       decisions.push({
-        id: reviewDecisionId(session.id, action, recollectionIds),
-        action,
+        id: reviewDecisionId(session.id, "reject", recollectionIds),
+        action: "reject",
         recollectionIds,
         reason,
       });
@@ -3242,14 +3352,14 @@ async function generateMemoryReview(
   signal: AbortSignal,
   saved: readonly VenueMemoryDecision[],
   nextRecollection: number,
-  checkpoint: (decisions: VenueMemoryDecision[], next: number) => Promise<void>,
+  checkpoint: (decisions: VenueMemoryDecision[], next: number, relationships?: RelationshipReview) => Promise<void>,
 ): Promise<VenueMemoryDecision[]> {
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),
   });
   const outputLimit = model.maxOutputTokens ?? 16_384;
-  const outputTokens = (count: number) => Math.min(outputLimit, Math.max(2_048, 512 + count * 160));
-  const maxBatchSize = Math.max(1, Math.floor((outputLimit - 512) / 160));
+  const outputTokens = (count: number) => Math.min(outputLimit, Math.max(2_048, 512 + count * 320));
+  const maxBatchSize = Math.max(1, Math.floor((outputLimit - 512) / 320));
   const decisions = [...saved];
   let fitMs = 0;
   const fits = (entries: readonly VenueRecollection[], backgroundLimit: number) => {
@@ -3287,9 +3397,20 @@ async function generateMemoryReview(
       completion.usage ?? {},
     );
     let fresh: VenueMemoryDecision[];
+    let relationships = emptyRelationshipReview();
     try {
       if (completion.finishReason === "length") throw new Error(MEMORY_REVIEW_ERROR);
-      fresh = parseMemoryReview(extractJsonObject(completion.content ?? ""), session, batch);
+      const raw = extractJsonObject(completion.content ?? "");
+      fresh = parseMemoryReview(raw, session, batch);
+      if (session.relationshipReview) {
+        const lineIds = new Set(batch.flatMap((entry) => entry.lineIds));
+        relationships = parseRelationshipReview(
+          raw?.relationshipReview,
+          session.id,
+          relationshipEvidence(session).filter((line) => lineIds.has(line.id)),
+          village,
+        );
+      }
     } catch (error) {
       if (end - start === 1) throw error;
       const middle = start + Math.floor((end - start) / 2);
@@ -3298,7 +3419,7 @@ async function generateMemoryReview(
       return;
     }
     decisions.push(...fresh);
-    await checkpoint(decisions, end);
+    await checkpoint(decisions, end, relationships);
   };
 
   let cursor = nextRecollection;
@@ -3321,6 +3442,50 @@ async function generateMemoryReview(
   }
   if (!decisionsCover(decisions, source)) throw new Error(MEMORY_REVIEW_ERROR);
   return decisions;
+}
+
+function relationshipEvidence(session: VenueSession): RelationshipEvidenceLine[] {
+  return session.lines.map((line) => ({ ...line, playerHeard: line.kind !== "whisper" || line.targetId === "player" }));
+}
+async function commitVisitRelationships(session: VenueSession): Promise<void> {
+  if (!session.relationshipReview || session.relationshipReview.applied || session.endReason === "debug") return;
+  const village = await readVillageState();
+  if (village.seed !== session.relationshipReview.seed) return;
+  const reviews = session.relationshipReview.batches;
+  const merged: RelationshipReview = {
+    changes: [...new Map(reviews.flatMap((review) => review.changes).map((row) => [row.id, row])).values()],
+    permissions: [...new Map(reviews.flatMap((review) => review.permissions).map((row) => [row.id, row])).values()],
+    disclosures: [...new Map(reviews.flatMap((review) => review.disclosures).map((row) => [row.id, row])).values()],
+  };
+  const lines = relationshipEvidence(session);
+  const actors = ["player", ...session.participants.map((person) => person.characterId)];
+  for (const fromId of actors.filter((actor) => actor !== "player"))
+    for (const toId of actors) {
+      if (fromId === toId || !substantiveContact(lines, fromId, toId)) continue;
+      merged.changes.push({
+        id: session.id + ":contact:" + fromId + ":" + toId,
+        fromId,
+        toId,
+        dimension: "warmth",
+        amount: 0,
+        ordinary: true,
+        reason: "Shared substantive contact.",
+        lineIds: lines.filter((line) => line.heardBy.includes(fromId)).map((line) => line.id),
+        disclosed: false,
+        contact: true,
+      });
+    }
+  let receipts: RelationshipReceipt[] = [];
+  const settled = await mutateRelationships(village.seed, (state) => {
+    receipts = applyRelationshipReview(state, merged, village, session.id, session.endedAt);
+    captureRelationshipKnowledge(state, village);
+  });
+  const notices = relationshipClosingNotices(receipts, settled, village);
+  await changeSession(session.id, (state) => {
+    if (!state.relationshipReview || state.relationshipReview.seed !== village.seed) return;
+    state.relationshipReview.applied = true;
+    state.relationshipReview.receipts = notices;
+  });
 }
 
 async function commitMemoryReview(session: VenueSession, decisions: readonly VenueMemoryDecision[]): Promise<void> {
@@ -3398,6 +3563,7 @@ async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<Ve
         if (!resumable) {
           state.memoryReview.decisions = [];
           state.memoryReview.nextRecollection = 0;
+          if (state.relationshipReview) state.relationshipReview.batches = [];
         }
         state.memoryPending = true;
       });
@@ -3409,15 +3575,29 @@ async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<Ve
         signal,
         session.memoryReview.decisions,
         session.memoryReview.nextRecollection,
-        async (progress, nextRecollection) => {
+        async (progress, nextRecollection, relationships) => {
           await changeSession(id, (state) => {
             state.memoryReview.decisions = [...progress];
             state.memoryReview.nextRecollection = nextRecollection;
+            if (state.relationshipReview && relationships) state.relationshipReview.batches.push(relationships);
           });
         },
       );
     }
-    await commitMemoryReview(await readSession(id), decisions);
+    let memoryError: unknown;
+    try {
+      const latest = await readSession(id);
+      if (!latest.memoryReview.applied) {
+        await commitMemoryReview(latest, decisions);
+        await changeSession(id, (state) => {
+          state.memoryReview.applied = true;
+        });
+      }
+    } catch (error) {
+      memoryError = error;
+    }
+    await commitVisitRelationships(await readSession(id));
+    if (memoryError) throw memoryError;
     const completed = await changeSession(id, (state) => {
       state.memoryReview.status = "complete";
       state.memoryReview.error = "";
@@ -3441,20 +3621,24 @@ async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<Ve
 }
 
 function reviewReceipts(session: VenueSession): VenueRecordEvent[] {
-  if (session.memoryReview.status !== "complete") return [];
-  return session.memoryReview.decisions
-    .filter((decision) => decision.action === "promote" && !!decision.text)
-    .map((decision) => ({
-      id: durableMemoryId(session.id, decision.recollectionIds),
-      kind: "memory" as const,
-      text: `${
-        decision.knownByCharacterIds
-          ?.map((id) => session.participants.find((person) => person.characterId === id)?.name)
-          .filter(Boolean)
-          .join(", ") || "A villager"
-      } remembered this exchange.`,
-      detail: decision.text,
-    }));
+  const notices = session.relationshipReview?.applied ? session.relationshipReview.receipts : [];
+  if (!session.memoryReview.applied && session.memoryReview.status !== "complete") return notices;
+  return [
+    ...notices,
+    ...session.memoryReview.decisions
+      .filter((decision) => decision.action === "promote" && !!decision.text)
+      .map((decision) => ({
+        id: durableMemoryId(session.id, decision.recollectionIds),
+        kind: "memory" as const,
+        text: `${
+          decision.knownByCharacterIds
+            ?.map((id) => session.participants.find((person) => person.characterId === id)?.name)
+            .filter(Boolean)
+            .join(", ") || "A villager"
+        } remembered this exchange.`,
+        detail: decision.text,
+      })),
+  ];
 }
 
 type MemoryUnit = {
@@ -3635,7 +3819,9 @@ export async function closeVenueSession(
 }
 async function closeVenueSessionOnce(id: string): Promise<VenueSession> {
   const session = await readSession(id);
-  return session.memoryMode === "tiered" ? closeTieredVenueSession(session) : endVenueSession(id);
+  return session.memoryMode === "tiered" || session.relationshipReview
+    ? closeTieredVenueSession(session)
+    : endVenueSession(id);
 }
 
 export async function closeVenueSessionWithReceipts(
@@ -3699,7 +3885,7 @@ async function endTieredVenueSession(session: VenueSession, signal: AbortSignal)
 
 async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueSession> {
   const session = await readSession(id);
-  if (session.memoryMode === "tiered") return endTieredVenueSession(session, signal);
+  if (session.memoryMode === "tiered" || session.relationshipReview) return endTieredVenueSession(session, signal);
   if (session.status === "closed" && !session.memoryPending) {
     await clearActivePointer(id);
     return session;

@@ -1121,6 +1121,29 @@ npm run check
 
 Because `villages` is listed in `scripts/catalog-incomplete.mjs`, the builder keeps it out of every published catalog lane, so the catalog counts and the package guidance tables stay unchanged while it is being built. Delete the id from that set and rebuild the catalog when it graduates.
 
+## Relationships
+
+The Village menu's **Relationships** page shows each villager's directional warmth and trust toward the player. Both range from −100 to +100; familiarity distinguishes strangers from neutral acquaintances. Other villagers' feelings remain independent. Friendship is not attraction; romance is reserved for a later release.
+
+New visits settle memories and relationships in the same closing System review. Substantive exchanges can be reviewed without producing a durable memory, while greeting-only visits add no relationship request. The visit releases before review finishes. Saved decisions, separate application flags, and stable evidence receipts allow each domain to recover independently after a storage failure. Pending reviews remain visible and can be retried from Memories. Replaying a saved result makes no new model request. Filled hearts mean improvement, outline hearts deterioration, and stars a saved memory; mixed changes produce separate notices. Debug discard skips settlement, and deleting a memory does not undo a relationship.
+
+Scoring and thresholds live in `relationship-policy.ts`: minor, meaningful, and major changes start at 2, 5, and 15 points. Ordinary positive contact adds at most 2 warmth points per direction per local date and cannot award trust. Repeated evidence earns nothing. After seven elapsed 24-hour days without substantive contact, warmth moves one point toward zero per additional elapsed day, including negative warmth. Trust does not decay. Only people who actually interacted refresh their contact clocks.
+
+Shared residential access begins at warmth/trust 25/25 and suspends below 15 in either dimension. Spoken standing personal invitations require 50/50 and retain access down to 35/35; staff/restricted invitations require trust 50 and retain it down to 35. Invitations identify the visitor and exact Zone. Score recovery can restore suspended access, but explicit revocation needs a renewed invitation. Current ownership/controller authority, open Zones, and construction remain authoritative for both player and NPC entry. Guest entry never confers invitation or editing authority. One-visit invitations and accepted Project commitments retain their existing behavior; Project decisions consider feelings alongside benefit and availability, and neutral residents can volunteer.
+
+After actual player contact, friendship at 25/25 unlocks useful routine information and broader interests; 50/50 unlocks current wishes and outgoing villager meters. Corresponding buffered loss levels are 15 and 35. Previously learned information remains dated after loss. Explanations, preferences, and boundaries come from disclosure or shared experience; an unknown explanation stays “Not yet shared.” Creator actions do not establish player knowledge.
+
+Founding, upgrades, and move-ins offer starting-ties review when the Relationships page opens. Conservative explicit-history matching proposes vague Friendly, Strained, Mixed, or No established history statuses; kinship, work, and proximity alone create no score. Legacy closeness is only a proposal. Accept suggestions or start neutral. Exact values and editing require a remembered, per-village spoiler acknowledgement that can be hidden again. Ambiguous history stays neutral and can be adjusted after acknowledgement.
+
+Daily social work shares the existing Events allowance and coordinator. At most one new plan per local date can overlay explicitly flexible blocks. Meetings and avoidance respect schedules, accepted work, construction, and both participants' actual Zone access. Future meetings reserve room in that day's Events allowance for a structured encounter while the plan is underway. Structured spoken encounters and outcomes are stored separately and linked underneath Events; visual prose and mere co-location award nothing. New automatic work runs while Villages is visible; Off pauses it. Obsolete or missed plans cancel locally without generating an absence backlog or reward. The player is never scheduled or moved.
+
+Relationship documents are separate from memories and keyed by the village seed. Older visits do not gain a relationship reviewer or get rescored automatically.
+
+```powershell
+node --import tsx tests/villages-relationships.regression.ts
+node --import tsx tests/villages-venue-session.regression.ts
+```
+
 ## Background work and recovery
 
 Stories, resident agendas, native schedule translations, wish replenishment, mailbox replies, and move-related private room adaptation share one server-owned coordinator. Dialogue, image generation, memory review, and founding generation (including initial private-space preparation) retain their own paths.
