@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { badRequest, notFound } from "./errors.js";
-import { villageEngineJson, deleteVillageSpriteFile } from "./engine-loopback.js";
+import { villageEngineJson, villageEngineBaseUrl, deleteVillageSpriteFile } from "./engine-loopback.js";
 import { villagesDocuments, VILLAGES_PACKAGE_ID, villagesLogger } from "./package-runtime.js";
 import { mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
 import { readSpriteExpression, readSpriteView, removeResidentSprite } from "./resident-sprites.js";
@@ -103,6 +103,22 @@ async function ensureLibrary(characterId: string, id: string) {
     ) ||
     (resident.sprite?.expressions.some((entry) => !entry.expressionId || !entry.cutoutId) ?? false);
   if (!needs) return;
+  const legacySizes = new Map<string, { width: number; height: number }>();
+  for (const entry of resident.sprite?.expressions ?? []) {
+    if (entry.cutoutId) continue;
+    const url = imageUrl(resident.sprite!, entry);
+    if (legacySizes.has(url)) continue;
+    try {
+      const response = await fetch(villageEngineBaseUrl() + url);
+      if (!response.ok || Number(response.headers.get("content-length")) > 12_000_000) continue;
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length > 12_000_000) continue;
+      const mime = response.headers.get("content-type")?.split(";")[0] || "image/png";
+      legacySizes.set(url, await inspectVillageImage(`data:${mime};base64,${bytes.toString("base64")}`));
+    } catch {
+      /* Keep the recorded art and assignments even if old files cannot currently be read. */
+    }
+  }
   await mutate(id, (state) => {
     const add = (label: string, pose: string) => {
       let slot = state.expressions.find((item) => item.label === label || item.aliases.includes(label));
@@ -136,8 +152,8 @@ async function ensureLibrary(characterId: string, id: string) {
         view: entry.view,
         x: 0,
         y: 0,
-        width: 512,
-        height: 768,
+        width: legacySizes.get(url)?.width ?? 512,
+        height: legacySizes.get(url)?.height ?? 768,
         scale: 1,
         offsetX: 0,
         offsetY: 0,
@@ -163,7 +179,16 @@ async function ensureLibrary(characterId: string, id: string) {
         };
         state.jobs.unshift(job);
       }
-      job.sheets.push({ assetId, url, width: 512, height: 768, attempts: 0, usage: null, cells: [cell], baseScale: 1 });
+      job.sheets.push({
+        assetId,
+        url,
+        width: cell.width,
+        height: cell.height,
+        attempts: 0,
+        usage: null,
+        cells: [cell],
+        baseScale: Math.min(512 / cell.width, 768 / cell.height),
+      });
       retainFile(state, assetId, fileStem(url), url);
     }
   });

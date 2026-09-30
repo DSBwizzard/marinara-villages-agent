@@ -185,7 +185,16 @@ globalThis.fetch = async (url, init) => {
       cells: body.expressions.map((expression: string) => ({ expression, base64: png.split(",")[1] })),
     });
   }
-  if (path === "/api/image-metadata/inspect") return Response.json({ width: 512, height: 768 });
+  if (path === "/api/image-metadata/inspect") {
+    const legacy = Buffer.from(String(body.image ?? "").split(",")[1] ?? "", "base64")
+      .toString()
+      .endsWith("legacy-large");
+    return Response.json(legacy ? { width: 1024, height: 1536 } : { width: 512, height: 768 });
+  }
+  if (path.endsWith("/file/neutral.png"))
+    return new Response(Buffer.concat([Buffer.from(png.split(",")[1]!, "base64"), Buffer.from("legacy-large")]), {
+      headers: { "content-type": "image/png" },
+    });
   if (/^\/api\/sprites\/villages-[^/]+\/file\/original\.png$/.test(path))
     return new Response(Buffer.from(png.split(",")[1]!, "base64"), { headers: { "content-type": "image/png" } });
   if (/^\/api\/sprites\/villages-[^/]+$/.test(path) && !init?.body)
@@ -264,6 +273,12 @@ async function main() {
     assert.equal(initial.version, 2);
     assert.equal(initial.assignments.length, 1, "legacy active artwork migrated without generation");
     assert.equal(initial.jobs[0]?.model, "Existing artwork");
+    assert.equal(
+      initial.jobs[0]!.sheets[0]!.cells[0]!.width,
+      1024,
+      "legacy adjustments keep the actual source dimensions",
+    );
+    assert.equal(initial.jobs[0]!.sheets[0]!.baseScale, 0.5);
     assert.equal(initial.defaultExpressionId, initial.assignments[0]?.expressionId);
     assert.equal(activeSprite().expressions[0].filename, "neutral.png");
     assert.equal(
