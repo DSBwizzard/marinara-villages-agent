@@ -12,7 +12,7 @@ await mkdir(output, { recursive: true });
 await build({
   stdin: {
     contents: `import React from "react"; import {createRoot} from "react-dom/client"; import {SpriteStudio,clearStudioMatte,renderStudioCell,studioRenderKey} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-studio.tsx").replaceAll("\\", "/")}"; import {SPRITE_STYLES,defaultStudioState} from "${resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts").replaceAll("\\", "/")}";
-import {createStudioRenderCache} from "C:/Users/dsbwi/.codex/worktrees/studio-raw-pipeline/marinara-villages-agent/packages/villages/src/engine/packages/client/src/villages-sprite-render-cache.ts";
+import {createStudioRenderCache} from "${resolve("packages/villages/src/engine/packages/client/src/villages-sprite-render-cache.ts").replaceAll("\\", "/")}";
   window.makeRenderCache=createStudioRenderCache; window.renderKey=studioRenderKey; window.styleExamples=SPRITE_STYLES; window.defaultStudio=defaultStudioState; window.renderCell=renderStudioCell; window.clearMatte=clearStudioMatte;
   const root=createRoot(document.getElementById("root"));
   let villager={characterId:"mara",name:"Mara",sprite:null};

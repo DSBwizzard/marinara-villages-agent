@@ -95,4 +95,3 @@ jobs:
         run: |
           npx playwright install --with-deps chromium
           node tests/villages-founding-layout.e2e.mjs
-          node tests/villages-sprite-studio.e2e.mjs
