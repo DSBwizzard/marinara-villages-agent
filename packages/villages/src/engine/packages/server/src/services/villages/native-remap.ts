@@ -75,9 +75,7 @@ import {
   MAX_REMAP_SLOT_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_VENUES,
-  MAX_VILLAGER_WISHES,
   remapVenues,
-  wishWeightWords,
 } from "./prompt-preset.js";
 import type { NativeDayBlock, NativeRoutine, NativeWeekSchedule } from "./native-schedules.js";
 import { parseBlockRange } from "./native-schedules.js";
@@ -186,7 +184,7 @@ const REMAP_SYSTEM_PROMPT = [
   `- "here" is under ${MAX_REMAP_HERE_LENGTH} characters and says what that same block is, here. Write it as a phrase that follows "Right now you are", so begin with a lowercase verb: "out on the", "mending the", "asleep in". Never begin with "they", a name, or a capital letter, and never write a whole sentence.`,
   '- "here" must be about something this village HAS. Use the places listed below by their own names where one fits. If what they are doing has no place here, describe it as the nearest thing this village could hold, or as part of an ordinary day in a place like this.',
   `- "place" is the NUMBER of the one place in the numbered list below where this block happens, as a number and not a name. ${PLACE_QUESTION} Write 0 when there is no place on that list for it — somebody asleep, somebody walking between two places, somebody doing something this village has no room for. Do not invent a number, and do not leave the field out. Say the same place twice if two blocks happen at the same one.`,
-  "- The person's wishes may subtly influence how they carry out an activity. Keep each block about the activity itself; do not turn an hour into a wish, errand, or request.",
+  "- Keep the routine independent of wishes. Mark flexible:true only for genuine optional free time, never for sleep, meals, work or commitments.",
   "- Current village places and confirmed outcomes outrank lorebook descriptions of older desires. Never portray an already fulfilled wish as still unmet.",
   "- A desire in lore does not prove that an object exists or belongs to this person. Only current venue facts and confirmed outcomes establish present assets.",
   "- Keep the availability you were given. Somebody whose block is busy is busy doing this; somebody whose block is asleep is asleep through it. Do not turn a committed hour into free time, or the other way round.",
@@ -217,22 +215,7 @@ export type VillageRemapContext = {
   completedWishes: readonly string[];
   loreKey: string;
   venues: readonly VillageVenue[];
-  /**
-   * What this villager wishes for, in the order the agenda holds them.
-   *
-   * The second list of nouns this call is handed, and a reader who has met the
-   * first one has to be told how this one differs, because the difference is the
-   * feature. A PLACE decides the shape of an hour: choose one and the block
-   * happens somewhere, and the phrase is written around that. A WISH must not —
-   * it may only colour an hour whose shape was decided by the week and the place
-   * — and the prompt says so in as many words, because a numbered list of things
-   * somebody wants is precisely the thing a model will build a week out of.
-   *
-   * Empty is ordinary and is not a failure. A villager whose agenda has not been
-   * written yet, one who genuinely wishes for nothing, and every translation the
-   * village wrote before this release all send an empty list, and all of them
-   * translate exactly as a week with no wishes in it should.
-   */
+  /** Compatibility input only; wishes do not participate in routine generation. */
   wishes: readonly VillageWish[];
   name: string;
   /** The card's blurb, and the tags, as the agenda call takes them. */
@@ -275,17 +258,6 @@ export function remapBlocks(schedule: NativeWeekSchedule): RemapBlock[] {
  */
 function remapBlocksInPrompt(blocks: readonly RemapBlock[]): readonly RemapBlock[] {
   return blocks;
-}
-
-/**
- * The wishes one translation actually sends, in the order it sends them.
- *
- * The cap is shared by the prompt and the signature that decides whether the
- * translation changed. Order remains the agenda's own; wishes are context for
- * phrasing, not labels or numbered references in the response.
- */
-function remapWishes(wishes: readonly VillageWish[]): readonly VillageWish[] {
-  return wishes.slice(0, MAX_VILLAGER_WISHES);
 }
 
 /**
@@ -347,84 +319,7 @@ export function routineKey(routine: NativeRoutine | null): string {
   return remapBlockKey(routine.weekday, routine.block.time);
 }
 
-/**
- * The digest a translation is invalidated by, or "" when there is nothing to key
- * one on.
- *
- * Five things can make a translation wrong and the Engine's `weekStart` catches
- * only the first: the Engine can regenerate a week for the SAME Monday with
- * different activities in it, the player can add, rename or re-describe a place,
- * the player can rewrite the setting the village is described by, and the
- * villager's own wishes can change — one written, one answered, one aged out. The
- * first is the Engine editing the week; the next two are the player correcting
- * the lens the week is seen through, and a translation that survived either would
- * go on translating a week that no longer happens into words the village no
- * longer uses. The last is the villager themself changing, and it is the one of
- * the five that moves on its own.
- *
- * Deliberately NOT in here: anything off the character card. Editing a summary
- * or a tag mid-week would otherwise re-translate every villager in the village
- * over a change that says nothing about what anybody is doing.
- *
- * The blocks are the CAPPED, keyed slots with the sentence and the status each
- * one carried, which is exactly the question the prompt asked. That is
- * deliberate: the village owes a new answer when the question changes, even when
- * the week's Monday has not. The sentence is in here beside the slot because an
- * Engine week regenerated under the same Monday can move a different activity
- * into the same hour, and a translation that survived that would go on claiming
- * what Tuesday used to hold.
- *
- * FNV-1a, inline and hex, for the reason `hashString` in `village-clock.ts` is
- * inline: the digest has to be deterministic enough for a test to pin it, and
- * this is not worth a dependency. The separators are non-printing on purpose —
- * without them one activity's tail and the next one's head would join into the
- * same string as a third pair, and two different weeks would sign the same.
- *
- * The lists in here are the SENDABLE ones — see `remapVenues` and `remapWishes` —
- * and they are read through those two functions rather than filtered here,
- * because the numbered lists the model is handed and this digest must be the same
- * lists. A translation argued over a different list than the one it was written
- * from is a translation that re-asks for ever, and that failure is silent.
- *
- * The wishes are in here for the reason the places are: a translation was written
- * from a question that included them, so the question changing has to re-ask. A
- * wish arriving or leaving therefore costs that one villager ONE TRANSLATION
- * CALL, which is the expensive call in this package. That is the honest price of
- * the influence rather than a defect — the answer that mentions a wish is not
- * interchangeable with the answer that does not — and it is bounded by the cap: a
- * villager holds a small number of wishes, so a villager cannot cost a call per
- * wish per week for ever.
- *
- * A wish contributes its id, its words, the surface the words are given away by,
- * and its weight, and only the first of those is load-bearing. The rest are in
- * here because they are part of the question: the translator is handed all three
- * — the text on its own, the surface in brackets beside it, and what the wish is
- * worth — so a wish re-weighted under the same id, or a hand-edited document that
- * rewrote the text or the surface and kept the id, is a different question about
- * the same row, and a translation that survived any of them would be an answer to
- * something nobody asked. The surface is the one field here that is easy to leave
- * out and impossible to notice missing: it reaches the prompt, so a translation
- * that outlived it would go on naming what used to give the wish away.
- *
- * Both the words and the surface are read through `phraseKey`, the same
- * normalisation the blocks' sentences are digested under, so that a wish
- * re-spaced or re-capitalised does not cost a model call over a difference no
- * reader could see. The weight is floored rather than keyed, because the number
- * the prompt says and the number the villager's own block says are the same
- * rounded one.
- *
- * A wish's two DATES are deliberately not in here, and it is worth saying why
- * because they are the only fields of a wish that are absent. Neither of them
- * reaches the prompt — the translator is shown what they wish for, how much it is
- * on their mind and what gives it away, and never how old it is — so a wish that
- * merely got older is not a different question and must not cost a villager a
- * model call. A wish leaving the list is a different question and does change
- * this, which is the path that already exists.
- *
- * "" is returned for a week with no `weekStart`, and it is not an error: a
- * translation keyed on nothing can never be recognised as stale, so that one
- * case is left alone exactly as `remapNeedsWriting` describes.
- */
+/** Stable routine signature: native slots, village setting, selected lore, and venues. Wishes are separate dated overlays and never invalidate this translation. */
 export function remapSignature(input: {
   setting: string;
   loreKey?: string;
@@ -439,16 +334,13 @@ export function remapSignature(input: {
     (entry) =>
       `${remapBlockKey(entry.day, entry.time)}\u0000${phraseKey(entry.activity)}\u0000${entry.status.trim().toLowerCase()}`,
   );
-  const wished = remapWishes(input.wishes).map(
-    (wish) => `${wish.id}\u0000${phraseKey(wish.wish)}\u0000${phraseKey(wish.tell)}\u0000${Math.floor(wish.intensity)}`,
-  );
   const lens = remapVenues(input.venues)
     .slice(0, MAX_VENUES)
     .map(
       (venue) =>
         `${venue.id}\u0000${venue.name.trim()}\u0000${venue.classes?.join("/") ?? ""}\u0000${venue.form?.trim() ?? ""}\u0000${venue.state.condition.trim()}\u0000${venue.state.publicFacts.slice(0, 4).join("\u0000")}`,
     );
-  const digest = [weekStart, ...asked, ...wished, input.setting.trim(), input.loreKey ?? "", ...lens].join("\u0001");
+  const digest = [weekStart, ...asked, input.setting.trim(), input.loreKey ?? "", ...lens].join("\u0001");
   let hash = 2166136261;
   for (let index = 0; index < digest.length; index += 1) {
     hash ^= digest.charCodeAt(index);
@@ -494,10 +386,6 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
     });
   // Wishes are private context, not numbered labels for agenda hours. Weight is
   // said in words so it matches the villager's own panel and narration context.
-  const wishes = remapWishes(context.wishes).map((wish) => {
-    const surface = wish.tell.trim().length > 0 ? ` (it shows: ${wish.tell.trim()})` : "";
-    return `- ${wish.wish.trim()}${surface} — ${wishWeightWords(wish.intensity)}`;
-  });
   const week = remapBlocksInPrompt(context.blocks).reduce<{ day: string; lines: string[] }[]>((days, entry) => {
     const words = describeStatus(entry.status);
     const line =
@@ -551,7 +439,6 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
         )
         .join("\n") +
       ". Copy the exact zoneId into each move without changing its times or activity.",
-    wishes.length > 0 ? ["What is privately on their mind:", ...wishes].join("\n") : "",
     known.length > 0 ? ["What is already known about this person:", ...known].join("\n") : "",
     week.length > 0
       ? [
@@ -561,9 +448,6 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
       : "",
     context.lore.length
       ? `Established lore, used only when consistent with the existing week and current village:\n${context.lore.join("\n")}`
-      : "",
-    context.completedWishes.length
-      ? `Already fulfilled; these older desires are not unmet errands:\n${context.completedWishes.join("\n")}`
       : "",
     `Write their week as it happens in ${context.village}.`,
   ].filter((section) => section.length > 0);
@@ -577,6 +461,7 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
         // twenty rules each separated by an empty line read as twenty unrelated
         // notes rather than as the one set of instructions they are.
         REMAP_SYSTEM_PROMPT.join("\n"),
+        "Translate a stable ordinary routine. Never add unresolved wish errands. Wishes have separate dated activity adjustments.",
       ].join("\n\n"),
     },
     { role: "user", content: brief.join("\n\n") },
@@ -689,6 +574,7 @@ export function coerceRemap(
         venueId: venueIdFromPlace(raw.place, context.venues),
         ...(typeof raw.zoneId === "string" ? { zoneId: raw.zoneId } : {}),
         wishId: "",
+        ...(raw.flexible === true ? { flexible: true } : {}),
       });
     }
   }

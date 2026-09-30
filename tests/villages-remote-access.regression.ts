@@ -10,10 +10,9 @@
 //
 // The fix is two small functions and the two calls that use them, so both are
 // read out of the client and run here rather than described. A function body is
-// JavaScript here or it is not, and these are written so that it is: the header
-// builder annotates nothing inside itself, and the refusal builder's one type
-// assertion is dropped with the removal checked, so what runs is the code the
-// package ships rather than a paraphrase of it. Neither needs a browser: the
+// JavaScript here or it is not: the header builder annotates nothing inside
+// itself, and TypeScript transpiles the refusal helper and its error class,
+// so what runs is the code the package ships rather than a paraphrase of it. Neither needs a browser: the
 // header builder is a function of `window.localStorage` and the refusal builder
 // is a function of a payload and a status.
 //
@@ -24,6 +23,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { transpileModule, ScriptTarget } from "typescript";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(
@@ -96,19 +96,18 @@ const buildHeaders = new Function(
   `const ADMIN_SECRET_STORAGE_KEY = ${storageKey};\n${bodyOf(headersStart, hintStart)}`,
 ) as (init?: RequestInit) => Headers;
 
-const refusalSource = bodyOf(refusalStart, requestStart);
-const refusalCode = refusalSource.replace(" as { error?: unknown } | null", "");
-assert.notEqual(
-  refusalCode,
-  refusalSource,
-  "the refusal's type assertion moved; this proof has to run the code the package ships, not a copy of it",
-);
-const buildRefusal = new Function(
-  "payload",
-  "status",
-  "fallback",
-  `const PRIVILEGED_ACCESS_HINT = ${hintLiteral};\n${refusalCode}`,
-) as (payload: unknown, status: number, fallback: string) => Error;
+const errorStart = source.indexOf("class VillageApiError");
+assert.ok(errorStart > hintStart && errorStart < refusalStart);
+// Run the actual class and helper; transpilation preserves structured refusal codes.
+const refusalCode = transpileModule(
+  `const PRIVILEGED_ACCESS_HINT = ${hintLiteral};\n${source.slice(errorStart, requestStart)}`,
+  { compilerOptions: { target: ScriptTarget.ES2022 } },
+).outputText;
+const buildRefusal = new Function(`${refusalCode}\nreturn requestRefusal;`)() as (
+  payload: unknown,
+  status: number,
+  fallback: string,
+) => Error;
 
 /** Run the builder with `window` standing in for this browser's own. */
 function headersWith(windowValue: unknown, init?: RequestInit): Headers {

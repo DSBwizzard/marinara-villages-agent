@@ -1,6 +1,7 @@
 import { parseBlockRange, type NativeWeekSchedule } from "./native-schedules.js";
 import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { routineRevision } from "./wish-policy.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "./types.js";
 
 export const agendaDateKey = (at: Date): string =>
@@ -74,7 +75,10 @@ export function workingAgendaWeek(venues: readonly VillageVenue[], name: string)
         const duration = (seed + slot + index) % 3 === 0 ? 30 : 60;
         const end = Math.min(sleep, minute + duration);
         const [activity, venueId, availability] = activities[slot % activities.length]!;
-        entries.push(block(minute, end, venueId, activity, undefined, availability));
+        entries.push({
+          ...block(minute, end, venueId, activity, undefined, availability),
+          flexible: availability === "online",
+        });
         minute = end;
         slot += 1;
       }
@@ -144,6 +148,7 @@ export function completeAgendaWeek(
                 row.status,
               ),
               zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
+              flexible: row.flexible === true && (row.status === "online" || row.status === "idle"),
               ...(typeof row.sourceTime === "string" ? { sourceTime: row.sourceTime } : {}),
             },
           ];
@@ -217,6 +222,7 @@ export function scheduleInformedWeek(
             entry.status,
           ),
           sourceTime: entry.time,
+          flexible: move?.flexible === true && entry.status !== "dnd" && entry.status !== "offline",
           zoneId:
             move?.zoneId ??
             (move?.venueId && move.venueId !== villageBlock?.venueId ? undefined : villageBlock?.zoneId),
@@ -240,7 +246,7 @@ export function scheduleInformedWeek(
 export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
-  const ordinary =
+  let ordinary =
     agenda.activeDay?.dateKey === key
       ? agenda.activeDay.blocks
       : ((ingestSchedule ? agenda.scheduleWeek?.[weekday] : undefined) ??
@@ -249,6 +255,30 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
+  const revision = routineRevision(agenda);
+  for (const adjustment of agenda.wishActivities ?? []) {
+    if (adjustment.dateKey !== key) continue;
+    const started = agenda.activeDay?.dateKey === key && adjustment.startMinute <= at.getHours() * 60 + at.getMinutes();
+    if (adjustment.baseRevision !== revision && !started) continue;
+    ordinary = ordinary.flatMap((entry) => {
+      const start = Math.max(entry.startMinute, adjustment.startMinute),
+        end = Math.min(entry.endMinute, adjustment.endMinute);
+      if (start >= end || !entry.flexible || entry.status === "dnd" || entry.status === "offline") return [entry];
+      return [
+        ...(entry.startMinute < start ? [{ ...entry, endMinute: start }] : []),
+        {
+          ...entry,
+          startMinute: start,
+          endMinute: end,
+          venueId: adjustment.venueId,
+          zoneId: adjustment.zoneId,
+          activity: adjustment.activity,
+          reason: adjustment.reason,
+        },
+        ...(entry.endMinute > end ? [{ ...entry, startMinute: end }] : []),
+      ];
+    });
+  }
   const work = agenda.projectWork;
   if (!work) return ordinary;
   const dayStart = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();

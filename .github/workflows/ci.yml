@@ -61,6 +61,13 @@ jobs:
       - name: Verify scene staging
         run: npx tsx tests/villages-scene-staging.regression.ts
 
+      - name: Verify finite wishes and routine isolation
+        run: |
+          npx tsx tests/villages-wish-lifecycle.regression.ts
+          npx tsx tests/villages-compact-founding.regression.ts
+          npx tsx tests/villages-generation-recovery.regression.ts
+          npx tsx tests/villages-schedule-remap.regression.ts
+
       - name: Verify Progress Engine and automatic Project evidence
         run: |
           npx tsx tests/villages-progress-engine.regression.ts

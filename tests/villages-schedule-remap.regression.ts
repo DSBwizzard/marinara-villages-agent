@@ -653,58 +653,14 @@ async function main() {
   // moves point at. A wish reworded under the same id leaves every stored tag
   // meaning something; a different wish wearing an old id is not a wish that came
   // back, and the digest is what tells those two apart.
-  assert.notEqual(
-    remapSignature({
-      ...context,
-      wishes: [...context.wishes, wishOf("wish-boat", "the boat patched before winter")],
-    }),
-    signature,
-    "a villager who has come to wish for something new is asking a different question",
-  );
-  assert.notEqual(
-    remapSignature({ ...context, wishes: [{ ...context.wishes[0]!, intensity: 3 }, context.wishes[1]!] }),
-    signature,
-    "so is the same wish weighing more, because the weight is read out beside it",
-  );
-  assert.notEqual(
-    remapSignature({
-      ...context,
-      wishes: [{ ...context.wishes[0]!, tell: "a puddle under the bench" }, context.wishes[1]!],
-    }),
-    signature,
-    "and so is the same wish showing differently, since what gives it away is part of the line the model reads",
-  );
-  assert.notEqual(
-    remapSignature({ ...context, wishes: [{ ...context.wishes[0]!, wish: "the cart seen to" }, context.wishes[1]!] }),
-    signature,
-    "and the same wish reworded under the same id, because a wish is the sentence the villager would say",
-  );
-  assert.equal(
-    remapSignature({
-      ...context,
-      wishes: [{ ...context.wishes[0]!, wish: "  THE   HANDCART MENDED  " }, context.wishes[1]!],
-    }),
-    signature,
-    "while a wish re-spaced or re-capitalised is NOT a new question, which is the normalisation the blocks' " +
-      "sentences are digested under and for the same reason: a difference no reader could see must not cost a " +
-      "model call",
-  );
-  assert.notEqual(
-    remapSignature({ ...context, wishes: [...context.wishes].reverse() }),
-    signature,
-    "and the same two wishes in the other order, because the numbers in the prompt move with the list",
-  );
-  assert.notEqual(
-    remapSignature(manyWishes),
-    signature,
-    "and a villager holding a full list is asking a different question from one holding two",
-  );
-  assert.equal(
-    remapSignature(manyWishes),
-    remapSignature({ ...manyWishes, wishes: manyWishes.wishes.slice(0, MAX_VILLAGER_WISHES) }),
-    "while a wish past the ceiling is not in the question at all: the list the model reads and the list a number " +
-      "is resolved against are the same capped one, so a wish nobody was ever shown cannot make the question new",
-  );
+  for (const wishes of [
+    [],
+    [...context.wishes].reverse(),
+    manyWishes.wishes,
+    [{ ...context.wishes[0]!, wish: "Different wish", intensity: 3, tell: "Different tell" }],
+  ]) {
+    assert.equal(remapSignature({ ...context, wishes }), signature, "wish changes do not invalidate a stable routine");
+  }
   // A wish's dates are the two fields of it that this deliberately ignores, and the
   // reason is the same as the reason the map and the houses are ignored: neither
   // reaches the prompt. A villager handed a translator is told what they wish for,
@@ -1020,36 +976,9 @@ async function main() {
     !brief.includes("2. the hives:"),
     "and the rule and the list are written from one number, so neither can drift from the other",
   );
-  // The second numbered list, and the reason the brief has to carry it at all: a
-  // wish answers a number into a list the model can SEE, and a rule about a number
-  // with no list under it is an invitation to invent one. The two lists are told
-  // apart in words as well as by their headings, because a model handed two numbered
-  // lists of nouns with no line between them will eventually write a week about the
-  // wishes.
-  assert.ok(
-    brief.includes("- the handcart mended — barely on their mind"),
-    "wishes are private context with their weight, without a number assigned to an hour",
-  );
-  assert.ok(
-    brief.includes("- a roof that does not leak (it shows: the bucket under the gap) — often on their mind"),
-    "and a wish with a surface says what gives it away, in brackets beside it, before its weight",
-  );
-  assert.ok(
-    !brief.includes("- the handcart mended (it shows:"),
-    "while a wish with no surface leaves no dangling bracket, which is the same rule the places are written under",
-  );
-  assert.ok(
-    rules.includes("do not turn an hour into a wish, errand, or request"),
-    "and the agenda keeps each hour about an activity",
-  );
-  assert.ok(
-    rules.includes("may subtly influence how they carry out an activity"),
-    "wishes influence the agenda without becoming the activity",
-  );
-  assert.ok(
-    !brief.includes("the handcart mended — often") && !brief.includes("does not leak — barely"),
-    "with each weight bound to the wish it belongs to rather than to the list",
-  );
+  assert.ok(!brief.includes("What is privately on their mind"), "native translations do not carry private wishes");
+  assert.ok(!brief.includes("the handcart mended"), "wish prose is absent from the routine prompt");
+  assert.ok(rules.includes("routine independent of wishes"), "routine translation has a neutral foundation");
   const unwished = buildRemapPrompt({ ...context, wishes: [] });
   assert.ok(
     !unwished[1].content.includes("What is privately on their mind"),

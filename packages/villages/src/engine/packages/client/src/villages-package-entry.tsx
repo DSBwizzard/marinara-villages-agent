@@ -1734,6 +1734,17 @@ type VillagePromptMessage = {
  * wording is to read it.
  */
 type VillagerAgendaView = {
+  effectiveDays?: Record<string, AgendaBlock[]>;
+  wishHistoryCount?: number;
+  wishAttempt?: {
+    stage: string;
+    reason: string;
+    calls: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    elapsedMs: number;
+    at: string;
+  };
   characterId: string;
   name: string;
   missing: boolean;
@@ -6447,7 +6458,7 @@ function drawVillagesStyled(node: VillagesStyledNode, at: string) {
  */
 function storyPaceSummary(pace: VillageStoryPace): string {
   if (pace === "off")
-    return "Time, schedules, wishes, and approved projects still advance. No optional stories are added.";
+    return "Automatic Events and new wishes are paused. Existing wishes can still be fulfilled or expire.";
   if (pace === "quiet") return "Usually one optional village story is written on an active day.";
   if (pace === "lively") return "Up to three optional village stories may be written on an active day.";
   return "Usually one to three optional village stories are written on an active day, averaging two.";
@@ -10619,7 +10630,7 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
 };
 
 const FORCE_VILLAGE_UPDATE_NOTICE =
-  "Testing action: runs normal time catch-up, then bypasses Story pace for one visual Events update. It can spend a model call, but its prose cannot change memories, wishes, notices, venues, or resident behavior.";
+  "Testing action: runs normal time catch-up, then bypasses Background events and wishes for one visual Events update. It can spend a model call, but its prose cannot change memories, wishes, notices, venues, or resident behavior.";
 
 const PROJECT_PHASES = [
   "concept",
@@ -11840,6 +11851,93 @@ function ProjectsPanelV2({
   );
 }
 
+type WishHistoryEntry = CompletedVillagerWish & {
+  sequence: number;
+  kind: "fulfilled" | "expired";
+  correctedAt?: string;
+};
+type WishHistoryPage = { entries: WishHistoryEntry[]; nextCursor: string | null; total: number };
+function WishHistory({
+  characterId,
+  total,
+  busy,
+  onCorrect,
+}: {
+  characterId: string;
+  total: number;
+  busy: boolean;
+  onCorrect: (characterId: string, wishId: string) => Promise<void>;
+}) {
+  const [page, setPage] = useState<WishHistoryPage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [failure, setFailure] = useState("");
+  const load = async (cursor?: string) => {
+    setLoading(true);
+    setFailure("");
+    try {
+      setPage(
+        await request<WishHistoryPage>(
+          `/agendas/${encodeURIComponent(characterId)}/history${cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`}`,
+        ),
+      );
+    } catch (error) {
+      setFailure(messageFrom(error, "Wish history could not be read."));
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <details
+      className={`${ELEMENT_TAG}-agenda-notes`}
+      onToggle={(event) => {
+        if (event.currentTarget.open && !page && !loading) void load();
+      }}
+    >
+      <summary>{`Wish history (${total})`}</summary>
+      {failure ? <p role="alert">{failure}</p> : null}
+      {loading ? <p>Loading wish history…</p> : null}
+      <ul className={`${ELEMENT_TAG}-story`}>
+        {page?.entries.map((entry) => (
+          <li key={entry.sequence} className={`${ELEMENT_TAG}-wish-card`}>
+            <p className={`${ELEMENT_TAG}-wish-text`}>{entry.wish.wish}</p>
+            <p
+              className={`${ELEMENT_TAG}-wish-meta`}
+            >{`${entry.correctedAt ? "Corrected" : entry.kind === "fulfilled" ? "Fulfilled" : "Expired"} ${new Date(entry.correctedAt || entry.fulfilledAt).toLocaleDateString()}`}</p>
+            {entry.kind === "fulfilled" && !entry.correctedAt ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={busy || loading}
+                onClick={() =>
+                  void (async () => {
+                    await onCorrect(characterId, entry.wish.id);
+                    await load();
+                  })()
+                }
+              >
+                Mark as not fulfilled
+              </button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <button type="button" className={`${ELEMENT_TAG}-button`} disabled={loading} onClick={() => void load()}>
+        Latest outcomes
+      </button>
+      {page?.nextCursor ? (
+        <button
+          type="button"
+          className={`${ELEMENT_TAG}-button`}
+          disabled={loading}
+          onClick={() => void load(page.nextCursor!)}
+        >
+          Older outcomes
+        </button>
+      ) : null}
+    </details>
+  );
+}
+
 export function VillagesView({ element }: { element: HTMLElement }) {
   const [mobile, setMobile] = useState(false);
   useLayoutEffect(() => {
@@ -12344,7 +12442,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   /**
-   * Ask for one creative village event right now, whatever Story pace says.
+   * Ask for one creative village event right now, whatever Background events and wishes says.
    *
    * This debug action spends at most one model call and bypasses the daily pace
    * gate. The event must still fit a fact-backed opportunity and pass the same
@@ -16644,12 +16742,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {snapshot ? (
               <div className={`${ELEMENT_TAG}-field`}>
                 <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-story-pace`}>
-                  Story pace
+                  Background events and wishes
                 </label>
                 <p className={`${ELEMENT_TAG}-empty`}>
-                  Village time follows your device clock. When Marinara reopens, the village reconstructs elapsed life
-                  from its last saved instant. Story pace controls the visual Events feed only; its prose does not
-                  affect narration or village state. Schedules and other rule-driven state always advance.
+                  Controls automatic Events, resident housing proposals from those events, and new wishes. Off pauses
+                  these. Time, schedules, approved moves, construction, and existing wish expiry continue. Visits and
+                  other generation features use their own controls. All enabled levels allow at most one new wish per
+                  resident per day and two active wishes; quiet days can have none.
                 </p>
                 <select
                   id={`${ELEMENT_TAG}-story-pace`}
@@ -18293,10 +18392,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         ) : villager.agenda.wishes.length === 0 ? (
                           <p className={`${ELEMENT_TAG}-empty`}>
                             {villager.agenda.personalizationFailure
-                              ? `Wish generation failed: ${villager.agenda.personalizationFailure}`
+                              ? `Routine personalization needs attention: ${villager.agenda.personalizationFailure}`
                               : villager.agenda.generatedAt
                                 ? "No current wishes."
-                                : "Wishes are still being worked out. Their provisional agenda is already available."}
+                                : "Their provisional routine is available. New wishes follow the daily allowance."}
                           </p>
                         ) : (
                           <ul className={`${ELEMENT_TAG}-story`}>
@@ -18323,28 +18422,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             ))}
                           </ul>
                         )}
-                        {villager.completedWishes.length > 0 ? (
-                          <details className={`${ELEMENT_TAG}-agenda-notes`}>
-                            <summary>{`Completed wishes (${villager.completedWishes.length})`}</summary>
-                            <ul className={`${ELEMENT_TAG}-story`}>
-                              {villager.completedWishes.map((entry) => (
-                                <li key={entry.wish.id} className={`${ELEMENT_TAG}-wish-card`}>
-                                  <p className={`${ELEMENT_TAG}-wish-text`}>{entry.wish.wish}</p>
-                                  <p
-                                    className={`${ELEMENT_TAG}-wish-meta`}
-                                  >{`Fulfilled ${new Date(entry.fulfilledAt).toLocaleDateString()}`}</p>
-                                  <button
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    disabled={busy}
-                                    onClick={() => void correctCompletedWish(villager.characterId, entry.wish.id)}
-                                  >
-                                    Mark as not fulfilled
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
+                        <WishHistory
+                          characterId={villager.characterId}
+                          total={villager.wishHistoryCount ?? 0}
+                          busy={busy}
+                          onCorrect={correctCompletedWish}
+                        />
+                        {villager.wishAttempt ? (
+                          <p
+                            className={`${ELEMENT_TAG}-hint`}
+                          >{`Wish update: ${villager.wishAttempt.stage} · ${villager.wishAttempt.reason} · ${villager.wishAttempt.calls} requests · input tokens ${villager.wishAttempt.inputTokens ?? "unavailable"} · output tokens ${villager.wishAttempt.outputTokens ?? "unavailable"}`}</p>
                         ) : null}
                         {/*
                           The Engine's own week and the village's translation of
@@ -18472,8 +18559,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           <div className={`${ELEMENT_TAG}-agenda-days`}>
                             {villager.days.map((day) => {
                               const blocks = day.isToday
-                                ? (villager.agenda?.activeDay?.blocks ?? villager.agenda?.week?.[day.weekday] ?? [])
-                                : ((villager.ingestSchedule
+                                ? (villager.effectiveDays?.[day.weekday] ??
+                                  villager.agenda?.activeDay?.blocks ??
+                                  villager.agenda?.week?.[day.weekday] ??
+                                  [])
+                                : (villager.effectiveDays?.[day.weekday] ??
+                                  (villager.ingestSchedule
                                     ? villager.agenda?.scheduleWeek?.[day.weekday]
                                     : undefined) ??
                                   villager.agenda?.week?.[day.weekday] ??

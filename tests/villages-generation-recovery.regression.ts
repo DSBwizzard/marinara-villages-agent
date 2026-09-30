@@ -44,7 +44,7 @@ const release = configureVillagesRuntime({
           const prompt = messages.map((message) => message.content).join("\n");
           calls.push({ maxTokens: options.maxTokens, prompt });
           if (mode === "short") {
-            if (prompt.includes("Write one small, private wish"))
+            if (prompt.includes("Describe a stable ordinary routine"))
               return {
                 content: JSON.stringify({
                   agenda: "An ordinary week",
@@ -55,7 +55,7 @@ const release = configureVillagesRuntime({
             return { content: "", finishReason: "length" };
           }
           if (mode === "complete") {
-            if (prompt.includes("privately wishes for"))
+            if (prompt.includes("Describe a stable ordinary routine"))
               return {
                 content: JSON.stringify({
                   agenda: "An ordinary week",
@@ -114,7 +114,7 @@ async function main() {
       routineSummary: "",
     };
     const recovered = await proposeAgenda(context);
-    assert.equal(recovered.wishes.length, 1, "a short wish request rescues an empty profile response");
+    assert.equal(recovered.wishes.length, 0, "routine recovery never replenishes wishes");
     assert.equal(recovered.personalizationPending, true);
     assert.match(recovered.personalizationFailure ?? "", /finish reason length; output limit 900 tokens/);
     assert.ok((recovered.week?.Monday?.length ?? 0) >= 15, "every failed day still has a rich fallback");
@@ -128,7 +128,7 @@ async function main() {
     maxOutputTokens = 8_192;
     const complete = await proposeAgenda(context);
     assert.equal(complete.personalizationPending, false);
-    assert.equal(complete.wishes[0]?.wish, "a quiet walk");
+    assert.equal(complete.wishes.length, 0, "routine generation cannot manufacture a wish");
     assert.equal(Object.keys(complete.week ?? {}).length, 7);
     assert.ok(Object.values(complete.week ?? {}).every((day) => day.length >= 15));
     const secondResident = await proposeAgenda({ ...context, name: "Gidget", summary: "Keeps the village bar" });

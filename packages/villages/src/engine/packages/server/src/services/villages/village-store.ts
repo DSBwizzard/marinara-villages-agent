@@ -1,5 +1,7 @@
 import { venueResidentIds } from "./venue-model.js";
 import { assertVenueOwnership } from "./venue-coordinator.js";
+import { coerceWishLifecycle, coerceWishActivities } from "./wish-coercion.js";
+import { pruneWishActivities, shortWishText, wishPolicy } from "./wish-policy.js";
 import {
   synchronizeVenueZones,
   legacyZoneId,
@@ -272,6 +274,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name),
     completedWishes: coerceCompletedWishes(raw.completedWishes),
+    wishLifecycle: coerceWishLifecycle(raw.wishLifecycle),
     ingestSchedule: raw.ingestSchedule !== false,
     // Read on the same terms as the agenda, and for the same reason — but null
     // here is a settled state rather than a pending one. A translation carries
@@ -437,6 +440,7 @@ function coerceWish(value: unknown): VillageWish | null {
   const wish = boundText(raw.wish, MAX_WISH_LENGTH);
   if (wish.length === 0) return null;
   const intensity = typeof raw.intensity === "number" && Number.isFinite(raw.intensity) ? Math.round(raw.intensity) : 2;
+  const need = asRecord(raw.need);
   return {
     id: asTrimmedString(raw.id) || randomVillageSeed(),
     wish,
@@ -447,6 +451,16 @@ function coerceWish(value: unknown): VillageWish | null {
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: asInstant(raw.addedAt),
     expiresAt: asInstant(raw.expiresAt),
+    ...(shortWishText(need.id)
+      ? {
+          need: {
+            id: shortWishText(need.id),
+            subject: shortWishText(need.subject, 80),
+            action: shortWishText(need.action, 80),
+            policy: wishPolicy(need.policy),
+          },
+        }
+      : {}),
   };
 }
 
@@ -491,6 +505,7 @@ function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: str
     }
   }
   const agenda: VillageAgenda = {
+    wishActivities: coerceWishActivities(raw.wishActivities),
     wishes,
     routineSummary: boundText(raw.routineSummary, MAX_ROUTINE_SUMMARY_LENGTH),
     day: Array.isArray(raw.day)
@@ -697,6 +712,7 @@ function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove 
       venueId: asTrimmedString(raw.venueId),
       ...(asTrimmedString(raw.zoneId) ? { zoneId: asTrimmedString(raw.zoneId) } : {}),
       wishId: asTrimmedString(raw.wishId),
+      ...(raw.flexible === true ? { flexible: true } : {}),
     },
   };
 }
@@ -2642,6 +2658,7 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
     const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
     mutate(state);
     for (const venue of state.venues) synchronizeVenueZones(venue, previousVenues.get(venue.id));
+    pruneWishActivities(state, new Date());
     if (state.foundedAt.length === 0) state.foundedAt = new Date().toISOString();
     if (state.seed.length === 0) state.seed = randomVillageSeed();
     next = state;
