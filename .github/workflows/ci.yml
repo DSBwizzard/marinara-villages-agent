@@ -97,3 +97,6 @@ jobs:
           npx playwright install --with-deps chromium
           node tests/villages-founding-layout.e2e.mjs
           node tests/villages-player-role.e2e.mjs
+
+      - name: Verify greeting recovery without paid retries
+        run: node tests/villages-greeting-recovery.e2e.mjs
