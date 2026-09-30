@@ -1,3 +1,4 @@
+import { STUDIO_CLEANUP_VERSION } from "./sprite-studio-matte.js";
 import { createHash, randomUUID } from "node:crypto";
 import { badRequest, notFound } from "./errors.js";
 import { villageEngineJson, villageEngineBaseUrl, deleteVillageSpriteFile } from "./engine-loopback.js";
@@ -379,6 +380,7 @@ function cellsFor(
       status: "candidate",
       pending: true,
       cleanup: true,
+      cleanupVersion: STUDIO_CLEANUP_VERSION,
     };
   });
 }
@@ -603,6 +605,7 @@ async function editStudioCellUnlocked(characterId: string, raw: unknown) {
       width: Number(patch.width),
       height: Number(patch.height),
       cleanup: patch.cleanup === true,
+      cleanupVersion: STUDIO_CLEANUP_VERSION,
       scale: Number(patch.scale),
       offsetX: Number(patch.offsetX),
       offsetY: Number(patch.offsetY),
@@ -611,10 +614,50 @@ async function editStudioCellUnlocked(characterId: string, raw: unknown) {
     // Adjustments create another saved option, keeping the prior artwork and cache.
     const changed = { ...next, id: adjustedCellId, pending: true, status: "candidate" as const };
     delete changed.rendered;
+    delete changed.repairedFrom;
     sheet.cells.push(changed);
   });
   return { ...(await readSpriteStudio(characterId)), adjustedCellId };
 }
+/** Repair clones are retryable; originals and active assignments survive any failed save. */
+export const repairStudioBackgrounds = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, async () => {
+    const { id } = await scope(characterId);
+    await ensureLibrary(characterId, id);
+    const batchId = asString(asRecord(raw).batchId);
+    const repairedCells: Array<{ originalId: string; cellId: string }> = [];
+    await mutate(id, (state) => {
+      const job = state.jobs.find((item) => item.id === batchId);
+      if (!job) throw notFound("That sprite batch no longer exists.");
+      if (job.status === "running") throw badRequest("Wait for this batch to finish before repairing backgrounds.");
+      for (const sheet of job.sheets)
+        for (const cell of [...sheet.cells]) {
+          if (cell.repairedFrom) continue;
+          let repaired = sheet.cells.find((item) => item.repairedFrom === cell.id);
+          if (!repaired) {
+            repaired = {
+              ...cell,
+              id: randomUUID(),
+              cleanup: true,
+              cleanupVersion: STUDIO_CLEANUP_VERSION,
+              repairedFrom: cell.id,
+              pending: true,
+              status: "candidate",
+            };
+            delete repaired.rendered;
+            sheet.cells.push(repaired);
+          }
+          repairedCells.push({ originalId: cell.id, cellId: repaired.id });
+        }
+      // Remember repaired choices for later batch swaps without changing scene images yet.
+      job.assignments = job.assignments?.map((entry) => ({
+        ...entry,
+        cellId: repairedCells.find((item) => item.originalId === entry.cellId)?.cellId ?? entry.cellId,
+      }));
+    });
+    return { ...(await readSpriteStudio(characterId)), repairedCells };
+  });
+
 export const approveStudioCells = (characterId: string, raw: unknown) => assignStudioCells(characterId, raw);
 export const assignStudioCells = (characterId: string, raw: unknown) =>
   serializeCells(characterId, () => assignStudioCellsUnlocked(characterId, raw));

@@ -17,6 +17,7 @@ import {
   startSpriteStudioJob,
   importStudioSheet,
   editStudioCell,
+  repairStudioBackgrounds,
   captureStudioReference,
   discardStudioCell,
   removeStudioApprovedSprite,
@@ -499,6 +500,49 @@ async function main() {
       "no character-card assets touched",
     );
 
+    // Batch repair retains originals, reuses clones on retry, and publishes active
+    // replacements only through the existing all-images-saved assignment path.
+    const beforeRepair = activeSprite();
+    const repairState = await readSpriteStudio("mara");
+    const repairJob = repairState.jobs.find((job) => job.id === a.job.id)!;
+    const originalCount = cellsOf(repairJob).length;
+    const repaired = await repairStudioBackgrounds("mara", { batchId: a.job.id });
+    assert.deepEqual(activeSprite(), beforeRepair, "preparing repair keeps existing active images");
+    assert.equal(repaired.repairedCells.length, originalCount);
+    const repairedJob = repaired.jobs.find((job) => job.id === a.job.id)!;
+    assert.equal(cellsOf(repairedJob).length, originalCount * 2);
+    for (const mapping of repaired.repairedCells) {
+      const cell = cellsOf(repairedJob).find((item) => item.id === mapping.cellId)!;
+      assert.equal(cell.cleanup, true);
+      assert.equal(cell.cleanupVersion, 2);
+      assert.equal(cell.rendered, undefined, "old rendered files cannot bypass new cleanup");
+      assert.ok(cellsOf(repairedJob).some((item) => item.id === mapping.originalId));
+    }
+    const retriedRepair = await repairStudioBackgrounds("mara", { batchId: a.job.id });
+    assert.deepEqual(retriedRepair.repairedCells, repaired.repairedCells, "retry reuses repair candidates");
+    const repairedAssignments = repaired.assignments.flatMap((entry) => {
+      const mapping = repaired.repairedCells.find((item) => item.originalId === entry.cellId);
+      const cell = cellsOf(repairedJob).find((item) => item.id === mapping?.cellId);
+      return cell ? [{ id: cell.id, expressionId: entry.expressionId, expected: cell, image: png }] : [];
+    });
+    assert.ok(repairedAssignments.length);
+    failSaveAt = savedWrites + 1;
+    await assert.rejects(
+      () => assignStudioCells("mara", { cells: repairedAssignments, batchId: a.job.id }),
+      /disk unavailable/,
+    );
+    assert.deepEqual(activeSprite(), beforeRepair, "failed repair save preserves all active assignments");
+    failSaveAt = 0;
+    await assignStudioCells("mara", { cells: repairedAssignments, batchId: a.job.id });
+    for (const entry of repairedAssignments)
+      assert.equal(
+        activeSprite().expressions.find(
+          (item: any) => item.expressionId === entry.expressionId && item.view === entry.expected.view,
+        ).cutoutId,
+        entry.id,
+      );
+    await assert.rejects(() => repairStudioBackgrounds("mara", { batchId: "missing" }), /no longer exists/);
+
     // Adjustments retain both the prior cutout and its current scene assignment.
     const beforeAdjust = activeSprite(),
       originalCell = cellsOf((await readSpriteStudio("mara")).jobs.find((job) => job.id === a.job.id)!)[0];
@@ -581,7 +625,8 @@ async function main() {
       batch: a.plan.batches[0]!,
     });
     assert.match(side, /OFF-CANVAS TO THE RIGHT/);
-    assert.match(side, /off-white/);
+    assert.match(side, /intentional character outlines/);
+    assert.doesNotMatch(side, /paper-cut|off-white/);
     console.log(
       "Sprite Studio regression passed: generation counts, optional neutral, migration, stable meanings, mixed batches, cached swaps, atomic failures, shared-file protection and cleanup retries.",
     );

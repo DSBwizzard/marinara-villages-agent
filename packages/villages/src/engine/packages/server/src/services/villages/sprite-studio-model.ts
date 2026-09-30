@@ -44,6 +44,8 @@ export type StudioCell = {
   offsetX: number;
   offsetY: number;
   cleanup?: boolean;
+  cleanupVersion?: number;
+  repairedFrom?: string;
   status: "candidate" | "approved" | "discarded";
 };
 export type StudioSheet = {
@@ -98,6 +100,7 @@ export type StudioState = {
 };
 export type StudioData = StudioState & {
   adjustedCellId?: string;
+  repairedCells?: Array<{ originalId: string; cellId: string }>;
   assignments: StudioAssignment[];
   defaultExpressionId?: string;
   reference: { url: string; capturedAt: string; origin: string } | null;
@@ -167,6 +170,6 @@ export function studioPrompt(input: {
       (item, i) =>
         `Cell ${i + 1}: ${item.label.replace(/_/g, " ")}. ${item.pose || (item.label === "neutral" ? "Relaxed neutral standing pose." : "Use a readable facial expression and fitting expressive body gesture.")}`,
     ),
-    "Transparent background with real alpha. If unavailable, use one flat saturated magenta background, with no checkerboard, gradient, or color spill. Any intentional off-white paper-cut silhouette border and internal paper-layer contact shadows are character artwork; retain them.",
+    "Transparent background with real alpha. If unavailable, use one flat saturated chroma background chosen to avoid the character’s colors, with no checkerboard, gradient, or color spill. Preserve intentional character outlines and internal shading in the chosen style.",
   ].join("\n\n");
 }
