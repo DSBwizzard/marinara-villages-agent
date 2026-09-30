@@ -22,7 +22,7 @@ If a server interruption or provider failure leaves a paid request's outcome unc
 
 ## Finite wishes
 
-0.6.85 separates wishes from ordinary routines. Founding can supply one initial wish, including none on a quiet day. Afterward each resident gets at most one generation attempt per local date and at least 24 elapsed hours apart, with two active wishes maximum. Fulfillment does not immediately replace a wish or rewrite the week. Missed days never accumulate a backlog. Repeatable needs have a seven-day fulfillment cooldown; lasting achievements stay settled.
+0.6.87 separates wishes from ordinary routines. Founding can supply one initial wish, including none on a quiet day. Afterward each resident gets at most one generation attempt per local date and at least 24 elapsed hours apart, with two active wishes maximum. Fulfillment does not immediately replace a wish or rewrite the week. Missed days never accumulate a backlog. Repeatable needs have a seven-day fulfillment cooldown; lasting achievements stay settled.
 
 Each daily attempt uses at most one generation request and one comparison request, with no automatic blank-output retry. One shortlist of at most twelve needs includes every active wish plus recent and locally relevant history. Retrieval can miss unusual paraphrases; it is not a guarantee of semantic uniqueness. Saved candidates and verdicts replay without regenerating them, and an interrupted request with an unknown outcome consumes its allowance. The DEBUG wishes view shows the latest attempt, request reservations, token usage when available, and a paginated outcome history. Provider-internal retries and billing remain outside the package's visibility.
 
