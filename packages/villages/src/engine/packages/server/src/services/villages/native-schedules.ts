@@ -256,7 +256,8 @@ function readCardSchedule(rawData: unknown): unknown {
  */
 async function readSnapshot(now: Date, characterIds?: readonly string[]): Promise<NativeScheduleSnapshot> {
   const key = characterIds ? [...new Set(characterIds)].sort().join("\0") : "*";
-  if (cache && cache.key === key && now.getTime() - cache.at < CACHE_TTL_MS) return cache.snapshot;
+  if (cache && cache.key === key && now.getTime() >= cache.at && now.getTime() - cache.at < CACHE_TTL_MS)
+    return cache.snapshot;
 
   const fromCards = new Map<string, RawSchedule>();
   let cardsReadable = false;

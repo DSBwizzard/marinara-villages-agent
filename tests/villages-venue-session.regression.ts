@@ -1,3 +1,4 @@
+import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
 import { requestProjectMailbox } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
@@ -202,6 +203,9 @@ const release = configureVillagesRuntime({
           const user = String(messages[1]?.content ?? "");
           if (system.startsWith("Identify explicit Project events"))
             return { content: JSON.stringify({ events: [] }), finishReason: "stop" };
+          // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
+          if (user.startsWith("What does ") && user.endsWith(" wish for?"))
+            return { content: "{}", finishReason: "stop" };
           if (user.startsWith("The player arrives outside this Residence"))
             return {
               content: JSON.stringify({
@@ -2940,6 +2944,7 @@ async function main() {
       state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1000).toISOString();
     });
     await respondDueVenueMail();
+    await settleBackgroundWork();
     mail = (await readVillageState()).venueMail.at(-1)!;
     assert.equal(mail.status, "approved");
     assert.equal(
@@ -2966,6 +2971,7 @@ async function main() {
       state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1_000).toISOString();
     });
     await respondDueVenueMail();
+    await settleBackgroundWork();
     const acceptedCounteroffer = await readVillageState();
     assert.equal(acceptedCounteroffer.venueMail.at(-1)?.status, "approved");
     assert.equal(
@@ -2984,6 +2990,7 @@ async function main() {
       state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1000).toISOString();
     });
     await respondDueVenueMail();
+    await settleBackgroundWork();
     assert.equal((await readVillageState()).venueMail.at(-1)!.status, "declined");
     assert.equal((await readVillageState()).venues[0]!.residenceCapacity, 1);
     await mutateVillageState((state) => {

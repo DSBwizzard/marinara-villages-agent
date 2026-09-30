@@ -256,7 +256,83 @@ type VillageRecap = {
   pendingDecisionCount: number;
 };
 
+type BackgroundWork = {
+  id: string;
+  kind: "story" | "agenda" | "translation" | "wish" | "mail" | "adaptation";
+  subjectId: string;
+  label: string;
+  status: "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
+  attempt: number;
+  completedSteps: number;
+  requests: number;
+  tokens: number | null;
+  error: string;
+  connectionPaused: boolean;
+};
+function BackgroundWorkPanel({
+  jobs,
+  onRetry,
+}: {
+  jobs: BackgroundWork[];
+  onRetry(job: BackgroundWork): Promise<void>;
+}) {
+  const [pending, setPending] = useState("");
+  const [problem, setProblem] = useState("");
+  const visible = jobs.filter((job) => job.status !== "obsolete");
+  if (!visible.length) return null;
+  return (
+    <details
+      className={ELEMENT_TAG + "-panel"}
+      open={visible.some((job) => ["failed", "interrupted"].includes(job.status))}
+    >
+      <summary>Background work: {visible.filter((job) => job.status !== "completed").length} pending</summary>
+      <p className={ELEMENT_TAG + "-hint"}>
+        Recurring updates run while Villages is visible. Requested work can finish while away.
+      </p>
+      {visible.map((job) => (
+        <div key={job.id} className={ELEMENT_TAG + "-notice-row"}>
+          <div className={ELEMENT_TAG + "-field"}>
+            <strong>{job.label}</strong>
+            <span>
+              {job.status}: {job.completedSteps} saved steps, {job.requests} requests,{" "}
+              {job.tokens === null ? "token usage unavailable" : job.tokens + " reported tokens"}
+            </span>
+            {job.error ? <p className={ELEMENT_TAG + "-status"}>{job.error}</p> : null}
+            {job.connectionPaused ? (
+              <p className={ELEMENT_TAG + "-status"}>
+                Automatic work on this connection is paused. A successful retry resumes it.
+              </p>
+            ) : null}
+            {["failed", "interrupted", "paused"].includes(job.status) ? (
+              <button
+                type="button"
+                className={ELEMENT_TAG + "-button"}
+                disabled={!!pending}
+                onClick={() => {
+                  setPending(job.id);
+                  setProblem("");
+                  void onRetry(job)
+                    .catch((cause) => setProblem(messageFrom(cause, "Could not retry background work.")))
+                    .finally(() => setPending(""));
+                }}
+              >
+                {pending === job.id ? "Queuing..." : job.status === "paused" ? "Run now" : "Retry unfinished work"}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ))}
+      {problem ? (
+        <p role="alert" className={ELEMENT_TAG + "-error"}>
+          {problem}
+        </p>
+      ) : null}
+    </details>
+  );
+}
+
 type VillageSnapshot = {
+  backgroundWork?: BackgroundWork[];
   status: string;
   village: {
     name: string;
@@ -12569,6 +12645,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * one caller that forces has to be able to say what actually happened rather
    * than assume it worked.
    */
+  const currentSnapshotRef = useRef(snapshot);
+  useEffect(() => {
+    currentSnapshotRef.current = snapshot;
+  }, [snapshot]);
+  const storyActionRef = useRef<{ id: string; expectedAttempt: number } | null>(null);
   const reconcile = useCallback(async (forceStory = false): Promise<VillageSnapshot | null> => {
     if (reconcilingRef.current) return null;
     reconcilingRef.current = true;
@@ -12576,9 +12657,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     try {
       const next = await request<VillageSnapshot>("/reconcile", {
         method: "POST",
-        body: forceStory ? JSON.stringify({ forceStory: true }) : undefined,
+        body: forceStory
+          ? JSON.stringify({
+              forceStory: true,
+              ...(storyActionRef.current ??= {
+                id: createVillagesClientId(),
+                expectedAttempt:
+                  currentSnapshotRef.current?.backgroundWork?.find((job) => job.kind === "story")?.attempt ?? 0,
+              }),
+              actionId: storyActionRef.current.id,
+            })
+          : undefined,
       });
       setSnapshot(next);
+      if (forceStory) storyActionRef.current = null;
       return next;
     } catch {
       // The village keeps whatever news it had and the tab keeps drawing it.
@@ -12616,9 +12708,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       return;
     }
     setWriteUpNote(
-      (next.happenings[0]?.id ?? "") === newest
-        ? "No new happening was added. Other village records may have changed during catch-up."
-        : "A new visual event was added. See Events.",
+      next.backgroundWork?.some((job) => job.kind === "story" && ["queued", "running", "paused"].includes(job.status))
+        ? "The event is queued. See Background work for progress."
+        : (next.happenings[0]?.id ?? "") === newest
+          ? "No new happening was added. Other village records may have changed during catch-up."
+          : "A new visual event was added. See Events.",
     );
   }, [snapshot, reconcile]);
 
@@ -12642,6 +12736,57 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setError(messageFrom(cause, "Could not read the village."));
     }
   }, []);
+
+  const presenceSession = useRef("");
+  useEffect(() => {
+    if (!snapshot?.isFounded) return;
+    presenceSession.current ||= createVillagesClientId();
+    let heartbeatSequence = 0;
+    const heartbeat = async () => {
+      const sequence = ++heartbeatSequence;
+      const visible = document.visibilityState === "visible" && element.checkVisibility({ checkVisibilityCSS: true });
+      try {
+        const presence = await request<{ snapshot?: VillageSnapshot }>("/background/presence", {
+          method: "POST",
+          body: JSON.stringify({ sessionId: presenceSession.current, visible }),
+        });
+        if (visible && sequence === heartbeatSequence) {
+          if (presence.snapshot) setSnapshot(presence.snapshot);
+          else {
+            await reconcile();
+            await loadSnapshot({ quiet: true });
+          }
+        }
+      } catch {
+        /* A lost heartbeat expires on the server. */
+      }
+    };
+    void heartbeat();
+    const timer = window.setInterval(() => void heartbeat(), 30_000);
+    const changed = () => void heartbeat();
+    document.addEventListener("visibilitychange", changed);
+    const observer = new IntersectionObserver(changed);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      heartbeatSequence++;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", changed);
+      void request("/background/presence", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: presenceSession.current, visible: false }),
+      }).catch(() => {});
+    };
+  }, [snapshot?.isFounded, reconcile, loadSnapshot, element]);
+  const backgroundPending =
+    snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false;
+  useEffect(() => {
+    if (!backgroundPending) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadSnapshot({ quiet: true });
+    }, 5_000);
+    return () => clearInterval(timer);
+  }, [backgroundPending, loadSnapshot]);
 
   /*
     Reconcile whenever the server's next meaningful transition changes.
@@ -12787,20 +12932,70 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * the whole list and that answer is what gets drawn, so a row can never be left
    * showing something the village has already forgotten.
    */
-  const rewriteAgenda = useCallback(async (characterId: string) => {
-    setBusy(true);
-    try {
-      const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/regenerate`, {
+  const backgroundRetryActions = useRef(new Map<string, { id: string; attempt: number }>());
+  const retryWork = useCallback(
+    async (job: BackgroundWork) => {
+      let action = backgroundRetryActions.current.get(job.id);
+      if (!action) {
+        action = { id: createVillagesClientId(), attempt: job.attempt };
+        backgroundRetryActions.current.set(job.id, action);
+      }
+      const next = await request<VillageSnapshot>("/background/retry", {
         method: "POST",
+        body: JSON.stringify({ id: job.id, expectedAttempt: action.attempt, actionId: action.id }),
       });
-      setAgendas(response.villagers);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That villager could not be asked again."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+      setSnapshot(next);
+      backgroundRetryActions.current.delete(job.id);
+      await loadAgendas();
+    },
+    [loadAgendas],
+  );
+  const backgroundPanel = (
+    <BackgroundWorkPanel
+      jobs={(snapshot?.backgroundWork ?? []).filter((job) =>
+        menuPage === "agendas"
+          ? ["agenda", "wish"].includes(job.kind)
+          : menuPage === "schedules"
+            ? ["agenda", "translation"].includes(job.kind)
+            : menuPage === "venueRequests"
+              ? ["mail", "adaptation"].includes(job.kind)
+              : true,
+      )}
+      onRetry={retryWork}
+    />
+  );
+  const agendaActions = useRef(new Map<string, string>());
+  const rewriteAgenda = useCallback(
+    async (characterId: string) => {
+      setBusy(true);
+      try {
+        const job = currentSnapshotRef.current?.backgroundWork?.find(
+          (entry) =>
+            entry.kind === "agenda" &&
+            entry.subjectId === characterId &&
+            ["failed", "interrupted", "paused"].includes(entry.status),
+        );
+        if (job) {
+          await retryWork(job);
+          return;
+        }
+        const actionId = agendaActions.current.get(characterId) ?? createVillagesClientId();
+        agendaActions.current.set(characterId, actionId);
+        const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/regenerate`, {
+          method: "POST",
+          body: JSON.stringify({ actionId }),
+        });
+        agendaActions.current.delete(characterId);
+        setAgendas(response.villagers);
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "That villager could not be asked again."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [retryWork],
+  );
 
   const correctCompletedWish = useCallback(async (characterId: string, wishId: string) => {
     setBusy(true);
@@ -16420,7 +16615,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   <details className={ELEMENT_TAG + "-venue-more"}>
                     <summary>Area details</summary>
                     {zoneDescription ? <p>{zoneDescription}</p> : null}
-                    {selectedZone.adaptationPending ? <p>This room is still being adapted after a move.</p> : null}
+                    {selectedZone.adaptationPending ? (
+                      <>
+                        <p>This room is still being adapted after a move.</p>
+                        <BackgroundWorkPanel
+                          jobs={(snapshot?.backgroundWork ?? []).filter((job) => job.kind === "adaptation")}
+                          onRetry={retryWork}
+                        />
+                      </>
+                    ) : null}
                     {selectedZone.state?.condition ? <p>Condition: {selectedZone.state.condition}</p> : null}
                     {selectedZone.state?.items.length ? (
                       <p>Present items: {selectedZone.state.items.join(", ")}</p>
@@ -17075,6 +17278,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content ${ELEMENT_TAG}-menu-welcome`}
             role="main"
           >
+            {backgroundPanel}
             <span className={`${ELEMENT_TAG}-venue-kicker`}>Village menu</span>
             <h2>Choose where to go</h2>
             <p>Manage the people and places in your village, adjust settings, or inspect its DEBUG records.</p>
@@ -17096,6 +17300,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </section>
         ) : menuPage === "general" ? (
           <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
+            {backgroundPanel}
             <h2 className={`${ELEMENT_TAG}-panel-title`}>General settings</h2>
 
             {/* Drawn before the village is founded as well as after, because
@@ -17286,6 +17491,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </button>
             </section>
 
+            {backgroundPanel}
             {snapshot ? (
               <section className={`${ELEMENT_TAG}-panel`}>
                 <h2 className={`${ELEMENT_TAG}-panel-title`}>Village settings</h2>
@@ -17863,6 +18069,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           // reads the village afresh, so a panel is never stale by the time it
           // is opened.
           <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
+            {backgroundPanel}
             {menuSection === "debug" ? (
               <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-debug-action`}>
                 <button

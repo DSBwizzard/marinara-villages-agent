@@ -401,6 +401,8 @@ export type VillageRemapFailure = {
 /** One library card the village has adopted. */
 export type VillageVillager = {
   wishLifecycle?: import("./wish-types.js").WishLifecycle;
+  agendaGeneration?: string;
+  translationGeneration?: string;
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
   cardSnapshot: VillageVillagerCardSnapshot;
@@ -1207,6 +1209,8 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  backgroundReceipts: Record<string, string>;
+  wishRefillIntents: Record<string, { id: string; settled: string }>;
   version: 2;
   /** 0 keeps the established Project path; 1 enables the evidence-backed path at founding. */
   progressEngineVersion: 0 | 1;
@@ -1830,6 +1834,7 @@ export type VillageMomentView = {
 };
 
 export type VillageSnapshot = {
+  backgroundWork: import("./background-work.js").BackgroundSummary[];
   status: "ready";
   progressEngineVersion: 0 | 1;
   foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;

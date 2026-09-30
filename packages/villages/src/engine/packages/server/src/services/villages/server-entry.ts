@@ -3,6 +3,7 @@
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { villagesRoutes } from "../../routes/villages.routes.js";
+import { startBackgroundWork } from "./background-work.js";
 import { configureVillagesRuntime } from "./package-runtime.js";
 import { startVillageRefreshScheduler } from "./village-refresh-scheduler.js";
 import { readVillageState } from "./village-store.js";
@@ -32,6 +33,7 @@ export async function activate({ api }: ActivationContext) {
     cleanups.push(await api.registerPrivilegedRoutes(villagesRoutes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.
+    cleanups.push(startBackgroundWork());
     cleanups.push(startVillageRefreshScheduler());
     cleanups.push(startProgressRecovery());
     const { startPrivateSpacePreparation } = await import("./private-space-preparation.js");

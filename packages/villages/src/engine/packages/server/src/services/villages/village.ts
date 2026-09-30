@@ -10,6 +10,13 @@ import {
   reserveInitialWishAllowance,
 } from "./wish-lifecycle.js";
 import {
+  backgroundRevision,
+  backgroundWorkSummaries,
+  queueBackgroundJob,
+  registerBackgroundHandler,
+  retireBackgroundResident,
+} from "./background-work.js";
+import {
   venueZones,
   resolveVenueZone,
   legacyZoneId,
@@ -44,7 +51,7 @@ import {
 } from "./agenda-week.js";
 import { readVillageConnectionSettings, validateVillageSetupConnections } from "./connections.js";
 import { villagesConnectionIdFor } from "./connections.js";
-import { badRequest, conflict, notFound, statusCodeOf } from "./errors.js";
+import { badRequest, conflict, notFound } from "./errors.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
   MAX_LORE_TOKEN_BUDGET,
@@ -61,7 +68,6 @@ import { inspectVillageImage } from "./image-generation.js";
 import {
   buildRemapPrompt,
   dayPlan,
-  describeRemap,
   lookupRemap,
   MAX_REMAP_ATTEMPTS,
   proposeRemap,
@@ -79,12 +85,7 @@ import {
   type NativeRoutine,
   type NativeWeekSchedule,
 } from "./native-schedules.js";
-import {
-  completeWithRoom,
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-} from "./package-runtime.js";
+import { completeWithRoom, villagesLanguageModels, villagesLogger } from "./package-runtime.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import { seedFoundingVenueDetails } from "./founding-drafts.js";
 import { reconcileBuildProjects } from "./build-projects.js";
@@ -710,6 +711,7 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
     isFounded: isVillageFounded(village),
     settings: villageSettings(village, player, residenceAccess),
     recap: null,
+    backgroundWork: await backgroundWorkSummaries(),
   };
 }
 
@@ -777,94 +779,115 @@ export async function readVillagePersonaPreview(personaId: string): Promise<Vill
  * the village's life. An empty agenda is the honest answer and it terminates;
  * moving the card back and pressing "write it again" is the way out.
  */
-async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda | null> {
-  let village = await readVillageState();
-  let villager = village.villagers.find((entry) => entry.characterId === characterId);
-  if (!villager) return null;
+function agendaRevision(village: VillageState, characterId: string): string {
+  const resident = village.villagers.find((entry) => entry.characterId === characterId);
+  return backgroundRevision([
+    villageCurrentSetting(village),
+    village.selectedLorebookIds,
+    village.loreTokenBudget,
+    village.venues.map((venue) => [
+      venue.id,
+      venue.name,
+      venue.form,
+      venue.occupancy.residentCharacterId,
+      venue.residentIds,
+      venue.workerIds,
+      venue.zones?.map((zone) => [zone.id, zone.name, zone.kind, zone.ownerId]),
+    ]),
+    resident?.agendaGeneration,
+    resident?.addedAt,
+    resident && [
+      resident.cardSnapshot.capturedAt,
+      resident.cardSnapshot.revision,
+      resident.cardSnapshot.name,
+      resident.cardSnapshot.summary,
+      resident.cardSnapshot.tags,
+      resident.cardSnapshot.personality,
+      resident.cardSnapshot.description,
+    ],
+    resident?.completedWishes.map((entry) => entry.wish.id),
+    resident?.agenda?.wishes.map((entry) => entry.id),
+  ]);
+}
 
+async function queueVillagerAgenda(characterId: string, finite = true): Promise<void> {
+  const village = await readVillageState();
+  const villager = village.villagers.find((entry) => entry.characterId === characterId);
+  if (!villager) return;
   const effectiveCard = await readEffectiveVillagerCard(villager);
   if (!effectiveCard) {
-    const empty: VillageAgenda = {
+    await storeAgenda(characterId, {
       wishes: [],
       routineSummary: "",
       day: villageAgendaDay(null, remapVenues(village.venues), villager.cardSnapshot.name),
       source: "village",
       generatedAt: new Date().toISOString(),
-    };
-    await storeAgenda(characterId, empty);
-    return empty;
+    });
+    return;
   }
-
-  // The Engine's own weekly summary when it has one, so the wishes are written
-  // against the life the character already lives rather than a life the village
-  // invents beside it. `proposeAgenda` keeps this sentence in preference to its
-  // own and marks the agenda `native`, which is the precedence the package
-  // states everywhere else: the Engine is the authority on a character's time.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const agendaSetting =
-        village.foundingPreparation?.status === "pending"
-          ? villageFoundingSetting(village)
-          : villageCurrentSetting(village);
-      const agenda = await proposeAgenda({
-        village: village.name,
-        setting: agendaSetting,
-        home: (() => {
-          const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
-          return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
-        })(),
-        completedWishes: [],
-        activeWishes: villager.agenda?.wishes ?? [],
-        lore: await readVillageLore(
-          village.selectedLorebookIds,
-          [
-            agendaSetting,
-            effectiveCard.name,
-            effectiveCard.summary,
-            effectiveCard.personality,
-            effectiveCard.description,
-            ...remapVenues(village.venues).map((venue) => venue.name),
-          ].join("\n"),
-          undefined,
-          village.loreTokenBudget,
-        ),
-        // The SENDABLE places: a wish is about something somebody does out in the
-        // village, and "they would like to spend more time at home" is not a wish a
-        // house can be named for. The houses are left out for the same reason the
-        // translation leaves them out — see `remapVenues`.
-        venues: remapVenues(village.venues),
-        name: effectiveCard.name,
-        summary: effectiveCard.summary,
-        tags: effectiveCard.tags,
-        personality: effectiveCard.personality,
-        description: effectiveCard.description,
-        routineSummary: "",
-      });
-      await storeAgenda(characterId, agenda);
-      return agenda;
-    } catch (error) {
-      if (statusCodeOf(error) === 409 && attempt < 2) {
-        village = await readVillageState();
-        villager = village.villagers.find((entry) => entry.characterId === characterId);
-        if (!villager) return null;
-        continue;
-      }
-      await mutateVillageState((state) => {
-        const resident = state.villagers.find((entry) => entry.characterId === characterId);
-        if (resident?.agenda) {
-          resident.agenda.personalizationPending = true;
-          resident.agenda.personalizationFailure = boundText(
-            error instanceof Error ? error.message : String(error),
-            300,
-          );
-          resident.agenda.personalizationAttemptDate = agendaDateKey(new Date());
-        }
-      });
-      throw error;
-    }
-  }
-  return null;
+  const agendaSetting =
+    village.foundingPreparation?.status === "pending"
+      ? villageFoundingSetting(village)
+      : villageCurrentSetting(village);
+  const context = {
+    village: village.name,
+    setting: agendaSetting,
+    home: (() => {
+      const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
+      return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
+    })(),
+    completedWishes: [],
+    activeWishes: villager.agenda?.wishes ?? [],
+    lore: await readVillageLore(
+      village.selectedLorebookIds,
+      [
+        agendaSetting,
+        effectiveCard.name,
+        effectiveCard.summary,
+        effectiveCard.personality,
+        effectiveCard.description,
+        ...remapVenues(village.venues).map((venue) => venue.name),
+      ].join("\n"),
+      undefined,
+      village.loreTokenBudget,
+    ),
+    // The SENDABLE places: a wish is about something somebody does out in the
+    // village, and "they would like to spend more time at home" is not a wish a
+    // house can be named for. The houses are left out for the same reason the
+    // translation leaves them out — see `remapVenues`.
+    venues: remapVenues(village.venues),
+    name: effectiveCard.name,
+    summary: effectiveCard.summary,
+    tags: effectiveCard.tags,
+    personality: effectiveCard.personality,
+    description: effectiveCard.description,
+    routineSummary: "",
+  };
+  await queueBackgroundJob({
+    kind: "agenda",
+    subjectId: characterId,
+    seed: village.seed,
+    revision: agendaRevision(village, characterId),
+    finite,
+    label: villager.cardSnapshot.name + "'s agenda",
+    legacyError: villager.agenda?.personalizationFailure,
+    input: {
+      characterId,
+      revision: agendaRevision(village, characterId),
+      context,
+      completedIds: villager.completedWishes.map((entry) => entry.wish.id),
+      activeIds: villager.agenda?.wishes.map((entry) => entry.id) ?? [],
+    },
+  });
 }
+registerBackgroundHandler("agenda", {
+  generate: (input) => proposeAgenda(input.context),
+  valid: (state, input) =>
+    state.villagers.some((resident) => resident.characterId === input.characterId) &&
+    agendaRevision(state, input.characterId) === input.revision,
+  apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda),
+  afterApply: (input, finite) => translateVillagerWeek(input.characterId, finite),
+});
 
 /**
  * Put one agenda on one villager's record.
@@ -876,79 +899,53 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
  * exists, and there is no error a player could act on.
  */
 async function storeAgenda(characterId: string, agenda: VillageAgenda, initialWishAttemptId?: string): Promise<void> {
-  await mutateVillageState((state) => {
-    const villager = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!villager) return;
-    const previous = villager.agenda;
-    const now = new Date();
-    const initialAttempt = villager.wishLifecycle?.attempt;
-    const acceptsInitialWish =
-      !initialAttempt ||
-      (initialAttempt.id === initialWishAttemptId &&
-        initialAttempt.dateKey === agendaDateKey(now) &&
-        !initialAttempt.candidate);
-    const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-    const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
-    villager.agenda = {
-      ...agenda,
-      // Initial preparation alone may add a wish. A routine result cannot resurrect stale wishes.
-      wishes: [...(previous?.wishes ?? []), ...(acceptsInitialWish ? agenda.wishes : [])]
-        .filter((wish) => !villager.completedWishes.some((entry) => entry.wish.id === wish.id))
-        .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
-        .slice(0, previous?.wishes.length ? Math.max(previous.wishes.length, 2) : acceptsInitialWish ? 1 : 0),
-      wishActivities: previous?.wishActivities ?? [],
-      activeDay: {
-        dateKey: agendaDateKey(now),
-        weekday,
-        blocks:
-          previous?.activeDay?.dateKey === agendaDateKey(now)
-            ? replaceRemainingAgendaDay(previous.activeDay.blocks, nextDay, now.getHours() * 60 + now.getMinutes())
-            : nextDay,
-        scheduleInformed: false,
-      },
-      personalizationAttemptDate: agendaDateKey(now),
-    };
-    registerInitialWish(villager, now);
-    if (initialAttempt && initialAttempt.id === initialWishAttemptId) {
-      initialAttempt.candidate = villager.agenda.wishes[0];
-      initialAttempt.reason = initialAttempt.candidate
-        ? "Initial wish granted during preparation."
-        : "No initial wish today.";
-    }
-    assertVillagePresence(state);
-  });
+  await mutateVillageState((state) => applyAgenda(state, characterId, agenda, initialWishAttemptId));
 }
-
-const agendaWork = new Set<string>();
-
-/** Persist the pending state before starting work; a later tick can resume it after a process exit. */
-async function queueVillagerAgenda(characterId: string): Promise<void> {
-  if (agendaWork.has(characterId)) return;
-  await mutateVillageState((state) => {
-    const agenda = state.villagers.find((entry) => entry.characterId === characterId)?.agenda;
-    if (agenda) {
-      agenda.personalizationPending = true;
-      agenda.personalizationFailure = "";
-    }
-  });
-  agendaWork.add(characterId);
-  queueMicrotask(() =>
-    outsideVenueOperation(() => {
-      void (async () => {
-        try {
-          await writeVillagerAgenda(characterId);
-        } catch (error) {
-          villagesLogger().warn("[villages] could not work out %s's agenda: %s", characterId, String(error));
-        } finally {
-          try {
-            await translateVillagerWeek(characterId);
-          } finally {
-            agendaWork.delete(characterId);
-          }
-        }
-      })();
-    }),
-  );
+function applyAgenda(
+  state: VillageState,
+  characterId: string,
+  agenda: VillageAgenda,
+  initialWishAttemptId?: string,
+): void {
+  const villager = state.villagers.find((entry) => entry.characterId === characterId);
+  if (!villager) return;
+  const previous = villager.agenda;
+  const now = new Date();
+  const initialAttempt = villager.wishLifecycle?.attempt;
+  const acceptsInitialWish =
+    !initialAttempt ||
+    (initialAttempt.id === initialWishAttemptId &&
+      initialAttempt.dateKey === agendaDateKey(now) &&
+      !initialAttempt.candidate);
+  const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
+  const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
+  villager.agenda = {
+    ...agenda,
+    // Initial preparation alone may add a wish. A routine result cannot resurrect stale wishes.
+    wishes: [...(previous?.wishes ?? []), ...(acceptsInitialWish ? agenda.wishes : [])]
+      .filter((wish) => !villager.completedWishes.some((entry) => entry.wish.id === wish.id))
+      .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
+      .slice(0, previous?.wishes.length ? Math.max(previous.wishes.length, 2) : acceptsInitialWish ? 1 : 0),
+    wishActivities: previous?.wishActivities ?? [],
+    activeDay: {
+      dateKey: agendaDateKey(now),
+      weekday,
+      blocks:
+        previous?.activeDay?.dateKey === agendaDateKey(now)
+          ? replaceRemainingAgendaDay(previous.activeDay.blocks, nextDay, now.getHours() * 60 + now.getMinutes())
+          : nextDay,
+      scheduleInformed: false,
+    },
+    personalizationAttemptDate: agendaDateKey(now),
+  };
+  registerInitialWish(villager, now);
+  if (initialAttempt && initialAttempt.id === initialWishAttemptId) {
+    initialAttempt.candidate = villager.agenda.wishes[0];
+    initialAttempt.reason = initialAttempt.candidate
+      ? "Initial wish granted during preparation."
+      : "No initial wish today.";
+  }
+  assertVillagePresence(state);
 }
 
 function activateVillagerDay(villager: VillageVillager, now: Date): void {
@@ -975,31 +972,12 @@ export async function rollActiveAgendas(now: Date, known?: VillageState): Promis
   return true;
 }
 
-/**
- * Write an agenda for every villager who has not got one, and answer with the
- * village as it now stands.
- *
- * Called from the tick, on the same part of the day the village writes its news,
- * so a "write it again" press or an upgrade from a version without agendas
- * settles itself without a button of its own. It is deliberately ALL of them
- * rather than one per part of day: a village whose people have no wishes is a
- * village whose news cannot come from them yet, and spreading the catch-up over
- * two real days would spread the interesting part of this feature over two real
- * days with it.
- *
- * It stops at the first refusal rather than working through the rest. A failure
- * here is nearly always the model being unreachable, and a model that just
- * refused the first villager is not going to answer for the next nine — walking
- * the whole roster would turn one connection problem into sixty failed calls
- * every time the day turned over.
- */
+/** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */
 async function backfillAgendas(village: VillageState, now: Date): Promise<VillageState> {
   const missing = village.villagers.filter(
     (villager) =>
       villager.agenda === null ||
-      ((villager.agenda.generatedAt === "" ||
-        villager.agenda.personalizationPending === true ||
-        VILLAGE_WEEKDAYS.some((day) => (villager.agenda?.week?.[day]?.length ?? 0) <= 5)) &&
+      ((villager.agenda.generatedAt === "" || villager.agenda.personalizationPending === true) &&
         (!villager.agenda.personalizationFailure || villager.agenda.personalizationAttemptDate !== agendaDateKey(now))),
   );
   if (missing.length === 0) return village;
@@ -1010,7 +988,7 @@ async function backfillAgendas(village: VillageState, now: Date): Promise<Villag
     }
   });
   for (const villager of missing) {
-    await queueVillagerAgenda(villager.characterId);
+    await queueVillagerAgenda(villager.characterId, Boolean(villager.agendaGeneration));
   }
   return readVillageState();
 }
@@ -1175,6 +1153,7 @@ async function writeVillagerRemap(
   characterId: string,
   village: VillageState,
   schedule: NativeWeekSchedule,
+  finite = false,
 ): Promise<VillageRemap | null> {
   const card = await readEffectiveVillagerCard(village.villagers.find((entry) => entry.characterId === characterId)!);
   const wishes = wishesFor(village, characterId);
@@ -1191,30 +1170,54 @@ async function writeVillagerRemap(
     return empty;
   }
   const context = await remapContextFor(village, card, schedule, wishes);
-  // The count is about the QUESTION, not about this call: an attempt at a new
-  // signature starts again at one, because what the retry budget protects against
-  // is asking the same thing forever, not asking about a village that has changed.
-  const previous = village.villagers.find((entry) => entry.characterId === characterId)?.remap ?? null;
   const signature = remapSignature(context);
-  const attempts = previous && previous.signature === signature ? previous.attempts + 1 : 1;
-  const { remap, failure } = await proposeRemap(context, { attempts });
-  remap.foundingLens = remapSignatureFor(village, characterId, "founding", [], wishes);
-  await storeRemap(characterId, remap, schedule);
-  if (failure) {
-    await mutateVillageState((state) => {
-      const resident = state.villagers.find((entry) => entry.characterId === characterId);
-      if (resident) resident.remapFailure = { at: new Date().toISOString(), message: remapFailureText(failure) };
-    });
-  }
-  villagesLogger().debugOverride(
-    villagesDebugAgentsEnabled(),
-    "[villages] %s's translated week (%s): %s",
-    card.name,
-    remap.weekStart,
-    describeRemap(remap),
-  );
-  return remap;
+  const resident = village.villagers.find((entry) => entry.characterId === characterId)!;
+  await queueBackgroundJob({
+    kind: "translation",
+    subjectId: characterId,
+    seed: village.seed,
+    revision: remapSignature({ ...context, weekStart: "pattern" }) + (resident.translationGeneration ?? ""),
+    finite,
+    label: card.name + "'s schedule translation",
+    legacyError: resident.remapFailure?.message,
+    input: {
+      characterId,
+      context,
+      signature,
+      schedule,
+      capturedAt: resident.cardSnapshot.capturedAt,
+      generation: resident.translationGeneration ?? "",
+      foundingLens: remapSignatureFor(village, characterId, "founding", [], wishes),
+    },
+  });
+  return null;
 }
+registerBackgroundHandler("translation", {
+  async generate(input) {
+    const { remap, failure } = await proposeRemap(input.context, { attempts: 1 });
+    if (failure) throw new Error(failure);
+    remap.foundingLens = input.foundingLens;
+    return remap;
+  },
+  valid: (state, input) =>
+    state.villagers.some(
+      (resident) =>
+        resident.characterId === input.characterId &&
+        resident.cardSnapshot.capturedAt === input.capturedAt &&
+        (resident.translationGeneration ?? "") === input.generation &&
+        resident.ingestSchedule !== false &&
+        !resident.agenda?.personalizationPending,
+    ) &&
+    input.signature ===
+      remapSignatureFor(
+        state,
+        input.characterId,
+        input.schedule.weekStart,
+        remapBlocks(input.schedule),
+        wishesFor(state, input.characterId),
+      ),
+  apply: (state, input, remap) => applyRemap(state, input.characterId, remap, input.schedule),
+});
 
 /**
  * Put one translation on one villager's record.
@@ -1230,23 +1233,24 @@ async function writeVillagerRemap(
  * and the old refusal — a villager reading as translated and refused at once.
  */
 async function storeRemap(characterId: string, remap: VillageRemap, schedule: NativeWeekSchedule): Promise<void> {
-  await mutateVillageState((state) => {
-    const villager = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!villager) return;
-    if (
-      remap.signature !==
-      remapSignatureFor(state, characterId, schedule.weekStart, remapBlocks(schedule), wishesFor(state, characterId))
-    )
-      return;
-    villager.remap = remap;
-    villager.remapFailure = null;
-    if (villager.agenda) {
-      const base = villager.agenda.week ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name);
-      villager.agenda.scheduleWeek = scheduleInformedWeek(base, schedule, remap);
-      assertVillagePresence(state);
-      if (villager.ingestSchedule !== false) updateTodayFromWeek(villager, new Date());
-    }
-  });
+  await mutateVillageState((state) => applyRemap(state, characterId, remap, schedule));
+}
+function applyRemap(state: VillageState, characterId: string, remap: VillageRemap, schedule: NativeWeekSchedule): void {
+  const villager = state.villagers.find((entry) => entry.characterId === characterId);
+  if (!villager) return;
+  if (
+    remap.signature !==
+    remapSignatureFor(state, characterId, schedule.weekStart, remapBlocks(schedule), wishesFor(state, characterId))
+  )
+    return;
+  villager.remap = remap;
+  villager.remapFailure = null;
+  if (villager.agenda) {
+    const base = villager.agenda.week ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name);
+    villager.agenda.scheduleWeek = scheduleInformedWeek(base, schedule, remap);
+    assertVillagePresence(state);
+    if (villager.ingestSchedule !== false) updateTodayFromWeek(villager, new Date());
+  }
 }
 
 /**
@@ -1303,68 +1307,11 @@ function updateTodayFromWeek(villager: VillageVillager, now: Date): void {
   };
 }
 
-/**
- * How many translations one pass will lose before it stops asking anybody else.
- *
- * The bound on a village-wide walk that can now survive a refusal — see
- * `refreshVillagerRemaps` for what the walk did before 0.4.61 and what that cost.
- * Two, because that is the smallest number that can tell the two kinds of failure
- * apart: a SAVE now writes down WHY each villager was refused, and one refusal
- * read on its own cannot be told from a connection that is down and will refuse
- * the next villager too. At two, the second refusal stops the pass and the two
- * records on the roster say whether the reason was the same one twice.
- *
- * Everything the walk skipped is picked up on the next part of the day, because
- * the gate it asks again through is the same list comparison it has always been:
- * skipping a villager costs them hours, not their translation.
- */
+/** Bound discovery writes when storage is unavailable; no paid calls happen in this pass. */
 const REMAP_REFUSALS_PER_PASS = 2;
 
-/**
- * Translate the week of every villager whose translation no longer matches the
- * question, and answer with nothing.
- *
- * It reads the week ONCE for the whole village rather than once per villager,
- * because a translation needs the whole week and the village was already paying
- * for a listing apiece. It also checks BEFORE it calls anything — the ordinary
- * case, once the village has caught up, is that every villager's translation
- * matches and the whole function is a map lookup and a string comparison per
- * person, which is why it can afford to run on every part of every day.
- *
- * `only` narrows the walk to one villager and exists for the move-in path: a
- * villager who has just arrived owes a translation immediately, and the rule
- * about WHICH villagers owe one must not be written a second time somewhere else.
- * The loop is a filter over one person in that case, so nothing about the
- * failure behaviour changes.
- *
- * A REFUSAL COSTS THE VILLAGER WHO WAS REFUSED AND NOBODY ELSE. Until 0.4.61 this
- * walked out of the whole loop at the first failure, on the reasoning that a
- * failure here is nearly always the model being unreachable and a model that just
- * refused one villager will not answer for the next fifty-nine. The second half of
- * that is true and the first half is not: the failures that actually happen are
- * per-villager — one week the model cannot finish, one answer nothing can parse —
- * and the villagers behind it in the roster were never asked at all. The roster
- * order is the order people moved in, so what that looked like in practice was the
- * first scheduled villager in a village silently blocking every translation for
- * every villager who arrived after them, forever, because a failed write leaves
- * the same null that asks for another try.
- *
- * `REMAP_REFUSALS_PER_PASS` is what keeps the unreachable-model case cheap: the
- * walk gives up after that many refusals in one pass, so a connection that is down
- * costs two calls and not one per resident, and the whole thing is a listing
- * again on the next part of the day. Two rather than one because a SAVE now
- * distinguishes "this villager's week is impossible" from "nothing is answering",
- * and one refusal is not enough to tell those apart.
- *
- * The failure is written onto the villager's own record, because this is the only
- * place that knows it: see `storeRemapFailure`.
- *
- * It returns nothing rather than the state, unlike `backfillAgendas`, because
- * nothing downstream reads a translation off the state it is handed — the tick
- * reads the translations later, off a second read, deliberately after this has
- * finished writing them.
- */
-async function refreshVillagerRemaps(village: VillageState, now: Date, only?: string): Promise<void> {
+/** Discover current translation inputs once per roster; provider failures are blocked by the coordinator. */
+async function refreshVillagerRemaps(village: VillageState, now: Date, only?: string, finite = false): Promise<void> {
   const weeks = await readNativeWeekSchedules(
     now,
     village.villagers.map((villager) => villager.characterId),
@@ -1372,6 +1319,7 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
   let refusals = 0;
   for (const villager of village.villagers) {
     if (only !== undefined && villager.characterId !== only) continue;
+    if (!villager.agenda?.generatedAt || villager.agenda.personalizationPending) continue;
     const schedule = weeks.get(villager.characterId);
     // No schedule is not a failure and not a thing to write: there is no week to
     // translate, and the village's own routine stands.
@@ -1429,7 +1377,12 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
       continue;
     }
     try {
-      await writeVillagerRemap(villager.characterId, village, schedule);
+      await writeVillagerRemap(
+        villager.characterId,
+        village,
+        schedule,
+        finite || Boolean(villager.translationGeneration && !villager.remap),
+      );
     } catch (error) {
       refusals += 1;
       await storeRemapFailure(villager.characterId, remapFailureText(error), schedule);
@@ -1443,12 +1396,12 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
   }
 }
 
-/** Translate a new resident's routine after the move-in response; the tick retries failures. */
-async function translateVillagerWeek(characterId: string): Promise<void> {
+/** Queue the translation after its agenda applies, preserving whether this was finite player work. */
+async function translateVillagerWeek(characterId: string, finite = true): Promise<void> {
   try {
     const village = await readVillageState();
     if (!village.villagers.some((villager) => villager.characterId === characterId)) return;
-    await refreshVillagerRemaps(village, new Date(), characterId);
+    await refreshVillagerRemaps(village, new Date(), characterId, finite);
   } catch (error) {
     villagesLogger().warn("[villages] could not translate %s's week for this village: %s", characterId, String(error));
   }
@@ -1494,6 +1447,7 @@ export async function addVillager(characterId: string): Promise<void> {
       // what lets the tab tell those two apart.
       state.villagers.push({
         characterId,
+        agendaGeneration: "arrival-" + addedAt,
         cardSnapshot: {
           id: card.id,
           revision: 1,
@@ -1664,6 +1618,7 @@ export async function removeVillager(characterId: string): Promise<void> {
       venue.workerIds = venue.workerIds?.filter((id) => id !== characterId);
       for (const zone of venue.zones ?? []) zone.controllerIds = zone.controllerIds?.filter((id) => id !== characterId);
     }
+    retireBackgroundResident(state, characterId);
   });
   if (!removed) throw notFound("That villager does not live here.");
 }
@@ -3092,6 +3047,7 @@ export async function completeVillageResidence(
   characterValue: unknown,
   force = false,
   now = new Date(),
+  queueAdaptation = true,
 ): Promise<VillageSnapshot> {
   const characterId = residenceCharacterId(characterValue);
   let moved = false;
@@ -3151,7 +3107,7 @@ export async function completeVillageResidence(
     keepAgendaPlaces(state);
     moved = true;
   });
-  if (moved) {
+  if (moved && queueAdaptation) {
     await retryResidencePrivateSpaceAdaptation(characterId);
     outsideVenueOperation(() => {
       void preparePrivateSpaces().catch(() => {});
@@ -3160,6 +3116,18 @@ export async function completeVillageResidence(
   return buildVillageSnapshot(now);
 }
 
+function adaptationRevision(venue: VillageVenue, characterId: string): string {
+  const room = venue.privateSpaces?.find((space) => space.ownerId === characterId);
+  return backgroundRevision([
+    venue.id,
+    venue.name,
+    venue.form,
+    room?.description,
+    room?.state.items,
+    room?.state.features,
+    room?.adaptationSourceArchiveAt,
+  ]);
+}
 /** One bounded System call moves only portable personal details from the archived room. */
 export async function retryResidencePrivateSpaceAdaptation(characterValue: unknown): Promise<VillageSnapshot> {
   const characterId = residenceCharacterId(characterValue);
@@ -3171,14 +3139,35 @@ export async function retryResidencePrivateSpaceAdaptation(characterValue: unkno
     .flatMap((venue) => venue.archivedPrivateSpaces ?? [])
     .find((entry) => entry.ownerId === characterId && entry.archivedAt === room.adaptationSourceArchiveAt);
   if (!archive) return buildVillageSnapshot();
-  try {
-    const card = village.villagers.find((person) => person.characterId === characterId)?.cardSnapshot;
-    const lore = await readVillageLore(
-      village.selectedLorebookIds,
-      [village.setting, destination.form, card?.name, card?.personality].filter(Boolean).join("\n"),
-      undefined,
-      village.loreTokenBudget,
-    );
+  const card = village.villagers.find((person) => person.characterId === characterId)?.cardSnapshot;
+  const lore = await readVillageLore(
+    village.selectedLorebookIds,
+    [village.setting, destination.form, card?.name, card?.personality].filter(Boolean).join("\n"),
+    undefined,
+    village.loreTokenBudget,
+  );
+  await queueBackgroundJob({
+    kind: "adaptation",
+    subjectId: characterId,
+    seed: village.seed,
+    revision: adaptationRevision(destination, characterId),
+    finite: true,
+    label: "Adapt " + destination.name + "'s private room",
+    input: {
+      characterId,
+      destination,
+      archive,
+      card,
+      lore,
+      roomRevision: adaptationRevision(destination, characterId),
+      capturedAt: village.villagers.find((resident) => resident.characterId === characterId)?.cardSnapshot.capturedAt,
+    },
+  });
+  return buildVillageSnapshot();
+}
+registerBackgroundHandler("adaptation", {
+  async generate(input) {
+    const { characterId, destination, archive, card, lore } = input;
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
@@ -3215,21 +3204,38 @@ export async function retryResidencePrivateSpaceAdaptation(characterValue: unkno
     const items = archive.space.state.items.filter((item) => selectedItems.includes(item));
     const featureIds = Array.isArray(answer?.featureIds) ? answer.featureIds : [];
     const features = archive.space.state.features.filter((feature) => featureIds.includes(feature.id));
-    await mutateVillageState((state) => {
-      const currentVenue = state.venues.find((venue) => venue.id === destination.id);
-      const current = currentVenue?.privateSpaces?.find((space) => space.ownerId === characterId);
-      if (!current?.adaptationPending || current.adaptationSourceArchiveAt !== archive.archivedAt) return;
-      current.description = description;
-      current.state.items = items;
-      current.state.features = features;
-      current.state.updatedAt = new Date().toISOString();
-      current.adaptationPending = false;
-    });
-  } catch (error) {
-    villagesLogger().warn("[villages] private space adaptation remains retryable: %s", String(error));
-  }
-  return buildVillageSnapshot();
-}
+
+    return { description, items, features };
+  },
+  valid: (state, input) =>
+    state.villagers.some(
+      (resident) => resident.characterId === input.characterId && resident.cardSnapshot.capturedAt === input.capturedAt,
+    ) &&
+    state.venues
+      .find(
+        (venue) =>
+          venue.id === input.destination.id && adaptationRevision(venue, input.characterId) === input.roomRevision,
+      )
+      ?.privateSpaces?.some(
+        (space) =>
+          space.ownerId === input.characterId &&
+          space.adaptationPending &&
+          space.adaptationSourceArchiveAt === input.archive.archivedAt,
+      ) === true,
+  apply(state, input, result) {
+    const { characterId, destination, archive } = input;
+    const { description, items, features } = result;
+
+    const currentVenue = state.venues.find((venue) => venue.id === destination.id);
+    const current = currentVenue?.privateSpaces?.find((space) => space.ownerId === characterId);
+    if (!current?.adaptationPending || current.adaptationSourceArchiveAt !== archive.archivedAt) return;
+    current.description = description;
+    current.state.items = items;
+    current.state.features = features;
+    current.state.updatedAt = new Date().toISOString();
+    current.adaptationPending = false;
+  },
+});
 
 // ── Places: the village's one list ───────────────────────────────────────────
 // A place is somewhere the player or a villager can BE, whether that is a shop
@@ -4465,7 +4471,9 @@ function buildReturnRecap(
  * Required local state is committed before optional narration is requested, so
  * an unavailable model can never stop time, schedules, wishes or migrations.
  */
-export async function reconcileVillage(options: { forceStory?: boolean; now?: Date } = {}): Promise<VillageSnapshot> {
+export async function reconcileVillage(
+  options: { forceStory?: boolean; now?: Date; actionId?: string; expectedAttempt?: number } = {},
+): Promise<VillageSnapshot> {
   const forced = options.forceStory === true;
   const now = options.now ?? new Date();
   let recorded = await readVillageState();
@@ -4475,7 +4483,7 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
   for (const residence of recorded.residences) {
     if (residence.status !== "moving" || Date.parse(residence.completesAt ?? "") > now.getTime()) continue;
     try {
-      await completeVillageResidence(residence.characterId, false, now);
+      await completeVillageResidence(residence.characterId, false, now, false);
       completedMove = true;
     } catch (error) {
       villagesLogger().warn("[villages] pending move could not complete: %s", String(error));
@@ -4486,7 +4494,6 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
     reconcileBuildProjects(state, now);
     reconcileProjectLifecycles(state, now);
   });
-  await respondDueVenueMail(now);
   recorded = await readVillageState();
   const moment = deriveVillageMoment({ foundedAt: recorded.foundedAt, seed: recorded.seed, now });
   const previousThrough = recorded.simulatedThrough || recorded.foundedAt || moment.instant;
@@ -4497,12 +4504,17 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
   // These are deterministic reconciliation rules. They run for both the live
   // timer and restart catch-up, irrespective of story pace.
   await mutateVillageState((state) => {
-    for (const resident of state.villagers) expireResidentWishes(resident, now);
+    for (const resident of state.villagers) {
+      const expired = resident.agenda?.wishes.filter((wish) => Date.parse(wish.expiresAt) <= now.getTime()) ?? [];
+      if (expired.length)
+        state.wishRefillIntents[resident.characterId] = {
+          id: backgroundRevision(expired.map((wish) => wish.id)),
+          settled: expired.map((wish) => wish.wish).join("; "),
+        };
+      expireResidentWishes(resident, now);
+    }
   });
-  const withAgendas = await backfillAgendas(await readVillageState(), now);
-  await refreshVillagerRemaps(withAgendas, now);
   await rollActiveAgendas(now);
-  await reconcileWishLifecycle(now);
   await mutateVillageState((state) => {
     const storedMs = Date.parse(state.simulatedThrough);
     if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
@@ -4561,6 +4573,15 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
     if (discoveries.length) state.chronicle = [...discoveries, ...state.chronicle];
   });
 
+  // Discover optional paid work only after deterministic advancement has committed.
+  await respondDueVenueMail(now);
+  const pendingRooms = (await readVillageState()).venues.flatMap(
+    (venue) => venue.privateSpaces?.filter((room) => room.adaptationPending).map((room) => room.ownerId) ?? [],
+  );
+  for (const characterId of new Set(pendingRooms)) await retryResidencePrivateSpaceAdaptation(characterId);
+  const withAgendas = await backfillAgendas(await readVillageState(), now);
+  await refreshVillagerRemaps(withAgendas, now);
+  await reconcileWishLifecycle(now);
   const village = await readVillageState();
   const dateKey = localDateKey(now);
   const shouldCreateStory = forced || (village.storyPace !== "off" && village.lastCreativeDate !== dateKey);
@@ -4676,163 +4697,192 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
     lastSimulatedAt: previousThrough,
     forced,
   };
-  try {
-    const proposal = await proposeHappenings(context);
-    await mutateVillageState((state) => {
-      if (!forced && (state.storyPace === "off" || state.lastCreativeDate === dateKey)) return;
-      const allowance = forced ? 3 : storyAllowance(state.storyPace, state.seed, dateKey);
-      const opportunityId = opportunity.id;
-      if (state.processedOpportunityIds.includes(opportunityId)) return;
-      const happenings = proposal.happenings.slice(0, allowance);
-      state.happenings = [...happenings, ...state.happenings].slice(0, MAX_HAPPENINGS);
-      for (const request of proposal.housingRequests) {
-        if (!opportunity.actorIds.includes(request.characterId)) continue;
-        const resident = state.villagers.find((entry) => entry.characterId === request.characterId);
-        const venue = state.venues.find((entry) => entry.id === request.venueId);
-        if (!resident || !venue) continue;
-        if (
-          state.residences.some((entry) => entry.characterId === request.characterId && entry.status !== "current") ||
-          state.pendingDecisions.some(
-            (entry) =>
-              entry.kind === "venue-upgrade" &&
-              entry.requesterCharacterId === request.characterId &&
-              entry.status === "pending",
-          )
-        )
-          continue;
-        if (request.kind === "move") {
-          if (venue.occupancy.playerHome || venue.occupancy.residentCharacterId) continue;
-          if (
-            state.residences.some(
-              (entry) =>
-                entry.proposedVenueId === venue.id && (entry.status === "pending" || entry.status === "moving"),
-            )
-          )
-            continue;
-          const currentVenueId =
-            state.venues.find((entry) => entry.occupancy.residentCharacterId === request.characterId)?.id ?? "";
-          const next: VillageResidence = {
-            venueId: currentVenueId,
-            characterId: request.characterId,
-            status: "pending",
-            proposedVenueId: venue.id,
-            requestedAt: now.toISOString(),
-            requestedBy: "villager",
-            villagerDecision: "pending",
-          };
-          const index = state.residences.findIndex((entry) => entry.characterId === request.characterId);
-          if (index < 0) state.residences.push(next);
-          else state.residences[index] = next;
-        }
-      }
-      // The prose Events feed may still update its panel, but must not write
-      // memories, notices, venue requests/features, or wish state. Structured
-      // Events will replace this boundary; old saved prose remains visual only.
-      if (LEGACY_EVENTS_CAN_AFFECT_VILLAGE) {
-        // The chronicle is trimmed by weight rather than from the tail. Ordinary
-        // material is still forgotten oldest-first — nothing here is evicted until
-        // the record is genuinely full, which is many real days of play away — but
-        // what the player DID for somebody is kept ahead of it, because the record
-        // of a favour is not the same kind of thing as the record of a Tuesday.
-        if (proposal.memory.length > 0) {
-          state.chronicle = [...proposal.memory, ...state.chronicle];
-        }
-        // Notices are only ever added while there is room. Trimming the oldest to
-        // make space would take the player's own pins off the board before the
-        // village's, and the player cannot tell which was which once it is gone.
-        const room = Math.max(0, MAX_NOTICEBOARD_NOTES - state.noticeboard.length);
-        state.noticeboard = [...state.noticeboard, ...proposal.notices.slice(0, room)];
-        for (const request of proposal.venueRequests) {
-          queueVillageVenueRequest(
-            state,
-            request.core,
-            request.characterId,
-            "background",
-            opportunityId,
-            moment.instant,
-          );
-        }
-        for (const edit of proposal.featureEdits) {
-          const venue = state.venues.find((place) => place.id === edit.venueId);
-          const resident = state.villagers.find((person) => person.characterId === edit.characterId);
-          if (
-            !venue ||
-            !resident ||
-            opportunity.venueId !== venue.id ||
-            !opportunity.actorIds.includes(resident.characterId)
-          )
-            continue;
-          if (
-            venue.occupancy.residentCharacterId !== resident.characterId &&
-            !venue.workerIds?.includes(resident.characterId)
-          )
-            continue;
-          if (villagerPlaceView(state, resident, null, moment.minuteOfDay, now)?.id !== venue.id) continue;
-          const features = venue.state.features ?? [];
-          const prior = features.find((feature) => feature.id === edit.featureId);
-          if (edit.featureId) {
-            if (!prior || prior.locked) continue;
-            venue.state.features = edit.text
-              ? features.map((feature) =>
-                  feature.id === prior.id
-                    ? {
-                        ...feature,
-                        text: edit.text,
-                        sourceCharacterId: resident.characterId,
-                        updatedAt: moment.instant,
-                      }
-                    : feature,
-                )
-              : features.filter((feature) => feature.id !== prior.id);
-          } else if (edit.text && features.length < 5) {
-            venue.state.features = [
-              ...features,
-              {
-                id: randomVillageSeed(),
-                text: edit.text,
-                sourceCharacterId: resident.characterId,
-                locked: false,
-                updatedAt: moment.instant,
-              },
-            ];
-          } else continue;
-          venue.state.updatedAt = moment.instant;
-        }
-        // A wish the village has just decided the world will not allow goes here
-        // rather than in the proposal pass, because this is the only place that
-        // holds the whole reply and writes it in one go: a wish taken off the list
-        // by a pass that then failed to write its news would leave a villager
-        // without something the village never agreed to take.
-        //
-        // Nothing is written ABOUT it. A wish is the villager's own, and the day it
-        // becomes impossible is not the village's news — it is the absence of a
-        // small ordinary thing in brackets, which is how a wish is supposed to be
-        // visible in the first place.
-        //
-        // Taken off by ID, not by the words, even though the words are what the
-        // model wrote: the words were the handle it used to point at the list it
-        // was shown, and this is the village's own copy of that wish. A villager
-        // who has meanwhile answered it, or had it taken off by age, is a villager
-        // with nothing to take.
-        for (const lapse of proposal.lapsed) {
-          const entry = state.villagers.find((villager) => villager.characterId === lapse.characterId);
-          if (!entry?.agenda) continue;
-          const kept = entry.agenda.wishes.filter((wish) => wish.id !== lapse.wishId);
-          if (kept.length !== entry.agenda.wishes.length) entry.agenda = { ...entry.agenda, wishes: kept };
-        }
-      }
-      state.lastCreativeDate = dateKey;
-      if (!state.processedOpportunityIds.includes(opportunityId)) {
-        state.processedOpportunityIds = [...state.processedOpportunityIds, opportunityId].slice(-256);
-      }
-    });
-  } catch (error) {
-    villagesLogger().warn("[villages] could not write down what has been happening: %s", String(error));
-  }
+  await queueBackgroundJob({
+    kind: "story",
+    subjectId: "village",
+    seed: village.seed,
+    revision: forced ? "manual:" + (options.actionId ?? opportunity.id) : dateKey,
+    finite: forced,
+    label: forced ? "Requested village event" : "Today's village story",
+    automaticDate: forced ? undefined : dateKey,
+    expectedAttempt: forced ? options.expectedAttempt : undefined,
+    input: {
+      context,
+      forced,
+      dateKey,
+      opportunity,
+      moment,
+      now: now.toISOString(),
+      actorIncarnations: Object.fromEntries(
+        opportunity.actorIds.map((id) => [
+          id,
+          village.villagers.find((resident) => resident.characterId === id)?.cardSnapshot.capturedAt,
+        ]),
+      ),
+    },
+  });
   const reconciled = await readVillageState();
   const snapshot = await buildVillageSnapshot(now);
   return { ...snapshot, recap: buildReturnRecap(reconciled, previousThrough, moment.instant, elapsedMs) };
 }
+
+registerBackgroundHandler("story", {
+  generate: (input) => proposeHappenings(input.context),
+  valid: (state, input) =>
+    input.opportunity.actorIds.every((id: string) =>
+      state.villagers.some(
+        (resident) => resident.characterId === id && resident.cardSnapshot.capturedAt === input.actorIncarnations[id],
+      ),
+    ) &&
+    (!input.opportunity.venueId || state.venues.some((venue) => venue.id === input.opportunity.venueId)) &&
+    (input.forced ||
+      (state.storyPace !== "off" &&
+        state.lastCreativeDate !== input.dateKey &&
+        localDateKey(new Date(state.simulatedThrough)) <= input.dateKey)),
+  apply(state, input, proposal) {
+    const { forced, dateKey, opportunity, moment } = input;
+    const now = new Date(input.now);
+
+    if (!forced && (state.storyPace === "off" || state.lastCreativeDate === dateKey)) return;
+    const allowance = forced ? 3 : storyAllowance(state.storyPace, state.seed, dateKey);
+    const opportunityId = opportunity.id;
+    if (state.processedOpportunityIds.includes(opportunityId)) return;
+    const happenings = proposal.happenings.slice(0, allowance);
+    state.happenings = [...happenings, ...state.happenings].slice(0, MAX_HAPPENINGS);
+    for (const request of proposal.housingRequests) {
+      if (!opportunity.actorIds.includes(request.characterId)) continue;
+      const resident = state.villagers.find((entry) => entry.characterId === request.characterId);
+      const venue = state.venues.find((entry) => entry.id === request.venueId);
+      if (!resident || !venue) continue;
+      if (
+        state.residences.some((entry) => entry.characterId === request.characterId && entry.status !== "current") ||
+        state.pendingDecisions.some(
+          (entry) =>
+            entry.kind === "venue-upgrade" &&
+            entry.requesterCharacterId === request.characterId &&
+            entry.status === "pending",
+        )
+      )
+        continue;
+      if (request.kind === "move") {
+        if (venue.occupancy.playerHome || venue.occupancy.residentCharacterId) continue;
+        if (
+          state.residences.some(
+            (entry) => entry.proposedVenueId === venue.id && (entry.status === "pending" || entry.status === "moving"),
+          )
+        )
+          continue;
+        const currentVenueId =
+          state.venues.find((entry) => entry.occupancy.residentCharacterId === request.characterId)?.id ?? "";
+        const next: VillageResidence = {
+          venueId: currentVenueId,
+          characterId: request.characterId,
+          status: "pending",
+          proposedVenueId: venue.id,
+          requestedAt: now.toISOString(),
+          requestedBy: "villager",
+          villagerDecision: "pending",
+        };
+        const index = state.residences.findIndex((entry) => entry.characterId === request.characterId);
+        if (index < 0) state.residences.push(next);
+        else state.residences[index] = next;
+      }
+    }
+    // The prose Events feed may still update its panel, but must not write
+    // memories, notices, venue requests/features, or wish state. Structured
+    // Events will replace this boundary; old saved prose remains visual only.
+    if (LEGACY_EVENTS_CAN_AFFECT_VILLAGE) {
+      // The chronicle is trimmed by weight rather than from the tail. Ordinary
+      // material is still forgotten oldest-first — nothing here is evicted until
+      // the record is genuinely full, which is many real days of play away — but
+      // what the player DID for somebody is kept ahead of it, because the record
+      // of a favour is not the same kind of thing as the record of a Tuesday.
+      if (proposal.memory.length > 0) {
+        state.chronicle = [...proposal.memory, ...state.chronicle];
+      }
+      // Notices are only ever added while there is room. Trimming the oldest to
+      // make space would take the player's own pins off the board before the
+      // village's, and the player cannot tell which was which once it is gone.
+      const room = Math.max(0, MAX_NOTICEBOARD_NOTES - state.noticeboard.length);
+      state.noticeboard = [...state.noticeboard, ...proposal.notices.slice(0, room)];
+      for (const request of proposal.venueRequests) {
+        queueVillageVenueRequest(state, request.core, request.characterId, "background", opportunityId, moment.instant);
+      }
+      for (const edit of proposal.featureEdits) {
+        const venue = state.venues.find((place) => place.id === edit.venueId);
+        const resident = state.villagers.find((person) => person.characterId === edit.characterId);
+        if (
+          !venue ||
+          !resident ||
+          opportunity.venueId !== venue.id ||
+          !opportunity.actorIds.includes(resident.characterId)
+        )
+          continue;
+        if (
+          venue.occupancy.residentCharacterId !== resident.characterId &&
+          !venue.workerIds?.includes(resident.characterId)
+        )
+          continue;
+        if (villagerPlaceView(state, resident, null, moment.minuteOfDay, now)?.id !== venue.id) continue;
+        const features = venue.state.features ?? [];
+        const prior = features.find((feature) => feature.id === edit.featureId);
+        if (edit.featureId) {
+          if (!prior || prior.locked) continue;
+          venue.state.features = edit.text
+            ? features.map((feature) =>
+                feature.id === prior.id
+                  ? {
+                      ...feature,
+                      text: edit.text,
+                      sourceCharacterId: resident.characterId,
+                      updatedAt: moment.instant,
+                    }
+                  : feature,
+              )
+            : features.filter((feature) => feature.id !== prior.id);
+        } else if (edit.text && features.length < 5) {
+          venue.state.features = [
+            ...features,
+            {
+              id: randomVillageSeed(),
+              text: edit.text,
+              sourceCharacterId: resident.characterId,
+              locked: false,
+              updatedAt: moment.instant,
+            },
+          ];
+        } else continue;
+        venue.state.updatedAt = moment.instant;
+      }
+      // A wish the village has just decided the world will not allow goes here
+      // rather than in the proposal pass, because this is the only place that
+      // holds the whole reply and writes it in one go: a wish taken off the list
+      // by a pass that then failed to write its news would leave a villager
+      // without something the village never agreed to take.
+      //
+      // Nothing is written ABOUT it. A wish is the villager's own, and the day it
+      // becomes impossible is not the village's news — it is the absence of a
+      // small ordinary thing in brackets, which is how a wish is supposed to be
+      // visible in the first place.
+      //
+      // Taken off by ID, not by the words, even though the words are what the
+      // model wrote: the words were the handle it used to point at the list it
+      // was shown, and this is the village's own copy of that wish. A villager
+      // who has meanwhile answered it, or had it taken off by age, is a villager
+      // with nothing to take.
+      for (const lapse of proposal.lapsed) {
+        const entry = state.villagers.find((villager) => villager.characterId === lapse.characterId);
+        if (!entry?.agenda) continue;
+        const kept = entry.agenda.wishes.filter((wish) => wish.id !== lapse.wishId);
+        if (kept.length !== entry.agenda.wishes.length) entry.agenda = { ...entry.agenda, wishes: kept };
+      }
+    }
+    state.lastCreativeDate = dateKey;
+    if (!state.processedOpportunityIds.includes(opportunityId)) {
+      state.processedOpportunityIds = [...state.processedOpportunityIds, opportunityId].slice(-256);
+    }
+  },
+});
 
 /**
  * Write down what the rest of the village saw of something the player just did.
@@ -5111,7 +5161,7 @@ export async function buildVillageAgendas(): Promise<VillageAgendaView[]> {
         weekUnreadable: !read.cardsReadable,
         addedAt: villager.addedAt,
         agenda: villager.agenda,
-        completedWishes: villager.completedWishes,
+        completedWishes: [],
         effectiveDays: villager.agenda
           ? Object.fromEntries(
               Array.from({ length: 7 }, (_, offset) => {
@@ -5220,12 +5270,21 @@ function villageDayViews(
   return days;
 }
 
-/** Queue explicit routine personalization while retaining wishes and their daily allowance. */
-export async function clearVillagerAgenda(characterId: string): Promise<void> {
+/** Record a deliberate agenda revision before queuing it; repeated action IDs reuse the intent. */
+export async function clearVillagerAgenda(characterId: string, actionId = randomVillageSeed()): Promise<void> {
   const village = await readVillageState();
-  if (!village.villagers.some((entry) => entry.characterId === characterId)) {
-    throw notFound("That villager does not live here.");
-  }
+  const resident = village.villagers.find((entry) => entry.characterId === characterId);
+  if (!resident) throw notFound("That villager does not live here.");
+  if (resident.agendaGeneration === actionId) return;
+  await mutateVillageState((state) => {
+    const entry = state.villagers.find((entry) => entry.characterId === characterId);
+    if (!entry || entry.agendaGeneration === actionId) return;
+    entry.agendaGeneration = actionId;
+    if (entry.agenda) {
+      entry.agenda.personalizationPending = true;
+      entry.agenda.personalizationFailure = "";
+    }
+  });
   await queueVillagerAgenda(characterId);
 }
 
@@ -5269,9 +5328,11 @@ export async function clearVillagerRemap(characterId: string): Promise<void> {
   if (!village.villagers.some((entry) => entry.characterId === characterId)) {
     throw notFound("That villager does not live here.");
   }
+  const generation = randomVillageSeed();
   await mutateVillageState((state) => {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
+    villager.translationGeneration = generation;
     villager.remap = null;
     villager.remapFailure = null;
   });

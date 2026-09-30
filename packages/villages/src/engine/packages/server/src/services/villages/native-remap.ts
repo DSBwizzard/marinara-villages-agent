@@ -1,3 +1,4 @@
+import { backgroundCalls, backgroundSetting, requireBackgroundSuccess } from "./background-context.js";
 import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — translate the Engine's week into this village's own terms.
 //
@@ -915,8 +916,10 @@ export async function proposeRemap(
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),
   });
-  const debugEnabled = villagesDebugAgentsEnabled();
-  const batchSize = Math.min(10, Math.max(2, Math.floor((model.maxOutputTokens ?? 5_000) / 350)));
+  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
+  const batchSize = await backgroundSetting("translationBatchSize", () =>
+    Math.min(10, Math.max(2, Math.floor((model.maxOutputTokens ?? 5_000) / 350))),
+  );
   const moves: VillageRemapMove[] = [];
   let routine = "";
   let failure: string | null = null;
@@ -936,9 +939,15 @@ export async function proposeRemap(
       if (!payload)
         throw new Error(completionFailure("Schedule translation", completion, fitted.maxTokens ?? requestedMaxTokens));
       const part = coerceRemap(payload, batch, new Date().toISOString(), options.attempts);
+      if (backgroundCalls.getStore()) {
+        const answered = new Set(part.moves.map((move) => remapBlockKey(move.day, move.time)));
+        if (remapBlockKeys(batch.blocks).some((key) => !answered.has(key)))
+          throw new Error("Schedule translation omitted a requested block.");
+      }
       moves.push(...part.moves);
       routine ||= part.routine;
     } catch (error) {
+      requireBackgroundSuccess(error);
       failure ??= error instanceof Error ? error.message : String(error);
     }
   }

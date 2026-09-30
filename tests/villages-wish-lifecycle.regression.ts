@@ -1,3 +1,10 @@
+import {
+  startBackgroundWork,
+  settleBackgroundWork,
+  villageBackgroundPresence,
+  backgroundWorkSummaries,
+  retryBackgroundJob,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
 import {
@@ -91,8 +98,12 @@ function freshWish(
     now.toISOString(),
   )!;
 }
+let stopBackground: (() => void) | undefined;
 function seed(count = 1): VillageState {
+  stopBackground?.();
   docs.clear();
+  stopBackground = startBackgroundWork();
+  void villageBackgroundPresence("wish-tests", true);
   modelCalls = [];
   pageFailure = false;
   conflictOnce = false;
@@ -163,7 +174,9 @@ const release = configureVillagesRuntime({
       async getById(_packageId: string, id: string) {
         return structuredClone(docs.get(id) ?? null);
       },
-      async list() {
+      async list(_packageId: string, kind: string) {
+        if (kind === "background-work" || kind === "background-connection")
+          return [...docs.values()].filter((entry) => entry.kind === kind).map((entry) => structuredClone(entry));
         listCalls++;
         throw new Error("Unpaginated history reads are forbidden");
       },
@@ -369,7 +382,7 @@ async function run() {
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
     assert.equal(modelCalls.length, 0);
-    assert.match((await readVillageState()).villagers[0]!.wishLifecycle!.attempt!.reason, /unknown/);
+    assert.match((await backgroundWorkSummaries()).find((entry) => entry.kind === "wish")!.error, /unknown/);
     seed();
     job = (await reserveWishAttempts(now))[0]!;
     await mutateVillageState((live) => {
@@ -704,6 +717,7 @@ async function run() {
       "villages-wish-lifecycle: daily supply, restart budgets, bounded history, archive, correction, overlays, and Off: ok",
     );
   } finally {
+    stopBackground?.();
     release();
   }
 }
