@@ -405,7 +405,9 @@ try {
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Exit Change Proposal" }).click();
     await page.getByRole("button", { name: "Visit this area →" }).click();
-    assert.equal(lastEntry?.entryArea, "public", "zone visit enters the selected interior");
+    await expect
+      .poll(() => lastEntry?.entryArea, { message: "zone visit enters the selected interior" })
+      .toBe("public");
     assert.equal(lastEntry?.spaceClass, mobile ? "other" : "workplace");
     const composer = page.getByRole("textbox", { name: mobile ? "Message at The Market" : "Message at The Mill" });
     const dock = page.locator(".marinara-capability-villages-chat-vn");
@@ -413,7 +415,10 @@ try {
     const cast = page.locator(".marinara-capability-villages-chat-cast-person");
     const reading = page.getByRole("region", { name: "Current paragraph" });
     await expect(cast).toHaveCount(4);
-    const castPositions = await cast.evaluateAll((people) => people.map((person) => person.offsetLeft));
+    const castPositions = await cast.evaluateAll(
+      (people, mobile) => people.map((person) => person.offsetLeft + (mobile ? person.offsetWidth / 2 : 0)),
+      mobile,
+    );
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
         path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `villages-room-initial-${width}x${height}.png`),
@@ -517,11 +522,15 @@ try {
     assert.equal(lastTurn.message, "My response.");
     await expect(reading).not.toContainText("Sixth reply.");
     assert.equal(await reading.evaluate((element) => element.scrollTop), 0, "a new paragraph starts at its top");
-    assert.deepEqual(
-      await cast.evaluateAll((people) => people.map((person) => person.offsetLeft)),
-      castPositions,
-      "a new speaker does not rearrange the four cast slots",
+    const replyPositions = await cast.evaluateAll(
+      (people, mobile) => people.map((person) => person.offsetLeft + (mobile ? person.offsetWidth / 2 : 0)),
+      mobile,
     );
+    if (mobile)
+      castPositions.forEach((center, index) =>
+        assert.ok(Math.abs(replyPositions[index] - center) <= 1, "mobile cast centers stay fixed as art resizes"),
+      );
+    else assert.deepEqual(replyPositions, castPositions, "a new speaker does not rearrange the four cast slots");
     await expect(page.getByRole("button", { name: "Compose" })).toHaveCount(0);
     const noticeTrigger = page.getByRole("button", { name: "1 village notice" });
     if ((await noticeTrigger.getAttribute("aria-expanded")) === "false") await noticeTrigger.click();

@@ -5839,7 +5839,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > .${ELEMENT_TAG}-avatar { width: min(8rem, 80%); }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person > span:not(.${ELEMENT_TAG}-avatar) { position: absolute; bottom: .3rem; max-width: 95%; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person,
-.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: absolute; bottom: 0; flex: none; max-width: none; height: 100%; transition: left .22s ease, opacity .18s ease, filter .18s ease, transform .18s ease; }
+.${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person[data-active="true"] { position: absolute; bottom: 0; left: var(--cast-left); width: var(--cast-width); flex: none; max-width: none; height: 100%; transition: left .22s ease, opacity .18s ease, filter .18s ease, transform .18s ease; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"][data-animate="false"] > .${ELEMENT_TAG}-chat-cast-person { transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast[data-staging="true"] > .${ELEMENT_TAG}-chat-cast-person { transition: none; }
@@ -5884,6 +5884,21 @@ a chat is the moment this tab stops being a picture of a village and starts
 @container ${ELEMENT_TAG} (max-width: 44rem) and (min-height: 40rem) {
   .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides, .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-vn-asides { bottom: calc(100% + 13rem); }
 }
+/* Mobile artwork grows independently of the staging slots. Shared zones may overlap,
+   but the image boxes stay within the floor and the speaker paints above listeners. */
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-stage .${ELEMENT_TAG}-chat-cast > .${ELEMENT_TAG}-chat-cast-person,
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-stage .${ELEMENT_TAG}-chat-cast > .${ELEMENT_TAG}-chat-cast-person[data-active="true"] {
+  --cast-display-width: var(--cast-width, 25%);
+  position: absolute; bottom: 0; flex: none; max-width: none;
+  width: var(--cast-display-width); height: 100%;
+  left: clamp(0px, calc(var(--cast-center) - var(--cast-display-width) / 2), calc(100% - var(--cast-display-width)));
+  transform: none;
+}
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-stage .${ELEMENT_TAG}-chat-cast > .${ELEMENT_TAG}-chat-cast-person[data-sprite="true"] {
+  --cast-display-width: min(70cqw, 66.666667cqh);
+}
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img { flex: 0 0 auto; }
+.${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-chat-cast-person > img[data-framing="half"] { object-fit: cover; object-position: center top; }
 @media (prefers-reduced-motion: reduce) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { transition: none; } }
 
 /* The Menu shares View Venue's palette and keeps its navigation on screen. */
@@ -10317,7 +10332,12 @@ function RoomPanel({
                 data-position={slot ? stagingState[villager.characterId].position : undefined}
                 data-attention={slot ? slot.facing : undefined}
                 style={
-                  slot ? { left: `${(slot.x - slot.width / 2) * 100}%`, width: `${slot.width * 100}%` } : undefined
+                  {
+                    "--cast-center": `${(slot?.x ?? (index + 0.5) / displayed.length) * 100}%`,
+                    ...(slot
+                      ? { "--cast-left": `${(slot.x - slot.width / 2) * 100}%`, "--cast-width": `${slot.width * 100}%` }
+                      : {}),
+                  } as CSSProperties
                 }
               >
                 {selected ? (

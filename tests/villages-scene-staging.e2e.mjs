@@ -8,17 +8,15 @@ const browser = await chromium.launch({
   headless: true,
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-import {
-  now,
-  spriteImage,
-  residents,
-  longGreeting,
-  mapImage,
-  snapshot,
-} from "./fixtures/villages-scene-browser.fixture.mjs";
+import { now, residents, longGreeting, mapImage, snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
+
+// Match the transparent canvas used by Sprite Studio rather than a narrow test image.
+const spriteImage = (color) =>
+  `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="768"><circle cx="256" cy="100" r="70" fill="${color}"/><path d="M175 180h162l65 360H110zM175 530h60v238h-70zM277 530h60l35 238h-70z" fill="${color}"/></svg>`).toString("base64")}`;
 
 try {
   for (const { width, height } of [
+    { width: 320, height: 568 },
     { width: 390, height: 844 },
     { width: 844, height: 390 },
     { width: 1440, height: 900 },
@@ -40,7 +38,7 @@ try {
               : {
                   ...person.sprite,
                   images: [
-                    ...person.sprite.images,
+                    { view: "front", label: "neutral", url: spriteImage("#e8ba91") },
                     { view: "side", label: "neutral", url: side },
                     { view: "front", label: "thinking", expressionId: "e-thinking", url: thoughts },
                     { view: "side", label: "thinking", expressionId: "e-thinking", url: thoughts },
@@ -181,7 +179,51 @@ try {
       const people = cast.locator(".marinara-capability-villages-chat-cast-person");
       const mara = cast.locator('[data-character-id="mara"]');
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
+      const mobile = width <= 704 || (width <= 880 && height <= 512);
+      async function checkSpriteSize(isMobile) {
+        const measurements = await cast.evaluate((node) => {
+          const floor = node.getBoundingClientRect();
+          return [...node.querySelectorAll('[data-sprite="true"] > img')].map((image) => {
+            const box = image.getBoundingClientRect();
+            return {
+              floor: {
+                x: floor.x,
+                right: floor.right,
+                y: floor.y,
+                bottom: floor.bottom,
+                width: floor.width,
+                height: floor.height,
+              },
+              box: { x: box.x, right: box.right, y: box.y, bottom: box.bottom, width: box.width, height: box.height },
+              renderedHeight: Math.min(box.height, (box.width * image.naturalHeight) / image.naturalWidth),
+              fit: getComputedStyle(image).objectFit,
+              framing: image.dataset.framing,
+            };
+          });
+        });
+        for (const { floor, box, renderedHeight, fit, framing } of measurements) {
+          assert.equal(fit, isMobile && framing === "half" ? "cover" : "contain");
+          if (isMobile) {
+            assert.ok(box.x >= floor.x - 1 && box.right <= floor.right + 1, "artwork stays within stage edges");
+            assert.ok(box.y >= floor.y - 1 && box.bottom <= floor.bottom + 1, "artwork stays above the reading dock");
+            assert.ok(
+              Math.abs(box.width - Math.min(floor.width * 0.7, (floor.height * 2) / 3)) < 1,
+              "mobile artwork is independent of slot width",
+            );
+            assert.ok(Math.abs(box.height - floor.height) < 1, "mobile image box fills stage height");
+            if (framing === "full")
+              assert.ok(
+                Math.abs(renderedHeight - Math.min(floor.height, floor.width * 0.7 * 1.5)) < 1,
+                "full-body art reaches its intended visible size",
+              );
+          }
+        }
+        const dock = await page.locator(".marinara-capability-villages-chat-vn").boundingBox();
+        const viewport = page.viewportSize();
+        assert.ok(dock.y >= 0 && dock.y + dock.height <= viewport.height + 1, "reading and composer stay on screen");
+      }
       await expect(people).toHaveCount(count);
+      await checkSpriteSize(mobile);
       await expect(cast).toHaveAttribute("data-staging", "true");
       await expect(mara).toHaveAttribute("data-position", "left");
       const defaults = await people.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-position")));
@@ -220,13 +262,30 @@ try {
       const sorted = [...boxes].sort((a, b) => a.x - b.x);
       for (let i = 0; i < sorted.length; i++) {
         assert.ok(sorted[i].x >= 0 && sorted[i].right <= width, "sprites fit within screen");
-        if (i) assert.ok(sorted[i - 1].right <= sorted[i].x + 1, "shared-zone sprites do not overlap");
+        if (i && !mobile)
+          assert.ok(sorted[i - 1].right <= sorted[i].x + 1, "desktop shared-zone sprites do not overlap");
         assert.ok(Math.abs(sorted[i].bottom - sorted[0].bottom) < 1, "sprites retain a shared foot baseline");
       }
       await next.click();
       await expect(mara).toHaveAttribute("data-attention", "right", "side cue appears with the final paragraph");
       await next.click();
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
+      await checkSpriteSize(mobile);
+      if (count > 1) {
+        const layers = await people.evaluateAll((nodes) =>
+          nodes.map((node) => ({
+            active: node.dataset.active,
+            layer: Number(getComputedStyle(node).zIndex) || 0,
+            x: node.getBoundingClientRect().x,
+            right: node.getBoundingClientRect().right,
+          })),
+        );
+        assert.ok(
+          layers.filter((person) => person.active !== "true").every((person) => person.layer < layers[0].layer),
+          "current speaker paints above listeners",
+        );
+        if (mobile && count > 2) assert.ok(layers[0].right > layers[1].x, "crowded mobile sprites can overlap");
+      }
       await previous.click();
       await previous.click();
       await expect(mara).toHaveAttribute("data-attention", "left");
@@ -256,18 +315,35 @@ try {
         await expect(people).toHaveCount(count, "backward reading restores departed residents");
         await next.click();
       }
-      // Marking an older visit keeps the centered legacy row.
+      if (width === 390) {
+        await page.setViewportSize({ width: 844, height: 390 });
+        await checkSpriteSize(true);
+        await expect(mara).toHaveAttribute("data-position", "right");
+        await page.setViewportSize({ width, height });
+        await checkSpriteSize(true);
+      }
+      // Older visits retain their row centers with enlarged mobile artwork.
       await composer.fill("A legacy visit.");
       if (count === 1) phase = 2;
       await page.getByRole("button", { name: "Send", exact: true }).click();
       await expect(cast).toHaveAttribute("data-staging", "false");
-      assert.equal(await mara.evaluate((node) => getComputedStyle(node).position), "relative");
+      assert.equal(await mara.evaluate((node) => getComputedStyle(node).position), mobile ? "absolute" : "relative");
+      await checkSpriteSize(mobile);
+      fixture.villagers[0].sprite.framing.mode = "half";
+      await page.reload();
+      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await expect(mara.locator("img")).toHaveAttribute("data-framing", "half");
+      await checkSpriteSize(mobile);
+      if (process.env.VILLAGES_VISUAL_OUTPUT)
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `staging-half-${count}-${width}x${height}.png`),
+        });
       assert.deepEqual(errors, []);
       await page.close();
     }
   }
   console.log(
-    "Villages staging browser checks: one through four residents, three viewports, shared zones, side timing, replay, refresh, departures, legacy visits, and reduced motion passed",
+    "Villages staging browser checks: one through four residents, four viewports, mobile sizing, overlap, rotation, waist-up framing, shared zones, side timing, replay, refresh, departures, legacy visits, and reduced motion passed",
   );
 } finally {
   await browser.close();

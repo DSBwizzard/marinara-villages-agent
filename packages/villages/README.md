@@ -76,6 +76,8 @@ Save migration is repeatable and preserves exterior/Class/private state, imagery
 
 ## Villager sprites
 
+0.6.91 makes mobile venue sprites grow with the available stage height instead of shrinking into narrow character slots. Crowded scenes allow overlap, with the current speaker in front and image boxes kept within the stage. Portrait and landscape phones, including older visits, use the larger layout automatically.
+
 Open **Villagers → [Villager] → Sprite Studio** for Create, Review, and In use. Each character has their own expression slots with editable names, optional poses, and optional **Use when** guidance. Common starters include meanings. Neutral is optional, there is no 24-expression limit, and any filled slot can be the default scene image. Both views can be generated immediately; scenes mirror side art when looking left.
 
 Every generation uses the captured original identity reference, including later batches and different styles. Papercraft, Battle Highway, and Custom retain editable prompts per character. Choose expressions, view, style, and efficient sheets or Individual generation, then click **Generate**. The model, source dimensions, and request counts refresh automatically. Sheets contain one to six sprites; larger selections use multiple sheets grouped as one saved batch. Finished cutouts use a transparent 512 × 768 canvas and a consistent foot baseline. Smaller provider source cells never silently add image requests. Requests are deduplicated and never automatically retried or switched to another provider.
