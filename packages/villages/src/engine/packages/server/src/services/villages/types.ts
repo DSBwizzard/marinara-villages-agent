@@ -45,6 +45,7 @@ import type { VillagesTurnBeat } from "./turn-beats.js";
  * in words, and `wishWeightWords`, which says the same thing to the narrator.
  */
 export type VillageWish = {
+  need?: { id: string; subject: string; action: string; policy: import("./wish-types.js").WishPolicy };
   /**
    * Stable within one save, and the handle a wish is answered BY.
    *
@@ -113,6 +114,7 @@ export type VillageCompletedWish = {
  * is the village's own fallback for the ones who do not.
  */
 export type VillageAgenda = {
+  wishActivities?: import("./wish-types.js").WishActivity[];
   wishes: VillageWish[];
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
@@ -138,6 +140,7 @@ export type VillageAgenda = {
 };
 
 export type VillageAgendaBlock = {
+  flexible?: boolean;
   startMinute: number;
   endMinute: number;
   venueId: string;
@@ -182,6 +185,7 @@ export type VillageAgendaBlock = {
  * "translate the verb, keep the shape" rule, made into a stored fact.
  */
 export type VillageRemapMove = {
+  flexible?: boolean;
   /** The Engine's weekday this block falls on, copied exactly. Half of the lookup key. */
   day: string;
   /**
@@ -396,6 +400,7 @@ export type VillageRemapFailure = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
+  wishLifecycle?: import("./wish-types.js").WishLifecycle;
   characterId: string;
   /** Card prose captured at move-in; deliberately excludes the Engine-only first message. */
   cardSnapshot: VillageVillagerCardSnapshot;
@@ -1854,6 +1859,12 @@ export type VillageSnapshot = {
  * say that". Every field below exists so a human can see the join.
  */
 export type VillageAgendaView = {
+  effectiveDays?: Record<string, VillageAgendaBlock[]>;
+  wishHistoryCount?: number;
+  wishAttempt?: Pick<
+    import("./wish-types.js").WishAttempt,
+    "stage" | "reason" | "calls" | "inputTokens" | "outputTokens" | "elapsedMs" | "at"
+  >;
   characterId: string;
   name: string;
   /**

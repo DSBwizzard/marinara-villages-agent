@@ -100,7 +100,11 @@ async function main() {
     assert.equal(rebased.moves[1]!.here, "Tending the herb beds", "known wording reuses its village translation");
   }
   assert.throws(() => parseCompactFounding({ ...payload(0), days: [] }, context(null) as any), /seven-day/);
-  assert.throws(() => parseCompactFounding({ ...payload(0), wishes: [] }, context(null) as any), /private wish/);
+  assert.equal(
+    parseCompactFounding({ ...payload(0), wishes: [] }, context(null) as any).agenda.wishes.length,
+    0,
+    "a quiet founding day needs no wish",
+  );
   assert.throws(
     () => parseCompactFounding({ ...payload(1), native: [] }, context(schedule(1, true)) as any),
     /mapped 0 of 1/,

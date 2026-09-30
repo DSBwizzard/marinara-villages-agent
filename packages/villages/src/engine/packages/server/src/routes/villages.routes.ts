@@ -1,5 +1,6 @@
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
 import { moveVenueZone } from "../services/villages/venue-session.js";
+import { readWishHistoryPage } from "../services/villages/wish-archive.js";
 import { updateVillageZone } from "../services/villages/village.js";
 import {
   readSpriteStudio,
@@ -1669,6 +1670,16 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // asking again for one of them should not throw away the other. Both answer
   // with the whole list, like every other delete on this package, so the tab has
   // one source of truth for what it draws.
+  app.get<{ Params: CharacterParams; Querystring: { cursor?: string } }>(
+    "/agendas/:characterId/history",
+    async (request, reply) => {
+      try {
+        return await readWishHistoryPage(readCharacterId(request.params.characterId), request.query.cursor);
+      } catch (error) {
+        return fail(reply, error, "reading wish history");
+      }
+    },
+  );
   app.get("/agendas", async (_request, reply) => {
     try {
       return { villagers: await buildVillageAgendas() };

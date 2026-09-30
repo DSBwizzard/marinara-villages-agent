@@ -1,5 +1,11 @@
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import {
+  correctResidentWish,
+  expireResidentWishes,
+  reconcileWishLifecycle,
+  registerInitialWish,
+} from "./wish-lifecycle.js";
+import {
   venueZones,
   resolveVenueZone,
   legacyZoneId,
@@ -43,7 +49,7 @@ import {
   readSelectedLorebookIds,
   readVillageLore,
 } from "./lorebooks.js";
-import { completedWishFacts } from "./wish-history.js";
+
 import { selectPromptMemories } from "./memory-selection.js";
 import { readScenarioImprint, readWorldFacts } from "./scenario-imprint.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-image.js";
@@ -92,7 +98,6 @@ import { queueSharedMoveConsent, queueVenueCounteroffer, respondDueVenueMail } f
 import { assertVillagePresence } from "./venue-presence.js";
 import {
   boundText,
-  coerceWish as renewWish,
   DEFAULT_HOME_BUILDING,
   HOME_BUILDING_ORDER,
   HOME_BUILDINGS,
@@ -116,7 +121,6 @@ import {
   MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VILLAGE_NAME_LENGTH,
-  MAX_VILLAGER_WISHES,
   MAX_VENUE_IMAGE_BYTES,
   MAX_VENUE_IMAGE_ID_LENGTH,
   MAX_VENUE_IMAGE_URL_LENGTH,
@@ -178,7 +182,6 @@ import { proposeCompactFounding, rebaseFoundingRemap } from "./founding-compact.
 import {
   proposeAgenda,
   proposeHappenings,
-  proposeNextWish,
   proposeReaction,
   proposeVillage,
   proposePublicVenueNames,
@@ -803,7 +806,7 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
           const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
           return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
         })(),
-        completedWishes: villager.completedWishes,
+        completedWishes: [],
         activeWishes: villager.agenda?.wishes ?? [],
         lore: await readVillageLore(
           village.selectedLorebookIds,
@@ -830,12 +833,7 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
         description: effectiveCard.description,
         routineSummary: "",
       });
-      await storeAgenda(
-        characterId,
-        agenda,
-        villager.completedWishes.map((entry) => entry.wish.id),
-        villager.agenda?.wishes.map((entry) => entry.id) ?? [],
-      );
+      await storeAgenda(characterId, agenda);
       return agenda;
     } catch (error) {
       if (statusCodeOf(error) === 409 && attempt < 2) {
@@ -870,35 +868,25 @@ async function writeVillagerAgenda(characterId: string): Promise<VillageAgenda |
  * is right in that case — the call was made for a villager who no longer
  * exists, and there is no error a player could act on.
  */
-async function storeAgenda(
-  characterId: string,
-  agenda: VillageAgenda,
-  knownCompletedIds?: readonly string[],
-  knownActiveIds?: readonly string[],
-): Promise<void> {
+async function storeAgenda(characterId: string, agenda: VillageAgenda): Promise<void> {
   await mutateVillageState((state) => {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
-    if (
-      knownCompletedIds &&
-      knownCompletedIds.join("\u0000") !== villager.completedWishes.map((entry) => entry.wish.id).join("\u0000")
-    )
-      throw conflict("A wish was fulfilled while this agenda was being written.");
-    if (
-      knownActiveIds &&
-      knownActiveIds.join("\u0000") !== (villager.agenda?.wishes ?? []).map((entry) => entry.id).join("\u0000")
-    )
-      throw conflict("The villager's wishes changed while this agenda was being written.");
     const previous = villager.agenda;
     const now = new Date();
     const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
     const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
     villager.agenda = {
       ...agenda,
-      wishes: [...(previous?.wishes ?? []), ...agenda.wishes]
+      // Initial preparation alone may add a wish. A routine result cannot resurrect stale wishes.
+      wishes: [...(previous?.wishes ?? []), ...(villager.wishLifecycle?.attempt ? [] : agenda.wishes)]
         .filter((wish) => !villager.completedWishes.some((entry) => entry.wish.id === wish.id))
         .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
-        .slice(0, MAX_VILLAGER_WISHES),
+        .slice(
+          0,
+          previous?.wishes.length ? Math.max(previous.wishes.length, 2) : villager.wishLifecycle?.attempt ? 0 : 1,
+        ),
+      wishActivities: previous?.wishActivities ?? [],
       activeDay: {
         dateKey: agendaDateKey(now),
         weekday,
@@ -910,6 +898,7 @@ async function storeAgenda(
       },
       personalizationAttemptDate: agendaDateKey(now),
     };
+    registerInitialWish(villager, now);
     assertVillagePresence(state);
   });
 }
@@ -1010,81 +999,6 @@ async function backfillAgendas(village: VillageState, now: Date): Promise<Villag
   return readVillageState();
 }
 
-/** A wish that has just died of age, and whose it was. */
-type ExpiredWish = { characterId: string; wish: VillageWish };
-
-/**
- * Whether this wish has died of age at this instant.
- *
- * A deadline that cannot be read is not a deadline, which is the whole of the
- * reason this is a function rather than a comparison written at the loop: every
- * wish that predates the field, and every wish in a document somebody has edited
- * by hand, carries nothing parseable here and must keep behaving exactly as it
- * did. Deleting somebody's wish is the one thing this package may not do on the
- * strength of arithmetic it did not agree to.
- *
- * The instant is compared as an instant, so a wish written for nine in the
- * morning dies at nine in the morning rather than at the midnight of some
- * calendar the village does not keep.
- */
-function wishHasExpired(wish: VillageWish, at: number): boolean {
-  const expiry = Date.parse(wish.expiresAt);
-  return !Number.isNaN(expiry) && expiry <= at;
-}
-
-/**
- * Drop every wish that has died of age, and answer with what was dropped.
- *
- * The third way a wish leaves the list, after being answered and after the
- * village deciding the world has made it impossible, and the only one that costs
- * nothing: a comparison against the clock and one write, with no model call
- * anywhere near it. That is what makes it affordable to give a wish a lifetime
- * at all — see `wishLifetimeDays`.
- *
- * It is handed the state and answers with the state to carry on with, rather
- * than reading the store itself, because the caller then translates the week
- * FROM what it answers: a caller that dropped a wish and translated from the
- * list it dropped it from would bend hours around something nobody is carrying
- * any more, and would store that translation at a signature the very next part
- * of the day disagrees with.
- *
- * The villagers who lost one come back with it because the tick asks them for a
- * new wish, and this walk is the only place that knows who they were.
- */
-async function dropExpiredWishes(
-  village: VillageState,
-  now: Date,
-): Promise<{ state: VillageState; expired: ExpiredWish[] }> {
-  const at = now.getTime();
-  const expired: ExpiredWish[] = [];
-  for (const villager of village.villagers) {
-    for (const wish of villager.agenda?.wishes ?? []) {
-      if (wishHasExpired(wish, at)) expired.push({ characterId: villager.characterId, wish });
-    }
-  }
-  // Nothing to do is the ordinary case, and it leaves no write behind at all —
-  // the same early answer `backfillAgendas` takes, for the same reason: this runs
-  // on every part of every day of a village's life.
-  if (expired.length === 0) return { state: village, expired };
-  // Kept per villager rather than as one set of ids, so that a document carrying
-  // the same id twice cannot take a wish off the wrong person.
-  const dead = new Map<string, Set<string>>();
-  for (const entry of expired) {
-    const ids = dead.get(entry.characterId) ?? new Set<string>();
-    ids.add(entry.wish.id);
-    dead.set(entry.characterId, ids);
-  }
-  const state = await mutateVillageState((next) => {
-    for (const villager of next.villagers) {
-      const ids = dead.get(villager.characterId);
-      if (!villager.agenda || !ids) continue;
-      const kept = villager.agenda.wishes.filter((wish) => !ids.has(wish.id));
-      if (kept.length !== villager.agenda.wishes.length) villager.agenda = { ...villager.agenda, wishes: kept };
-    }
-  });
-  return { state, expired };
-}
-
 // ── Saying the Engine's week in this village's terms ────────────────────────
 //
 // The second derived record, and the one that makes autonomy mean something. The
@@ -1112,26 +1026,17 @@ async function dropExpiredWishes(
  * display would drift from the first and the tab would then be showing the user
  * a prompt they cannot actually reproduce.
  *
- * The wishes are passed in rather than looked up from the villager here, for the
- * reason the week is: what goes into the prompt and what goes into the digest
- * that invalidates it are the same list, and a function that helped itself to the
- * list would let a caller translate from one version of somebody's wishes and
- * judge the answer against another.
+ * Wish state is deliberately absent from routine prompts and invalidation.
  */
-function remapLoreKey(village: VillageState, characterId: string): string {
-  const completed = village.villagers.find((entry) => entry.characterId === characterId)?.completedWishes ?? [];
-  return JSON.stringify([
-    village.selectedLorebookIds,
-    village.loreTokenBudget,
-    completed.map((entry) => [entry.wish.id, entry.wish.wish]),
-  ]);
+function remapLoreKey(village: VillageState, _characterId?: string): string {
+  return JSON.stringify([village.selectedLorebookIds, village.loreTokenBudget]);
 }
 
 async function remapContextFor(
   village: VillageState,
   card: VillagerCard,
   schedule: NativeWeekSchedule,
-  wishes: readonly VillageWish[],
+  _wishes: readonly VillageWish[],
 ): Promise<VillageRemapContext> {
   const blocks = remapBlocks(schedule);
   const lore = await readVillageLore(
@@ -1142,23 +1047,21 @@ async function remapContextFor(
       card.summary,
       card.description,
       ...blocks.map((entry) => entry.activity),
-      ...wishes.map((entry) => entry.wish),
     ].join("\n"),
     undefined,
     Math.max(200, Math.min(village.loreTokenBudget, 2_400 - blocks.length * 25)),
   );
-  const completed = village.villagers.find((entry) => entry.characterId === card.id)?.completedWishes ?? [];
   return {
     village: village.name,
     setting: villageCurrentSetting(village),
     lore,
-    completedWishes: completedWishFacts(completed, lore),
-    loreKey: remapLoreKey(village, card.id),
+    completedWishes: [],
+    loreKey: remapLoreKey(village),
     // The SENDABLE places, not every place — see `remapVenues`. The context is
     // both the digest and the numbered list, so filtering here rather than in
     // either of them is what keeps the question and its signature one thing.
     venues: remapVenues(village.venues),
-    wishes,
+    wishes: [],
     name: card.name,
     characterId: card.id,
     summary: card.summary,
@@ -1524,26 +1427,7 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
   }
 }
 
-/**
- * Translate one villager's week in the background, right after they move in.
- *
- * Not awaited by the move-in route and never rejects, for the reason
- * `topUpVillagerWishes` is shaped that way: the player has just pressed a button
- * and is about to look at the villager. The translation is the second model call
- * on that path, and putting it in front of the response would make the button
- * wait on a week the player cannot see yet, so it runs behind the agenda instead
- * of beside it.
- *
- * It is worth doing at all because the alternative is up to a whole part of the
- * day of a villager reading as the village's own default. The tick would have
- * caught them, but the tick runs on the clock and a player who has just added
- * somebody is about to talk to them.
- *
- * The whole body is inside one try, including the reads, and that is the point:
- * this runs after the response has gone and nothing is left to catch a rejection.
- * A failure leaves the null that the tick's own pass is looking for, so the only
- * cost is that this villager waits for the next part of the day after all.
- */
+/** Translate a new resident's routine after the move-in response; the tick retries failures. */
 async function translateVillagerWeek(characterId: string): Promise<void> {
   try {
     const village = await readVillageState();
@@ -1722,149 +1606,6 @@ export async function applyVillagerRefresh(characterId: string): Promise<Village
     }
   });
   return buildVillageSnapshot();
-}
-
-/**
- * Give somebody something to wish for again, after something they wished for has been
- * settled.
- *
- * Called from the route that answers a wish, and deliberately NOT awaited by it:
- * the player is waiting on a reply, not on a list being rewritten, and a
- * villager who is momentarily short of a wish is not a broken villager.
- *
- * It never rejects. That is not tidiness — this runs after the response has gone
- * and nothing is left to catch a failure, so a rejection here would be an
- * unhandled one on a background task for the sake of a wish nobody asked for.
- * The whole thing is inside the try for that reason, including the reads.
- *
- * A failure is not repaired later and is not meant to be: the tick's
- * `backfillAgendas` only fills a NULL agenda, and this villager has a real one
- * with fewer things in it. What is left behind is a villager with a shorter
- * list, which is a smaller fault than the list being rewritten wrongly.
- */
-export async function topUpVillagerWishes(characterId: string, settled: string): Promise<void> {
-  try {
-    const village = await readVillageState();
-    const resident = village.villagers.find((villager) => villager.characterId === characterId);
-    if (!resident) return;
-    const remaining = resident.agenda?.wishes ?? [];
-    const knownCompletedIds = resident.completedWishes.map((entry) => entry.wish.id).join("\u0000");
-    if (remaining.length >= MAX_VILLAGER_WISHES) return;
-    const card = await readEffectiveVillagerCard(resident);
-    if (!card) return;
-
-    const wish = await proposeNextWish({
-      village: village.name,
-      setting: villageCurrentSetting(village),
-      name: card.name,
-      summary: card.summary,
-      tags: card.tags,
-      personality: card.personality,
-      routineSummary: resident.agenda?.routineSummary ?? "",
-      remaining,
-      completedWishes: resident.completedWishes,
-      lore: await readVillageLore(
-        village.selectedLorebookIds,
-        [
-          villageCurrentSetting(village),
-          card.name,
-          card.summary,
-          card.personality,
-          card.description,
-          ...remaining.map((entry) => entry.wish),
-          settled,
-        ].join("\n"),
-        undefined,
-        village.loreTokenBudget,
-      ),
-      settled,
-    });
-    if (!wish) return;
-
-    // Applied inside the write and checked against the live list, because a
-    // second wish may have been answered while this was being written — the
-    // list that was read at the top is a copy, and a write replaces the row.
-    await mutateVillageState((state) => {
-      const entry = state.villagers.find((villager) => villager.characterId === characterId);
-      if (!entry?.agenda) return;
-      if (entry.completedWishes.map((completed) => completed.wish.id).join("\u0000") !== knownCompletedIds) return;
-      if (entry.agenda.wishes.length >= MAX_VILLAGER_WISHES) return;
-      if (entry.agenda.wishes.some((existing) => existing.wish === wish.wish)) return;
-      entry.agenda = { ...entry.agenda, wishes: [...entry.agenda.wishes, wish] };
-    });
-  } catch (error) {
-    villagesLogger().warn("[villages] could not work out what %s wishes for next: %s", characterId, String(error));
-  }
-}
-
-/**
- * How many villagers one part of the day will find a new wish for, after a wish
- * of theirs has died of age.
- *
- * Two, for the reason `REMAP_REFUSALS_PER_PASS` is two: a village whose wishes
- * were all written on the same day loses a whole roster's worth on the same day,
- * and one part of the day is not allowed to answer that with sixty model calls
- * for wishes nobody is waiting on. What is left over is picked up on the next
- * part of the day, and a villager who is one wish short in the meantime is not a
- * broken villager — they still speak, and they still have a week.
- */
-const WISH_REFILLS_PER_PASS = 2;
-
-/**
- * Find a new wish for everybody who has just lost one to age.
- *
- * The other two ways a wish leaves the list replace themselves where they
- * happen: answering one asks for the next on the route that answered it, and the
- * village deciding a wish is impossible has just been told why, in the same
- * reply. Ageing has nowhere to happen but the clock, so this is the pass that
- * notices it, and it is a pass of its own rather than a line inside
- * `dropExpiredWishes` because that one is a filter on the record while this one
- * spends a model call.
- *
- * `topUpVillagerWishes` does the work, and it is the very same helper the route
- * uses: one new wish rather than a whole agenda, so the routine and the wishes
- * nobody answered survive untouched. It refuses when the list is already full —
- * which, after a loss, it cannot be — and it never rejects.
- *
- * `settled` is the dead wish's own words. That prompt has one slot for "the
- * thing not to write again", and it is the slot that matters here: without it
- * the model's most obvious answer is the thing that has just stopped being on
- * somebody's mind. It arrives through a line that talks about a wish being
- * settled, which is a small untruth — nobody settled this one — and the smallest
- * one available. A wish that has run out of time has finished with either way,
- * and the alternative is a second prompt for the same question, which is two
- * prompts to keep in step instead of one.
- *
- * The wish written here bends hours from the NEXT part of the day, which is
- * deliberate. This runs after the translations, and the alternative is a second
- * translation call for the same villager in the same tick, to rewrite a week it
- * has just been handed. One part of a day is also how long a wish ANSWERED
- * mid-week already takes to reach an hour: the route that settles one cannot
- * translate either.
- *
- * It runs BEFORE the tick's two switches, which is not where a pass that spends
- * a model call belongs at first reading, and it is forced by the pass above it:
- * `dropExpiredWishes` takes the dead wish off the record, so this list is the
- * only copy that will ever exist, and both switches below are early returns that
- * would throw it away unanswered. Whichever of them returned first, a villager
- * whose wish had just died would keep the shorter list for good — the list that
- * shrinks and never refills is the whole of what this pass is for — and nothing
- * later could notice, because there is nothing left to compare against. So what
- * a switched-off part of day buys is one part of the day's news and not a wish,
- * which is the same call the translations above make and for the same reason: a
- * wish is what the villager is being asked to live this week by. It costs
- * nothing at all on a tick where nothing has died — the list is empty, so the
- * loop never starts — and what a switch costs on the rare tick it does not is
- * bounded at `WISH_REFILLS_PER_PASS` calls.
- */
-async function refillAgedWishes(expired: readonly ExpiredWish[]): Promise<void> {
-  const asked = new Set<string>();
-  for (const entry of expired) {
-    if (asked.has(entry.characterId)) continue;
-    if (asked.size >= WISH_REFILLS_PER_PASS) return;
-    asked.add(entry.characterId);
-    await topUpVillagerWishes(entry.characterId, entry.wish.wish);
-  }
 }
 
 /** Remove a villager from the village roster. */
@@ -2051,7 +1792,7 @@ export async function setVillageLoreSettings(idsValue?: unknown, budgetValue?: u
 export async function setVillageStoryPace(value: unknown): Promise<VillageSnapshot> {
   const paces: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
   if (typeof value !== "string" || !paces.includes(value as VillageStoryPace)) {
-    throw badRequest("Story pace must be off, quiet, balanced or lively.");
+    throw badRequest("Background events and wishes must be off, quiet, balanced or lively.");
   }
   await mutateVillageState((state) => {
     state.storyPace = value as VillageStoryPace;
@@ -4131,6 +3872,7 @@ export function prepareFoundedVillage(): Promise<void> {
                 return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
               })(),
               completedWishes: current.completedWishes,
+              allowInitialWish: !current.wishLifecycle?.attempt,
               activeWishes: current.agenda?.generatedAt ? current.agenda.wishes : [],
               schedule,
             },
@@ -4140,12 +3882,7 @@ export function prepareFoundedVillage(): Promise<void> {
             attempt === 1,
           );
           await stage("saving", attempt);
-          await storeAgenda(
-            id,
-            result.agenda,
-            current.completedWishes.map((entry) => entry.wish.id),
-            current.agenda?.wishes.map((entry) => entry.id) ?? [],
-          );
+          await storeAgenda(id, result.agenda);
           if (schedule && current.ingestSchedule !== false) {
             await stage("applying", attempt);
             const withAgenda = await readVillageState();
@@ -4593,11 +4330,13 @@ export async function reconcileVillage(options: { forceStory?: boolean; now?: Da
 
   // These are deterministic reconciliation rules. They run for both the live
   // timer and restart catch-up, irrespective of story pace.
-  const aged = await dropExpiredWishes(recorded, now);
-  const withAgendas = await backfillAgendas(aged.state, now);
+  await mutateVillageState((state) => {
+    for (const resident of state.villagers) expireResidentWishes(resident, now);
+  });
+  const withAgendas = await backfillAgendas(await readVillageState(), now);
   await refreshVillagerRemaps(withAgendas, now);
   await rollActiveAgendas(now);
-  await refillAgedWishes(aged.expired);
+  await reconcileWishLifecycle(now);
   await mutateVillageState((state) => {
     const storedMs = Date.parse(state.simulatedThrough);
     if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
@@ -5207,6 +4946,29 @@ export async function buildVillageAgendas(): Promise<VillageAgendaView[]> {
         addedAt: villager.addedAt,
         agenda: villager.agenda,
         completedWishes: villager.completedWishes,
+        effectiveDays: villager.agenda
+          ? Object.fromEntries(
+              Array.from({ length: 7 }, (_, offset) => {
+                const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
+                return [
+                  VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
+                  agendaBlocksFor(villager.agenda!, villager.ingestSchedule !== false, date),
+                ];
+              }),
+            )
+          : undefined,
+        wishHistoryCount: villager.wishLifecycle?.outcomeCount ?? 0,
+        wishAttempt: villager.wishLifecycle?.attempt
+          ? {
+              stage: villager.wishLifecycle.attempt.stage,
+              reason: villager.wishLifecycle.attempt.reason,
+              calls: villager.wishLifecycle.attempt.calls,
+              inputTokens: villager.wishLifecycle.attempt.inputTokens,
+              outputTokens: villager.wishLifecycle.attempt.outputTokens,
+              elapsedMs: villager.wishLifecycle.attempt.elapsedMs,
+              at: villager.wishLifecycle.attempt.at,
+            }
+          : undefined,
         ingestSchedule: villager.ingestSchedule !== false,
         nativeSchedule: schedule ? { weekStart: schedule.weekStart, days: schedule.days } : null,
         remap: villager.remap,
@@ -5292,20 +5054,7 @@ function villageDayViews(
   return days;
 }
 
-/**
- * Throw away one villager's wishes so the village works them out again.
- *
- * The agenda is cleared and that is all this does — no model call, no waiting.
- * The write happens on the next part of the day the tick already runs on, which
- * means the press is instant and a player who presses it twice costs nothing.
- * Anything else would be a second code path that spends a model call, and the
- * tick's backfill is the one place that is allowed to.
- *
- * It is here for two reasons. It is the way to ask again for a villager whose
- * answer was dull, and it is the only way out for a villager whose card was
- * deleted and then restored: their agenda was emptied when the card went
- * missing — see `writeVillagerAgenda` — and an empty agenda is final.
- */
+/** Queue explicit routine personalization while retaining wishes and their daily allowance. */
 export async function clearVillagerAgenda(characterId: string): Promise<void> {
   const village = await readVillageState();
   if (!village.villagers.some((entry) => entry.characterId === characterId)) {
@@ -5316,24 +5065,7 @@ export async function clearVillagerAgenda(characterId: string): Promise<void> {
 
 /** Correct a false wish verdict without changing any separately confirmed world state. */
 export async function correctCompletedWish(characterId: string, wishId: string): Promise<void> {
-  await mutateVillageState((state) => {
-    const villager = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!villager) throw notFound("That villager does not live here.");
-    const completed = villager.completedWishes.find((entry) => entry.wish.id === wishId);
-    if (!completed) throw notFound("That completed wish is not in this villager's record.");
-    villager.completedWishes = villager.completedWishes.filter((entry) => entry.wish.id !== wishId);
-    state.correctedWishMemoryIds = [...state.correctedWishMemoryIds, completed.memoryId];
-    state.chronicle = state.chronicle.filter((entry) => entry.id !== completed.memoryId);
-    if (
-      villager.agenda &&
-      villager.agenda.wishes.length < MAX_VILLAGER_WISHES &&
-      !villager.agenda.wishes.some((entry) => entry.id === wishId)
-    ) {
-      const restored = renewWish(completed.wish, completed.wish.id, new Date().toISOString());
-      if (restored) villager.agenda.wishes = [...villager.agenda.wishes, restored];
-    }
-  });
-  await queueVillagerAgenda(characterId);
+  await correctResidentWish(characterId, wishId);
 }
 
 export async function setVillagerScheduleIngestion(characterId: string, enabled: boolean): Promise<void> {

@@ -1735,6 +1735,7 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
   // dates come off the one normalising read of `at`, so they can never disagree
   // about which instant the wish was born at.
   const born = asInstant(at);
+  const need = asRecord(raw.need);
   return {
     id,
     wish,
@@ -1742,6 +1743,16 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: born,
     expiresAt: born.length === 0 ? "" : wishExpiresAt(born, wishLifetimeDays(id)),
+    ...(need.subject || need.action || need.policy
+      ? {
+          need: {
+            id: boundText(need.id, 100),
+            subject: boundText(need.subject, 80),
+            action: boundText(need.action, 80),
+            policy: need.policy === "lasting" || need.policy === "recurring" ? need.policy : "unknown",
+          } as NonNullable<VillageWish["need"]>,
+        }
+      : {}),
   };
 }
 

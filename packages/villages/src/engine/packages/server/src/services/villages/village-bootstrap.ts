@@ -28,7 +28,7 @@ import { condense } from "./coerce.js";
 import { villageAgendaDay } from "./agenda-plan.js";
 import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { completedWishFacts, wishRepeatsKnownNeed } from "./wish-history.js";
+
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest } from "./errors.js";
 import {
@@ -40,7 +40,6 @@ import {
 } from "./package-runtime.js";
 import {
   boundText,
-  coerceWish,
   describeStatus,
   HAPPENING_RULES,
   LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
@@ -59,9 +58,7 @@ import {
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VILLAGER_WISHES,
   MAX_WISH_LENGTH,
-  MAX_WISH_TELL_LENGTH,
   renderVillageMemoryBlock,
   wishWeightWords,
 } from "./prompt-preset.js";
@@ -1400,83 +1397,17 @@ export async function proposeReaction(
   };
 }
 
-// ── The agenda: what one villager is after ───────────────────────────────────
-//
-// The third call, and the only one that is about a single person rather than
-// about the village. It is asked once, when somebody moves in, and the answer is
-// kept on their record until the player throws it away and the village asks
-// again.
-//
-// The question it answers is the one the first two could not. Told only who
-// lives here and what has already happened, a writer can say what happens TO
-// people; a wish is what makes them do something about it. That is the whole of
-// why this exists.
-//
-// The output is deliberately NOT a goal, a task or a request. It is a private
-// motivation plus the small ordinary thing that gives it away, and both halves
-// are needed: a wish with no surface is invisible and writes nothing, and a wish
-// that is only a wish is how a villager becomes somebody standing in a square
-// with an exclamation mark over their head. Neither the tick prompt nor the
-// villager's own prompt ever lets a wish be announced, and the rules in each say
-// so outright.
-
-// Room for a model that reasons before it answers — the thinking comes out of
-// this budget. See `completeWithRoom`.
+// Ordinary routine generation is independent of the finite wish lifecycle.
+// Explicit personalization writes a profile and seven days; completion never calls it.
 const AGENDA_MAX_TOKENS = 3_000;
 const AGENDA_DAY_MAX_TOKENS = 4_000;
 /** Cooler than either village call: this is one person's steady disposition, not an afternoon's weather. */
 const AGENDA_TEMPERATURE = 0.6;
-/**
- * How much of a card's own prose reaches the agenda call.
- *
- * This is the only place in the package that reads a card's description, and it
- * is read for one reason: a wish that does not come out of who somebody is would
- * be a wish the village invented rather than one it found. It is bounded because
- * a card's description is unbounded — it is the player's own writing and may be
- * pages — and the whole agenda call is priced by its input.
- *
- * ponytail: the first 1200 characters of the description, not a summary of it.
- * That is the front of the card, which is where a character's situation is
- * usually stated, so it is the right end to keep; the ceiling is that a card
- * which buries its premise gets an agenda written from the preamble. The upgrade
- * path is a condensing pass like the one `condense` does for the resident block,
- * which is not worth a model call until somebody has a card that needs it.
- */
+/** Bound card prose in routine requests without a separate summarization call. */
 const AGENDA_DESCRIPTION_MAX = 1_200;
 
-const AGENDA_SYSTEM_PROMPT = [
-  "You are describing what one person in a small village privately wishes for, for a text roleplay. You are not writing dialogue and you are not addressing anyone.",
-  "Answer with JSON only, in exactly this shape and nothing else:",
-  '{"agenda":"...","wishes":[{"wish":"...","intensity":2,"tell":"..."}]}',
-  "Rules:",
-  '- "wishes" holds between 1 and 3 things this person privately wishes for. Fewer is better than more.',
-  `- "wish" is under ${MAX_WISH_LENGTH} characters. Keep it simple, specific, and ordinary: a chocolate bar, an hour to read, a missing button, or fresh flowers are all valid. It need not signal a larger story. Do not write a hope for the world to change, a secret that would upend anything, or a goal with steps.`,
-  `- "tell" is under ${MAX_WISH_TELL_LENGTH} characters, and it is the point of the whole answer: the small, ordinary, visible thing somebody standing nearby would notice about this person because of it. Something you could SEE, not something you would have to be told. It is never the person saying it out loud.`,
-  '- "intensity" is 1, 2 or 3: how much of the time this is on their mind. Use 1 for most things.',
-  `- "agenda" is one sentence under ${MAX_ROUTINE_SUMMARY_LENGTH} characters describing their ordinary day here. Keep it plain and repeatable rather than a story.`,
-  "- Do not have anyone ask for help, need rescuing, or be waiting for someone to arrive.",
-  "- Do not invent a wound, an illness, a debt, a crime or a missing person.",
-  "- Nobody in this village is a shopkeeper handing out work, so nothing here may read as a request made to a stranger.",
-  "- Stay inside the description of the village given to you. Do not add technology, places or people it does not imply.",
-  "- Do not name a real town, country, company, person or existing fictional setting.",
-  "- Plain prose only. No markdown, no numbering, no commentary outside the JSON.",
-];
-
-/**
- * What one villager's agenda is written from.
- *
- * The card is here in full — name, blurb, tags, personality and description —
- * because a wish that does not come out of who somebody is would be a wish the
- * village invented rather than one it found. The setting and the places are here
- * for the opposite reason: a wish has to be something this place could actually
- * contain, and a fisherman who wishes to open a flight school is a sentence from
- * a different story.
- *
- * `routineSummary` is whatever routine the villager already has, when the Engine
- * has one. It is given to the model so the wishes fit the life the character
- * already lives rather than a life the village is about to invent beside it, and
- * it is what the answer is overwritten with afterwards — see `proposeAgenda`.
- */
+const AGENDA_SYSTEM_PROMPT =
+  'Describe a stable ordinary routine for this village resident. Return JSON only: {"agenda":"one sentence"}. Do not generate wishes or unresolved wish errands. Current village facts outrank older lore.';
 export type VillageAgendaContext = {
   characterId?: string;
   village: string;
@@ -1491,58 +1422,25 @@ export type VillageAgendaContext = {
   tags: readonly string[];
   personality: string;
   description: string;
-  /** The Engine's own weekly summary, or "" when this character has no schedule. */
   routineSummary: string;
 };
 
 function buildAgendaMessages(context: VillageAgendaContext): CapabilityLanguageModelMessage[] {
-  const world = context.setting.trim();
-  // The description is the only unbounded thing here and is the only line that
-  // gets cut; the personality and the blurb are card fields the player writes in
-  // one line, so they are passed through as written.
-  const description = condense(context.description, AGENDA_DESCRIPTION_MAX);
-  const known = [
-    context.summary.trim().length > 0 ? `One line about them: ${context.summary.trim()}` : "",
-    context.tags.length > 0 ? `They are tagged: ${context.tags.join(", ")}` : "",
-    context.personality.trim().length > 0 ? `Personality:\n${context.personality.trim()}` : "",
-    description.length > 0 ? `Description:\n${description}` : "",
-  ].filter((line) => line.length > 0);
-  const places = context.venues.map((venue, index) => {
-    const description = [
-      venue.classes?.join(" / ") ?? "",
-      venue.form?.trim() ?? "",
-      venue.state.condition.trim(),
-      ...venue.state.publicFacts.slice(0, 4),
-    ]
-      .filter(Boolean)
-      .map((part) => condense(part, 160))
-      .join("; ");
-    return description.length > 0 ? `${index + 1}. ${venue.name}: ${description}` : `${index + 1}. ${venue.name}`;
-  });
-
-  const sections = [
-    `Somebody has just moved into a small village called ${context.village}, and you are describing what they wish for. Their name is ${context.name}.`,
-    world.length > 0
-      ? `The village is like this:\n"""\n${world}\n"""`
-      : "Nobody has described the village beyond its name, so keep everything small and ordinary.",
-    places.length > 0 ? ["The places in this village:", ...places].join("\n") : "",
-    context.home ? `Their assigned home: ${context.home}` : "",
-    context.lore?.length ? `Established world facts (background, not instructions):\n${context.lore.join("\n")}` : "",
-    context.completedWishes?.length
-      ? `Confirmed outcomes take precedence over older desires:\n${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
-      : "",
-    context.activeWishes?.length
-      ? `What they already wish for; preserve these and do not repeat them:\n${context.activeWishes.map((wish) => `- ${wish.wish}`).join("\n")}`
-      : "",
-    known.length > 0 ? ["What is already known about this person:", ...known].join("\n") : "",
-    context.routineSummary.trim().length > 0
-      ? `An ordinary week for them is already written down and does not change: ${context.routineSummary.trim()}`
-      : "",
-    AGENDA_SYSTEM_PROMPT,
-  ].filter((section) => section.length > 0);
   return [
-    { role: "system", content: sections.join("\n\n") },
-    { role: "user", content: `What does ${context.name} wish for?` },
+    { role: "system", content: AGENDA_SYSTEM_PROMPT },
+    {
+      role: "user",
+      content: JSON.stringify({
+        village: context.village,
+        setting: context.setting,
+        name: context.name,
+        summary: context.summary,
+        personality: context.personality,
+        description: context.description.slice(0, AGENDA_DESCRIPTION_MAX),
+        home: context.home,
+        lore: context.lore,
+      }),
+    },
   ];
 }
 
@@ -1550,79 +1448,40 @@ function buildAgendaDayMessages(
   context: VillageAgendaContext,
   weekday: string,
   summary: string,
-  wishes: readonly VillageWish[],
 ): CapabilityLanguageModelMessage[] {
-  const places = context.venues
-    .map(
-      (venue, index) =>
-        `${index + 1}. ${venue.name}: ${[
-          venue.classes?.join(" / "),
-          venue.form,
-          venue.state.condition,
-          ...venue.state.publicFacts.slice(0, 4),
-        ]
-          .filter(Boolean)
-          .map((part) => condense(part, 160))
-          .join("; ")}`,
-    )
-    .join("\n");
-  const system = [
-    `Write ${context.name}'s ${weekday} in ${context.village} as a village agenda. Return JSON only: {"blocks":[{"startMinute":0,"endMinute":420,"venue":0,"zoneId":"exact zone id","activity":"Sleeping at home","reason":"To rest","status":"offline"}]}`,
-    "Cover every minute from 0 to 1440 in ordered, non-overlapping blocks. Waking activities should change every 30 to 60 minutes. Sleep and sustained work can last longer.",
-    'Venue is 0 for home or one of the numbered places. Status is "online", "idle", "dnd", or "offline".',
-    "Keep activities specific, varied, ordinary, and consistent with the person and village. Do not invent places or people. Let wishes influence activities quietly; do not announce them.",
-    "Current village facts and confirmed outcomes outrank older lore. Never treat an already fulfilled wish as an unmet errand.",
-    "A desire mentioned in lore does not prove that an object exists or is owned. Do not depict it as present without a current venue fact or confirmed outcome.",
-    `Village: ${context.setting.trim() || "A small, quiet village."}`,
-    `Places:\n${places || "No public places are known."}`,
-    `Zones within places: ${context.venues
-      .map(
-        (venue) =>
-          venue.id +
-          ": " +
-          venueZones(venue)
-            .filter((zone) => !context.characterId || canOccupyZone(venue, zone, context.characterId))
-            .map((zone) => `${zone.id}: ${zone.name} (${zone.kind})`)
-            .join("; "),
-      )
-      .join(
-        "\n",
-      )}. Copy a zoneId belonging to the chosen Venue. Restricted areas require the resident or worker role; private spaces belong to their owner.`,
-    context.home ? `Their assigned home: ${context.home}` : "",
-    `Person: ${context.summary}; ${context.personality}; ${condense(context.description, AGENDA_DESCRIPTION_MAX)}`,
-    `Routine: ${summary}`,
-    `Private wishes: ${wishes.map((wish) => wish.wish).join("; ") || "none"}`,
-    context.lore?.length
-      ? `Established lore, used only where it fits the real village:\n${context.lore.join("\n")}`
-      : "",
-    context.completedWishes?.length
-      ? `Already fulfilled:\n${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
-      : "",
-  ].join("\n");
-  return [
-    { role: "system", content: system },
-    { role: "user", content: `Write ${weekday} only.` },
-  ];
-}
-
-function buildSingleWishMessages(context: VillageAgendaContext): CapabilityLanguageModelMessage[] {
+  const places = context.venues.map((venue, index) => ({
+    venue: index + 1,
+    name: venue.name,
+    condition: venue.state.condition,
+    zones: venueZones(venue)
+      .filter((zone) => !context.characterId || canOccupyZone(venue, zone, context.characterId))
+      .map((zone) => ({ id: zone.id, kind: zone.kind })),
+  }));
   return [
     {
       role: "system",
       content: [
-        "Write one small, private wish for this fictional villager. Return JSON only in this exact shape:",
-        '{"agenda":"...","wishes":[{"wish":"...","intensity":1,"tell":"..."}]}',
-        `Village: ${context.village}. ${context.setting}`,
-        `Person: ${context.name}. ${context.summary}. ${context.personality}. ${condense(context.description, 600)}`,
-        context.lore?.length ? `Established lore: ${context.lore.join("\n")}` : "",
-        "Lore may describe a desire, but it does not prove the desired thing is already present or owned.",
-        context.completedWishes?.length
-          ? `Already fulfilled; do not wish for these again: ${completedWishFacts(context.completedWishes, context.lore ?? []).join("\n")}`
-          : "",
-        'The "tell" is a visible ordinary sign of the wish. Do not invent a crisis or ask the player for help.',
+        `Write ${context.name}'s ${weekday} in ${context.village} as a village agenda. Return JSON only: {"blocks":[{"startMinute":0,"endMinute":420,"venue":0,"zoneId":"exact zone id","activity":"Sleeping at home","reason":"To rest","status":"offline","flexible":false}]}`,
+        "Cover every minute from 0 to 1440 in ordered, non-overlapping blocks. Waking activities change every 30 to 60 minutes; sleep and sustained work can last longer.",
+        "Venue 0 is home; otherwise copy a numbered place. Status is online, idle, dnd, or offline. Mark flexible:true ONLY for optional free-time activities, never meals, sleep, work, or commitments.",
+        "Write a stable ordinary routine independent of wishes. Never add unresolved wish errands or assume that an object mentioned as desired in lore is already owned. Current village facts outrank older lore.",
       ].join("\n"),
     },
-    { role: "user", content: `What does ${context.name} quietly wish for?` },
+    {
+      role: "user",
+      content: JSON.stringify({
+        setting: context.setting,
+        home: context.home,
+        person: {
+          summary: context.summary,
+          personality: context.personality,
+          description: context.description.slice(0, AGENDA_DESCRIPTION_MAX),
+        },
+        routine: summary,
+        places,
+        lore: context.lore,
+      }),
+    },
   ];
 }
 
@@ -1678,21 +1537,7 @@ export function coerceAgenda(
   context: VillageAgendaContext,
   at: string,
 ): VillageAgenda {
-  const wishes: VillageWish[] = [];
-  const seen = new Set<string>();
-  if (Array.isArray(payload.wishes)) {
-    for (const entry of payload.wishes) {
-      if (wishes.length >= MAX_VILLAGER_WISHES) break;
-      const wish = coerceWish(entry, randomVillageSeed(), at);
-      // Deduplication stays here rather than moving into the coercion, because
-      // it is the only part of this that is about the LIST: one wish is a wish,
-      // and the same wish written twice is a villager with nothing to say.
-      // `coerceWish` is the part that is about a wish.
-      if (!wish || seen.has(wish.wish)) continue;
-      seen.add(wish.wish);
-      wishes.push(wish);
-    }
-  }
+  const wishes = [...(context.activeWishes ?? [])];
   const fallback = workingAgendaWeek(context.venues, context.name);
   const rawWeek =
     payload.week && typeof payload.week === "object" && !Array.isArray(payload.week)
@@ -1746,47 +1591,16 @@ export async function proposeAgenda(
     signal: options.signal,
   });
 
-  let payload = extractJsonObject(completion.content ?? "");
-  let agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
-  if (!agenda?.wishes.length && !(agenda && context.activeWishes?.length)) {
-    const briefLimit = Math.min(model.maxOutputTokens ?? 1_800, 1_800);
-    const briefFit = model.fitContext(buildSingleWishMessages(context), { maxTokens: briefLimit });
-    villagesLogger().debugOverride(
-      debugEnabled,
-      "[villages] single wish prompt: %s",
-      JSON.stringify(briefFit.messages),
-    );
-    const brief = await completeWithRoom(model, briefFit.messages, briefFit.maxTokens ?? briefLimit, {
-      temperature: AGENDA_TEMPERATURE,
-      reasoningEffort: "low",
-      debugMode: debugEnabled,
-      signal: options.signal,
-    });
-    payload = extractJsonObject(brief.content ?? "");
-    agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
-    if (!agenda?.wishes.length)
-      throw new Error(completionFailure("Village wish", brief, briefFit.maxTokens ?? briefLimit));
-  }
-  if (agenda) {
-    const kept: VillageWish[] = [];
-    for (const wish of agenda.wishes) {
-      if (
-        !(await wishRepeatsKnownNeed(
-          wish,
-          [...(context.activeWishes ?? []), ...kept],
-          context.completedWishes ?? [],
-          options.signal,
-        ))
-      )
-        kept.push(wish);
-    }
-    agenda.wishes = [...(context.activeWishes ?? []), ...kept].slice(0, MAX_VILLAGER_WISHES);
-  }
+  const payload = extractJsonObject(completion.content ?? "");
+  const agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
+  if (!agenda)
+    throw new Error(completionFailure("Village routine", completion, fitted.maxTokens ?? requestedMaxTokens));
+  agenda.wishes = [...(context.activeWishes ?? [])];
   const proposedWeek: Record<string, unknown> = {};
   const failures: string[] = [];
   for (const weekday of VILLAGE_WEEKDAYS) {
     const requested = Math.min(model.maxOutputTokens ?? AGENDA_DAY_MAX_TOKENS, AGENDA_DAY_MAX_TOKENS);
-    const dayFit = model.fitContext(buildAgendaDayMessages(context, weekday, agenda.routineSummary, agenda.wishes), {
+    const dayFit = model.fitContext(buildAgendaDayMessages(context, weekday, agenda.routineSummary), {
       maxTokens: requested,
     });
     villagesLogger().debugOverride(
@@ -1815,134 +1629,4 @@ export async function proposeAgenda(
   agenda.personalizationPending = VILLAGE_WEEKDAYS.some((weekday) => !proposedWeek[weekday]);
   agenda.personalizationFailure = failures[0] ?? "";
   return agenda;
-}
-
-// ── The next thing they wish for ────────────────────────────────────────────────────────────────────────────────────────────
-//
-// Asked after a wish has been answered, and it exists because the alternative
-// was worse in a way that is easy to miss. A wish that is simply removed leaves
-// the villager with a shorter list and, eventually, an empty one — and an empty
-// list is not a quiet villager, it is a villager who has nothing on their mind
-// and is therefore written differently in every prompt from then on. The last
-// thing the player does to a villager should not be to slowly hollow them out.
-//
-// It is deliberately a SEPARATE call from `proposeAgenda` rather than a re-ask.
-// A whole agenda would also rewrite their day and would be free to quietly
-// change the wishes that were not answered, and the player has just had a
-// specific thing confirmed — that verdict is the one fact that must survive.
-
-// Room for a model that reasons before it answers — the thinking comes out of
-// this budget. See `completeWithRoom`.
-const NEXT_WISH_MAX_TOKENS = 800;
-/** Warmer, because this is invention rather than judgement: a new wish should be somebody's, not a repair. */
-const NEXT_WISH_TEMPERATURE = 0.7;
-
-export type VillageNextWishContext = {
-  village: string;
-  setting: string;
-  name: string;
-  summary: string;
-  tags: readonly string[];
-  personality: string;
-  /** What they are like on an ordinary day, so the new wish fits the life they already have. */
-  routineSummary: string;
-  /** What they still wish for. The new one must not repeat any of it. */
-  remaining: readonly VillageWish[];
-  lore: readonly string[];
-  completedWishes: readonly VillageCompletedWish[];
-  /** What was just settled, in the judge's words, so it is not simply wished for again. */
-  settled: string;
-};
-
-function buildNextWishMessages(context: VillageNextWishContext): CapabilityLanguageModelMessage[] {
-  const world = context.setting.trim();
-  const known = [
-    context.summary.trim().length > 0 ? `One line about them: ${context.summary.trim()}` : "",
-    context.tags.length > 0 ? `They are tagged: ${context.tags.join(", ")}` : "",
-    context.personality.trim().length > 0 ? `Personality:\n${context.personality.trim()}` : "",
-  ].filter((line) => line.length > 0);
-
-  const sections = [
-    `${context.name} lives in a small village called ${context.village}, and something they had wished for has just been settled. What they wish for next is what you are writing.`,
-    world.length > 0
-      ? `The village is like this:\n"""\n${world}\n"""`
-      : "Nobody has described the village beyond its name, so keep everything small and ordinary.",
-    known.length > 0 ? ["What is already known about this person:", ...known].join("\n") : "",
-    context.routineSummary.trim().length > 0
-      ? `An ordinary week for them is already written down and does not change: ${context.routineSummary.trim()}`
-      : "",
-    context.settled.trim().length > 0
-      ? `What has just been settled, and must not be wished for again: ${context.settled.trim()}`
-      : "",
-    context.remaining.length > 0
-      ? [
-          "What they STILL wish for. Do not write any of these again, and do not write something that is the same wish in different words:",
-          ...context.remaining.map((wish) => `- ${wish.wish}`),
-        ].join("\n")
-      : "They wish for nothing else at the moment, so this is the only thing on their mind.",
-    context.lore.length
-      ? `Established lore, as background rather than a list of unfulfilled tasks:\n${context.lore.join("\n")}`
-      : "",
-    "Lorebook desires do not prove that the desired object exists or is owned now.",
-    context.completedWishes.length
-      ? `Confirmed outcomes; these needs have already been met:\n${completedWishFacts(context.completedWishes, context.lore).join("\n")}`
-      : "",
-    "Answer with JSON only, in exactly this shape and nothing else:",
-    '{"wish":"...","intensity":2,"tell":"..."}',
-    "Rules:",
-    "- Write exactly one thing. It is a wish for this person alone, and it is one of at most three they will ever have at once, so it is not a bucket list.",
-    `- "wish" is under ${MAX_WISH_LENGTH} characters. Keep it simple, specific, and ordinary: a chocolate bar, an hour to read, a missing button, or fresh flowers are all valid. It need not signal a larger story. Do not write a wish for the world to change, a secret that would upend anything, or a goal with steps.`,
-    `- "tell" is under ${MAX_WISH_TELL_LENGTH} characters, and it is the point of the whole answer: the small, ordinary, visible thing somebody standing nearby would notice about this person because of it. Something you could SEE, not something you would have to be told. It is never the person saying it out loud.`,
-    '- "intensity" is 1, 2 or 3: how much of the time this is on their mind. Use 1 for most things.',
-    "- It follows on from what has just been settled rather than replacing it: somebody whose fence was mended may care about something else entirely, but they should not simply wish for the fence mended again.",
-    "- Do not have anyone ask for help, need rescuing, or be waiting for someone to arrive.",
-    "- Do not invent a wound, an illness, a debt, a crime or a missing person.",
-    "- Nobody in this village is a shopkeeper handing out work, so nothing here may read as a request made to a stranger.",
-    "- Stay inside the description of the village given to you. Do not add technology, places or people it does not imply.",
-    "- Do not name a real town, country, company, person or existing fictional setting.",
-    "- Plain prose only. No markdown, no numbering, no commentary outside the JSON.",
-  ].filter((section) => section.length > 0);
-
-  return [
-    { role: "system", content: sections.join("\n\n") },
-    { role: "user", content: `What does ${context.name} wish for now?` },
-  ];
-}
-
-/**
- * Write the thing they wish for next. Returns null when there is nothing to keep.
- *
- * Null and not a throw, because everything about this call is best-effort: it
- * runs after the player has already had their answer, and a villager left with
- * one fewer wish is a smaller problem than an error message about one. The
- * caller is expected to have caught it before this reaches anybody.
- */
-export async function proposeNextWish(
-  context: VillageNextWishContext,
-  options: { signal?: AbortSignal } = {},
-): Promise<VillageWish | null> {
-  const model = await villagesLanguageModels().resolveForRequest({
-    connectionId: await villagesConnectionIdFor("system"),
-  });
-  const requestedMaxTokens = Math.min(model.maxOutputTokens ?? NEXT_WISH_MAX_TOKENS, NEXT_WISH_MAX_TOKENS);
-  const fitted = model.fitContext(buildNextWishMessages(context), { maxTokens: requestedMaxTokens });
-  const debugEnabled = villagesDebugAgentsEnabled();
-  villagesLogger().debugOverride(debugEnabled, "[villages] next-wish prompt: %s", JSON.stringify(fitted.messages));
-
-  const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
-    temperature: NEXT_WISH_TEMPERATURE,
-    debugMode: debugEnabled,
-    signal: options.signal,
-  });
-
-  const payload = extractJsonObject(completion.content ?? "");
-  if (!payload) return null;
-  const wish = coerceWish(payload, randomVillageSeed(), new Date().toISOString());
-  // Checked against the list it was told not to repeat, rather than trusting the
-  // instruction: a model that echoes the thing it was asked to avoid is the one
-  // failure mode this call actually has, and re-adding the wish that was just
-  // answered would undo the whole point of asking.
-  if (wish && (await wishRepeatsKnownNeed(wish, context.remaining, context.completedWishes, options.signal)))
-    return null;
-  return wish;
 }

@@ -1,3 +1,4 @@
+import { fulfillResidentWish } from "./wish-lifecycle.js";
 import {
   coordinateVenue,
   cancelVenueOperation,
@@ -69,7 +70,6 @@ import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState
 import {
   decideVillageResidence,
   applyResidenceEditApproval,
-  clearVillagerAgenda,
   proposeVillageResidence,
   readPlayerIdentity,
   rollActiveAgendas,
@@ -2193,7 +2193,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", prior.id, String(error));
     }
     await applyVenueTurnChange(session, prior);
-    if (await applyFulfilledWish(session, prior)) await refreshAgendaAfterWish(prior.targetId);
+    await applyFulfilledWish(session, prior);
     await applyVenueRequests(session, prior);
     await processLegacyProjectTurn(session, prior);
     if (prior.invitationSignal && prior.invitationSignal.timing === "later")
@@ -2456,7 +2456,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", submission.id, String(error));
   }
   await applyVenueTurnChange(updated, submission);
-  if (await applyFulfilledWish(updated, submission)) await refreshAgendaAfterWish(submission.targetId);
+  await applyFulfilledWish(updated, submission);
   await applyVenueRequests(updated, submission);
   await processLegacyProjectTurn(updated, submission);
   if (submission.invitationSignal && submission.invitationSignal.timing === "later")
@@ -2704,18 +2704,6 @@ async function applyVenueTurnChange(session: VenueSession, submission: VenueSubm
   });
 }
 
-async function refreshAgendaAfterWish(characterId: string): Promise<void> {
-  try {
-    await clearVillagerAgenda(characterId);
-  } catch (error) {
-    villagesLogger().warn(
-      "[villages] could not refresh %s's agenda after a fulfilled wish: %s",
-      characterId,
-      String(error),
-    );
-  }
-}
-
 async function applyFulfilledWish(session: VenueSession, submission: VenueSubmission): Promise<boolean> {
   if (!submission.wishId) return false;
   let applied = false;
@@ -2728,12 +2716,8 @@ async function applyFulfilledWish(session: VenueSession, submission: VenueSubmis
     const wish = resident?.agenda?.wishes.find((entry) => entry.id === submission.wishId);
     if (!resident?.agenda || !wish) return;
     applied = true;
-    resident.agenda.wishes = resident.agenda.wishes.filter((entry) => entry.id !== submission.wishId);
     const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() });
-    resident.completedWishes = [
-      { wish, fulfilledAt: moment.instant, memoryId },
-      ...resident.completedWishes.filter((entry) => entry.wish.id !== wish.id),
-    ];
+    fulfillResidentWish(resident, wish.id, moment.instant, memoryId);
     state.chronicle = [
       {
         id: memoryId,
