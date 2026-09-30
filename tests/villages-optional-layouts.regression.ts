@@ -13,6 +13,7 @@ import {
   proposeVillageResidence,
   decideVillageResidence,
   villageSettings,
+  removeVillager,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
 import {
   defaultVenueSpace,
@@ -89,6 +90,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
   }
 }
 assert.throws(() => parsePlace({ ...draft("exterior"), layout: undefined }, true), /Choose the venue layout/);
+assert.throws(() => parsePlace({ ...draft("exterior"), layoutVersion: undefined }, true), /Choose the venue layout/);
 assert.throws(() => parsePlace({ ...draft("both"), spaces: [] }, true), /matching its selected layout/);
 assert.throws(
   () => parsePlace({ ...draft("common"), spaces: [defaultVenueSpace("residence")] }, true),
@@ -293,6 +295,49 @@ async function main() {
       )!.zones![1]!.description,
       "",
     );
+    await createRenovationProject(outside.id, {
+      title: "Base sleeping nook",
+      detail: "Add an assigned residential Private Area",
+      baseZones: [
+        {
+          id: "private:nook",
+          name: "Sleeping nook",
+          kind: "private-residence",
+          venueClass: "residence",
+          ownerId: "a",
+          description: "",
+          purpose: "A partitioned sleeping area",
+        },
+      ],
+    });
+    current = await readVillageState();
+    project = current.projects.find(
+      (project) => project.kind === "renovation" && project.lifecycle?.phase !== "complete",
+    )!;
+    await finish(project.id);
+    current = await readVillageState();
+    assert.equal(
+      current.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === "private:nook")!
+        .ownerId,
+      "a",
+    );
+    await createRenovationProject(outside.id, {
+      title: "Remove nook",
+      detail: "Restore exterior-only residence",
+      baseZones: [],
+    });
+    current = await readVillageState();
+    project = current.projects.find(
+      (project) => project.kind === "renovation" && project.lifecycle?.phase !== "complete",
+    )!;
+    await finish(project.id);
+    current = await readVillageState();
+    assert.equal(current.venues.find((venue) => venue.id === outside.id)!.zones!.length, 1);
+    assert.ok(
+      current.venues
+        .find((venue) => venue.id === outside.id)!
+        .archivedZones!.some((entry) => entry.zone.id === "private:nook"),
+    );
     // Upgrade zones can add more physical rooms without adding residential slots.
     await createRenovationProject(outside.id, {
       title: "Extra tent chamber",
@@ -391,6 +436,14 @@ async function main() {
       current = await readVillageState();
       project = current.projects.find((entry) => entry.id === project.id)!;
       const opening = draft(layout, "residence", "");
+      await assert.rejects(
+        finish(project.id, {
+          form: "Tent",
+          exteriorDescription: opening.description,
+          interiorDescription: "An invented interior",
+        }),
+        /Choose the venue layout/,
+      );
       await finish(project.id, {
         ...opening,
         form: "Tent",
@@ -405,6 +458,13 @@ async function main() {
         1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both"),
       );
     }
+    await removeVillager("b");
+    current = await readVillageState();
+    const departedHome = current.venues.find((venue) => venue.id === vacant.id)!;
+    assert.equal(departedHome.occupancy.residentCharacterId, null);
+    assert.equal(departedHome.zones!.find((zone) => zone.id === "personal")!.ownerId, undefined);
+    assert.equal(departedHome.zones!.find((zone) => zone.id === "personal")!.preparation, undefined);
+    assert.ok(departedHome.archivedPrivateSpaces!.some((entry) => entry.ownerId === "b"));
     console.log(
       "Villages optional layouts: founding, repeat loading, role access, capacity, moves, renovation removal, privacy, and new-venue opening passed.",
     );

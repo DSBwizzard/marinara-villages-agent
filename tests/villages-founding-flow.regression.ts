@@ -190,6 +190,8 @@ async function main() {
   const parsed = parsePlace(
     {
       id: "residence-one",
+      layoutVersion: 1,
+      layout: "common",
       name: "Stone Cottage",
       form: "Cottage",
       description: "Stone walls under ivy",
@@ -222,8 +224,8 @@ async function main() {
   assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
-    () => parsePlace({ ...parsed, spaces: [{ venueClass: "residence", description: "" }] }, true),
-    /interior/,
+    () => parsePlace({ ...parsed, layout: "common", spaces: [{ venueClass: "residence", description: "" }] }, true),
+    /Common Area/,
   );
 
   const client = await readFile(join(clientRoot, "villages-package-entry.tsx"), "utf8");

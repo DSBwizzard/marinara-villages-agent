@@ -122,6 +122,10 @@ try {
       assert.equal(submitted.spaces.length, Number(layout === "common" || layout === "both"));
       assert.equal(submitted.privateSpaces.length, Number(layout === "private" || layout === "both"));
       if (submitted.spaces.length) assert.equal(submitted.spaces[0].venueClass, "workplace");
+      else {
+        assert.equal(submitted.interiorDescription, undefined);
+        assert.equal(submitted.interiorImage, undefined);
+      }
       assert.deepEqual(errors, []);
       await page.close();
     }

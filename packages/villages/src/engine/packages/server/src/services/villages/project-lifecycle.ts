@@ -1,6 +1,6 @@
 import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
-import { readCreationPrivateZones, readVenueImageContext } from "./village.js";
+import { readVenueImageContext } from "./village.js";
 import { preparePrivateSpaces } from "./private-space-preparation.js";
 import { venueZones, effectiveVenueClasses } from "./venue-zones.js";
 import { randomUUID } from "node:crypto";
@@ -907,9 +907,8 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
       if (project.kind === "new-venue") {
         const form = boundText(row.form, 240).trim();
         const exterior = boundText(row.exteriorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-        const interior = boundText(row.interiorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-        if (!form || !exterior || (row.layoutVersion !== 1 && !interior))
-          throw badRequest("Define the Venue form, exterior, and interior before opening it.");
+        if (!form || !exterior) throw badRequest("Define the Venue form and exterior before opening it.");
+        if (row.layoutVersion !== 1) throw badRequest("Choose the venue layout before opening it.");
         if (row.layoutVersion === 1) {
           const zones = readBaseVenueLayout(
             { ...row, description: exterior, presentation: { image: row.exteriorImage } },
@@ -942,30 +941,6 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
           project.updatedAt = at;
           return;
         }
-        venue.form = form;
-        venue.imageContext = readVenueImageContext(row.imageContext);
-        const privateZones = readCreationPrivateZones(row.privateSpaces, venue.classes ?? ["other"]);
-        if (
-          privateZones.some((zone) =>
-            zone.controllerIds?.some(
-              (id) => id !== "player" && !state.villagers.some((person) => person.characterId === id),
-            ),
-          )
-        )
-          throw badRequest("Choose current villagers as private-space controllers.");
-        venue.zones = [
-          ...venueZones(venue).filter((zone) => !privateZones.some((room) => room.id === zone.id)),
-          ...privateZones,
-        ];
-        venue.description = exterior;
-        venue.presentation.image = validImage(row.exteriorImage);
-        venue.spaces =
-          venue.classes?.map((venueClass) => ({
-            ...defaultVenueSpace(venueClass, interior),
-            image: validImage(row.interiorImage),
-          })) ?? [];
-        venue.constructionStatus = "complete";
-        venue.state.condition = "complete";
       } else {
         const change = flow.change!;
         if (change.classes) {

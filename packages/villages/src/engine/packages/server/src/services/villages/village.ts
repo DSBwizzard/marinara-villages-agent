@@ -1648,7 +1648,37 @@ export async function removeVillager(characterId: string): Promise<void> {
         if (project.plan.workOrder) project.plan.workOrder.pausedAt = new Date().toISOString();
       }
     state.villagers = remaining;
+    state.residences = state.residences.filter((move) => move.characterId !== characterId);
     for (const venue of state.venues) {
+      if (venueResidentIds(venue).includes(characterId)) {
+        const at = new Date().toISOString();
+        venue.zones ??= venueZones(venue);
+        venue.layoutVersion = 1;
+        const personal = venue.privateSpaces?.find((space) => space.ownerId === characterId);
+        if (personal)
+          venue.archivedPrivateSpaces = [
+            ...(venue.archivedPrivateSpaces ?? []),
+            { ownerId: characterId, archivedAt: at, space: structuredClone(personal) },
+          ].slice(-32);
+        const zone = venue.zones.find((zone) => zone.kind === "private-residence" && zone.ownerId === characterId);
+        if (zone) {
+          zone.ownerId = undefined;
+          zone.seen = false;
+          zone.preparation = undefined;
+          zone.adaptationPending = false;
+          zone.adaptationSourceArchiveAt = "";
+          zone.description = zone.purpose || "Vacant residential Private Area.";
+          zone.image = null;
+          zone.state.publicFacts = [];
+          zone.state.traces = [];
+          venue.editProposals = venue.editProposals?.filter((proposal) => proposal.zoneId !== zone.id);
+        }
+        venue.residentIds = venueResidentIds(venue).filter((id) => id !== characterId);
+        venue.occupancy.residentCharacterId = venue.residentIds[0] ?? null;
+      }
+      venue.playerInvitations = venue.playerInvitations?.filter(
+        (invite) => invite.residentId !== characterId && invite.ownerId !== characterId,
+      );
       venue.workerIds = venue.workerIds?.filter((id) => id !== characterId);
       for (const zone of venue.zones ?? []) zone.controllerIds = zone.controllerIds?.filter((id) => id !== characterId);
     }
@@ -3148,6 +3178,8 @@ export async function completeVillageResidence(
             zone.state.publicFacts = [];
             zone.state.traces = [];
             zone.preparation = undefined;
+            zone.adaptationPending = false;
+            zone.adaptationSourceArchiveAt = "";
             zone.image = null;
             zone.description = zone.purpose || "Vacant residential Private Area.";
           }
@@ -3472,6 +3504,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
   if (playerHome && characterId.length > 0) {
     throw badRequest("Your own home cannot also belong to a villager.");
   }
+  if (founding && record.layoutVersion !== 1) throw badRequest("Choose the venue layout before founding.");
   const explicitZones =
     record.layoutVersion === 1 && founding
       ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage)

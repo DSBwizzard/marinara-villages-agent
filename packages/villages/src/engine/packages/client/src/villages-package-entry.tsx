@@ -11414,7 +11414,7 @@ function ProjectsPanelV2({
           <h2>{project.kind === "new-venue" ? `Open ${project.title}` : `Review ${project.title}`}</h2>
           <p>
             {project.kind === "new-venue"
-              ? "Give the finished place its form, exterior, and interior. Images are optional."
+              ? "Choose the finished place’s form, layout, exterior, and selected areas. Images are optional."
               : "Review the approved zone names, access, and descriptions, then choose final images if you wish."}
           </p>
         </header>
@@ -11453,6 +11453,7 @@ function ProjectsPanelV2({
                 <label>
                   Common Area description
                   <textarea
+                    aria-label="Common Area description"
                     data-layout-editor="common"
                     value={interior}
                     onChange={(event) => setInterior(event.target.value)}
@@ -11613,9 +11614,10 @@ function ProjectsPanelV2({
             const next = await action("open", {
               form,
               exteriorDescription: exterior,
-              interiorDescription: interior,
               exteriorImage,
-              interiorImage,
+              ...(project.kind === "new-venue" && openingVenue && venueHasCommon(openingVenue)
+                ? { interiorDescription: interior, interiorImage }
+                : {}),
               zoneImages,
               layoutVersion: 1,
               layout: openingLayout,

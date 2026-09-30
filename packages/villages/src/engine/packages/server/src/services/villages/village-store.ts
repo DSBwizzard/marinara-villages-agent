@@ -1138,7 +1138,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
   venue.playerInvitations = venue.playerInvitations?.filter((invitation) => {
     invitation.zoneId ??=
       invitation.scope === "private"
-        ? "private:" + invitation.ownerId
+        ? (venue.zones?.find((zone) => zone.kind === "private-residence" && zone.ownerId === invitation.ownerId)?.id ??
+          "private:" + invitation.ownerId)
         : venue.zones?.find((zone) => zone.kind === "shared-residence")?.id;
     const zone = venue.zones?.find((zone) => zone.id === invitation.zoneId);
     return (

@@ -785,6 +785,18 @@ async function main() {
     venues: [
       {
         id: "player-home",
+        layoutVersion: 1,
+        layout: "both",
+        privateSpaces: [
+          {
+            id: "private:player",
+            venueClass: "residence",
+            description: "A personal sleeping nook",
+            name: "Your Private Area",
+            purpose: "Personal space",
+            ownerId: "player",
+          },
+        ],
         name: "Robin's Diner",
         form: "A converted diner",
         classes: ["residence"],
@@ -795,6 +807,17 @@ async function main() {
       },
       {
         id: "millie-home",
+        layoutVersion: 1,
+        layout: "both",
+        privateSpaces: [
+          {
+            id: "private:character-millie",
+            venueClass: "residence",
+            name: "Private Area",
+            purpose: "Personal space",
+            ownerId: "character-millie",
+          },
+        ],
         name: "Millie's Pod",
         form: "A sleeping pod",
         classes: ["residence"],
@@ -805,6 +828,8 @@ async function main() {
       },
       {
         id: "village-square",
+        layoutVersion: 1,
+        layout: "common",
         name: "Village square",
         form: "An open square",
         classes: ["gathering"],
