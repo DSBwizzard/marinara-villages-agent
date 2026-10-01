@@ -25,10 +25,13 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/progress-engine.ts";
 import {
   processSavedProgressSubmission,
+  processSavedExchange,
+  readSceneChanges,
   progressBacklog,
   startProgressRecovery,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+import { createExchangeProcessing } from "../packages/villages/src/engine/packages/server/src/services/villages/exchange-processing.ts";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -67,6 +70,7 @@ const documents = {
 };
 const foundedAt = new Date().toISOString();
 const village = defaultVillageState();
+village.seed = "project-fixture";
 village.setupAt = foundedAt;
 village.foundedAt = foundedAt;
 village.progressEngineVersion = 1;
@@ -235,6 +239,38 @@ async function main() {
     assert.equal(hiddenTask.resolutionKey, "hidden:test:1:resolved");
     assert.equal(hiddenTask.receipts.length, 2);
     assert.ok(visibleProgress(hiddenTask));
+    const recorded = saveTurn("A recorded exchange", "We can discuss the mill.");
+    const recordedScene = records.get(`villages-venue-visit-${recorded.sessionId}`).data;
+    recordedScene.processingVersion = 1;
+    recordedScene.villageSeed = village.seed;
+    recordedScene.submissions[0].processing = createExchangeProcessing({
+      seed: village.seed,
+      sceneId: recorded.sessionId,
+      submissionId: recorded.submissionId,
+      order: 0,
+      lineIds: recordedScene.lines.map((line: any) => line.id),
+      actionReceiptIds: [],
+    });
+    const beforeReads = JSON.stringify([...records.values()]);
+    const changes = await readSceneChanges(recorded.sessionId);
+    assert.equal(changes.changes[0].processing?.domains.projects.status, "pending");
+    assert.equal(JSON.stringify([...records.values()]), beforeReads, "diagnostic reads do not write or generate");
+    await processSavedExchange(recorded.sessionId, recorded.submissionId);
+    assert.equal(
+      (await readSceneChanges(recorded.sessionId)).changes[0].processing?.domains.projects.status,
+      "applied",
+    );
+    recordedScene.submissions[0].processing.seed = "replaced-village";
+    recordedScene.submissions[0].processing.domains.projects.status = "pending";
+    // Replace the stored document, rather than the pre-commit fixture object.
+    records.get(`villages-venue-visit-${recorded.sessionId}`).data = recordedScene;
+    await processSavedExchange(recorded.sessionId, recorded.submissionId);
+    assert.equal(
+      (await readSceneChanges(recorded.sessionId)).changes[0].processing?.domains.projects.status,
+      "rejected",
+    );
+    await assert.rejects(readSceneChanges(recorded.sessionId, "-1"), /cursor/);
+    assert.equal((await readSceneChanges(recorded.sessionId, "1")).changes.length, 0);
     await createNewVenueProject({
       name: "Lantern House",
       venueClass: "gathering",
