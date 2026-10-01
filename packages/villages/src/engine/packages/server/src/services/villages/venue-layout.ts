@@ -20,7 +20,7 @@ export function readBaseVenueLayout(
 ): VillageVenueZone[] {
   const row = asRecord(value);
   if (!VENUE_LAYOUTS.includes(row.layout as (typeof VENUE_LAYOUTS)[number]))
-    throw badRequest("Choose the venue layout: exterior only, Common Area, Private Area, or both.");
+    throw badRequest("Choose the venue layout: exterior only, Common Space, Private Space, or both.");
   const layout = row.layout;
   const common = layout === "common" || layout === "both";
   const personal = layout === "private" || layout === "both";
@@ -28,7 +28,7 @@ export function readBaseVenueLayout(
   const rooms = Array.isArray(row.privateSpaces) ? row.privateSpaces : [];
   if (spaces.length !== Number(common) || rooms.length !== Number(personal))
     throw badRequest(
-      "A new venue has zero or one Common Area and zero or one Private Area, matching its selected layout.",
+      "A new venue has zero or one Common Space and zero or one Private Space, matching its selected layout.",
     );
   const result: VillageVenueZone[] = [
     {
@@ -50,17 +50,17 @@ export function readBaseVenueLayout(
     if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
     if (description.length > 1000 || (!isPrivate && !description))
-      throw badRequest("Describe the Common Area in at most 1000 characters.");
+      throw badRequest("Describe the Common Space in at most 1000 characters.");
     const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
     const controllers = Array.isArray(area.controllerIds)
       ? [...new Set(area.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
       : [];
     if (isPrivate && !["residence", "workplace"].includes(role) && !controllers.length)
-      throw badRequest("Choose controllers for the Private Area.");
+      throw badRequest("Choose controllers for the Private Space.");
     result.push({
       ...defaultVenueSpace(role, description),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
-      name: asTrimmedString(area.name).slice(0, 100) || (isPrivate ? "Private Area" : "Common Area"),
+      name: asTrimmedString(area.name).slice(0, 100) || (isPrivate ? "Private Space" : "Common Space"),
       purpose:
         asTrimmedString(area.purpose).slice(0, 240) ||
         (isPrivate ? "Personal area appropriate to the venue form" : undefined),
@@ -96,7 +96,7 @@ export function validateLayoutZones(
     throw badRequest("Every physical zone must have a distinct ID.");
   for (const zone of drafts) {
     if (zone.ownerId && zone.kind !== "private-residence")
-      throw badRequest("Only residential Private Areas have assigned residents.");
+      throw badRequest("Only residential Private Spaces have assigned residents.");
     if (
       (zone.kind === "public" && zone.venueClass === "residence") ||
       (zone.kind === "restricted" && ["residence", "workplace"].includes(zone.venueClass))
@@ -113,7 +113,7 @@ export function validateLayoutZones(
       zone.ownerId &&
       !(venueResidentIds(venue).includes(zone.ownerId) || (zone.ownerId === "player" && venue.occupancy.playerHome))
     )
-      throw badRequest("Assign a residential Private Area to a current resident, or leave it vacant.");
+      throw badRequest("Assign a residential Private Space to a current resident, or leave it vacant.");
     if (
       zone.kind === "restricted" &&
       (!zone.controllerIds?.length ||
@@ -125,7 +125,7 @@ export function validateLayoutZones(
   }
   const owners = drafts.filter((zone) => zone.kind === "private-residence" && zone.ownerId).map((zone) => zone.ownerId);
   if (new Set(owners).size !== owners.length)
-    throw badRequest("A resident may be assigned one residential Private Area.");
+    throw badRequest("A resident may be assigned one residential Private Space.");
 }
 
 export function assertResidencePrivateDestination(
@@ -142,7 +142,7 @@ export function assertResidencePrivateDestination(
     zone.kind !== "private-residence" ||
     (zone.ownerId && zone.ownerId !== characterId)
   )
-    throw conflict("That residential Private Area is no longer vacant.");
+    throw conflict("That residential Private Space is no longer vacant.");
   if (
     state.residences.some(
       (move) =>
@@ -152,5 +152,5 @@ export function assertResidencePrivateDestination(
         move.status === "moving",
     )
   )
-    throw conflict("That Private Area is reserved for another move.");
+    throw conflict("That Private Space is reserved for another move.");
 }

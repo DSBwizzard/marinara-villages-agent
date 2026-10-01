@@ -26,7 +26,7 @@ import { SpriteStudio } from "./villages-sprite-studio.js";
 // connectedCallback) and re-published as a `marinara-capability-props` event.
 //
 // The tab draws the whole village itself: a picker over the player's character
-// library, the villagers living here, one venue visit at a time, and the
+// library, the villagers living here, one Scene at a time, and the
 // settings the village keeps — the prompt every villager is given, who the
 // player is, and the noticeboard. The dialogue is the package's own — it never
 // reads or writes an Engine chat — so this file talks only to `/api/villages`.
@@ -1099,7 +1099,7 @@ type RoomLine = {
   id?: string;
 };
 
-/** Somebody currently present in a room. See `RoomView`. */
+/** Somebody currently present in a room. See `SceneView`. */
 type RoomParticipant = {
   characterId: string;
   name: string;
@@ -1127,7 +1127,7 @@ type RoomMemoryDecision = {
   lineIds?: string[];
 };
 
-/** One venue visit: its cast stays fixed until the player leaves. */
+/** One Scene: its cast stays fixed until the player leaves. */
 type RoomOperation = {
   id: string;
   kind: string;
@@ -1137,7 +1137,7 @@ type RoomOperation = {
   error?: string;
   input?: { message?: string; mode?: string; targetId?: string };
 };
-type RoomView = {
+type SceneView = {
   version: 1;
   sceneRevision?: number;
   operation?: RoomOperation | null;
@@ -1160,7 +1160,7 @@ type RoomView = {
   endReason?: "player" | "scene" | "inactivity" | "debug" | "";
   status: "opening" | "active" | "closing" | "closed";
   activeIds: string[];
-  /** The cast captured when Visit began. */
+  /** Residents encountered during this Scene; activeIds identifies the current Zone audience. */
   participants: RoomParticipant[];
   lines: RoomLine[];
   memoryPending?: boolean;
@@ -1192,7 +1192,7 @@ type RoomRecordEvent = {
 };
 
 type ArchiveVisitSummary = Pick<
-  RoomView,
+  SceneView,
   | "id"
   | "placeId"
   | "placeName"
@@ -1209,7 +1209,7 @@ type ArchiveVisitSummary = Pick<
   recollectionCount: number;
 };
 
-function currentRoom(session: RoomView): RoomView {
+function currentRoom(session: SceneView): SceneView {
   return session;
 }
 
@@ -1325,7 +1325,7 @@ function VillagerMemoriesPanel({
   const [kind, setKind] = useState<"all" | "passing" | "durable">("all");
   const [residentId, setResidentId] = useState("");
   const [query, setQuery] = useState("");
-  const [evidence, setEvidence] = useState<{ visit: RoomView; lineIds: string[] } | null>(null);
+  const [evidence, setEvidence] = useState<{ visit: SceneView; lineIds: string[] } | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
   const now = Date.now();
   const matches = (text: string, people: readonly MemoryPerson[]) =>
@@ -1340,12 +1340,12 @@ function VillagerMemoriesPanel({
   );
   const openEvidence = async (visitId: string, lineIds: string[]) => {
     try {
-      const response = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(visitId)}`);
+      const response = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(visitId)}`);
       setEvidence({ visit: response.visit, lineIds });
       setEvidenceError("");
     } catch (cause) {
       setEvidence(null);
-      setEvidenceError(messageFrom(cause, "The source visit could not be read."));
+      setEvidenceError(messageFrom(cause, "The source Scene could not be read."));
     }
   };
   return (
@@ -1356,7 +1356,7 @@ function VillagerMemoriesPanel({
           <h3>What your villagers carry forward</h3>
           <p>
             Passing recollections keep conversations coherent for 24 hours. Durable memories survive because an
-            end-of-visit review found lasting meaning. Exact transcripts remain separate and are never used as hidden
+            end-of-Scene review found lasting meaning. Exact transcripts remain separate and are never used as hidden
             character knowledge.
           </p>
         </div>
@@ -1368,7 +1368,7 @@ function VillagerMemoriesPanel({
             <strong>{library?.durable.length ?? 0}</strong> durable
           </span>
           <span>
-            <strong>{library?.archive.total ?? 0}</strong> archived visits
+            <strong>{library?.archive.total ?? 0}</strong> archived Scenes
           </span>
         </div>
       </section>
@@ -1395,8 +1395,8 @@ function VillagerMemoriesPanel({
         <div className={`${ELEMENT_TAG}-memory-health`} role="status">
           <span>◇</span>
           <div>
-            <strong>{library.archive.pendingReviewCount} visit review pending</strong>
-            <p>The transcript is safe. Villages will retry without holding the room.</p>
+            <strong>{library.archive.pendingReviewCount} Scene review pending</strong>
+            <p>The transcript is safe. Villages will retry without holding the Scene.</p>
           </div>
           <button type="button" className={`${ELEMENT_TAG}-button`} disabled={busy} onClick={onRefresh}>
             Retry now
@@ -1503,7 +1503,7 @@ function VillagerMemoriesPanel({
               </span>
               <h3>Durable memories</h3>
             </div>
-            <span>Lasting meaning · no arbitrary visit quota</span>
+            <span>Lasting meaning · no arbitrary Scene quota</span>
           </div>
           <div className={`${ELEMENT_TAG}-memory-grid`}>
             {durable.map((entry) => (
@@ -1584,7 +1584,7 @@ function VillagerMemoriesPanel({
               ×
             </button>
           </div>
-          <p>Only the cited archive lines are shown. The full visit remains in DEBUG → Venue Visits.</p>
+          <p>Only the cited archive lines are shown. The full Scene remains in DEBUG → Scenes.</p>
           <ol>
             {evidence.visit.lines
               .filter((line) => evidence.lineIds.includes(line.id))
@@ -2065,7 +2065,7 @@ function wishLifetimeLabel(addedAt: string, expiresAt: string): string {
  * open in it, and the room's record must not be a copy of a picture from before
  * the redraw. So the lookup happens here, once, out of the village's own list.
  */
-function venuePictureOf(venues: readonly VillageVenue[], room: RoomView): string {
+function venuePictureOf(venues: readonly VillageVenue[], room: SceneView): string {
   const venue = venues.find((entry) => entry.id === room.placeId);
   if (!venue) return "";
   if (room.area === "outside") return venue.presentation.image?.url ?? "";
@@ -2460,7 +2460,7 @@ const VILLAGES_STYLES = `
 /*
   THE THREE DOTS, and everything the room can do behind them.
 
-  There used to be a bare row of buttons here — End conversation and Forget, then
+  There used to be a bare row of buttons here — End Scene and Forget, then
   the spin-off verb, then the debug pair — and it was read as a row of five equal
   things when only one of them was the player's ordinary way out. The Engine's
   own roleplay chats keep their commands behind a "..." in the corner, and this
@@ -2599,7 +2599,7 @@ const VILLAGES_STYLES = `
 /*
   The last press, floating over the room just above the box.
 
-  A room the village has already remembered wears End conversation here, and it
+  A room the village has already remembered wears End Scene here, and it
   is the only control of its kind on the screen: the first press — Leave this
   conversation, which 0.4.49 moved into the menu under the box — is what spends
   the goodbye and files the memory away, and this is what closes the drawer
@@ -5823,7 +5823,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-backdrop { padding: .5rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-memory-dialog { width: min(20rem, 100%); max-height: 60cqh; padding: .75rem; }
 
-/* Venue visits use a single shallow reading dock so the stage owns the remaining height. */
+/* Scenes use a single shallow reading dock so the stage owns the remaining height. */
 .${ELEMENT_TAG}-room-screen > .${ELEMENT_TAG}-chat { gap: 0; padding: 0; overflow: hidden; }
 .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-scrim {
   background: linear-gradient(180deg, color-mix(in srgb, var(--background) 30%, transparent), transparent 25%, transparent 65%, color-mix(in srgb, var(--background) 30%, transparent));
@@ -6420,9 +6420,9 @@ function staleVenueReason(cause: unknown): "inactivity" | "elsewhere" | null {
   return null;
 }
 
-async function completedGreetingAfterFailure(sessionId: string): Promise<RoomView | null> {
+async function completedGreetingAfterFailure(sessionId: string): Promise<SceneView | null> {
   try {
-    const { session } = await request<{ session: RoomView | null }>("/rooms/active", {
+    const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
     });
     return session?.id === sessionId && session.status !== "opening" ? currentRoom(session) : null;
@@ -6431,17 +6431,17 @@ async function completedGreetingAfterFailure(sessionId: string): Promise<RoomVie
   }
 }
 
-async function refreshSceneAfterFailure(sessionId: string, submissionId?: string): Promise<RoomView | null> {
+async function refreshSceneAfterFailure(sessionId: string, submissionId?: string): Promise<SceneView | null> {
   try {
     if (submissionId)
       await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
         signal: AbortSignal.timeout(5_000),
       });
-    const { session } = await request<{ session: RoomView | null }>("/rooms/active", {
+    const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
     });
     if (session?.id === sessionId) return session;
-    const { visit } = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+    const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
       signal: AbortSignal.timeout(5_000),
     });
     return visit;
@@ -6450,9 +6450,9 @@ async function refreshSceneAfterFailure(sessionId: string, submissionId?: string
   }
 }
 
-async function completedRoomAfterFailure(sessionId: string, submissionId: string): Promise<RoomView | null> {
+async function completedRoomAfterFailure(sessionId: string, submissionId: string): Promise<SceneView | null> {
   try {
-    const { visit } = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+    const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
       signal: AbortSignal.timeout(5_000),
     });
     return hasCompletedRoomSubmission(visit, submissionId) ? currentRoom(visit) : null;
@@ -6896,8 +6896,8 @@ function VenueDraftFields({
                 />
               </label>
               <details className={`${ELEMENT_TAG}-venue-scene-details`}>
-                <summary>Scene details</summary>
-                <p className={`${ELEMENT_TAG}-hint`}>Current physical state used by visits and pictures.</p>
+                <summary>Zone details</summary>
+                <p className={`${ELEMENT_TAG}-hint`}>Current physical state used by Scenes and pictures.</p>
                 <label className={`${ELEMENT_TAG}-label`}>
                   Condition now{" "}
                   <span className={`${ELEMENT_TAG}-hint`}>For example, a leaking roof or a repaired door.</span>
@@ -9609,7 +9609,7 @@ async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promi
   );
 }
 
-/** One paragraph in a venue visit, with its speaker and attached asides. */
+/** One paragraph in a Scene, with its speaker and attached asides. */
 type RoomStep = {
   stagingEvent?: StagingEvent;
   /**
@@ -9757,7 +9757,7 @@ function RoomPanel({
   onUseMailbox,
   onProjects,
 }: {
-  room: RoomView;
+  room: SceneView;
   nameColors: Record<string, string>;
   speechColors: Record<string, string>;
   /** The picture of the place, or `""` for one that has never been drawn. */
@@ -9795,7 +9795,7 @@ function RoomPanel({
   onUseMailbox?: () => void;
   onProjects?: () => void;
 }) {
-  /** The current paragraph in this venue visit's ordered reading. */
+  /** The current paragraph in this Scene's ordered reading. */
   const [readStep, setReadStep] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -10095,10 +10095,10 @@ function RoomPanel({
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
       <span className={`${ELEMENT_TAG}-chat-pending-label`}>
         {room.status === "opening"
-          ? "Opening the scene…"
+          ? "Opening the Scene…"
           : room.status === "closing"
-            ? "Saving this visit…"
-            : "The room is answering…"}
+            ? "Saving this Scene…"
+            : "The Scene is responding…"}
       </span>
     </p>
   );
@@ -10191,7 +10191,7 @@ function RoomPanel({
                 }}
                 disabled={busy}
               >
-                {ended && room.memoryPending ? "Leave with memory pending" : ended ? "Return to map" : "End visit now"}
+                {ended && room.memoryPending ? "Leave with memory pending" : ended ? "Return to map" : "End Scene now"}
               </button>
               {(endFailed || room.status === "closing" || room.memoryPending) && !ended ? (
                 <button
@@ -10215,7 +10215,7 @@ function RoomPanel({
                   }}
                   disabled={busy}
                 >
-                  DEBUG: Discard Visit
+                  DEBUG: Discard Scene
                 </button>
               ) : null}
             </span>
@@ -10419,7 +10419,7 @@ function RoomPanel({
             ref={historyRef}
             className={`${ELEMENT_TAG}-chat-log`}
             role="log"
-            aria-label="Venue conversation history"
+            aria-label="Scene history"
             tabIndex={0}
             onKeyDown={(event) => {
               if (event.key !== "Escape") return;
@@ -10533,9 +10533,9 @@ function RoomPanel({
                   */
                   <p className={`${ELEMENT_TAG}-chat-vn-text`} data-empty="true">
                     {room.status === "opening"
-                      ? `Opening the scene in ${room.placeName}…`
+                      ? `Opening the Scene in ${room.placeName}…`
                       : activeParticipants.length === 0
-                        ? `You are alone in ${room.placeName}.`
+                        ? `You are alone in this Zone of ${room.placeName}.`
                         : "…"}
                   </p>
                 )}
@@ -10621,7 +10621,7 @@ function RoomPanel({
           <p className={`${ELEMENT_TAG}-hint`}>
             {room.memoryPending
               ? `Closing review ${reviewing ? "in progress" : "pending"} · ${room.memoryReview?.nextRecollection ?? 0}/${reviewTotal} evidence groups reviewed. Memories and relationships settle independently; you can leave while review is pending and retry from Memories.`
-              : "Closing this visit…"}
+              : "Closing this Scene…"}
           </p>
         ) : null}
         {ended &&
@@ -10629,7 +10629,7 @@ function RoomPanel({
         room.memoryReview?.status === "complete" &&
         !room.memoryReview.decisions?.some((decision) => decision.action === "promote") ? (
           <p className={`${ELEMENT_TAG}-hint`} role="status">
-            Review complete. No durable memories were made from this visit.
+            Review complete. No durable memories were made from this Scene.
           </p>
         ) : null}
 
@@ -10668,7 +10668,7 @@ function RoomPanel({
                     {mode === "chat" ? "💬" : mode === "fulfill" ? "🫴" : "🚪"}
                   </button>
                   {modeMenuOpen ? (
-                    <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Visit mode">
+                    <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
                       {(["chat", "fulfill", "conclude"] as const).map((option) => (
                         <button
                           key={option}
@@ -10817,7 +10817,7 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   relationships: "Relationships",
   village: "Village Settings",
   general: "General Settings",
-  chatlogs: "Venue Visits",
+  chatlogs: "Scenes",
   progress: "Progress",
   agendas: "Villager Wishes",
   schedules: "Villager Agendas",
@@ -11029,8 +11029,8 @@ function RenovationRevisionEditor({
                   }
                 >
                   <option value="public">Public</option>
-                  <option value="shared-residence">Residential Common Area</option>
-                  <option value="private-residence">Residential Private Area · assigned resident</option>
+                  <option value="shared-residence">Residential Common Space</option>
+                  <option value="private-residence">Residential Private Space · assigned resident</option>
                   <option value="staff">Staff</option>
                 </select>
               </label>
@@ -11133,7 +11133,7 @@ function ProjectsPanelV2({
   siteProjectId,
 }: {
   snapshot: VillageSnapshot;
-  room: RoomView | null;
+  room: SceneView | null;
   onSnapshot: (next: VillageSnapshot) => void;
   onReturn: () => void;
   onMap: () => void;
@@ -11414,7 +11414,7 @@ function ProjectsPanelV2({
           <h2>{project.kind === "new-venue" ? `Open ${project.title}` : `Review ${project.title}`}</h2>
           <p>
             {project.kind === "new-venue"
-              ? "Choose the finished place’s form, layout, exterior, and selected areas. Images are optional."
+              ? "Choose the finished place’s form, layout, exterior, and selected Zones. Images are optional."
               : "Review the approved zone names, access, and descriptions, then choose final images if you wish."}
           </p>
         </header>
@@ -11451,9 +11451,9 @@ function ProjectsPanelV2({
               <>
                 <AreaClassField venue={openingVenue} privateArea={false} onChange={patchOpeningLayout} />
                 <label>
-                  Common Area description
+                  Common Space description
                   <textarea
-                    aria-label="Common Area description"
+                    aria-label="Common Space description"
                     data-layout-editor="common"
                     value={interior}
                     onChange={(event) => setInterior(event.target.value)}
@@ -11475,7 +11475,7 @@ function ProjectsPanelV2({
             </label>
             {target?.classes?.includes("residence") ? (
               <p>
-                Capacity starts at one resident. A residential Private Area is assigned explicitly when someone moves
+                Capacity starts at one resident. A residential Private Space is assigned explicitly when someone moves
                 in.
               </p>
             ) : null}
@@ -11512,7 +11512,7 @@ function ProjectsPanelV2({
           const image = area === "exterior" ? exteriorImage : interiorImage;
           return (
             <section key={area} className={`${ELEMENT_TAG}-project-image`}>
-              <h3>{area === "exterior" ? "Exterior" : "Common Area"} image · optional</h3>
+              <h3>{area === "exterior" ? "Exterior" : "Common Space"} image · optional</h3>
               {image ? (
                 <img src={image.url} alt={`${area} preview`} />
               ) : (
@@ -11793,7 +11793,7 @@ function ProjectsPanelV2({
                       <label>
                         Existing area improved (optional)
                         <select value={upgradeTarget} onChange={(event) => setUpgradeTarget(event.target.value)}>
-                          <option value="">No existing area</option>
+                          <option value="">No existing Zone</option>
                           {selectedVenue?.zones
                             ?.filter((zone) => zone.kind !== "private-residence")
                             .map((zone) => (
@@ -11847,8 +11847,8 @@ function ProjectsPanelV2({
                               }
                             >
                               <option value="public">Public · everyone</option>
-                              <option value="shared-residence">Common Area · residents and guests</option>
-                              <option value="private-residence">Residential Private Area · assigned resident</option>
+                              <option value="shared-residence">Common Space · residents and guests</option>
+                              <option value="private-residence">Residential Private Space · assigned resident</option>
                               <option value="staff">Staff · all current workers and guests</option>
                               <option value="restricted">Private · assigned controllers and guests</option>
                             </select>
@@ -12169,7 +12169,7 @@ function ProjectsPanelV2({
                 <h3>Prepare materials</h3>
                 <p>
                   Find each supply in the Village, then bring it to this blueprint site. Offers and handoffs are
-                  recognized during your visits. Deliveries update the list here.
+                  recognized during your Scenes. Deliveries update the list here.
                 </p>
                 {flow?.requirements
                   .filter((entry) => entry.needed)
@@ -12232,7 +12232,7 @@ function ProjectsPanelV2({
                                 ))}
                             </>
                           ) : (
-                            <p>The supplier’s handoff will be recognized during your visit.</p>
+                            <p>The supplier’s handoff will be recognized during your Scene.</p>
                           )}
                         </>
                       ) : null}
@@ -12319,7 +12319,7 @@ function ProjectsPanelV2({
             <footer className={`${ELEMENT_TAG}-project-footer`}>
               {room?.status === "active" ? (
                 <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onReturn}>
-                  Return to current visit
+                  Return to current Scene
                 </button>
               ) : (
                 <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onMap}>
@@ -12446,7 +12446,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [archiveTotal, setArchiveTotal] = useState(0);
   const [archiveOffset, setArchiveOffset] = useState(0);
   const [archiveVersion, setArchiveVersion] = useState(0);
-  const [openArchivedVisit, setOpenArchivedVisit] = useState<RoomView | null>(null);
+  const [openArchivedVisit, setOpenArchivedVisit] = useState<SceneView | null>(null);
   const [endFailed, setEndFailed] = useState(false);
   const [archiveVenueId, setArchiveVenueId] = useState("");
   const [archiveVillagerId, setArchiveVillagerId] = useState("");
@@ -12794,7 +12794,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * `roomOpen` is a flag of its own for the same reason `chatOpen` is: the drawer
    * is animated by an attribute and a panel that is not there cannot slide.
    */
-  const [room, setRoom] = useReducer((current: RoomView | null, next: SetStateAction<RoomView | null>) => {
+  const [room, setRoom] = useReducer((current: SceneView | null, next: SetStateAction<SceneView | null>) => {
     const candidate = typeof next === "function" ? next(current) : next;
     if (current?.id && current.id === candidate?.id && (current.sceneRevision ?? 0) > (candidate.sceneRevision ?? 0))
       return current;
@@ -13359,15 +13359,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       seenRoomEventIdsRef.current.clear();
       setLastSceneEnding(
         reason === "inactivity"
-          ? "Interrupted: Inactivity. Your completed exchanges were saved in the visit archive."
-          : "This visit ended while you were away. Its completed exchanges are in the visit archive.",
+          ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
+          : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
       );
       setScreen("home");
       void loadSnapshot();
     };
     const validate = (touchAfter = false) => {
       if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
-      void request<{ session: RoomView | null }>("/rooms/active")
+      void request<{ session: SceneView | null }>("/rooms/active")
         .then(async ({ session }) => {
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
           if (session?.id === room.id) {
@@ -13378,7 +13378,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             }
             return;
           }
-          const archived = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(room.id)}`).catch(
+          const archived = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(room.id)}`).catch(
             () => null,
           );
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
@@ -13476,11 +13476,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     };
   }, [room?.id, room?.operation?.id, room?.operation?.status, room?.submissions]);
 
-  // An app reload does not end a venue visit. The server owns the one active
+  // An app reload does not end a Scene. The server owns the one active
   // session; the client restores it instead of opening another conversation.
   useEffect(() => {
     const controller = new AbortController();
-    void request<{ session: RoomView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
+    void request<{ session: SceneView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
       signal: controller.signal,
     })
       .then(({ session, debugDiscardEnabled: debugEnabled }) => {
@@ -13492,7 +13492,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setScreen("room");
         if (session.status === "opening") {
           setRoomBusy(true);
-          void request<{ session: RoomView }>("/rooms/greet", {
+          void request<{ session: SceneView }>("/rooms/greet", {
             method: "POST",
             body: JSON.stringify({ sessionId: session.id }),
             signal: AbortSignal.timeout(30_000),
@@ -13546,18 +13546,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         }
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setArchiveError(messageFrom(cause, "Venue visits could not be read."));
+        if (!controller.signal.aborted) setArchiveError(messageFrom(cause, "Scenes could not be read."));
       });
     return () => controller.abort();
   }, [archiveVenueId, archiveVillagerId, archiveOffset, archiveVersion, menuPage, snapshot?.isFounded]);
 
   const openVisit = useCallback(async (id: string) => {
     try {
-      const response = await request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(id)}`);
+      const response = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(id)}`);
       setOpenArchivedVisit(response.visit);
       setArchiveError("");
     } catch (cause) {
-      setArchiveError(messageFrom(cause, "That visit could not be read."));
+      setArchiveError(messageFrom(cause, "That Scene could not be read."));
     }
   }, []);
 
@@ -13586,8 +13586,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     if (
       !window.confirm(
         id
-          ? "Delete this exact visit transcript? Filed memories and world changes remain. Any pending memory can no longer be retried."
-          : "Delete all completed visit transcripts? Filed memories and world changes remain. Any pending memories can no longer be retried.",
+          ? "Delete this exact Scene transcript? Filed memories and world changes remain. Any pending memory can no longer be retried."
+          : "Delete all completed Scene transcripts? Filed memories and world changes remain. Any pending memories can no longer be retried.",
       )
     )
       return;
@@ -13599,7 +13599,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setArchiveVersion((version) => version + 1);
       setArchiveError("");
     } catch (cause) {
-      setArchiveError(messageFrom(cause, "Visit transcripts could not be deleted."));
+      setArchiveError(messageFrom(cause, "Scene transcripts could not be deleted."));
     } finally {
       setBusy(false);
     }
@@ -13766,11 +13766,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   const startRoomReview = useCallback(
-    (session: RoomView) => {
+    (session: SceneView) => {
       if (!session.memoryPending || roomReviewInFlightRef.current.has(session.id)) return;
       roomReviewInFlightRef.current.add(session.id);
       setRoomReviewingId(session.id);
-      void request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>(
+      void request<{ session: SceneView; recordEvents: RoomRecordEvent[] }>(
         `/rooms/archive/${encodeURIComponent(session.id)}/retry-memory`,
         { method: "POST" },
       )
@@ -13794,7 +13794,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   useEffect(() => {
     if (!roomReviewingId) return;
     const timer = window.setInterval(() => {
-      void request<{ visit: RoomView }>(`/rooms/archive/${encodeURIComponent(roomReviewingId)}`)
+      void request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(roomReviewingId)}`)
         .then(({ visit }) => {
           if (leavingRoomPendingRef.current || !roomReviewInFlightRef.current.has(roomReviewingId)) return;
           setRoom((current) =>
@@ -13808,7 +13808,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     return () => window.clearInterval(timer);
   }, [roomReviewingId]);
 
-  /** End an active visit in place; a second press returns the completed scene to the map. */
+  /** End an active Scene in place; a second press returns the completed scene to the map. */
   const closeRoom = useCallback(async () => {
     if (!room || roomBusy) return;
     if (room.memoryPending && (room.status === "closed" || roomEnded)) {
@@ -13832,7 +13832,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setRoom({ ...room, status: "closing" });
     roomCompletionRef.current = { roomId: room.id, submissionId: "" };
     try {
-      const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/end", {
+      const answer = await request<{ session: SceneView; recordEvents: RoomRecordEvent[] }>("/rooms/end", {
         method: "POST",
         body: JSON.stringify({ sessionId: room.id, expectedSceneRevision: room.sceneRevision ?? 0 }),
       });
@@ -13855,8 +13855,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         seenRoomEventIdsRef.current.clear();
         setLastSceneEnding(
           staleReason === "inactivity"
-            ? "Interrupted: Inactivity. Your completed exchanges were saved in the visit archive."
-            : "This visit ended while you were away. Its completed exchanges are in the visit archive.",
+            ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
+            : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
         );
         setScreen("home");
         void loadSnapshot();
@@ -13883,7 +13883,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setRoomError("");
     setEndFailed(false);
     try {
-      const answer = await request<{ session: RoomView; recordEvents: RoomRecordEvent[] }>("/rooms/leave", {
+      const answer = await request<{ session: SceneView; recordEvents: RoomRecordEvent[] }>("/rooms/leave", {
         method: "POST",
         body: JSON.stringify({
           sessionId: room.id,
@@ -13926,8 +13926,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         seenRoomEventIdsRef.current.clear();
         setLastSceneEnding(
           staleReason === "inactivity"
-            ? "Interrupted: Inactivity. Your completed exchanges were saved in the visit archive."
-            : "This visit ended while you were away. Its completed exchanges are in the visit archive.",
+            ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
+            : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
         );
         setScreen("home");
         void loadSnapshot();
@@ -13955,7 +13955,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setEndFailed(false);
       void loadSnapshot();
     } catch (cause) {
-      setRoomError(messageFrom(cause, "The visit could not be left yet."));
+      setRoomError(messageFrom(cause, "The Scene could not be left yet."));
       leavingRoomPendingRef.current = false;
     } finally {
       setRoomBusy(false);
@@ -13965,7 +13965,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const discardRoomDebug = useCallback(async () => {
     if (!room?.id || !debugDiscardEnabled || roomBusy) return;
     if (
-      !window.confirm("DEBUG: Discard this visit and its transcript? Completed effects and villager memories remain.")
+      !window.confirm("DEBUG: Discard this Scene and its transcript? Completed effects and villager memories remain.")
     )
       return;
     setRoomBusy(true);
@@ -13986,7 +13986,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, [room, debugDiscardEnabled, roomBusy, loadSnapshot]);
 
   /**
-   * Submit one speech or action turn in the current visit.
+   * Submit one speech or action turn in the current Scene.
    *
    * Show the player's line while the server responds, then restore the draft if
    * the turn fails. The server writes the line only after it has a valid reply.
@@ -14016,12 +14016,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         seenRoomEventIdsRef.current.clear();
         setLastSceneEnding(
           staleReason === "inactivity"
-            ? "Interrupted: Inactivity. Your completed exchanges were saved in the visit archive."
-            : "This visit ended while you were away. Its completed exchanges are in the visit archive.",
+            ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
+            : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
         );
         setScreen("home");
         void loadSnapshot();
-      } else setRoomError(messageFrom(cause, "The visit could not be checked."));
+      } else setRoomError(messageFrom(cause, "The Scene could not be checked."));
       return;
     }
     const mine: RoomLine = {
@@ -14038,7 +14038,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     roomCompletionRef.current = { roomId: room.id, submissionId };
     try {
       const answer = await request<{
-        session: RoomView;
+        session: SceneView;
         verdict: WishVerdict | null;
         action: { narration: string } | null;
         recordEvents: RoomRecordEvent[];
@@ -14091,8 +14091,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         seenRoomEventIdsRef.current.clear();
         setLastSceneEnding(
           staleReason === "inactivity"
-            ? "Interrupted: Inactivity. Your completed exchanges were saved in the visit archive."
-            : "This visit ended while you were away. Its completed exchanges are in the visit archive.",
+            ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
+            : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
         );
         setScreen("home");
         void loadSnapshot();
@@ -14160,7 +14160,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomGreetingError(null);
       setRoomGreetingNotice("");
       try {
-        const answer = await request<{ session: RoomView }>("/rooms/greet", {
+        const answer = await request<{ session: SceneView }>("/rooms/greet", {
           method: "POST",
           body: JSON.stringify({ sessionId }),
           signal: AbortSignal.timeout(30_000),
@@ -14203,7 +14203,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   ? "/rooms/leave"
                   : "/rooms/turn"
                 : "/rooms/end";
-      const answer = await request<{ session: RoomView; recordEvents?: RoomRecordEvent[] }>(path, {
+      const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
         method: "POST",
         body: JSON.stringify({
           ...operation.input,
@@ -14236,18 +14236,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const continueRoomWithoutGreeting = useCallback(async (sessionId: string) => {
     setRoomBusy(true);
     try {
-      const { session } = await request<{ session: RoomView }>("/rooms/continue", {
+      const { session } = await request<{ session: SceneView }>("/rooms/continue", {
         method: "POST",
         body: JSON.stringify({ sessionId }),
         signal: AbortSignal.timeout(10_000),
       });
       setRoom(currentRoom(session));
-      setRoomGreetingNotice(
-        session.lines.length === 0 ? "The opening failed. You can start the conversation now." : "",
-      );
+      setRoomGreetingNotice(session.lines.length === 0 ? "The opening failed. You can continue the Scene now." : "");
       setRoomError("");
     } catch (cause) {
-      setRoomError(messageFrom(cause, "The visit could not continue. Retry or leave the venue."));
+      setRoomError(messageFrom(cause, "The Scene could not continue. Retry or leave the venue."));
     } finally {
       setRoomBusy(false);
     }
@@ -14266,7 +14264,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setRoomBusy(true);
         setRoomError("");
         try {
-          const { session } = await request<{ session: RoomView }>("/rooms/zone", {
+          const { session } = await request<{ session: SceneView }>("/rooms/zone", {
             method: "POST",
             body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
           });
@@ -14309,7 +14307,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setRoomOpen(true);
       setScreen("room");
       try {
-        const { session } = await request<{ session: RoomView }>("/rooms", {
+        const { session } = await request<{ session: SceneView }>("/rooms", {
           method: "POST",
           body: JSON.stringify({
             venueId: place.id,
@@ -14330,7 +14328,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         void loadSnapshot();
         if (session.status === "opening") await greetRoom(session.id);
       } catch (cause) {
-        setRoomError(messageFrom(cause, "That room could not be opened. Retry or leave the venue."));
+        setRoomError(messageFrom(cause, "That Zone could not be opened. Retry or leave the venue."));
       } finally {
         setRoomBusy(false);
       }
@@ -14347,7 +14345,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * happens, so the pin is the door and the place decides what is behind it.
    *
    * Every place offers both its details and an entrance. When nobody is present,
-   * Enter opens the place's own action view; otherwise it opens the Common Area.
+   * Enter opens the place's own action view; otherwise it opens the Common Space.
    */
   const openVenue = useCallback((place: VillageVenue) => {
     setPlayerMovePrivateZoneId("");
@@ -14465,7 +14463,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       );
       setArchiveVersion((version) => version + 1);
     } catch (cause) {
-      setSettingsError(messageFrom(cause, "Visit retention could not be saved."));
+      setSettingsError(messageFrom(cause, "Scene retention could not be saved."));
     } finally {
       setBusy(false);
     }
@@ -15245,7 +15243,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     layout: venue.layout,
     layoutVersion: venue.layoutVersion,
     areas: [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].map((area) => ({
-      name: "name" in area ? area.name : "Common Area",
+      name: "name" in area ? area.name : "Common Space",
       purpose: "purpose" in area ? area.purpose : "",
       venueClass: area.venueClass,
     })),
@@ -15383,7 +15381,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       (!snapshot?.isFounded && selectedSetupVenue.layoutVersion === 1 && !selectedSetupVenue.layout) ||
       (venueHasCommon(selectedSetupVenue) && !selectedSetupVenue.spaces?.[0]?.description.trim())
     ) {
-      setSetupProblem("Complete this venue’s name, form, layout, exterior, and selected Common Area.");
+      setSetupProblem("Complete this venue’s name, form, layout, exterior, and selected Common Space.");
       return;
     }
     if (
@@ -15394,7 +15392,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
       )
     ) {
-      setSetupProblem("Give each private room a name, purpose, and controller.");
+      setSetupProblem("Give each Private Space a name, purpose, and controller.");
       return;
     }
     setSetupCompletedIds((ids) => [...new Set([...ids, selectedSetupVenue.id])]);
@@ -15441,7 +15439,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           (venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()),
       )
     )
-      return "Complete each venue's Form, Layout, Exterior, and selected Common Area in Step 4.";
+      return "Complete each venue's Form, Layout, Exterior, and selected Common Space in Step 4.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -15722,7 +15720,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         ) {
           setSettingsError(
             dependencies.roomPresent
-              ? "End the active visit before deleting this Venue."
+              ? "End the active Scene before deleting this Venue."
               : dependencies.pendingMailCount
                 ? "Resolve pending Venue decisions before deleting this Venue."
                 : "Move every resident, including yourself, before deleting this Residence.",
@@ -16105,7 +16103,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
         {room?.operation?.status === "running" ? (
-          <div role="status">This conversation is responding. Your draft stays here.</div>
+          <div role="status">This Scene is responding. Your draft stays here.</div>
         ) : null}
         {room?.operation?.status === "interrupted" ? (
           <div role="alert" className={`${ELEMENT_TAG}-room-error`}>
@@ -16176,7 +16174,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               room.area === "shared" && room.privateAccessOwnerId
                 ? () => {
                     setRoomBusy(true);
-                    void request<{ session: RoomView }>("/rooms/enter-private", {
+                    void request<{ session: SceneView }>("/rooms/enter-private", {
                       method: "POST",
                       body: JSON.stringify({
                         sessionId: room.id,
@@ -16389,8 +16387,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         const canEnter = !residence || !occupiedResidence || place.occupancy.playerHome || sharedInvitation;
         return {
           key: `class:${item}`,
-          label: "Common Area",
-          subtitle: residence ? "Common Area" : `${item[0]!.toUpperCase()}${item.slice(1)} space`,
+          label: "Common Space",
+          subtitle: residence ? "Common Space" : `${item[0]!.toUpperCase()}${item.slice(1)} space`,
           area: residence ? "shared" : "public",
           spaceClass: item,
           ownerId: "",
@@ -16413,8 +16411,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           );
           return {
             key: `private:${space.ownerId}`,
-            label: `${ownerName}'s Private Area`,
-            subtitle: "Restricted area",
+            label: `${ownerName}'s Private Space`,
+            subtitle: "Restricted Zone",
             area: "private",
             spaceClass: "residence",
             ownerId: space.ownerId,
@@ -16461,21 +16459,21 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             label:
               zone.kind === "private-residence"
                 ? zone.ownerId === "player"
-                  ? "Your Private Area"
+                  ? "Your Private Space"
                   : zone.ownerId
-                    ? nameOfCharacter(zone.ownerId) + "'s Private Area"
+                    ? nameOfCharacter(zone.ownerId) + "'s Private Space"
                     : zone.name + " (vacant)"
                 : zone.name,
             subtitle:
               zone.kind === "staff"
-                ? "Staff area"
+                ? "Staff Zone"
                 : zone.kind === "shared-residence"
-                  ? "Common Area"
+                  ? "Common Space"
                   : zone.kind === "private-residence"
-                    ? "Residential Private Area"
+                    ? "Residential Private Space"
                     : zone.kind === "exterior"
                       ? "Exterior / grounds"
-                      : "Public area",
+                      : "Public Zone",
             area,
             spaceClass: zone.venueClass,
             ownerId: zone.ownerId ?? "",
@@ -16491,7 +16489,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 : zone.relationshipAccess
                   ? "Ongoing relationship access"
                   : invited
-                    ? "Permission for this visit"
+                    ? "Permission for this Scene"
                     : zone.kind === "private-residence"
                       ? "Owner's invitation required"
                       : zone.kind === "staff"
@@ -16709,7 +16707,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           (sharedIndex >= 0 &&
             JSON.stringify(draftFields.spaces[sharedIndex]) !== JSON.stringify(currentFields.spaces[sharedIndex])) ||
           JSON.stringify(draftFields.privateSpaces) !== JSON.stringify(currentFields.privateSpaces);
-        if (roomChanges && !window.confirm("Saving Venue details will discard unsaved room changes. Continue?")) return;
+        if (roomChanges && !window.confirm("Saving Venue details will discard unsaved Zone changes. Continue?")) return;
       }
       setVenueEditBusy(true);
       setVenueEditError("");
@@ -16749,7 +16747,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         );
       if (
         JSON.stringify(editableFields(remainingDraft)) !== JSON.stringify(editableFields(place)) &&
-        !window.confirm("Submitting this room edit will discard other unsaved changes. Continue?")
+        !window.confirm("Submitting this Zone edit will discard other unsaved changes. Continue?")
       )
         return;
       setVenueEditBusy(true);
@@ -16760,9 +16758,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           method: "POST",
           body: JSON.stringify({ target, ownerId, description: space.description, state: space.state }),
         });
-        refreshEditor(next, `${target === "private" ? "Private Area" : "Common Area"} edit proposed.`);
+        refreshEditor(next, `${target === "private" ? "Private Space" : "Common Space"} edit proposed.`);
       } catch (cause) {
-        setVenueEditError(messageFrom(cause, "That room edit could not be proposed."));
+        setVenueEditError(messageFrom(cause, "That Zone edit could not be proposed."));
       } finally {
         setVenueEditBusy(false);
       }
@@ -16806,13 +16804,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   {classes.includes("residence") && !place.occupancy.playerHome ? (
                     <>
                       <label>
-                        Your destination Private Area
+                        Your destination Private Space
                         <select
-                          aria-label="Your destination Private Area"
+                          aria-label="Your destination Private Space"
                           value={playerMovePrivateZoneId}
                           onChange={(event) => setPlayerMovePrivateZoneId(event.target.value)}
                         >
-                          <option value="">No Private Area</option>
+                          <option value="">No Private Space</option>
                           {place.zones
                             ?.filter(
                               (zone) =>
@@ -16876,7 +16874,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </button>
                   {activeRoom?.placeId === place.id ? (
                     <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setScreen("room")}>
-                      Return to scene
+                      Return to Scene
                     </button>
                   ) : null}
                 </>
@@ -16929,7 +16927,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     <img src={selectedZone.image.url} alt={selectedZone.label + " at " + place.name} />
                   ) : (
                     <div className={ELEMENT_TAG + "-venue-artwork-empty"}>
-                      {selectedZone.locked ? "Area not discovered yet" : "No image for this area yet"}
+                      {selectedZone.locked ? "Zone not discovered yet" : "No image for this Zone yet"}
                     </div>
                   )}
                 </div>
@@ -16995,7 +16993,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     {zoneDescription ? <p>{zoneDescription}</p> : null}
                     {selectedZone.adaptationPending ? (
                       <>
-                        <p>This room is still being adapted after a move.</p>
+                        <p>This Zone is still being adapted after a move.</p>
                         <BackgroundWorkPanel
                           jobs={(snapshot?.backgroundWork ?? []).filter((job) => job.kind === "adaptation")}
                           onRetry={retryWork}
@@ -17017,7 +17015,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     ) : null}
                     {zoneProposals.map((proposal) => (
                       <p key={proposal.id}>
-                        Proposed room edit:{" "}
+                        Proposed Zone edit:{" "}
                         {proposal.declined
                           ? "declined or stale"
                           : `approved by ${proposal.approvedIds.length} of ${proposal.requiredIds.length} residents`}
@@ -17031,7 +17029,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </p>
                 ) : null}
                 {activeRoom && !activeZoneIsSelected ? (
-                  <p className={ELEMENT_TAG + "-venue-zone-guidance"}>Move between zones to continue this visit.</p>
+                  <p className={ELEMENT_TAG + "-venue-zone-guidance"}>Move between Zones to continue this Scene.</p>
                 ) : null}
                 <button
                   type="button"
@@ -17053,7 +17051,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         )
                   }
                 >
-                  {roomBusy ? "Opening visit…" : activeZoneIsSelected ? "Return to scene →" : "Visit this area →"}
+                  {roomBusy ? "Opening Scene…" : activeZoneIsSelected ? "Return to Scene →" : "Enter this Zone →"}
                 </button>
               </aside>
             </div>
@@ -17110,7 +17108,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 />
                 {occupiedResidence ? (
                   <p className={`${ELEMENT_TAG}-hint`}>
-                    Save Venue details updates the public fields. Changes to the residential Common Area require a
+                    Save Venue details updates the public fields. Changes to the residential Common Space require a
                     separate proposal during an invited visit.
                   </p>
                 ) : null}
@@ -17130,13 +17128,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       disabled={venueEditBusy || !venueSpaceFor(venueEditDraft, "residence").description.trim()}
                       onClick={() => void proposeRoomEdit("shared")}
                     >
-                      Propose Common Area edit
+                      Propose Common Space edit
                     </button>
                   ) : null}
                 </div>
                 {occupiedResidence && !liveShared ? (
                   <p className={`${ELEMENT_TAG}-hint`}>
-                    Enter with a resident's invitation to propose changes to the Common Area's contents.
+                    Enter with a resident's invitation to propose changes to the Common Space's contents.
                   </p>
                 ) : null}
               </section>
@@ -17171,10 +17169,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       />
                     </label>
                     <details className={`${ELEMENT_TAG}-venue-scene-details`}>
-                      <summary>Scene details</summary>
+                      <summary>Zone details</summary>
                       <p className={`${ELEMENT_TAG}-hint`}>
-                        Physical state used during visits and for this room's image. These facts stay private until the
-                        player enters this room.
+                        Physical state used during Scenes and for this Zone's image. These facts stay private until the
+                        player enters this Zone.
                       </p>
                       <label className={`${ELEMENT_TAG}-label`}>
                         Condition now{" "}
@@ -17202,7 +17200,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       </label>
                       <label className={`${ELEMENT_TAG}-label`}>
                         Present items · one per line{" "}
-                        <span className={`${ELEMENT_TAG}-hint`}>Objects physically in this room.</span>
+                        <span className={`${ELEMENT_TAG}-hint`}>Objects physically in this Zone.</span>
                         <textarea
                           className={`${ELEMENT_TAG}-textarea`}
                           value={space.state.items.join("\n")}
@@ -17224,7 +17222,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       </label>
                       <label className={`${ELEMENT_TAG}-label`}>
                         Established facts · one per line{" "}
-                        <span className={`${ELEMENT_TAG}-hint`}>Durable truths about this room.</span>
+                        <span className={`${ELEMENT_TAG}-hint`}>Durable truths about this Zone.</span>
                         <textarea
                           className={`${ELEMENT_TAG}-textarea`}
                           value={space.state.publicFacts.join("\n")}
@@ -17254,7 +17252,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       disabled={venueEditBusy || !space.description.trim()}
                       onClick={() => void proposeRoomEdit("private", space.ownerId)}
                     >
-                      Propose private room edit
+                      Propose Private Space edit
                     </button>
                   </section>
                 ))}
@@ -17284,13 +17282,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     ))}
                 </select>
                 <label>
-                  Destination Private Area
+                  Destination Private Space
                   <select
-                    aria-label="Destination Private Area"
+                    aria-label="Destination Private Space"
                     value={movePrivateZoneId}
                     onChange={(event) => setMovePrivateZoneId(event.target.value)}
                   >
-                    <option value="">No Private Area</option>
+                    <option value="">No Private Space</option>
                     {snapshot.settings.venues
                       .find((venue) => venue.id === moveTargetId)
                       ?.zones?.filter(
@@ -17666,7 +17664,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 disabled={!snapshot || busy}
                 onClick={() => openMenu("chatlogs")}
               >
-                {`DEBUG: Venue Visits (${venueVisits?.length ?? 0})`}
+                {`DEBUG: Scenes (${venueVisits?.length ?? 0})`}
               </button>
               <button
                 type="button"
@@ -17759,7 +17757,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 </label>
                 <p className={`${ELEMENT_TAG}-empty`}>
                   Controls automatic Events, resident housing proposals from those events, and new wishes. Off pauses
-                  these. Time, schedules, approved moves, construction, and existing wish expiry continue. Visits and
+                  these. Time, schedules, approved moves, construction, and existing wish expiry continue. Scenes and
                   other generation features use their own controls. All enabled levels allow at most one new wish per
                   resident per day and two active wishes; quiet days can have none.
                 </p>
@@ -17782,10 +17780,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {snapshot ? (
               <div className={`${ELEMENT_TAG}-field`}>
                 <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-visit-retention`}>
-                  Visit transcripts
+                  Scene transcripts
                 </label>
                 <p className={`${ELEMENT_TAG}-empty`}>
-                  Exact visit logs are kept forever by default. Automatic cleanup skips visits with memory pending and
+                  Exact Scene logs are kept forever by default. Automatic cleanup skips Scenes with memory pending and
                   keeps filed memories and world changes.
                 </p>
                 <select
@@ -17798,7 +17796,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   }}
                 >
                   <option value="forever">Keep forever</option>
-                  <option value="count">Keep latest visits</option>
+                  <option value="count">Keep latest Scenes</option>
                   <option value="days">Retire after days</option>
                 </select>
                 {snapshot.settings.visitRetention.mode !== "forever" ? (
@@ -17807,8 +17805,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     type="number"
                     aria-label={
                       snapshot.settings.visitRetention.mode === "count"
-                        ? "Number of visits to keep"
-                        : "Days to keep visits"
+                        ? "Number of Scenes to keep"
+                        : "Days to keep Scenes"
                     }
                     min={snapshot.settings.visitRetention.mode === "count" ? 1 : 30}
                     max={snapshot.settings.visitRetention.mode === "count" ? 1000 : 3650}
@@ -18629,7 +18627,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             portrait={portraits[villager.characterId]}
                             selected={false}
                             // A resident's name leads to the venue they currently
-                            // occupy. Conversation belongs to that venue visit.
+                            // occupy. Conversation belongs to that Scene.
                             onSelect={
                               !villager.place || room !== null
                                 ? undefined
@@ -19181,15 +19179,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {menuPage === "chatlogs" ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Venue visits</h2>
+                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Scenes</h2>
                 </div>
                 <p className={`${ELEMENT_TAG}-empty`}>
-                  Completed venue visits are kept here word for word. Filter by place or resident; each visit has one
-                  shared record, including who heard each line. The village uses only the separately distilled memories.
+                  Completed Scenes are kept here word for word. Filter by place or resident; each Scene has one shared
+                  record, including who heard each line. The village uses only the separately distilled memories.
                 </p>
                 <div className={`${ELEMENT_TAG}-row`}>
                   <select
-                    aria-label="Filter visits by venue"
+                    aria-label="Filter Scenes by venue"
                     value={archiveVenueId}
                     onChange={(event) => {
                       setArchiveVenueId(event.target.value);
@@ -19205,7 +19203,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     ))}
                   </select>
                   <select
-                    aria-label="Filter visits by resident"
+                    aria-label="Filter Scenes by resident"
                     value={archiveVillagerId}
                     onChange={(event) => {
                       setArchiveVillagerId(event.target.value);
@@ -19235,9 +19233,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </p>
                 ) : null}
                 {venueVisits === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>Reading venue visits…</p>
+                  <p className={`${ELEMENT_TAG}-empty`}>Reading Scenes…</p>
                 ) : venueVisits.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>No completed visits match these filters.</p>
+                  <p className={`${ELEMENT_TAG}-empty`}>No completed Scenes match these filters.</p>
                 ) : (
                   venueVisits.map((visit) => (
                     <section key={visit.id}>
@@ -20459,8 +20457,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </div>
                     {setupVenues.map((venue) => (
                       <p key={`${venue.id}-summary`} className={`${ELEMENT_TAG}-hint`}>
-                        <strong>{venue.name}:</strong> Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Areas ·{" "}
-                        {venueHasPrivate(venue) ? "1" : "0"} Private Areas. {venue.description}{" "}
+                        <strong>{venue.name}:</strong> Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Spaces ·{" "}
+                        {venueHasPrivate(venue) ? "1" : "0"} Private Spaces. {venue.description}{" "}
                         {venue.spaces?.[0]?.description}
                       </p>
                     ))}

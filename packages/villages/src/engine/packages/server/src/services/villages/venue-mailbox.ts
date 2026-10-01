@@ -129,7 +129,7 @@ function applyMail(state: VillageState, mail: VillageVenueMail, at: string): voi
         personal.image = null;
         personal.preparation = undefined;
         personal.adaptationPending = false;
-        personal.description = personal.purpose || "Vacant residential Private Area.";
+        personal.description = personal.purpose || "Vacant residential Private Space.";
         personal.state.publicFacts = [];
         personal.state.traces = [];
         current.playerInvitations = current.playerInvitations?.filter((invite) => invite.zoneId !== personal.id);

@@ -105,7 +105,7 @@ const pages = [
   [/^Projects \(/, "projects"],
   [/^Village Settings$/, "village"],
   [/^General settings$/, "general"],
-  [/^DEBUG: Venue Visits/, "chatlogs"],
+  [/^DEBUG: Scenes/, "chatlogs"],
   [/^DEBUG: Villager Wishes/, "agendas"],
   [/^Villager Agendas/, "schedules"],
 ];

@@ -86,7 +86,7 @@ async function prepare(signal?: AbortSignal): Promise<void> {
       {
         role: "system",
         content:
-          'Define private spaces that already belong to these venues. Respect each venue form, world facts, authored description, selected lore and the occupants\' personalities. A tent corner is valid; never assume a bedroom. Derive an appropriate short name for a Private work area (vault, office, staff room, storage, etc.). Respect the actual saved zones. A Private Area can occupy the entire interior with no Common Area. Exterior-only venues have no interior. Do not invent adjoining rooms. Do not invent named people or exceptional possessions. Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"brief condition","items":["ordinary item"],"facts":["grounded physical detail"]}]}.',
+          'Define private spaces that already belong to these venues. Respect each venue form, world facts, authored description, selected lore and the occupants\' personalities. A tent corner is valid; never assume a bedroom. Derive an appropriate short name for a Private work area (vault, office, staff room, storage, etc.). Respect the actual saved zones. A Private Space can occupy the entire interior with no Common Space. Exterior-only venues have no interior. Do not invent adjoining rooms. Do not invent named people or exceptional possessions. Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"brief condition","items":["ordinary item"],"facts":["grounded physical detail"]}]}.',
       },
       {
         role: "user",

@@ -1,4 +1,4 @@
-// Wiring proof for the active visit, Venue editor, and Mailbox. Behavior is
+// Wiring proof for the active Scene, Venue editor, and Mailbox. Behavior is
 // exercised by the Venue session, model, and location image suites.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

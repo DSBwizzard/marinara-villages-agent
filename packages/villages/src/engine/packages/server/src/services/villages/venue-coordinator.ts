@@ -70,7 +70,7 @@ export function assertVenueOwnership(data?: Record<string, unknown>): void {
   if (!current) return;
   current.controller.signal.throwIfAborted();
   if (data && (data.operation as VenueOperation | undefined)?.token !== current.operation.token)
-    throw venueRefusal("OPERATION_INTERRUPTED", "This scene operation no longer owns the visit.");
+    throw venueRefusal("OPERATION_INTERRUPTED", "This Scene operation no longer owns the Scene.");
 }
 export function venueOperationSnapshot<T>(): T | undefined {
   return context.getStore()?.operation.snapshot as T | undefined;
@@ -80,7 +80,7 @@ async function update(id: string, mutate: (data: Record<string, unknown>) => voi
   for (let attempt = 0; attempt < 8; attempt++) {
     const store = villagesDocuments();
     const record = await store.getById(VILLAGES_PACKAGE_ID, prefix + id);
-    if (!record) throw new VillagesRequestError(404, "That venue conversation is no longer available.");
+    if (!record) throw new VillagesRequestError(404, "That Scene is no longer available.");
     const data = structuredClone(record.data) as Record<string, unknown>;
     mutate(data);
     const saved = await store.update({
@@ -94,7 +94,7 @@ async function update(id: string, mutate: (data: Record<string, unknown>) => voi
     });
     if (saved) return data;
   }
-  throw venueRefusal("SCENE_BUSY", "The visit is changing. Refresh and try again.");
+  throw venueRefusal("SCENE_BUSY", "The Scene is changing. Refresh and try again.");
 }
 async function persist(current: Context) {
   assertVenueOwnership();
@@ -210,7 +210,7 @@ export async function coordinateVenue<T>(
     }
     throw venueRefusal(
       "SCENE_BUSY",
-      "This conversation is responding. Your draft is preserved; read the reply before sending again.",
+      "This Scene is responding. Your draft is preserved; read the reply before sending again.",
     );
   }
   const controller = new AbortController();
@@ -243,7 +243,7 @@ export async function coordinateVenue<T>(
         data.status !== "closed" &&
         Date.now() - Date.parse(String(data.lastActivityAt || data.startedAt)) >= 30 * 60_000
       )
-        throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+        throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
       if (!options.replay && expected !== undefined && expected !== sceneRevision(data))
         throw venueRefusal(
           "SCENE_STALE",
@@ -419,7 +419,7 @@ export async function cancelVenueOperation(id: string) {
 }
 export async function readVenueOperation(id: string, operationId?: string) {
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + id);
-  if (!record) throw new VillagesRequestError(404, "That venue conversation is no longer available.");
+  if (!record) throw new VillagesRequestError(404, "That Scene is no longer available.");
   const data = record.data as Record<string, unknown>;
   const operation = data.operation as VenueOperation | undefined;
   if (operationId && operation?.id !== operationId) {

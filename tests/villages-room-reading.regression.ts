@@ -61,7 +61,7 @@ assert.equal(
 assert.equal(
   hasCompletedRoomSubmission({ status: "active", submissions: [{ id: "leave-once" }] }, "leave-once"),
   false,
-  "an active visit remains retryable",
+  "an active Scene remains retryable",
 );
 assert.equal(
   hasCompletedRoomSubmission({ status: "closed", submissions: [{ id: "other-leave" }] }, "leave-once"),

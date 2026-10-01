@@ -240,12 +240,19 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           if (user === "Please let me in") {
-            const quote = "Come into our shared space now.";
+            const quote = "Come into our Common Space with me now.";
             return {
               content: JSON.stringify({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
-                invitation: { speakerId: "bob", venueId: "home", scope: "shared", timing: "now", quote },
+                invitation: {
+                  speakerId: "bob",
+                  venueId: "home",
+                  scope: "shared",
+                  timing: "now",
+                  accompanies: true,
+                  quote,
+                },
               }),
               finishReason: "stop",
             };
@@ -355,7 +362,7 @@ const release = configureVillagesRuntime({
           }
           if (user.startsWith("The player enters this space"))
             assert.ok(options.maxTokens <= 1_600, "a brief greeting cannot spend a full-turn output budget");
-          if (system.includes("Distill one venue visit")) {
+          if (system.includes("Distill one Scene")) {
             memoryCalls += 1;
             if (holdMemoryOnce) {
               holdMemoryOnce = false;
@@ -750,7 +757,7 @@ const release = configureVillagesRuntime({
               }),
               finishReason: "stop",
             };
-          if (user === "Wait outside quietly" || user === "Look around the private room")
+          if (user === "Wait outside quietly" || user === "Look around the Private Space")
             return {
               content: JSON.stringify({
                 heardPlayerBy: user === "Wait outside quietly" ? [] : ["bob"],
@@ -1380,7 +1387,7 @@ async function main() {
       /Additional writing guidance is too long/u,
     );
     await assert.rejects(() => saveVillageWriting({ writingGuidance: null }), /must be text/u);
-    await assert.rejects(() => resetVenueSessions(), /Finish the active venue conversation/u);
+    await assert.rejects(() => resetVenueSessions(), /Finish the active Scene/u);
     assert.deepEqual(group.activeIds, ["bob", "tina"]);
     assert.equal(calls, callsAfterEmpty + 1, "one opening call writes one shared scene");
     const sceneBeforeRace = (await activeVenueSession())!;
@@ -1452,8 +1459,8 @@ async function main() {
       (await readVillageState()).venues.some((venue) => venue.name === "Power Plant"),
       false,
     );
-    assert.equal((await activeVenueSession())?.id, group.id, "reload restores the same active visit");
-    await assert.rejects(() => enterVenue("empty"), /Finish the conversation/u);
+    assert.equal((await activeVenueSession())?.id, group.id, "reload restores the same active Scene");
+    await assert.rejects(() => enterVenue("empty"), /Finish the Scene/u);
 
     const beforeAskedCalls = venueReplyCalls;
     const asked = await sendVenueTurn({
@@ -1979,7 +1986,11 @@ async function main() {
       state.villagers[1]!.agenda!.activeDay!.blocks[0]!.venueId = "empty";
       state.villagers[1]!.agenda!.activeDay!.blocks[0]!.zoneId = undefined;
     });
-    assert.deepEqual((await activeVenueSession())?.activeIds, [], "agenda changes update the current zone cast");
+    assert.deepEqual(
+      (await activeVenueSession())?.activeIds,
+      ["bob", "tina"],
+      "agenda changes cannot replace the Scene cast",
+    );
     await sendVenueTurn({
       sessionId: group.id,
       message: "Bob heads away",
@@ -1989,8 +2000,8 @@ async function main() {
     });
     assert.deepEqual(
       (await activeVenueSession())?.activeIds,
-      [],
-      "narration does not bring absent villagers back into the zone",
+      ["bob", "tina"],
+      "uncited narration does not change Scene attendance",
     );
     await sendVenueTurn({
       sessionId: group.id,
@@ -1999,7 +2010,11 @@ async function main() {
       targetId: "",
       submissionId: "leave-tina",
     });
-    assert.deepEqual((await activeVenueSession())?.activeIds, [], "absent villagers remain outside the zone");
+    assert.deepEqual(
+      (await activeVenueSession())?.activeIds,
+      ["bob", "tina"],
+      "only evidenced Scene departures remove residents",
+    );
     await endVenueSession(group.id);
     assert.equal(await activeVenueSession(), null, "Visit ends only when the player leaves");
     assert.equal(memoryCalls, 1, "one batched memory call closes a played visit");
@@ -2023,11 +2038,7 @@ async function main() {
       state.villagers[0]!.agenda!.activeDay!.blocks[0]!.venueId = "park";
       state.villagers[0]!.agenda!.activeDay!.blocks[0]!.zoneId = undefined;
     });
-    assert.deepEqual(
-      (await activeVenueSession())?.activeIds,
-      ["bob", "tina"],
-      "agenda arrivals join the current zone cast",
-    );
+    assert.deepEqual((await activeVenueSession())?.activeIds, ["tina"], "agenda arrivals cannot join an active Scene");
     await assert.rejects(
       () =>
         sendVenueTurn({
@@ -2086,8 +2097,8 @@ async function main() {
     assert.equal(closed.lines.filter((line) => line.content === "A natural goodbye").length, 1);
     assert.equal(
       (await listVenueVisits({ characterId: "bob" })).length,
-      2,
-      "Bob witnessed the visit after his agenda arrival",
+      1,
+      "Bob did not witness the Scene after his background agenda arrival",
     );
     assert.equal((await listVenueVisits({ characterId: "tina" })).length, 2);
 
@@ -2320,6 +2331,7 @@ async function main() {
       { characterId: "tina", name: "Tina", doing: "listening" },
     ];
     privateRecord.data.activeIds = ["bob", "tina"];
+    delete privateRecord.data.sceneAttendance;
     privateRecord.data.lines = [
       {
         id: "bob-secret",
@@ -2357,6 +2369,7 @@ async function main() {
     compactRecord.data.legacyCast = true;
     compactRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     compactRecord.data.activeIds = ["tina"];
+    delete compactRecord.data.sceneAttendance;
     compactRecord.data.lines = Array.from({ length: 105 }, (_, index) => ({
       id: `compact-${index}`,
       speakerId: "",
@@ -2378,6 +2391,7 @@ async function main() {
     fitRecord.data.legacyCast = true;
     fitRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     fitRecord.data.activeIds = ["tina"];
+    delete fitRecord.data.sceneAttendance;
     fitRecord.data.lines = Array.from({ length: 20 }, (_, index) => ({
       id: `fit-${index}`,
       speakerId: "",
@@ -2407,6 +2421,7 @@ async function main() {
     heldRecord.data.legacyCast = true;
     heldRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     heldRecord.data.activeIds = ["tina"];
+    delete heldRecord.data.sceneAttendance;
     heldRecord.data.lines = [
       {
         id: "held-line",
@@ -2443,6 +2458,7 @@ async function main() {
     longRecord.data.legacyCast = true;
     longRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
     longRecord.data.activeIds = ["tina"];
+    delete longRecord.data.sceneAttendance;
     longRecord.data.lines = Array.from({ length: 112 }, (_, index) => ({
       id: `long-${index}`,
       speakerId: "",
@@ -2571,7 +2587,7 @@ async function main() {
     );
     await setVenueVisitRetention({ mode: "forever", value: 0 });
     await resetVenueSessions();
-    assert.equal((await listVenueVisits()).length, 0, "starting a new village clears the previous visit archive");
+    assert.equal((await listVenueVisits()).length, 0, "starting a new village clears the previous Scene archive");
     legacyVisits = false;
     await mutateVillageState((state) => {
       state.residences = [];
@@ -2592,7 +2608,7 @@ async function main() {
     assert.equal(
       remembered.recordEvents.filter((event) => event.kind === "memory").length,
       0,
-      "passing recollections stay quiet until end-of-visit review",
+      "passing recollections stay quiet until end-of-Scene review",
     );
     const recollectionId = `${current.id}:recollection:turn-memory:0`;
     assert.equal((await readVillageState()).recollections.filter((entry) => entry.id === recollectionId).length, 1);
@@ -2696,6 +2712,7 @@ async function main() {
       { characterId: "dan", name: "Dan", doing: "listening" },
     ];
     groupRecord.data.activeIds = ["bob", "tina", "cora", "dan"];
+    delete groupRecord.data.sceneAttendance;
     groupRecord.data.heardHistory = groupRecord.data.participants.map((person: any) => ({
       characterId: person.characterId,
       lineIds: [],
@@ -2844,6 +2861,7 @@ async function main() {
       record.data.legacyCast = true;
       record.data.participants = [{ characterId: "bob", name: "Bob", doing: "listening" }];
       record.data.activeIds = ["bob"];
+      delete record.data.sceneAttendance;
       record.data.lines = Array.from({ length: paragraphCount }, (_, index) => ({
         id: `synthetic-${paragraphCount}-line-${index}`,
         speakerId: "",
@@ -3156,7 +3174,11 @@ async function main() {
         occupancy: { playerHome: false, residentCharacterId: "bob", homeKind: "small-home" },
       } as any);
       for (const resident of state.villagers)
-        if (resident.characterId === "bob" || resident.characterId === "tina") resident.agenda = agenda("home");
+        if (resident.characterId === "bob" || resident.characterId === "tina") {
+          resident.agenda = agenda("home");
+          if (resident.characterId === "tina")
+            resident.agenda.activeDay!.blocks.forEach((block) => (block.zoneId = "residence"));
+        }
     });
     await mutateVillageState((state) => {
       for (const room of state.venues.find((venue) => venue.id === "home")!.zones ?? [])
@@ -3234,7 +3256,7 @@ async function main() {
     );
     const proposed = await proposeResidenceSpaceEdit("home", {
       target: "shared",
-      description: "A warm shared room.",
+      description: "A warm Common Space.",
       state: { condition: "warm", items: ["cup"] },
     });
     assert.equal(proposed.settings.venues.find((place) => place.id === "home")?.editProposals?.length, 1);
@@ -3250,7 +3272,7 @@ async function main() {
     assert.equal(
       home.spaces?.find((space) => space.venueClass === "residence")?.description,
       roomBefore.description,
-      "one of two residents cannot change the shared room",
+      "one of two residents cannot change the Common Space",
     );
     await sendVenueTurn({
       sessionId: outside.id,
@@ -3260,7 +3282,7 @@ async function main() {
       submissionId: "tina-edit-approval",
     });
     home = (await readVillageState()).venues.find((place) => place.id === "home")!;
-    assert.equal(home.spaces?.find((space) => space.venueClass === "residence")?.description, "A warm shared room.");
+    assert.equal(home.spaces?.find((space) => space.venueClass === "residence")?.description, "A warm Common Space.");
     await setVillageVenueImage(
       "home",
       { id: "shared-image", ref: "global-gallery:shared-image", url: "/shared.webp" },
@@ -3291,7 +3313,7 @@ async function main() {
     const beforePrivateQuiet = calls;
     const privateQuiet = await sendVenueTurn({
       sessionId: outside.id,
-      message: "Look around the private room",
+      message: "Look around the Private Space",
       mode: "chat",
       targetId: "bob",
       submissionId: "private-quiet",
@@ -3487,13 +3509,13 @@ async function main() {
     assert.equal(
       destination.privateSpaces?.find((space) => space.ownerId === "bob"),
       undefined,
-      "no physical Private Area is created by a move",
+      "no physical Private Space is created by a move",
     );
     assert.ok(!destination.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt);
     await assert.rejects(
       () => setVillageVenueImage("new-home", null, "residence", "bob"),
       /Visit this Residence space|current invitation|no longer exists/u,
-      "images cannot target a Private Area that was never assigned",
+      "images cannot target a Private Space that was never assigned",
     );
     const parkExterior = await enterVenue("park", "workplace", "", "outside");
     assert.equal(parkExterior.area, "outside", "a public Venue also supports an explicit exterior visit");

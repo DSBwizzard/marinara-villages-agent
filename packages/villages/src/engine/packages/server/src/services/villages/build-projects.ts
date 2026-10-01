@@ -424,7 +424,7 @@ function lineFor(
     !/\b(i can|i will|i'll|we can|we will|we'll|yes|agreed|you may|take|use)\b/iu.test(content) ||
     /\b(?:not|never|don't|can't|won't|refuse)\b/iu.test(content)
   )
-    throw conflict("Use an explicit, quoted agreement spoken by that resident in this visit.");
+    throw conflict("Use an explicit, quoted agreement spoken by that resident in this Scene.");
   return line;
 }
 
@@ -515,7 +515,7 @@ export async function acquireBuildSource(projectId: string, value: unknown): Pro
         ) &&
         !/\b(?:not|never|don't|can't|won't)\b/iu.test(line.content),
     );
-    if (!handoff) throw conflict("A present resident must explicitly hand over this supply in the visit.");
+    if (!handoff) throw conflict("A present resident must explicitly hand over this supply in the Scene.");
     if (source.kind === "existing-item") {
       if (
         !zone?.state.items.includes(source.itemName) ||

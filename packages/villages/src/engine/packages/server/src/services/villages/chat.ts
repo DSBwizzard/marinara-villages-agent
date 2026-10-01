@@ -3,7 +3,7 @@ import { renderPlayerRoleContext } from "./player-role.js";
 // Villages — shared resident prompt and memory helpers.
 //
 // This is the package's own dialogue system. It borrows the *shape* of the
-// Engine's chat pipeline (a system prompt, then turns). Venue visits own their
+// Engine's chat pipeline (a system prompt, then turns). Scenes own their
 // transcript and submission path in venue-session.ts.
 //
 // The card supplies identity and voice; the village supplies the preset that

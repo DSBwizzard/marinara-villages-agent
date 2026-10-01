@@ -39,7 +39,7 @@ export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
       state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "", ...venue.state },
     }).map((space) => ({
       ...space,
-      name: "Common Area",
+      name: "Common Space",
       kind: space.venueClass === "residence" ? ("shared-residence" as const) : ("public" as const),
       seen:
         space.venueClass === "residence"

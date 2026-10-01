@@ -327,7 +327,7 @@ try {
     await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "DEBUG Settings" }).click();
-    await expect(page.getByRole("button", { name: "Venue Visits" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Back to the village" }).click();
     await page.getByRole("button", { name: "Open settings menu" }).click();
@@ -358,7 +358,7 @@ try {
     await expect(page.getByText("Nobody is here right now")).toBeVisible();
     const zoneNav = page.getByRole("navigation", { name: "Venue zones" });
     await expect(zoneNav.getByRole("button", { name: /Exterior/u })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Visit this area →" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toBeVisible();
     await expect(page.getByRole("button", { name: "About" })).toHaveCount(0);
     await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
@@ -367,14 +367,14 @@ try {
       });
     }
     await zoneNav
-      .getByRole("button", { name: /interior/iu })
+      .getByRole("button", { name: /Common Space|interior/iu })
       .first()
       .click();
-    await expect(page.getByText("Area not discovered yet")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Visit this area →" })).toBeEnabled();
+    await expect(page.getByText("Zone not discovered yet")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toBeEnabled();
     await page.getByRole("button", { name: "Edit Venue" }).click();
     await expect(page.getByRole("button", { name: "Close Editor" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Visit this area →" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Propose Change" })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
@@ -391,7 +391,7 @@ try {
     await page.getByRole("button", { name: "Propose Change" }).click();
     await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit Venue" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Visit this area →" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Enter this Zone →" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Back to map" })).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
@@ -404,7 +404,7 @@ try {
     await expect(page.getByRole("button", { name: "Exit Change Proposal" })).toBeVisible();
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Exit Change Proposal" }).click();
-    await page.getByRole("button", { name: "Visit this area →" }).click();
+    await page.getByRole("button", { name: "Enter this Zone →" }).click();
     await expect
       .poll(() => lastEntry?.entryArea, { message: "zone visit enters the selected interior" })
       .toBe("public");
@@ -451,7 +451,7 @@ try {
     const historyButton = page.getByRole("button", { name: "History", exact: true });
     await expect(historyButton).toHaveCount(1);
     await historyButton.click();
-    await expect(page.getByRole("log", { name: "Venue conversation history" })).toBeVisible();
+    await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
     const stageWithHistory = await stage.boundingBox();
     assert.equal(stageWithHistory.height, stageBox.height, "history overlay does not shrink the stage");
     await historyButton.click();
@@ -467,7 +467,7 @@ try {
     await expect(page.getByRole("button", { name: /(?:Hide composer|Compose)/u })).toHaveCount(0);
     await page.getByRole("button", { name: "Venue actions" }).click();
     await expect(page.getByRole("menuitem", { name: /Leave Scene/u })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "End visit now" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "End Scene now" })).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     const modeButton = () => page.getByRole("button", { name: /^Mode: /u });
     await expect(modeButton()).toHaveText("💬");
@@ -498,10 +498,10 @@ try {
     await expect(page.getByRole("menuitemradio", { name: "Conclude" })).toBeVisible();
     await expect(page.getByRole("menuitemradio", { name: "Act" })).toHaveCount(0);
     await historyButton.focus();
-    await expect(page.getByRole("menu", { name: "Visit mode" })).toHaveCount(0);
+    await expect(page.getByRole("menu", { name: "Scene mode" })).toHaveCount(0);
     await modeButton().click();
     await reading.click();
-    await expect(page.getByRole("menu", { name: "Visit mode" })).toHaveCount(0);
+    await expect(page.getByRole("menu", { name: "Scene mode" })).toHaveCount(0);
     await modeButton().click();
     await page.getByRole("menuitemradio", { name: "Conclude" }).click();
     await expect(modeButton()).toHaveText("🚪");

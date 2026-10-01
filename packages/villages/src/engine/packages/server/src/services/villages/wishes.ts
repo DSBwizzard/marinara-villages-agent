@@ -322,7 +322,7 @@ export async function proposeWishVerdict(
       });
     } catch {
       return {
-        verdict: { fulfilled: false, reason: "The full visit could not be checked for that wish. Try again later." },
+        verdict: { fulfilled: false, reason: "The full Scene could not be checked for that wish. Try again later." },
         wish: null,
         memory: "",
       };
@@ -331,7 +331,7 @@ export async function proposeWishVerdict(
   const judgeMessages = buildJudgeMessages(judgeContext);
   if (!fits(judgeMessages))
     return {
-      verdict: { fulfilled: false, reason: "The visit evidence could not fit the wish check." },
+      verdict: { fulfilled: false, reason: "The Scene evidence could not fit the wish check." },
       wish: null,
       memory: "",
     };

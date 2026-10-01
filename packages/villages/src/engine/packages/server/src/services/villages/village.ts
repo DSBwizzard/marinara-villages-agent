@@ -1667,7 +1667,7 @@ export async function removeVillager(characterId: string): Promise<void> {
           zone.preparation = undefined;
           zone.adaptationPending = false;
           zone.adaptationSourceArchiveAt = "";
-          zone.description = zone.purpose || "Vacant residential Private Area.";
+          zone.description = zone.purpose || "Vacant residential Private Space.";
           zone.image = null;
           zone.state.publicFacts = [];
           zone.state.traces = [];
@@ -2266,7 +2266,7 @@ export async function assertVenueImageAccess(
         (zone) => ["public", "shared-residence"].includes(zone.kind) && zone.venueClass === spaceClass,
       )
     )
-      throw notFound("That Common Area is absent from this Venue.");
+      throw notFound("That Common Space is absent from this Venue.");
   }
   if (spaceClass !== "residence" && !privateOwnerId) return;
   const village = await readVillageState();
@@ -2985,7 +2985,7 @@ export async function deleteVillageVenue(venueId: string, confirmed: boolean): P
   const dependencies = await previewVillageVenueDeletion(venueId);
   if (dependencies.residentCharacterIds.length || dependencies.playerHome)
     throw conflict("Move every resident, including yourself, before deleting this Residence.");
-  if (dependencies.roomPresent) throw conflict("End the active visit before deleting this venue.");
+  if (dependencies.roomPresent) throw conflict("End the active Scene before deleting this venue.");
   if (dependencies.pendingMailCount) throw conflict("Resolve pending Venue decisions before deleting this Venue.");
   await mutateVillageState((state) => {
     const current = state.venues.find((venue) => venue.id === venueId);
@@ -3181,7 +3181,7 @@ export async function completeVillageResidence(
             zone.adaptationPending = false;
             zone.adaptationSourceArchiveAt = "";
             zone.image = null;
-            zone.description = zone.purpose || "Vacant residential Private Area.";
+            zone.description = zone.purpose || "Vacant residential Private Space.";
           }
           old.playerInvitations = old.playerInvitations?.filter((invitation) => invitation.zoneId !== oldPrivate.id);
           old.editProposals = old.editProposals?.filter((proposal) => proposal.zoneId !== oldPrivate.id);
@@ -3254,7 +3254,7 @@ export async function retryResidencePrivateSpaceAdaptation(characterValue: unkno
     seed: village.seed,
     revision: adaptationRevision(destination, characterId),
     finite: true,
-    label: "Adapt " + destination.name + "'s private room",
+    label: "Adapt " + destination.name + "'s Private Space",
     input: {
       characterId,
       destination,
@@ -3276,7 +3276,7 @@ registerBackgroundHandler("adaptation", {
     const messages = [
       {
         role: "system" as const,
-        content: `Choose portable personal elements from the archived private room and adapt its description to the new Residence form. Never copy shared furnishings or invent possessions. Return JSON only: {"description":"brief room description","items":["exact portable item from input"],"featureIds":["exact portable feature id from input"]}. Keep the result grounded and concise.`,
+        content: `Choose portable personal elements from the archived Private Space and adapt its description to the new Residence form. Never copy shared furnishings or invent possessions. Return JSON only: {"description":"brief room description","items":["exact portable item from input"],"featureIds":["exact portable feature id from input"]}. Keep the result grounded and concise.`,
       },
       {
         role: "user" as const,
@@ -3609,7 +3609,7 @@ function parsePlaces(value: unknown, residents: ReadonlySet<string>, founding: b
     if ((place.occupancy.playerHome || place.occupancy.residentCharacterId) && !place.classes.includes("residence"))
       throw badRequest("An assigned home must have the Residence Class.");
     if (place.zones?.some((zone) => zone.controllerIds?.some((id) => id !== "player" && !residents.has(id))))
-      throw badRequest("Choose current villagers as Private Area controllers.");
+      throw badRequest("Choose current villagers as Private Space controllers.");
     if (place.occupancy.residentCharacterId === null) continue;
     if (!residents.has(place.occupancy.residentCharacterId)) {
       throw badRequest("Every villager's home has to belong to someone who lives here.");

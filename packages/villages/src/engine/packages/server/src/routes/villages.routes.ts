@@ -37,12 +37,13 @@ import {
 // before the handler runs), so the routes only have to validate input and map
 // failures to status codes.
 //
-// Venue conversations are village documents. Spinoff creation is NYI; existing
+// Scenes are village documents. Spinoff creation is NYI; existing
 // native Engine roleplays can still be identified through the read-only route
 // below. The retired scene lock remains exported for older extension surfaces.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   activeVenueSession,
+  publicSceneResponse,
   continueVenueWithoutGreeting,
   endVenueSessionWithReceipts,
   closeVenueSessionWithReceipts,
@@ -439,7 +440,11 @@ export function sceneLockedRoutes(engine: FastifyInstance): FastifyInstance {
       // limit. Restated here rather than imported because the host's own
       // normalisation is not exported.
       const supplied = (typeof optionsOrHandler === "function" ? optionsOrHandler : handler) as VillageRouteHandler;
-      const locked = method === "get" || SCENE_EXIT_PATHS.includes(path) ? supplied : lockFirst(supplied);
+      const projected: VillageRouteHandler = async (request, reply) => {
+        const result = await supplied(request, reply);
+        return result === reply ? result : publicSceneResponse(result);
+      };
+      const locked = method === "get" || SCENE_EXIT_PATHS.includes(path) ? projected : lockFirst(projected);
       const options = typeof optionsOrHandler === "object" && optionsOrHandler !== null ? optionsOrHandler : undefined;
       // Called with `engine` as the receiver rather than as a bare function: the
       // host's collector does not care, but the tests hand over a real Fastify
@@ -727,7 +732,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     },
   );
 
-  // One active venue visit, restored across reloads and archived when it ends.
+  // One active Scene, restored across reloads and archived when it ends.
   app.get("/rooms/active", async (_request, reply) => {
     try {
       const session = await activeVenueSession();
@@ -880,7 +885,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await discardVenueVisitDebug(readChatId(request.body?.sessionId));
       return { discarded: true };
     } catch (error) {
-      return fail(reply, error, "discarding a debug venue visit");
+      return fail(reply, error, "discarding a debug Scene");
     }
   });
 
@@ -957,7 +962,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
           request.body?.retryOfAttemptId,
         );
       } catch (error) {
-        return fail(reply, error, "ending a venue conversation");
+        return fail(reply, error, "ending a Scene");
       }
     },
   );
@@ -980,7 +985,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
           limit: Number(request.query?.limit ?? 20),
         });
       } catch (error) {
-        return fail(reply, error, "listing venue visits");
+        return fail(reply, error, "listing Scenes");
       }
     },
   );
@@ -988,7 +993,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     try {
       return { visit: await readVenueVisit(request.params.id) };
     } catch (error) {
-      return fail(reply, error, "reading a venue visit");
+      return fail(reply, error, "reading a Scene");
     }
   });
   app.post<{ Params: { id: string }; Body: { retryOfAttemptId?: string } }>(
@@ -1006,7 +1011,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await deleteVenueVisit(request.params.id);
       return { deleted: true };
     } catch (error) {
-      return fail(reply, error, "deleting a venue visit");
+      return fail(reply, error, "deleting a Scene");
     }
   });
   app.delete("/rooms/archive", async (_request, reply) => {
@@ -1014,7 +1019,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       await deleteAllVenueVisits();
       return { deleted: true };
     } catch (error) {
-      return fail(reply, error, "deleting venue visits");
+      return fail(reply, error, "deleting Scenes");
     }
   });
 
@@ -1320,7 +1325,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // made while a picture was being drawn would have thrown it away.
   //
   // Exterior and shared-space draws use this player action. First entry to a
-  // private room uses the same generator once in the background, with a
+  // Private Space uses the same generator once in the background, with a
   // persisted attempt marker so visits and refreshes cannot repeat it.
 
   app.post<{

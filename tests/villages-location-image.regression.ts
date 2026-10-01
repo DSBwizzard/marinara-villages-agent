@@ -263,7 +263,7 @@ async function main() {
           state: {
             condition: "a private interior repair",
             furniture: ["a hidden cabinet"],
-            publicFacts: ["a private room fact"],
+            publicFacts: ["a Private Space fact"],
             upgrades: ["new roof"],
             updatedAt: "",
           },
@@ -282,7 +282,7 @@ async function main() {
     "market square",
   ])
     assert.ok(factual.includes(fact), `${fact} informs the venue image`);
-  assert.doesNotMatch(factual, /private interior repair|hidden cabinet|private room fact/u);
+  assert.doesNotMatch(factual, /private interior repair|hidden cabinet|Private Space fact/u);
   const occupiedExterior = buildLocationPrompt(
     village,
     coerceVillageState({
@@ -297,7 +297,7 @@ async function main() {
           state: {
             condition: "a secret interior leak",
             furniture: ["hidden room chest"],
-            publicFacts: ["private room fact"],
+            publicFacts: ["Private Space fact"],
           },
         },
       ],
@@ -305,7 +305,7 @@ async function main() {
     moment,
   );
   assert.match(occupiedExterior, /brick cottage|brick porch/u);
-  assert.doesNotMatch(occupiedExterior, /secret|hidden room chest|private room fact/u);
+  assert.doesNotMatch(occupiedExterior, /secret|hidden room chest|Private Space fact/u);
   assert.equal(
     buildLocationPrompt(
       village,
@@ -792,7 +792,7 @@ async function main() {
             id: "private:player",
             venueClass: "residence",
             description: "A personal sleeping nook",
-            name: "Your Private Area",
+            name: "Your Private Space",
             purpose: "Personal space",
             ownerId: "player",
           },
@@ -813,7 +813,7 @@ async function main() {
           {
             id: "private:character-millie",
             venueClass: "residence",
-            name: "Private Area",
+            name: "Private Space",
             purpose: "Personal space",
             ownerId: "character-millie",
           },

@@ -281,7 +281,7 @@ export async function generateVillageLocationImage(
     privateOwnerId
       ? `${village.villagers.find((person) => person.characterId === privateOwnerId)?.cardSnapshot.name ?? "a resident"}'s private space`
       : spaceClass
-        ? `${spaceClass} Common Area`
+        ? `${spaceClass} Common Space`
         : "",
   );
 
@@ -321,7 +321,7 @@ export async function generateVillageLocationImage(
   return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, onlyIfEmpty, zoneId, expectedContext);
 }
 
-/** One automatic drawing after the player first enters this particular private room. */
+/** One automatic drawing after the player first enters this particular Private Space. */
 export async function generateFirstPrivateSpaceImage(venueId: string, ownerId: string): Promise<void> {
   let claimed = false;
   let targetId = "";

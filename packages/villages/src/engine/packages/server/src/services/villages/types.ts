@@ -1224,7 +1224,7 @@ export type VillageState = {
   /** 0 keeps the established Project path; 1 enables the evidence-backed path at founding. */
   progressEngineVersion: 0 | 1;
   name: string;
-  /** Per-village writing choices for live venue visits. */
+  /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
   characterSpeechColors: boolean;
   /**
@@ -1316,7 +1316,7 @@ export type VillageState = {
    * whole village or to specific residents. Visual Events age out separately.
    */
   chronicle: VillageChronicleEntry[];
-  /** Active, expiring conversational continuity. Exact transcripts live in the visit archive. */
+  /** Active, expiring conversational continuity. Exact transcripts live in the Scene archive. */
   recollections: VillageRecollection[];
   /** Submission IDs whose false wish completion was explicitly corrected. */
   correctedWishMemoryIds: string[];
@@ -1487,7 +1487,7 @@ export type VillagePlaceView = {
 export type VillageChatRole = "user" | "assistant";
 
 /**
- * How the player uses a speech turn within a venue visit. The mode changes
+ * How the player uses a speech turn within a Scene. The mode changes
  * the framing of this turn while preserving the same session and history.
  *
  * What differs is what the villager has been asked to do with this one turn.

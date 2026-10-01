@@ -172,7 +172,7 @@ try {
   await composer(two).fill("Second tab draft");
   await send(two).click();
   await expect(composer(two)).toHaveValue("Second tab draft");
-  await expect(two.getByText(/This conversation is responding/).first()).toBeVisible();
+  await expect(two.getByText(/This Scene is responding/).first()).toBeVisible();
   assert.equal(calls, 1);
   held();
   await expect.poll(() => record.data.operation.status).toBe("complete");

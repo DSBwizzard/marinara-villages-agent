@@ -319,7 +319,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
         throw badRequest("Describe each base zone and choose its kind.");
       const existing = venueZones(venue).find((zone) => zone.id === id);
       if (existing?.kind === "private-residence" && asTrimmedString(raw.ownerId) !== (existing.ownerId || ""))
-        throw badRequest("Resident moves assign private areas; Renovations cannot transfer occupied rooms.");
+        throw badRequest("Resident moves assign Private Spaces; Renovations cannot transfer occupied rooms.");
       return {
         id,
         name,
@@ -371,7 +371,7 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
         )
           throw badRequest("Give every zone a name, description, and supported kind.");
         if (existing?.kind === "private-residence" && asTrimmedString(zone.ownerId) !== (existing.ownerId || ""))
-          throw badRequest("Resident moves assign private areas; Renovations cannot transfer occupied rooms.");
+          throw badRequest("Resident moves assign Private Spaces; Renovations cannot transfer occupied rooms.");
         ids.add(id);
         return {
           id,

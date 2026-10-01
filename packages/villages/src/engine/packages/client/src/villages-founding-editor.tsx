@@ -83,14 +83,14 @@ export function VenueLayoutFields({
       id: "common:base",
       venueClass: role,
       ownerId: "",
-      name: "Common Area",
+      name: "Common Space",
     };
     const personal = savedPrivate.current ?? {
       ...personalSpaceDraft(),
       id: "private:base",
       venueClass: role,
       ownerId: role === "residence" ? owner : "",
-      name: "Private Area",
+      name: "Private Space",
       purpose: "Personal area appropriate to this venue",
       controllerIds: [],
     };
@@ -110,9 +110,9 @@ export function VenueLayoutFields({
       {(
         [
           ["exterior", "Exterior only"],
-          ["common", "Common Area only"],
-          ["private", "Private Area only"],
-          ["both", "Common Area and Private Area"],
+          ["common", "Common Space only"],
+          ["private", "Private Space only"],
+          ["both", "Common Space and Private Space"],
         ] as const
       ).map(([value, label]) => (
         <label key={value}>
@@ -126,7 +126,8 @@ export function VenueLayoutFields({
         </label>
       ))}
       <p role="status">
-        Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Areas · {venueHasPrivate(venue) ? "1" : "0"} Private Areas
+        Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Spaces · {venueHasPrivate(venue) ? "1" : "0"} Private
+        Spaces
       </p>
       {venue.layout ? (
         <div>
@@ -145,7 +146,7 @@ export function VenueLayoutFields({
               )
             }
           >
-            {venueHasCommon(venue) ? "Remove Common Area" : "Add Common Area"}
+            {venueHasCommon(venue) ? "Remove Common Space" : "Add Common Space"}
           </button>
           <button
             type="button"
@@ -162,7 +163,7 @@ export function VenueLayoutFields({
               )
             }
           >
-            {venueHasPrivate(venue) ? "Remove Private Area" : "Add Private Area"}
+            {venueHasPrivate(venue) ? "Remove Private Space" : "Add Private Space"}
           </button>
         </div>
       ) : null}
@@ -183,9 +184,9 @@ export function AreaClassField({
   const area = privateArea ? venue.privateSpaces?.[0] : venue.spaces?.[0];
   return (
     <label>
-      Area Class
+      Zone Class
       <select
-        aria-label={privateArea ? "Private Area Class" : "Common Area Class"}
+        aria-label={privateArea ? "Private Space Class" : "Common Space Class"}
         value={area?.venueClass}
         onChange={(event) => {
           const venueClass = event.target.value as NonNullable<VillageVenue["classes"]>[number];
@@ -235,7 +236,7 @@ export function BaseZoneFields({
       ...personalSpaceDraft(),
       id: "base:" + crypto.randomUUID(),
       ownerId: undefined,
-      name: personal ? "Private Area" : "Common Area",
+      name: personal ? "Private Space" : "Common Space",
       venueClass: role,
       kind: (personal
         ? role === "residence"
@@ -267,7 +268,7 @@ export function BaseZoneFields({
             />
           </label>
           <label>
-            Area Class
+            Zone Class
             <select
               value={zone.venueClass}
               onChange={(event) => {
@@ -381,12 +382,12 @@ export function BaseZoneFields({
       ))}
       {!zones.some((zone) => ["public", "shared-residence"].includes(zone.kind)) ? (
         <button type="button" onClick={() => add(false)}>
-          Add Common Area
+          Add Common Space
         </button>
       ) : null}
       {!zones.some((zone) => ["private-residence", "staff", "restricted"].includes(zone.kind)) ? (
         <button type="button" onClick={() => add(true)}>
-          Add Private Area
+          Add Private Space
         </button>
       ) : null}
     </section>
@@ -440,9 +441,9 @@ export function PrivateSpaceFields({
           Your personal space belongs to you. Other residents’ personal spaces remain a surprise until you’re invited.
         </p>
       ) : workplace ? (
-        <p>A Private Area is optional. All current workers have access; guests need an invitation.</p>
+        <p>A Private Space is optional. All current workers have access; guests need an invitation.</p>
       ) : (
-        <p>Restricted rooms are optional. Choose who can invite guests and approve lasting changes.</p>
+        <p>Restricted Zones are optional. Choose who can invite guests and approve lasting changes.</p>
       )}
       {rooms
         .filter((room) => room.ownerId !== "player")
@@ -450,7 +451,7 @@ export function PrivateSpaceFields({
           <fieldset key={room.id}>
             <legend>{room.name || "Private space"}</legend>
             <label>
-              Room name
+              Zone name
               <input
                 maxLength={100}
                 value={room.name ?? ""}
@@ -488,7 +489,7 @@ export function PrivateSpaceFields({
             ) : null}
             {room.venueClass === "residence" ? (
               <p>
-                This residential Private Area is prepared for its assigned resident. Contents remain hidden until
+                This residential Private Space is prepared for its assigned resident. Contents remain hidden until
                 invitation.
               </p>
             ) : (
@@ -525,7 +526,7 @@ export function PrivateSpaceFields({
             ])
           }
         >
-          Add Private Area
+          Add Private Space
         </button>
       ) : null}
     </section>
@@ -569,8 +570,8 @@ export function FoundingVenueEditor({
     "Name and form",
     ...(!existing ? ["Layout"] : []),
     "Exterior",
-    ...(venueHasCommon(venue) ? ["Common Area"] : []),
-    ...(venueHasPrivate(venue) ? ["Private Area"] : []),
+    ...(venueHasCommon(venue) ? ["Common Space"] : []),
+    ...(venueHasPrivate(venue) ? ["Private Space"] : []),
   ];
   const [stage, setStage] = useState(0),
     [error, setError] = useState("");
@@ -667,7 +668,7 @@ export function FoundingVenueEditor({
             ? "Describe the exterior."
             : step === "Layout" && !venue.layout
               ? "Choose a venue layout."
-              : step === "Common Area" && !space?.description.trim()
+              : step === "Common Space" && !space?.description.trim()
                 ? "Describe the interior."
                 : "";
     setError(missing);
@@ -771,9 +772,9 @@ export function FoundingVenueEditor({
               }
             />
           ) : null}
-          {step === "Exterior" || step === "Common Area" ? (
+          {step === "Exterior" || step === "Common Space" ? (
             <>
-              {step === "Common Area" ? <AreaClassField venue={venue} onChange={onPatch} /> : null}
+              {step === "Common Space" ? <AreaClassField venue={venue} onChange={onPatch} /> : null}
               <label>
                 {step} description
                 <textarea
@@ -837,7 +838,7 @@ export function FoundingVenueEditor({
               )}
             </>
           ) : null}
-          {step === "Private Area" ? (
+          {step === "Private Space" ? (
             <>
               <AreaClassField venue={venue} privateArea onChange={onPatch} />
               {needsResident ? (

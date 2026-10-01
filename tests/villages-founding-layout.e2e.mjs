@@ -372,20 +372,20 @@ try {
       await expect(dialog.getByRole("alert")).toContainText("Choose a venue layout");
       const layoutLabels = {
         exterior: "Exterior only",
-        common: "Common Area only",
-        private: "Private Area only",
-        both: "Common Area and Private Area",
+        common: "Common Space only",
+        private: "Private Space only",
+        both: "Common Space and Private Space",
       };
       await dialog.getByRole("radio", { name: layoutLabels[layout], exact: true }).check();
       if (index === 0) {
-        await dialog.getByRole("button", { name: "Remove Private Area", exact: true }).click();
-        await expect(dialog.getByRole("status")).toContainText("0 Private Areas");
-        await dialog.getByRole("button", { name: "Add Private Area", exact: true }).click();
+        await dialog.getByRole("button", { name: "Remove Private Space", exact: true }).click();
+        await expect(dialog.getByRole("status")).toContainText("0 Private Spaces");
+        await dialog.getByRole("button", { name: "Add Private Space", exact: true }).click();
         await expect(dialog.getByLabel("Your personal-space description")).toBeFocused();
         await dialog.getByLabel("Your personal-space description").fill("Draft preserved through remove and add.");
         for (let back = 0; back < 3; back++) await dialog.getByRole("button", { name: "Back", exact: true }).click();
-        await dialog.getByRole("button", { name: "Remove Private Area", exact: true }).click();
-        await dialog.getByRole("button", { name: "Add Private Area", exact: true }).click();
+        await dialog.getByRole("button", { name: "Remove Private Space", exact: true }).click();
+        await dialog.getByRole("button", { name: "Add Private Space", exact: true }).click();
         await expect(dialog.getByLabel("Your personal-space description")).toHaveValue(
           "Draft preserved through remove and add.",
         );
@@ -441,7 +441,7 @@ try {
       }
       if (layout === "common" || layout === "both") {
         await forward.click();
-        await dialog.getByLabel("Common Area description", { exact: true }).fill("A bright, simple room.");
+        await dialog.getByLabel("Common Space description", { exact: true }).fill("A bright, simple room.");
       }
       if (layout === "private" || layout === "both") {
         await forward.click();
