@@ -350,6 +350,8 @@ async function main() {
       "offscreen speech remains server-only",
     );
     assert.match(publicReply.session.lines.at(-1)!.content, /alex says/i);
+    assert.equal(relayed.session.lines.at(-1)!.contactReport, true);
+    assert.equal(publicReply.session.lines.at(-1)!.contactReport, undefined);
     assert.deepEqual(publicReply.session.activeIds, []);
     const againCalls = calls;
     await attempt(scene.id, "relay", "alex");
