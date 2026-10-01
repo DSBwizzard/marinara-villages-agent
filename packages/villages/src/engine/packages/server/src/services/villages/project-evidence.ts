@@ -219,8 +219,10 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
     if (
       state.projects.some((other) =>
         other.lifecycle?.spokenProofs.some((proof) =>
-          [proof.lineId, ...(proof.citations?.map((citation) => citation.lineId) ?? [])].some((id) =>
-            citedIds.includes(id),
+          [proof.lineId, ...(proof.citations?.map((citation) => citation.lineId) ?? [])].some(
+            (id) =>
+              citedIds.includes(id) &&
+              !(kind === "requirements" && interpreted?.contextual && other.id === projectId && id !== lineId),
           ),
         ),
       )
@@ -232,7 +234,10 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       state.progressTasks.some((task) =>
         [...task.receipts, ...task.revisionHistory.flatMap((revision) => revision.receipts)].some((receipt) =>
           [receipt.evidence.lineId, ...(receipt.evidence.citations?.map((citation) => citation.lineId) ?? [])].some(
-            (id) => id === lineId || interpreted?.citations.some((citation) => citation.lineId === id),
+            (id) =>
+              id === lineId ||
+              (interpreted?.citations.some((citation) => citation.lineId === id) &&
+                !(kind === "requirements" && interpreted?.contextual && task.definition.owner.id === projectId)),
           ),
         ),
       )
