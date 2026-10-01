@@ -20,6 +20,10 @@ Physical handoffs use an explicit transfer receipt separate from a note's recipi
 
 ## UI direction
 
+Venue Scenes use Engine's Roleplay Visual Novel presentation: a portrait and one paragraph above a compact send-arrow composer, with paragraph navigation and a history chevron. The left composer icon selects Chat, Knock / Call, Fulfill, or Conclude. View Mailbox appears in the top-right Venue menu only where accessible; Projects, Proposals, and Scene settings also live there. Scene settings contains the Decisions switch and interpretation checks. Home's browser navigation hides while the Scene screen is open and returns when leaving it.
+
+On phones, the dialogue and composer overlay the stage. Opening the software keyboard moves that dock above the keyboard while retaining the scenery and sprites at their original size and position. The keyboard and chat controls can cover artwork. Long drafts scroll within the input; keyboard dismissal preserves the draft and restores the dock.
+
 The View Venue design is the current standard for new Villages UI work: deep navy backgrounds, layered blue panels, violet active states, large place imagery, clear Zone navigation, and readable details. Keep controls usable at desktop and phone sizes. Several selectable UI themes are planned for later; this language is the default until that work is designed and implemented.
 
 Villages is a text-first slice-of-life sim for Home: a small village that follows device-local time, a handful of characters who go about exact daily schedules, and a noticeboard you can read when you stop in. Your linked Persona lives here. New villages default to a recognized Village Steward role: residents bring you relevant proposals and you coordinate Projects. At founding, customize its title and explanation or disable it to participate as an ordinary resident. The role stays fixed afterward; older villages keep their existing framing. Residents retain their own agency and consent. When Marinara reopens, the village reconciles from its last saved instant and reconstructs the elapsed life you missed.

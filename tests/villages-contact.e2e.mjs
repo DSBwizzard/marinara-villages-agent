@@ -146,7 +146,7 @@ try {
     assert.equal(entered, undefined, "an invitation never automatically moves the player");
     await expect(page.getByRole("button", { name: "Enter Common Space", exact: true })).toBeVisible();
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-    if (await next.isVisible()) await next.click();
+    if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
     await expect(
       page
         .getByText(
