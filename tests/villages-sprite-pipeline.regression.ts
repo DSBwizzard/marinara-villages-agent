@@ -196,7 +196,7 @@ async function main() {
     assert.equal(generated, 3);
     assert.equal(submissions, 3, "stale plans never increment attempted requests");
     fail = true;
-    await assert.rejects(run, /timeout/);
+    await assert.rejects(run, /504/);
     assert.equal(generated, 4);
     assert.equal(submissions, 4, "a timeout gets no automatic paid retry");
     await assert.rejects(

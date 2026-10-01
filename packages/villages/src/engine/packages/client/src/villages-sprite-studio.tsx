@@ -1,3 +1,4 @@
+import { processStudioCell } from "../../server/src/services/villages/sprite-studio-pixels.js";
 import { STUDIO_CLEANUP_VERSION } from "../../server/src/services/villages/sprite-studio-matte.js";
 import { createStudioRenderCache, type StudioRenderCache } from "./villages-sprite-render-cache.js";
 import { removeStudioMatte } from "../../server/src/services/villages/sprite-studio-matte.js";
@@ -28,7 +29,7 @@ type Props = {
   onBack: () => void;
   onExport: () => Promise<void>;
 };
-const STUDIO_RENDER_VERSION = 1;
+const STUDIO_RENDER_VERSION = 2;
 type Candidate = { sheet: StudioSheet; cell: StudioCell };
 const message = (error: unknown) => (error instanceof Error ? error.message : "The sprite action failed.");
 // LAN HTTP is common on phones; randomUUID requires a secure context, getRandomValues does not.
@@ -74,6 +75,9 @@ export function studioRenderKey(sheet: StudioSheet, cell: StudioCell, cleanup = 
     transform: [cell.scale, cell.offsetX, cell.offsetY],
     canvas: [512, 768],
     cleanup,
+    cleanupEngine: cell.cleanupEngine,
+    cached: cell.rendered?.sha256,
+    processingVersion: cell.processingVersion,
     cleanupVersion: cleanup ? STUDIO_CLEANUP_VERSION : 0,
     rendererVersion: STUDIO_RENDER_VERSION,
   });
@@ -102,55 +106,37 @@ async function renderUncachedStudioCell(
   cleanup = false,
 ): Promise<HTMLCanvasElement> {
   validateStudioCell(cell, sheet);
+  if (cell.cleanupEngine && cell.cleanupEngine !== "studio" && cleanup) {
+    if (!cell.rendered) throw new Error("Run local checks to preview Engine cleanup.");
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 768;
+    canvas.getContext("2d")!.drawImage(await loadImage(cell.rendered.url), 0, 0);
+    return canvas;
+  }
   const image = await loadImage(sheet.url);
-  const crop = document.createElement("canvas");
-  crop.width = cell.width;
-  crop.height = cell.height;
-  const cropContext = crop.getContext("2d")!;
-  cropContext.drawImage(image, cell.x, cell.y, cell.width, cell.height, 0, 0, cell.width, cell.height);
-  if (cleanup) clearStudioMatte(cropContext, crop.width, crop.height);
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = image.naturalWidth;
+  sourceCanvas.height = image.naturalHeight;
+  const sourceContext = sourceCanvas.getContext("2d")!;
+  sourceContext.drawImage(image, 0, 0);
+  const pixels = sourceContext.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const result = processStudioCell(
+    { width: sourceCanvas.width, height: sourceCanvas.height, data: pixels.data },
+    sheet,
+    { ...cell, cleanup },
+  );
+  if (result.validation.status === "blocked")
+    throw new Error(
+      result.validation.findings
+        .filter((f) => f.severity === "blocking")
+        .map((f) => f.message)
+        .join(" "),
+    );
   const canvas = document.createElement("canvas");
   canvas.width = 512;
   canvas.height = 768;
-  const context = canvas.getContext("2d")!;
-  const baseScale =
-    sheet.baseScale ??
-    Math.min(
-      512 / Math.max(...sheet.cells.map((item) => item.width)),
-      768 / Math.max(...sheet.cells.map((item) => item.height)),
-    );
-  const scale = baseScale * cell.scale;
-  const pixels = cropContext.getImageData(0, 0, crop.width, crop.height).data;
-  let left = crop.width,
-    right = -1,
-    top = crop.height,
-    bottom = -1;
-  for (let y = 0; y < crop.height; y++)
-    for (let x = 0; x < crop.width; x++)
-      if (pixels[(y * crop.width + x) * 4 + 3]! > 16) {
-        left = Math.min(left, x);
-        right = Math.max(right, x);
-        top = Math.min(top, y);
-        bottom = Math.max(bottom, y);
-      }
-  if (right >= left) {
-    const sourceWidth = right - left + 1,
-      sourceHeight = bottom - top + 1;
-    const fitted = Math.min(scale, 480 / sourceWidth, 736 / sourceHeight);
-    const width = sourceWidth * fitted,
-      height = sourceHeight * fitted;
-    context.drawImage(
-      crop,
-      left,
-      top,
-      sourceWidth,
-      sourceHeight,
-      (512 - width) / 2 + cell.offsetX,
-      752 - height + cell.offsetY,
-      width,
-      height,
-    );
-  }
+  canvas.getContext("2d")!.putImageData(new ImageData(result.image.data, 512, 768), 0, 0);
   return canvas;
 }
 
@@ -207,7 +193,7 @@ function CellPreview({
 }
 
 const css = `
-.vss{--ss-panel:#142038;--ss-border:#354865;color:#eef2ff;display:grid;gap:1rem;min-width:0}
+.vss-designs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem}.vss-designs figure{margin:0}.vss-designs .vss-stage{height:auto;aspect-ratio:2/3;max-height:300px}.vss-aligned{position:relative;aspect-ratio:2/3;width:100%;background:#111522}.vss-aligned[data-background=light]{background:#f3f1ec}.vss-aligned[data-background=checker]{background:repeating-conic-gradient(#c1c5cf 0 25%,#edf0f5 0 50%) 0 0/16px 16px}.vss-card .vss-aligned img,.vss-card .vss-aligned canvas{display:block;width:100%;height:100%;object-fit:contain}.vss-design-thumb{max-height:160px;max-width:130px}.vss-safe{position:absolute;inset:2.0833% 3.125%;border:1px dashed #d6baff;pointer-events:none;border-bottom:2px solid #d6baff}.vss{--ss-panel:#142038;--ss-border:#354865;color:#eef2ff;display:grid;gap:1rem;min-width:0}
 .vss *{box-sizing:border-box}.vss button,.vss input,.vss select,.vss textarea{font:inherit}
 .vss button{border:1px solid var(--ss-border);border-radius:.65rem;background:#1c2c48;color:#eef2ff;padding:.6rem .85rem;cursor:pointer}
 .vss button:hover{background:#2a3b5d}.vss button:disabled{opacity:.5;cursor:default}.vss button[aria-selected=true],.vss button[aria-pressed=true],.vss .vss-primary{background:#6651b5;border-color:#a497ed}
@@ -253,6 +239,19 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   const [custom, setCustom] = useState("");
   const [poses, setPoses] = useState<Record<string, string>>({});
   const [individual, setIndividual] = useState(false);
+  const comparisonSubmission = useRef<string | null>(null);
+  const [comparisonPlan, setComparisonPlan] = useState<{
+    imageCalls: number;
+    reviewCalls: number;
+    requests: Array<{ selection: { view: string; settings: StudioSettings }; plan: StudioPlan }>;
+  } | null>(null);
+  const [purpose, setPurpose] = useState<"expressions" | "design">("expressions");
+  const [acknowledge, setAcknowledge] = useState(false);
+  const reviewSubmission = useRef<{ key: string; id: string } | null>(null);
+  const [reviewConnection, setReviewConnection] = useState("");
+  const [parameterText, setParameterText] = useState("{}");
+  const [showBounds, setShowBounds] = useState(true);
+  const [comparisonBackground, setComparisonBackground] = useState("checker");
   const [plan, setPlan] = useState<StudioPlan | null>(null);
   const [planError, setPlanError] = useState("");
   const [planning, setPlanning] = useState(false);
@@ -289,21 +288,38 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   );
   const current = candidates.find((item) => item.cell.id === picked);
   const adjusting = draft ? candidates.find((item) => item.cell.id === draft.id) : null;
+  const activeDesign = [...(data?.designs ?? [])]
+    .reverse()
+    .find(
+      (d) =>
+        d.identityUrl === data?.reference?.url &&
+        d.style === settings?.style &&
+        d.stylePrompt === settings?.prompts[settings.style],
+    );
   const running = data?.jobs.some((job) => job.status === "running") ?? false;
   const approved = villager.sprite?.images ?? [];
   const pending = candidates.filter((item) => item.cell.pending).length;
   const slots = data?.expressions ?? [];
   const payload = {
     view,
-    individual,
-    settings,
-    expressions: labels
-      .filter((label) => slots.some((slot) => slot.label === label))
-      .map((label) => {
-        const slot = slots.find((item) => item.label === label)!;
-        return { label, pose: poses[label] ?? slot.pose, expressionId: slot.id };
-      }),
+    purpose,
+    individual: purpose === "design" || individual,
+    settings: settings ? { ...settings, individual } : settings,
+    expressions:
+      purpose === "design"
+        ? [{ label: "neutral", pose: "Relaxed standing full-body design, complete outfit and feet visible." }]
+        : labels
+            .filter((label) => slots.some((slot) => slot.label === label))
+            .map((label) => {
+              const slot = slots.find((item) => item.label === label)!;
+              return { label, pose: poses[label] ?? slot.pose, expressionId: slot.id };
+            }),
   };
+  const comparisonSettingsKey = JSON.stringify(settings);
+  useEffect(() => {
+    setComparisonPlan(null);
+    comparisonSubmission.current = null;
+  }, [comparisonSettingsKey, activeDesign?.id]);
   const planKey = JSON.stringify(payload),
     referenceUrl = data?.reference?.url;
   useEffect(() => {
@@ -317,6 +333,8 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
         if (!stopped) {
           setData(next);
           setSettings(next.settings);
+          setIndividual(next.settings.individual ?? false);
+          setParameterText(JSON.stringify(next.settings.customParameters ?? {}, null, 2));
           if (next.jobs.length) setTab("Review");
         }
       })
@@ -428,7 +446,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
               ),
             }),
       });
-    saved(await call<{ studio: StudioData; snapshot: unknown }>("assign", { cells, batchId }));
+    saved(await call<{ studio: StudioData; snapshot: unknown }>("assign", { cells, batchId, acknowledge }));
     setNote("Assigned. These images are now used in scenes.");
   }
   async function applyBatch(job: StudioJob) {
@@ -531,7 +549,13 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     setManifest(null);
     setTab("Review");
   }
+  function reviewSubmissionId(ids: string[]) {
+    const key = JSON.stringify([reviewConnection, ids]);
+    if (reviewSubmission.current?.key !== key) reviewSubmission.current = { key, id: submissionId() };
+    return reviewSubmission.current!.id;
+  }
   function retry(job: StudioJob) {
+    setPurpose(job.purpose === "design" ? "design" : "expressions");
     if (job.style && Object.hasOwn(SPRITE_STYLES, job.style)) {
       const style = job.style as StudioStyle;
       setSettings((prior) =>
@@ -545,10 +569,16 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
           : prior,
       );
     }
-    const expressions = job.requestedExpressions ?? [
-      ...job.sheets.flatMap((sheet) => sheet.cells),
-      ...(job.pendingExpressions ?? []),
-    ];
+    const saved = new Set(job.sheets.flatMap((sheet) => sheet.cells.map((cell) => cell.label)));
+    const expressions = (job.requestedExpressions ?? job.pendingExpressions ?? []).filter(
+      (item) => !saved.has(item.label),
+    );
+    if (!expressions.length) {
+      setNote(
+        "All requested source images are saved. Run local checks or prepare a selected replacement; no retry request was prepared.",
+      );
+      return;
+    }
     setLabels([...new Set(expressions.map((item) => item.label))]);
     setPoses(Object.fromEntries(expressions.map((item) => [item.label, item.pose])));
     setView(job.view);
@@ -756,6 +786,42 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
         <p>Loading saved sprite work…</p>
       ) : (
         <>
+          <section className="vss-panel" aria-label="Design comparison">
+            <div className="vss-row">
+              <strong>Design comparison</strong>
+              <select
+                aria-label="Comparison background"
+                value={comparisonBackground}
+                onChange={(event) => setComparisonBackground(event.target.value)}
+              >
+                <option value="checker">Checkerboard</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+              <label className="vss-check">
+                <input type="checkbox" checked={showBounds} onChange={(event) => setShowBounds(event.target.checked)} />
+                Safe region and baseline
+              </label>
+            </div>
+            <div className="vss-designs">
+              {[data?.reference?.url, activeDesign?.front?.url, activeDesign?.side?.url].map((url, index) =>
+                url ? (
+                  <figure key={url}>
+                    <div className="vss-stage" data-background={comparisonBackground}>
+                      <img src={url} alt={["Original identity", "Approved front", "Approved side"][index]} />
+                      {showBounds && index > 0 ? <span className="vss-safe" /> : null}
+                    </div>
+                    <figcaption>{["Original identity", "Approved front", "Approved side"][index]}</figcaption>
+                  </figure>
+                ) : null,
+              )}
+            </div>
+            <label className="vss-check">
+              <input type="checkbox" checked={acknowledge} onChange={(event) => setAcknowledge(event.target.checked)} />
+              I inspected flagged clipping, margins, and framing before approval.
+            </label>
+            <small>Local checks cannot confirm identity, outfit, anatomy, or art style.</small>
+          </section>
           <nav className="vss-nav" aria-label="Sprite Studio sections">
             {(["Create", "Review", "In use"] as const).map((name) => (
               <button
@@ -799,6 +865,115 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
           {tab === "Create" ? (
             <div className="vss-create">
               <div className="vss-panel">
+                <h3>Character design</h3>
+                <p className="vss-hint">
+                  Approve both styled views before expressions. Upload a complete design or generate one neutral view,
+                  then approve it in Review. This does not change scene sprites.
+                </p>
+                {(["front", "side"] as const).map((direction) => (
+                  <div key={direction}>
+                    <strong>
+                      {direction} · {activeDesign?.[direction] ? "Approved" : "Needs approval"}
+                    </strong>
+                    {activeDesign?.[direction] ? (
+                      <img
+                        className="vss-design-thumb"
+                        src={activeDesign![direction]!.url}
+                        alt={"Approved " + direction + " design"}
+                      />
+                    ) : null}
+                    <label>
+                      Upload and approve {direction} design
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={busy || running}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file)
+                            void perform(async () =>
+                              setData(
+                                await call<StudioData>("design", {
+                                  view: direction,
+                                  settings,
+                                  image: await readFile(file),
+                                  acknowledge,
+                                }),
+                              ),
+                            );
+                        }}
+                      />
+                    </label>
+                  </div>
+                ))}
+                <label>
+                  Optional style exemplar
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={busy || running}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file)
+                        void perform(async () => {
+                          if (settings) await call("settings", settings);
+                          setData(await call<StudioData>("exemplar", { image: await readFile(file) }));
+                        });
+                    }}
+                  />
+                </label>
+                <label>
+                  Generation purpose
+                  <select
+                    value={purpose}
+                    onChange={(event) => setPurpose(event.target.value as "expressions" | "design")}
+                  >
+                    <option value="expressions">Expression sprites · approved designs required</option>
+                    <option value="design">One neutral design</option>
+                  </select>
+                </label>
+                <details>
+                  <summary>Compare reference strategies · four image requests</summary>
+                  <p>
+                    Matched front and side waves: original identity only versus original identity plus both approved
+                    designs. No visual review calls. Choose your preferred strategy after inspecting the results.
+                  </p>
+                  <button
+                    disabled={busy || running || !activeDesign?.front || !activeDesign.side}
+                    onClick={() =>
+                      void perform(async () => setComparisonPlan(await call("comparison-plan", { settings })))
+                    }
+                  >
+                    Prepare four-request comparison
+                  </button>
+                  {comparisonPlan ? (
+                    <>
+                      <p>
+                        {comparisonPlan.imageCalls} image requests · {comparisonPlan.reviewCalls} review calls ·{" "}
+                        {comparisonPlan.requests[0]?.plan.connection.name} /{" "}
+                        {comparisonPlan.requests[0]?.plan.connection.model}
+                      </p>
+                      <button
+                        disabled={busy || running}
+                        onClick={() =>
+                          void perform(async () => {
+                            setData(
+                              await call<StudioData>("comparison-start", {
+                                submissionId: (comparisonSubmission.current ??= submissionId()),
+                                plan: comparisonPlan,
+                              }),
+                            );
+                            comparisonSubmission.current = null;
+                            setComparisonPlan(null);
+                            setTab("Review");
+                          })
+                        }
+                      >
+                        Generate comparison · 4 image requests
+                      </button>
+                    </>
+                  ) : null}
+                </details>
                 <h3>Generate a saved batch</h3>
                 <p className="vss-hint">
                   Choose any expressions. Neutral is optional. Assign images in Review to use them in scenes.
@@ -844,6 +1019,83 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                     </div>
                   ))}
                 </div>
+                <label>
+                  Reference strategy
+                  <select
+                    value={settings.strategy ?? "anchored"}
+                    onChange={(event) =>
+                      setSettings({ ...settings, strategy: event.target.value as "original" | "anchored" })
+                    }
+                  >
+                    <option value="anchored">Original identity + approved designs</option>
+                    <option value="original">Original identity only</option>
+                  </select>
+                </label>
+                <details>
+                  <summary>Isolated Engine connection settings</summary>
+                  <p className="vss-hint">
+                    Keys stay exclusively in Engine storage. Applying parameters creates/reuses a named Engine copy.
+                    Controls remain unverified until tested through your host.
+                  </p>
+                  <textarea
+                    aria-label="Studio image parameters JSON"
+                    value={parameterText}
+                    onChange={(event) => setParameterText(event.target.value)}
+                  />
+                  <button
+                    disabled={busy || running || !settings.connectionId}
+                    onClick={() =>
+                      void perform(async () => {
+                        const next = await call<StudioData>("connection-profile", {
+                          settings: { ...settings, customParameters: JSON.parse(parameterText) },
+                        });
+                        setData(next);
+                        setSettings(next.settings);
+                      })
+                    }
+                  >
+                    Apply to Engine-managed Studio copy
+                  </button>
+                  <details>
+                    <summary>Recover uncertain connection setup</summary>
+                    <p>
+                      Inspect the Engine connection list first. This discards the Studio mapping and explicitly creates
+                      a replacement if parameters need isolation. Existing Engine connections remain available.
+                    </p>
+                    <button
+                      disabled={busy || running || !settings.connectionId}
+                      onClick={() =>
+                        void perform(async () => {
+                          const next = await call<StudioData>("connection-profile", {
+                            resetProfile: true,
+                            settings: { ...settings, customParameters: JSON.parse(parameterText) },
+                          });
+                          setData(next);
+                          setSettings(next.settings);
+                        })
+                      }
+                    >
+                      Reset mapping and apply replacement
+                    </button>
+                  </details>
+                </details>
+                <label>
+                  Background processing
+                  <select
+                    value={settings.cleanupEngine ?? "studio"}
+                    onChange={(event) =>
+                      setSettings({ ...settings, cleanupEngine: event.target.value as StudioSettings["cleanupEngine"] })
+                    }
+                  >
+                    <option value="studio">Studio matte cleanup</option>
+                    {data?.cleanupCapabilities?.builtin ? (
+                      <option value="builtin">Engine built-in cleanup</option>
+                    ) : null}
+                    {data?.cleanupCapabilities?.backgroundremover ? (
+                      <option value="backgroundremover">Engine AI cleanup</option>
+                    ) : null}
+                  </select>
+                </label>
                 <label>
                   Art style
                   <select
@@ -926,7 +1178,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                       {plan.batches.map((batch, index) => (
                         <small key={index}>
                           Sheet {index + 1}: {batch.count} sprites · {batch.cols} × {batch.rows} · {batch.width} ×{" "}
-                          {batch.height}px source
+                          {batch.height}px requested canvas
                         </small>
                       ))}
                       <details className="vss-request">
@@ -946,7 +1198,8 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                         )}
                       </details>
                       <small>
-                        Cutouts saved at 512 × 768.{" "}
+                        Exports: 512 × 768; foreground inside 480 × 736. Provider resolution is unverified; decoded
+                        source dimensions appear in Review.{" "}
                         {plan.localWorkflow ? "Local workflow internal steps and costs are unavailable. " : ""}No
                         automatic retries or provider changes.
                       </small>
@@ -959,7 +1212,14 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                 </div>
                 <button
                   className="vss-primary"
-                  disabled={busy || running || planning || !plan || !payload.expressions.length}
+                  disabled={
+                    busy ||
+                    running ||
+                    planning ||
+                    !plan ||
+                    !payload.expressions.length ||
+                    (purpose === "expressions" && (!activeDesign?.front || !activeDesign.side))
+                  }
                   onClick={() => void perform(generate)}
                 >
                   {busy ? "Working…" : "Generate"}
@@ -1116,10 +1376,62 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                         </h3>
                         <small>
                           {new Date(job.createdAt).toLocaleString()} · {job.model} · {job.attempted} submitted /{" "}
-                          {job.planned} planned requests · {job.status}
+                          {job.planned} planned requests ·{" "}
+                          {job.status === "ready" ? "Generation completed" : job.status} ·{" "}
+                          {job.strategy ?? "legacy references"} · User approval is separate
                         </small>
                         {job.error ? <p className="vss-hint">{job.error}</p> : null}
                         <div className="vss-row">
+                          <button
+                            disabled={busy || job.status === "running"}
+                            onClick={() =>
+                              void perform(async () =>
+                                setData(
+                                  await call<StudioData>("validate", {
+                                    batchId: job.id,
+                                    engine: settings?.cleanupEngine ?? "studio",
+                                  }),
+                                ),
+                              )
+                            }
+                          >
+                            Run local checks · no generation call
+                          </button>
+                          <select
+                            aria-label="Vision review connection"
+                            value={reviewConnection}
+                            onChange={(event) => setReviewConnection(event.target.value)}
+                          >
+                            <option value="">Select a vision-capable language connection</option>
+                            {data.reviewConnections?.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} · {c.model}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            disabled={
+                              busy ||
+                              job.status === "running" ||
+                              !reviewConnection ||
+                              !items.length ||
+                              (selected.length ? selected.length > 6 : items.length > 6)
+                            }
+                            onClick={() =>
+                              void perform(async () => {
+                                const ids = selected.length ? selected : items.map((item) => item.cell.id);
+                                const next = await call<StudioData>("visual-review", {
+                                  submissionId: reviewSubmissionId(ids),
+                                  connectionId: reviewConnection,
+                                  cellIds: ids,
+                                });
+                                setData(next);
+                                reviewSubmission.current = null;
+                              })
+                            }
+                          >
+                            Check visual consistency · {selected.length || items.length} candidates · 1 paid review call
+                          </button>
                           <button
                             className="vss-primary"
                             disabled={busy || job.status === "running" || !items.length}
@@ -1202,10 +1514,68 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                   aria-pressed={picked === item.cell.id}
                                   onClick={() => pick(item)}
                                 >
-                                  <CellPreview renderCache={renderCache} candidate={item} />
+                                  <div className="vss-aligned" data-background={comparisonBackground}>
+                                    <CellPreview renderCache={renderCache} candidate={item} />
+                                    {showBounds ? <span className="vss-safe" /> : null}
+                                  </div>
                                 </button>
                                 <strong>{item.cell.label.replaceAll("_", " ")}</strong>
-                                <small>{item.cell.view}</small>
+                                <small>
+                                  {item.cell.view} · Local checks:{" "}
+                                  {item.cell.validation?.status ?? "legacy / unverified"}
+                                </small>
+                                {item.cell.validation?.findings.map((f) => (
+                                  <small key={f.code} role={f.severity === "blocking" ? "alert" : undefined}>
+                                    {f.message}
+                                  </small>
+                                ))}
+                                {data.reviews
+                                  ?.filter((r) => r.cellIds.includes(item.cell.id))
+                                  .slice(-1)
+                                  .map((r) => (
+                                    <details key={r.id}>
+                                      <summary>Visual review: {r.status}</summary>
+                                      <p>{r.consistency}</p>
+                                      {r.findings
+                                        .filter((f) => f.cellId === item.cell.id)
+                                        .map((f) => (
+                                          <small key={f.category}>
+                                            {f.category}: {f.verdict} · {f.detail}
+                                          </small>
+                                        ))}
+                                      {r.error ? <small>{r.error}</small> : null}
+                                    </details>
+                                  ))}
+                                <button
+                                  disabled={busy || running || item.cell.validation?.status === "blocked"}
+                                  onClick={() =>
+                                    void perform(async () =>
+                                      setData(
+                                        await call<StudioData>("design", {
+                                          cellId: item.cell.id,
+                                          view: item.cell.view,
+                                          settings,
+                                          acknowledge,
+                                        }),
+                                      ),
+                                    )
+                                  }
+                                >
+                                  Approve as {item.cell.view} design
+                                </button>
+                                <button
+                                  disabled={busy || running}
+                                  onClick={() => {
+                                    setPurpose("expressions");
+                                    setView(item.cell.view);
+                                    setLabels([item.cell.label]);
+                                    setPoses({ [item.cell.label]: item.cell.pose });
+                                    setTab("Create");
+                                    setNote("One sprite selected. Review the request count before generating.");
+                                  }}
+                                >
+                                  Prepare replacement
+                                </button>
                                 {active.length ? (
                                   <span className="vss-badge">
                                     In use ·{" "}
@@ -1220,7 +1590,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                   <input
                                     type="checkbox"
                                     checked={selected.includes(item.cell.id)}
-                                    aria-label={"Select " + item.cell.label + " for deletion"}
+                                    aria-label={"Select " + item.cell.label + " for review or deletion"}
                                     onChange={(event) =>
                                       setSelected(
                                         event.target.checked
@@ -1229,7 +1599,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                       )
                                     }
                                   />
-                                  Select for deletion
+                                  Select for review or deletion
                                 </label>
                                 <button
                                   disabled={busy}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { PNG } from "pngjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve, join } from "node:path";
@@ -30,6 +31,14 @@ import {createStudioRenderCache} from "${resolve("packages/villages/src/engine/p
   jsx: "automatic",
   nodePaths: [join(engineRoot, "packages/client/node_modules"), join(engineRoot, "node_modules")],
 });
+await build({
+  entryPoints: [resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-pixels.ts")],
+  bundle: true,
+  platform: "node",
+  format: "cjs",
+  outfile: join(output, "pixels.cjs"),
+});
+const { processStudioCell } = createRequire(import.meta.url)(join(output, "pixels.cjs"));
 const bundle = await readFile(join(output, "fixture.js"), "utf8");
 const browserProfiles = [
   { name: "desktop", type: chromium, viewport: { width: 1280, height: 900 } },
@@ -113,6 +122,44 @@ for (const profile of browserProfiles) {
         connections: [{ id: "mock", name: "Mock images", model: "fixture" }],
         reference: { url: source, capturedAt: new Date().toISOString(), origin: "snapshot" },
       };
+    if (!state.designs.length) {
+      const styles = await page.evaluate(() => window.styleExamples);
+      const anchor = await page.evaluate(
+        async (source) =>
+          (
+            await window.renderCell(
+              { url: source, width: 1536, height: 1536, baseScale: 1, cells: [] },
+              {
+                id: "anchor",
+                view: "front",
+                label: "neutral",
+                pose: "",
+                x: 0,
+                y: 0,
+                width: 512,
+                height: 768,
+                scale: 1,
+                offsetX: 0,
+                offsetY: 0,
+                status: "candidate",
+                cleanup: true,
+              },
+              true,
+            )
+          ).toDataURL(),
+        source,
+      );
+      state.designs = ["PAPERCRAFT", "BATTLEHIGHWAY"].map((style) => ({
+        id: "approved-" + style,
+        revision: 1,
+        style,
+        stylePrompt: styles[style],
+        identityUrl: source,
+        front: { url: anchor, approvedAt: "2026-09-30T00:00:00Z" },
+        side: { url: anchor, approvedAt: "2026-09-30T00:00:00Z" },
+        framing: { scale: 1, baseline: 752 },
+      }));
+    }
     let result = state;
     if (action === "/settings") state.settings = body;
     if (action === "/plan") {
@@ -501,6 +548,41 @@ for (const profile of browserProfiles) {
       return baseline;
     }, source);
     assert.deepEqual(alignment, [751, 751], "distinct cell margins share the same foot baseline");
+    const parityCell = {
+      id: "parity",
+      label: "happy",
+      view: "front",
+      pose: "",
+      x: 0,
+      y: 0,
+      width: 512,
+      height: 768,
+      scale: 0.8,
+      offsetX: 7,
+      offsetY: -11,
+      status: "candidate",
+      cleanup: true,
+    };
+    const paritySheet = { url: source, width: 1536, height: 1536, baseScale: 1, cells: [parityCell] };
+    const sourcePixels = PNG.sync.read(Buffer.from(source.split(",")[1], "base64"));
+    const exported = processStudioCell(
+      { width: sourcePixels.width, height: sourcePixels.height, data: new Uint8ClampedArray(sourcePixels.data) },
+      paritySheet,
+      parityCell,
+    ).image;
+    const preview = await page.evaluate(
+      async ({ sheet, cell }) => {
+        const canvas = await window.renderCell(sheet, cell, true);
+        return Array.from(canvas.getContext("2d").getImageData(0, 0, 512, 768).data);
+      },
+      { sheet: paritySheet, cell: parityCell },
+    );
+    assert.deepEqual(
+      Buffer.from(preview),
+      Buffer.from(exported.data),
+      "browser preview and server export agree for scale, offsets, cleanup and safe framing",
+    );
+
     const cacheProof = await page.evaluate(async (source) => {
       const cache = window.makeRenderCache();
       const sheet = {
@@ -574,8 +656,8 @@ for (const profile of browserProfiles) {
         CanvasRenderingContext2D.prototype.getImageData = original;
       }
     }, source);
-    assert.equal(cacheProof.afterShared, 2, "two consumers share one crop/cleanup pass");
-    assert.equal(cacheProof.afterReuse, 2, "completed derivatives are reused");
+    assert.equal(cacheProof.afterShared, 1, "two consumers share one crop/cleanup pass");
+    assert.equal(cacheProof.afterReuse, 1, "completed derivatives are reused");
     assert.equal(cacheProof.independent, true, "resizing one consumer cannot corrupt another");
     assert.equal(cacheProof.changed, true, "drawing changes invalidate render keys");
     assert.equal(cacheProof.invalidated, true);
