@@ -647,8 +647,14 @@ async function main() {
       targetId: "chef",
       submissionId: "invite-stock",
     });
-    assert.equal(invited.session.zoneId, "stock");
-    assert.deepEqual(invited.session.activeIds, ["chef"], "the inviter accompanies; the guest stays on the floor");
+    assert.equal(invited.session.zoneId, "gathering", "permission alone does not move the player");
+    assert.equal(invited.session.entryOffers?.[0]?.zoneId, "stock");
+    const accepted = await moveVenueZone(visit.id, "stock");
+    assert.deepEqual(
+      accepted.activeIds,
+      ["chef"],
+      "the inviter accompanies after acceptance; the guest stays on the floor",
+    );
     response = "ordinary";
     await sendVenueTurn({
       sessionId: visit.id,

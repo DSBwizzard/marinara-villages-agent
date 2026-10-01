@@ -20,6 +20,12 @@ Every new Scene captures attendance, Zone positions, immediate activities, and s
 
 Existing active Scenes preserve their currently visible cast when first upgraded to saved attendance; previously rewritten agendas cannot be reconstructed exactly. Verified physical changes, Zone access, and construction closures remain authoritative. Refresh restores the same Scene, and the existing 30-minute inactivity limit still ends it.
 
+Use **Knock / Call** in the Scene composer to choose a doorway and optionally a known villager, or describe a deliberate knock or call in Chat. Only adjacent Zones hear the attempt. Exterior connects to Common and public spaces; private, staff, and restricted spaces connect to the matching Common/public space, or Exterior when none exists. A willing listener may answer through the doorway, come to meet you, or relay the request. A messenger can cross any number of permitted boundaries and approach a private doorway without entering; every crossed Zone still requires their access. Nobody is compelled to respond, and silence shows only **No answer**.
+
+Doorway speech is marked and keeps its own witnesses without adding a distant speaker to the physical cast. Addressed follow-ups can continue through the doorway; ordinary speech stays local. Moving Zones or saying goodbye closes that doorway conversation. Invitations grant access and show **Enter**; the player chooses when to enter. This also applies to immediate invitations in ordinary conversation. Doorway dialogue can supply cited Project decisions, but physical handoffs still require sharing the Zone.
+
+Explicit contact uses one response stage, with one additional stage if someone relays the request. Natural language contact is extracted with citations from the normal reply before those stages. Travel does not make a generation call per door. Saved responses survive refresh and interrupted saves; retries use the existing **Retry saved request** flow.
+
 ## Scene coordination
 
 Each live Scene admits one scene operation at a time. Another tab's send is refused before any reply, action judgement, or Wish call; its draft stays available. Sends and movement identify the scene revision the player saw. A stale draft requires reading the updated scene and deliberately sending again. Refreshes, activity timestamps, and bookkeeping do not invalidate admitted work.
@@ -118,7 +124,7 @@ View Venue shows saved exterior, public, shared, staff, and private zones, with 
 
 A player can propose a move to an available venue. The villager accepts or refuses in conversation. A villager can also propose a move or one home-tier upgrade in conversation or during village life; the player decides in Venue Requests. An approved move completes after 24 elapsed hours, with a visible DEBUG shortcut. Occupied homes cannot be relocated, reassigned, converted, or removed until their resident moves out.
 
-Residence entry and editing rely on explicit resident dialogue. A recorded invitation permits a one-use future visit; an invitation during a scene can admit the player immediately. Entry does not authorize changing furnishings or room state. A move archives the old private room and asks the System connection once to select portable personal elements for a new room. A failed adaptation leaves a retryable draft and the archive intact.
+Residence entry and editing rely on explicit resident dialogue. A recorded invitation permits a one-use future visit; an invitation during a scene grants access and offers an Enter control. Entry does not authorize changing furnishings or room state. A move archives the old private room and asks the System connection once to select portable personal elements for a new room. A failed adaptation leaves a retryable draft and the archive intact.
 
 ## Memory model
 

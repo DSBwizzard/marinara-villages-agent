@@ -45,6 +45,7 @@ import {
   leaveVenueMemoryPending,
   enterVenue,
   enterResidencePrivateSpace,
+  moveVenueZone,
   leaveVenueSession,
   greetVenue as greetVenueRaw,
   listVenueVisits,
@@ -3239,7 +3240,8 @@ async function main() {
       targetId: "",
       submissionId: "home-invite-now",
     });
-    assert.equal(invited.session.area, "shared", "spoken invitation enters within the same scene");
+    assert.equal(invited.session.area, "outside", "spoken invitation waits for player acceptance");
+    await moveVenueZone(outside.id, "residence");
     await mutateVillageState((state) => {
       for (const resident of state.villagers.filter((person) => ["bob", "tina"].includes(person.characterId))) {
         resident.agenda!.day.forEach((block) => (block.zoneId = "residence"));
@@ -3308,8 +3310,10 @@ async function main() {
       targetId: "",
       submissionId: "home-private-now",
     });
-    assert.equal(privateInvite.session.area, "private");
-    assert.equal(privateInvite.session.privateOwnerId, "bob");
+    assert.equal(privateInvite.session.area, "shared", "private permission also waits for acceptance");
+    const acceptedPrivate = await moveVenueZone(outside.id, "private:bob");
+    assert.equal(acceptedPrivate.area, "private");
+    assert.equal(acceptedPrivate.privateOwnerId, "bob");
     const beforePrivateQuiet = calls;
     const privateQuiet = await sendVenueTurn({
       sessionId: outside.id,

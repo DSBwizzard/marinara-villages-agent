@@ -179,7 +179,9 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       )
     )
       return fail("This evidence is not in the current Project phase.");
-    if (turn.mode !== "chat" && turn.mode !== "ask") return fail("Use an ordinary saved Village conversation.");
+    if (turn.mode !== "chat" && turn.mode !== "ask" && turn.mode !== "contact")
+      return fail("Use an ordinary saved Village conversation.");
+    if (line?.viaDoorway && kind === "handoff") return fail("Doorway speech cannot establish a physical handoff.");
     if (!state.venues.some((venue) => venue.id === turn.venueId))
       return fail("The saved turn must have happened in a current Village Venue.");
     if (
@@ -404,7 +406,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
 /** Automatic saved-turn processing. Expected evidence rejections are diagnostics, not replay failures. */
 export async function processProjectSpeechTurn(sessionId: string, submissionId: string): Promise<void> {
   const turn = await readProjectTurnEvidence(sessionId, submissionId);
-  if (turn.mode !== "chat" && turn.mode !== "ask") return;
+  if (turn.mode !== "chat" && turn.mode !== "ask" && turn.mode !== "contact") return;
   const tryRecord = async (projectId: string, input: Record<string, unknown>) => {
     try {
       await recordProjectSpokenEvidence(projectId, { ...input, sessionId, submissionId, automatic: true });

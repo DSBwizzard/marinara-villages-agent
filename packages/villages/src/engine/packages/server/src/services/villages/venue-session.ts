@@ -107,6 +107,19 @@ import {
 } from "./project-interpretation.js";
 import { readVenueRequestCore } from "./venue-requests.js";
 import type { VillageVenueClass } from "./types.js";
+import {
+  contactNeighbors,
+  contactPosition,
+  contactPath,
+  contactCanEnter,
+  readContactIntent,
+  readContactMoves,
+  readContactRelay,
+  type ContactIntent,
+  type DoorwayContact,
+  type ContactMove,
+  type ContactRelay,
+} from "./venue-contact.js";
 
 export type VenueLine = {
   id: string;
@@ -117,6 +130,8 @@ export type VenueLine = {
   at: string;
   heardBy: string[];
   zoneId?: string;
+  viaDoorway?: boolean;
+  contactHidden?: boolean;
   kind?: "narration" | "dialogue" | "side" | "whisper";
   expression?: string;
   gazeAt?: string;
@@ -158,7 +173,12 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
     message: submission.message,
     at: submission.at ?? "",
     areaAtTurn: submission.areaAtTurn ?? session.area,
-    activeIdsAtTurn: submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId),
+    activeIdsAtTurn: [
+      ...new Set([
+        ...(submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId)),
+        ...(submission.speechIdsAtTurn ?? []),
+      ]),
+    ],
     action: submission.action ?? null,
     projectContexts: submission.projectContexts ?? [],
     projectSpeech: submission.projectSpeech ?? [],
@@ -176,7 +196,9 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
       submission.replyLineIds?.length
         ? submission.replyLineIds.includes(line.id) &&
           line.role === "assistant" &&
-          submission.activeIdsAtTurn?.includes(line.speakerId)
+          (submission.activeIdsAtTurn?.includes(line.speakerId) ||
+            submission.speechIdsAtTurn?.includes(line.speakerId)) &&
+          !line.contactHidden
         : line.at === submission.at &&
           line.role === "assistant" &&
           session.participants.some((participant) => participant.characterId === line.speakerId),
@@ -186,7 +208,10 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
 type VenueSubmission = {
   id: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act" | "leave";
+  mode: "chat" | "ask" | "fulfill" | "act" | "leave" | "contact";
+  contact?: ContactIntent;
+  speechIdsAtTurn?: string[];
+  contactEvidence?: { moves: ContactMove[]; relay: ContactRelay | null };
   targetId: string;
   areaAtTurn?: VenueScene["area"];
   zoneIdAtTurn?: string;
@@ -217,6 +242,7 @@ type VenueSubmission = {
     residentId: string;
     venueId: string;
     scope: "shared" | "private";
+    zoneLabel?: string;
     privateSpaceId?: string;
     zoneId?: string;
     area?: VenueScene["area"];
@@ -300,6 +326,10 @@ export type VenueScene = {
   zoneGrants?: { zoneId: string; controllerId: string; source?: "relationship" }[];
   privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
+  doorwayContacts?: DoorwayContact[];
+  entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
+  /** Ephemeral prompt context; never stored or disclosed. */
+  contactGeneration?: { instruction: string; localIds: string[]; remoteIds: string[] };
   departedIds?: string[];
   area: "outside" | "shared" | "private" | "public";
   privateOwnerId: string;
@@ -427,6 +457,8 @@ function coerceSession(value: unknown): VenueScene {
             content: asString(row.content),
             at: asString(row.at),
             zoneId: asTrimmedString(row.zoneId) || undefined,
+            ...(row.viaDoorway === true ? { viaDoorway: true } : {}),
+            ...(row.contactHidden === true ? { contactHidden: true } : {}),
             heardBy: Array.isArray(row.heardBy) ? row.heardBy.filter((id): id is string => typeof id === "string") : [],
             ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
               ? { kind: row.kind as VenueLine["kind"] }
@@ -465,6 +497,8 @@ function coerceSession(value: unknown): VenueScene {
           }))
       : [],
     legacyCast: raw.legacyCast === true,
+    doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
+    entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
     grantedZoneIds: Array.isArray(raw.grantedZoneIds)
       ? raw.grantedZoneIds.filter((id): id is string => typeof id === "string")
       : [],
@@ -557,16 +591,23 @@ function coerceSession(value: unknown): VenueScene {
             return {
               id: asTrimmedString(row.id),
               message: asString(row.message),
+              ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
+              ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
+              ...(row.contactEvidence
+                ? { contactEvidence: row.contactEvidence as VenueSubmission["contactEvidence"] }
+                : {}),
               mode:
-                row.mode === "leave"
-                  ? ("leave" as const)
-                  : row.mode === "act"
-                    ? ("act" as const)
-                    : row.mode === "fulfill"
-                      ? ("fulfill" as const)
-                      : row.mode === "ask"
-                        ? ("ask" as const)
-                        : ("chat" as const),
+                row.mode === "contact"
+                  ? ("contact" as const)
+                  : row.mode === "leave"
+                    ? ("leave" as const)
+                    : row.mode === "act"
+                      ? ("act" as const)
+                      : row.mode === "fulfill"
+                        ? ("fulfill" as const)
+                        : row.mode === "ask"
+                          ? ("ask" as const)
+                          : ("chat" as const),
               targetId: asString(row.targetId),
               ...(typeof row.zoneIdAtTurn === "string" ? { zoneIdAtTurn: row.zoneIdAtTurn } : {}),
               ...(row.areaAtTurn === "outside" ||
@@ -786,7 +827,9 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
         for (const line of session.lines) {
           if (
             submission.replyLineIds?.includes(line.id) &&
-            submission.activeIdsAtTurn?.includes(line.speakerId) &&
+            !line.contactHidden &&
+            (submission.activeIdsAtTurn?.includes(line.speakerId) ||
+              submission.speechIdsAtTurn?.includes(line.speakerId)) &&
             session.participants.some((person) => person.characterId === line.speakerId)
           )
             ingestSavedProgressEvent(state, {
@@ -910,13 +953,39 @@ function captureSceneAttendance(village: VillageState, placeId: string, now: Dat
 }
 
 /** Do not disclose occupants of unseen Zones, including inside operation snapshots/checkpoints. */
-export function publicSceneResponse<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((entry) => publicSceneResponse(entry)) as T;
+export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
+  if (Array.isArray(value))
+    return value
+      .filter((entry) => !(entry && typeof entry === "object" && entry.contactHidden === true))
+      .map((entry) => publicSceneResponse(entry, visibleIds)) as T;
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
+  const row = value as Record<string, unknown>;
+  const visible = Array.isArray(row.participants)
+    ? new Set(row.participants.map((entry) => asTrimmedString(asRecord(entry).characterId)))
+    : visibleIds;
   return Object.fromEntries(
     Object.entries(value)
-      .filter(([key]) => key !== "sceneAttendance")
-      .map(([key, entry]) => [key, publicSceneResponse(entry)]),
+      .filter(
+        ([key]) =>
+          ![
+            "sceneAttendance",
+            "contactGeneration",
+            "contactEvidence",
+            "contactHidden",
+            "contactMoves",
+            "contactRelay",
+            "characterZoneId",
+            "checkpoints",
+            "attempts",
+            "snapshot",
+          ].includes(key),
+      )
+      .map(([key, entry]) => [
+        key,
+        visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
+          ? entry.filter((id) => visible.has(id))
+          : publicSceneResponse(entry, visible),
+      ]),
   ) as T;
 }
 
@@ -1118,6 +1187,10 @@ async function generateOnce(
       : [];
   const system = [
     VENUE_SCENE_WRITING_FOUNDATION,
+    session.contactGeneration?.instruction ?? "",
+    !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
+      ? `For a CURRENT deliberate knock, call, or directed follow-up to a doorway speaker, optionally return contactIntent:{kind:"knock"|"call",targetId:"known villager ID or empty",boundaryZoneId:"doorway ID or empty",quote:"exact player words conveying the contact"}. Do not interpret hypothetical, historical, quoted, or merely mentioned calls. Do not narrate a remote answer, movement, invitation, or lack of response yet; the server will route a supported attempt. Ordinary conversation remains local. Known villagers (not an attendance list): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
+      : "",
     `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
     venueWritingDirection(village.narrationStyle, player.name),
     venueAdditionalWritingGuidance(village.narrationStyle),
@@ -1308,6 +1381,20 @@ async function generateOnce(
   } catch {
     throw new VenueReplyFailure(raw ? "invalid-segments" : "invalid-json");
   }
+  if (session.contactGeneration) {
+    const context = session.contactGeneration;
+    const acknowledged = new Set(
+      parsed.lines.filter((line) => line.kind !== "narration").map((line) => line.speakerId),
+    );
+    parsed.heardPlayerBy = parsed.heardPlayerBy.filter((id) => context.localIds.includes(id) || acknowledged.has(id));
+    for (const line of parsed.lines) {
+      line.heardBy = line.heardBy.filter((id) => context.localIds.includes(id) || acknowledged.has(id));
+      if (context.remoteIds.includes(line.speakerId)) line.viaDoorway = true;
+      // Presentation never places an unseen remote listener in the player's Zone.
+      line.staging = line.staging?.filter((cue) => context.localIds.includes(cue.characterId));
+      if (line.kind === "narration") line.heardBy = [...context.localIds];
+    }
+  }
   const readSpeechSignal = (value: unknown) => {
     const entry = asRecord(value);
     const speakerId = asTrimmedString(entry.speakerId);
@@ -1338,7 +1425,7 @@ async function generateOnce(
         ),
       ]
     : [];
-  const sceneEnded = !!readSpeechSignal(raw?.sceneEnded);
+  const sceneEnded = !session.contactGeneration && !!readSpeechSignal(raw?.sceneEnded);
   const recollections: {
     text: string;
     subjectCharacterIds: string[];
@@ -1427,15 +1514,46 @@ async function generateOnce(
   const pendingDecision = decision
     ? pendingMoves.find((move) => move.characterId === decision.speakerId && move.requestedBy === "player")
     : null;
+  const contactMoves =
+    session.contactGeneration && storedPlace
+      ? readContactMoves(raw?.contactMoves, parsed.lines, village, storedPlace, session, audience)
+      : [];
+  if (
+    session.contactGeneration &&
+    Array.isArray(raw?.contactMoves) &&
+    raw.contactMoves.length !== contactMoves.length
+  ) {
+    await rejectVenueCompletion();
+    throw badGateway("The contact reply proposed an unsupported movement. Your draft is preserved.");
+  }
   return {
     ...parsed,
     projectContexts,
+    contactIntent:
+      !session.contactGeneration && (mode === "chat" || mode === "ask")
+        ? readContactIntent(raw?.contactIntent, message)
+        : null,
+    contactMoves,
+    contactRelay:
+      session.contactGeneration && storedPlace
+        ? readContactRelay(raw?.contactRelay, parsed.lines, village, storedPlace, session, audience)
+        : null,
+    contactEndIds:
+      session.contactGeneration && Array.isArray(raw?.contactEnd)
+        ? raw.contactEnd
+            .map(readSpeechSignal)
+            .filter((entry) => !!entry)
+            .map((entry) => entry!.speakerId)
+        : [],
     projectSpeech: bindProjectSpeech(
       raw?.projectSpeech,
       projectContexts,
       parsed.lines.map((line, index) => ({ ...line, id: String(index) })),
     ),
-    sceneChange: mode === "chat" || mode === "ask" ? readVenueSceneChange(raw?.sceneChange, place) : null,
+    sceneChange:
+      !session.contactGeneration && (mode === "chat" || mode === "ask")
+        ? readVenueSceneChange(raw?.sceneChange, place)
+        : null,
     residenceSignal:
       (mode === "chat" || mode === "ask") &&
       requestedVenueId &&
@@ -1487,6 +1605,7 @@ async function generateOnce(
             residentId: invitation.speakerId,
             venueId: invitedVenueId,
             scope: invitationScope,
+            zoneLabel: invitationZone.name,
             zoneId: invitationZone?.id,
             privateSpaceId:
               invitationZone && ["private-residence", "staff", "restricted"].includes(invitationZone.kind)
@@ -1602,6 +1721,8 @@ type VenueReplyLine = {
   speakerId: string;
   content: string;
   heardBy: string[];
+  viaDoorway?: boolean;
+  contactHidden?: boolean;
   expression?: string;
   gazeAt?: string;
   staging?: StagingCue[];
@@ -1708,6 +1829,8 @@ function appendVenueReply(session: VenueScene, lines: ReturnType<typeof parseVen
       content: line.content,
       at,
       heardBy: line.heardBy,
+      ...(line.viaDoorway ? { viaDoorway: true } : {}),
+      ...(line.contactHidden ? { contactHidden: true } : {}),
       kind: line.kind,
       ...(line.expression ? { expression: line.expression } : {}),
       ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
@@ -1889,9 +2012,7 @@ async function refreshZoneParticipants(session: VenueScene, completing = false):
   }
   const positions = (session.accompanying ?? []).filter((entry) => {
     const destination = resolveVenueZone(venue, entry.zoneId);
-    return (
-      !!destination && canOccupyZone(venue, destination, entry.characterId) && !zoneClosed(village, venue, destination)
-    );
+    return !!destination && contactCanEnter(village, venue, destination.id, entry.characterId);
   });
   const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
   const people = session.sceneAttendance!.occupants.filter(
@@ -1996,6 +2117,14 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   }
   const moved = await changeSession(sessionId, (state) => {
     state.zoneId = zone.id;
+    state.doorwayContacts = [];
+    const offer = state.entryOffers?.find((entry) => entry.zoneId === zone.id);
+    if (offer?.accompanies && canOccupyZone(venue, zone, offer.controllerId))
+      state.accompanying = [
+        ...(state.accompanying ?? []).filter((entry) => entry.characterId !== offer.controllerId),
+        { characterId: offer.controllerId, zoneId: zone.id },
+      ];
+    state.entryOffers = state.entryOffers?.filter((entry) => entry.zoneId !== zone.id);
     state.privateSpaceId = ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined;
     if (controllerId)
       state.zoneGrants = [
@@ -2256,7 +2385,6 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
     appendVenueReply(state, reply.lines, at);
     if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
       applyImmediateZoneInvitation(state, reply.invitationSignal);
-      state.privateOwnerId = reply.invitationSignal.scope === "private" ? reply.invitationSignal.ownerId : "";
     }
     state.status = "active";
   });
@@ -2290,10 +2418,205 @@ export async function continueVenueWithoutGreeting(id: string): Promise<VenueSce
   return session;
 }
 
+type SceneReply = Awaited<ReturnType<typeof generateOnce>>;
+function quietContactReply(text: string, localIds: string[]): SceneReply {
+  return {
+    lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }],
+    heardPlayerBy: localIds,
+    projectContexts: [],
+    projectSpeech: [],
+    sceneChange: null,
+    residenceSignal: null,
+    upgradeSignal: null,
+    venueRequestSignal: null,
+    invitationSignal: null,
+    editApprovalSignal: null,
+    recap: "",
+    departures: [],
+    sceneEnded: false,
+    recollections: [],
+    contactIntent: null,
+    contactMoves: [],
+    contactRelay: null,
+    contactEndIds: [],
+  };
+}
+
+/** Paid stages are checkpointed; walking any permitted route does not spend one call per door. */
+async function contactReply(scene: VenueScene, intent: ContactIntent): Promise<SceneReply> {
+  const village = await readVillageState(),
+    venue = village.venues.find((entry) => entry.id === scene.placeId);
+  if (!venue) throw notFound("That Venue is no longer available.");
+  const origin = scene.zoneId ?? "exterior",
+    neighbors = contactNeighbors(venue, origin);
+  if (intent.targetId && !village.villagers.some((entry) => entry.characterId === intent.targetId))
+    throw badRequest("Choose a villager who still lives in the village.");
+  if (intent.boundaryZoneId && !neighbors.includes(intent.boundaryZoneId))
+    throw badRequest("Choose a doorway adjacent to your current Zone.");
+  const established = scene.doorwayContacts?.find(
+    (entry) =>
+      entry.characterId === intent.targetId &&
+      entry.playerZoneId === origin &&
+      contactPosition(scene, entry.characterId) === entry.characterZoneId,
+  );
+  let boundary = intent.boundaryZoneId || established?.characterZoneId || "";
+  if (!boundary && neighbors.length === 1) boundary = neighbors[0]!;
+  if (!boundary && intent.targetId) {
+    const targetZone = contactPosition(scene, intent.targetId);
+    const route = contactPath(village, venue, origin, targetZone, intent.targetId);
+    boundary = route?.[1] ?? "";
+  }
+  if (!boundary && neighbors.length > 1)
+    return quietContactReply("Choose which doorway to knock or call through using Knock / Call.", scene.activeIds);
+  const remote = (scene.sceneAttendance?.occupants ?? []).filter(
+    (person) =>
+      contactPosition(scene, person.characterId) === boundary &&
+      !zoneClosed(village, venue, resolveVenueZone(venue, boundary)!),
+  );
+  if (!remote.length && !scene.activeIds.length) return quietContactReply("No answer.", scene.activeIds);
+  const audience = [...new Set([...scene.activeIds, ...remote.map((person) => person.characterId)])];
+  const cast = [
+    ...scene.participants,
+    ...remote.filter((person) => !scene.participants.some((old) => old.characterId === person.characterId)),
+  ];
+  const destinations = audience.map((id) => ({
+    characterId: id,
+    mayComeToPlayer: !!contactPath(village, venue, contactPosition(scene, id), origin, id),
+  }));
+  const context: VenueScene = {
+    ...scene,
+    participants: cast,
+    activeIds: audience,
+    recap: "",
+    lines: scene.lines.filter((line) => audience.every((id) => line.heardBy.includes(id))),
+    contactGeneration: {
+      localIds: scene.activeIds,
+      remoteIds: remote.map((person) => person.characterId),
+      instruction: `CONTACT RESPONSE. This overrides generic instructions that all active IDs are in the same Zone.
+The player remains in ${origin}. Local people: ${scene.activeIds.join(", ")}. Adjacent doorway listeners: ${remote.map((person) => person.characterId).join(", ")}.
+They hear ONLY the cited call, not older unseen exchanges. Addressed villager: ${intent.targetId || "anyone"}. Nobody else may answer.
+Available listeners normally acknowledge, but retain agency and may decline, be busy or not hear. Silence must reveal no hidden reason or attendance. Never disclose unseen descriptions, objects or other occupants. A doorway speaker stays in their Zone and has no on-stage sprite.
+For a completed, willingly narrated move to the player's Zone, return contactMoves:[{characterId,zoneId:"${origin}",quote:"their exact spoken agreement"}]; include the actual completed movement in narration. Permitted arrivals: ${JSON.stringify(destinations)}. Maximum local cast is four.
+If a local or doorway responder willingly offers to fetch the addressed person, return contactRelay:{speakerId,targetId,quote:"exact unconditional spoken offer"}. Do not invent the target's response or whereabouts. The server checks a permitted route with no hop cutoff. The messenger may approach a private doorway without entering it. Do not narrate the journey as completed yet.
+For an explicit end to doorway conversation return contactEnd:[{speakerId,quote:"exact spoken goodbye"}], never sceneEnded or departures for that goodbye. Invitations grant permission only; do not narrate the player entering. Do not propose physical handoffs or lasting room changes.`,
+    },
+  };
+  const reply = await venueCheckpoint("contact-response", () =>
+    generateOnce(
+      context,
+      intent.quote,
+      "chat",
+      intent.targetId,
+      null,
+      venueOperationSignal() ?? AbortSignal.timeout(90_000),
+    ),
+  );
+  // If no one acknowledges, reveal neither listeners nor the reason for silence.
+  if (!reply.lines.some((line) => line.kind !== "narration") && !scene.activeIds.length)
+    return quietContactReply("No answer.", scene.activeIds);
+  const afterMoves: VenueScene = {
+    ...scene,
+    activeIds: [...new Set([...scene.activeIds, ...reply.contactMoves.map((move) => move.characterId)])],
+    accompanying: [
+      ...(scene.accompanying ?? []).filter(
+        (entry) => !reply.contactMoves.some((move) => move.characterId === entry.characterId),
+      ),
+      ...reply.contactMoves.map((move) => ({ characterId: move.characterId, zoneId: move.zoneId })),
+    ],
+  };
+  const relay = readContactRelay(reply.contactRelay, reply.lines, village, venue, afterMoves, audience);
+  reply.contactRelay = relay;
+  if (!relay || (intent.targetId && relay.targetId !== intent.targetId)) return reply;
+  const target = scene.sceneAttendance?.occupants.find((entry) => entry.characterId === relay.targetId);
+  const messenger = cast.find((entry) => entry.characterId === relay.speakerId);
+  if (!target || !messenger) return reply;
+  const approach = relay.path.at(-1)!;
+  const relayContext: VenueScene = {
+    ...afterMoves,
+    activeIds: [relay.speakerId, relay.targetId],
+    participants: [messenger, target],
+    recap: "",
+    accompanying: [
+      ...(afterMoves.accompanying ?? []).filter((entry) => entry.characterId !== relay.speakerId),
+      { characterId: relay.speakerId, zoneId: approach },
+    ],
+    lines: scene.lines.filter(
+      (line) => line.heardBy.includes(relay.speakerId) && line.heardBy.includes(relay.targetId),
+    ),
+    contactGeneration: {
+      localIds: [relay.speakerId],
+      remoteIds: [relay.targetId],
+      instruction: `RELAY RESPONSE. The messenger ${relay.speakerId} has willingly travelled a validated permitted route and is now at ${approach}, addressing ${relay.targetId} across their doorway.
+The target hears only the messenger's cited request. They do not hear earlier player-Zone dialogue. Produce only the target's response intended to be conveyed back to the player. Do not describe unseen private spaces, bystanders, or private activities. They may decline, send a message, invite the player, or willingly come to meet them.
+The player stays at ${origin}; permission does not move the player. A completed journey by the target to meet them can return contactMoves:[{characterId:"${relay.targetId}",zoneId:"${origin}",quote:"exact spoken agreement"}] only when a route is permitted: ${!!contactPath(village, venue, contactPosition(scene, relay.targetId), origin, relay.targetId)}.
+Keep dialogue attributed to the target. The server conveys it through the messenger after their return. Do not create another relay, physical handoff, lasting change, or automatic player entry.`,
+    },
+  };
+  const conveyed = await venueCheckpoint("contact-relay-response", () =>
+    generateOnce(
+      relayContext,
+      `The player calls: ${intent.quote}\n${messenger.name} relays that request.`,
+      "chat",
+      relay.targetId,
+      null,
+      venueOperationSignal() ?? AbortSignal.timeout(90_000),
+    ),
+  );
+  const spoken = conveyed.lines.filter((line) => line.speakerId === relay.targetId && line.kind !== "narration");
+  const hidden = conveyed.lines.map((line) => ({
+    ...line,
+    contactHidden: true,
+    heardBy: [relay.speakerId, relay.targetId],
+  }));
+  const reports: VenueReplyLine[] = spoken.length
+    ? spoken.map((line) => ({
+        kind: "dialogue",
+        speakerId: relay.speakerId,
+        content: `${target.name} says: “${line.content}”`,
+        heardBy: [...afterMoves.activeIds, relay.speakerId],
+        viaDoorway: !afterMoves.activeIds.includes(relay.speakerId),
+      }))
+    : [
+        {
+          kind: "dialogue",
+          speakerId: relay.speakerId,
+          content: "I couldn't get an answer.",
+          heardBy: [...afterMoves.activeIds, relay.speakerId],
+          viaDoorway: !afterMoves.activeIds.includes(relay.speakerId),
+        },
+      ];
+  return {
+    ...reply,
+    lines: [
+      ...reply.lines,
+      {
+        kind: "dialogue",
+        speakerId: relay.speakerId,
+        content: intent.quote,
+        heardBy: [relay.speakerId, relay.targetId],
+        contactHidden: true,
+      },
+      ...hidden,
+      ...reports,
+      ...conveyed.contactMoves.map((move) => ({
+        kind: "narration" as const,
+        speakerId: "__venue_scene__",
+        content: `${target.name} comes to meet you in this Zone.`,
+        heardBy: [...afterMoves.activeIds, move.characterId],
+      })),
+    ],
+    contactMoves: [...reply.contactMoves, ...conveyed.contactMoves],
+    invitationSignal: conveyed.invitationSignal ?? reply.invitationSignal,
+    // Only witnessed direct speech qualifies as Project speech; a messenger's quote is not target approval.
+    recollections: reply.recollections,
+  };
+}
+
 type VenueTurnInput = {
   sessionId: string;
   message: string;
-  mode: "chat" | "ask" | "fulfill" | "act" | "leave";
+  mode: "chat" | "ask" | "fulfill" | "act" | "leave" | "contact";
+  contact?: ContactIntent;
   targetId: string;
   submissionId: string;
   expectedSceneRevision?: number;
@@ -2303,7 +2626,14 @@ type VenueTurnInput = {
 export async function sendVenueTurn(input: VenueTurnInput) {
   const prior = (await readSession(input.sessionId)).submissions.find((entry) => entry.id === input.submissionId);
   if (!prior) await requireLiveVenueSession(input.sessionId);
-  const payload = { message: input.message, mode: input.mode, targetId: input.targetId };
+  const payload = {
+    message: input.message,
+    mode: input.mode,
+    targetId: input.targetId,
+    ...(input.contact ? { contact: input.contact } : {}),
+  };
+  if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
+    throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
   if (prior && (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId))
     throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
   return coordinateVenue(
@@ -2451,7 +2781,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
   if (input.mode === "fulfill" && session.activeIds.length === 0)
     throw badRequest("Nobody is here to fulfill a wish for.");
-  if (input.targetId && !session.activeIds.includes(input.targetId))
+  if (input.mode !== "contact" && input.targetId && !session.activeIds.includes(input.targetId))
     throw badRequest("That villager is no longer in this conversation.");
   if (input.mode === "fulfill" && !input.targetId) throw badRequest("Choose one villager for Fulfill.");
   if (input.mode === "act") {
@@ -2547,16 +2877,60 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     wishText = judged.wish?.wish ?? "";
   }
   const responseTargetId = input.targetId || (session.activeIds.length === 1 ? session.activeIds[0]! : "");
-  const reply = await venueCheckpoint("turn-reply", () =>
-    generate(
-      session,
-      input.message,
-      input.mode,
-      responseTargetId,
-      verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
-      venueOperationSignal() ?? AbortSignal.timeout(90_000),
-    ),
-  );
+  let contactIntentUsed: ContactIntent | null =
+    input.mode === "contact"
+      ? {
+          kind: input.contact?.kind === "call" ? "call" : "knock",
+          targetId: input.targetId,
+          boundaryZoneId: input.contact?.boundaryZoneId ?? "",
+          quote: input.message,
+        }
+      : null;
+  let reply = contactIntentUsed
+    ? await contactReply(session, contactIntentUsed)
+    : await venueCheckpoint("turn-reply", () =>
+        generate(
+          session,
+          input.message,
+          input.mode === "contact" ? "chat" : input.mode,
+          responseTargetId,
+          verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
+          venueOperationSignal() ?? AbortSignal.timeout(90_000),
+        ),
+      );
+  if (!contactIntentUsed && reply.contactIntent) {
+    contactIntentUsed = reply.contactIntent;
+    reply = await contactReply(session, contactIntentUsed);
+  }
+  const contactSpeakers = contactIntentUsed
+    ? [
+        ...new Set(
+          reply.lines.filter((line) => line.kind !== "narration" && !line.contactHidden).map((line) => line.speakerId),
+        ),
+      ]
+    : [];
+  if (contactIntentUsed) {
+    const current = await readVillageState(),
+      currentVenue = current.venues.find((entry) => entry.id === session.placeId);
+    if (!currentVenue) throw conflict("The Venue changed while contact was being prepared.");
+    if (
+      reply.contactRelay &&
+      reply.contactRelay.path.some(
+        (zoneId) => !contactCanEnter(current, currentVenue, zoneId, reply.contactRelay!.speakerId),
+      )
+    ) {
+      throw badGateway("The messenger's route is no longer permitted. Your draft is preserved.");
+    }
+    for (const move of reply.contactMoves) {
+      if (
+        move.zoneId !== (session.zoneId ?? "exterior") ||
+        !contactPath(current, currentVenue, contactPosition(session, move.characterId), move.zoneId, move.characterId)
+      )
+        throw badGateway("The proposed contact movement was not permitted. Your draft is preserved.");
+    }
+    if (new Set([...session.activeIds, ...reply.contactMoves.map((move) => move.characterId)]).size > 4)
+      throw badGateway("The reply would overcrowd this Zone. Your draft is preserved.");
+  }
   const updated = await changeSession(session.id, (state) => {
     if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
     if (state.status !== "active") throw conflict("That Scene has already ended.");
@@ -2566,7 +2940,46 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       throw conflict("The conversation moved on. Try sending that line again.");
     const at = new Date().toISOString();
     state.lastActivityAt = at;
-    const playerLineId = input.message.trim() ? randomUUID() : "";
+    if (contactIntentUsed) {
+      const identities = new Set(reply.lines.filter((line) => line.kind !== "narration").map((line) => line.speakerId));
+      for (const id of identities) {
+        if (state.participants.some((entry) => entry.characterId === id)) continue;
+        const person = state.sceneAttendance?.occupants.find((entry) => entry.characterId === id);
+        if (person)
+          state.participants.push({ characterId: id, name: person.name, doing: "Answering a contact request" });
+        if (!state.heardHistory.some((entry) => entry.characterId === id))
+          state.heardHistory.push({ characterId: id, lineIds: [] });
+      }
+      state.accompanying = [
+        ...(state.accompanying ?? []).filter(
+          (entry) => !reply.contactMoves.some((move) => move.characterId === entry.characterId),
+        ),
+        ...reply.contactMoves.map((move) => ({ characterId: move.characterId, zoneId: move.zoneId })),
+      ];
+      const venue = village.venues.find((entry) => entry.id === state.placeId)!;
+      const adjacent = contactNeighbors(venue, state.zoneId ?? "exterior");
+      state.doorwayContacts = [
+        ...(state.doorwayContacts ?? []).filter(
+          (entry) =>
+            !reply.contactEndIds.includes(entry.characterId) &&
+            !reply.contactMoves.some((move) => move.characterId === entry.characterId),
+        ),
+        ...contactSpeakers
+          .filter(
+            (id) =>
+              !state.activeIds.includes(id) &&
+              !reply.contactEndIds.includes(id) &&
+              !reply.contactMoves.some((move) => move.characterId === id) &&
+              adjacent.includes(contactPosition(state, id)),
+          )
+          .map((id) => ({
+            characterId: id,
+            playerZoneId: state.zoneId ?? "exterior",
+            characterZoneId: contactPosition(state, id),
+          })),
+      ].filter((entry, index, all) => all.findIndex((other) => other.characterId === entry.characterId) === index);
+    }
+    let playerLineId = input.message.trim() ? randomUUID() : "";
     if (playerLineId)
       appendLine(state, {
         id: playerLineId,
@@ -2575,8 +2988,21 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
         role: "user",
         content: input.message,
         at,
-        heardBy: reply.heardPlayerBy,
+        heardBy: contactIntentUsed ? [...session.activeIds] : reply.heardPlayerBy,
       });
+    if (contactIntentUsed) {
+      playerLineId = randomUUID();
+      appendLine(state, {
+        id: playerLineId,
+        speakerId: "",
+        name: "",
+        role: "user",
+        content: contactIntentUsed.quote,
+        at,
+        heardBy: reply.heardPlayerBy,
+        contactHidden: true,
+      });
+    }
     appendVenueReply(state, reply.lines, at);
     const replyLineIds = state.lines.slice(-reply.lines.length).map((line) => line.id);
     const recollections: VenueRecollection[] = reply.recollections.map((memory, index) => ({
@@ -2598,11 +3024,20 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       message: input.message,
       mode: input.mode,
       targetId: input.targetId,
+      ...(input.contact ? { contact: input.contact } : {}),
+      ...(contactIntentUsed
+        ? {
+            speechIdsAtTurn: contactSpeakers,
+            contactEvidence: { moves: reply.contactMoves, relay: reply.contactRelay },
+          }
+        : {}),
       areaAtTurn: session.area,
       zoneIdAtTurn: session.zoneId,
       privateOwnerIdAtTurn: session.privateOwnerId,
       activeIdsAtTurn: [...session.activeIds],
-      activeIdsAfterTurn: session.activeIds.filter((id) => !reply.departures.includes(id)),
+      activeIdsAfterTurn: [
+        ...new Set([...session.activeIds, ...reply.contactMoves.map((move) => move.characterId)]),
+      ].filter((id) => !reply.departures.includes(id)),
       replyLineIds,
       projectContexts: reply.projectContexts,
       projectSpeech: reply.projectSpeech.map((proposal) => ({
@@ -2666,10 +3101,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     if ((recollections.length || state.relationshipReview) && state.memoryMode === "turn") state.memoryMode = "tiered";
     if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
       applyImmediateZoneInvitation(state, reply.invitationSignal);
-      state.privateOwnerId = reply.invitationSignal.scope === "private" ? reply.invitationSignal.ownerId : "";
     }
     state.departedIds = [...new Set([...(state.departedIds ?? []), ...reply.departures])];
-    state.activeIds = state.activeIds.filter((id) => !reply.departures.includes(id));
+    state.activeIds = [...new Set([...state.activeIds, ...reply.contactMoves.map((move) => move.characterId)])].filter(
+      (id) => !reply.departures.includes(id),
+    );
     const remaining = state.sceneAttendance?.occupants.some(
       (person) => !state.departedIds?.includes(person.characterId),
     );
@@ -2713,22 +3149,21 @@ function applyImmediateZoneInvitation(
   session: VenueScene,
   signal: NonNullable<VenueSubmission["invitationSignal"]>,
 ): void {
-  session.zoneId = signal.zoneId ?? (signal.scope === "private" ? "private:" + signal.ownerId : "residence");
-  session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), session.zoneId])];
-  session.privateSpaceId =
-    signal.privateSpaceId ?? (signal.scope === "private" || signal.area === "private" ? session.zoneId : undefined);
+  const zoneId = signal.zoneId ?? (signal.scope === "private" ? "private:" + signal.ownerId : "residence");
+  session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), zoneId])];
   session.zoneGrants = [
-    ...(session.zoneGrants ?? []).filter((grant) => grant.zoneId !== session.zoneId),
-    { zoneId: session.zoneId, controllerId: signal.residentId },
+    ...(session.zoneGrants ?? []).filter((grant) => grant.zoneId !== zoneId),
+    { zoneId, controllerId: signal.residentId },
   ];
-  session.recap = "";
-  session.area = signal.area ?? (signal.scope === "private" ? "private" : "shared");
-  session.spaceClass = signal.spaceClass ?? "residence";
-  if (signal.accompanies)
-    session.accompanying = [
-      ...(session.accompanying ?? []).filter((entry) => entry.characterId !== signal.residentId),
-      { characterId: signal.residentId, zoneId: session.zoneId },
-    ];
+  session.entryOffers = [
+    ...(session.entryOffers ?? []).filter((entry) => entry.zoneId !== zoneId),
+    {
+      zoneId,
+      label: signal.zoneLabel ?? (signal.scope === "private" ? "Private Space" : "Common Space"),
+      controllerId: signal.residentId,
+      accompanies: signal.accompanies === true,
+    },
+  ];
 }
 
 async function recordSpokenInvitation(
@@ -3317,7 +3752,7 @@ function memoryReviewMessages(
                   id: line.id,
                   speakerId: line.role === "user" ? "player" : line.speakerId,
                   kind: line.kind,
-                  playerHeard: line.kind !== "whisper" || line.targetId === "player",
+                  playerHeard: !line.contactHidden && (line.kind !== "whisper" || line.targetId === "player"),
                   speaker: line.name || "Player",
                   text:
                     line.content.length <= 1_600
@@ -3520,7 +3955,10 @@ async function generateMemoryReview(
 }
 
 function relationshipEvidence(session: VenueScene): RelationshipEvidenceLine[] {
-  return session.lines.map((line) => ({ ...line, playerHeard: line.kind !== "whisper" || line.targetId === "player" }));
+  return session.lines.map((line) => ({
+    ...line,
+    playerHeard: !line.contactHidden && (line.kind !== "whisper" || line.targetId === "player"),
+  }));
 }
 async function commitVisitRelationships(session: VenueScene): Promise<void> {
   if (!session.relationshipReview || session.relationshipReview.applied || session.endReason === "debug") return;
@@ -4177,13 +4615,20 @@ export async function recheckRecentBuilderConversations(projectId: string): Prom
         continue;
       const participants = new Set(session.participants.map((entry) => entry.characterId));
       const lines = session.lines
-        .filter((line) => line.at === submission.at && line.role === "assistant" && participants.has(line.speakerId))
+        .filter(
+          (line) =>
+            line.at === submission.at &&
+            line.role === "assistant" &&
+            !line.contactHidden &&
+            !line.viaDoorway &&
+            participants.has(line.speakerId),
+        )
         .map(({ id, speakerId, content }) => ({ id, speakerId, content }));
       if (!lines.length) continue;
       const turnStart = session.lines.findIndex((line) => line.at === submission.at && line.role === "user");
       const context = session.lines
         .slice(Math.max(0, turnStart - 8), turnStart < 0 ? 0 : turnStart)
-        .filter((line) => participants.has(line.speakerId))
+        .filter((line) => !line.contactHidden && !line.viaDoorway && participants.has(line.speakerId))
         .map(({ id, speakerId, content }) => ({ id, speakerId, content }));
       await recordProjectConversation({
         projectId,
@@ -4428,7 +4873,10 @@ async function processLegacyProjectTurn(session: VenueScene, submission: VenueSu
       venueId: session.placeId,
       playerMessage: submission.message,
       lines: session.lines
-        .filter((line) => submission.replyLineIds?.includes(line.id) && !!line.speakerId)
+        .filter(
+          (line) =>
+            submission.replyLineIds?.includes(line.id) && !!line.speakerId && !line.contactHidden && !line.viaDoorway,
+        )
         .map((line) => ({ id: line.id, speakerId: line.speakerId, content: line.content })),
       context: session.lines
         .slice(
@@ -4437,7 +4885,7 @@ async function processLegacyProjectTurn(session: VenueScene, submission: VenueSu
             (submission.replyLineIds?.length ?? 0),
         )
         .slice(-12)
-        .filter((line) => !!line.speakerId)
+        .filter((line) => !!line.speakerId && !line.contactHidden && !line.viaDoorway)
         .map((line) => ({ id: line.id, speakerId: line.speakerId, content: line.content })),
       at: submission.at ?? new Date().toISOString(),
     });

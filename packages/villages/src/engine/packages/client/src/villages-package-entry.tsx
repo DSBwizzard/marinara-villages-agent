@@ -1,4 +1,5 @@
 import { VillagesRelationships } from "./villages-relationships.js";
+import { contactNeighborIds } from "../../shared/src/villages/zone-contact.js";
 import {
   DEFAULT_PLAYER_ROLE,
   PlayerRoleFields,
@@ -1088,6 +1089,7 @@ type RoomLine = {
   content: string;
   at: string;
   heardBy?: string[];
+  viaDoorway?: boolean;
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
@@ -1151,6 +1153,8 @@ type SceneView = {
   grantedZoneIds?: string[];
   privateSpaceId?: string;
   zoneGrants?: { zoneId: string; controllerId: string }[];
+  doorwayContacts?: { characterId: string; playerZoneId: string }[];
+  entryOffers?: { zoneId: string; label: string; controllerId: string; accompanies: boolean }[];
   area?: "outside" | "shared" | "private" | "public";
   privateOwnerId?: string;
   privateAccessOwnerId?: string;
@@ -3716,6 +3720,8 @@ const VILLAGES_STYLES = `
   Send across two rows went with them.
 */
 .${ELEMENT_TAG}-composer-row { display: flex; }
+.${ELEMENT_TAG}-contact-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.${ELEMENT_TAG}-contact-controls > select { flex: 1 1 130px; min-width: 0; max-width: 100%; }
 .${ELEMENT_TAG}-composer-row > .${ELEMENT_TAG}-claim,
 .${ELEMENT_TAG}-composer-row > .${ELEMENT_TAG}-chat-input { flex: 1 1 auto; min-width: 0; }
 /*
@@ -9756,6 +9762,13 @@ function RoomPanel({
   onDebugDiscard,
   onUseMailbox,
   onProjects,
+  contactDoors,
+  contactPeople,
+  contactBoundary,
+  contactKind,
+  onContactBoundary,
+  onContactKind,
+  onAcceptEntry,
 }: {
   room: SceneView;
   nameColors: Record<string, string>;
@@ -9763,7 +9776,7 @@ function RoomPanel({
   /** The picture of the place, or `""` for one that has never been drawn. */
   picture: string;
   draft: string;
-  mode: "chat" | "fulfill" | "conclude";
+  mode: "chat" | "fulfill" | "conclude" | "contact";
   targetId: string;
   busy: boolean;
   error: string;
@@ -9776,7 +9789,7 @@ function RoomPanel({
   portraits: PortraitMap;
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
-  onMode: (value: "chat" | "fulfill" | "conclude") => void;
+  onMode: (value: "chat" | "fulfill" | "conclude" | "contact") => void;
   onTarget: (value: string) => void;
   onSend: () => void;
   onViewVenue: () => void;
@@ -9794,6 +9807,13 @@ function RoomPanel({
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
   onProjects?: () => void;
+  contactDoors: { id: string; label: string }[];
+  contactPeople: { characterId: string; name: string }[];
+  contactBoundary: string;
+  contactKind: "knock" | "call";
+  onContactBoundary: (id: string) => void;
+  onContactKind: (kind: "knock" | "call") => void;
+  onAcceptEntry: (zoneId: string) => void;
 }) {
   /** The current paragraph in this Scene's ordered reading. */
   const [readStep, setReadStep] = useState(0);
@@ -10037,7 +10057,13 @@ function RoomPanel({
   }, [canCompose, resizeComposer]);
 
   const submitComposer = () => {
-    if (!canCompose || busy || (mode !== "conclude" && !draft.trim()) || (mode === "fulfill" && !targetId)) return;
+    if (
+      !canCompose ||
+      busy ||
+      (mode !== "conclude" && mode !== "contact" && !draft.trim()) ||
+      (mode === "fulfill" && !targetId)
+    )
+      return;
     setModeMenuOpen(false);
     onSend();
   };
@@ -10438,6 +10464,7 @@ function RoomPanel({
                       ? "Narration"
                       : line.name || "Resident"}
                   {line.kind === "side" ? " · aside" : line.kind === "whisper" ? " · whisper" : ""}:{" "}
+                  {line.viaDoorway ? "Through the doorway · " : ""}
                 </strong>
                 <span
                   style={
@@ -10503,6 +10530,12 @@ function RoomPanel({
                   style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
                 >
                   {step?.name ?? ""}
+                  {room.lines.some(
+                    (line) =>
+                      line.viaDoorway && line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
+                  )
+                    ? " · through the doorway"
+                    : ""}
                 </p>
               )}
               <div
@@ -10638,6 +10671,56 @@ function RoomPanel({
         ) : null}
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
+            {(room.entryOffers ?? []).map((offer) => (
+              <button
+                key={offer.zoneId}
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={busy}
+                onClick={() => onAcceptEntry(offer.zoneId)}
+              >
+                Enter {offer.label}
+              </button>
+            ))}
+            {mode === "contact" ? (
+              <div className={`${ELEMENT_TAG}-contact-controls`}>
+                <select
+                  aria-label="Knock or call"
+                  value={contactKind}
+                  disabled={busy}
+                  onChange={(event) => onContactKind(event.target.value === "call" ? "call" : "knock")}
+                >
+                  <option value="knock">Knock</option>
+                  <option value="call">Call</option>
+                </select>
+                <select
+                  aria-label="Doorway"
+                  value={contactBoundary}
+                  disabled={busy}
+                  onChange={(event) => onContactBoundary(event.target.value)}
+                >
+                  <option value="">Choose a doorway</option>
+                  {contactDoors.map((door) => (
+                    <option key={door.id} value={door.id}>
+                      {door.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Who to contact"
+                  value={targetId}
+                  disabled={busy}
+                  onChange={(event) => onTarget(event.target.value)}
+                >
+                  <option value="">Anyone who answers</option>
+                  {contactPeople.map((person) => (
+                    <option key={person.characterId} value={person.characterId}>
+                      {person.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             {mode === "fulfill" && activeParticipants.length > 0 ? (
               <select
                 value={targetId}
@@ -10660,16 +10743,24 @@ function RoomPanel({
                     type="button"
                     className={`${ELEMENT_TAG}-room-mode-toggle`}
                     onClick={() => setModeMenuOpen((value) => !value)}
-                    aria-label={`Mode: ${mode === "chat" ? "Chat" : mode === "fulfill" ? "Fulfill" : "Conclude"}. Choose mode`}
+                    aria-label={`Mode: ${mode === "chat" ? "Chat" : mode === "contact" ? "Knock / Call" : mode === "fulfill" ? "Fulfill" : "Conclude"}. Choose mode`}
                     aria-haspopup="menu"
                     aria-expanded={modeMenuOpen}
-                    title={mode === "chat" ? "Chat" : mode === "fulfill" ? "Fulfill" : "Conclude"}
+                    title={
+                      mode === "chat"
+                        ? "Chat"
+                        : mode === "contact"
+                          ? "Knock / Call"
+                          : mode === "fulfill"
+                            ? "Fulfill"
+                            : "Conclude"
+                    }
                   >
-                    {mode === "chat" ? "💬" : mode === "fulfill" ? "🫴" : "🚪"}
+                    {mode === "chat" ? "💬" : mode === "contact" ? "✊" : mode === "fulfill" ? "🫴" : "🚪"}
                   </button>
                   {modeMenuOpen ? (
                     <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
-                      {(["chat", "fulfill", "conclude"] as const).map((option) => (
+                      {(["chat", "contact", "fulfill", "conclude"] as const).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -10681,7 +10772,13 @@ function RoomPanel({
                             setModeMenuOpen(false);
                           }}
                         >
-                          {option === "chat" ? "Chat" : option === "fulfill" ? "Fulfill" : "Conclude"}
+                          {option === "chat"
+                            ? "Chat"
+                            : option === "contact"
+                              ? "Knock / Call"
+                              : option === "fulfill"
+                                ? "Fulfill"
+                                : "Conclude"}
                         </button>
                       ))}
                     </span>
@@ -10715,11 +10812,13 @@ function RoomPanel({
                     }
                   }}
                   placeholder={
-                    mode === "fulfill"
-                      ? "What did you do for them?"
-                      : mode === "conclude"
-                        ? "Final line (optional)…"
-                        : "Say or do something…"
+                    mode === "contact"
+                      ? "Optional call or message…"
+                      : mode === "fulfill"
+                        ? "What did you do for them?"
+                        : mode === "conclude"
+                          ? "Final line (optional)…"
+                          : "Say or do something…"
                   }
                   aria-label={`Message at ${room.placeName}`}
                   disabled={busy || ended || room.status !== "active"}
@@ -10732,7 +10831,7 @@ function RoomPanel({
                     busy ||
                     ended ||
                     room.status !== "active" ||
-                    (mode !== "conclude" && draft.trim().length === 0) ||
+                    (mode !== "conclude" && mode !== "contact" && draft.trim().length === 0) ||
                     (mode === "fulfill" && !targetId)
                   }
                   aria-label={busy ? "Sending" : "Send"}
@@ -12804,7 +12903,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [roomOpen, setRoomOpen] = useState(false);
   /** What has been typed into the room's box and not yet said. */
   const [roomDraft, setRoomDraft] = useState("");
-  const [roomMode, setRoomMode] = useState<"chat" | "fulfill" | "conclude">("chat");
+  const [roomMode, setRoomMode] = useState<"chat" | "fulfill" | "conclude" | "contact">("chat");
+  const [roomContactBoundary, setRoomContactBoundary] = useState("");
+  const [roomContactKind, setRoomContactKind] = useState<"knock" | "call">("knock");
   const [roomTargetId, setRoomTargetId] = useState("");
   const [roomRuling, setRoomRuling] = useState("");
   const [roomNotices, setRoomNotices] = useState<RoomRecordEvent[]>([]);
@@ -13998,7 +14099,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * move the hour's own record on — see the memory each of them files at the end.
    */
   const sendRoom = useCallback(async () => {
-    const text = roomDraft.trim();
+    const contactName = snapshot?.villagers.find((person) => person.characterId === roomTargetId)?.name ?? "";
+    const text =
+      roomDraft.trim() ||
+      (roomMode === "contact" ? `I ${roomContactKind}${contactName ? ` for ${contactName}` : " at the doorway"}.` : "");
     if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.length === 0) return;
     roomSendInFlightRef.current = true;
     const submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
@@ -14048,7 +14152,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           sessionId: room.id,
           message: text,
           mode: roomMode,
-          targetId: roomMode === "fulfill" ? roomTargetId : "",
+          targetId: roomMode === "fulfill" || roomMode === "contact" ? roomTargetId : "",
+          ...(roomMode === "contact"
+            ? { contact: { kind: roomContactKind, boundaryZoneId: roomContactBoundary } }
+            : {}),
           submissionId,
           expectedSceneRevision: room.sceneRevision ?? 0,
         }),
@@ -14117,7 +14224,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     roomDraft,
     roomEnded,
     roomMode,
+    roomContactBoundary,
+    roomContactKind,
     roomTargetId,
+    snapshot?.villagers,
     startRoomReview,
   ]);
 
@@ -16135,6 +16245,54 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             draft={roomDraft}
             mode={roomMode}
             targetId={roomTargetId}
+            contactPeople={(snapshot?.villagers ?? []).map((person) => ({
+              characterId: person.characterId,
+              name: person.name,
+            }))}
+            contactDoors={(() => {
+              const zones = snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? [];
+              return contactNeighborIds(zones, room.zoneId ?? "exterior").map((id) => {
+                const zone = zones.find((entry) => entry.id === id);
+                return {
+                  id,
+                  label: zone?.seen
+                    ? zone.name
+                    : zone?.kind === "exterior"
+                      ? "Exterior"
+                      : zone?.kind === "private-residence"
+                        ? "Private-space doorway"
+                        : zone?.kind === "staff" || zone?.kind === "restricted"
+                          ? "Restricted doorway"
+                          : "Interior entrance",
+                };
+              });
+            })()}
+            contactBoundary={roomContactBoundary}
+            contactKind={roomContactKind}
+            onContactBoundary={(id) => {
+              roomSubmissionIdRef.current = null;
+              setRoomContactBoundary(id);
+            }}
+            onContactKind={(kind) => {
+              roomSubmissionIdRef.current = null;
+              setRoomContactKind(kind);
+            }}
+            onAcceptEntry={(zoneId) => {
+              if (roomBusy || roomSendInFlightRef.current) return;
+              setRoomBusy(true);
+              setRoomError("");
+              void request<{ session: SceneView }>("/rooms/zone", {
+                method: "POST",
+                body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
+              })
+                .then((answer) => {
+                  setRoom(answer.session);
+                  setRoomContactBoundary("");
+                  void loadSnapshot();
+                })
+                .catch((cause) => setRoomError(messageFrom(cause, "The invitation could not be accepted.")))
+                .finally(() => setRoomBusy(false));
+            }}
             busy={roomBusy || room.operation?.status === "running"}
             error={
               roomError ||

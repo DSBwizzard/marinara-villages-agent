@@ -267,6 +267,7 @@ type VenueTurnBody = {
   message?: unknown;
   mode?: unknown;
   targetId?: unknown;
+  contact?: { kind?: unknown; boundaryZoneId?: unknown };
   submissionId?: unknown;
   expectedSceneRevision?: unknown;
   retryOfAttemptId?: string;
@@ -930,13 +931,24 @@ export async function villagesRoutes(engine: FastifyInstance) {
     try {
       await assertFoundedVillageReady();
       const mode = request.body?.mode;
-      if (mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act")
-        throw badRequest("Choose Chat, Ask, Fulfill, or Act.");
+      if (mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act" && mode !== "contact")
+        throw badRequest("Choose Chat, Ask, Fulfill, Act, or Knock / Call.");
       return await sendVenueTurn({
         sessionId: readChatId(request.body?.sessionId),
         message: readMessage(request.body?.message),
         mode,
         targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
+        ...(mode === "contact"
+          ? {
+              contact: {
+                kind: request.body?.contact?.kind === "call" ? ("call" as const) : ("knock" as const),
+                boundaryZoneId:
+                  typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",
+                targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
+                quote: readMessage(request.body?.message),
+              },
+            }
+          : {}),
         submissionId: readSubmissionId(request.body?.submissionId),
         expectedSceneRevision: readSceneRevision(request.body?.expectedSceneRevision),
         retryOfAttemptId: request.body?.retryOfAttemptId,
