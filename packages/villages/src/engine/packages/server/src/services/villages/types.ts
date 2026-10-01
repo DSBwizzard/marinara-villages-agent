@@ -776,6 +776,8 @@ export type VillageVenueEvent = {
     traceText?: string;
     recipientId?: string;
     resolveTraceId?: string;
+    witnessIds?: string[];
+    itemTransfer?: { itemName: string; recipientId: string };
   };
 };
 

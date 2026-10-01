@@ -122,7 +122,7 @@ export function projectInterpretationChecks(
             actorId: actor,
             kind,
             title: project.title,
-            description: project.detail,
+            description: flow.change?.detail ?? project.venueDraft?.description ?? "",
             venueId: project.venueId,
             playerId: "player",
             playerName: village.playerPersonaName,

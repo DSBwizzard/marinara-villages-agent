@@ -1329,6 +1329,19 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
             submissionId: asTrimmedString(receipt.submissionId),
             happened: receipt.happened === true,
             narration: boundText(receipt.narration, MAX_HAPPENING_LENGTH),
+            ...(Array.isArray(receipt.witnessIds)
+              ? { witnessIds: receipt.witnessIds.filter((id): id is string => typeof id === "string").slice(0, 100) }
+              : {}),
+            ...(asTrimmedString(asRecord(receipt.itemTransfer).itemName) &&
+            asRecord(receipt.itemTransfer).itemName === receipt.removeItem &&
+            asRecord(receipt.itemTransfer).recipientId === receipt.recipientId
+              ? {
+                  itemTransfer: {
+                    itemName: asTrimmedString(asRecord(receipt.itemTransfer).itemName),
+                    recipientId: asTrimmedString(asRecord(receipt.itemTransfer).recipientId),
+                  },
+                }
+              : {}),
             ...(asTrimmedString(receipt.addItem) ? { addItem: boundText(receipt.addItem, MAX_VENUE_NOTE_LENGTH) } : {}),
             ...(asTrimmedString(receipt.removeItem)
               ? { removeItem: boundText(receipt.removeItem, MAX_VENUE_NOTE_LENGTH) }

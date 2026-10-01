@@ -9,7 +9,7 @@ export const legacyProjectRevision = (project: VillageState["projects"][number])
         JSON.stringify({
           id: project.id,
           title: project.title,
-          detail: project.detail,
+          venueDraft: project.venueDraft,
           change: project.lifecycle?.change,
           builder: project.lifecycle?.builderId,
         }),

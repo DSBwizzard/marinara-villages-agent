@@ -232,6 +232,16 @@ const release = configureVillagesRuntime({
             return {
               content: JSON.stringify({
                 results: checks.map((check: any) => {
+                  if (check.domain === "wish") {
+                    wishJudgeCalls++;
+                    lastJudgeSystem = system;
+                    return {
+                      id: check.id,
+                      outcome: check.facts.matchingReceiptIds.length ? "fulfilled" : "none",
+                      evidenceIds: check.facts.matchingReceiptIds.map((id: string) => `receipt:${id}`),
+                      reason: "The parcel was transferred in the labeled fixture",
+                    };
+                  }
                   if (check.domain !== "room")
                     return {
                       id: check.id,
@@ -265,6 +275,17 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
+          if (system.startsWith("Prepare faithful fulfillment conditions"))
+            return {
+              content: JSON.stringify({
+                complete: true,
+                kind: "transfer",
+                requiresPhysical: true,
+                goal: "The parcel is handed to Tina.",
+                itemName: "parcel",
+              }),
+              finishReason: "stop",
+            };
           calls += 1; // Existing cadence assertions concern narration and legacy calls; interpretation has its own suite.
           if (system.startsWith("Identify explicit Project events"))
             return { content: JSON.stringify({ events: [] }), finishReason: "stop" };
@@ -2091,6 +2112,25 @@ async function main() {
     );
 
     const beforeFulfill = { venue: venueReplyCalls, wish: wishJudgeCalls };
+    await mutateVillageState((state) => {
+      state.venueEvents.unshift({
+        id: "parcel-transfer",
+        venueId: single.placeId,
+        venueName: single.placeName,
+        zoneId: single.zoneId,
+        text: "The player handed Tina the parcel.",
+        at: new Date().toISOString(),
+        actionReceipt: {
+          submissionId: "parcel-transfer",
+          happened: true,
+          narration: "The player handed Tina the parcel.",
+          removeItem: "parcel",
+          recipientId: "tina",
+          witnessIds: ["tina"],
+          itemTransfer: { itemName: "parcel", recipientId: "tina" },
+        },
+      });
+    });
     const fulfilled = await sendVenueTurn({
       sessionId: single.id,
       message: "I delivered the parcel",
@@ -2591,8 +2631,11 @@ async function main() {
     assert.match(lastJudgeSystem, /\[L1\].*important detail/u);
     assert.match(lastJudgeSystem, /\[L112\].*important detail/u);
     failWishScanOnce = true;
-    const failedWish = await proposeWishVerdict(wishContext);
-    assert.equal(failedWish.verdict.fulfilled, false, "a failed long scan cannot fulfill a wish");
+    await assert.rejects(
+      () => proposeWishVerdict(wishContext),
+      /wish scan unavailable/u,
+      "An interrupted required request preserves explicit retry protection instead of inventing a denial",
+    );
     const longMemoryId = `${longVisit.id}:memory:0`;
     await mutateVillageState((state) => {
       state.chronicle = state.chronicle.filter((entry) => entry.id !== longMemoryId);

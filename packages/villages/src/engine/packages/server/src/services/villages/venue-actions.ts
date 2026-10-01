@@ -70,6 +70,7 @@ export function readVenueActionResult(
     narration,
     ...(addItem ? { addItem } : {}),
     ...(removeItem ? { removeItem } : {}),
+    ...(removeItem && recipientId ? { recipientId } : {}),
     ...(traceKind && traceText ? { traceKind, traceText, recipientId } : {}),
     ...(resolveTraceId ? { resolveTraceId } : {}),
   };
@@ -93,6 +94,7 @@ function actionMessages(
         "The submitted action is the full extent of the player's choice. Do not invent their dialogue, a follow-up action or decision, consent, private thoughts, or feelings. Report only this attempted action and its grounded result.",
         `For happened=true, narrate only what actually happened, in one or two past-tense sentences. Name ${player} so the village knows who did it. For happened=false, explain plainly why it could not happen. Do not claim an item was consumed, moved, or created unless the action actually does so.`,
         "When the action physically adds an item, put its short name in addItem. When it removes an item, copy that item exactly from the listed furniture and items into removeItem. Otherwise use empty strings. Do not change a venue item for inspection or conversation.",
+        "For an actual handoff of a listed item to a present resident, put that exact item in removeItem and the actual recipient ID in recipientId. A statement that delivery already happened is not a handoff. Never invent inventory or a recipient.",
         "An active trace is a small ongoing change that can be resolved later, such as a note, stain, open window, wet footprints, or dropped object. For a new trace use a short lowercase traceKind and descriptive traceText. A note needs the intended resident's ID in recipientId. To resolve an existing trace, copy its ID into resolveTraceId. Never alter a locked defining feature.",
         `Village setting: ${setting || "A small village."}`,
         `Place: ${place.name}. Classes: ${place.classes?.join(", ") || "other"}. Form: ${place.form || "unspecified"}.`,
@@ -174,6 +176,8 @@ export async function actAtVenue(
     );
   });
   assertVenueOwnership();
+  if (result.removeItem && result.recipientId && !active.activeIds.includes(result.recipientId))
+    throw badRequest("The recipient must be present in this Zone for an item transfer.");
   // A resident reaction must pass scene validation before this action changes the venue or transcript.
   await beforeRecord?.(result);
   const now = new Date();
@@ -268,7 +272,14 @@ export async function actAtVenue(
           venueName: current.name,
           text: result.traceKind === "note" ? "A note was left here." : result.narration,
           at: moment.instant,
-          actionReceipt: { ...result, submissionId },
+          actionReceipt: {
+            ...result,
+            submissionId,
+            witnessIds: [...active.activeIds],
+            ...(result.removeItem && result.recipientId
+              ? { itemTransfer: { itemName: result.removeItem, recipientId: result.recipientId } }
+              : {}),
+          },
         },
         ...state.venueEvents,
       ].slice(0, 200);

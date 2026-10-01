@@ -20,6 +20,7 @@ export type InterpretationEvidence = {
   content: string;
   kind?: string;
   current?: boolean;
+  at?: string;
 };
 export type InterpretationCheck = {
   id: string;
@@ -30,6 +31,7 @@ export type InterpretationCheck = {
   facts: unknown;
   /** Open-ended extraction stays on System; this is routing, not a gameplay requirement. */
   decisionEligible?: boolean;
+  decisionReason?: string;
   systemInstruction?: string;
 };
 export type InterpretationResult = {
@@ -163,6 +165,10 @@ export async function interpretChecks(
   checks: InterpretationCheck[],
   stage: string,
   sceneId?: string,
+  nativeResolver: (
+    checks: InterpretationCheck[],
+    signal?: AbortSignal,
+  ) => Promise<InterpretationResult[]> = systemInterpretations,
 ): Promise<InterpretationBatch> {
   const settings = venueInterpretationSettings();
   return venueCheckpoint(stage, async () => {
@@ -251,7 +257,7 @@ export async function interpretChecks(
     }
     for (const [index, check] of checks.entries())
       if (settings.decisionsEnabled && check.decisionEligible === false)
-        traces[index].decisions.reason = "Open-ended extraction uses System";
+        traces[index].decisions.reason = check.decisionReason || "Open-ended extraction uses System";
     // Independently positive alternatives for one actor are contradictory targets, not permission for every room.
     for (const [index, check] of checks.entries()) {
       const actor = asRecord(check.facts).actorId;
@@ -275,9 +281,7 @@ export async function interpretChecks(
     }
     const pending = checks.filter((_check, index) => traces[index].result.source !== "decisions");
     if (pending.length) {
-      const native = await venueCheckpoint(`${stage}-system`, () =>
-        systemInterpretations(pending, venueOperationSignal()),
-      );
+      const native = await venueCheckpoint(`${stage}-system`, () => nativeResolver(pending, venueOperationSignal()));
       for (const [index, check] of checks.entries()) {
         const result = native[pending.findIndex((item) => item.id === check.id)];
         if (result) {
