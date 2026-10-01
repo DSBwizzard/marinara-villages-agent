@@ -13,6 +13,13 @@ import { moveVenueZone } from "../services/villages/venue-session.js";
 import { readWishHistoryPage } from "../services/villages/wish-archive.js";
 import { updateVillageZone } from "../services/villages/village.js";
 import {
+  planStudioComparison,
+  startStudioComparison,
+  setupStudioConnection,
+  approveStudioDesign,
+  saveStudioExemplar,
+  validateStudioCandidates,
+  reviewStudioCandidates,
   readSpriteStudio,
   assignStudioCells,
   saveStudioExpression,
@@ -535,6 +542,13 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
   const studioActions: Record<string, (id: string, body: unknown) => Promise<unknown>> = {
+    "comparison-plan": planStudioComparison,
+    "comparison-start": startStudioComparison,
+    "connection-profile": setupStudioConnection,
+    design: approveStudioDesign,
+    exemplar: saveStudioExemplar,
+    validate: validateStudioCandidates,
+    "visual-review": reviewStudioCandidates,
     settings: saveSpriteStudioSettings,
     reference: captureStudioReference,
     plan: planSpriteStudio,
