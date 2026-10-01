@@ -156,6 +156,8 @@ export function defaultVillageState(): VillageState {
     version: 2,
     backgroundReceipts: {},
     exchangeReceipts: {},
+    noticeSequence: 0,
+    dismissedNoticeIds: [],
     wishKnowledge: {},
     projectWishOutbox: [],
     wishRefillIntents: {},
@@ -2463,6 +2465,8 @@ export function coerceVillageState(value: unknown): VillageState {
       Object.entries(asRecord(raw.backgroundReceipts)).filter(([, value]) => typeof value === "string"),
     ),
     exchangeReceipts: asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"],
+    noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
+    dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     wishKnowledge: asRecord(raw.wishKnowledge) as VillageState["wishKnowledge"],
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)
       ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
@@ -2808,6 +2812,9 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
   await mutateDocument(VILLAGE_DOC_ID, villageSlot, (state) => {
     const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
     mutate(state);
+    // Assign notice order in the same document write as its committed effect.
+    for (const receipt of Object.values(state.exchangeReceipts))
+      if (receipt.notice && !receipt.noticeSequence) receipt.noticeSequence = ++state.noticeSequence;
     for (const venue of state.venues) synchronizeVenueZones(venue, previousVenues.get(venue.id));
     pruneWishActivities(state, new Date());
     if (state.foundedAt.length === 0) state.foundedAt = new Date().toISOString();

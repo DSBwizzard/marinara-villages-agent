@@ -27,6 +27,7 @@ import type { VenueLine, VenueScene, VenueRecordEvent } from "./venue-session.js
 import type { DomainProcessing } from "./exchange-processing.js";
 
 export type ExchangeEffectReceipt = {
+  noticeSequence?: number;
   status?: "applied" | "rejected";
   actorId?: string;
   wishId?: string;
