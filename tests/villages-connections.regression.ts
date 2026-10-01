@@ -50,7 +50,11 @@ async function main() {
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
 
   const { activate } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/server-entry.ts")
+    moduleUrl(
+      process.env.VILLAGES_TEST_PACKAGED
+        ? "packages/villages/server.mjs"
+        : "packages/villages/src/engine/packages/server/src/services/villages/server-entry.ts",
+    )
   );
   const {
     defaultVillageConnectionSettings,
@@ -161,6 +165,7 @@ async function main() {
   const app = Fastify();
   const registrations: Array<{ prefix: string }> = [];
   const context = {
+    app: { db: { select: () => ({ from: () => ({ where: async () => [] }) }) } },
     api: {
       runtime: {
         logger,
@@ -201,7 +206,44 @@ async function main() {
   const post = (url: string, payload?: any) => app.inject({ method: "POST", url, payload });
   const put = (url: string, payload?: any) => app.inject({ method: "PUT", url, payload });
 
-  await activate(context);
+  if (process.env.VILLAGES_TEST_PACKAGED) process.argv[1] = join(engineRoot, "packages/server/dist/index.js");
+  const deactivate = await activate(context);
+  const originalSettings = await get("/api/villages/interpretation-settings");
+  assert.equal(originalSettings.json().settings.decisionsEnabled, false);
+  assert.equal(originalSettings.json().settings.compareSystem, true);
+  const enabled = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/interpretation-settings",
+    payload: { decisionsEnabled: true },
+  });
+  assert.equal(enabled.json().settings.decisionsEnabled, true);
+  if (process.env.VILLAGES_TEST_PACKAGED) {
+    assert.equal(
+      enabled.json().status.engineBuild,
+      "ead04150a132",
+      "packaged adapter loaded actual compiled Engine modules",
+    );
+    assert.equal(enabled.json().status.reason, "No Engine Decision model is selected");
+  }
+  const malformed = await app.inject({
+    method: "PATCH",
+    url: "/api/villages/interpretation-settings",
+    payload: { decisionsEnabled: "yes" },
+  });
+  assert.equal(malformed.statusCode, 400);
+  await app.inject({
+    method: "PATCH",
+    url: "/api/villages/interpretation-settings",
+    payload: { decisionsEnabled: false },
+  });
+  assert.deepEqual((await get("/api/villages/interpretation-diagnostics/old-scene")).json(), { checks: [] });
+  if (process.env.VILLAGES_TEST_PACKAGED) {
+    assert.ok(![...documentsByKey.values()].some((row) => row.kind === "chat"));
+    await deactivate();
+    await app.close();
+    console.log("Villages packaged Decisions adapter: actual Engine modules, storage, no chat, protected routes ok");
+    return;
+  }
 
   assert.deepEqual(registrations, [{ prefix: "/api/villages" }], "the package mounts one route prefix and no more");
 

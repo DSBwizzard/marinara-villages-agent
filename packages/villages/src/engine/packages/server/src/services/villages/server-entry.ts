@@ -6,12 +6,15 @@ import { villagesRoutes } from "../../routes/villages.routes.js";
 import { startBackgroundWork } from "./background-work.js";
 import { readRuntimeDebug } from "./runtime-debug.js";
 import { configureVillagesRuntime, villagesLogger } from "./package-runtime.js";
+import { configureDecisionsAdapter } from "./decisions-adapter.js";
+import { stopInterpretationComparisons } from "./interpretation-diagnostics.js";
 import { startVillageRefreshScheduler } from "./village-refresh-scheduler.js";
 import { readVillageState } from "./village-store.js";
 import { stopVenueCoordinator } from "./venue-coordinator.js";
 import { startProgressRecovery, recoverVenueSceneWork } from "./venue-session.js";
 
 type ActivationContext = {
+  app?: { db?: unknown };
   api: {
     runtime: CapabilityRuntimeHost;
     registerPrivilegedRoutes(
@@ -23,8 +26,12 @@ type ActivationContext = {
 
 let active = false;
 
-export async function activate({ api }: ActivationContext) {
-  const cleanups: Array<() => void | Promise<void>> = [configureVillagesRuntime(api.runtime)];
+export async function activate({ api, app }: ActivationContext) {
+  const cleanups: Array<() => void | Promise<void>> = [
+    configureVillagesRuntime(api.runtime),
+    configureDecisionsAdapter({ app }),
+    stopInterpretationComparisons,
+  ];
   const unwind = async () => {
     for (const cleanup of cleanups.reverse()) await cleanup();
   };

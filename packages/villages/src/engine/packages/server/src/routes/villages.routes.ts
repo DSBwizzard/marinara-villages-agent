@@ -75,6 +75,12 @@ import {
 } from "../services/villages/venue-session.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "../services/villages/connections.js";
 import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
+import {
+  readInterpretationSettings,
+  saveInterpretationSettings,
+} from "../services/villages/interpretation-settings.js";
+import { decisionAdapterStatus } from "../services/villages/decisions-adapter.js";
+import { readInterpretationDiagnostics } from "../services/villages/interpretation-diagnostics.js";
 import { badRequest, conflict, notFound, statusCodeOf } from "../services/villages/errors.js";
 import { VENUE_CLASSES } from "../services/villages/venue-model.js";
 import {
@@ -515,6 +521,41 @@ function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
 
 export async function villagesRoutes(engine: FastifyInstance) {
   engine = publicSceneRoutes(engine);
+  engine.get("/interpretation-settings", async (_request, reply) => {
+    try {
+      const settings = await readInterpretationSettings();
+      return {
+        settings,
+        status: settings.decisionsEnabled
+          ? await decisionAdapterStatus()
+          : { available: false, reason: "Decisions is off", engineBuild: null },
+      };
+    } catch (error) {
+      return fail(reply, error, "reading interpretation settings");
+    }
+  });
+  engine.patch("/interpretation-settings", { bodyLimit: 1024 }, async (request, reply) => {
+    try {
+      const settings = await saveInterpretationSettings(request.body);
+      return {
+        settings,
+        status: settings.decisionsEnabled
+          ? await decisionAdapterStatus()
+          : { available: false, reason: "Decisions is off", engineBuild: null },
+      };
+    } catch (error) {
+      return fail(reply, error, "saving interpretation settings");
+    }
+  });
+  engine.get<{ Params: { sceneId: string } }>("/interpretation-diagnostics/:sceneId", async (request, reply) => {
+    try {
+      const id = request.params.sceneId;
+      if (!/^[a-zA-Z0-9:_-]{1,128}$/u.test(id)) throw badRequest("Invalid Scene ID.");
+      return await readInterpretationDiagnostics(id);
+    } catch (error) {
+      return fail(reply, error, "reading interpretation diagnostics");
+    }
+  });
   engine.get("/relationships", async (_request, reply) => {
     try {
       return await readRelationshipsView();

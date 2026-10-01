@@ -8,5 +8,16 @@
     "engineVersion": "2.4.6",
     "engineCommit": "e0313a33caef973e645616419d11894f4d8c434e"
   },
-  "privateEngineImports": []
+  "privateEngineImports": [],
+  "privateEngineRuntimeImports": [
+    {
+      "source": "packages/server/src/services/villages/decisions-adapter.ts",
+      "modules": [
+        "services/decision/decision-default.js",
+        "services/storage/connections.storage.js",
+        "services/storage/app-settings.storage.js"
+      ],
+      "testedBuilds": ["ead04150a132"]
+    }
+  ]
 }

@@ -76,10 +76,19 @@ try {
         submissions: [],
       };
       let phase = 0;
+      let interpretationSettings = { decisionsEnabled: false, compareSystem: true };
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
         let value = fixture;
-        if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+        if (path.endsWith("/interpretation-settings")) {
+          if (route.request().method() === "PATCH")
+            interpretationSettings = { ...interpretationSettings, ...route.request().postDataJSON() };
+          value = {
+            settings: interpretationSettings,
+            status: { available: false, reason: "No selected Decision model", engineBuild: null },
+          };
+        } else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
+        else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (path.endsWith("/town-map")) value = { image: mapImage };
         else if (path.endsWith("/rooms/turn")) {
           const body = route.request().postDataJSON();
@@ -180,6 +189,21 @@ try {
       const mara = cast.locator('[data-character-id="mara"]');
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
       const mobile = width <= 704 || (width <= 880 && height <= 512);
+      const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
+      await expect(decisionSwitch).toBeVisible();
+      await expect(decisionSwitch).toHaveAttribute("aria-checked", "false");
+      await decisionSwitch.focus();
+      await page.keyboard.press("Space");
+      await expect(decisionSwitch).toHaveAttribute("aria-checked", "true");
+      await expect(page.getByText("Using System fallback", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "0 checks", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "Compare with System" })).toBeChecked();
+      await page.getByRole("checkbox", { name: "Compare with System" }).uncheck();
+      await expect.poll(() => interpretationSettings.compareSystem).toBe(false);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("region", { name: "Interpretation checks" })).toHaveCount(0);
+      const switchBox = await decisionSwitch.boundingBox();
+      assert.ok(switchBox.x >= 0 && switchBox.x + switchBox.width <= width && switchBox.y >= 0);
       async function checkSpriteSize(isMobile) {
         const measurements = await cast.evaluate((node) => {
           const floor = node.getBoundingClientRect();

@@ -225,9 +225,40 @@ const release = configureVillagesRuntime({
           };
         },
         async chatComplete(messages: any[], options: any) {
-          calls += 1;
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");
+          if (system.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+            const { checks } = JSON.parse(user);
+            return {
+              content: JSON.stringify({
+                results: checks.map((check: any) => {
+                  const speech = check.evidence.filter(
+                    (line: any) => line.current && line.speakerId === check.facts.actorId,
+                  );
+                  const text = speech.map((line: any) => line.content).join(" ");
+                  const shared = !check.facts.zoneId.startsWith("private");
+                  if (check.facts.venueId !== "home")
+                    return { id: check.id, outcome: "none", evidenceIds: [], reason: "Another Venue" };
+                  const outcome =
+                    text === "You may come into our shared space on your next visit." && shared
+                      ? "invite-later"
+                      : text === "Come into our Common Space with me now." && shared
+                        ? "invite-now"
+                        : ["You may enter my private space with me now.", "Oh yeah."].includes(text) && !shared
+                          ? "invite-now"
+                          : "none";
+                  return {
+                    id: check.id,
+                    outcome,
+                    evidenceIds: speech.map((line: any) => line.id),
+                    reason: "Labeled fixture interpretation",
+                  };
+                }),
+              }),
+              finishReason: "stop",
+            };
+          }
+          calls += 1; // Existing cadence assertions concern narration and legacy calls; interpretation has its own suite.
           if (system.startsWith("Identify explicit Project events"))
             return { content: JSON.stringify({ events: [] }), finishReason: "stop" };
           // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
@@ -259,7 +290,7 @@ const release = configureVillagesRuntime({
             };
           }
           if (user === "Can I use Bob's room") {
-            const quote = "Come in.";
+            const quote = "Oh yeah.";
             return {
               content: JSON.stringify({
                 heardPlayerBy: ["bob"],
@@ -3232,7 +3263,11 @@ async function main() {
       targetId: "",
       submissionId: "vague-private-invite",
     });
-    assert.equal(vaguePrivate.session.area, "outside", "a generic entry quote cannot grant private scope");
+    assert.equal(vaguePrivate.session.area, "outside", "a contextual short invitation waits for acceptance");
+    assert.ok(
+      vaguePrivate.session.entryOffers?.some((offer) => offer.zoneId === "private:bob"),
+      "Oh yeah answers the preceding request for Bob's room without repeating its name",
+    );
     const invited = await sendVenueTurn({
       sessionId: outside.id,
       message: "Please let me in",

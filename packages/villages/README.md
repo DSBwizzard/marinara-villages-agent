@@ -1,5 +1,19 @@
 # Villages
 
+## Optional Decisions interpretation
+
+Scenes have a **Use Decisions · On / Off** switch. It defaults Off and saves across Scenes and refreshes. System interpretation supports the complete room path. When On, Villages uses the Engine's current Decision selection for suitable interpretation checks and automatically falls back to System for unavailable, incomplete, contradictory, or unresolved answers. Switch changes affect the next admitted Scene operation, including in another tab; submitted work keeps its original setting.
+
+Contextual short answers and clear witnessed gestures can grant entry. Invitations create entry opportunities; the player chooses whether to enter. An authorized demand to leave uses an adjacent accessible Zone within the same Scene and withdraws the relevant Scene access. Social cautions do not become blanket item restrictions. Speaker authority, current Zone availability, witnesses, and actual action receipts remain code checks.
+
+The check indicator opens bounded recent diagnostics. **Compare with System** defaults On for the opt-in testing rollout. A successful Decisions interpretation can therefore make one additional, independent System request. It cannot change gameplay or delay authoritative completion. A fallback reuses its System result. Scores use the selected backend's threshold and are not universal confidence percentages. Neither a positive score nor agreement between interpreters proves correctness.
+
+Villages owns interpretation questions, evidence, preferences, diagnostics, fallback, and state validation. The Engine owns Decision selection, linked credentials, provider protocol, queues, calibration, and per-statement timeouts. The server adapter imports the live compiled Engine modules through canonical URLs; it creates no support chat and bundles no second Decisions implementation. The optional path has a total ten-second allowance per Scene operation. Interrupted optional calls and comparisons are journaled and never automatically repeated.
+
+This initial compatibility proof covers compiled server build **ead04150a132** with the verified module contracts recorded in `engine-boundary.json`. Other builds and source-server layouts use System until their packaged integration is tested and added to the inventory. Updating an Engine version alone does not certify compatibility. No Engine source change, rebuild, or restart is part of development or testing this integration.
+
+Regression fixtures verify routing, evidence binding, fallback, state validation, comparison isolation, and request recovery. They do not certify a selected model's accuracy. Live evaluation is a separate deliberate activity: play the same labeled exchanges with Decisions Off and On, inspect applied results and independent comparisons, and record wrong changes, misses, unnecessary clarification, contradictions, fallback, and latency. Include short replies, gestures, sarcasm, quoted speech, conditional statements, wrong speakers, ambiguous rooms, confidently wrong scores, and incorrect agreement. Sexual consent, content warnings, and SFW/NSFW behavior are outside this integration.
+
 ## UI direction
 
 The View Venue design is the current standard for new Villages UI work: deep navy backgrounds, layered blue panels, violet active states, large place imagery, clear Zone navigation, and readable details. Keep controls usable at desktop and phone sizes. Several selectable UI themes are planned for later; this language is the default until that work is designed and implemented.
