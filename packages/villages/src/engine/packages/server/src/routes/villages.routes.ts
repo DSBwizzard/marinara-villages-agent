@@ -1,3 +1,4 @@
+import { readRuntimeDebug, saveRuntimeDebug, runtimeDebug } from "../services/villages/runtime-debug.js";
 import { readRelationshipsView, changeRelationshipCreator } from "../services/villages/relationships.js";
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
 import { setScenerySettings } from "../services/villages/village.js";
@@ -255,6 +256,11 @@ function readPlaceId(value: unknown): string {
  * a generic "something went wrong".
  */
 function fail(reply: FastifyReply, error: unknown, context: string) {
+  runtimeDebug("route exception", {
+    context,
+    message: String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  });
   const statusCode = statusCodeOf(error);
   const message = error instanceof Error ? error.message : "The village could not do that.";
   if (statusCode >= 500) villagesLogger().error(error, "[villages] %s failed", context);
@@ -267,7 +273,7 @@ type VenueTurnBody = {
   message?: unknown;
   mode?: unknown;
   targetId?: unknown;
-  contact?: { kind?: unknown; boundaryZoneId?: unknown };
+  contact?: { kind?: unknown; boundaryZoneId?: unknown; delivery?: unknown; deviceFeatureId?: unknown };
   submissionId?: unknown;
   expectedSceneRevision?: unknown;
   retryOfAttemptId?: string;
@@ -946,6 +952,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
                   typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",
                 targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
                 quote: readMessage(request.body?.message),
+                ...(request.body?.contact?.delivery === "device" ? { delivery: "device" as const } : {}),
+                ...(typeof request.body?.contact?.deviceFeatureId === "string"
+                  ? { deviceFeatureId: request.body.contact.deviceFeatureId }
+                  : {}),
               },
             }
           : {}),
@@ -1046,6 +1056,21 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return { deleted: true };
     } catch (error) {
       return fail(reply, error, "deleting Scenes");
+    }
+  });
+
+  app.get("/debug/runtime", async (_request, reply) => {
+    try {
+      return await readRuntimeDebug();
+    } catch (error) {
+      return fail(reply, error, "reading runtime debugging");
+    }
+  });
+  app.patch<{ Body: { verbose?: unknown } }>("/debug/runtime", async (request, reply) => {
+    try {
+      return await saveRuntimeDebug(request.body?.verbose);
+    } catch (error) {
+      return fail(reply, error, "saving runtime debugging");
     }
   });
 

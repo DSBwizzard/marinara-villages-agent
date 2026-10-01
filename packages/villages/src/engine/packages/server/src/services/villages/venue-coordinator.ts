@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { runtimeDebug } from "./runtime-debug.js";
 import { VillagesRequestError } from "./errors.js";
 import { villagesDocuments, villagesLogger, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
 
@@ -104,6 +105,12 @@ async function persist(current: Context) {
   });
 }
 
+export function venueDebugContext(): Record<string, unknown> {
+  const current = context.getStore();
+  return current
+    ? { operationId: current.operation.id, stage: current.scope, attemptId: current.operation.attemptId }
+    : {};
+}
 /** A completed stage is replayable without paying for it again. */
 export async function venueCheckpoint<T>(stage: string, work: () => Promise<T>): Promise<T> {
   const current = context.getStore();
@@ -142,7 +149,10 @@ export async function coordinatedCompletion<T>(
   current.counts.set(current.scope, index + 1);
   const key = `${current.scope}:${index}:${fingerprint}`;
   const prior = current.operation.attempts[key];
-  if (prior?.status === "complete") return structuredClone(prior.result) as T;
+  if (prior?.status === "complete") {
+    runtimeDebug("completion replay", { key });
+    return structuredClone(prior.result) as T;
+  }
   if (!current.allowPaid) {
     current.blocked.add(current.scope);
     throw venueRefusal(

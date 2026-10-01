@@ -1090,6 +1090,7 @@ type RoomLine = {
   at: string;
   heardBy?: string[];
   viaDoorway?: boolean;
+  remoteDelivery?: "loud" | "device";
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
@@ -6125,6 +6126,67 @@ class VillageApiError extends Error {
     super(message);
   }
 }
+function VillagesRuntimeDebug() {
+  const [settings, setSettings] = useState<{ verbose: boolean; effective: boolean; engineEnabled: boolean } | null>(
+    null,
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    const controller = new AbortController();
+    void request<{ verbose: boolean; effective: boolean; engineEnabled: boolean }>("/debug/runtime", {
+      signal: controller.signal,
+    })
+      .then(setSettings)
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(messageFrom(cause, "Runtime logging settings could not be read."));
+      });
+    return () => controller.abort();
+  }, []);
+  const save = async (verbose: boolean) => {
+    const previous = settings;
+    if (previous) setSettings({ ...previous, verbose, effective: verbose || previous.engineEnabled });
+    setSaving(true);
+    setError("");
+    try {
+      setSettings(await request("/debug/runtime", { method: "PATCH", body: JSON.stringify({ verbose }) }));
+    } catch (cause) {
+      setSettings(previous);
+      setError(messageFrom(cause, "Runtime logging settings could not be saved."));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <section className={ELEMENT_TAG + "-panel"}>
+      <label>
+        <input
+          type="checkbox"
+          checked={settings?.verbose ?? false}
+          disabled={!settings || saving}
+          onChange={(event) => void save(event.currentTarget.checked)}
+        />{" "}
+        Verbose runtime logging
+      </label>
+      <p className={ELEMENT_TAG + "-status"}>
+        Print Villages prompts, replies, routing, and error details to the server terminal. Output includes conversation
+        text and private Scene context.
+      </p>
+      {settings ? (
+        <p className={ELEMENT_TAG + "-status"} role="status">
+          Terminal logging: {settings.effective ? "on" : "off"}
+          {settings.engineEnabled ? " (also enabled by DEBUG_AGENTS)" : ""}.
+        </p>
+      ) : null}
+      {error ? (
+        <p className={ELEMENT_TAG + "-status"} role="alert">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function requestRefusal(payload: unknown, status: number, fallback: string): Error {
   const detail = (payload as { error?: unknown } | null)?.error;
   const message = typeof detail === "string" && detail ? detail : fallback;
@@ -10534,7 +10596,15 @@ function RoomPanel({
                     (line) =>
                       line.viaDoorway && line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
                   )
-                    ? " · through the doorway"
+                    ? room.lines.find(
+                        (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
+                      )?.remoteDelivery === "device"
+                      ? " · over the intercom"
+                      : room.lines.find(
+                            (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
+                          )?.remoteDelivery === "loud"
+                        ? " · calling from inside"
+                        : " · through the doorway"
                     : ""}
                 </p>
               )}
@@ -18653,6 +18723,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           // is opened.
           <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
             {backgroundPanel}
+            {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
             {menuSection === "debug" ? (
               <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-debug-action`}>
                 <button

@@ -78,6 +78,7 @@ jobs:
           npx tsx tests/villages-project-interpretation.regression.ts
           npx tsx tests/villages-zones.regression.ts
           npx tsx tests/villages-contact.regression.ts
+          npx tsx tests/villages-runtime-debug.regression.ts
           npx tsx tests/villages-venue-model.regression.ts
           npx tsx tests/villages-venue-session.regression.ts
           npx tsx tests/villages-relationships.regression.ts
@@ -105,6 +106,7 @@ jobs:
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs
           node tests/villages-contact.e2e.mjs
+          node tests/villages-runtime-debug.e2e.mjs
 
       - name: Verify greeting recovery without paid retries
         run: node tests/villages-greeting-recovery.e2e.mjs
