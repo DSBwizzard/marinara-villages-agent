@@ -132,6 +132,7 @@ export type VenueLine = {
   zoneId?: string;
   viaDoorway?: boolean;
   contactHidden?: boolean;
+  contactReport?: boolean;
   kind?: "narration" | "dialogue" | "side" | "whisper";
   expression?: string;
   gazeAt?: string;
@@ -198,9 +199,12 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
           line.role === "assistant" &&
           (submission.activeIdsAtTurn?.includes(line.speakerId) ||
             submission.speechIdsAtTurn?.includes(line.speakerId)) &&
-          !line.contactHidden
+          !line.contactHidden &&
+          !line.contactReport
         : line.at === submission.at &&
           line.role === "assistant" &&
+          !line.contactHidden &&
+          !line.contactReport &&
           session.participants.some((participant) => participant.characterId === line.speakerId),
     ),
   };
@@ -459,6 +463,7 @@ function coerceSession(value: unknown): VenueScene {
             zoneId: asTrimmedString(row.zoneId) || undefined,
             ...(row.viaDoorway === true ? { viaDoorway: true } : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
+            ...(row.contactReport === true ? { contactReport: true } : {}),
             heardBy: Array.isArray(row.heardBy) ? row.heardBy.filter((id): id is string => typeof id === "string") : [],
             ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
               ? { kind: row.kind as VenueLine["kind"] }
@@ -828,6 +833,7 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
           if (
             submission.replyLineIds?.includes(line.id) &&
             !line.contactHidden &&
+            !line.contactReport &&
             (submission.activeIdsAtTurn?.includes(line.speakerId) ||
               submission.speechIdsAtTurn?.includes(line.speakerId)) &&
             session.participants.some((person) => person.characterId === line.speakerId)
@@ -972,6 +978,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "contactGeneration",
             "contactEvidence",
             "contactHidden",
+            "contactReport",
             "contactMoves",
             "contactRelay",
             "characterZoneId",
@@ -1723,6 +1730,7 @@ type VenueReplyLine = {
   heardBy: string[];
   viaDoorway?: boolean;
   contactHidden?: boolean;
+  contactReport?: boolean;
   expression?: string;
   gazeAt?: string;
   staging?: StagingCue[];
@@ -1831,6 +1839,7 @@ function appendVenueReply(session: VenueScene, lines: ReturnType<typeof parseVen
       heardBy: line.heardBy,
       ...(line.viaDoorway ? { viaDoorway: true } : {}),
       ...(line.contactHidden ? { contactHidden: true } : {}),
+      ...(line.contactReport ? { contactReport: true } : {}),
       kind: line.kind,
       ...(line.expression ? { expression: line.expression } : {}),
       ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
@@ -2573,6 +2582,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         kind: "dialogue",
         speakerId: relay.speakerId,
         content: `${target.name} says: “${line.content}”`,
+        contactReport: true,
         heardBy: [...afterMoves.activeIds, relay.speakerId],
         viaDoorway: !afterMoves.activeIds.includes(relay.speakerId),
       }))
@@ -4620,6 +4630,7 @@ export async function recheckRecentBuilderConversations(projectId: string): Prom
             line.at === submission.at &&
             line.role === "assistant" &&
             !line.contactHidden &&
+            !line.contactReport &&
             !line.viaDoorway &&
             participants.has(line.speakerId),
         )
@@ -4628,7 +4639,9 @@ export async function recheckRecentBuilderConversations(projectId: string): Prom
       const turnStart = session.lines.findIndex((line) => line.at === submission.at && line.role === "user");
       const context = session.lines
         .slice(Math.max(0, turnStart - 8), turnStart < 0 ? 0 : turnStart)
-        .filter((line) => !line.contactHidden && !line.viaDoorway && participants.has(line.speakerId))
+        .filter(
+          (line) => !line.contactHidden && !line.contactReport && !line.viaDoorway && participants.has(line.speakerId),
+        )
         .map(({ id, speakerId, content }) => ({ id, speakerId, content }));
       await recordProjectConversation({
         projectId,
@@ -4875,7 +4888,11 @@ async function processLegacyProjectTurn(session: VenueScene, submission: VenueSu
       lines: session.lines
         .filter(
           (line) =>
-            submission.replyLineIds?.includes(line.id) && !!line.speakerId && !line.contactHidden && !line.viaDoorway,
+            submission.replyLineIds?.includes(line.id) &&
+            !!line.speakerId &&
+            !line.contactHidden &&
+            !line.contactReport &&
+            !line.viaDoorway,
         )
         .map((line) => ({ id: line.id, speakerId: line.speakerId, content: line.content })),
       context: session.lines
@@ -4885,7 +4902,7 @@ async function processLegacyProjectTurn(session: VenueScene, submission: VenueSu
             (submission.replyLineIds?.length ?? 0),
         )
         .slice(-12)
-        .filter((line) => !!line.speakerId && !line.contactHidden && !line.viaDoorway)
+        .filter((line) => !!line.speakerId && !line.contactHidden && !line.contactReport && !line.viaDoorway)
         .map((line) => ({ id: line.id, speakerId: line.speakerId, content: line.content })),
       at: submission.at ?? new Date().toISOString(),
     });

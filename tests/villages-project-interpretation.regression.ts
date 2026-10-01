@@ -423,6 +423,14 @@ async function main() {
       "doorway speech cannot hand over a physical item",
     );
     const handoff = saveTurn("Please hand over timber for Repair Kiosk", "Here is timber.", "ivo");
+    const quotedHandoff = saveTurn("Please hand over timber for Repair Kiosk", "Rosa says: “Here is timber.”", "ivo");
+    records.get(`villages-venue-visit-${quotedHandoff.sessionId}`).data.lines[1].contactReport = true;
+    await processSavedProgressSubmission(quotedHandoff.sessionId, quotedHandoff.submissionId);
+    assert.equal(
+      (await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt,
+      "",
+      "a physically present messenger's quoted report cannot hand over an item",
+    );
     await processSavedProgressSubmission(handoff.sessionId, handoff.submissionId);
     assert.ok((await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt);
     await recordExistingProjectSource(projectId, { requirementId: benchesId, venueId: "mill" });
@@ -467,6 +475,14 @@ async function main() {
       "hidden relay speech cannot become a witnessed Project approval",
     );
     const approval = saveTurn("Do you approve Mill roof?", "Yes, I approve Mill roof.");
+    const quotedApproval = saveTurn("Do you approve Mill roof?", "Ivo says: “Yes, I approve Mill roof.”");
+    records.get(`villages-venue-visit-${quotedApproval.sessionId}`).data.lines[1].contactReport = true;
+    await processSavedProgressSubmission(quotedApproval.sessionId, quotedApproval.submissionId);
+    assert.equal(
+      (await readVillageState()).projects.find((entry) => entry.id === roofId)!.lifecycle!.phase,
+      "approval",
+      "conveying another resident's words is not the messenger's own approval",
+    );
     doorway(approval);
     await processSavedProgressSubmission(approval.sessionId, approval.submissionId);
     assert.equal((await readVillageState()).projects.find((entry) => entry.id === roofId)!.lifecycle!.phase, "builder");
