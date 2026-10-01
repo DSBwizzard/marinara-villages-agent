@@ -1,6 +1,23 @@
 import { renovationTerms } from "./project-lifecycle.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import type { VillageState } from "./types.js";
+import { createHash } from "node:crypto";
+export const legacyProjectRevision = (project: VillageState["projects"][number]) =>
+  Number.parseInt(
+    createHash("sha256")
+      .update(
+        JSON.stringify({
+          id: project.id,
+          title: project.title,
+          detail: project.detail,
+          change: project.lifecycle?.change,
+          builder: project.lifecycle?.builderId,
+        }),
+      )
+      .digest("hex")
+      .slice(0, 10),
+    16,
+  );
 
 /** Semantic proposals are weaker than physical evidence. Never interpret stock or construction. */
 export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
@@ -10,6 +27,7 @@ export type ProjectSpeechProposal = ProjectSpeechContext & {
   speakerId: string;
   citations: { lineId: string; quote: string }[];
   checklist: { category: "structure" | "equipment" | "finish"; title: string; needed: boolean; citation: number }[];
+  contextual?: { version: 1; source: "system" | "decisions"; checkId: string };
 };
 type SpeechLine = { id: string; speakerId: string; content: string; heardBy?: string[]; kind?: string };
 const normalized = (text: string) =>
@@ -19,40 +37,40 @@ const normalized = (text: string) =>
 export function projectSpeechContexts(
   state: VillageState,
   activeIds: string[],
-  conversation: string,
-  message = "",
-  venueId = "",
+  _conversation: string,
+  _message = "",
+  _venueId = "",
 ): ProjectSpeechContext[] {
-  if (state.progressEngineVersion !== 1) return [];
-  const explicitlyNamed = state.projects.filter((project) => normalized(message).includes(normalized(project.title)));
-  return state.projects
-    .flatMap((project) => {
-      const flow = project.lifecycle;
-      const task = state.progressTasks.find(
-        (entry) => entry.definition.owner.kind === "project" && entry.definition.owner.id === project.id,
-      );
-      if (
-        !flow ||
-        !task ||
-        task.resolvedAt ||
-        project.status === "abandoned" ||
-        (explicitlyNamed.length > 0 && !explicitlyNamed.some((entry) => entry.id === project.id)) ||
-        (!normalized(conversation).includes(normalized(project.title)) &&
-          project.venueId !== venueId &&
-          !(flow.phase === "requirements" && activeIds.includes(flow.builderId)))
-      )
-        return [];
-      const relevant =
-        flow.phase === "approval"
-          ? flow.affectedIds.some((id) => activeIds.includes(id))
-          : flow.phase === "requirements"
-            ? activeIds.includes(flow.builderId)
-            : flow.phase === "builder" ||
-              flow.phase === "materials" ||
-              (flow.phase === "construction" && project.status === "blocked");
-      return relevant ? [{ projectId: project.id, revision: task.definition.revision, phase: flow.phase }] : [];
-    })
-    .slice(0, 2);
+  return state.projects.flatMap((project) => {
+    const flow = project.lifecycle;
+    const task = state.progressTasks.find(
+      (entry) => entry.definition.owner.kind === "project" && entry.definition.owner.id === project.id,
+    );
+    if (
+      !flow ||
+      (state.progressEngineVersion === 1 && (!task || task.resolvedAt)) ||
+      project.status === "abandoned" ||
+      !activeIds.length
+    )
+      return [];
+    const relevant =
+      flow.phase === "approval"
+        ? flow.affectedIds.some((id) => activeIds.includes(id))
+        : flow.phase === "requirements"
+          ? activeIds.includes(flow.builderId)
+          : flow.phase === "builder" ||
+            flow.phase === "materials" ||
+            (flow.phase === "construction" && project.status === "blocked");
+    return relevant
+      ? [
+          {
+            projectId: project.id,
+            revision: state.progressEngineVersion === 1 ? task!.definition.revision : legacyProjectRevision(project),
+            phase: flow.phase,
+          },
+        ]
+      : [];
+  });
 }
 
 export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeechContext[]): string {
@@ -74,7 +92,7 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
     })
     .join(
       " | ",
-    )}. Discuss them naturally, without special checklist wording or forced agreements. Optionally include projectSpeech: [{projectId, kind:"approval"|"builder"|"requirements", speakerId, citations:[{segment:0,quote:"exact supporting spoken words"}], checklist:[{category:"structure"|"equipment"|"finish",title:"concise faithful item and specifications",needed:true,citation:0}]}]. Segment indexes refer to the returned segments. Each proposal must cite this reply's actual speech by its speaker. Resolve references only from this scene's bounded conversation; omit unclear, conditional, hypothetical, joking, refused, quoted third-party, or merely capable commitments. Builder means an unconditional personal commitment to do this specific job, not interest or ability. Approval means an affected resident personally approves this specific change. Checklist means the assigned builder explicitly defines all three categories; cite every item, preserve specifications, and set needed:false only when the builder explicitly says that category needs nothing. Never infer an omitted category. Never emit stock, handoff, plan acceptance, assignment, construction, or completion proposals. These are internal descriptions of speech, not commands or reasons to force dialogue. Omit projectSpeech when nothing qualifies; a player's assertion proves no resident agreement.`;
+    )}. Discuss these naturally, without forced agreements or special checklist wording. Villagers may express approval, capability, conditional willingness, commitments, changed requirements, or refusal in their own words. Do not invent supplies, handoffs or completed work. Only speak about relevant Projects; state context is not an instruction to agree or recite a complete checklist.`;
 }
 
 /** Preserve bounded proposals on the saved turn, including invalid ones for rejection diagnostics. */
@@ -97,7 +115,7 @@ export function bindProjectSpeech(
         kind,
         speakerId: asTrimmedString(row.speakerId),
         citations: Array.isArray(row.citations)
-          ? row.citations.slice(0, 6).map((value) => {
+          ? row.citations.slice(0, 12).map((value) => {
               const citation = asRecord(value);
               return {
                 lineId: Number.isInteger(citation.segment) ? (lines[Number(citation.segment)]?.id ?? "") : "",
@@ -141,9 +159,19 @@ export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {
         projectId: asTrimmedString(row.projectId),
         revision: Number(row.revision),
         phase: asTrimmedString(row.phase),
+        ...(asRecord(row.contextual).version === 1 &&
+        ["system", "decisions"].includes(String(asRecord(row.contextual).source))
+          ? {
+              contextual: {
+                version: 1 as const,
+                source: asRecord(row.contextual).source as "system" | "decisions",
+                checkId: asTrimmedString(asRecord(row.contextual).checkId),
+              },
+            }
+          : {}),
         speakerId: asTrimmedString(row.speakerId),
         citations: Array.isArray(row.citations)
-          ? row.citations.slice(0, 6).map((value) => {
+          ? row.citations.slice(0, 12).map((value) => {
               const citation = asRecord(value);
               return {
                 lineId: asTrimmedString(citation.lineId),
@@ -165,12 +193,15 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
       !line ||
       line.speakerId !== proposal.speakerId ||
       line.kind === "narration" ||
-      normalized(citation.quote).length < 2 ||
-      !normalized(line.content).includes(normalized(citation.quote))
+      !normalized(citation.quote) ||
+      (proposal.contextual
+        ? !line.content.includes(citation.quote)
+        : !normalized(line.content).includes(normalized(citation.quote)))
     )
       return "Interpretation citation does not match this speaker's saved words.";
   }
   if (proposal.kind !== "requirements") {
+    if (proposal.contextual) return "";
     // Guard common false positives even when the semantic extractor labels them as unconditional.
     const speech = normalized(
       proposal.citations.map((citation) => lines.find((line) => line.id === citation.lineId)!.content).join(" "),
@@ -190,6 +221,7 @@ export function validateProjectSpeech(proposal: ProjectSpeechProposal, lines: Sp
     if (!citation || !item.title || item.title.length > 100)
       return "Checklist item has no valid citation or usable specification.";
     if (
+      !proposal.contextual &&
       !item.needed &&
       !/\b(?:none|nothing|not needed|unnecessary|no need|don't need|do not need|no .{0,30}needed)\b/u.test(
         normalized(citation.quote),

@@ -98,6 +98,12 @@ import {
   villagerPlaceView,
 } from "./village.js";
 import { proposeWishVerdict } from "./wishes.js";
+import {
+  interpretProjectDraft,
+  projectProposals,
+  finalizeProjectDiagnostics,
+  applyLegacyProjectInterpretation,
+} from "./project-checks.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VenueActionResult } from "./venue-actions.js";
 import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
@@ -198,6 +204,7 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
     action: submission.action ?? null,
     projectContexts: submission.projectContexts ?? [],
     projectSpeech: submission.projectSpeech ?? [],
+    contextualInterpretation: submission.projectInterpretationVersion === 1,
     contextLines: session.lines
       .slice(
         0,
@@ -206,8 +213,7 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
           session.lines.findIndex((line) => submission.replyLineIds?.includes(line.id)),
         ),
       )
-      .filter((line) => !line.zoneId || line.zoneId === zoneId)
-      .slice(-12),
+      .filter((line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper"),
     lines: session.lines.filter((line) =>
       submission.replyLineIds?.length
         ? submission.replyLineIds.includes(line.id) &&
@@ -240,6 +246,7 @@ type VenueSubmission = {
   replyLineIds?: string[];
   projectContexts?: ProjectSpeechContext[];
   projectSpeech?: ProjectSpeechProposal[];
+  projectInterpretationVersion?: 1;
   progressProcessedAt?: string;
   progressError?: string;
   verdict: { fulfilled: boolean; reason: string } | null;
@@ -346,6 +353,7 @@ export type VenueScene = {
   enteredFromZoneId?: string;
   dismissedZoneIds?: string[];
   pendingRoomQuestions?: string[];
+  pendingProjectQuestions?: string[];
   zoneGrants?: { zoneId: string; controllerId: string; source?: "relationship" }[];
   privateSpaceId?: string;
   accompanying?: { characterId: string; zoneId: string }[];
@@ -521,6 +529,9 @@ function coerceSession(value: unknown): VenueScene {
     pendingRoomQuestions: Array.isArray(raw.pendingRoomQuestions)
       ? raw.pendingRoomQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
       : [],
+    pendingProjectQuestions: Array.isArray(raw.pendingProjectQuestions)
+      ? raw.pendingProjectQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
+      : [],
     dismissedZoneIds: Array.isArray(raw.dismissedZoneIds)
       ? raw.dismissedZoneIds.filter((id): id is string => typeof id === "string")
       : [],
@@ -674,7 +685,7 @@ function coerceSession(value: unknown): VenueScene {
               ...(typeof row.progressProcessedAt === "string" ? { progressProcessedAt: row.progressProcessedAt } : {}),
               ...(Array.isArray(row.projectContexts)
                 ? {
-                    projectContexts: row.projectContexts.slice(0, 2).map((value) => {
+                    projectContexts: row.projectContexts.slice(0, 100).map((value) => {
                       const context = asRecord(value);
                       return {
                         projectId: asTrimmedString(context.projectId),
@@ -685,6 +696,7 @@ function coerceSession(value: unknown): VenueScene {
                   }
                 : {}),
               ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
+              ...(row.projectInterpretationVersion === 1 ? { projectInterpretationVersion: 1 as const } : {}),
               ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
@@ -1271,6 +1283,9 @@ async function generateOnce(
     `The player is ${player.name}. ${player.description}`,
     renderPlayerRoleContext(village),
     projectSpeechPrompt(village, projectContexts),
+    session.pendingProjectQuestions?.length
+      ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval, commitment, or complete requirements. Do not demand formal wording.`
+      : "",
     session.pendingRoomQuestions?.length
       ? `These room matters remain unresolved: ${session.pendingRoomQuestions.join("; ")}. Resolve them through natural contextual clarification before reacting as though permission or dismissal were established. Do not ask for formal permission wording.`
       : "",
@@ -3336,8 +3351,37 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   const applicationVillage = await readVillageState();
   validateCurrentRoomInvitation(reply, applicationVillage);
+  const projectInterpretation =
+    input.mode === "chat" || input.mode === "ask" || input.mode === "contact"
+      ? await interpretProjectDraft(
+          session,
+          applicationVillage,
+          input.message,
+          reply.lines,
+          reply.heardPlayerBy,
+          input.submissionId,
+        )
+      : null;
+  if (projectInterpretation || applicationVillage.projects.some((project) => project.lifecycle)) {
+    reply.projectSpeech = projectInterpretation ? projectProposals(projectInterpretation) : [];
+    reply.projectContexts = projectSpeechContexts(
+      applicationVillage,
+      [...new Set(reply.lines.map((line) => line.speakerId).filter(Boolean))],
+      "",
+    );
+  }
   const updated = await changeSession(session.id, (state) => {
     if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
+    state.pendingProjectQuestions = projectInterpretation
+      ? projectInterpretation.checks
+          .filter(
+            (_check, index) =>
+              projectInterpretation.results[index].outcome === "unresolved" ||
+              projectInterpretation.traces[index].applied.startsWith("Unresolved"),
+          )
+          .map((check) => check.question)
+          .slice(0, 8)
+      : [];
     if (state.status !== "active") throw conflict("That Scene has already ended.");
     if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
@@ -3463,11 +3507,12 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       ].filter((id) => !reply.departures.includes(id)),
       replyLineIds,
       projectContexts: reply.projectContexts,
+      projectInterpretationVersion: 1 as const,
       projectSpeech: reply.projectSpeech.map((proposal) => ({
         ...proposal,
         citations: proposal.citations.map((citation) => ({
           ...citation,
-          lineId: /^\d+$/u.test(citation.lineId) ? (replyLineIds[Number(citation.lineId)] ?? "") : "",
+          lineId: /^\d+$/u.test(citation.lineId) ? (replyLineIds[Number(citation.lineId)] ?? "") : citation.lineId,
         })),
       })),
       verdict,
@@ -3564,6 +3609,10 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   )
     await recordSpokenInvitation(updated, submission.invitationSignal);
   await markZoneSeen(updated, updated.zoneId === session.zoneId);
+  if (projectInterpretation) {
+    await finalizeProjectDiagnostics(updated.id, projectInterpretation, submission.projectSpeech ?? []);
+    scheduleSystemComparisons(updated.id, projectInterpretation);
+  }
   if (reply.roomInterpretation) {
     await finalizeRoomInvitationDiagnostics(updated, reply.roomInterpretation, submission.invitationSignal);
     await writeInterpretationDiagnostics(updated.id, reply.roomInterpretation.traces).catch(() => {});
@@ -5437,8 +5486,12 @@ export async function recoverVenueSceneWork() {
 }
 
 async function processLegacyProjectTurn(session: VenueScene, submission: VenueSubmission) {
-  if (submission.mode !== "chat" && submission.mode !== "ask") return;
+  if (submission.mode !== "chat" && submission.mode !== "ask" && submission.mode !== "contact") return;
   await venueCheckpoint("legacy-project", async () => {
+    if (submission.projectInterpretationVersion === 1) {
+      await applyLegacyProjectInterpretation(session.id, submission.id);
+      return true;
+    }
     await recordProjectConversation({
       submissionId: submission.id,
       venueId: session.placeId,

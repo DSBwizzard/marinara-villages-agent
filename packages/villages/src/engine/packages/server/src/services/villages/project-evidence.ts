@@ -202,7 +202,7 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
         interpreted.phase !== phase
       )
         return fail("Interpretation no longer matches this Project revision, phase, or speaker.");
-      const reason = validateProjectSpeech(interpreted, turn.lines);
+      const reason = validateProjectSpeech(interpreted, [...turn.lines, ...turn.contextLines]);
       if (reason) return fail(reason);
     } else if (Number.isInteger(input.interpretationIndex)) return fail("The saved interpretation is unavailable.");
     const context = turn.projectContexts.find((entry) => entry.projectId === projectId);
@@ -219,8 +219,10 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
     if (
       state.projects.some((other) =>
         other.lifecycle?.spokenProofs.some((proof) =>
-          [proof.lineId, ...(proof.citations?.map((citation) => citation.lineId) ?? [])].some((id) =>
-            citedIds.includes(id),
+          [proof.lineId, ...(proof.citations?.map((citation) => citation.lineId) ?? [])].some(
+            (id) =>
+              citedIds.includes(id) &&
+              !(kind === "requirements" && interpreted?.contextual && other.id === projectId && id !== lineId),
           ),
         ),
       )
@@ -232,7 +234,10 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
       state.progressTasks.some((task) =>
         [...task.receipts, ...task.revisionHistory.flatMap((revision) => revision.receipts)].some((receipt) =>
           [receipt.evidence.lineId, ...(receipt.evidence.citations?.map((citation) => citation.lineId) ?? [])].some(
-            (id) => id === lineId || interpreted?.citations.some((citation) => citation.lineId === id),
+            (id) =>
+              id === lineId ||
+              (interpreted?.citations.some((citation) => citation.lineId === id) &&
+                !(kind === "requirements" && interpreted?.contextual && task.definition.owner.id === projectId)),
           ),
         ),
       )
@@ -259,10 +264,11 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
           state.projects.filter(
             (entry) => entry.lifecycle?.phase === "requirements" && entry.lifecycle.builderId === line.speakerId,
           ).length === 1));
-    if (!named && !contextual && kind !== "offer" && kind !== "handoff")
+    if (!interpreted?.contextual && !named && !contextual && kind !== "offer" && kind !== "handoff")
       return fail("The saved conversation must identify this specific Project.");
     if (
       !named &&
+      !interpreted?.contextual &&
       contextual &&
       state.projects.filter(
         (entry) =>
@@ -445,6 +451,7 @@ export async function processProjectSpeechTurn(sessionId: string, submissionId: 
         turn.projectContexts.some((entry) => entry.projectId === project.id) ||
         `${turn.message} ${line.content}`.toLocaleLowerCase().includes(project.title.toLocaleLowerCase());
       if (
+        !turn.contextualInterpretation &&
         context &&
         flow.phase === "approval" &&
         flow.affectedIds.includes(line.speakerId) &&
@@ -454,6 +461,7 @@ export async function processProjectSpeechTurn(sessionId: string, submissionId: 
       )
         await tryRecord(project.id, { ...input, kind: "approval" });
       else if (
+        !turn.contextualInterpretation &&
         context &&
         flow.phase === "requirements" &&
         line.speakerId === flow.builderId &&
@@ -461,6 +469,7 @@ export async function processProjectSpeechTurn(sessionId: string, submissionId: 
       )
         await tryRecord(project.id, { ...input, kind: "requirements" });
       else if (
+        !turn.contextualInterpretation &&
         context &&
         ["builder", "requirements", "materials", "construction"].includes(flow.phase) &&
         /\b(?:build|construct|renovat\w*|work on|do it|take it on|handle it)\b/iu.test(speech) &&

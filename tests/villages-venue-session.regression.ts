@@ -232,6 +232,13 @@ const release = configureVillagesRuntime({
             return {
               content: JSON.stringify({
                 results: checks.map((check: any) => {
+                  if (check.domain !== "room")
+                    return {
+                      id: check.id,
+                      outcome: "none",
+                      evidenceIds: [],
+                      reason: "No Project event in this fixture",
+                    };
                   const speech = check.evidence.filter(
                     (line: any) => line.current && line.speakerId === check.facts.actorId,
                   );
