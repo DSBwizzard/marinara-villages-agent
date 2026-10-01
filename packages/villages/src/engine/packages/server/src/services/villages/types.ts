@@ -490,6 +490,8 @@ export type VillageVillagerCardSnapshot = {
   summary: string;
   tags: string[];
   systemPrompt: string;
+  /** Optional for snapshots captured before authored post-history instructions. */
+  postHistoryInstructions?: string;
   description: string;
   personality: string;
   scenario: string;

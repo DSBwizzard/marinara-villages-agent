@@ -84,7 +84,14 @@ import {
 import { describeSpriteExpressions, validateSpriteExpression } from "./sprite-expressions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { agendaAt } from "./agenda-plan.js";
-import { readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
+import { readEffectiveVillagerCard } from "./catalog.js";
+import {
+  venueCardProfile,
+  fitVenueWritingMessages,
+  EVENT_MEMORY_GUIDANCE,
+  type VenueWritingBlock,
+} from "./venue-writing.js";
+export { venueCardProfile } from "./venue-writing.js";
 import { memoryForVillager } from "./chat.js";
 import { asRecord, asString, asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -1583,30 +1590,8 @@ function venueRepairHint(kind: VenueReplyFailureKind): string {
   return "Return one valid JSON object with heardPlayerBy and a nonempty segments array using active resident IDs.";
 }
 
-/** Keep the card's voice examples visible even when its background is long. */
-export function venueCardProfile(card: VillagerCard): string {
-  const prefix = "Card:\n";
-  const fields = [
-    { label: "System prompt", value: card.systemPrompt.trim(), reserve: 900 },
-    { label: "Personality", value: card.personality.trim(), reserve: 500 },
-    { label: "Example dialogue", value: card.exampleDialogue.trim(), reserve: 500 },
-    { label: "Description", value: card.description.trim(), reserve: 0 },
-    { label: "Scenario", value: card.scenario.trim(), reserve: 0 },
-    { label: "Backstory", value: card.backstory.trim(), reserve: 0 },
-  ].filter((field) => field.value);
-  if (!fields.length) return "Card: no details recorded.";
-  const textBudget = 2_800 - prefix.length - fields.reduce((total, field) => total + field.label.length + 3, 0);
-  const lengths = fields.map((field) => Math.min(field.value.length, field.reserve));
-  let remaining = textBudget - lengths.reduce((total, length) => total + length, 0);
-  for (const [index, field] of fields.entries()) {
-    const extra = Math.min(remaining, field.value.length - lengths[index]!);
-    lengths[index] = lengths[index]! + extra;
-    remaining -= extra;
-  }
-  return prefix + fields.map((field, index) => `${field.label}: ${field.value.slice(0, lengths[index])}`).join("\n");
-}
-
-async function generateOnce(
+/** Assemble and fit the exact live request without making a generation call. */
+export async function prepareVenueTurnMessages(
   session: VenueScene,
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
@@ -1651,6 +1636,7 @@ async function generateOnce(
   const earlierEvidence = session.lines
     .filter((line) => !line.contactReport && line.heardBy.some((id) => audibleIds.includes(id)))
     .slice(-18);
+  const optionalKnowledge: VenueWritingBlock[] = [];
   const profiles = active.map((person) => {
     const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
     if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
@@ -1667,19 +1653,25 @@ async function generateOnce(
       .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
       .map((entry) => entry.text);
     const spriteLabels = describeSpriteExpressions(resident.sprite);
+    optionalKnowledge.push({
+      text: `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}\nRecent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
+      optional: "memory",
+    });
+    if (session.contactGeneration && session.memoryMode !== "live")
+      optionalKnowledge.push({
+        text: `Earlier exchanges witnessed by ${card.name}:\n${
+          venueSceneHistory(
+            session.lines.filter((line) => line.heardBy.includes(person.characterId)),
+            player.name,
+          ) || "none"
+        }. The latest call is supplied separately; unseen conversations are unknown to this resident.`,
+        optional: "history",
+      });
     return [
       `${card.name} (${person.characterId})`,
-      venueCardProfile(card),
+      venueCardProfile(card, player.name, false),
       relationshipPrompt(village, person.characterId),
       "Relationships influence new Project requests alongside personal benefit and availability. A neutral resident may volunteer. Existing accepted commitments remain binding until explicitly withdrawn. Do not treat high scores as automatic romance.",
-      session.contactGeneration && session.memoryMode !== "live"
-        ? `Earlier exchanges witnessed by ${card.name}:\n${
-            venueSceneHistory(
-              session.lines.filter((line) => line.heardBy.includes(person.characterId)),
-              player.name,
-            ) || "none"
-          }. The latest call is supplied separately; unseen conversations are unknown to this resident.`
-        : "",
       `Scene activity: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}. Background agendas do not advance this Scene or relocate its residents. A resident may leave naturally after saying so.`,
       `Current Residence: ${
         village.venues
@@ -1687,9 +1679,7 @@ async function generateOnce(
           .map((venue) => `${venue.name} (${venue.id})`)
           .join(", ") || "none"
       }.`,
-      `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
-      `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
-      `Recent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
+      `Private current desires of ${card.name}: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish}`).join("; ") || "none"}. These can inform a relevant choice; they require no gesture, hint, mention, or player errand.`,
       spriteLabels
         ? `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id using its meaning. Pose-specific pictures must match actions already occurring in the scene. Omit expression to use the default image.`
         : "",
@@ -1775,7 +1765,7 @@ async function generateOnce(
           session.placeId,
         )
       : [];
-  const system = [
+  const systemParts = [
     VENUE_SCENE_WRITING_FOUNDATION,
     session.contactGeneration?.instruction ?? "",
     !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
@@ -1827,7 +1817,10 @@ async function generateOnce(
     }. A villager may freely approve or deny their own pending request in spoken dialogue. Never infer consent from silence or a different speaker.`,
     `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
     `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
-    `Relevant world lore: ${[...lore, villageRelevantOrigin(village, message)].filter(Boolean).join("\n") || "none"}`,
+    // The founding premise is established Scene background, including ordinary
+    // purpose questions whose wording does not activate lore keyword matching.
+    villageRelevantOrigin(village, `founding ${message}`),
+    `Relevant world lore: ${lore.join("\n") || "none"}`,
     `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
     session.area === "outside"
       ? session.spaceClass === "residence"
@@ -1837,6 +1830,7 @@ async function generateOnce(
         ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
         : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
     ...profiles,
+    ...optionalKnowledge.map((block) => block.text),
     session.stagingVersion === 1
       ? "Current presentation state: " +
         JSON.stringify(
@@ -1845,6 +1839,13 @@ async function generateOnce(
       : "",
     `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
     session.memoryMode === "live" ? "" : `Recent scene history:\n${history || "The Scene has just begun."}`,
+    ...active.map((person) => {
+      const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
+      const card = resident ? readEffectiveVillagerCard(resident) : null;
+      return card?.postHistoryInstructions
+        ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}`
+        : "";
+    }),
     mode === "greet"
       ? ""
       : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
@@ -1903,8 +1904,9 @@ async function generateOnce(
       ? "If a resident explicitly asks for a NEW public venue, return venueRequest with speakerId, name, classes (one or two of workplace, gathering, other), and an exact quote from their spoken dialogue. Omit it if the request is only the player's claim, a hypothetical, or an upgrade to this venue. Approval starts planning, not instant construction."
       : "",
     session.lines.length >= 12
-      ? "Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state."
+      ? `Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state. ${EVENT_MEMORY_GUIDANCE}`
       : "",
+    mode !== "greet" ? EVENT_MEMORY_GUIDANCE : "",
     session.memoryMode === "live"
       ? LIVE_MEMORY_INSTRUCTION +
         "\nEarlier evidence: " +
@@ -1942,29 +1944,44 @@ async function generateOnce(
       ? 'Any segment, including narration, may include staging: [{characterId, position?, expression?, look?}]. position is "left", "center", or "right". expression is that character’s filled expression ID. look is {target:"player"}, {target:"villager",characterId:"active ID"}, or {target:"direction",direction:"left"|"right"}. Use at most one cue per active character per segment. Position, expression, and attention persist until changed; omitted fields preserve state. You may cue silent listeners, but reactions must respect who witnessed the moment. Move sides only when motivated by the scene, such as approaching, withdrawing, making room, or joining an interaction; changing speakers alone never moves anyone. Turns and expressions need no walking. A lone villager may look away left or right. Select the default expression ID or look toward the player explicitly to reset. Staging is presentation only, never proof of knowledge, consent, memory, or world changes. Use existing artwork and grounded actions. Main cues appear at the first paragraph; side and whisper cues appear with their attached chatter. Prefer staging over the older expression/gazeAt fields; omission does not reset attention in this Scene.'
       : "",
     "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Legacy gazeAt may name another active resident ID or player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
-  ].join("\n\n");
-  const messages: CapabilityLanguageModelMessage[] = [
-    { role: "system", content: system },
-    {
-      role: "user",
-      content:
-        mode === "greet"
-          ? session.area === "outside"
-            ? session.spaceClass === "residence"
-              ? "The player arrives outside this Residence. Show a brief moment already underway from outside."
-              : "The player arrives outside this Venue. Show a brief moment already underway from outside."
-            : "The player enters this space. Show a brief moment already underway here."
-          : mode === "leave" && !message.trim()
-            ? "The player leaves without saying anything."
-            : message,
-    },
   ];
+  const blocks: VenueWritingBlock[] = systemParts.map((text) => ({
+    text,
+    optional:
+      optionalKnowledge.find((block) => block.text === text)?.optional ??
+      (/^(Recent scene history:|Earlier Scene recap:)/u.test(text)
+        ? "history"
+        : /^(Shared village memories:|Only .* knows:)/u.test(text)
+          ? "memory"
+          : text.startsWith("Relevant world lore:")
+            ? "lore"
+            : undefined),
+  }));
+  const input =
+    mode === "greet"
+      ? session.area === "outside"
+        ? session.spaceClass === "residence"
+          ? "The player arrives outside this Residence. Show a brief moment already underway from outside."
+          : "The player arrives outside this Venue. Show a brief moment already underway from outside."
+        : "The player enters this space. Show a brief moment already underway here."
+      : mode === "leave" && !message.trim()
+        ? "The player leaves without saying anything."
+        : message;
   // Keep the opening brief, with enough room for reasoning models.
   const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS * (repairHint ? 2 : 1);
   const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
   const fitStarted = performance.now();
-  const fitted = model.fitContext(messages, { maxTokens });
+  const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
   trace?.("context fit", performance.now() - fitStarted);
+  return { fitted, maxTokens, model, village, audience, active, pendingMoves, storedPlace, place, projectContexts };
+}
+
+async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
+  const [session, message, mode] = args;
+  const signal = args[5];
+  const trace = args[6];
+  const { fitted, maxTokens, model, village, audience, active, pendingMoves, storedPlace, place, projectContexts } =
+    await prepareVenueTurnMessages(...args);
   trace?.("model request", 0, `${model.model} (${model.connectionId})`);
   let attempts = 0;
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
@@ -5056,6 +5073,8 @@ function memoryReviewMessages(
       role: "system",
       content:
         'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once by its batch-local index. Consolidate related recollections when they describe one event, but do not combine recollections whose witnesses did not hear the same evidence. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state or previous promotions. There is NO promotion quota. Return JSON only: {"decisions":[{"action":"promote","indices":[0],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event"},{"action":"reject","indices":[1],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. Every index must appear in exactly one decision. Do not invent evidence or indices.' +
+        "\n" +
+        EVENT_MEMORY_GUIDANCE +
         "\n\n" +
         (session.relationshipReview ? RELATIONSHIP_REVIEW_INSTRUCTION : ""),
     },
@@ -5547,7 +5566,9 @@ function memoryMessages(session: VenueScene, evidence: MemoryUnit[]): Capability
     {
       role: "system",
       content:
-        'Distill one Scene into a SELECTIVE set of short, attributed memories, at most 8 for this evidence chunk. Evidence rows are [lineId, part, role, speaker, text, heardBy]. Keep consequential player actions, promises, relationships, and distinctive details; omit routine dialogue, repeated details, and changes already held in world state. Each memory must cite one or more lineIds heard by that character. Do not share private information with anyone who did not hear it. Return JSON only: {"memories":[{"characterId":"...","text":"...","lineIds":["..."]}],"complete":true}. Complete means you considered ALL supplied evidence, not that every line became a memory. Each text is at most 320 characters. Return "more":true only if the answer cannot hold the selected memories.',
+        'Distill one Scene into a SELECTIVE set of short, attributed memories, at most 8 for this evidence chunk. Evidence rows are [lineId, part, role, speaker, text, heardBy]. Keep consequential player actions, promises, relationships, and distinctive details; omit routine dialogue, repeated details, and changes already held in world state. Each memory must cite one or more lineIds heard by that character. Do not share private information with anyone who did not hear it. Return JSON only: {"memories":[{"characterId":"...","text":"...","lineIds":["..."]}],"complete":true}. Complete means you considered ALL supplied evidence, not that every line became a memory. Each text is at most 320 characters. Return "more":true only if the answer cannot hold the selected memories.' +
+        "\n" +
+        EVENT_MEMORY_GUIDANCE,
     },
     {
       role: "user",

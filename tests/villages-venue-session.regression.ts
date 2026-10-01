@@ -1457,7 +1457,7 @@ async function main() {
     assert.match(lastVenueSystem, /Address the player as "you"/u);
     assert.match(lastVenueSystem, /Content rating: SFW/u);
     assert.ok(lastVenueSystem.startsWith(VENUE_SCENE_WRITING_FOUNDATION), "fixed scene rules survive context fitting");
-    assert.match(lastVenueSystem, /Narration can show observable gestures, pauses, attention, activity/u);
+    assert.match(lastVenueSystem, /dialogue alone may be the complete reply/u);
     assert.doesNotMatch(lastVenueSystem, /Grounded, concise slice-of-life prose/u);
     assert.match(lastVenueSystem, /moment already underway/u);
     assert.doesNotMatch(
@@ -1594,7 +1594,7 @@ async function main() {
       1,
       "the optional guidance is sent once",
     );
-    assert.match(lastVenueSystem, /resident card is the authority/u);
+    assert.match(lastVenueSystem, /Character dialogue retains its authored voice/u);
     assert.doesNotMatch(lastVenueSystem, /LEGACY GUIDANCE|obsolete-preset/u);
     await saveVillageWriting({
       tense: "present",
@@ -2351,9 +2351,9 @@ async function main() {
       appearance: "",
       exampleDialogue: "That hinge has opinions.",
     });
-    assert.ok(longCard.length <= 2_800, "the card stays within its existing prompt budget");
-    assert.match(longCard, /Personality: Speaks in clipped, dry phrases/u);
-    assert.match(longCard, /Example dialogue: That hinge has opinions/u);
+    assert.ok(longCard.includes("S".repeat(3_000)), "the whole authored card survives");
+    assert.match(longCard, /Personality:\nSpeaks in clipped, dry phrases/u);
+    assert.match(longCard, /Example dialogue:\nThat hinge has opinions/u);
     const scene = parseVenueReply(
       {
         heardPlayerBy: ["bob"],

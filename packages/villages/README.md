@@ -1,5 +1,13 @@
 # Villages
 
+## Character identity and Scene writing
+
+Scenes use complete captured character cards, including appearance, dialogue examples, and authored post-history instructions. Cards determine personality, voice, mannerisms, values, and initiative; Villages provides circumstances and verified outcomes. Later card edits still require explicit **Refresh card**. Older snapshots read missing post-history instructions as empty.
+
+Narration defaults to second person and present tense. Writing Settings retain tense, person, rating, and additional prose guidance; presentation preferences cannot overwrite character identity. Conversation may consist entirely of dialogue, with narration added when it contributes action, information, atmosphere, or consequences. Personal preferences and suggestions do not require Project approval, while commitments, access, and lasting changes retain their evidence checks.
+
+Wishes are private natural motives. They require no visible tell, recurring gesture, or mention in unrelated conversation. Legacy tells remain readable but are excluded from Scene-writing inputs. If complete character identity and required Scene context cannot fit the Narration connection after optional history, memories, and lore are reduced, Villages reports the problem before requesting a reply.
+
 ## Optional Decisions interpretation
 
 Scenes have a **Use Decisions · On / Off** switch. It defaults Off and saves across Scenes and refreshes. System interpretation supports the complete room, Project and Wish paths. When On, Villages uses the Engine's current Decision selection for suitable interpretation checks and automatically falls back to System for unavailable, incomplete, contradictory, or unresolved answers. Switch changes affect the next admitted Scene operation, including in another tab; submitted work keeps its original setting.

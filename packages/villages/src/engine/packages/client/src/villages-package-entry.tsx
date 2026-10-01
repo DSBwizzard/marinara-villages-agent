@@ -9454,9 +9454,9 @@ function VillageWritingSettings() {
     <div className={ELEMENT_TAG + "-field"}>
       <span className={ELEMENT_TAG + "-label"}>Additional writing guidance</span>
       <p className={ELEMENT_TAG + "-empty"}>
-        Optionally influence narration and dialogue in this village. Resident cards, scene facts, and the player&apos;s
-        choices remain in charge. Leave this empty for Villages&apos; own scene writing. Saved changes apply to the next
-        generated venue turn.
+        Optionally guide scene presentation. Narration follows your prose preferences; each resident keeps their own
+        personality, voice, and mannerisms from their character card. Scene facts and your choices remain in charge.
+        Leave this empty for Villages&apos; own scene writing. Saved changes apply to the next generated venue turn.
       </p>
       {view ? (
         <>

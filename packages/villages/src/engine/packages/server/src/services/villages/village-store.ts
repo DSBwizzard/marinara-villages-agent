@@ -384,6 +384,7 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     summary: asString(raw.summary),
     tags: asStringArray(raw.tags),
     systemPrompt: asString(raw.systemPrompt),
+    postHistoryInstructions: asString(raw.postHistoryInstructions),
     description: asString(raw.description),
     personality: asString(raw.personality),
     scenario: asString(raw.scenario),

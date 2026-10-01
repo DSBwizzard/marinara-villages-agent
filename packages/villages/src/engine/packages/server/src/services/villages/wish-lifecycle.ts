@@ -7,6 +7,8 @@ import {
   villagesLogger,
 } from "./package-runtime.js";
 import { readVillageState, mutateVillageState } from "./village-store.js";
+import { venueCardProfile } from "./venue-writing.js";
+import { villagerCardFromSnapshot } from "./catalog.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { deriveVillageMoment, randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { coerceWish } from "./prompt-preset.js";
@@ -373,7 +375,7 @@ async function generateWish(input: { state: VillageState; characterId: string; n
       {
         role: "system",
         content:
-          'Propose at most ONE small private wish for a village resident, or none. JSON only: {"wish":null} or {"wish":{"wish":"...","tell":"a visible ordinary sign","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}},"adjustment":{"slot":1,"activity":"ordinary activity","reason":"...","venueId":"existing id","zoneId":"existing id"}}. Adjustment is optional. Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. Use the supplied future free-time slots only. No suitable wish is a valid quiet day.',
+          'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}},"adjustment":{"slot":1,"activity":"ordinary activity","reason":"...","venueId":"existing id","zoneId":"existing id"}}. Adjustment is optional. Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. Use the supplied future free-time slots only. No suitable wish is a valid quiet day.',
       },
       {
         role: "user",
@@ -382,12 +384,10 @@ async function generateWish(input: { state: VillageState; characterId: string; n
           setting: state.setting.slice(0, 2400),
           person: {
             name: card.name,
-            summary: card.summary.slice(0, 400),
-            personality: card.personality.slice(0, 800),
-            description: card.description.slice(0, 1000),
+            profile: venueCardProfile(villagerCardFromSnapshot(card)),
           },
           lore: lore.join("\n").slice(0, 1800),
-          active: resident.agenda.wishes,
+          active: resident.agenda.wishes.map(({ tell: _tell, ...wish }) => wish),
           known: known.map((need) => ({
             id: need.id,
             subject: need.subject,
