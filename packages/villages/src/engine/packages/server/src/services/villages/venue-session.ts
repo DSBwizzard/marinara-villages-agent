@@ -1973,15 +1973,40 @@ export async function prepareVenueTurnMessages(
   const fitStarted = performance.now();
   const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
   trace?.("context fit", performance.now() - fitStarted);
-  return { fitted, maxTokens, model, village, audience, active, pendingMoves, storedPlace, place, projectContexts };
+  return {
+    fitted,
+    maxTokens,
+    model,
+    village,
+    audience,
+    active,
+    pendingMoves,
+    storedPlace,
+    place,
+    projectContexts,
+    earlierEvidence,
+    promptMemories,
+  };
 }
 
 async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
   const [session, message, mode] = args;
   const signal = args[5];
   const trace = args[6];
-  const { fitted, maxTokens, model, village, audience, active, pendingMoves, storedPlace, place, projectContexts } =
-    await prepareVenueTurnMessages(...args);
+  const {
+    fitted,
+    maxTokens,
+    model,
+    village,
+    audience,
+    active,
+    pendingMoves,
+    storedPlace,
+    place,
+    projectContexts,
+    earlierEvidence,
+    promptMemories,
+  } = await prepareVenueTurnMessages(...args);
   trace?.("model request", 0, `${model.model} (${model.connectionId})`);
   let attempts = 0;
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
