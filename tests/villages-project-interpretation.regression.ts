@@ -96,6 +96,7 @@ for (const [id, name] of [
   } as VillageVillager);
 records.set("villages-village", { id: "villages-village", kind: "village", data: village, revision: 1 });
 let modelCalls = 0;
+let interpretationCalls = 0;
 let modelReply: Record<string, unknown> = {};
 let lastPrompt = "";
 const release = configureVillagesRuntime({
@@ -113,15 +114,37 @@ const release = configureVillagesRuntime({
         },
         async chatComplete(messages: any[]) {
           if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+            interpretationCalls++;
             const { checks } = JSON.parse(messages[1].content);
             return {
               content: JSON.stringify({
-                results: checks.map((check: any) => ({
-                  id: check.id,
-                  outcome: "none",
-                  evidenceIds: [],
-                  reason: "No room event in this fixture",
-                })),
+                results: checks.map((check: any) => {
+                  const proposal = Array.isArray(modelReply.projectSpeech)
+                    ? modelReply.projectSpeech.find(
+                        (item: any) =>
+                          item.projectId === check.facts.projectId &&
+                          item.speakerId === check.facts.actorId &&
+                          item.kind === check.facts.kind,
+                      )
+                    : null;
+                  return {
+                    id: check.id,
+                    outcome: proposal ? check.outcomes[0].id : "none",
+                    evidenceIds: proposal ? ["draft:0"] : [],
+                    reason: "Independent labeled fixture",
+                    ...(proposal?.kind === "requirements"
+                      ? {
+                          details: {
+                            citations: proposal.citations.map((citation: any) => ({
+                              evidenceId: `draft:${citation.segment}`,
+                              quote: citation.quote,
+                            })),
+                            checklist: proposal.checklist,
+                          },
+                        }
+                      : {}),
+                  };
+                }),
               }),
               finishReason: "stop",
             };
@@ -201,7 +224,7 @@ async function main() {
     );
     assert.equal(
       projectSpeechContexts(scopedState, ["rosa"], "Can you build this?", "Can you build this?", "mill").length,
-      0,
+      1,
     );
     const project = async () => (await readVillageState()).projects.find((entry) => entry.id === projectId)!;
     const task = async () =>
@@ -249,7 +272,7 @@ async function main() {
     records.get(`villages-venue-visit-${absent.sessionId}`).data.submissions[0].activeIdsAtTurn = [];
     await processSavedProgressSubmission(absent.sessionId, absent.submissionId);
     assert.equal((await project()).lifecycle!.candidates.length, 0);
-    // An actual narration reply supplies and persists the interpretation in its existing call.
+    // A draft is interpreted independently before publication; saved proposals replay without another request.
     const at = new Date().toISOString();
     const sessionId = "actual-model-visit";
     records.set("villages-active-venue", {
@@ -295,8 +318,9 @@ async function main() {
     };
     failVillageWrites = 3; // saved dialogue survives interruption before the progress write
     let builderReply = await sendVenueTurn(builderInput);
-    assert.equal(modelCalls, 1, "automatic interpretation uses the existing dialogue call only");
-    assert.match(lastPrompt, /projectSpeech/u);
+    assert.equal(modelCalls, 1, "interpretation does not regenerate dialogue");
+    assert.ok(interpretationCalls > 0, "System-only interpretation remains available independently");
+    assert.match(lastPrompt, /Relevant public Projects/u);
     assert.doesNotMatch(lastPrompt, /exact labels/u);
     assert.equal((await project()).lifecycle!.candidates.length, 0);
     assert.match(builderReply.session.submissions[0].progressError!, /kept changing/u);
@@ -356,7 +380,7 @@ async function main() {
       targetId: "rosa",
       submissionId: "real-plan",
     });
-    assert.equal(modelCalls, 2, "a natural checklist adds no judge call");
+    assert.equal(modelCalls, 2, "a natural checklist does not regenerate dialogue");
     assert.equal((await project()).lifecycle!.requirements.length, 3);
     assert.equal((await project()).lifecycle!.phase, "requirements", "Accept plan remains a decision");
     assert.equal((await project()).lifecycle!.requirements[0]!.title, checklist[0]!.title);
@@ -368,6 +392,7 @@ async function main() {
     assert.equal((await project()).lifecycle!.spokenProofs.length, 2);
     assert.equal(modelCalls, 2);
     const badCategory = structuredClone(savedPlan.projectSpeech[0]);
+    delete badCategory.contextual; // Preserved old proposals keep their original phrase validation.
     badCategory.checklist[2].needed = false;
     assert.match(validateProjectSpeech(badCategory, planReply.session.lines), /unnecessary/u);
     badCategory.checklist.pop();

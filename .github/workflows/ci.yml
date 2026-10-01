@@ -76,6 +76,7 @@ jobs:
           npx tsx tests/villages-progress-engine.regression.ts
           npx tsx tests/villages-progress-projects.regression.ts
           npx tsx tests/villages-project-interpretation.regression.ts
+          npx tsx tests/villages-project-checks.regression.ts
           npx tsx tests/villages-zones.regression.ts
           npx tsx tests/villages-contact.regression.ts
           npx tsx tests/villages-runtime-debug.regression.ts
