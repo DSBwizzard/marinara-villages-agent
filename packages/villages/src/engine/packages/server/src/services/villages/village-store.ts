@@ -1332,9 +1332,10 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
             ...(Array.isArray(receipt.witnessIds)
               ? { witnessIds: receipt.witnessIds.filter((id): id is string => typeof id === "string").slice(0, 100) }
               : {}),
+            ...(asTrimmedString(receipt.transferTo) ? { transferTo: asTrimmedString(receipt.transferTo) } : {}),
             ...(asTrimmedString(asRecord(receipt.itemTransfer).itemName) &&
             asRecord(receipt.itemTransfer).itemName === receipt.removeItem &&
-            asRecord(receipt.itemTransfer).recipientId === receipt.recipientId
+            asRecord(receipt.itemTransfer).recipientId === receipt.transferTo
               ? {
                   itemTransfer: {
                     itemName: asTrimmedString(asRecord(receipt.itemTransfer).itemName),

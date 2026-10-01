@@ -102,6 +102,7 @@ import {
   wishFingerprint,
   matchingWishReceipts,
   wishReceiptRecords,
+  coerceWishApplicationProof,
   type WishCriteria,
 } from "./wish-interpretation.js";
 import {
@@ -109,6 +110,7 @@ import {
   projectProposals,
   finalizeProjectDiagnostics,
   applyLegacyProjectInterpretation,
+  applyProjectPickup,
 } from "./project-checks.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VenueActionResult } from "./venue-actions.js";
@@ -704,8 +706,8 @@ function coerceSession(value: unknown): VenueScene {
                 : {}),
               ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
               ...(row.projectInterpretationVersion === 1 ? { projectInterpretationVersion: 1 as const } : {}),
-              ...(asTrimmedString(asRecord(row.wishInterpretationProof).fingerprint)
-                ? { wishInterpretationProof: row.wishInterpretationProof as VenueSubmission["wishInterpretationProof"] }
+              ...(Object.hasOwn(row, "wishInterpretationProof")
+                ? { wishInterpretationProof: coerceWishApplicationProof(row.wishInterpretationProof) }
                 : {}),
               ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
               verdict:
@@ -1043,6 +1045,8 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "characterZoneId",
             "checkpoints",
             "attempts",
+            "optionalAttempts",
+            "wishInterpretationProof",
             "snapshot",
           ].includes(key),
       )
@@ -2198,17 +2202,24 @@ async function refreshZoneParticipants(session: VenueScene, completing = false):
     });
     return refreshZoneParticipants(refreshed);
   }
-  if (!session.zoneId)
-    return changeSession(session.id, (state) => {
+  if (!session.zoneId) {
+    const migrated = await changeSession(session.id, (state) => {
       if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = zoneId;
       state.legacyCast = true;
       if (state.area !== "outside") state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zoneId])];
     });
+    return refreshZoneParticipants(migrated, completing);
+  }
   if (!session.sceneAttendance) {
     // Older Scenes cannot reconstruct rewritten agendas. Preserve their current cast,
     // and capture unencountered residents at the original Scene time once.
     const captured = captureSceneAttendance(village, venue.id, new Date(session.startedAt));
+    // An older Scene already established its visible cast. Schedule reconstruction cannot add a witness there.
+    const known = new Set(session.participants.map((person) => person.characterId));
+    captured.occupants = captured.occupants.filter(
+      (person) => person.zoneId !== zoneId || known.has(person.characterId),
+    );
     for (const person of session.participants) {
       const original = captured.occupants.find((entry) => entry.characterId === person.characterId);
       const lastZone =
@@ -3096,15 +3107,19 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   if (prior) {
     if (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId)
       throw conflict("That submission ID belongs to a different line.");
-    if (prior.mode === "act" && prior.action && !prior.actionReplyDone)
+    if (prior.mode === "act" && prior.action && !prior.actionReplyDone) {
+      session = await finishActReply(session, input.submissionId, input.message, prior.action);
+      await applyProjectPickup(session.id, input.submissionId);
       return {
-        session: await finishActReply(session, input.submissionId, input.message, prior.action),
+        session,
         verdict: null,
         action: prior.action,
         recordEvents: prior.action.happened
           ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
           : [],
       };
+    }
+    if (prior.mode === "act" && prior.action?.happened) await applyProjectPickup(session.id, input.submissionId);
     try {
       await processSavedProgressSubmission(session.id, prior.id);
     } catch (error) {
@@ -3132,7 +3147,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     };
   }
   session = await requireLiveVenueSession(session.id);
-  session = venueOperationSnapshot<VenueScene>() ?? session;
+  const admitted = venueOperationSnapshot<unknown>();
+  if (admitted) session = coerceSession(admitted);
   if (session.status !== "active") throw conflict("That Scene is not active.");
   if (input.mode !== "leave" && session.zoneId) {
     const village = await readVillageState(),
@@ -3182,6 +3198,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       action,
       preparedReply,
     );
+    await applyProjectPickup(session.id, input.submissionId);
     return {
       session: completed,
       verdict: null,
@@ -3211,19 +3228,33 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       interpretWishClaim(
         {
           actorId: input.targetId,
-          evidence: heardLines(session, input.targetId)
-            .filter(
-              (line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper",
-            )
-            .map((line) => ({
-              id: line.id,
-              speakerId: line.role === "user" ? "player" : line.speakerId,
-              name: line.role === "user" ? player.name : line.name,
-              content: line.content,
-              kind: line.kind,
-              at: line.at,
-            })),
-          receipts: wishReceiptRecords(village, input.targetId),
+          evidence: [
+            ...heardLines(session, input.targetId)
+              .filter(
+                (line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper",
+              )
+              .map((line) => ({
+                id: line.id,
+                speakerId: line.role === "user" ? "player" : line.speakerId,
+                name: line.role === "user" ? player.name : line.name,
+                content: line.content,
+                kind: line.kind,
+                at: line.at,
+              })),
+            ...(session.activeIds.includes(input.targetId)
+              ? [
+                  {
+                    id: "scene-attendance",
+                    speakerId: "player",
+                    name: player.name,
+                    kind: "attendance",
+                    content: `Current authoritative Scene position: ${player.name} and ${resident.cardSnapshot.name} are together in this Zone.`,
+                    at: new Date().toISOString(),
+                  },
+                ]
+              : []),
+          ],
+          receipts: wishReceiptRecords(village, input.targetId, session),
           village: village.name,
           setting: villageCurrentSetting(village),
           moment,
@@ -3237,7 +3268,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
             content: `[Original speaker: ${line.role === "user" ? player.name : line.name}] ${line.content}`,
             at: line.at,
           })),
-          happenings: wishReceiptRecords(village, input.targetId),
+          happenings: wishReceiptRecords(village, input.targetId, session),
           worldState: (() => {
             const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
             const place = storedPlace
@@ -3408,7 +3439,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       (wishInterpretationProof.criteria.requiresPhysical &&
         !matchingWishReceipts(
           wishInterpretationProof.criteria,
-          { actorId: input.targetId, receipts: wishReceiptRecords(applicationVillage, input.targetId) },
+          { actorId: input.targetId, receipts: wishReceiptRecords(applicationVillage, input.targetId, session) },
           currentWish,
         ).some((event) => wishInterpretationProof!.receiptIds.includes(event.id)))
     )
@@ -4088,7 +4119,7 @@ async function applyFulfilledWish(session: VenueScene, submission: VenueSubmissi
         (proof.criteria.requiresPhysical &&
           !matchingWishReceipts(
             proof.criteria,
-            { actorId: submission.targetId, receipts: wishReceiptRecords(state, submission.targetId) },
+            { actorId: submission.targetId, receipts: wishReceiptRecords(state, submission.targetId, session) },
             wish,
           ).some((event) => proof.receiptIds.includes(event.id))))
     )

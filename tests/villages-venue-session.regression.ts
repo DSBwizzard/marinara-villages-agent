@@ -2125,7 +2125,7 @@ async function main() {
           happened: true,
           narration: "The player handed Tina the parcel.",
           removeItem: "parcel",
-          recipientId: "tina",
+          transferTo: "tina",
           witnessIds: ["tina"],
           itemTransfer: { itemName: "parcel", recipientId: "tina" },
         },

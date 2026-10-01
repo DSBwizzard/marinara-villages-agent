@@ -23,6 +23,7 @@ export type VenueActionResult = {
   traceKind?: string;
   traceText?: string;
   recipientId?: string;
+  transferTo?: string;
   resolveTraceId?: string;
 };
 
@@ -48,6 +49,9 @@ export function readVenueActionResult(
   const traceText = boundText(raw.traceText, MAX_VENUE_NOTE_LENGTH);
   const recipientId =
     typeof raw.recipientId === "string" && recipientIds.includes(raw.recipientId) ? raw.recipientId : "";
+  const transferTo = typeof raw.transferTo === "string" && recipientIds.includes(raw.transferTo) ? raw.transferTo : "";
+  if (raw.transferTo && (!transferTo || !removeItem))
+    return { happened: false, narration: "An item transfer needs recorded inventory and a valid recipient." };
   const resolveTraceId =
     typeof raw.resolveTraceId === "string" && traceIds.includes(raw.resolveTraceId) ? raw.resolveTraceId : "";
   if ((raw.traceKind || raw.traceText) && (!traceKind || !traceText)) {
@@ -70,7 +74,7 @@ export function readVenueActionResult(
     narration,
     ...(addItem ? { addItem } : {}),
     ...(removeItem ? { removeItem } : {}),
-    ...(removeItem && recipientId ? { recipientId } : {}),
+    ...(transferTo ? { transferTo } : {}),
     ...(traceKind && traceText ? { traceKind, traceText, recipientId } : {}),
     ...(resolveTraceId ? { resolveTraceId } : {}),
   };
@@ -88,13 +92,13 @@ function actionMessages(
     {
       role: "system",
       content: [
-        'You narrate one action by the player in a village place. Answer with JSON only: {"happened":true,"narration":"...","addItem":"","removeItem":"","traceKind":"","traceText":"","recipientId":"","resolveTraceId":""}.',
+        'You narrate one action by the player in a village place. Answer with JSON only: {"happened":true,"narration":"...","addItem":"","removeItem":"","transferTo":"","traceKind":"","traceText":"","recipientId":"","resolveTraceId":""}.',
         "Decide whether the described action can actually happen now. A plan, promise, unsupported claim of past work, or action requiring an absent person is not a completed deed: set happened to false.",
         "Ground the outcome in the place and its listed items. The player may use ordinary personal belongings, but do not invent rare items, new people, or hidden powers.",
         "The submitted action is the full extent of the player's choice. Do not invent their dialogue, a follow-up action or decision, consent, private thoughts, or feelings. Report only this attempted action and its grounded result.",
         `For happened=true, narrate only what actually happened, in one or two past-tense sentences. Name ${player} so the village knows who did it. For happened=false, explain plainly why it could not happen. Do not claim an item was consumed, moved, or created unless the action actually does so.`,
         "When the action physically adds an item, put its short name in addItem. When it removes an item, copy that item exactly from the listed furniture and items into removeItem. Otherwise use empty strings. Do not change a venue item for inspection or conversation.",
-        "For an actual handoff of a listed item to a present resident, put that exact item in removeItem and the actual recipient ID in recipientId. A statement that delivery already happened is not a handoff. Never invent inventory or a recipient.",
+        'For an actual handoff of a listed item to a present resident, put that exact item in removeItem and the actual recipient ID in transferTo. For an actual pickup by the player, use transferTo:"player". Leave transferTo empty for consumption, destruction or other removal. recipientId belongs to notes and is not a transfer. A statement that delivery already happened is not a handoff. Never invent inventory or a recipient.',
         "An active trace is a small ongoing change that can be resolved later, such as a note, stain, open window, wet footprints, or dropped object. For a new trace use a short lowercase traceKind and descriptive traceText. A note needs the intended resident's ID in recipientId. To resolve an existing trace, copy its ID into resolveTraceId. Never alter a locked defining feature.",
         `Village setting: ${setting || "A small village."}`,
         `Place: ${place.name}. Classes: ${place.classes?.join(", ") || "other"}. Form: ${place.form || "unspecified"}.`,
@@ -172,11 +176,11 @@ export async function actAtVenue(
       extractJsonObject(completion.content ?? ""),
       place.state.furniture,
       place.state.traces?.map((trace) => trace.id) ?? [],
-      village.villagers.map((resident) => resident.characterId),
+      ["player", ...village.villagers.map((resident) => resident.characterId)],
     );
   });
   assertVenueOwnership();
-  if (result.removeItem && result.recipientId && !active.activeIds.includes(result.recipientId))
+  if (result.transferTo && result.transferTo !== "player" && !active.activeIds.includes(result.transferTo))
     throw badRequest("The recipient must be present in this Zone for an item transfer.");
   // A resident reaction must pass scene validation before this action changes the venue or transcript.
   await beforeRecord?.(result);
@@ -276,8 +280,8 @@ export async function actAtVenue(
             ...result,
             submissionId,
             witnessIds: [...active.activeIds],
-            ...(result.removeItem && result.recipientId
-              ? { itemTransfer: { itemName: result.removeItem, recipientId: result.recipientId } }
+            ...(result.removeItem && result.transferTo
+              ? { itemTransfer: { itemName: result.removeItem, recipientId: result.transferTo } }
               : {}),
           },
         },

@@ -15,6 +15,87 @@ import {
 } from "./project-interpretation.js";
 import { readVillageState, mutateVillageState } from "./village-store.js";
 import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
+import { recordProjectProgress } from "./project-progress.js";
+
+function pickupRevision(state: VillageState, projectId: string) {
+  const project = state.projects.find((item) => item.id === projectId);
+  return state.progressEngineVersion === 1
+    ? state.progressTasks.find(
+        (item) => item.definition.owner.kind === "project" && item.definition.owner.id === projectId,
+      )?.definition.revision
+    : project && legacyProjectRevision(project);
+}
+
+/** Apply a semantic allocation only against an existing inventory-debited receipt. */
+export function applyRecordedProjectPickup(
+  state: VillageState,
+  eventId: string,
+  projectId: string,
+  requirementId: string,
+  revision: number,
+  submissionId: string,
+) {
+  const event = state.venueEvents.find((item) => item.id === eventId),
+    receipt = event?.actionReceipt;
+  const project = state.projects.find((item) => item.id === projectId),
+    flow = project?.lifecycle;
+  const requirement = flow?.requirements.find((item) => item.id === requirementId && item.needed);
+  if (
+    !event ||
+    !project ||
+    !flow ||
+    !requirement ||
+    requirement.carriedAt ||
+    flow.phase !== "materials" ||
+    pickupRevision(state, project.id) !== revision ||
+    !receipt?.happened ||
+    receipt.submissionId !== submissionId ||
+    receipt.transferTo !== "player" ||
+    receipt.itemTransfer?.recipientId !== "player" ||
+    receipt.removeItem !== receipt.itemTransfer.itemName ||
+    !receipt.removeItem ||
+    state.projectSourceClaims.some((claim) => claim.sourceId === event.id)
+  )
+    return false;
+  if (state.progressEngineVersion === 1) {
+    const source = flow.sources.find((item) => item.requirementId === requirementId);
+    // Selected finite physical stock is already debited by Act. No second debit or invented supplier handoff.
+    if (
+      !source ||
+      source.kind !== "existing-item" ||
+      source.acquiredAt ||
+      source.venueId !== event.venueId ||
+      (source.zoneId && source.zoneId !== event.zoneId) ||
+      source.itemName !== receipt.removeItem ||
+      !Number.isFinite(Date.parse(source.at)) ||
+      Date.parse(event.at) < Date.parse(source.at) ||
+      !flow.recordedItems.some(
+        (item) =>
+          item.venueId === source.venueId &&
+          item.itemName === source.itemName &&
+          (!source.zoneId || item.zoneId === source.zoneId),
+      )
+    )
+      return false;
+    source.acquiredAt = event.at;
+    requirement.carriedAt = event.at;
+    recordProjectProgress(state, project, `acquired:${requirementId}`, {
+      id: `pickup:${event.id}`,
+      kind: "project-handoff",
+      at: event.at,
+      sourceId: event.id,
+      lineId: event.id,
+      speakerId: "player",
+      venueId: event.venueId,
+      zoneId: event.zoneId,
+      excerpt: `Verified pickup of ${source.itemName}`,
+    });
+  } else requirement.carriedAt = event.at;
+  state.projectSourceClaims.push({ key: `acquired-transfer:${event.id}`, projectId, sourceId: event.id, submissionId });
+  flow.evidenceIds = [...new Set([...flow.evidenceIds, event.id])];
+  project.updatedAt = event.at;
+  return true;
+}
 
 /** Discover from live task phases and actual speakers, never from a positive score or a keyword list. */
 export function projectInterpretationChecks(
@@ -349,4 +430,118 @@ export async function applyLegacyProjectInterpretation(sceneId: string, submissi
       project.updatedAt = turn.at;
     }
   });
+}
+
+/** Allocate an already completed, inventory-debited pickup; interpretation cannot authorize the transfer itself. */
+export async function applyProjectPickup(sceneId: string, submissionId: string) {
+  const state = await readVillageState();
+  const event = state.venueEvents.find((item) => item.actionReceipt?.submissionId === submissionId);
+  const proof = event?.actionReceipt;
+  if (
+    !event ||
+    !proof?.happened ||
+    proof.itemTransfer?.recipientId !== "player" ||
+    proof.removeItem !== proof.itemTransfer.itemName ||
+    state.projectSourceClaims.some((claim) => claim.sourceId === event.id)
+  )
+    return;
+  const turn = await (await import("./venue-session.js")).readProjectTurnEvidence(sceneId, submissionId);
+  const checks: InterpretationCheck[] = state.projects.flatMap((project) =>
+    project.lifecycle?.phase === "materials"
+      ? project.lifecycle.requirements
+          .filter(
+            (item) =>
+              item.needed &&
+              !item.carriedAt &&
+              (state.progressEngineVersion !== 1 ||
+                project.lifecycle!.sources.some(
+                  (source) =>
+                    source.requirementId === item.id &&
+                    source.kind === "existing-item" &&
+                    !source.acquiredAt &&
+                    source.venueId === event.venueId &&
+                    (!source.zoneId || source.zoneId === event.zoneId) &&
+                    source.itemName === proof.removeItem,
+                )),
+          )
+          .map((item) => ({
+            id: `${submissionId}:${project.id}:${item.id}`,
+            domain: "project" as const,
+            question: `Does this recorded pickup satisfy ${item.title} for ${project.title}?`,
+            outcomes: [
+              {
+                id: "allocate",
+                statement:
+                  "The recorded item actually satisfies this specific Project requirement and the player's contextual intent identifies this Project.",
+              },
+            ],
+            decisionEligible: false,
+            decisionReason: "Recorded supply allocation uses System; the physical transfer is already validated",
+            facts: {
+              projectId: project.id,
+              requirementId: item.id,
+              revision: pickupRevision(state, project.id),
+              phase: project.lifecycle!.phase,
+              title: project.title,
+              requirement: item.title,
+              recordedItem: proof.itemTransfer!.itemName,
+              transferId: event.id,
+              playerId: "player",
+              message: turn.message,
+            },
+            evidence: [
+              ...turn.contextLines.map((line) => ({
+                id: line.id,
+                speakerId: line.role === "user" ? "player" : line.speakerId,
+                name: line.name,
+                kind: line.kind,
+                content: line.content,
+              })),
+              {
+                id: event.id,
+                speakerId: "player",
+                name: "Verified pickup",
+                kind: "receipt",
+                content: event.text,
+                current: true,
+              },
+            ],
+          }))
+      : [],
+  );
+  if (!checks.length) return;
+  const batch = await interpretChecks(checks, `recorded-supply:${submissionId}`, sceneId);
+  const candidates = batch.results.flatMap((result, index) =>
+    result.outcome === "allocate" && result.evidenceIds.includes(event.id) ? [index] : [],
+  );
+  if (candidates.length !== 1) {
+    for (const trace of batch.traces)
+      trace.applied =
+        candidates.length > 1
+          ? "Unresolved: choose which Project receives this acquired supply"
+          : "No Project allocation; the pickup remains recorded";
+    await writeInterpretationDiagnostics(sceneId, batch.traces).catch(() => {});
+    return;
+  }
+  const index = candidates[0],
+    facts = asRecord(batch.checks[index].facts);
+  let recorded = false;
+  await mutateVillageState((current) => {
+    recorded = applyRecordedProjectPickup(
+      current,
+      event.id,
+      String(facts.projectId),
+      String(facts.requirementId),
+      Number(facts.revision),
+      submissionId,
+    );
+  });
+  for (const [i, trace] of batch.traces.entries())
+    trace.applied =
+      i === index
+        ? recorded
+          ? "Acquired supply allocated using System; actual inventory transfer and current requirement validated"
+          : "Rejected: current transfer or Project state changed"
+        : "No Project allocation";
+  await writeInterpretationDiagnostics(sceneId, batch.traces).catch(() => {});
 }

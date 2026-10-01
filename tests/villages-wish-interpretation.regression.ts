@@ -7,6 +7,8 @@ import {
   matchingWishReceipts,
   readWishCriteria,
   wishFingerprint,
+  wishReceiptRecords,
+  coerceWishApplicationProof,
   type WishInterpretationContext,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
 import {
@@ -16,6 +18,7 @@ import {
 import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
 import { coordinateVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
 import { saveInterpretationSettings } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-settings.js";
+import { publicSceneResponse } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 const records = new Map<string, any>();
 let preparations = 0,
   interpretations = 0;
@@ -162,7 +165,7 @@ async function main() {
           happened: true,
           narration: "Pat handed Aqua the cupcake.",
           removeItem: "cupcake",
-          recipientId: "a",
+          transferTo: "a",
           witnessIds: ["a"],
           itemTransfer: { itemName: "cupcake", recipientId: "a" },
         },
@@ -194,16 +197,51 @@ async function main() {
       context.receipts,
       "Witnessed transfer metadata survives storage",
     );
+    state.projects = [
+      {
+        id: "project",
+        title: "Greenhouse",
+        venueId: "garden",
+        status: "finishing",
+        updatedAt: at,
+        lifecycle: { phase: "finishing", completedAt: at, builderId: "a" },
+      },
+    ] as any;
+    state.venues = [{ id: "garden", name: "Garden" }] as any;
+    assert.equal(
+      wishReceiptRecords(state, "a").filter((event) => event.completedProject).length,
+      0,
+      "A claim or unfinished construction is not proof",
+    );
+    state.projects[0].status = "complete";
+    state.projects[0].lifecycle!.phase = "complete";
+    state.progressEngineVersion = 1;
+    assert.equal(
+      wishReceiptRecords(state, "a").filter((event) => event.completedProject).length,
+      0,
+      "Engine Villages require canonical resolution",
+    );
+    state.progressTasks = [{ definition: { owner: { id: "project", kind: "project" } }, resolvedAt: at }] as any;
+    const complete = wishReceiptRecords(state, "a").find((event) => event.completedProject)!;
+    assert.ok(complete);
+    assert.equal(complete.actionReceipt?.witnessIds, undefined, "Public verified state does not invent witnesses");
+    const stripped = publicSceneResponse({
+      wishInterpretationProof: { criteria: { goal: "private" } },
+      optionalAttempts: { secret: true },
+      safe: "ok",
+    });
+    assert.deepEqual(stripped, { safe: "ok" });
+    assert.equal(coerceWishApplicationProof({ fingerprint: "bad", criteria: null }).fingerprint, "invalid");
     const action = readVenueActionResult(
-      { happened: true, narration: "Pat gives Aqua the cupcake", removeItem: "cupcake", recipientId: "a" },
+      { happened: true, narration: "Pat gives Aqua the cupcake", removeItem: "cupcake", transferTo: "a" },
       ["cupcake"],
       [],
       ["a"],
     );
-    assert.equal(action.recipientId, "a");
+    assert.equal(action.transferTo, "a");
     assert.equal(
       readVenueActionResult(
-        { happened: true, narration: "Pat gives Aqua the cupcake", removeItem: "cupcake", recipientId: "a" },
+        { happened: true, narration: "Pat gives Aqua the cupcake", removeItem: "cupcake", transferTo: "a" },
         [],
         [],
         ["a"],

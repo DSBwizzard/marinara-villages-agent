@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   projectInterpretationChecks,
   projectProposals,
+  applyRecordedProjectPickup,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/project-checks.js";
 import {
   readSystemInterpretations,
@@ -13,6 +14,11 @@ import {
   coerceProjectSpeech,
   validateProjectSpeech,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/project-interpretation.js";
+import { legacyProjectRevision } from "../packages/villages/src/engine/packages/server/src/services/villages/project-interpretation.js";
+import {
+  createProjectProgress,
+  recordProjectProgress,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/project-progress.js";
 const state = defaultVillageState();
 state.progressEngineVersion = 1;
 state.villagers = [{ characterId: "a", cardSnapshot: { name: "Aqua" } }] as any;
@@ -152,6 +158,106 @@ assert.equal(
   0,
   "Unseen or unrelated citations cannot complete requirements",
 );
+for (const version of [0, 1] as const) {
+  const stock = defaultVillageState();
+  stock.progressEngineVersion = version;
+  const at = "2026-10-01T10:00:00.000Z";
+  const project: any = {
+    id: "stock-project",
+    title: "Workbench",
+    kind: "renovation",
+    status: "active",
+    venueId: "shop",
+    updatedAt: at,
+    lifecycle: {
+      version: 2,
+      phase: "materials",
+      builderId: "a",
+      affectedIds: [],
+      approvals: [],
+      candidates: [],
+      requirements: [
+        { id: "wood", category: "structure", title: "cedar", needed: true, carriedAt: "", deliveredAt: "" },
+      ],
+      sources: [
+        {
+          requirementId: "wood",
+          kind: "existing-item",
+          venueId: "shop",
+          zoneId: "shop:common",
+          itemName: "cedar",
+          supplierId: "",
+          evidenceId: "source",
+          at,
+          acquiredAt: "",
+        },
+      ],
+      recordedItems: [{ venueId: "shop", zoneId: "shop:common", itemName: "cedar" }],
+      evidenceIds: [],
+      spokenProofs: [],
+      heldSupplies: [],
+      completedAt: "",
+      requirementsAcceptedAt: at,
+    },
+  };
+  stock.projects.push(project);
+  stock.venueEvents.push({
+    id: "pickup",
+    venueId: "shop",
+    venueName: "Shop",
+    zoneId: "shop:common",
+    text: "Pat picks up cedar",
+    at,
+    actionReceipt: {
+      submissionId: "act",
+      happened: true,
+      narration: "Pat picks up cedar",
+      removeItem: "cedar",
+      transferTo: "player",
+      itemTransfer: { itemName: "cedar", recipientId: "player" },
+      witnessIds: ["a"],
+    },
+  });
+  if (version === 1) {
+    createProjectProgress(stock, project, at);
+    const task = stock.progressTasks[0];
+    task.phaseIndex = task.definition.phases.findIndex((phase) => phase.id === "materials");
+    recordProjectProgress(
+      stock,
+      project,
+      "source:wood",
+      {
+        id: "source-proof",
+        kind: "project-source",
+        sourceId: "source",
+        at,
+        venueId: "shop",
+      },
+      "recorded-item",
+    );
+  }
+  const revision = version === 1 ? stock.progressTasks[0].definition.revision : legacyProjectRevision(project);
+  assert.equal(applyRecordedProjectPickup(stock, "pickup", project.id, "wood", revision + 1, "act"), false);
+  const missing = structuredClone(stock);
+  delete missing.venueEvents[0].actionReceipt!.itemTransfer;
+  assert.equal(
+    applyRecordedProjectPickup(missing, "pickup", project.id, "wood", revision, "act"),
+    false,
+    "A statement or removal alone cannot establish acquired stock",
+  );
+  const wrong = structuredClone(stock);
+  wrong.venueEvents[0].actionReceipt!.itemTransfer!.recipientId = "a";
+  assert.equal(applyRecordedProjectPickup(wrong, "pickup", project.id, "wood", revision, "act"), false);
+  assert.equal(applyRecordedProjectPickup(stock, "pickup", project.id, "wood", revision, "act"), true);
+  assert.equal(project.lifecycle.requirements[0].carriedAt, at);
+  assert.equal(
+    applyRecordedProjectPickup(stock, "pickup", project.id, "wood", revision, "act"),
+    false,
+    "A replay cannot consume one physical pickup twice",
+  );
+  if (version === 1)
+    assert.ok(stock.progressTasks[0].receipts.some((receipt) => receipt.requirementId === "acquired:wood"));
+}
 console.log(
   "Villages Project checks: contextual speech, legacy routing, exact evidence, ambiguity, and historical requirements ok",
 );

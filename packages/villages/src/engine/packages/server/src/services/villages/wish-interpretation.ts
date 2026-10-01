@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { VillageWish, VillageVenueEvent, VillageState } from "./types.js";
+import type { VenueScene } from "./venue-session.js";
 import type { VillageWishClaimContext, VillageWishVerdictResult } from "./wishes.js";
 import { proposeWishVerdict } from "./wishes.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -25,6 +26,23 @@ export type WishCriteria = {
   target?: string;
   venueId?: string;
 };
+export function coerceWishApplicationProof(value: unknown): {
+  fingerprint: string;
+  criteria: WishCriteria;
+  receiptIds: string[];
+} {
+  const row = asRecord(value),
+    criteria = readWishCriteria({ ...asRecord(row.criteria), complete: true }, { wish: "" } as VillageWish);
+  return {
+    fingerprint: /^[a-f0-9]{64}$/u.test(asTrimmedString(row.fingerprint))
+      ? asTrimmedString(row.fingerprint)
+      : "invalid",
+    criteria: criteria || { kind: "complex", goal: "Invalid stored proof", requiresPhysical: true },
+    receiptIds: Array.isArray(row.receiptIds)
+      ? row.receiptIds.filter((id): id is string => typeof id === "string" && id.length <= 200).slice(0, 200)
+      : [],
+  };
+}
 type WishReceipt = VillageVenueEvent & { completedProject?: boolean };
 export type WishInterpretationContext = VillageWishClaimContext & {
   actorId: string;
@@ -32,11 +50,20 @@ export type WishInterpretationContext = VillageWishClaimContext & {
   receipts: WishReceipt[];
 };
 /** Public completed Projects are physical facts; prose or an unfinished task cannot create this proof. */
-export function wishReceiptRecords(state: VillageState, actorId: string): WishReceipt[] {
+export function wishReceiptRecords(state: VillageState, actorId: string, scene?: VenueScene): WishReceipt[] {
   return [
-    ...state.venueEvents.filter(
-      (event) => event.actionReceipt?.happened && event.actionReceipt.witnessIds?.includes(actorId),
-    ),
+    ...state.venueEvents.flatMap((event) => {
+      const proof = event.actionReceipt;
+      if (!proof?.happened) return [];
+      const saved = scene?.submissions.find(
+        (turn) => turn.id === proof.submissionId && turn.action?.happened && turn.activeIdsAtTurn?.includes(actorId),
+      );
+      return proof.witnessIds?.includes(actorId)
+        ? [event]
+        : saved
+          ? [{ ...event, actionReceipt: { ...proof, witnessIds: [...saved.activeIdsAtTurn!] } }]
+          : [];
+    }),
     ...state.projects.flatMap((project) => {
       const flow = project.lifecycle;
       const task = state.progressTasks.find((item) => item.definition.owner.id === project.id);
