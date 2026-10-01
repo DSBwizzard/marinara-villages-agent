@@ -15,6 +15,12 @@ export function storedWish(value: unknown): VillageWish | undefined {
   const wish = coerceWish(raw, raw.id as string, instant(raw.addedAt));
   if (!wish) return undefined;
   wish.expiresAt = instant(raw.expiresAt);
+  if (instant(raw.learnedAt)) {
+    wish.learnedAt = instant(raw.learnedAt);
+    wish.learnedLineIds = Array.isArray(raw.learnedLineIds)
+      ? raw.learnedLineIds.filter((id): id is string => typeof id === "string")
+      : [];
+  }
   return wish;
 }
 export function coerceWishActivities(value: unknown): WishActivity[] {

@@ -155,6 +155,9 @@ export function defaultVillageState(): VillageState {
   return {
     version: 2,
     backgroundReceipts: {},
+    exchangeReceipts: {},
+    wishKnowledge: {},
+    projectWishOutbox: [],
     wishRefillIntents: {},
     progressEngineVersion: 0,
     name: "Willowbrook",
@@ -460,6 +463,14 @@ function coerceWish(value: unknown): VillageWish | null {
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: asInstant(raw.addedAt),
     expiresAt: asInstant(raw.expiresAt),
+    ...(asInstant(raw.learnedAt)
+      ? {
+          learnedAt: asInstant(raw.learnedAt),
+          learnedLineIds: Array.isArray(raw.learnedLineIds)
+            ? raw.learnedLineIds.filter((id): id is string => typeof id === "string")
+            : [],
+        }
+      : {}),
     ...(shortWishText(need.id)
       ? {
           need: {
@@ -2436,6 +2447,11 @@ export function coerceVillageState(value: unknown): VillageState {
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(([, value]) => typeof value === "string"),
     ),
+    exchangeReceipts: asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"],
+    wishKnowledge: asRecord(raw.wishKnowledge) as VillageState["wishKnowledge"],
+    projectWishOutbox: Array.isArray(raw.projectWishOutbox)
+      ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
+      : [],
     wishRefillIntents: Object.fromEntries(
       Object.entries(asRecord(raw.wishRefillIntents)).flatMap(([id, value]) => {
         const row = asRecord(value);

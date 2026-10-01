@@ -1,5 +1,9 @@
 import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
+// Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
+function fixtureJson(value: any) {
+  return JSON.stringify(value?.segments || value?.lines ? { wishChanges: [], ...value } : value);
+}
 import {
   readRelationshipState,
   relationshipFor,
@@ -230,7 +234,7 @@ const release = configureVillagesRuntime({
           if (system.startsWith("Interpret the meaning of witnessed Scene evidence")) {
             const { checks } = JSON.parse(user);
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 results: checks.map((check: any) => {
                   if (check.domain === "wish") {
                     wishJudgeCalls++;
@@ -277,7 +281,7 @@ const release = configureVillagesRuntime({
           }
           if (system.startsWith("Prepare faithful fulfillment conditions"))
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 complete: true,
                 kind: "transfer",
                 requiresPhysical: true,
@@ -288,12 +292,12 @@ const release = configureVillagesRuntime({
             };
           calls += 1; // Existing cadence assertions concern narration and legacy calls; interpretation has its own suite.
           if (system.startsWith("Identify explicit Project events"))
-            return { content: JSON.stringify({ events: [] }), finishReason: "stop" };
+            return { content: fixtureJson({ events: [] }), finishReason: "stop" };
           // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
           if (system.startsWith("Describe a stable ordinary routine")) return { content: "{}", finishReason: "stop" };
           if (user.startsWith("The player arrives outside this Residence"))
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: [],
                 segments: [{ kind: "narration", text: "The door stays closed for now.", heardBy: [] }],
               }),
@@ -302,7 +306,7 @@ const release = configureVillagesRuntime({
           if (user === "Please let me in") {
             const quote = "Come into our Common Space with me now.";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
                 invitation: {
@@ -320,7 +324,7 @@ const release = configureVillagesRuntime({
           if (user === "Can I use Bob's room") {
             const quote = "Oh yeah.";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
                 invitation: {
@@ -337,7 +341,7 @@ const release = configureVillagesRuntime({
           }
           if (user === "I wait quietly")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: [],
                 segments: [{ kind: "narration", text: "No one comes to the door.", heardBy: [] }],
               }),
@@ -345,7 +349,7 @@ const release = configureVillagesRuntime({
             };
           if (user === "I place a sign outside")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: [],
                 segments: [{ kind: "narration", text: "A sign stands beside the gate.", heardBy: [] }],
                 sceneChange: { happened: true, narration: "A sign stands beside the gate.", addItem: "sign" },
@@ -355,7 +359,7 @@ const release = configureVillagesRuntime({
           if (user === "What new venue do we need?") {
             const quote = "Could we build a Power Plant for reliable light?";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
                 venueRequest: { speakerId: "bob", name: "Power Plant", classes: ["workplace"], quote },
@@ -366,7 +370,7 @@ const release = configureVillagesRuntime({
           if (user === "Come visit tomorrow") {
             const quote = "You may come into our shared space on your next visit.";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
                 invitation: { speakerId: "bob", venueId: "home", scope: "shared", timing: "later", quote },
@@ -377,7 +381,7 @@ const release = configureVillagesRuntime({
           if (user === "Please enter Bob's private space") {
             const quote = "You may enter my private space with me now.";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
                 invitation: {
@@ -398,7 +402,7 @@ const release = configureVillagesRuntime({
             const quote = "I approve that exact room proposal.";
             const proposalId = system.match(/Pending exact Residence edit proposals: ([a-z0-9]+):/u)?.[1] ?? "";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: [speakerId],
                 segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
                 editApproval: { speakerId, proposalId, approved: true, quote },
@@ -410,7 +414,7 @@ const release = configureVillagesRuntime({
             lastMailboxSystem = system;
             const people = JSON.parse(user).people as Array<{ id: string }>;
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 decisions: people.map((person) => ({
                   characterId: person.id,
                   accepted: mailboxAccept,
@@ -459,7 +463,7 @@ const release = configureVillagesRuntime({
                 (line: any) => line.heardBy.includes("bob") && !line.heardBy.includes("tina"),
               );
               return {
-                content: JSON.stringify({
+                content: fixtureJson({
                   memories: [
                     { characterId: "tina", text: "A secret Tina did not hear.", lineIds: [privateLine.lineId] },
                   ],
@@ -500,7 +504,7 @@ const release = configureVillagesRuntime({
             if (responseMode === "length") return { content: "{", finishReason: "length" };
             if (responseMode === "malformed") return { content: "{bad", finishReason: "stop" };
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 relationshipReview: {
                   changes: relationshipDecisions
                     ? ["warmth", "trust"].map((dimension) => ({
@@ -548,7 +552,7 @@ const release = configureVillagesRuntime({
             }
             const input = JSON.parse(user);
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 evidence: input.lines
                   .filter((line: any) => line.content.includes("important detail"))
                   .map((line: any) => ({ lineId: line.lineId, quote: "important detail" })),
@@ -561,7 +565,7 @@ const release = configureVillagesRuntime({
             lastEventsSystem = system;
             assert.match(system, /Do not give them a new turn in an Event/u);
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 happenings: [
                   {
                     opportunityId: "opportunity-feature",
@@ -588,7 +592,7 @@ const release = configureVillagesRuntime({
             const window = user.includes("tries to: Open the window");
             const cleanup = user.includes("tries to: Clean the spill");
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 happened: !failed,
                 narration: failed
                   ? "The wall is too heavy to lift."
@@ -618,7 +622,7 @@ const release = configureVillagesRuntime({
             assert.match(user, /Has .* really done that/u);
             wishJudgeCalls += 1;
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 fulfilled: true,
                 wishId: "wish-tina",
                 reason: "The deed happened.",
@@ -635,7 +639,7 @@ const release = configureVillagesRuntime({
               releaseConcurrent = resolve;
             });
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [
                   {
@@ -651,7 +655,7 @@ const release = configureVillagesRuntime({
           }
           if (system.includes("Nobody is present."))
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: [],
                 segments: [{ kind: "narration", text: "The empty room stays quiet.", heardBy: [] }],
               }),
@@ -666,7 +670,7 @@ const release = configureVillagesRuntime({
             return new Promise((resolve) => {
               releaseHeldGreeting = () =>
                 resolve({
-                  content: JSON.stringify({
+                  content: fixtureJson({
                     heardPlayerBy: [],
                     segments: [{ kind: "dialogue", speakerId: "bob", text: "A late hello.", heardBy: ["bob"] }],
                   }),
@@ -678,7 +682,7 @@ const release = configureVillagesRuntime({
           if (user.startsWith("The player enters this space") && malformedGreetingOnce) {
             malformedGreetingOnce = false;
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["outsider"],
                 segments: [
                   {
@@ -696,12 +700,12 @@ const release = configureVillagesRuntime({
           }
           if (user.startsWith("The player enters this space") && emptyOpeningFailures > 0) {
             emptyOpeningFailures -= 1;
-            return { content: JSON.stringify({ heardPlayerBy: [], segments: [] }), finishReason: "stop" };
+            return { content: fixtureJson({ heardPlayerBy: [], segments: [] }), finishReason: "stop" };
           }
           if (user.startsWith("The player enters this space") && openingSegmentsOnce) {
             const segments = openingSegmentsOnce;
             openingSegmentsOnce = null;
-            return { content: JSON.stringify({ heardPlayerBy: [], segments }), finishReason: "stop" };
+            return { content: fixtureJson({ heardPlayerBy: [], segments }), finishReason: "stop" };
           }
           if (user === "Fail once" && failReplyOnce) {
             failReplyOnce = false;
@@ -714,7 +718,7 @@ const release = configureVillagesRuntime({
           if (user === "Set down a lantern" && quietActReplyOnce) {
             quietActReplyOnce = false;
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "narration", text: "Bob makes room for the lantern on the table." }],
               }),
@@ -724,7 +728,7 @@ const release = configureVillagesRuntime({
           if (user === "How are you doing?" && narrationOnlyOnce) {
             narrationOnlyOnce = false;
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "narration", text: "Tina glanced over.", heardBy: ["bob", "tina"] }],
               }),
@@ -733,17 +737,17 @@ const release = configureVillagesRuntime({
           }
           if (user === "Still no answer")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "narration", text: "No one spoke.", heardBy: ["bob", "tina"] }],
               }),
               finishReason: "stop",
             };
           if (user === "No scene moment")
-            return { content: JSON.stringify({ heardPlayerBy: ["tina"], segments: [] }), finishReason: "stop" };
+            return { content: fixtureJson({ heardPlayerBy: ["tina"], segments: [] }), finishReason: "stop" };
           if (user === "Ask me about myself")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: "What about you?", heardBy: ["bob", "tina"] }],
               }),
@@ -751,7 +755,7 @@ const release = configureVillagesRuntime({
             };
           if (user === "I actually don't remember anything. Funny, huh?")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: system.includes("previous draft failed validation")
                   ? [
@@ -781,7 +785,7 @@ const release = configureVillagesRuntime({
             };
           if (user === "I don't remember where I came from.")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [
                   {
@@ -802,7 +806,7 @@ const release = configureVillagesRuntime({
           }
           if (user === "Always echo this long player statement" && exhaustEcho)
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
                 sceneChange: { happened: true, narration: "A chair moves.", sceneNote: "A chair moves." },
@@ -811,7 +815,7 @@ const release = configureVillagesRuntime({
             };
           if (user === "Place an intricately carved silver bowl on the table")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: user, heardBy: ["bob", "tina"] }],
               }),
@@ -819,7 +823,7 @@ const release = configureVillagesRuntime({
             };
           if (user === "Wait outside quietly" || user === "Look around the Private Space")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: user === "Wait outside quietly" ? [] : ["bob"],
                 segments: [{ kind: "narration", text: "Bob continues mending the torn cloth." }],
               }),
@@ -827,7 +831,7 @@ const release = configureVillagesRuntime({
             };
           if (user === "A lively scene")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [
                   {
@@ -884,7 +888,7 @@ const release = configureVillagesRuntime({
                     }
                   : undefined;
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [
                   {
@@ -902,7 +906,7 @@ const release = configureVillagesRuntime({
           }
           if (user === "Remember the bridge")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [
                   {
@@ -932,7 +936,7 @@ const release = configureVillagesRuntime({
           if (user === "A promise and four kisses") {
             const everyone = ["bob", "tina", "cora", "dan"];
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: everyone,
                 segments: [
                   {
@@ -962,7 +966,7 @@ const release = configureVillagesRuntime({
           }
           if (user === "Review failure promise")
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [
                   {
@@ -986,7 +990,7 @@ const release = configureVillagesRuntime({
           if (user === "Bob asks to move") {
             const quote = "May I move to the empty room?";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob"] }],
                 residenceRequest: { speakerId: "bob", venueId: "empty", quote },
@@ -998,7 +1002,7 @@ const release = configureVillagesRuntime({
             const speakerId = user.startsWith("Bob") ? "bob" : "tina";
             const quote = "I am heading out now.";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: [speakerId],
                 segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
                 departures: [{ speakerId, quote }],
@@ -1009,7 +1013,7 @@ const release = configureVillagesRuntime({
           if (user === "Everyone says goodbye") {
             const quote = "We are all closing up and heading home.";
             return {
-              content: JSON.stringify({
+              content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
                 segments: [{ kind: "dialogue", speakerId: "bob", text: quote, heardBy: ["bob", "tina"] }],
                 sceneEnded: { speakerId: "bob", quote },
@@ -1030,7 +1034,7 @@ const release = configureVillagesRuntime({
           if (user === "Tina heads away") departures = ["tina"];
           if (user === "A natural goodbye") sceneEnded = true;
           return {
-            content: JSON.stringify({
+            content: fixtureJson({
               heardPlayerBy: user.startsWith("The player is already inside") ? [] : heardBy,
               lines: [
                 {

@@ -171,7 +171,12 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       closeKnownAt: known?.closeAt ?? "",
       routine: known?.routine ?? [],
       interests: known?.interests ?? "",
-      wishes: known?.wishes ?? [],
+      wishes: [
+        ...new Set([
+          ...(known?.wishes ?? []),
+          ...(village.wishKnowledge[resident.characterId] ?? []).map((wish) => wish.text),
+        ]),
+      ],
       ties: (known?.ties ?? []).map((tie) => ({
         ...tie,
         name:

@@ -45,6 +45,8 @@ import type { VillagesTurnBeat } from "./turn-beats.js";
  * in words, and `wishWeightWords`, which says the same thing to the narrator.
  */
 export type VillageWish = {
+  learnedAt?: string;
+  learnedLineIds?: string[];
   need?: { id: string; subject: string; action: string; policy: import("./wish-types.js").WishPolicy };
   /**
    * Stable within one save, and the handle a wish is answered BY.
@@ -1219,6 +1221,9 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  exchangeReceipts: Record<string, import("./wish-progress.js").ExchangeEffectReceipt>;
+  wishKnowledge: Record<string, { wishId: string; text: string; learnedAt: string; lineIds: string[] }[]>;
+  projectWishOutbox: { projectId: string; at: string }[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;
   socialOutbox?: import("./relationship-social.js").SocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;

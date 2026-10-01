@@ -1050,6 +1050,7 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
       project.status = "complete";
       project.progress = 100;
       project.updatedAt = at;
+      state.projectWishOutbox.push({ projectId: id, at });
     };
     const evidence = {
       id: `project:${id}:opened`,
@@ -1063,6 +1064,7 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
   });
   outsideVenueOperation(() => {
     void preparePrivateSpaces().catch(() => {});
+    void import("./wish-progress.js").then((module) => module.processProjectWishOutbox()).catch(() => {});
   });
 }
 

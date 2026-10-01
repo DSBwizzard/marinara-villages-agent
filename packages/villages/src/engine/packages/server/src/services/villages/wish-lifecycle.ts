@@ -135,6 +135,8 @@ export async function correctResidentWish(characterId: string, wishId: string, n
     ) {
       const wish = coerceWish({ ...outcome.wish, need: outcome.wish.need }, wishId, now.toISOString());
       if (wish) {
+        wish.learnedAt = outcome.wish.learnedAt;
+        wish.learnedLineIds = outcome.wish.learnedLineIds;
         rememberWishNeed(resident, wish, outcome.needId);
         resident.agenda.wishes.push(wish);
       }
