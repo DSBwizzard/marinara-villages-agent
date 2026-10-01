@@ -122,7 +122,7 @@ export async function seedFoundingVenueDetails(
         "Use Day 1 selectively for plausible initial condition; do not repeat it in every Venue.",
         "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
         'Return JSON only: {"venues":[{"id":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
-        "Respect the actual layout. Exterior-only venues have no interior. A Private Area can be the entire interior with no Common Area. Seed only observable exterior/Common Area details, never private contents.",
+        "Respect the actual layout. Exterior-only venues have no interior. A Private Space can be the entire interior with no Common Space. Seed only observable exterior/Common Space details, never private contents.",
         "Use short concrete details. Empty lists and an empty condition are valid where nothing is established.",
       ].join("\n"),
     },

@@ -3,6 +3,7 @@ import {
   acquireBuildSource,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.js";
 import assert from "node:assert/strict";
+import { mock } from "node:test";
 import {
   defaultVillageState,
   coerceVillageState,
@@ -32,7 +33,10 @@ import {
   activeVenueSession,
   endVenueSession,
   recoverVenueSceneWork,
+  discardVenueVisitDebug,
+  publicSceneResponse,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+import { sceneLockedRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
 import { applyVenueSceneChange } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
 import {
   buildVillageSnapshot,
@@ -239,7 +243,7 @@ let paidCalls = 0;
 let replyGate: Promise<void> | null = null,
   signalReplyStarted: (() => void) | null = null;
 let lastPrompt = "",
-  response: "ordinary" | "invite-now" | "invite-later" | "legacy-handoff" = "ordinary";
+  response: "ordinary" | "invite-now" | "invite-later" | "legacy-handoff" | "depart-chef" = "ordinary";
 const release = configureVillagesRuntime({
   logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
   isDebugAgentsEnabled: () => true,
@@ -297,6 +301,17 @@ const release = configureVillagesRuntime({
           const audience = (lastPrompt.match(/The residents currently here are: ([^.]*)\./)?.[1] ?? "")
             .split(", ")
             .filter(Boolean);
+          if (response === "depart-chef") {
+            const quote = "I am heading out of the Venue now.";
+            return {
+              content: JSON.stringify({
+                heardPlayerBy: audience,
+                segments: [{ kind: "dialogue", speakerId: "chef", text: quote, heardBy: audience }],
+                departures: [{ speakerId: "chef", quote }],
+              }),
+              finishReason: "stop",
+            };
+          }
           if (response === "legacy-handoff")
             return {
               content: JSON.stringify({
@@ -346,6 +361,184 @@ async function finishProject(projectId: string) {
   });
   await openFinishedProject(projectId, {});
 }
+
+async function sceneAttendanceChecks() {
+  const original = structuredClone(await readVillageState());
+  const beforeBoundary = new Date(now);
+  beforeBoundary.setHours(15, 59, 50, 0);
+  mock.timers.enable({ apis: ["Date"], now: beforeBoundary.getTime() });
+  try {
+    await mutateVillageState((state) => {
+      state.venues[0]!.workerIds = ["chef", "resident"];
+      state.villagers.push(villager("late", "home", "exterior"));
+      const locations = [
+        ["cafe", "exterior", "home", "exterior"],
+        ["cafe", "gathering", "cafe", "exterior"],
+        ["cafe", "stock", "cafe", "gathering"],
+        ["home", "exterior", "cafe", "exterior"],
+      ];
+      state.villagers.forEach((person, index) => {
+        const [venueId, zoneId, nextVenueId, nextZoneId] = locations[index]!;
+        const block = person.agenda!.activeDay!.blocks[0]!;
+        const blocks = [
+          {
+            ...block,
+            startMinute: 0,
+            endMinute: 960,
+            venueId,
+            zoneId,
+            activity: `captured activity ${person.characterId}`,
+          },
+          {
+            ...block,
+            startMinute: 960,
+            endMinute: 1440,
+            venueId: nextVenueId,
+            zoneId: nextZoneId,
+            activity: `later activity ${person.characterId}`,
+          },
+        ];
+        person.agenda!.activeDay!.blocks = blocks;
+        person.agenda!.day = blocks;
+        person.agenda!.week = { [weekday]: blocks };
+      });
+    });
+    const entered = await enterVenue("cafe", undefined, "", undefined, "exterior");
+    assert.deepEqual(entered.activeIds, ["chef"]);
+    assert.equal(entered.sceneAttendance!.occupants.length, 3, "all Venue Zones are captured together");
+    mock.timers.setTime(beforeBoundary.getTime() + 20_000);
+    let scene = await greetVenue(entered.id);
+    assert.deepEqual(scene.activeIds, ["chef"], "crossing a boundary during opening preserves attendance");
+    assert.deepEqual(
+      scene.participants.map((person) => person.characterId),
+      ["chef"],
+      "unseen Zones do not leak their cast",
+    );
+    assert.match(lastPrompt, /Scene activity: captured activity chef/);
+    assert.doesNotMatch(lastPrompt, /later activity chef/);
+    assert.deepEqual(
+      (await activeVenueSession())!.activeIds,
+      ["chef"],
+      "polling cannot reconcile background attendance",
+    );
+
+    let routeHandler: any;
+    const routes = sceneLockedRoutes({
+      get(_path: string, handler: any) {
+        routeHandler = handler;
+      },
+    } as any);
+    routes.get("/rooms/active", async () => ({ session: scene }));
+    const browserResponse = await routeHandler({}, {});
+    assert.equal(browserResponse.session.sceneAttendance, undefined, "route responses hide the whole-Venue snapshot");
+    assert.doesNotMatch(JSON.stringify(browserResponse), /captured activity resident/);
+    assert.equal(scene.sceneAttendance!.occupants.length, 3, "projection cannot mutate durable attendance");
+    const nested = publicSceneResponse({
+      session: scene,
+      operation: { snapshot: scene, checkpoints: { saved: scene } },
+    });
+    assert.doesNotMatch(JSON.stringify(nested), /sceneAttendance/);
+
+    let resumeSnapshotReply!: () => void;
+    replyGate = new Promise((resolve) => {
+      resumeSnapshotReply = resolve;
+    });
+    const snapshotReplyStarted = new Promise<void>((resolve) => {
+      signalReplyStarted = resolve;
+    });
+    const pendingSnapshotReply = sendVenueTurn({
+      sessionId: scene.id,
+      message: "Keep discussing the captured moment.",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "snapshot-turn",
+    });
+    await snapshotReplyStarted;
+    mock.timers.setTime(beforeBoundary.getTime() + 70_000);
+    await mutateVillageState((state) => {
+      state.villagers[0]!.agenda!.activeDay!.blocks[1]!.zoneId = "gathering";
+    });
+    assert.deepEqual((await activeVenueSession())!.activeIds, ["chef"], "an admitted reply retains its Scene audience");
+    resumeSnapshotReply();
+    const sent = await pendingSnapshotReply;
+    signalReplyStarted = null;
+    assert.deepEqual(sent.session.submissions.at(-1)!.activeIdsAtTurn, ["chef"]);
+    assert.ok(
+      sent.session.lines.every((line) => !line.heardBy.includes("late")),
+      "later arrivals cannot witness speech",
+    );
+    scene = await moveVenueZone(scene.id, "gathering");
+    assert.equal(scene.id, entered.id, "Zone movement continues the same Scene");
+    assert.deepEqual(scene.activeIds, ["guest"], "first entry into a Zone uses Scene-start positions");
+    scene = await moveVenueZone(scene.id, "exterior");
+    assert.deepEqual(scene.activeIds, ["chef"], "returning to a Zone preserves its original occupants");
+    const saved = records.get(`villages-venue-visit-${scene.id}`)!;
+    saved.data = JSON.parse(JSON.stringify(saved.data));
+    assert.deepEqual((await activeVenueSession())!.activeIds, ["chef"], "storage reload preserves positions");
+    delete saved.data.sceneAttendance;
+    assert.deepEqual(
+      (await activeVenueSession())!.activeIds,
+      ["chef"],
+      "legacy active Scenes retain their visible cast",
+    );
+    assert.ok((await activeVenueSession())!.sceneAttendance, "legacy attendance is captured once");
+    response = "depart-chef";
+    const departure = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Farewell, chef.",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "snapshot-departure",
+    });
+    assert.deepEqual(departure.session.activeIds, [], "a cited spoken departure updates the Scene");
+    assert.equal(
+      departure.session.status,
+      "active",
+      "an empty Zone does not end a Scene with residents in other Zones",
+    );
+    response = "ordinary";
+    scene = await moveVenueZone(scene.id, "gathering");
+    assert.deepEqual(scene.activeIds, ["guest"]);
+    scene = await moveVenueZone(scene.id, "exterior");
+    assert.deepEqual(scene.activeIds, [], "Zone movement cannot resurrect a resident who left the Scene");
+    await discardVenueVisitDebug(scene.id);
+    scene = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "exterior")).id);
+    assert.deepEqual(scene.activeIds, ["guest", "late"], "a new Scene uses current schedules");
+    await discardVenueVisitDebug(scene.id);
+
+    await mutateVillageState((state) => {
+      Object.assign(state, structuredClone(original));
+      const home = state.venues[1]!;
+      home.occupancy.playerHome = true;
+      home.residentIds = ["resident", "chef"];
+      const chef = state.villagers[0]!;
+      const block = chef.agenda!.activeDay!.blocks[0]!;
+      block.venueId = "home";
+      block.zoneId = "residence";
+    });
+    scene = await enterVenue("home", undefined, "", undefined, "exterior");
+    assert.deepEqual(scene.activeIds, []);
+    await mutateVillageState((state) => {
+      for (const person of state.villagers) {
+        person.agenda!.activeDay!.blocks[0]!.venueId = "cafe";
+        person.agenda!.activeDay!.blocks[0]!.zoneId = "exterior";
+      }
+    });
+    scene = await moveVenueZone(scene.id, "residence");
+    assert.deepEqual(scene.activeIds, ["chef"], "Common Space uses the whole-Venue snapshot");
+    scene = await moveVenueZone(scene.id, "private:resident");
+    assert.deepEqual(scene.activeIds, ["resident"], "Private Space uses its captured resident after agenda movement");
+    scene = await moveVenueZone(scene.id, "exterior");
+    assert.deepEqual(scene.activeIds, []);
+    scene = await moveVenueZone(scene.id, "private:resident");
+    assert.deepEqual(scene.activeIds, ["resident"], "Exterior to Private Space to Exterior remains one Scene");
+    await discardVenueVisitDebug(scene.id);
+  } finally {
+    response = "ordinary";
+    mock.timers.reset();
+    await mutateVillageState((state) => Object.assign(state, structuredClone(original)));
+  }
+}
 async function main() {
   try {
     await createRenovationProject("cafe", {
@@ -385,6 +578,7 @@ async function main() {
     assert.deepEqual(shop.classes, ["gathering", "workplace"]);
     assert.equal(canOccupyZone(shop, resolveVenueZone(shop, "stock")!, "chef"), true);
     assert.equal(canOccupyZone(shop, resolveVenueZone(shop, "stock")!, "guest"), false);
+    await sceneAttendanceChecks();
     await assert.rejects(() => enterVenue("cafe", undefined, "", undefined, "stock"), /invitation/);
     let visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
     assert.deepEqual(visit.activeIds, ["chef", "guest"]);
@@ -441,7 +635,7 @@ async function main() {
       submissionId: "pending-navigation",
     });
     await started;
-    await assert.rejects(() => moveVenueZone(visit.id, "exterior"), /conversation is responding/);
+    await assert.rejects(() => moveVenueZone(visit.id, "exterior"), /Scene is responding/);
     resumeReply!();
     await pending;
     signalReplyStarted = null;

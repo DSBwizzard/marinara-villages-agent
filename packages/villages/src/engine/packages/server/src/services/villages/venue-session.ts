@@ -126,6 +126,12 @@ export type VenueLine = {
 };
 
 export type VenueParticipant = { characterId: string; name: string; doing: string };
+
+/** Server-only positions for one Scene across every Zone of its Venue. */
+type SceneAttendance = {
+  capturedAt: string;
+  occupants: (VenueParticipant & { zoneId: string; availability: string })[];
+};
 /** Immutable room evidence for project accounting; a model verdict alone is never a receipt. */
 export async function readProjectTurnEvidence(sessionId: string, submissionId: string) {
   const session = await readSession(sessionId);
@@ -182,7 +188,7 @@ type VenueSubmission = {
   message: string;
   mode: "chat" | "ask" | "fulfill" | "act" | "leave";
   targetId: string;
-  areaAtTurn?: VenueSession["area"];
+  areaAtTurn?: VenueScene["area"];
   zoneIdAtTurn?: string;
   privateOwnerIdAtTurn?: string;
   activeIdsAtTurn?: string[];
@@ -213,7 +219,7 @@ type VenueSubmission = {
     scope: "shared" | "private";
     privateSpaceId?: string;
     zoneId?: string;
-    area?: VenueSession["area"];
+    area?: VenueScene["area"];
     spaceClass?: VillageVenueClass;
     accompanies?: boolean;
     timing: "now" | "later";
@@ -271,8 +277,8 @@ export type VenueRecordEvent = {
 };
 type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 
-/** One document is both the active transcript and the player's durable visit archive. */
-export type VenueSession = {
+/** One document is both the active transcript and the player's durable Scene archive. */
+export type VenueScene = {
   version: 1;
   sceneRevision: number;
   operation?: VenueOperation;
@@ -305,6 +311,7 @@ export type VenueSession = {
   memoryMode: "tiered" | "turn" | "end";
   status: "opening" | "active" | "closing" | "closed";
   participants: VenueParticipant[];
+  sceneAttendance?: SceneAttendance;
   activeIds: string[];
   lines: VenueLine[];
   heardHistory: { characterId: string; lineIds: string[] }[];
@@ -316,6 +323,9 @@ export type VenueSession = {
   relationshipReview?: { seed: string; applied: boolean; batches: RelationshipReview[]; receipts: VenueRecordEvent[] };
   recap: string;
 };
+
+/** Compatibility name for existing package integrations and saved Scene workflows. */
+export type VenueSession = VenueScene;
 
 type ActiveVenue = { sessionId: string; placeId: string };
 const ACTIVE_ID = "villages-active-venue";
@@ -333,10 +343,10 @@ function coerceActive(value: unknown): ActiveVenue {
 
 const activeSlot: DocumentSlot<ActiveVenue> = {
   kind: "venue-active",
-  name: "Active venue conversation",
-  description: "The one venue conversation the player is in.",
+  name: "Active Scene",
+  description: "The one Scene the player is in.",
   coerce: coerceActive,
-  label: () => "Active venue conversation",
+  label: () => "Active Scene",
 };
 
 function coerceVenueRecollection(value: unknown): VenueRecollection | null {
@@ -390,7 +400,7 @@ function coerceMemoryDecision(value: unknown): VenueMemoryDecision | null {
   };
 }
 
-function coerceSession(value: unknown): VenueSession {
+function coerceSession(value: unknown): VenueScene {
   const raw = asRecord(value);
   const participants = Array.isArray(raw.participants)
     ? raw.participants
@@ -437,7 +447,7 @@ function coerceSession(value: unknown): VenueSession {
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
     generationReceipts: Array.isArray(raw.generationReceipts)
-      ? (raw.generationReceipts as VenueSession["generationReceipts"])
+      ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
@@ -498,6 +508,30 @@ function coerceSession(value: unknown): VenueSession {
     memoryMode: raw.memoryMode === "tiered" ? "tiered" : raw.memoryMode === "turn" ? "turn" : "end",
     status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
     participants,
+    ...(raw.sceneAttendance && typeof raw.sceneAttendance === "object"
+      ? {
+          sceneAttendance: {
+            capturedAt: asString(asRecord(raw.sceneAttendance).capturedAt) || asString(raw.startedAt),
+            occupants: (Array.isArray(asRecord(raw.sceneAttendance).occupants)
+              ? (asRecord(raw.sceneAttendance).occupants as unknown[])
+              : []
+            ).flatMap((value) => {
+              const row = asRecord(value);
+              return row.characterId && row.zoneId
+                ? [
+                    {
+                      characterId: asTrimmedString(row.characterId),
+                      name: asTrimmedString(row.name),
+                      doing: asString(row.doing),
+                      zoneId: asTrimmedString(row.zoneId),
+                      availability: asString(row.availability),
+                    },
+                  ]
+                : [];
+            }),
+          },
+        }
+      : {}),
     activeIds: Array.isArray(raw.activeIds) ? raw.activeIds.filter((id): id is string => typeof id === "string") : [],
     lines,
     heardHistory: Array.isArray(raw.heardHistory)
@@ -539,7 +573,7 @@ function coerceSession(value: unknown): VenueSession {
               row.areaAtTurn === "shared" ||
               row.areaAtTurn === "private" ||
               row.areaAtTurn === "public"
-                ? { areaAtTurn: row.areaAtTurn as VenueSession["area"] }
+                ? { areaAtTurn: row.areaAtTurn as VenueScene["area"] }
                 : {}),
               ...(typeof row.privateOwnerIdAtTurn === "string"
                 ? { privateOwnerIdAtTurn: row.privateOwnerIdAtTurn }
@@ -643,7 +677,7 @@ function coerceSession(value: unknown): VenueSession {
         : null,
     relationshipReview:
       raw.relationshipReview && typeof raw.relationshipReview === "object"
-        ? (structuredClone(raw.relationshipReview) as VenueSession["relationshipReview"])
+        ? (structuredClone(raw.relationshipReview) as VenueScene["relationshipReview"])
         : undefined,
     memoryPending: raw.memoryPending === true,
     memoryReview: (() => {
@@ -670,12 +704,12 @@ function coerceSession(value: unknown): VenueSession {
   };
 }
 
-const sessionSlot: DocumentSlot<VenueSession> = {
+const sessionSlot: DocumentSlot<VenueScene> = {
   kind: SESSION_KIND,
-  name: "Venue visit",
-  description: "The player's exact record of one visit, indexed by venue and participant.",
+  name: "Scene",
+  description: "The player's exact record of one Scene, indexed by Venue and participant.",
   coerce: coerceSession,
-  label: (session) => session.placeName || "Venue visit",
+  label: (session) => session.placeName || "Scene",
 };
 
 async function readActive(): Promise<ActiveVenue> {
@@ -683,13 +717,13 @@ async function readActive(): Promise<ActiveVenue> {
   return coerceActive(record?.data);
 }
 
-async function readSession(id: string): Promise<VenueSession> {
+async function readSession(id: string): Promise<VenueScene> {
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
-  if (!record) throw notFound("That venue conversation is no longer available.");
+  if (!record) throw notFound("That Scene is no longer available.");
   return coerceSession(record.data);
 }
 
-function sceneFingerprint(session: VenueSession): string {
+function sceneFingerprint(session: VenueScene): string {
   return JSON.stringify([
     session.status,
     session.zoneId,
@@ -702,10 +736,10 @@ function sceneFingerprint(session: VenueSession): string {
   ]);
 }
 
-async function changeSession(id: string, change: (session: VenueSession) => void): Promise<VenueSession> {
-  let result: VenueSession | null = null;
+async function changeSession(id: string, change: (session: VenueScene) => void): Promise<VenueScene> {
+  let result: VenueScene | null = null;
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
-    if (session.id !== id) throw notFound("That venue conversation is no longer available.");
+    if (session.id !== id) throw notFound("That Scene is no longer available.");
     const before = sceneFingerprint(session);
     change(session);
     if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
@@ -714,13 +748,13 @@ async function changeSession(id: string, change: (session: VenueSession) => void
   return result!;
 }
 
-function pendingProgressTurns(session: VenueSession, foundedAt: string) {
+function pendingProgressTurns(session: VenueScene, foundedAt: string) {
   return session.submissions.filter(
     (turn) => turn.at && !turn.progressProcessedAt && (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
   );
 }
 
-/** The visit document is the outbox. Village receipts are idempotent if the second write is interrupted. */
+/** The Scene document is the outbox. Village receipts are idempotent if the second write is interrupted. */
 export async function processSavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
   const village = await readVillageState();
   if (village.progressEngineVersion !== 1) return;
@@ -841,47 +875,49 @@ export function startProgressRecovery(): () => void {
   };
 }
 
-function appendLine(session: VenueSession, line: VenueLine): void {
+function appendLine(session: VenueScene, line: VenueLine): void {
   line.zoneId ??= session.zoneId;
   session.lines.push(line);
   for (const history of session.heardHistory)
     if (line.heardBy.includes(history.characterId)) history.lineIds.push(line.id);
 }
 
-function heardLines(session: VenueSession, characterId: string): VenueLine[] {
+function heardLines(session: VenueScene, characterId: string): VenueLine[] {
   const ids = new Set(session.heardHistory.find((history) => history.characterId === characterId)?.lineIds ?? []);
   return session.lines.filter((line) => ids.has(line.id));
 }
 
-function castAtEntry(
-  village: VillageState,
-  placeId: string,
-  now: Date,
-  zoneId?: string,
-  accompanying: string[] = [],
-): VenueParticipant[] {
+function captureSceneAttendance(village: VillageState, placeId: string, now: Date): SceneAttendance {
+  const venue = village.venues.find((entry) => entry.id === placeId)!;
   const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  const cast = village.villagers
-    .filter((villager) => {
-      if (
-        villagerPlaceView(village, villager, null, moment.minuteOfDay, now)?.id !== placeId &&
-        !accompanying.includes(villager.characterId)
-      )
-        return false;
-      const venue = village.venues.find((entry) => entry.id === placeId)!;
-      if (!zoneId) return true;
-      if (accompanying.includes(villager.characterId)) return true;
-      const agenda = agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
-      const destination = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village);
-      return destination.id === zoneId;
-    })
-    .map((villager) => ({
-      characterId: villager.characterId,
-      name: villager.cardSnapshot.name,
-      doing: agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.activity ?? "",
-    }));
-  if (cast.length > 4) throw conflict("Five villagers are scheduled here at once. Edit their agendas before entering.");
-  return cast;
+  return {
+    capturedAt: now.toISOString(),
+    occupants: village.villagers.flatMap((villager) => {
+      if (villagerPlaceView(village, villager, null, moment.minuteOfDay, now)?.id !== placeId) return [];
+      const block = agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
+      const zone = chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village);
+      return [
+        {
+          characterId: villager.characterId,
+          name: villager.cardSnapshot.name,
+          doing: block?.activity ?? "",
+          availability: block?.status ?? "",
+          zoneId: zone.id,
+        },
+      ];
+    }),
+  };
+}
+
+/** Do not disclose occupants of unseen Zones, including inside operation snapshots/checkpoints. */
+export function publicSceneResponse<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((entry) => publicSceneResponse(entry)) as T;
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== "sceneAttendance")
+      .map(([key, entry]) => [key, publicSceneResponse(entry)]),
+  ) as T;
 }
 
 type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
@@ -929,7 +965,7 @@ export function venueCardProfile(card: VillagerCard): string {
 }
 
 async function generateOnce(
-  session: VenueSession,
+  session: VenueScene,
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
   targetId: string,
@@ -945,7 +981,11 @@ async function generateOnce(
   trace?.("preparation", performance.now() - preparationStarted);
   const player = readPlayerIdentity(village);
   const now = new Date();
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
+  const moment = deriveVillageMoment({
+    foundedAt: village.foundedAt,
+    seed: village.seed,
+    now: session.sceneAttendance ? new Date(session.sceneAttendance.capturedAt) : new Date(session.startedAt),
+  });
   const active = session.participants.filter((person) => session.activeIds.includes(person.characterId));
   const memoryQuery = `${session.placeName} ${message}`;
   const promptMemories = selectPromptMemories(
@@ -966,7 +1006,7 @@ async function generateOnce(
     const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
     if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
     const card = readEffectiveVillagerCard(resident);
-    const block = agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false);
+    const sceneOccupant = session.sceneAttendance?.occupants.find((entry) => entry.characterId === person.characterId);
     const memories = promptMemories
       .filter(
         (entry) =>
@@ -983,7 +1023,7 @@ async function generateOnce(
       venueCardProfile(card),
       relationshipPrompt(village, person.characterId),
       "Relationships influence new Project requests alongside personal benefit and availability. A neutral resident may volunteer. Existing accepted commitments remain binding until explicitly withdrawn. Do not treat high scores as automatic romance.",
-      `Current agenda: ${block?.activity ?? "unspecified"}; availability: ${block?.status ?? "unspecified"}; due at ${village.venues.find((venue) => venue.id === block?.venueId)?.name ?? "elsewhere"}. A resident may leave naturally after saying so.`,
+      `Scene activity: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}. Background agendas do not advance this Scene or relocate its residents. A resident may leave naturally after saying so.`,
       `Current Residence: ${
         village.venues
           .filter((venue) => venueResidentIds(venue).includes(person.characterId))
@@ -1119,10 +1159,10 @@ async function generateOnce(
     `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
     `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
     `Relevant world lore: ${[...lore, villageRelevantOrigin(village, message)].filter(Boolean).join("\n") || "none"}`,
-    `The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this zone. Residents can arrive when their agenda or validated movement places them here. A resident may leave after a clear spoken departure, and the scene ends when the last one leaves. Do not force a departure merely because time passed.`,
+    `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
     session.area === "outside"
       ? session.spaceClass === "residence"
-        ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the shared area or a private space without validated permission. Do not expose unseen interior details."
+        ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
         : "The player is outside this Venue. Show only what they can observe from outside; do not describe them entering an interior."
       : active.length
         ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
@@ -1134,8 +1174,8 @@ async function generateOnce(
           session.activeIds.map((characterId) => ({ characterId, ...stageState[characterId], ...layout[characterId] })),
         )
       : "",
-    `Earlier visit recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
-    `Recent scene history:\n${history || "The visit has just begun."}`,
+    `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
+    `Recent scene history:\n${history || "The Scene has just begun."}`,
     mode === "greet"
       ? ""
       : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
@@ -1182,7 +1222,7 @@ async function generateOnce(
     (session.area === "shared" ||
       session.area === "private" ||
       (storedPlace && zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length > 0))
-      ? "This is a resident-controlled Residence space. Player actions may be attempted and residents may react, but do not return sceneChange or narrate a lasting change until the exact room edit proposal has every required resident's explicit approval. Entry is not edit consent."
+      ? "This is a resident-controlled Residence space. Player actions may be attempted and residents may react, but do not return sceneChange or narrate a lasting change until the exact Zone edit proposal has every required resident's explicit approval. Entry is not edit consent."
       : "",
     mode === "chat" || mode === "ask"
       ? `If the player physically acts in this scene, including plausible first-person past tense such as "I fixed the drip", resolve it as part of this SAME reply. Mere speech about a deed, a promise, an unsupported claim elsewhere, or an impossible attempt changes nothing. Return sceneChange only for a completed, persistent physical result: {"happened":true,"narration":"short past-tense public result","conditionBefore":"exact current condition","conditionAfter":"complete updated condition","featureId":"existing id","featureText":"updated text","publicFactBefore":"exact old fact","publicFactAfter":"updated fact","resolveTraceId":"existing id","addItem":"item","removeItem":"exact item","sceneNote":"temporary layout detail"}. Omit unused fields. Use an exact old value or ID to replace or resolve stale state; use sceneNote for a small temporary layout change, never for a repaired condition that must stay repaired. The player may change a locked feature; its lock remains. Do not invent exceptional supplies or consent. If the action fails, narrate the failure and omit sceneChange. Never narrate a lasting change without a valid sceneChange. A resident's reaction does not independently change physical state.`
@@ -1206,7 +1246,7 @@ async function generateOnce(
       ? "Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player."
       : "",
     session.stagingVersion === 1
-      ? 'Any segment, including narration, may include staging: [{characterId, position?, expression?, look?}]. position is "left", "center", or "right". expression is that character’s filled expression ID. look is {target:"player"}, {target:"villager",characterId:"active ID"}, or {target:"direction",direction:"left"|"right"}. Use at most one cue per active character per segment. Position, expression, and attention persist until changed; omitted fields preserve state. You may cue silent listeners, but reactions must respect who witnessed the moment. Move sides only when motivated by the scene, such as approaching, withdrawing, making room, or joining an interaction; changing speakers alone never moves anyone. Turns and expressions need no walking. A lone villager may look away left or right. Select the default expression ID or look toward the player explicitly to reset. Staging is presentation only, never proof of knowledge, consent, memory, or world changes. Use existing artwork and grounded actions. Main cues appear at the first paragraph; side and whisper cues appear with their attached chatter. Prefer staging over the older expression/gazeAt fields; omission does not reset attention in this visit.'
+      ? 'Any segment, including narration, may include staging: [{characterId, position?, expression?, look?}]. position is "left", "center", or "right". expression is that character’s filled expression ID. look is {target:"player"}, {target:"villager",characterId:"active ID"}, or {target:"direction",direction:"left"|"right"}. Use at most one cue per active character per segment. Position, expression, and attention persist until changed; omitted fields preserve state. You may cue silent listeners, but reactions must respect who witnessed the moment. Move sides only when motivated by the scene, such as approaching, withdrawing, making room, or joining an interaction; changing speakers alone never moves anyone. Turns and expressions need no walking. A lone villager may look away left or right. Select the default expression ID or look toward the player explicitly to reset. Staging is presentation only, never proof of knowledge, consent, memory, or world changes. Use existing artwork and grounded actions. Main cues appear at the first paragraph; side and whisper cues appear with their attached chatter. Prefer staging over the older expression/gazeAt fields; omission does not reset attention in this Scene.'
       : "",
     "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Legacy gazeAt may name another active resident ID or player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
   ].join("\n\n");
@@ -1487,7 +1527,7 @@ async function generateOnce(
 
 /** One accepted scene, with no more than two language calls and no partial transcript write. */
 async function generate(
-  session: VenueSession,
+  session: VenueScene,
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
   targetId: string,
@@ -1654,7 +1694,7 @@ export function parseVenueReply(
   };
 }
 
-function appendVenueReply(session: VenueSession, lines: ReturnType<typeof parseVenueReply>["lines"], at: string): void {
+function appendVenueReply(session: VenueScene, lines: ReturnType<typeof parseVenueReply>["lines"], at: string): void {
   const lineIds = lines.map(() => randomUUID());
   lines.forEach((line, index) =>
     appendLine(session, {
@@ -1678,7 +1718,7 @@ function appendVenueReply(session: VenueSession, lines: ReturnType<typeof parseV
   );
 }
 
-export async function activeVenueSession(): Promise<VenueSession | null> {
+export async function activeVenueSession(): Promise<VenueScene | null> {
   const active = await readActive();
   if (!active.sessionId) return null;
   const session = await readSession(active.sessionId);
@@ -1695,7 +1735,7 @@ export async function activeVenueSession(): Promise<VenueSession | null> {
   return refreshZoneParticipants(session);
 }
 
-function isInactive(session: VenueSession, now = Date.now()): boolean {
+function isInactive(session: VenueScene, now = Date.now()): boolean {
   return now - Date.parse(session.lastActivityAt || session.startedAt) >= INACTIVITY_MS;
 }
 
@@ -1721,7 +1761,7 @@ async function interruptInactiveVisit(id: string): Promise<void> {
   }
 }
 
-async function requireLiveVenueSession(id: string): Promise<VenueSession> {
+async function requireLiveVenueSession(id: string): Promise<VenueScene> {
   let session = await readSession(id);
   if (session.status !== "closed" && isInactive(session) && !hasVenueOperation(id)) {
     await interruptInactiveVisit(id);
@@ -1733,21 +1773,21 @@ async function requireLiveVenueSession(id: string): Promise<VenueSession> {
   )
     throw new VillagesRequestError(
       410,
-      "Interrupted: Inactivity. This visit ended while you were away; its completed exchanges were saved.",
+      "Interrupted: Inactivity. This Scene ended while you were away; its completed exchanges were saved.",
     );
-  if (session.status === "closed") throw conflict("That venue conversation has already ended.");
-  if ((await readActive()).sessionId !== id) throw conflict("That venue conversation is not active.");
+  if (session.status === "closed") throw conflict("That Scene has already ended.");
+  if ((await readActive()).sessionId !== id) throw conflict("That Scene is not active.");
   return refreshZoneParticipants(session);
 }
 
 /** Only a deliberate client action updates this server-owned clock. */
-export async function touchVenueSession(id: string): Promise<VenueSession> {
+export async function touchVenueSession(id: string): Promise<VenueScene> {
   const session = await requireLiveVenueSession(id);
   if (Date.now() - Date.parse(session.lastActivityAt) < ACTIVITY_WRITE_MS) return session;
   return changeSession(id, (state) => {
-    if (state.status === "closed") throw conflict("That venue conversation has already ended.");
+    if (state.status === "closed") throw conflict("That Scene has already ended.");
     if (isInactive(state) && !hasVenueOperation(state.id))
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     if (Date.now() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
       state.lastActivityAt = new Date().toISOString();
   });
@@ -1762,7 +1802,7 @@ async function clearActivePointer(id: string): Promise<void> {
   });
 }
 
-async function refreshZoneParticipants(session: VenueSession, completing = false): Promise<VenueSession> {
+async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
   if (!completing && hasVenueOperation(session.id)) return session;
   const village = await readVillageState(),
     venue = village.venues.find((entry) => entry.id === session.placeId);
@@ -1827,7 +1867,26 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
       state.legacyCast = true;
       if (state.area !== "outside") state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zoneId])];
     });
-  if (session.legacyCast) return session;
+  if (!session.sceneAttendance) {
+    // Older Scenes cannot reconstruct rewritten agendas. Preserve their current cast,
+    // and capture unencountered residents at the original Scene time once.
+    const captured = captureSceneAttendance(village, venue.id, new Date(session.startedAt));
+    for (const person of session.participants) {
+      const original = captured.occupants.find((entry) => entry.characterId === person.characterId);
+      const lastZone =
+        session.lines.findLast((line) => line.heardBy.includes(person.characterId))?.zoneId ?? original?.zoneId;
+      captured.occupants = captured.occupants.filter((entry) => entry.characterId !== person.characterId);
+      if (session.activeIds.includes(person.characterId) || (lastZone && lastZone !== zoneId))
+        captured.occupants.push({
+          ...person,
+          zoneId: session.activeIds.includes(person.characterId) ? zoneId : lastZone!,
+          availability: "",
+        });
+    }
+    session = await changeSession(session.id, (state) => {
+      if (!state.sceneAttendance) state.sceneAttendance = captured;
+    });
+  }
   const positions = (session.accompanying ?? []).filter((entry) => {
     const destination = resolveVenueZone(venue, entry.zoneId);
     return (
@@ -1835,11 +1894,13 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
     );
   });
   const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
-  const people = castAtEntry(village, venue.id, new Date(), zoneId, accompanying).filter(
+  const people = session.sceneAttendance!.occupants.filter(
     (person) =>
+      (person.zoneId === zoneId || accompanying.includes(person.characterId)) &&
       !session.departedIds?.includes(person.characterId) &&
       !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
   );
+  if (people.length > 4) throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
   const activeIds = people.map((person) => person.characterId);
   if (session.zoneId === zoneId && JSON.stringify(activeIds) === JSON.stringify(session.activeIds)) return session;
   return changeSession(session.id, (state) => {
@@ -1847,7 +1908,7 @@ async function refreshZoneParticipants(session: VenueSession, completing = false
     state.zoneId = zoneId;
     for (const person of people) {
       if (!state.participants.some((entry) => entry.characterId === person.characterId))
-        state.participants.push(person);
+        state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
       if (!state.heardHistory.some((entry) => entry.characterId === person.characterId))
         state.heardHistory.push({ characterId: person.characterId, lineIds: [] });
     }
@@ -1869,7 +1930,7 @@ export function moveVenueZone(
   expectedSceneRevision?: number,
   retryOfAttemptId?: string,
   operationId = `move:${zoneId}:${expectedSceneRevision}`,
-): Promise<VenueSession> {
+): Promise<VenueScene> {
   return coordinateVenue(sessionId, operationId, "move", { zoneId }, expectedSceneRevision, retryOfAttemptId, () =>
     serializedNavigation(async () => {
       movingSessions.add(sessionId);
@@ -1881,7 +1942,7 @@ export function moveVenueZone(
     }),
   );
 }
-async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<VenueSession> {
+async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<VenueScene> {
   assertVenueOwnership();
   const session = await requireLiveVenueSession(sessionId);
   if (session.status !== "active") throw conflict("Wait for the current scene to finish opening.");
@@ -1953,7 +2014,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   return refreshZoneParticipants(moved, true);
 }
 
-async function markZoneSeen(session: VenueSession): Promise<void> {
+async function markZoneSeen(session: VenueScene): Promise<void> {
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     const zone =
@@ -1983,7 +2044,7 @@ export function enterVenue(
   entryArea?: "outside" | "public" | "shared" | "private",
   requestedZoneId?: string,
   expectedSceneRevision?: number,
-): Promise<VenueSession> {
+): Promise<VenueScene> {
   return serializedNavigation(() =>
     enterVenueOnce(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId, expectedSceneRevision),
   );
@@ -1993,13 +2054,13 @@ async function enterVenueOnce(
   placeId: string,
   requestedClass?: VillageVenueClass,
   privateOwnerId = "",
-  entryArea?: VenueSession["area"],
+  entryArea?: VenueScene["area"],
   requestedZoneId?: string,
   expectedSceneRevision?: number,
-): Promise<VenueSession> {
+): Promise<VenueScene> {
   const pointer = await readActive();
   if (pointer.sessionId && hasVenueOperation(pointer.sessionId))
-    throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another area.");
+    throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before entering another Zone.");
   const existing = await activeVenueSession();
   if (!existing) await rollActiveAgendas(new Date());
   const village = await readVillageState(),
@@ -2020,10 +2081,10 @@ async function enterVenueOnce(
     else throw conflict("This Venue zone is closed for Renovation. Other zones remain open.");
   }
   if (existing) {
-    if (existing.placeId !== placeId) throw conflict(`Finish the conversation in ${existing.placeName} first.`);
+    if (existing.placeId !== placeId) throw conflict(`Finish the Scene in ${existing.placeName} first.`);
     if (existing.zoneId === zone.id) return existing;
     if (expectedSceneRevision === undefined)
-      throw venueRefusal("SCENE_STALE", "Refresh this visit before moving to another area.");
+      throw venueRefusal("SCENE_STALE", "Refresh this Scene before moving to another Zone.");
     return coordinateVenue(
       existing.id,
       `move:${zone.id}:${expectedSceneRevision}`,
@@ -2068,9 +2129,14 @@ async function enterVenueOnce(
       zoneGrants.push({ zoneId: target.id, controllerId: invitation.residentId });
     }
   }
-  const participants = castAtEntry(village, placeId, new Date(), zone.id);
+  const sceneAttendance = captureSceneAttendance(village, placeId, new Date());
+  const participants = sceneAttendance.occupants
+    .filter((person) => person.zoneId === zone.id)
+    .map(({ characterId, name, doing }) => ({ characterId, name, doing }));
+  if (participants.length > 4)
+    throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
   const id = randomUUID();
-  const session: VenueSession = {
+  const session: VenueScene = {
     version: 1,
     sceneRevision: 0,
     stagingVersion: 1,
@@ -2087,13 +2153,14 @@ async function enterVenueOnce(
     area: zoneArea(zone),
     privateOwnerId: zone.ownerId ?? "",
     privateAccessOwnerId: "",
-    startedAt: new Date().toISOString(),
+    startedAt: sceneAttendance.capturedAt,
     endedAt: "",
     lastActivityAt: new Date().toISOString(),
     endReason: "",
     memoryMode: "tiered",
     status: participants.length === 0 ? "active" : "opening",
     participants,
+    sceneAttendance,
     activeIds: participants.map((person) => person.characterId),
     lines: [],
     heardHistory: participants.map((person) => ({ characterId: person.characterId, lineIds: [] })),
@@ -2107,7 +2174,7 @@ async function enterVenueOnce(
   };
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => Object.assign(value, session));
   await mutateDocument(ACTIVE_ID, activeSlot, (active) => {
-    if (active.sessionId) throw conflict("Finish the active venue conversation first.");
+    if (active.sessionId) throw conflict("Finish the active Scene first.");
     active.sessionId = id;
     active.placeId = placeId;
   });
@@ -2119,7 +2186,7 @@ export async function enterResidencePrivateSpace(
   sessionId: string,
   ownerId: string,
   expectedSceneRevision?: number,
-): Promise<VenueSession> {
+): Promise<VenueScene> {
   const session = await readSession(sessionId);
   const village = await readVillageState();
   const venue = village.venues.find((venue) => venue.id === session.placeId);
@@ -2127,7 +2194,7 @@ export async function enterResidencePrivateSpace(
   return moveVenueZone(sessionId, legacyZoneId(venue, "private", "residence", ownerId), expectedSceneRevision);
 }
 
-export async function greetVenue(id: string, retryOfAttemptId?: string): Promise<VenueSession> {
+export async function greetVenue(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
   const inFlight = greetingTasks.get(id);
   if (inFlight) return inFlight.task;
   const started = performance.now();
@@ -2170,9 +2237,9 @@ export async function greetVenue(id: string, retryOfAttemptId?: string): Promise
   }
 }
 
-const greetingTasks = new Map<string, { task: Promise<VenueSession>; abort: () => void }>();
+const greetingTasks = new Map<string, { task: Promise<VenueScene>; abort: () => void }>();
 
-async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTrace): Promise<VenueSession> {
+async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTrace): Promise<VenueScene> {
   const readStarted = performance.now();
   const session = await requireLiveVenueSession(id);
   trace("session read", performance.now() - readStarted);
@@ -2184,7 +2251,7 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
     signal.throwIfAborted();
     if (state.status !== "opening") return;
     if (isInactive(state) && !hasVenueOperation(state.id))
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     const at = new Date().toISOString();
     appendVenueReply(state, reply.lines, at);
     if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now") {
@@ -2210,14 +2277,14 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
   return refreshZoneParticipants(greeted, true);
 }
 
-export async function continueVenueWithoutGreeting(id: string): Promise<VenueSession> {
+export async function continueVenueWithoutGreeting(id: string): Promise<VenueScene> {
   await cancelVenueOperation(id);
   await requireLiveVenueSession(id);
   const session = await changeSession(id, (state) => {
     if (isInactive(state) && !hasVenueOperation(state.id))
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     if (state.status === "opening") state.status = "active";
-    else if (state.status !== "active") throw conflict("That venue conversation has already ended.");
+    else if (state.status !== "active") throw conflict("That Scene has already ended.");
   });
   greetingTasks.get(id)?.abort();
   return session;
@@ -2294,12 +2361,12 @@ async function leaveVenueSessionOnce(sessionId: string, submissionId: string, me
 }
 
 async function finishActReply(
-  session: VenueSession,
+  session: VenueScene,
   submissionId: string,
   message: string,
   action: VenueActionResult,
   preparedReply?: Awaited<ReturnType<typeof generate>>,
-): Promise<VenueSession> {
+): Promise<VenueScene> {
   await requireLiveVenueSession(session.id);
   const prior = session.submissions.find((entry) => entry.id === submissionId);
   if (prior?.actionReplyDone) return session;
@@ -2371,8 +2438,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     };
   }
   session = await requireLiveVenueSession(session.id);
-  session = venueOperationSnapshot<VenueSession>() ?? session;
-  if (session.status !== "active") throw conflict("That venue conversation is not active.");
+  session = venueOperationSnapshot<VenueScene>() ?? session;
+  if (session.status !== "active") throw conflict("That Scene is not active.");
   if (input.mode !== "leave" && session.zoneId) {
     const village = await readVillageState(),
       venue = village.venues.find((entry) => entry.id === session.placeId),
@@ -2492,9 +2559,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   );
   const updated = await changeSession(session.id, (state) => {
     if (state.submissions.some((entry) => entry.id === input.submissionId)) return;
-    if (state.status !== "active") throw conflict("That conversation has already ended.");
+    if (state.status !== "active") throw conflict("That Scene has already ended.");
     if (isInactive(state) && !hasVenueOperation(state.id))
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     if (state.sceneRevision !== session.sceneRevision)
       throw conflict("The conversation moved on. Try sending that line again.");
     const at = new Date().toISOString();
@@ -2603,7 +2670,10 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     }
     state.departedIds = [...new Set([...(state.departedIds ?? []), ...reply.departures])];
     state.activeIds = state.activeIds.filter((id) => !reply.departures.includes(id));
-    if (reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0)) {
+    const remaining = state.sceneAttendance?.occupants.some(
+      (person) => !state.departedIds?.includes(person.characterId),
+    );
+    if (reply.sceneEnded || (session.activeIds.length > 0 && state.activeIds.length === 0 && !remaining)) {
       state.status = "closed";
       state.endedAt = at;
       state.endReason = "scene";
@@ -2640,7 +2710,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
 }
 
 function applyImmediateZoneInvitation(
-  session: VenueSession,
+  session: VenueScene,
   signal: NonNullable<VenueSubmission["invitationSignal"]>,
 ): void {
   session.zoneId = signal.zoneId ?? (signal.scope === "private" ? "private:" + signal.ownerId : "residence");
@@ -2662,7 +2732,7 @@ function applyImmediateZoneInvitation(
 }
 
 async function recordSpokenInvitation(
-  session: VenueSession,
+  session: VenueScene,
   signal: NonNullable<VenueSubmission["invitationSignal"]>,
 ): Promise<void> {
   const quote = signal.quote.replace(/\s+/gu, " ").toLowerCase();
@@ -2704,7 +2774,7 @@ async function recordSpokenInvitation(
   });
 }
 
-async function markResidenceSeen(session: VenueSession): Promise<void> {
+async function markResidenceSeen(session: VenueScene): Promise<void> {
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     if (!venue || !venueClasses(venue).includes("residence")) return;
@@ -2726,7 +2796,7 @@ async function markResidenceSeen(session: VenueSession): Promise<void> {
   }
 }
 
-async function applyVenueRequests(session: VenueSession, submission: VenueSubmission): Promise<void> {
+async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {
   if (submission.venueRequestSignal) {
     const signal = submission.venueRequestSignal;
     const spoken = session.lines.find(
@@ -2791,7 +2861,7 @@ async function applyVenueRequests(session: VenueSession, submission: VenueSubmis
   }
 }
 
-async function applyVenueTurnChange(session: VenueSession, submission: VenueSubmission): Promise<void> {
+async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
   if (!submission.sceneChange) return;
   const area = submission.areaAtTurn ?? session.area;
   const zoneId = submission.zoneIdAtTurn ?? session.zoneId;
@@ -2874,7 +2944,7 @@ async function applyVenueTurnChange(session: VenueSession, submission: VenueSubm
   });
 }
 
-async function applyFulfilledWish(session: VenueSession, submission: VenueSubmission): Promise<boolean> {
+async function applyFulfilledWish(session: VenueScene, submission: VenueSubmission): Promise<boolean> {
   if (!submission.wishId) return false;
   let applied = false;
   await mutateVillageState((state) => {
@@ -2913,7 +2983,7 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
   return [...new Set(left)].sort().join("\n") === [...new Set(right)].sort().join("\n");
 }
 
-async function applyTurnRecollections(session: VenueSession, submission: VenueSubmission): Promise<void> {
+async function applyTurnRecollections(session: VenueScene, submission: VenueSubmission): Promise<void> {
   if (!submission.recollections?.length) return;
   const occurredAt = new Date(submission.at || Date.now()).toISOString();
   const expiry = new Date(Date.parse(occurredAt) + RECOLLECTION_LIFETIME_MS).toISOString();
@@ -2978,7 +3048,7 @@ async function applyTurnRecollections(session: VenueSession, submission: VenueSu
   });
 }
 
-async function applyTurnMemories(session: VenueSession, submission: VenueSubmission): Promise<void> {
+async function applyTurnMemories(session: VenueScene, submission: VenueSubmission): Promise<void> {
   if (session.memoryMode !== "turn" || !submission.turnMemories?.length) return;
   await mutateVillageState((state) => {
     const moment = deriveVillageMoment({
@@ -3014,7 +3084,7 @@ async function applyTurnMemories(session: VenueSession, submission: VenueSubmiss
   });
 }
 
-async function receiptForTurn(session: VenueSession, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
+async function receiptForTurn(session: VenueScene, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
   const village = await readVillageState();
   const cached = (submission.recordEvents ?? []).map((event) => {
     if (event.kind !== "memory" || event.detail) return event;
@@ -3085,9 +3155,9 @@ async function receiptForTurn(session: VenueSession, submission: VenueSubmission
   return combined;
 }
 
-const MEMORY_REVIEW_ERROR = "This visit is safely archived, but its memory review is still pending.";
+const MEMORY_REVIEW_ERROR = "This Scene is safely archived, but its memory review is still pending.";
 
-function sessionRecollections(session: VenueSession): VenueRecollection[] {
+function sessionRecollections(session: VenueScene): VenueRecollection[] {
   const seen = new Set<string>();
   const memories = session.submissions.flatMap((submission) =>
     (submission.recollections ?? []).filter((entry) => {
@@ -3158,7 +3228,7 @@ function reviewDecisionId(visitId: string, action: "promote" | "reject", recolle
 }
 
 function memoryReviewMessages(
-  session: VenueSession,
+  session: VenueScene,
   recollections: readonly VenueRecollection[],
   village: VillageState,
   previous: readonly VenueMemoryDecision[],
@@ -3265,7 +3335,7 @@ function memoryReviewMessages(
 
 function parseMemoryReview(
   raw: Record<string, unknown> | null,
-  session: VenueSession,
+  session: VenueScene,
   source: readonly VenueRecollection[],
 ): VenueMemoryDecision[] {
   if (raw?.complete !== true || !Array.isArray(raw.decisions)) throw new Error(MEMORY_REVIEW_ERROR);
@@ -3351,7 +3421,7 @@ function decisionsCover(decisions: readonly VenueMemoryDecision[], source: reado
 }
 
 async function generateMemoryReview(
-  session: VenueSession,
+  session: VenueScene,
   source: readonly VenueRecollection[],
   village: VillageState,
   signal: AbortSignal,
@@ -3449,10 +3519,10 @@ async function generateMemoryReview(
   return decisions;
 }
 
-function relationshipEvidence(session: VenueSession): RelationshipEvidenceLine[] {
+function relationshipEvidence(session: VenueScene): RelationshipEvidenceLine[] {
   return session.lines.map((line) => ({ ...line, playerHeard: line.kind !== "whisper" || line.targetId === "player" }));
 }
-async function commitVisitRelationships(session: VenueSession): Promise<void> {
+async function commitVisitRelationships(session: VenueScene): Promise<void> {
   if (!session.relationshipReview || session.relationshipReview.applied || session.endReason === "debug") return;
   const village = await readVillageState();
   if (village.seed !== session.relationshipReview.seed) return;
@@ -3493,7 +3563,7 @@ async function commitVisitRelationships(session: VenueSession): Promise<void> {
   });
 }
 
-async function commitMemoryReview(session: VenueSession, decisions: readonly VenueMemoryDecision[]): Promise<void> {
+async function commitMemoryReview(session: VenueScene, decisions: readonly VenueMemoryDecision[]): Promise<void> {
   const promoted = decisions.filter(
     (
       decision,
@@ -3541,7 +3611,7 @@ async function commitMemoryReview(session: VenueSession, decisions: readonly Ven
   });
 }
 
-async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<VenueSession> {
+async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<VenueScene> {
   const started = performance.now();
   let session = await readSession(id);
   const source = sessionRecollections(session);
@@ -3625,7 +3695,7 @@ async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<Ve
   }
 }
 
-function reviewReceipts(session: VenueSession): VenueRecordEvent[] {
+function reviewReceipts(session: VenueScene): VenueRecordEvent[] {
   const notices = session.relationshipReview?.applied ? session.relationshipReview.receipts : [];
   if (!session.memoryReview.applied && session.memoryReview.status !== "complete") return notices;
   return [
@@ -3658,7 +3728,7 @@ const MEMORY_INPUT_CEILING = 12_000;
 const MEMORY_LINE_PART = 2_400;
 const MEMORY_ERROR = "The conversation could not be remembered. Try ending it again.";
 
-function memoryUnits(session: VenueSession): MemoryUnit[] {
+function memoryUnits(session: VenueScene): MemoryUnit[] {
   const heard = new Map(session.heardHistory.map((history) => [history.characterId, new Set(history.lineIds)]));
   return session.lines.flatMap((line) => {
     const heardBy = session.participants
@@ -3679,12 +3749,12 @@ function memoryUnits(session: VenueSession): MemoryUnit[] {
   });
 }
 
-function memoryMessages(session: VenueSession, evidence: MemoryUnit[]): CapabilityLanguageModelMessage[] {
+function memoryMessages(session: VenueScene, evidence: MemoryUnit[]): CapabilityLanguageModelMessage[] {
   return [
     {
       role: "system",
       content:
-        'Distill one venue visit into a SELECTIVE set of short, attributed memories, at most 8 for this evidence chunk. Evidence rows are [lineId, part, role, speaker, text, heardBy]. Keep consequential player actions, promises, relationships, and distinctive details; omit routine dialogue, repeated details, and changes already held in world state. Each memory must cite one or more lineIds heard by that character. Do not share private information with anyone who did not hear it. Return JSON only: {"memories":[{"characterId":"...","text":"...","lineIds":["..."]}],"complete":true}. Complete means you considered ALL supplied evidence, not that every line became a memory. Each text is at most 320 characters. Return "more":true only if the answer cannot hold the selected memories.',
+        'Distill one Scene into a SELECTIVE set of short, attributed memories, at most 8 for this evidence chunk. Evidence rows are [lineId, part, role, speaker, text, heardBy]. Keep consequential player actions, promises, relationships, and distinctive details; omit routine dialogue, repeated details, and changes already held in world state. Each memory must cite one or more lineIds heard by that character. Do not share private information with anyone who did not hear it. Return JSON only: {"memories":[{"characterId":"...","text":"...","lineIds":["..."]}],"complete":true}. Complete means you considered ALL supplied evidence, not that every line became a memory. Each text is at most 320 characters. Return "more":true only if the answer cannot hold the selected memories.',
     },
     {
       role: "user",
@@ -3697,7 +3767,7 @@ function memoryMessages(session: VenueSession, evidence: MemoryUnit[]): Capabili
   ];
 }
 
-async function distill(session: VenueSession, signal: AbortSignal): Promise<VenueMemory[]> {
+async function distill(session: VenueScene, signal: AbortSignal): Promise<VenueMemory[]> {
   const units = memoryUnits(session);
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("narration"),
@@ -3771,7 +3841,7 @@ async function distill(session: VenueSession, signal: AbortSignal): Promise<Venu
     entries.push(...fresh);
     cursor = end;
     await changeSession(session.id, (state) => {
-      if (state.memoryPending) throw conflict("This visit was left with memory pending.");
+      if (state.memoryPending) throw conflict("This Scene was left with memory pending.");
       state.memoryProgress = { nextUnit: cursor, entries: [...entries] };
     });
   };
@@ -3786,12 +3856,12 @@ async function distill(session: VenueSession, signal: AbortSignal): Promise<Venu
   return entries;
 }
 
-export async function endVenueSession(id: string, retryOfAttemptId?: string): Promise<VenueSession> {
+export async function endVenueSession(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
   return coordinateVenue(id, "memory-review", "memory", {}, undefined, retryOfAttemptId, () =>
     endVenueSessionCoordinated(id),
   );
 }
-async function endVenueSessionCoordinated(id: string): Promise<VenueSession> {
+async function endVenueSessionCoordinated(id: string): Promise<VenueScene> {
   const inFlight = closingTasks.get(id);
   if (inFlight) return inFlight;
   const controller = new AbortController();
@@ -3817,12 +3887,12 @@ export async function closeVenueSession(
   id: string,
   expectedSceneRevision?: number,
   retryOfAttemptId?: string,
-): Promise<VenueSession> {
+): Promise<VenueScene> {
   return coordinateVenue(id, "close", "close", {}, expectedSceneRevision, retryOfAttemptId, () =>
     closeVenueSessionOnce(id),
   );
 }
-async function closeVenueSessionOnce(id: string): Promise<VenueSession> {
+async function closeVenueSessionOnce(id: string): Promise<VenueScene> {
   const session = await readSession(id);
   return session.memoryMode === "tiered" || session.relationshipReview
     ? closeTieredVenueSession(session)
@@ -3838,17 +3908,17 @@ export async function closeVenueSessionWithReceipts(
   return { session, recordEvents: reviewReceipts(session) };
 }
 
-const closingTasks = new Map<string, Promise<VenueSession>>();
+const closingTasks = new Map<string, Promise<VenueScene>>();
 const closingControllers = new Map<string, AbortController>();
 
-async function closeTieredVenueSession(session: VenueSession): Promise<VenueSession> {
+async function closeTieredVenueSession(session: VenueScene): Promise<VenueScene> {
   if (session.status !== "closed") {
     if (isInactive(session)) {
       await interruptInactiveVisit(session.id);
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     }
     const active = await readActive();
-    if (active.sessionId !== session.id) throw conflict("That venue conversation is not active.");
+    if (active.sessionId !== session.id) throw conflict("That Scene is not active.");
   }
   const source = sessionRecollections(session);
   const closed = await changeSession(session.id, (state) => {
@@ -3880,7 +3950,7 @@ async function closeTieredVenueSession(session: VenueSession): Promise<VenueSess
   return closed;
 }
 
-async function endTieredVenueSession(session: VenueSession, signal: AbortSignal): Promise<VenueSession> {
+async function endTieredVenueSession(session: VenueScene, signal: AbortSignal): Promise<VenueScene> {
   const closed = await closeTieredVenueSession(session);
   if (!closed.memoryPending) return closed;
   const reviewed = await reviewTieredMemories(session.id, signal);
@@ -3888,7 +3958,7 @@ async function endTieredVenueSession(session: VenueSession, signal: AbortSignal)
   return reviewed;
 }
 
-async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueSession> {
+async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueScene> {
   const session = await readSession(id);
   if (session.memoryMode === "tiered" || session.relationshipReview) return endTieredVenueSession(session, signal);
   if (session.status === "closed" && !session.memoryPending) {
@@ -3898,10 +3968,10 @@ async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<Ven
   if (session.status !== "closed") {
     if (isInactive(session)) {
       await interruptInactiveVisit(id);
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     }
     const active = await readActive();
-    if (active.sessionId !== id) throw conflict("That venue conversation is not active.");
+    if (active.sessionId !== id) throw conflict("That Scene is not active.");
   }
   const closing = await changeSession(id, (state) => {
     state.status = "closing";
@@ -3914,7 +3984,7 @@ async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<Ven
       : (closing.memories ?? (hasPlayerTurn && closing.participants.length > 0 ? await distill(closing, signal) : []));
   signal.throwIfAborted();
   await changeSession(id, (state) => {
-    if (state.memoryPending) throw conflict("This visit was left with memory pending.");
+    if (state.memoryPending) throw conflict("This Scene was left with memory pending.");
     state.memories = memories;
   });
   signal.throwIfAborted();
@@ -3944,7 +4014,7 @@ async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<Ven
     });
   const closed = await changeSession(id, (state) => {
     signal.throwIfAborted();
-    if (state.memoryPending) throw conflict("This visit was left with memory pending.");
+    if (state.memoryPending) throw conflict("This Scene was left with memory pending.");
     state.status = "closed";
     state.memoryPending = false;
     state.endedAt ||= new Date().toISOString();
@@ -3961,22 +4031,21 @@ async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<Ven
 }
 
 /** Release the player when extraction is unavailable; the exact transcript stays retriable. */
-export async function leaveVenueMemoryPending(id: string): Promise<VenueSession> {
+export async function leaveVenueMemoryPending(id: string): Promise<VenueScene> {
   const current = await readSession(id);
   if (hasVenueOperation(id) && current.operation?.kind !== "memory" && current.operation?.kind !== "close")
     throw venueRefusal("SCENE_BUSY", "Wait for the scene reply before leaving with memory pending.");
   await cancelVenueOperation(id);
   return coordinateVenue(id, "leave-pending", "close", {}, undefined, undefined, () => leaveVenueMemoryPendingOnce(id));
 }
-async function leaveVenueMemoryPendingOnce(id: string): Promise<VenueSession> {
+async function leaveVenueMemoryPendingOnce(id: string): Promise<VenueScene> {
   const session = await readSession(id);
   if (session.memoryMode === "turn") return endVenueSession(id);
   if (session.status !== "closed" && isInactive(session)) {
     await interruptInactiveVisit(id);
-    throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+    throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
   }
-  if (session.status !== "closed" && (await readActive()).sessionId !== id)
-    throw conflict("That venue conversation is not active.");
+  if (session.status !== "closed" && (await readActive()).sessionId !== id) throw conflict("That Scene is not active.");
   closingControllers.get(id)?.abort();
   const closed = await changeSession(id, (state) => {
     if (state.status === "closed" && !state.memoryPending) return;
@@ -3997,10 +4066,10 @@ export async function recordVenueAction(
 ): Promise<void> {
   const session = await activeVenueSession();
   if (!session || session.placeId !== placeId || session.status !== "active")
-    throw conflict("That venue visit is not active.");
+    throw conflict("That Scene is not active.");
   await changeSession(session.id, (state) => {
     if (isInactive(state) && !hasVenueOperation(state.id))
-      throw new VillagesRequestError(410, "Interrupted: Inactivity. This visit ended while you were away.");
+      throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     if (state.submissions.some((entry) => entry.id === submissionId)) return;
     const at = new Date().toISOString();
     state.lastActivityAt = at;
@@ -4070,9 +4139,7 @@ export async function discardVenueVisitDebug(id: string): Promise<void> {
   if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
 }
 
-export async function listVenueVisits(
-  filter: { placeId?: string; characterId?: string } = {},
-): Promise<VenueSession[]> {
+export async function listVenueVisits(filter: { placeId?: string; characterId?: string } = {}): Promise<VenueScene[]> {
   const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
   return records
     .map((record) => coerceSession(record.data))
@@ -4085,9 +4152,9 @@ export async function listVenueVisits(
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-export async function readVenueVisit(id: string): Promise<VenueSession> {
+export async function readVenueVisit(id: string): Promise<VenueScene> {
   const session = await readSession(id);
-  if (session.status !== "closed") throw notFound("That visit is not in the archive.");
+  if (session.status !== "closed") throw notFound("That Scene is not in the archive.");
   return session;
 }
 
@@ -4140,7 +4207,7 @@ export async function listVenueVisitSummaries(
     placeName: string;
     startedAt: string;
     endedAt: string;
-    endReason: VenueSession["endReason"];
+    endReason: VenueScene["endReason"];
     participants: VenueParticipant[];
     lineCount: number;
     memoryUnits: number;
@@ -4186,9 +4253,9 @@ export async function deleteVenueVisit(id: string): Promise<void> {
     await processSavedProgressSubmission(id, turn.id);
   const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
   if (!document || coerceSession(document.data).status !== "closed")
-    throw notFound("That visit is not in the archive.");
+    throw notFound("That Scene is not in the archive.");
   if (!(await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision)))
-    throw conflict("The visit changed while it was being deleted. Try again.");
+    throw conflict("The Scene changed while it was being deleted. Try again.");
 }
 
 export async function deleteAllVenueVisits(): Promise<void> {
@@ -4201,11 +4268,11 @@ export async function setVenueVisitRetention(value: unknown): Promise<void> {
   const input = asRecord(value);
   const mode = input.mode;
   const count = Number(input.value);
-  if (mode !== "forever" && mode !== "count" && mode !== "days") throw badRequest("Choose a visit retention mode.");
+  if (mode !== "forever" && mode !== "count" && mode !== "days") throw badRequest("Choose a Scene retention mode.");
   if (mode === "count" && (!Number.isInteger(count) || count < 1 || count > 1_000))
-    throw badRequest("Keep between 1 and 1,000 visits.");
+    throw badRequest("Keep between 1 and 1,000 Scenes.");
   if (mode === "days" && (!Number.isInteger(count) || count < 30 || count > 3_650))
-    throw badRequest("Retire visits after 30 to 3,650 days.");
+    throw badRequest("Retire Scenes after 30 to 3,650 days.");
   await mutateVillageState((state) => {
     state.visitRetention = mode === "forever" ? { mode, value: 0 } : { mode, value: count };
   });
@@ -4286,10 +4353,9 @@ export async function backfillVenueMemories(): Promise<void> {
   });
 }
 
-/** A village reset also removes the previous village's private visit archive. */
+/** A village reset also removes the previous village's private Scene archive. */
 export async function resetVenueSessions(): Promise<void> {
-  if ((await readActive()).sessionId)
-    throw conflict("Finish the active venue conversation before starting the village over.");
+  if ((await readActive()).sessionId) throw conflict("Finish the active Scene before starting the village over.");
   const documents = villagesDocuments();
   const visits = await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND);
   for (const visit of visits)
@@ -4354,7 +4420,7 @@ export async function recoverVenueSceneWork() {
   });
 }
 
-async function processLegacyProjectTurn(session: VenueSession, submission: VenueSubmission) {
+async function processLegacyProjectTurn(session: VenueScene, submission: VenueSubmission) {
   if (submission.mode !== "chat" && submission.mode !== "ask") return;
   await venueCheckpoint("legacy-project", async () => {
     await recordProjectConversation({

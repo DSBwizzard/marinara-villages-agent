@@ -16,6 +16,12 @@
 - Preserve package-generated files through the documented build command; do not hand-edit bundles, manifests, or checksums.
 - Read `DEVELOPMENT.md` and `packages/villages/README.md` for setup, package, and coding guidance.
 
+## Villages terminology and Scene continuity
+
+- **Venue:** the place. **Zones:** dedicated spaces within a Venue, including Exterior, Common Space, and Private Space. **Scene:** the active chat in one Venue, continuing across all Zone movement until it ends.
+- Capture attendance, Zone positions, immediate activities, and scene time across the entire Venue when a Scene starts. Background agenda changes and resident movement must not mutate the active Scene. Only evidenced movement or departures within the Scene change its positions.
+- Preserve Zone-specific witnesses and keep unseen Zone attendance server-only. Use current schedules when starting a new Scene. Keep persisted identifiers and route compatibility when updating terminology.
+
 ## Development and staging workflow
 
 - **Parallel Codex work:** every independently requested task must use its own managed Git worktree and short-lived `codex/` feature branch. Do not switch branches, reset, stash, or clean another thread's checkout. Before starting, fetch `origin/staging` and create the branch from that base. Name branches for the task. If managed worktrees are unavailable, create a separate checkout; never share one mutable checkout across simultaneous threads.

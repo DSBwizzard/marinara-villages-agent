@@ -39,7 +39,7 @@ export function parseRelationshipReview(
   const raw = asRecord(value),
     result = emptyRelationshipReview();
   if (!Array.isArray(raw.changes) || !Array.isArray(raw.permissions) || !Array.isArray(raw.disclosures))
-    throw new Error("The visit's relationship review is incomplete.");
+    throw new Error("The Scene's relationship review is incomplete.");
   const ids = new Set(["player", ...village.villagers.map((person) => person.characterId)]);
   const byId = new Map(lines.map((line) => [line.id, line]));
   const evidenceFor = (row: Record<string, unknown>, actorId: string): RelationshipEvidenceLine[] => {
@@ -138,7 +138,7 @@ export function parseRelationshipReview(
       !speech.toLocaleLowerCase().includes(visitorName.toLocaleLowerCase()) ||
       !speech.toLocaleLowerCase().includes(zone.name.toLocaleLowerCase())
     )
-      throw new Error("Standing permission must name this visitor and zone.");
+      throw new Error("Standing permission must name this visitor and Zone.");
     const lineIds = evidence.map((line) => line.id).sort();
     result.permissions.push({
       id: receiptId(sourceId, [controllerId, visitorId, venueId, zoneId, row.action, lineIds]),

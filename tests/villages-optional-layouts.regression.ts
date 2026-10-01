@@ -53,7 +53,7 @@ function draft(layout: string, role = "residence", owner = "a") {
     },
     spaces:
       layout === "common" || layout === "both"
-        ? [defaultVenueSpace(role as "residence", "An unfurnished Common Area.")]
+        ? [defaultVenueSpace(role as "residence", "An unfurnished Common Space.")]
         : [],
     privateSpaces:
       layout === "private" || layout === "both"
@@ -62,7 +62,7 @@ function draft(layout: string, role = "residence", owner = "a") {
               ...defaultVenueSpace(role as "residence"),
               id: "personal",
               ownerId: owner,
-              name: "Private Area",
+              name: "Private Space",
               purpose: "A sleeping chamber occupying the selected interior",
               controllerIds: role === "other" || role === "gathering" ? ["a"] : [],
             },
@@ -78,7 +78,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const venue = place(layout, role, role === "residence" ? "a" : "");
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
-    assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected areas`);
+    assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
     let saved = coerceVillageState({ venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
@@ -94,7 +94,7 @@ assert.throws(() => parsePlace({ ...draft("exterior"), layoutVersion: undefined 
 assert.throws(() => parsePlace({ ...draft("both"), spaces: [] }, true), /matching its selected layout/);
 assert.throws(
   () => parsePlace({ ...draft("common"), spaces: [defaultVenueSpace("residence")] }, true),
-  /Describe the Common Area/,
+  /Describe the Common Space/,
 );
 assert.throws(
   () =>
@@ -240,14 +240,14 @@ async function main() {
     current = await readVillageState();
     assert.equal(venueCapacity(current.venues.find((venue) => venue.id === outside.id)!), 2);
     assert.equal(current.venues.find((venue) => venue.id === outside.id)!.zones!.length, 1);
-    // Add and remove a base Common Area through reviewed structural terms.
+    // Add and remove a base Common Space through reviewed structural terms.
     await createRenovationProject(outside.id, {
       title: "Add shelter",
       detail: "A communal shelter",
       baseZones: [
         {
           id: "common:shelter",
-          name: "Common Area",
+          name: "Common Space",
           kind: "shared-residence",
           venueClass: "residence",
           description: "A shared canvas shelter",
@@ -297,7 +297,7 @@ async function main() {
     );
     await createRenovationProject(outside.id, {
       title: "Base sleeping nook",
-      detail: "Add an assigned residential Private Area",
+      detail: "Add an assigned residential Private Space",
       baseZones: [
         {
           id: "private:nook",
@@ -341,7 +341,7 @@ async function main() {
     // Upgrade zones can add more physical rooms without adding residential slots.
     await createRenovationProject(outside.id, {
       title: "Extra tent chamber",
-      detail: "Add a vacant Private Area",
+      detail: "Add a vacant Private Space",
       slot: 0,
       improvement: {
         title: "Side tent",

@@ -90,30 +90,30 @@ try {
       await expect(editor.getByRole("button", { name: "Open Venue", exact: true })).toBeDisabled();
       const labels = {
         exterior: "Exterior only",
-        common: "Common Area only",
-        private: "Private Area only",
-        both: "Common Area and Private Area",
+        common: "Common Space only",
+        private: "Private Space only",
+        both: "Common Space and Private Space",
       };
       await editor.getByRole("radio", { name: labels[layout], exact: true }).check();
       if (layout === "common" || layout === "both") {
-        await editor.getByLabel("Common Area description", { exact: true }).fill("A canvas gathering chamber.");
-        await editor.getByRole("button", { name: "Remove Common Area", exact: true }).click();
-        await expect(editor.getByLabel("Common Area description", { exact: true })).toHaveCount(0);
-        await editor.getByRole("button", { name: "Add Common Area", exact: true }).click();
-        await expect(editor.getByLabel("Common Area description", { exact: true })).toBeFocused();
-        await expect(editor.getByLabel("Common Area description", { exact: true })).toHaveValue(
+        await editor.getByLabel("Common Space description", { exact: true }).fill("A canvas gathering chamber.");
+        await editor.getByRole("button", { name: "Remove Common Space", exact: true }).click();
+        await expect(editor.getByLabel("Common Space description", { exact: true })).toHaveCount(0);
+        await editor.getByRole("button", { name: "Add Common Space", exact: true }).click();
+        await expect(editor.getByLabel("Common Space description", { exact: true })).toBeFocused();
+        await expect(editor.getByLabel("Common Space description", { exact: true })).toHaveValue(
           "A canvas gathering chamber.",
         );
-        await editor.getByLabel("Common Area Class", { exact: true }).selectOption("workplace");
-      } else await expect(editor.getByLabel("Common Area description", { exact: true })).toHaveCount(0);
+        await editor.getByLabel("Common Space Class", { exact: true }).selectOption("workplace");
+      } else await expect(editor.getByLabel("Common Space description", { exact: true })).toHaveCount(0);
       if (layout === "private" || layout === "both") {
         await expect(editor.getByText(/Contents remain hidden until/)).toBeVisible();
         await expect(editor.getByLabel("Description · optional")).toHaveCount(0);
-        await editor.getByLabel("Room name", { exact: true }).fill("Sleeping alcove");
-        await editor.getByRole("button", { name: "Remove Private Area", exact: true }).click();
-        await editor.getByRole("button", { name: "Add Private Area", exact: true }).click();
-        await expect(editor.getByLabel("Room name", { exact: true })).toBeFocused();
-        await expect(editor.getByLabel("Room name", { exact: true })).toHaveValue("Sleeping alcove");
+        await editor.getByLabel("Zone name", { exact: true }).fill("Sleeping alcove");
+        await editor.getByRole("button", { name: "Remove Private Space", exact: true }).click();
+        await editor.getByRole("button", { name: "Add Private Space", exact: true }).click();
+        await expect(editor.getByLabel("Zone name", { exact: true })).toBeFocused();
+        await expect(editor.getByLabel("Zone name", { exact: true })).toHaveValue("Sleeping alcove");
       }
       await editor.getByRole("button", { name: "Open Venue", exact: true }).click();
       await expect.poll(() => submitted).toBeTruthy();

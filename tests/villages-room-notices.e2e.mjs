@@ -351,7 +351,7 @@ try {
   await mountVisit("visit-mixed");
   await composer.waitFor();
   await page.getByRole("button", { name: "Venue actions" }).click();
-  await page.getByRole("menuitem", { name: "End visit now" }).click();
+  await page.getByRole("menuitem", { name: "End Scene now" }).click();
   await completeReview();
   await expect(stack).toContainText(improvement.text);
   await expect(stack).toContainText(deterioration.text);
@@ -386,7 +386,7 @@ try {
   await page.getByRole("button", { name: "Venue actions" }).click();
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
-    page.getByRole("menuitem", { name: "End visit now" }).click(),
+    page.getByRole("menuitem", { name: "End Scene now" }).click(),
   ]);
   await completeReview();
   await expectMemory(endMemory);
@@ -401,10 +401,10 @@ try {
   await page.getByRole("button", { name: "Venue actions" }).click();
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
-    page.getByRole("menuitem", { name: "End visit now" }).click(),
+    page.getByRole("menuitem", { name: "End Scene now" }).click(),
   ]);
   await completeReview();
-  await expect(page.getByText("Review complete. No durable memories were made from this visit.")).toBeVisible();
+  await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toBeVisible();
   await returnToMap();
 
   await mountVisit("visit-pending");
@@ -412,7 +412,7 @@ try {
   await page.getByRole("button", { name: "Venue actions" }).click();
   await Promise.all([
     page.waitForResponse((response) => response.url().endsWith("/rooms/end")),
-    page.getByRole("menuitem", { name: "End visit now" }).click(),
+    page.getByRole("menuitem", { name: "End Scene now" }).click(),
   ]);
   await expect(tray).toHaveCount(0, "a pending review creates no false durable-memory star");
   await page.getByRole("button", { name: "Venue actions" }).click();

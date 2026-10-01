@@ -643,7 +643,7 @@ async function main() {
     assert.equal(
       (movedState.venues[1]?.privateSpaces ?? []).some((space) => space.ownerId === "housing-resident"),
       false,
-      "moving without a selected Private Area never creates a room",
+      "moving without a selected Private Space never creates a room",
     );
     assert.match(
       renderHomesBlock(projectHomeLines(await readVillageState(), new Map()), "Player"),

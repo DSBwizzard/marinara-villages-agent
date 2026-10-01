@@ -225,7 +225,7 @@ async function main() {
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
     () => parsePlace({ ...parsed, layout: "common", spaces: [{ venueClass: "residence", description: "" }] }, true),
-    /Common Area/,
+    /Common Space/,
   );
 
   const client = await readFile(join(clientRoot, "villages-package-entry.tsx"), "utf8");
@@ -244,7 +244,7 @@ async function main() {
   assert.ok(client.includes("Review village"));
   assert.ok(editor.includes("Assigned villager"));
   assert.ok(editor.includes("Venue form"));
-  assert.ok(editor.includes("Private Area"));
+  assert.ok(editor.includes("Private Space"));
   assert.ok(client.includes("generateSetupImage(selectedSetupVenue, area)"));
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
