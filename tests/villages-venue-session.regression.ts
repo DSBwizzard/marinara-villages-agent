@@ -2,7 +2,16 @@ import { settleBackgroundWork } from "../packages/villages/src/engine/packages/s
 import assert from "node:assert/strict";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
 function fixtureJson(value: any) {
-  return JSON.stringify(value?.segments || value?.lines ? { wishChanges: [], ...value } : value);
+  return JSON.stringify(
+    value?.segments || value?.lines
+      ? {
+          wishChanges: [],
+          memoryChanges: [],
+          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+          ...value,
+        }
+      : value,
+  );
 }
 import {
   readRelationshipState,
@@ -48,6 +57,7 @@ import {
   closeVenueSessionWithReceipts,
   leaveVenueMemoryPending,
   enterVenue,
+  readSceneChanges,
   enterResidencePrivateSpace,
   moveVenueZone,
   leaveVenueSession,
@@ -110,6 +120,7 @@ async function endVenueSessionWithReceipts(id: string) {
 const records = new Map<string, any>();
 const key = (packageId: string, id: string) => `${packageId}:${id}`;
 let legacyVisits = true;
+let liveScenes = false;
 let relationshipDecisions = false;
 let failRelationshipStorage = false;
 let failMemoryStorageForVisit = "";
@@ -130,7 +141,13 @@ const documents = {
       data:
         input.kind === "venue-visit" && legacyVisits
           ? { ...input.data, memoryMode: "end", relationshipReview: undefined }
-          : input.data,
+          : input.kind === "venue-visit" && !liveScenes
+            ? {
+                ...input.data,
+                memoryMode: "tiered",
+                relationshipReview: { seed: input.data.villageSeed, applied: false, batches: [], receipts: [] },
+              }
+            : input.data,
       revision: 1,
     };
     records.set(id, row);
@@ -904,6 +921,39 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
+          if (user === "Live commitment") {
+            const result = {
+              heardPlayerBy: ["bob"],
+              segments: [
+                {
+                  kind: "dialogue",
+                  speakerId: "bob",
+                  text: "I will bring seedlings when we plant together.",
+                  heardBy: ["bob"],
+                },
+              ],
+              memoryChanges: [
+                {
+                  kind: "durable",
+                  category: "commitment",
+                  text: "Bob will bring seedlings for planting together.",
+                  subjectCharacterIds: ["bob"],
+                  knownByCharacterIds: ["bob"],
+                  evidence: [0],
+                  memoryIds: [],
+                },
+              ],
+              relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+              wishChanges: [],
+            };
+            return { content: fixtureJson(result), finishReason: "stop" };
+          }
+          if (user === "Live truncated metadata")
+            return {
+              content:
+                '{"heardPlayerBy":["bob"],"segments":[{"kind":"dialogue","speakerId":"bob","text":"Let us keep talking about those seedlings.","heardBy":["bob"]}],"wishChanges":[],"memoryChanges":[{"text":"cut',
+              finishReason: "length",
+            };
           if (user === "Remember the bridge")
             return {
               content: fixtureJson({
@@ -3613,6 +3663,39 @@ async function main() {
     const parkExterior = await enterVenue("park", "workplace", "", "outside");
     assert.equal(parkExterior.area, "outside", "a public Venue also supports an explicit exterior visit");
     await endVenueSession(parkExterior.id);
+    liveScenes = true;
+    legacyVisits = false;
+    await mutateVillageState((state) => {
+      for (const person of state.villagers)
+        for (const block of person.agenda?.activeDay?.blocks ?? []) block.venueId = "park";
+    });
+    const live = await greetVenue((await enterVenue("park")).id);
+    assert.equal(live.memoryMode, "live");
+    const beforeLive = { calls, memoryCalls, reviewCalls };
+    const liveTurn = await sendVenueTurn({
+      sessionId: live.id,
+      submissionId: "live-commitment",
+      mode: "chat",
+      targetId: "bob",
+      message: "Live commitment",
+    });
+    assert.equal(liveTurn.recordEvents.filter((event) => event.kind === "memory").length, 1);
+    assert.ok((await readVillageState()).chronicle.some((entry) => entry.id === live.id + ":live-commitment:memory:0"));
+    const beforeTruncated = calls;
+    const truncated = await sendVenueTurn({
+      sessionId: live.id,
+      submissionId: "live-truncated",
+      mode: "chat",
+      targetId: "bob",
+      message: "Live truncated metadata",
+    });
+    assert.equal(calls, beforeTruncated + 1, "trailing metadata truncation does not trigger a paid narration repair");
+    assert.ok(truncated.session.lines.some((line) => line.content === "Let us keep talking about those seedlings."));
+    const diagnostics = await readSceneChanges(live.id);
+    assert.equal(diagnostics.changes.at(-1)?.processing?.domains.memories.status, "failed");
+    await endVenueSession(live.id);
+    assert.equal(memoryCalls, beforeLive.memoryCalls, "fresh Scene closing makes no memory review calls");
+    assert.equal(reviewCalls, beforeLive.reviewCalls, "fresh Scene closing makes no relationship review calls");
     await saveVillageWriting({ writingGuidance: "An old village's style" });
     await resetVillage();
     assert.deepEqual((await readVillageState()).narrationStyle, defaultVillageState().narrationStyle);

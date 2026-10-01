@@ -329,6 +329,32 @@ assert.equal(
   null,
   "score recovery cannot reverse revocation",
 );
+applyRelationshipReview(
+  state,
+  {
+    ...emptyRelationshipReview(),
+    permissions: [
+      {
+        id: "late-old-grant",
+        controllerId: "Rosa",
+        visitorId: "player",
+        venueId: "home",
+        zoneId: personal.id,
+        action: "grant",
+        lineIds: ["older-invitation"],
+      },
+    ],
+  },
+  village,
+  "older-scene",
+  new Date(Date.parse(stamp) - 1000).toISOString(),
+);
+reconcileRelationships(state, village);
+assert.equal(
+  relationshipZoneController(state, village, village.venues[0]!, personal, "player"),
+  null,
+  "replaying an earlier grant cannot overwrite a newer revocation",
+);
 const changedController = structuredClone(village);
 changedController.venues[0]!.residentIds = [];
 changedController.venues[0]!.occupancy.residentCharacterId = null;

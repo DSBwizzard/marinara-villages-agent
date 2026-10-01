@@ -1602,6 +1602,21 @@ function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronic
       ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
       : undefined,
     sourceVisitId: asTrimmedString(raw.sourceVisitId) || undefined,
+    lastReinforcedAt: asIsoString(raw.lastReinforcedAt) ?? undefined,
+    supersededAt: asIsoString(raw.supersededAt) ?? undefined,
+    supersededBy: asTrimmedString(raw.supersededBy) || undefined,
+    evidenceHistory: Array.isArray(raw.evidenceHistory)
+      ? raw.evidenceHistory
+          .map((value) => {
+            const entry = asRecord(value);
+            return {
+              visitId: asTrimmedString(entry.visitId),
+              submissionId: asTrimmedString(entry.submissionId),
+              lineIds: asStringArray(entry.lineIds),
+            };
+          })
+          .filter((entry) => entry.visitId && entry.submissionId && entry.lineIds.length)
+      : undefined,
     sourceRecollectionIds: Array.isArray(raw.sourceRecollectionIds)
       ? [...new Set(raw.sourceRecollectionIds.filter((id): id is string => typeof id === "string" && !!id))]
       : undefined,
