@@ -21,6 +21,9 @@ import {
   contactPosition,
   readContactRelay,
   readContactIntent,
+  readContactDelivery,
+  contactDevice,
+  contactReach,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-contact.js";
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
 import type {
@@ -131,8 +134,17 @@ let calls = 0,
   behavior = "answer",
   failSave = false;
 const prompts: string[] = [];
+const debugLogs: string[] = [];
 const release = configureVillagesRuntime({
-  logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
+  logger: {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    debugOverride(_enabled: boolean, _message: string, text: string) {
+      debugLogs.push(text);
+    },
+  },
   isDebugAgentsEnabled: () => true,
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   resources: {
@@ -215,7 +227,9 @@ const release = configureVillagesRuntime({
                       ? "Goodbye, I need to go now."
                       : behavior === "move"
                         ? "I'll come outside to meet you."
-                        : "Yes, I'm listening.";
+                        : behavior === "short-end"
+                          ? "Goodbye."
+                          : "Yes, I'm listening.";
             if (behavior !== "quiet")
               result = {
                 heardPlayerBy: audience,
@@ -235,7 +249,7 @@ const release = configureVillagesRuntime({
                 timing: "now",
                 quote,
               };
-            if (behavior === "end") {
+            if (behavior === "end" || behavior === "short-end") {
               result.contactEnd = [{ speakerId: "messenger", quote }];
               result.sceneEnded = { speakerId: "messenger", quote };
             }
@@ -244,8 +258,54 @@ const release = configureVillagesRuntime({
               result.contactMoves = [{ characterId: "messenger", zoneId: "exterior", quote }];
             }
           } else if (user === "I raise my voice toward the house and ask for Alex.") {
+            // Even an invalid remote speaker in preliminary prose cannot block valid contact routing.
+            result.segments = [
+              { kind: "dialogue", speakerId: "alex", text: "A discarded premature answer.", heardBy: ["alex"] },
+            ];
             result.contactIntent = { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: user };
           }
+          if (system.includes("CONTACT RESPONSE") && behavior.startsWith("distant")) {
+            const speakerId = behavior === "distant-local" ? "trina" : "alex";
+            const quote =
+              behavior === "distant-approach"
+                ? "I'll come closer to the Common Space."
+                : behavior === "distant-end"
+                  ? "Goodbye, I need to go now."
+                  : behavior === "distant-local"
+                    ? "I can hear both of you from out here."
+                    : "I can hear you calling from inside.";
+            result = {
+              heardPlayerBy: ["trina", "alex"],
+              segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: ["trina", "alex"] }],
+            };
+            if (behavior === "distant-silent-witness") {
+              result.heardPlayerBy.push("dozy");
+              result.recollections = [
+                {
+                  text: "Dozy overheard the morning greeting.",
+                  subjectCharacterIds: ["dozy"],
+                  knownByCharacterIds: ["dozy"],
+                  evidence: ["player"],
+                },
+              ];
+            }
+            if (behavior === "distant-approach") {
+              result.contactMoves = [{ characterId: "alex", zoneId: "common", quote }];
+              result.segments.push({
+                kind: "narration",
+                text: "Alex comes closer to the Common Space.",
+                heardBy: ["trina"],
+              });
+            }
+            if (behavior === "distant-end") result.contactEnd = [{ speakerId: "alex", quote }];
+          }
+          if (system.includes("CONTACT RESPONSE") && behavior === "silent-heard")
+            result = {
+              heardPlayerBy: ["messenger"],
+              segments: [{ kind: "narration", text: "No answer.", heardBy: [] }],
+            };
+          if (behavior === "invalid")
+            result.segments = [{ kind: "dialogue", speakerId: "unlisted", text: "Unsupported speech.", heardBy: [] }];
           return { content: JSON.stringify(result), finishReason: "stop" };
         },
       };
@@ -300,12 +360,54 @@ async function main() {
     assert.equal(calls, beforeReplay, "saved contact replays without paid work");
     const refreshed = (await activeVenueSession())!;
     assert.equal(refreshed.doorwayContacts?.[0]?.characterId, "messenger", "refresh restores the contact");
+    const chatCalls = calls;
+    const chat = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Is it too early? I thought you were an early bird.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "ordinary-followup",
+    });
+    assert.equal(calls - chatCalls, 1, "ordinary Chat uses the established audible audience before local validation");
+    assert.deepEqual(chat.session.activeIds, []);
+    assert.equal(chat.session.lines.at(-1)?.viaDoorway, true);
+    assert.equal(chat.session.zoneId, "exterior");
+    await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Is it too early? I thought you were an early bird.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "ordinary-followup",
+    });
+    assert.equal(calls - chatCalls, 1, "ordinary Chat replay is free");
     await attempt(scene.id, "followup");
     assert.match(prompts.at(-1)!, /Yes, I'm listening/, "follow-ups receive witnessed doorway history");
     behavior = "end";
     await attempt(scene.id, "end");
     assert.deepEqual((await activeVenueSession())!.doorwayContacts, []);
     assert.equal((await activeVenueSession())!.status, "active", "a doorway goodbye leaves the Venue Scene open");
+    behavior = "answer";
+    await attempt(scene.id, "reopen-after-end");
+    behavior = "short-end";
+    const shortEnd = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "I will leave you to it.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "short-goodbye",
+    });
+    assert.deepEqual(shortEnd.session.doorwayContacts, []);
+    assert.equal(contactPosition(shortEnd.session, "messenger"), "common", "a remote goodbye is not a Venue departure");
+    behavior = "answer";
+    await attempt(scene.id, "reopen-for-player-goodbye");
+    const playerGoodbye = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Goodbye, Messenger.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "player-goodbye",
+    });
+    assert.deepEqual(playerGoodbye.session.doorwayContacts, [], "the player's deliberate goodbye closes the exchange");
     behavior = "invite";
     const invited = await attempt(scene.id, "invite");
     assert.equal(invited.session.zoneId, "exterior", "inviting does not automatically enter");
@@ -410,6 +512,181 @@ async function main() {
     assert.deepEqual(silent.session.participants, [], "silence does not disclose who is inside");
     await discardVenueVisitDebug(scene.id);
 
+    behavior = "silent-heard";
+    scene = await open();
+    const unheardPublic = await attempt(scene.id, "silent-heard");
+    assert.equal(unheardPublic.session.lines.at(-1)!.content, "No answer.");
+    assert.ok(unheardPublic.session.lines.some((line) => line.contactHidden && line.heardBy.includes("messenger")));
+    const silentPublic = publicSceneResponse(unheardPublic);
+    assert.deepEqual(silentPublic.session.participants, []);
+    assert.deepEqual(silentPublic.session.heardHistory, [], "unseen silent listeners stay server-only");
+    assert.doesNotMatch(JSON.stringify(silentPublic.session.lines), /messenger/);
+    assert.ok(
+      (await activeVenueSession())!.heardHistory.some((entry) => entry.characterId === "messenger"),
+      "silent hearing survives refresh server-side",
+    );
+    await discardVenueVisitDebug(scene.id);
+
+    await mutateVillageState((current) => {
+      current.villagers.push(villager("trina", "house", "exterior"), villager("dozy", "house", "office", "Sleeping"));
+      current.venues[0]!.workerIds = ["alex", "dozy"];
+    });
+    behavior = "distant";
+    scene = await open();
+    assert.deepEqual(scene.activeIds, ["trina"]);
+    const loudMessage = "I shout loudly toward the house: Alex, can you hear me?";
+    const loudCalls = calls;
+    const loud = await sendVenueTurn({
+      sessionId: scene.id,
+      message: loudMessage,
+      mode: "contact",
+      targetId: "alex",
+      submissionId: "loud",
+      contact: { kind: "call", targetId: "alex", boundaryZoneId: "", quote: loudMessage },
+    });
+    assert.equal(calls - loudCalls, 1);
+    assert.deepEqual(loud.session.activeIds, ["trina"], "remote speech does not teleport the speaker");
+    assert.equal(loud.session.lines.at(-1)!.remoteDelivery, "loud");
+    const callWitnesses = loud.session.lines.find(
+      (line) => line.contactHidden && line.content === loudMessage,
+    )!.heardBy;
+    assert.deepEqual(callWitnesses.sort(), ["alex", "trina"], "a possible listener does not automatically hear");
+    assert.ok(!callWitnesses.includes("messenger") && !callWitnesses.includes("dozy"));
+    assert.doesNotMatch(
+      JSON.stringify(publicSceneResponse(loud)),
+      /dozy|sceneAttendance|characterZoneId|SECRET OFFICE DETAILS|SECRET BEDROOM/,
+    );
+    const remoteFollowup = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Thanks. How is your morning going?",
+      mode: "chat",
+      targetId: "",
+      submissionId: "loud-followup",
+    });
+    assert.equal(remoteFollowup.session.lines.at(-1)!.speakerId, "alex");
+    assert.equal(
+      remoteFollowup.session.doorwayContacts!.find((entry) => entry.characterId === "alex")!.delivery,
+      "loud",
+    );
+    behavior = "distant-silent-witness";
+    const silentWitness = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Good morning everyone.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "silent-witness",
+    });
+    assert.ok(silentWitness.session.lines.some((line) => line.contactHidden && line.heardBy.includes("dozy")));
+    assert.doesNotMatch(
+      JSON.stringify(publicSceneResponse(silentWitness)),
+      /dozy|Dozy/,
+      "unseen actual witnesses and their recollections remain server-only",
+    );
+    behavior = "distant-local";
+    const local = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Trina, what do you think?",
+      mode: "chat",
+      targetId: "",
+      submissionId: "local-addressee",
+    });
+    assert.equal(local.session.lines.at(-1)!.speakerId, "trina");
+    assert.ok(local.session.lines.at(-1)!.heardBy.includes("alex"), "addressing the local resident is not isolation");
+    assert.match(prompts.at(-1)!, /Intended addressee: trina/);
+    behavior = "distant-approach";
+    const closer = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Would you like to come closer?",
+      mode: "chat",
+      targetId: "",
+      submissionId: "approach",
+    });
+    assert.equal(contactPosition(closer.session, "alex"), "common");
+    assert.deepEqual(closer.session.activeIds, ["trina"], "an intermediate arrival stays out of the physical cast");
+    assert.equal(
+      closer.session.doorwayContacts!.find((entry) => entry.characterId === "alex")!.characterZoneId,
+      "common",
+    );
+    behavior = "distant-end";
+    const ended = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "See you later!",
+      mode: "chat",
+      targetId: "",
+      submissionId: "distant-end",
+    });
+    assert.equal(ended.session.status, "active");
+    assert.deepEqual(ended.session.doorwayContacts, []);
+    await discardVenueVisitDebug(scene.id);
+    await mutateVillageState((current) => {
+      current.villagers = current.villagers.filter((entry) => !["trina", "dozy"].includes(entry.characterId));
+      current.venues[0]!.workerIds = ["alex"];
+    });
+
+    assert.equal(readContactDelivery({}, "I call out hello."), "voice");
+    assert.equal(readContactDelivery({}, "I shout loudly for Alex."), "loud");
+    assert.equal(readContactDelivery({}, "If I shout for Alex, would he hear?"), "voice");
+    assert.ok(!contactReach(saved, house, "exterior", "voice").includes("office"));
+    assert.ok(contactReach(saved, house, "exterior", "loud").includes("office"));
+    assert.equal(contactDevice(house, "exterior", "invented"), false);
+    await mutateVillageState((current) => {
+      current.venues[0]!.zones!.find((zone) => zone.id === "exterior")!.state.features!.push({
+        id: "intercom",
+        text: "A working two-way intercom connects the rooms.",
+        locked: true,
+      });
+    });
+    behavior = "distant";
+    scene = await open();
+    const deviceMessage = "I use the intercom to ask Alex if he is listening.";
+    const device = await sendVenueTurn({
+      sessionId: scene.id,
+      message: deviceMessage,
+      mode: "contact",
+      targetId: "alex",
+      submissionId: "device",
+      contact: {
+        kind: "call",
+        targetId: "alex",
+        boundaryZoneId: "",
+        quote: deviceMessage,
+        delivery: "device",
+        deviceFeatureId: "intercom",
+      },
+    });
+    assert.equal(device.session.lines.at(-1)!.remoteDelivery, "device");
+    assert.deepEqual(device.session.activeIds, []);
+    const deviceFollowup = await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Thanks for answering.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "device-followup",
+    });
+    assert.equal(deviceFollowup.session.lines.at(-1)!.remoteDelivery, "device");
+    await discardVenueVisitDebug(scene.id);
+    scene = await open();
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: scene.id,
+          message: deviceMessage,
+          mode: "contact",
+          targetId: "alex",
+          submissionId: "invented-device",
+          contact: {
+            kind: "call",
+            targetId: "alex",
+            boundaryZoneId: "",
+            quote: deviceMessage,
+            delivery: "device",
+            deviceFeatureId: "invented",
+          },
+        }),
+      /not an established feature/,
+    );
+    await discardVenueVisitDebug(scene.id);
+
     behavior = "move";
     scene = await open();
     const arrived = await attempt(scene.id, "arrive");
@@ -456,6 +733,47 @@ async function main() {
       ),
       null,
     );
+    behavior = "invalid";
+    scene = await open();
+    const invalidCalls = calls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: scene.id,
+          message: "Hello there.",
+          mode: "chat",
+          targetId: "",
+          submissionId: "invalid-parser",
+        }),
+      /could not be kept accurate/,
+    );
+    assert.equal(calls - invalidCalls, 2);
+    behavior = "answer";
+    const beforeExplicitRetry = calls;
+    await sendVenueTurn({
+      sessionId: scene.id,
+      message: "Hello there.",
+      mode: "chat",
+      targetId: "",
+      submissionId: "invalid-parser",
+    });
+    assert.equal(
+      calls - beforeExplicitRetry,
+      1,
+      "known invalid completions can be explicitly retried without replaying the same rejected draft",
+    );
+    assert.ok(debugLogs.some((line) => line.includes("scene parser rejection") && line.includes("unreadable speaker")));
+    assert.ok(debugLogs.some((line) => line.includes("scene repair") && line.includes("invalid-segments")));
+    assert.ok(
+      debugLogs.some(
+        (line) =>
+          line.includes("submission replay") ||
+          line.includes("checkpoint replay") ||
+          line.includes("completion replay"),
+      ),
+      "replayed completions are identifiable in logs",
+    );
+    assert.ok(debugLogs.some((line) => line.includes("contact routing") && line.includes("possibleListeners")));
     console.log("Contact routing, witnessed speech, relay travel, explicit entry, refresh, and replay passed.");
   } finally {
     release();

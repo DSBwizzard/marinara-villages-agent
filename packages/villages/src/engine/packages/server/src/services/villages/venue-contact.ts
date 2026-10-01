@@ -1,11 +1,68 @@
 import type { VillageState, VillageVenue } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { venueZones, zoneClosed, canOccupyZone, canInviteToZone } from "./venue-zones.js";
+import { venueZones, zoneClosed, canOccupyZone, canInviteToZone, venueInZone } from "./venue-zones.js";
 import { contactNeighborIds } from "../../../../shared/src/villages/zone-contact.js";
 
-export type ContactIntent = { kind: "knock" | "call"; targetId: string; boundaryZoneId: string; quote: string };
-export type DoorwayContact = { characterId: string; playerZoneId: string; characterZoneId: string };
+export type ContactDelivery = "voice" | "loud" | "device";
+export type ContactIntent = {
+  kind: "knock" | "call";
+  targetId: string;
+  boundaryZoneId: string;
+  quote: string;
+  delivery?: ContactDelivery;
+  deviceFeatureId?: string;
+};
+export type DoorwayContact = {
+  characterId: string;
+  playerZoneId: string;
+  characterZoneId: string;
+  delivery?: ContactDelivery;
+  deviceFeatureId?: string;
+};
+export function readContactDelivery(value: unknown, message: string): ContactDelivery {
+  const row = asRecord(value);
+  if (row.delivery === "device" && /\b(?:intercom|speakerphone|telephone|communication device|radio)\b/iu.test(message))
+    return "device";
+  const citation = asTrimmedString(row.deliveryQuote) || message;
+  const loud =
+    /\b(?:shout|shouting|yell|yelling|holler|hollering|scream|screaming|loudly|raise\s+my\s+voice|top\s+of\s+my\s+lungs)\b/iu;
+  const hypothetical =
+    /\b(?:if|would|could|might|yesterday|earlier|don't|do not)\s+(?:i\s+)?(?:shout|shouted|yell|yelled|holler|scream|call|knock|use)\b/iu;
+  return normalize(message).includes(normalize(citation)) && loud.test(citation) && !hypothetical.test(citation)
+    ? "loud"
+    : "voice";
+}
+/** A device must already exist in the player's visible Zone; prose cannot conjure a connection. */
+export function contactDevice(venue: VillageVenue, origin: string, featureId: string): boolean {
+  return !!venueInZone(venue, origin).state.features?.some(
+    (feature) =>
+      feature.id === featureId &&
+      !/\b(?:broken|disconnected|nonfunctional|non-functional|out of order)\b/iu.test(feature.text) &&
+      /\b(?:intercom|speakerphone|telephone|communication device|two-way radio)\b/iu.test(feature.text),
+  );
+}
+/** Sound reach is eligibility, never proof of hearing. Entry permissions do not block a voice. */
+export function contactReach(
+  state: VillageState,
+  venue: VillageVenue,
+  origin: string,
+  delivery: ContactDelivery,
+  boundary = "",
+): string[] {
+  if (delivery === "voice") return contactNeighbors(venue, origin).filter((id) => !boundary || id === boundary);
+  const queue = [origin],
+    seen = new Set([origin]);
+  for (let index = 0; index < queue.length; index++) {
+    for (const next of contactNeighbors(venue, queue[index]!)) {
+      const zone = venueZones(venue).find((entry) => entry.id === next);
+      if (seen.has(next) || !zone || zoneClosed(state, venue, zone)) continue;
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+  return queue.filter((id) => id !== origin);
+}
 export type ContactMove = { characterId: string; zoneId: string; quote: string; path: string[] };
 export type ContactRelay = { speakerId: string; targetId: string; quote: string; path: string[]; targetZoneId: string };
 const normalize = (value: string) =>
@@ -75,7 +132,7 @@ export function readContactIntent(value: unknown, message: string): ContactInten
     (row.kind !== "knock" && row.kind !== "call") ||
     !quote ||
     !normalize(message).includes(normalize(quote)) ||
-    /\b(?:would|could|might|if|yesterday|earlier|don't|do not|didn't|did not)\s+(?:i\s+)?(?:knock|call)\b/iu.test(
+    /\b(?:would|could|might|if|yesterday|earlier|don't|do not|didn't|did not)\s+(?:i\s+)?(?:knock|call|shout|yell|holler|scream|use\s+(?:the\s+)?intercom)\b/iu.test(
       normalize(message),
     )
   )
@@ -85,6 +142,8 @@ export function readContactIntent(value: unknown, message: string): ContactInten
     targetId: asTrimmedString(row.targetId),
     boundaryZoneId: asTrimmedString(row.boundaryZoneId),
     quote,
+    delivery: readContactDelivery(row, message),
+    ...(asTrimmedString(row.deviceFeatureId) ? { deviceFeatureId: asTrimmedString(row.deviceFeatureId) } : {}),
   };
 }
 export function contactSpeech(
@@ -122,6 +181,7 @@ export function readContactMoves(
       !contactSpeech(lines, actor, quote) ||
       /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(normalize(quote)) ||
       !path ||
+      path.length < 2 ||
       !lines.some((line) => line.kind === "narration")
     )
       return [];

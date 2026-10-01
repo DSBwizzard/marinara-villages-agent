@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { resetRuntimeDebug, readRuntimeDebug, runtimeDebug } from "./runtime-debug.js";
 // Villages — the handle on the Engine services this package is allowed to use.
 //
 // `activate` receives the runtime host on its context, hands it here, and the
@@ -29,6 +30,7 @@ let registration = 0;
 export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => void {
   const token = ++registration;
   host = next;
+  resetRuntimeDebug();
   return () => {
     if (registration === token) host = null;
   };
@@ -99,7 +101,44 @@ const fallbackLogger: CapabilityRuntimeLogger = {
 };
 
 export function villagesLogger(): CapabilityRuntimeLogger {
-  return host?.logger ?? fallbackLogger;
+  const target = host?.logger ?? fallbackLogger;
+  return {
+    debug: (...args) => {
+      try {
+        target.debug(...args);
+      } catch {
+        /* logging is best effort */
+      }
+    },
+    info: (...args) => {
+      try {
+        target.info(...args);
+      } catch {
+        /* logging is best effort */
+      }
+    },
+    warn: (...args) => {
+      try {
+        target.warn(...args);
+      } catch {
+        /* logging is best effort */
+      }
+    },
+    error: (...args) => {
+      try {
+        target.error(...args);
+      } catch {
+        /* logging is best effort */
+      }
+    },
+    debugOverride: (...args) => {
+      try {
+        target.debugOverride(...args);
+      } catch {
+        /* logging is best effort */
+      }
+    },
+  };
 }
 
 export function villagesDebugAgentsEnabled(): boolean {
@@ -180,8 +219,29 @@ export async function completeWithRoom(
   maxTokens: number,
   options: VillageCompletionOptions,
 ): Promise<CapabilityLanguageModelCompletion> {
+  await readRuntimeDebug().catch(() => undefined);
   const background = backgroundCalls.getStore();
-  if (background) return background(model, messages, maxTokens, options);
+  runtimeDebug("completion request", {
+    model: model.model,
+    connectionId: model.connectionId,
+    maxTokens,
+    background: !!background,
+    messages,
+  });
+  if (background) {
+    const started = performance.now();
+    try {
+      const result = await background(model, messages, maxTokens, options);
+      runtimeDebug("background completion", { elapsedMs: Math.round(performance.now() - started), maxTokens, result });
+      return result;
+    } catch (error) {
+      runtimeDebug("background exception", {
+        message: String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  }
   const ask = async (tokens: number) => {
     options.signal?.throwIfAborted();
     const started = performance.now();
@@ -214,7 +274,18 @@ export async function completeWithRoom(
               ? AbortSignal.any([operationSignal, options.signal])
               : (operationSignal ?? options.signal),
         }),
-    );
+    ).catch((error) => {
+      runtimeDebug("completion exception", {
+        message: String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    });
+    runtimeDebug("completion result", {
+      elapsedMs: Math.round(performance.now() - started),
+      maxTokens: tokens,
+      completion,
+    });
     options.onAttempt?.(completion, performance.now() - started, tokens);
     return completion;
   };

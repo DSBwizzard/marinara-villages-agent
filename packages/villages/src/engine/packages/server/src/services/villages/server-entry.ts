@@ -4,7 +4,8 @@ import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { villagesRoutes } from "../../routes/villages.routes.js";
 import { startBackgroundWork } from "./background-work.js";
-import { configureVillagesRuntime } from "./package-runtime.js";
+import { readRuntimeDebug } from "./runtime-debug.js";
+import { configureVillagesRuntime, villagesLogger } from "./package-runtime.js";
 import { startVillageRefreshScheduler } from "./village-refresh-scheduler.js";
 import { readVillageState } from "./village-store.js";
 import { stopVenueCoordinator } from "./venue-coordinator.js";
@@ -28,6 +29,9 @@ export async function activate({ api }: ActivationContext) {
     for (const cleanup of cleanups.reverse()) await cleanup();
   };
   try {
+    await readRuntimeDebug().catch((error) =>
+      villagesLogger().warn("[villages] runtime logging settings could not be read: %s", String(error)),
+    );
     await recoverVenueSceneWork();
     cleanups.push(stopVenueCoordinator);
     cleanups.push(await api.registerPrivilegedRoutes(villagesRoutes, { prefix: "/api/villages" }));

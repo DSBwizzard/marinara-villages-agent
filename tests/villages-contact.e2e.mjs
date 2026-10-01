@@ -15,6 +15,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
+    const remoteDelivery = width === 390 ? "loud" : width === 320 ? "device" : undefined;
     snapshot.settings.venues[0].zones = [
       { id: "exterior", kind: "exterior", name: "Exterior", seen: true },
       { id: "common", kind: "shared-residence", venueClass: "residence", name: "Common Space", seen: false },
@@ -47,6 +48,7 @@ try {
       ],
     };
     let submitted, entered;
+    const submissions = [];
     await page.route("http://villages.test/", (route) =>
       route.fulfill({
         status: 200,
@@ -61,9 +63,10 @@ try {
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/turn")) {
         submitted = route.request().postDataJSON();
+        submissions.push(submitted);
         session = {
           ...session,
-          sceneRevision: 1,
+          sceneRevision: submissions.length,
           participants: [{ characterId: "mara", name: "Mara", doing: "Answering a contact request" }],
           doorwayContacts: [{ characterId: "mara", playerZoneId: "exterior" }],
           entryOffers: [{ zoneId: "common", label: "Common Space", controllerId: "mara", accompanies: false }],
@@ -76,8 +79,12 @@ try {
               kind: "dialogue",
               speakerId: "mara",
               name: "Mara",
-              content: "Come into our Common Space.",
+              content:
+                submissions.length === 1
+                  ? "Come into our Common Space."
+                  : "Yes, I am still listening through the doorway.",
               viaDoorway: true,
+              remoteDelivery,
               at: now,
             },
           ],
@@ -140,11 +147,28 @@ try {
     await expect(page.getByRole("button", { name: "Enter Common Space", exact: true })).toBeVisible();
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     if (await next.isVisible()) await next.click();
-    await expect(page.getByText(/through the doorway/i).first()).toBeVisible();
+    await expect(
+      page
+        .getByText(
+          remoteDelivery === "loud"
+            ? /calling from inside/i
+            : remoteDelivery === "device"
+              ? /over the intercom/i
+              : /through the doorway/i,
+        )
+        .first(),
+    ).toBeVisible();
+    await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mode: Chat. Choose mode", exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Message at The Mill", exact: true }).fill("Thanks. How are you?");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect.poll(() => submissions.length).toBe(2);
+    assert.equal(submitted.mode, "chat");
+    assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     await page.getByRole("button", { name: "Enter Common Space", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");
-    assert.equal(entered.expectedSceneRevision, 1);
+    assert.equal(entered.expectedSceneRevision, 2);
     assert.deepEqual(errors, []);
     await page.close();
   }

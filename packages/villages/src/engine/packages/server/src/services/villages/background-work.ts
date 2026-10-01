@@ -1,3 +1,4 @@
+import { runtimeDebug } from "./runtime-debug.js";
 // Package-owned work ledger. Only this module dispatches coordinated background requests.
 import { createHash, randomUUID } from "node:crypto";
 import { backgroundCalls, type BackgroundCompletion } from "./background-context.js";
@@ -360,6 +361,7 @@ async function runJob(id: string): Promise<void> {
     if (saved?.status === "completed") {
       if (saved.fingerprint !== fingerprint)
         throw new Obsolete("The generation inputs changed; saved responses cannot be mixed.");
+      runtimeDebug("background completion replay", { jobId: id, step: index, fingerprint });
       return saved.response!;
     }
     return requestTurn(async () => {
