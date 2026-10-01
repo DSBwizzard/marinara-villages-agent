@@ -193,6 +193,7 @@ try {
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
       await expect(decisionSwitch).toBeVisible();
+      await expect(decisionSwitch).toBeEnabled();
       await expect(decisionSwitch).toHaveAttribute("aria-checked", "false");
       await decisionSwitch.focus();
       await page.keyboard.press("Space");
