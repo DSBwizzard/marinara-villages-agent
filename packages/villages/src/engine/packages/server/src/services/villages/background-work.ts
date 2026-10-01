@@ -7,7 +7,7 @@ import { mutateVillageState, readVillageState } from "./village-store.js";
 import { conflict, badRequest } from "./errors.js";
 import type { VillageState } from "./types.js";
 
-export type BackgroundKind = "story" | "agenda" | "translation" | "wish" | "mail" | "adaptation";
+export type BackgroundKind = "story" | "agenda" | "translation" | "wish" | "wish-check" | "mail" | "adaptation";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
 export type BackgroundSummary = {
   id: string;
@@ -28,6 +28,7 @@ type Step = {
   response?: Awaited<ReturnType<BackgroundCompletion>>;
 };
 export type BackgroundInput = {
+  residentId?: string;
   kind: BackgroundKind;
   subjectId: string;
   seed: string;
@@ -567,9 +568,11 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
   for (const record of records) {
     const job = record.data as Job;
     const retired =
-      job?.kind === "mail"
-        ? !state.venueMail.some((mail) => mail.id === job.subjectId)
-        : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+      job?.kind === "wish-check"
+        ? job.seed !== state.seed || !state.villagers.some((resident) => resident.characterId === asWishCheckActor(job))
+        : job?.kind === "mail"
+          ? !state.venueMail.some((mail) => mail.id === job.subjectId)
+          : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
     if (
       !job ||
       retired ||
@@ -579,9 +582,11 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
       if (removed++ < 8 && !running.has(record.id))
         if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
           const subjectGone =
-            job?.kind === "mail"
-              ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
-              : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+            job?.kind === "wish-check"
+              ? !state.villagers.some((resident) => resident.characterId === asWishCheckActor(job))
+              : job?.kind === "mail"
+                ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
+                : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
           if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
         }
       continue;
@@ -608,6 +613,9 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
         if (current.backgroundReceipts[id] === state.backgroundReceipts[id]) delete current.backgroundReceipts[id];
     });
   return summaries;
+}
+function asWishCheckActor(job: Job): string {
+  return job.residentId ?? "";
 }
 export function startBackgroundWork(options: { now?: () => number } = {}): () => void {
   presenceNow = options.now ?? (() => performance.now());

@@ -1,5 +1,12 @@
 import { runtimeDebug } from "./runtime-debug.js";
 import {
+  bindWishProposals,
+  processWishExchange,
+  processProjectWishOutbox,
+  WISH_PROPOSAL_INSTRUCTION,
+  type WishProposal,
+} from "./wish-progress.js";
+import {
   createExchangeProcessing,
   coerceExchangeProcessing,
   dispatchExchange,
@@ -246,6 +253,8 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
   };
 }
 type VenueSubmission = {
+  wishProposals?: WishProposal[];
+  wishProposalError?: string;
   processing?: ExchangeProcessing;
   id: string;
   message: string;
@@ -660,6 +669,8 @@ function coerceSession(value: unknown): VenueScene {
             const row = asRecord(value);
             return {
               id: asTrimmedString(row.id),
+              ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),
+              ...(typeof row.wishProposalError === "string" ? { wishProposalError: row.wishProposalError } : {}),
               ...(coerceExchangeProcessing(row.processing)
                 ? { processing: coerceExchangeProcessing(row.processing) }
                 : {}),
@@ -862,7 +873,7 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
     change(session);
     if (session.processingVersion === 1 && session.villageSeed)
       session.submissions.forEach((turn, order) => {
-        if (turn.processing || !turn.at) return;
+        if (turn.processing || !turn.at || (turn.mode === "act" && !turn.actionReplyDone)) return;
         turn.processing = createExchangeProcessing({
           seed: session.villageSeed!,
           sceneId: id,
@@ -874,7 +885,7 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
           actionReceiptIds: turn.action?.happened ? [`venue-action:${turn.id}`] : [],
         });
         // This delivery introduces Project replay. Other domains still own their existing settlement paths.
-        for (const domain of ["wishes", "memories", "relationships"] as const)
+        for (const domain of ["memories", "relationships"] as const)
           turn.processing.domains[domain] = {
             ...turn.processing.domains[domain],
             status: "applied",
@@ -999,19 +1010,36 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
     );
     return { reason: "Physical effects and saved Project interpretations checked", receiptIds };
   };
-  await dispatchExchange(processing, { projects: applyProjects }, async (domain, result) => {
-    await changeSession(scene.id, (saved) => {
-      const entry = saved.submissions.find((entry) => entry.id === turn.id);
-      if (entry?.processing?.seed === processing.seed) entry.processing.domains[domain] = result;
-    });
-    runtimeDebug("exchange processing", {
-      sceneId: sessionId,
-      submissionId,
-      domain,
-      interpretationVersion: processing.interpretationVersion,
-      ...result,
-    });
-  });
+  await dispatchExchange(
+    processing,
+    {
+      projects: applyProjects,
+      wishes: async () =>
+        valid ? processWishExchange(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
+    },
+    async (domain, result) => {
+      await changeSession(scene.id, (saved) => {
+        const entry = saved.submissions.find((entry) => entry.id === turn.id);
+        if (entry?.processing?.seed === processing.seed) {
+          const prior = entry.processing.domains[domain];
+          if (
+            (prior.status === "applied" || prior.status === "rejected") &&
+            (result.status === "pending" || result.status === "failed")
+          )
+            return;
+          entry.processing.domains[domain] = result;
+        }
+      });
+      runtimeDebug("exchange processing", {
+        sceneId: sessionId,
+        submissionId,
+        domain,
+        interpretationVersion: processing.interpretationVersion,
+        ...result,
+      });
+    },
+  );
+  await receiptForTurn(scene, turn);
 }
 
 /** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
@@ -1062,6 +1090,7 @@ export function startProgressRecovery(): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const start = async () => {
     try {
+      await processProjectWishOutbox();
       const queue = await progressBacklog();
       const batch = async () => {
         for (const turn of queue.splice(0, 8)) {
@@ -1151,6 +1180,9 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "attempts",
             "optionalAttempts",
             "wishInterpretationProof",
+            "wishProposals",
+            "wishProposalError",
+            "wishChanges",
             "snapshot",
           ].includes(key),
       )
@@ -1301,7 +1333,7 @@ async function generateOnce(
           .map((venue) => `${venue.name} (${venue.id})`)
           .join(", ") || "none"
       }.`,
-      `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
+      `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
       `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
       `Recent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
       spriteLabels
@@ -1522,6 +1554,7 @@ async function generateOnce(
     mode !== "greet"
       ? 'Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
       : "",
+    mode !== "greet" ? WISH_PROPOSAL_INSTRUCTION : "",
     repairHint
       ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
       : "",
@@ -1877,6 +1910,12 @@ async function generateOnce(
     departures,
     sceneEnded,
     recollections,
+    wishChanges: raw?.wishChanges,
+    wishContexts: active.flatMap((person) =>
+      (village.villagers.find((resident) => resident.characterId === person.characterId)?.agenda?.wishes ?? []).map(
+        (wish) => ({ actorId: person.characterId, wishId: wish.id, fingerprint: wishFingerprint(wish) }),
+      ),
+    ),
   };
 }
 
@@ -2793,6 +2832,8 @@ function quietContactReply(text: string, localIds: string[]): SceneReply {
     departures: [],
     sceneEnded: false,
     recollections: [],
+    wishChanges: [],
+    wishContexts: [],
     contactIntent: null,
     contactMoves: [],
     contactRelay: null,
@@ -3174,6 +3215,18 @@ async function finishActReply(
     const entry = state.submissions.find((item) => item.id === submissionId);
     if (!entry || entry.actionReplyDone) return;
     const ids = appendVenueReply(state, reply.lines, new Date().toISOString());
+    entry.replyLineIds = [...new Set([...(entry.replyLineIds ?? []), ...ids])];
+    const playerLineId = state.lines.find((line) => line.role === "user" && line.at === entry.at)?.id ?? "";
+    const wishChanges = bindWishProposals(
+      reply.wishChanges,
+      currentVillage,
+      state.lines,
+      playerLineId,
+      ids,
+      reply.wishContexts,
+    );
+    entry.wishProposals = wishChanges.proposals;
+    entry.wishProposalError = wishChanges.error;
     if (reply.invitationSignal) {
       reply.invitationSignal.sourceLineId =
         ids[
@@ -3305,6 +3358,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       preparedReply,
     );
     await applyProjectPickup(session.id, input.submissionId);
+    await processSavedExchange(session.id, input.submissionId);
     return {
       session: completed,
       verdict: null,
@@ -3669,6 +3723,14 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     }
     appendVenueReply(state, reply.lines, at);
     const replyLineIds = state.lines.slice(-reply.lines.length).map((line) => line.id);
+    const wishChanges = bindWishProposals(
+      reply.wishChanges,
+      applicationVillage,
+      state.lines,
+      playerLineId,
+      replyLineIds,
+      reply.wishContexts,
+    );
     const recollections: VenueRecollection[] = reply.recollections.map((memory, index) => ({
       id: `${session.id}:recollection:${input.submissionId}:${index}`,
       text: memory.text,
@@ -3722,6 +3784,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       wishMemory,
       ...(wishInterpretationProof ? { wishInterpretationProof } : {}),
       recollections,
+      wishProposals: wishChanges.proposals,
+      wishProposalError: wishChanges.error,
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
@@ -4368,6 +4432,9 @@ async function receiptForTurn(session: VenueScene, submission: VenueSubmission):
     return memory ? { ...event, detail: memory.text } : event;
   });
   const events: VenueRecordEvent[] = [];
+  for (const receipt of Object.values(village.exchangeReceipts))
+    if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
+      events.push(receipt.notice);
   for (const memory of submission.turnMemories ?? []) {
     const id = `${session.id}:turn:${submission.id}:memory:${memory.characterId}`;
     const saved = village.chronicle.find((entry) => entry.id === id);
@@ -5347,6 +5414,7 @@ export async function recordVenueAction(
   const session = await activeVenueSession();
   if (!session || session.placeId !== placeId || session.status !== "active")
     throw conflict("That Scene is not active.");
+  const village = await readVillageState();
   await changeSession(session.id, (state) => {
     if (isInactive(state) && !hasVenueOperation(state.id))
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
@@ -5374,6 +5442,17 @@ export async function recordVenueAction(
     });
     const prepared = venueSavedCheckpoint<Awaited<ReturnType<typeof generate>>>("action-reply");
     if (prepared) appendVenueReply(state, prepared.lines, at);
+    const preparedIds = prepared ? state.lines.slice(-prepared.lines.length).map((line) => line.id) : [];
+    const wishChanges = prepared
+      ? bindWishProposals(
+          prepared.wishChanges,
+          village,
+          state.lines,
+          state.lines.find((line) => line.role === "user" && line.at === at)?.id ?? "",
+          preparedIds,
+          prepared.wishContexts,
+        )
+      : { proposals: [], error: "" };
     state.submissions.push({
       id: submissionId,
       message: action,
@@ -5384,6 +5463,8 @@ export async function recordVenueAction(
       wishMemory: "",
       action: result,
       actionReplyDone: !!prepared || state.activeIds.length === 0,
+      wishProposals: wishChanges.proposals,
+      wishProposalError: wishChanges.error,
       areaAtTurn: state.area,
       zoneIdAtTurn: state.zoneId,
       activeIdsAtTurn: [...state.activeIds],

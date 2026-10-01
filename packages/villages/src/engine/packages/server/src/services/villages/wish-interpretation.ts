@@ -117,6 +117,11 @@ const criteriaSlot: DocumentSlot<{ entries: { key: string; criteria: WishCriteri
   label: () => "Wish interpretation criteria",
 };
 const criteriaDocument = "villages-wish-interpretation-criteria";
+/** Local cached preparation lookup for routing new receipts; never prepares or interprets on a read. */
+export async function cachedWishCriteria(): Promise<Map<string, WishCriteria>> {
+  const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, criteriaDocument);
+  return new Map(criteriaSlot.coerce(record?.data).entries.map((entry) => [entry.key, entry.criteria]));
+}
 export function readWishCriteria(value: unknown, wish: VillageWish): WishCriteria | null {
   const row = asRecord(value);
   if (
@@ -234,6 +239,7 @@ export function wishInterpretationCheck(
   wish: VillageWish,
   criteria: WishCriteria,
   key: string,
+  allowProgress = false,
 ): InterpretationCheck {
   const receipts = matchingWishReceipts(criteria, context, wish);
   return {
@@ -245,11 +251,21 @@ export function wishInterpretationCheck(
         id: "fulfilled",
         statement: `The witnessed record establishes every condition of this wish for ${context.card.name}, rather than merely a promise, attempt, claim, gratitude or unrelated kindness.`,
       },
+      ...(allowProgress
+        ? [
+            {
+              id: "progress",
+              statement:
+                "The cited new witnessed exchange establishes a meaningful part of this Wish's faithful goal without meeting every condition. Mere repetition, greetings, promises, claims and gratitude are not progress. Physical progress requires an actual relevant physical receipt.",
+            },
+          ]
+        : []),
     ],
     facts: {
       actorId: context.actorId,
       wishId: wish.id,
       wishFingerprint: wishFingerprint(wish),
+      wishText: wish.wish,
       criteria,
       claim: context.claim,
       playerName: context.playerName,
@@ -273,6 +289,7 @@ export function wishInterpretationCheck(
       { id: "wish-claim", speakerId: "player", name: context.playerName, kind: "claim", content: context.claim },
     ],
     decisionEligible:
+      !allowProgress &&
       criteria.kind !== "complex" &&
       (criteria.requiresPhysical
         ? receipts.length > 0
@@ -282,18 +299,19 @@ export function wishInterpretationCheck(
               line.kind !== "claim" &&
               (!wish.addedAt || (!!line.at && line.at >= wish.addedAt)),
           )),
-    decisionReason:
-      criteria.kind === "complex"
+    decisionReason: allowProgress
+      ? "Live progress and completion use the journaled System check"
+      : criteria.kind === "complex"
         ? "Complex wish conditions use System"
         : criteria.requiresPhysical
           ? "No matching authoritative physical receipt; using System"
           : "No witnessed player interaction; using System",
     systemInstruction:
-      "Judge all faithful conditions in facts.criteria. Fulfilled requires exact supporting evidence IDs. A new claim is not evidence. For conversation, actual witnessed spoken interaction must meet the goal; a claim of delivery or a warm reply does not. For physical conditions, cite a matching receipt; no receipt means no fulfillment. A fulfilled wish is a judgment about the existing record, so earlier relevant evidence can establish it. Unknown meaning is unresolved, not refusal.",
+      "The original facts.wishText is authoritative. Judge EVERY condition of the original Wish as well as facts.criteria; preparation cannot omit, relax or replace a condition. Fulfilled requires exact supporting evidence IDs. A new claim is not evidence. For conversation, actual witnessed spoken interaction must meet the goal; a claim of delivery or a warm reply does not. For physical conditions, cite a matching receipt; no receipt means no fulfillment. A fulfilled wish is a judgment about the existing record, so earlier relevant evidence can establish it. Unknown meaning is unresolved, not refusal.",
   };
 }
 export function validateWishInterpretation(check: InterpretationCheck, result: InterpretationResult): string {
-  if (result.outcome !== "fulfilled") return "";
+  if (result.outcome !== "fulfilled" && result.outcome !== "progress") return "";
   const facts = asRecord(check.facts),
     criteria = facts.criteria as WishCriteria;
   if (criteria.requiresPhysical) {
@@ -320,15 +338,18 @@ export async function interpretWishClaim(
   context: WishInterpretationContext,
   sceneId: string,
   key: string,
+  allowProgress = false,
 ): Promise<VillageWishVerdictResult & { batch: InterpretationBatch }> {
   const criteria: WishCriteria[] = [];
   for (const wish of context.wishes) criteria.push(await prepareCriteria(wish, context));
-  const checks = context.wishes.map((wish, index) => wishInterpretationCheck(context, wish, criteria[index], key));
+  const checks = context.wishes.map((wish, index) =>
+    wishInterpretationCheck(context, wish, criteria[index], key, allowProgress),
+  );
   const native = async (pending: InterpretationCheck[], signal?: AbortSignal): Promise<InterpretationResult[]> => {
     const results: InterpretationResult[] = [];
     for (const check of pending) {
       const index = checks.indexOf(check);
-      if (criteria[index].kind !== "complex") {
+      if (criteria[index].kind !== "complex" || allowProgress) {
         const [result] = await systemInterpretations([check], signal);
         if (result.outcome !== "unresolved" || !result.reason.includes("could not fit")) {
           results.push(result);

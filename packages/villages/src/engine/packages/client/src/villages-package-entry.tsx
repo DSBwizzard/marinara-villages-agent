@@ -11029,7 +11029,7 @@ function RoomPanel({
                   </button>
                   {modeMenuOpen ? (
                     <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
-                      {(["chat", "contact", "fulfill", "conclude"] as const).map((option) => (
+                      {(["chat", "contact", "conclude"] as const).map((option) => (
                         <button
                           key={option}
                           type="button"

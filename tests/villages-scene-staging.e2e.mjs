@@ -209,6 +209,17 @@ try {
       assert.ok(switchBox.x >= 0 && switchBox.x + switchBox.width <= width && switchBox.y >= 0);
       await page.getByRole("button", { name: "Close Scene settings" }).click();
       async function checkSpriteSize(isMobile) {
+        // ResizeObserver updates the Scene's container measurements after rotation.
+        // Wait for the resulting layout, while still requiring the dock to fit.
+        await expect
+          .poll(
+            async () => {
+              const dock = await page.locator(".marinara-capability-villages-chat-vn").boundingBox();
+              return dock !== null && dock.y >= 0 && dock.y + dock.height <= page.viewportSize().height + 1;
+            },
+            { message: "reading and composer stay on screen" },
+          )
+          .toBe(true);
         const measurements = await cast.evaluate((node) => {
           const floor = node.getBoundingClientRect();
           return [...node.querySelectorAll('[data-sprite="true"] > img')].map((image) => {
