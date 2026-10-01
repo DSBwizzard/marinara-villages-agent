@@ -129,8 +129,8 @@ async function main() {
       assert.ok(
         body.promptOverrides[0].prompt.includes("exactly " + batch.cols + " columns and " + batch.rows + " rows"),
       );
-      assert.match(body.promptOverrides[0].prompt, /shared character scale and foot baseline/);
-      assert.match(body.promptOverrides[0].prompt, /gutters and margins/);
+      assert.match(body.promptOverrides[0].prompt, /same character proportions, camera distance and body scale/);
+      assert.match(body.promptOverrides[0].prompt, /clear space above the head/);
       for (let cell = 0; cell < batch.count; cell++) {
         const expression = expressions[offset - batch.count + cell]!;
         assert.ok(
@@ -175,7 +175,7 @@ async function main() {
     reference = png;
     plan.batches[0]!.request!.pipelineVersion = 1;
     await assert.rejects(run, /plan changed/);
-    plan.batches[0]!.request!.pipelineVersion = 2;
+    plan.batches[0]!.request!.pipelineVersion = 3;
     const frozen = plan.batches[0]!.request!;
     const originalPrompt = frozen.prompt;
     frozen.prompt = "Generic character reference sheet";
@@ -243,7 +243,7 @@ async function main() {
       const sized = await planVillageStudioSheets("image", identity, expressions.slice(0, count), false);
       assert.equal(sized.batches[0]!.count, count);
       assert.equal(sized.batches.length, 1);
-      assert.equal(sized.batches[0]!.request!.pipelineVersion, 2);
+      assert.equal(sized.batches[0]!.request!.pipelineVersion, 3);
     }
   } finally {
     globalThis.fetch = originalFetch;

@@ -6,6 +6,7 @@ import {
   analyzeStudioSheet,
   foregroundBounds,
   validateStudioExport,
+  studioSheetScale,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-pixels.ts";
 import {
   decodeStudioPng,
@@ -55,7 +56,7 @@ assert.equal(foregroundBounds(clean.image).bottom, 751);
 assert.deepEqual(decodeStudioPng(encodeStudioPng(clean.image)), clean.image, "PNG roundtrip preserves export pixels");
 assert.equal(validateStudioExport(clean.image).status, "passed");
 const offset = processStudioCell(full, sheet, { ...cell, offsetY: 1 });
-assert.equal(offset.validation.status, "blocked", "foot offset beyond the safe baseline blocks assignment");
+assert.equal(offset.validation.status, "passed", "foot offset is automatically fitted inside the safe baseline");
 const clipped = fixture();
 rect(clipped, 25, 15, 50, 135);
 const clippedResult = processStudioCell(clipped, sheet, cell);
@@ -78,14 +79,8 @@ assert.equal(
 const residue = fixture();
 rect(residue, 25, 15, 50, 120);
 rect(residue, 40, 40, 10, 10, [255, 0, 255, 255]);
-assert.ok(
-  processStudioCell(
-    residue,
-    { ...sheet, source: { kind: "generated-raw", matteHex: "#FF00FF" } },
-    cell,
-  ).validation.findings.some((f) => f.code === "residue"),
-  "residual matte is visible review evidence",
-);
+const retained = processStudioCell(residue, sheet, cell);
+assert.ok(foregroundBounds(retained.image).count > 0, "internal costume colors do not block export");
 const grid = fixture(200, 300),
   layout = { ...sheet, width: 200, height: 300, layout: { cols: 2, rows: 2, count: 3 } };
 rect(grid, 25, 15, 50, 120);
@@ -95,6 +90,22 @@ const findings = analyzeStudioSheet(grid, layout).findings;
 assert.ok(findings.some((f) => f.code === "unused-cell"));
 assert.ok(findings.some((f) => f.code === "sheet-gutter"));
 assert.throws(() => decodeStudioPng("data:image/png;base64,aW52YWxpZA=="));
+const batchSource = fixture(200, 150);
+rect(batchSource, 25, 15, 50, 120);
+rect(batchSource, 125, 35, 50, 100);
+const batchCells = [
+  { ...cell, id: "neutral", label: "neutral" },
+  { ...cell, id: "gesture", x: 100 },
+];
+const batchSheet = { ...sheet, width: 200, cells: batchCells, expectedHeight: 600 };
+const sharedScale = studioSheetScale(batchSource, batchSheet);
+assert.equal(sharedScale, 5, "neutral height anchors one sheet-wide scale");
+const fitted = batchCells.map((c) => processStudioCell(batchSource, { ...batchSheet, baseScale: sharedScale }, c));
+assert.equal(fitted[0].validation.framing!.scale, fitted[1].validation.framing!.scale);
+assert.ok(fitted.every((result) => foregroundBounds(result.image).bottom === 751));
+assert.ok(fitted.every((result) => validateStudioExport(result.image).status === "passed"));
+const extreme = processStudioCell(full, sheet, { ...cell, scale: 3, offsetX: 500, offsetY: -500 });
+assert.equal(extreme.validation.status, "passed", "oversized transforms are fitted automatically");
 // Optional recorded-source check reads the installed data without changing it or committing personal artwork.
 if (process.env.ROXIE_SPRITE_DATA) {
   const ids = [
@@ -120,5 +131,5 @@ if (process.env.ROXIE_SPRITE_DATA) {
   }
 }
 console.log(
-  "Sprite pixel checks passed: safe bounds, clipping persistence, empty cells, matte residue, occupied gutters and unused cells.",
+  "Sprite pixel checks passed: safe bounds, clipping persistence, empty cells, costume colors, occupied gutters and unused cells.",
 );

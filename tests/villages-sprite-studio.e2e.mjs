@@ -120,46 +120,8 @@ for (const profile of browserProfiles) {
         ...(await page.evaluate(() => window.defaultStudio())),
         assignments: [],
         connections: [{ id: "mock", name: "Mock images", model: "fixture" }],
-        reference: { url: source, capturedAt: new Date().toISOString(), origin: "snapshot" },
+        reference: null,
       };
-    if (!state.designs.length) {
-      const styles = await page.evaluate(() => window.styleExamples);
-      const anchor = await page.evaluate(
-        async (source) =>
-          (
-            await window.renderCell(
-              { url: source, width: 1536, height: 1536, baseScale: 1, cells: [] },
-              {
-                id: "anchor",
-                view: "front",
-                label: "neutral",
-                pose: "",
-                x: 0,
-                y: 0,
-                width: 512,
-                height: 768,
-                scale: 1,
-                offsetX: 0,
-                offsetY: 0,
-                status: "candidate",
-                cleanup: true,
-              },
-              true,
-            )
-          ).toDataURL(),
-        source,
-      );
-      state.designs = ["PAPERCRAFT", "BATTLEHIGHWAY"].map((style) => ({
-        id: "approved-" + style,
-        revision: 1,
-        style,
-        stylePrompt: styles[style],
-        identityUrl: source,
-        front: { url: anchor, approvedAt: "2026-09-30T00:00:00Z" },
-        side: { url: anchor, approvedAt: "2026-09-30T00:00:00Z" },
-        framing: { scale: 1, baseline: 752 },
-      }));
-    }
     let result = state;
     if (action === "/settings") state.settings = body;
     if (action === "/plan") {
@@ -187,7 +149,7 @@ for (const profile of browserProfiles) {
               matteHex: "#FF00FF",
             });
             return {
-              pipelineVersion: 2,
+              pipelineVersion: 3,
               matteHex: "#FF00FF",
               draftPrompt: prompt,
               prompt,
@@ -380,10 +342,21 @@ for (const profile of browserProfiles) {
     await page.goto("http://studio.test/");
     await expect(page.getByRole("heading", { name: "Mara’s Sprite Studio" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
-    await expect(page.getByText("6 expressions · 1 image request · Cost unavailable")).toBeVisible();
+    await expect(page.getByText("6 expressions · 1 image request · Mock images")).toBeVisible();
     assert.equal(await page.getByRole("button", { name: "Review generation plan" }).count(), 0);
+    assert.equal(await page.getByText("Character design", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("Compare reference strategies", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("Isolated Engine connection settings", { exact: true }).count(), 0);
+    assert.equal(
+      await page.getByLabel("Image connection", { exact: true }).isVisible(),
+      false,
+      "advanced controls start closed",
+    );
+    assert.equal(await page.getByLabel("Upload reference", { exact: true }).count(), 0);
+    await page.screenshot({ path: join(output, profile.name + "-create.png"), fullPage: true });
+    await page.getByText("Advanced", { exact: true }).click();
     await page.getByLabel("Art style", { exact: true }).selectOption("BATTLEHIGHWAY");
-    await page.getByText("Style prompt", { exact: true }).click();
+
     await expect(page.getByLabel("Drawing instructions")).toContainText("Sonic Battle");
     await page.getByText("Image request", { exact: true }).click();
     await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText("Sonic Battle");
@@ -396,13 +369,7 @@ for (const profile of browserProfiles) {
       "handcrafted 2D papercraft",
     );
     await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
-    planRevision = "changed";
-    await page.getByRole("button", { name: "Generate", exact: true }).click();
-    await expect(
-      page.getByText("Summary refreshed. Review the image request and click Generate again.", { exact: true }),
-    ).toBeVisible();
-    assert.equal(generated, 0, "a changed plan needs review before generation");
-    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText("Test character changed");
+
     if (!(await page.getByLabel("Sheet 1 positive prompt", { exact: true }).isVisible()))
       await page.getByText("Image request", { exact: true }).click();
     await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toBeVisible();
@@ -411,39 +378,44 @@ for (const profile of browserProfiles) {
     const displayedPrompt = await page.getByLabel("Sheet 1 positive prompt", { exact: true }).textContent();
     const displayedNegative = await page.getByLabel("Sheet 1 negative prompt", { exact: true }).textContent();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    planRevision = "changed";
     await page.getByRole("button", { name: "Generate", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Saved artwork", exact: true })).toBeVisible();
-    assert.equal(submittedPlans[0].batches[0].request.prompt, displayedPrompt);
+    assert.ok(
+      submittedPlans[0].batches[0].request.prompt.includes("Test character changed"),
+      "Generate refreshes its request and submits with one click",
+    );
+    assert.ok(displayedPrompt.includes("Test character first"));
     assert.equal(submittedPlans[0].batches[0].request.negativePrompt, displayedNegative);
     assert.equal(generated, 1);
     assert.ok(previewed >= 2, "plan refreshes automatically");
     await expect(page.locator(".vss-card")).toHaveCount(6);
     await page.getByText("Original sheet 1", { exact: true }).click();
     await expect(page.getByRole("img", { name: "Original sheet 1", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Use", exact: true }).nth(1).click();
+    await expect(page.locator(".vss-badge")).toHaveCount(1);
+    await page.getByText("Manage expressions and assignments", { exact: true }).click();
     // Keyboard pick + slot assignment works at both viewport sizes.
-    if (profile.name !== "desktop") await page.getByRole("button", { name: "Show expressions", exact: true }).click();
+    if (
+      profile.name !== "desktop" &&
+      (await page.getByRole("button", { name: "Show expressions", exact: true }).count())
+    )
+      await page.getByRole("button", { name: "Show expressions", exact: true }).click();
     await page.getByRole("button", { name: "Select front happy cutout", exact: true }).focus();
     await page.keyboard.press("Enter");
     await page.getByRole("button", { name: "Assign selected cutout to happy", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByText("Assigned. These images are now used in scenes.", { exact: true })).toBeVisible();
     await expect(page.locator(".vss-badge")).toHaveCount(1);
-    if (profile.name === "desktop") {
-      await page
-        .getByRole("button", { name: "Select front angry cutout", exact: true })
-        .dragTo(
-          page
-            .locator(".vss-slot")
-            .filter({ has: page.getByRole("button", { name: "Assign selected cutout to angry", exact: true }) }),
-        );
-      await expect(page.locator(".vss-badge")).toHaveCount(2);
-    }
+    await page.getByRole("button", { name: "Use", exact: true }).nth(3).click();
+    await expect(page.locator(".vss-badge")).toHaveCount(2);
     await page.getByRole("button", { name: "Use this batch", exact: true }).click();
     await expect(page.locator(".vss-badge")).toHaveCount(6);
     await page.getByRole("button", { name: "Create", exact: true }).click();
     await page.getByLabel("Art style", { exact: true }).selectOption("BATTLEHIGHWAY");
     await page.getByRole("button", { name: "Generate", exact: true }).click();
     await expect(page.locator(".vss-gallery article")).toHaveCount(2);
+    await page.getByText("Gallery options", { exact: true }).click();
     await page.getByRole("button", { name: "Clear pending review", exact: true }).click();
     await page
       .locator(".vss-gallery article")
@@ -459,6 +431,12 @@ for (const profile of browserProfiles) {
     await expect(page.locator(".vss-gallery article").last().locator(".vss-badge")).toHaveCount(6);
     assert.equal(generated, 2, "batch swapping never generates");
     await expect(page.locator(".vss-card")).toHaveCount(12);
+    await page.getByText("Manage expressions and assignments", { exact: true }).click();
+    if (
+      profile.name !== "desktop" &&
+      (await page.getByRole("button", { name: "Show expressions", exact: true }).count())
+    )
+      await page.getByRole("button", { name: "Show expressions", exact: true }).click();
     await page.getByLabel("New expression", { exact: true }).fill("Delighted");
     await page.getByRole("button", { name: "Add expression", exact: true }).click();
     await page
@@ -481,7 +459,7 @@ for (const profile of browserProfiles) {
     await page
       .locator(".vss-gallery article")
       .last()
-      .getByRole("button", { name: "Adjust image", exact: true })
+      .getByRole("button", { name: "Adjust", exact: true })
       .first()
       .click();
     await expect(page.getByRole("heading", { name: "Adjust image · saves another cutout", exact: true })).toBeVisible();
@@ -502,6 +480,7 @@ for (const profile of browserProfiles) {
     await page.getByLabel("Also delete unused files from disk", { exact: true }).check();
     await page.getByRole("button", { name: "Delete artwork", exact: true }).click();
     await expect(page.locator(".vss-gallery article")).toHaveCount(1);
+    await page.getByText("Gallery options", { exact: true }).click();
     await page.getByRole("button", { name: "Delete unused files", exact: true }).click();
     await expect(page.getByText("0 unused files deleted.", { exact: true })).toBeVisible();
     const pixelProof = await page.evaluate(async () => {
@@ -685,14 +664,22 @@ for (const profile of browserProfiles) {
     ).toBeVisible();
     assert.equal(allCells().length, repairedCount, "repeated repair reuses candidates");
     await page.screenshot({ path: join(output, profile.name + "-repaired.png"), fullPage: true });
+    const beforeRegenerate = generated;
+    await page.getByRole("button", { name: "Regenerate", exact: true }).first().click();
+    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
+    await expect(page.getByLabel("Generation request summary")).toContainText("1 expressions · 1 image request");
+    assert.equal(
+      generated,
+      beforeRegenerate,
+      "Regenerate prepares only the selected expression without spending a request",
+    );
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Mara · Sprite Studio" }).click();
     await expect(page.locator(".vss-gallery article")).toHaveCount(1);
     assert.deepEqual(errors, []);
     console.log(
       profile.name +
-        ": automatic plans, gallery, keyboard assignment, " +
-        (profile.name === "desktop" ? "dragging, " : "") +
+        ": automatic plans, gallery, direct Use and keyboard assignment, " +
         "cached batch swaps, defaults, adjustments, cleanup and responsive layout passed",
     );
   } finally {

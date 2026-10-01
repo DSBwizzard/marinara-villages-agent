@@ -1,7 +1,7 @@
 import { removeStudioMatte } from "./sprite-studio-matte.js";
 import type { StudioCell, StudioSheet, StudioValidation } from "./sprite-studio-model.js";
 
-export const STUDIO_PROCESSING_VERSION = 2;
+export const STUDIO_PROCESSING_VERSION = 3;
 export const STUDIO_CANVAS = { width: 512, height: 768, left: 16, top: 16, right: 496, bottom: 752 };
 export type StudioPixels = { width: number; height: number; data: Uint8ClampedArray };
 
@@ -59,7 +59,11 @@ export function processStudioCell(source: StudioPixels, sheet: StudioSheet, cell
       message: "Artwork touches its source/cell edge; inspect for missing body parts or sprite bleed.",
     });
   if (cell.cleanup && !cleaned && !hadAlpha)
-    findings.push({ code: "matte", severity: "blocking", message: "Background removal could not establish a cutout." });
+    findings.push({
+      code: "matte",
+      severity: "review",
+      message: "Background could not be removed completely. Adjust or regenerate if needed.",
+    });
   const gutter = Math.max(1, Math.round(Math.min(crop.width, crop.height) * 0.02));
   if (
     b.count &&
@@ -70,30 +74,6 @@ export function processStudioCell(source: StudioPixels, sheet: StudioSheet, cell
       severity: "review",
       message: "Character occupies the expected clear margin; review framing and adjacent cells.",
     });
-  if (b.count && b.bottom - b.top + 1 < cell.height * 0.45)
-    findings.push({
-      code: "framing",
-      severity: "review",
-      message: "Character occupies less than 45% of cell height. Compare its scale with the approved design.",
-    });
-  const matte = sheet.source?.matteHex?.match(/^#([a-f0-9]{6})$/i)?.[1];
-  if (matte && cell.cleanup) {
-    const rgb = [0, 2, 4].map((n) => parseInt(matte.slice(n, n + 2), 16));
-    let residue = 0;
-    for (let i = 0; i < crop.data.length; i += 4)
-      if (
-        crop.data[i + 3] > 16 &&
-        Math.hypot(crop.data[i] - rgb[0], crop.data[i + 1] - rgb[1], crop.data[i + 2] - rgb[2]) < 85
-      )
-        residue++;
-    if (residue > Math.max(20, b.count * 0.002))
-      findings.push({
-        code: "residue",
-        severity: "review",
-        message:
-          "Pixels resembling the generation matte remain. Inspect for color spill or intentional costume colors.",
-      });
-  }
   const output: StudioPixels = { width: 512, height: 768, data: new Uint8ClampedArray(512 * 768 * 4) };
   let framing = { x: 0, y: 0, width: 0, height: 0, scale: 0 };
   if (b.count) {
@@ -103,23 +83,9 @@ export function processStudioCell(source: StudioPixels, sheet: StudioSheet, cell
     const scale = Math.min(base * cell.scale, 480 / w, 736 / h);
     const width = w * scale,
       height = h * scale;
-    const x = (512 - width) / 2 + cell.offsetX,
-      y = 752 - height + cell.offsetY;
+    const x = Math.max(16, Math.min(496 - width, (512 - width) / 2 + cell.offsetX)),
+      y = Math.max(16, Math.min(752 - height, 752 - height + cell.offsetY));
     framing = { x, y, width, height, scale };
-    if (sheet.expectedHeight && Math.abs(height - sheet.expectedHeight) > sheet.expectedHeight * 0.2)
-      findings.push({
-        code: "design-framing",
-        severity: "review",
-        message:
-          "Visible height differs by more than 20% from the approved design. Review alignment and scale; bounds cannot establish consistent anatomy.",
-      });
-    // Reject an invalid transform before drawing, rather than silently clipping it.
-    if (x < 16 || y < 16 || x + width > 496.000001 || y + height > 752.000001)
-      findings.push({
-        code: "transform",
-        severity: "blocking",
-        message: "Scale/offset places artwork outside the safe region.",
-      });
     for (let dy = Math.max(0, Math.ceil(y)); dy < Math.min(768, Math.floor(y + height)); dy++)
       for (let dx = Math.max(0, Math.ceil(x)); dx < Math.min(512, Math.floor(x + width)); dx++) {
         // Premultiplied bilinear sampling avoids colored fringes around transparent edges.
@@ -159,6 +125,32 @@ export function processStudioCell(source: StudioPixels, sheet: StudioSheet, cell
     framing,
   };
   return { image: output, validation };
+}
+
+/** One scale for the entire sheet, fitted to its largest gesture and the neutral reference. */
+export function studioSheetScale(source: StudioPixels, sheet: StudioSheet) {
+  const bounds = sheet.cells
+    .map((cell) => {
+      const data = new Uint8ClampedArray(cell.width * cell.height * 4);
+      for (let y = 0; y < cell.height; y++) {
+        const start = ((cell.y + y) * source.width + cell.x) * 4;
+        data.set(source.data.subarray(start, start + cell.width * 4), y * cell.width * 4);
+      }
+      if (cell.cleanup) removeStudioMatte(data, cell.width, cell.height);
+      return { cell, bounds: foregroundBounds({ width: cell.width, height: cell.height, data }) };
+    })
+    .filter((item) => item.bounds.count);
+  if (!bounds.length) return 1;
+  const heights = bounds.map((item) => item.bounds.bottom - item.bounds.top + 1).sort((a, b) => a - b);
+  const neutral = bounds.find((item) => item.cell.label === "neutral");
+  const referenceHeight = neutral
+    ? neutral.bounds.bottom - neutral.bounds.top + 1
+    : heights[Math.floor(heights.length / 2)]!;
+  return Math.min(
+    (sheet.expectedHeight ?? 640) / referenceHeight,
+    480 / Math.max(...bounds.map((item) => item.bounds.right - item.bounds.left + 1)),
+    736 / heights.at(-1)!,
+  );
 }
 
 export function analyzeStudioSheet(source: StudioPixels, sheet: StudioSheet): StudioValidation {

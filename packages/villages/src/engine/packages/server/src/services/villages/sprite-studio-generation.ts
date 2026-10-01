@@ -1,5 +1,6 @@
 // Villages owns the sheet and all derivatives. The raw image endpoint performs
-// one image submission and never applies the Engine's sprite matte cleanup.
+// one Engine generation request, honoring Engine defaults and fallbacks. Cleanup
+// is applied separately so the unmodified original remains available.
 import { createHash } from "node:crypto";
 import { badRequest } from "./errors.js";
 import { studioConnection, studioEngineJson } from "./sprite-studio-engine.js";
@@ -21,16 +22,16 @@ type Identity = {
   appearance: string;
   style: string;
   view: StudioView;
-  referenceUrl: string;
+  referenceUrl?: string;
   references?: Array<{ url: string; role: string }>;
 };
 type Connection = Awaited<ReturnType<typeof studioConnection>>;
-export const STUDIO_PIPELINE_VERSION = 2;
+export const STUDIO_PIPELINE_VERSION = 3;
 const PATH = "/api/characters/avatar-generation";
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const layouts: Record<number, [number, number]> = { 1: [1, 1], 2: [2, 1], 3: [2, 2], 4: [2, 2], 5: [3, 2], 6: [3, 2] };
 
-/** A separate configured fallback would let the host switch providers after a failure. */
+/** Engine owns the selected connection defaults and any configured fallback. */
 export async function studioImageConnection(connectionId: string): Promise<Connection> {
   return studioConnection(connectionId);
 }
@@ -114,7 +115,9 @@ export async function planVillageStudioSheets(
   const connection = await studioImageConnection(connectionId);
   const roles = identity.references?.map((r) => r.role) ?? [];
   const reference = await Promise.all(
-    (identity.references?.map((r) => r.url) ?? [identity.referenceUrl]).map(readReference),
+    (identity.references?.map((r) => r.url) ?? (identity.referenceUrl ? [identity.referenceUrl] : [])).map(
+      readReference,
+    ),
   );
   if (reference.length > 4) throw badRequest("This Engine supports at most four Studio references.");
   const matteHex = selectStudioMatte(identity.name + " " + identity.appearance);
@@ -204,7 +207,9 @@ export async function generateVillageStudioSheet(input: {
   if (!request || request.pipelineVersion !== STUDIO_PIPELINE_VERSION)
     throw badRequest("The generation plan changed. Refresh the request summary.");
   const reference = await Promise.all(
-    (identity.references?.map((r) => r.url) ?? [identity.referenceUrl]).map(readReference),
+    (identity.references?.map((r) => r.url) ?? (identity.referenceUrl ? [identity.referenceUrl] : [])).map(
+      readReference,
+    ),
   );
   const prompt = studioPrompt({
     ...identity,
