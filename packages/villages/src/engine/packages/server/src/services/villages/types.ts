@@ -988,6 +988,10 @@ export type VillageChronicleEntry = {
   /** Exact archived visit and transient recollections that support this durable memory. */
   sourceVisitId?: string;
   sourceRecollectionIds?: string[];
+  evidenceHistory?: { visitId: string; submissionId: string; lineIds: string[] }[];
+  lastReinforcedAt?: string;
+  supersededAt?: string;
+  supersededBy?: string;
   text: string;
 };
 

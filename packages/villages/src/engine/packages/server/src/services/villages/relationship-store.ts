@@ -281,7 +281,7 @@ export function applyRelationshipReview(
       JSON.stringify(["evidence", change.fromId, change.toId, change.dimension, id]),
     );
     let amount = evidenceKeys.some((id) => state.applied[id]) ? 0 : change.amount;
-    for (const id of evidenceKeys) state.applied[id] = true;
+    if (!change.contactOnly) for (const id of evidenceKeys) state.applied[id] = true;
     if (change.ordinary && change.dimension === "warmth" && amount > 0) {
       const used = edge.ordinaryGains[dateKey] ?? 0;
       amount = Math.min(amount, Math.max(0, RELATIONSHIP_POLICY.ordinaryDailyWarmth - used));
@@ -344,6 +344,16 @@ export function applyRelationshipReview(
     )
       continue;
     const key = permissionKey(permission.controllerId, permission.visitorId, venue.id, zone.id);
+    // Replaying an older invitation must not undo a later boundary.
+    const previous = state.grants[key];
+    if (
+      previous &&
+      (Date.parse(previous.at) > Date.parse(at) ||
+        (previous.at === at && (previous.revoked || permission.action === "grant")))
+    ) {
+      state.applied[permission.id] = true;
+      continue;
+    }
     state.grants[key] = {
       id: permission.id,
       controllerId: permission.controllerId,

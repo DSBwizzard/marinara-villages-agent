@@ -14,6 +14,7 @@ export function selectPromptMemories(
     .filter(
       ({ entry }) =>
         entry.kind !== "tick" &&
+        !entry.supersededBy &&
         (entry.scope === "village" ||
           (entry.knownByCharacterIds ?? entry.actors.map((actor) => actor.id)).some((id) => allowed.has(id))),
     )

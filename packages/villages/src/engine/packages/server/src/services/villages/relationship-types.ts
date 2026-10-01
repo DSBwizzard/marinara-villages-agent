@@ -10,6 +10,8 @@ export type RelationshipChange = {
   lineIds: string[];
   disclosed: boolean;
   contact: boolean;
+  /** Deterministic contact accounting, independent of interpreted score changes. */
+  contactOnly?: boolean;
 };
 export type RelationshipPermission = {
   id: string;

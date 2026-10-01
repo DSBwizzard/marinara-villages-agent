@@ -1,5 +1,14 @@
 import { runtimeDebug } from "./runtime-debug.js";
 import {
+  LIVE_MEMORY_INSTRUCTION,
+  bindLiveProposals,
+  mergeLiveReplyProposals,
+  memoryVersion,
+  processLiveMemories,
+  processLiveRelationships,
+  type LiveExchangeProposals,
+} from "./live-memory.js";
+import {
   bindWishProposals,
   processWishExchange,
   processProjectWishOutbox,
@@ -127,6 +136,7 @@ import {
   applyProjectPickup,
 } from "./project-checks.js";
 import { extractJsonObject } from "./village-bootstrap.js";
+import { extractSceneReply } from "./scene-reply-json.js";
 import type { VenueActionResult } from "./venue-actions.js";
 import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
 import { venueReplyIntegrity, venueSceneHistory } from "./venue-turn-integrity.js";
@@ -315,6 +325,7 @@ type VenueSubmission = {
   };
   turnMemories?: VenueMemory[];
   recollections?: VenueRecollection[];
+  liveProposals?: LiveExchangeProposals;
   recordEvents?: VenueRecordEvent[];
   at?: string;
 };
@@ -402,7 +413,7 @@ export type VenueScene = {
   endedAt: string;
   lastActivityAt: string;
   endReason: "player" | "scene" | "inactivity" | "debug" | "";
-  memoryMode: "tiered" | "turn" | "end";
+  memoryMode: "live" | "tiered" | "turn" | "end";
   status: "opening" | "active" | "closing" | "closed";
   participants: VenueParticipant[];
   sceneAttendance?: SceneAttendance;
@@ -618,7 +629,14 @@ function coerceSession(value: unknown): VenueScene {
         ? raw.endReason
         : "",
     ...(raw.stagingVersion === 1 ? { stagingVersion: 1 as const } : {}),
-    memoryMode: raw.memoryMode === "tiered" ? "tiered" : raw.memoryMode === "turn" ? "turn" : "end",
+    memoryMode:
+      raw.memoryMode === "live"
+        ? "live"
+        : raw.memoryMode === "tiered"
+          ? "tiered"
+          : raw.memoryMode === "turn"
+            ? "turn"
+            : "end",
     status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
     participants,
     ...(raw.sceneAttendance && typeof raw.sceneAttendance === "object"
@@ -761,6 +779,9 @@ function coerceSession(value: unknown): VenueScene {
                 ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
                 : {}),
               ...(Array.isArray(row.turnMemories) ? { turnMemories: row.turnMemories as VenueMemory[] } : {}),
+              ...(asRecord(row.liveProposals).version === 1
+                ? { liveProposals: structuredClone(row.liveProposals) as LiveExchangeProposals }
+                : {}),
               ...(Array.isArray(row.recollections)
                 ? {
                     recollections: row.recollections
@@ -884,13 +905,14 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
             .map((line) => line.id),
           actionReceiptIds: turn.action?.happened ? [`venue-action:${turn.id}`] : [],
         });
-        // This delivery introduces Project replay. Other domains still own their existing settlement paths.
-        for (const domain of ["memories", "relationships"] as const)
-          turn.processing.domains[domain] = {
-            ...turn.processing.domains[domain],
-            status: "applied",
-            reason: "No exchange-level proposals supplied",
-          };
+        // Legacy fixtures retain their existing settlement path; fresh Scenes apply each exchange.
+        if (session.memoryMode !== "live")
+          for (const domain of ["memories", "relationships"] as const)
+            turn.processing.domains[domain] = {
+              ...turn.processing.domains[domain],
+              status: "applied",
+              reason: "No exchange-level proposals supplied",
+            };
       });
     if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
     result = session;
@@ -1016,6 +1038,10 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
       projects: applyProjects,
       wishes: async () =>
         valid ? processWishExchange(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
+      memories: async () =>
+        valid ? processLiveMemories(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
+      relationships: async () =>
+        valid ? processLiveRelationships(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
     },
     async (domain, result) => {
       await changeSession(scene.id, (saved) => {
@@ -1181,6 +1207,11 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "optionalAttempts",
             "wishInterpretationProof",
             "wishProposals",
+            "liveProposals",
+            "memoryChanges",
+            "relationshipChanges",
+            "earlierLineIds",
+            "memoryVersions",
             "wishProposalError",
             "wishChanges",
             "snapshot",
@@ -1297,6 +1328,10 @@ async function generateOnce(
     now.getTime(),
   );
   const sharedMemories = promptMemories.filter((entry) => entry.scope === "village");
+  // Only these exact witnessed lines and memory versions can support a saved proposal.
+  const earlierEvidence = session.lines
+    .filter((line) => !line.contactReport && line.heardBy.some((id) => audibleIds.includes(id)))
+    .slice(-18);
   const profiles = active.map((person) => {
     const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
     if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
@@ -1308,7 +1343,7 @@ async function generateOnce(
           entry.scope === "private" &&
           (entry.knownByCharacterIds ?? entry.actors.map((actor) => actor.id)).includes(person.characterId),
       )
-      .map((entry) => entry.text);
+      .map((entry) => `[${entry.id}] ${entry.text}`);
     const recent = promptRecollections
       .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
       .map((entry) => entry.text);
@@ -1318,7 +1353,7 @@ async function generateOnce(
       venueCardProfile(card),
       relationshipPrompt(village, person.characterId),
       "Relationships influence new Project requests alongside personal benefit and availability. A neutral resident may volunteer. Existing accepted commitments remain binding until explicitly withdrawn. Do not treat high scores as automatic romance.",
-      session.contactGeneration
+      session.contactGeneration && session.memoryMode !== "live"
         ? `Earlier exchanges witnessed by ${card.name}:\n${
             venueSceneHistory(
               session.lines.filter((line) => line.heardBy.includes(person.characterId)),
@@ -1490,7 +1525,7 @@ async function generateOnce(
         )
       : "",
     `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
-    `Recent scene history:\n${history || "The Scene has just begun."}`,
+    session.memoryMode === "live" ? "" : `Recent scene history:\n${history || "The Scene has just begun."}`,
     mode === "greet"
       ? ""
       : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
@@ -1551,10 +1586,33 @@ async function generateOnce(
     session.lines.length >= 12
       ? "Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state."
       : "",
-    mode !== "greet"
-      ? 'Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
+    session.memoryMode === "live"
+      ? LIVE_MEMORY_INSTRUCTION +
+        "\nEarlier evidence: " +
+        JSON.stringify(
+          earlierEvidence.map((line) => ({
+            id: line.id,
+            speakerId: line.role === "user" ? "player" : line.speakerId,
+            kind: line.kind,
+            heardBy: line.heardBy,
+            text: line.content.slice(0, 500),
+          })),
+        ) +
+        "\nExisting memories: " +
+        JSON.stringify(
+          promptMemories.map((memory) => ({
+            id: memory.id,
+            text: memory.text,
+            knownByCharacterIds: memory.knownByCharacterIds ?? memory.actors.map((actor) => actor.id),
+          })),
+        )
+      : mode !== "greet"
+        ? 'Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
+        : "",
+    session.memoryMode === "live" || mode !== "greet" ? WISH_PROPOSAL_INSTRUCTION : "",
+    session.memoryMode === "live"
+      ? 'Put heardPlayerBy and the complete segments array FIRST, before change metadata. For an explicitly departing resident return departures:[{speakerId,quote:"exact spoken departure"}]. Return sceneEnded:{speakerId,quote:"exact spoken ending"} only when dialogue ends the whole encounter, never for player silence or ordinary company.'
       : "",
-    mode !== "greet" ? WISH_PROPOSAL_INSTRUCTION : "",
     repairHint
       ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
       : "",
@@ -1606,7 +1664,7 @@ async function generateOnce(
           )
       : undefined,
   });
-  const raw = extractJsonObject(completion.content ?? "");
+  const raw = extractSceneReply(completion.content ?? "");
   const extractedContact =
     !session.contactGeneration && (mode === "chat" || mode === "ask")
       ? readContactIntent(raw?.contactIntent, message)
@@ -1910,6 +1968,10 @@ async function generateOnce(
     departures,
     sceneEnded,
     recollections,
+    memoryChanges: raw?.memoryChanges,
+    relationshipChanges: raw?.relationshipChanges,
+    earlierLineIds: earlierEvidence.map((line) => line.id),
+    memoryVersions: Object.fromEntries(promptMemories.map((memory) => [memory.id, memoryVersion(memory)])),
     wishChanges: raw?.wishChanges,
     wishContexts: active.flatMap((person) =>
       (village.villagers.find((resident) => resident.characterId === person.characterId)?.agenda?.wishes ?? []).map(
@@ -2661,7 +2723,7 @@ async function enterVenueOnce(
     endedAt: "",
     lastActivityAt: new Date().toISOString(),
     endReason: "",
-    memoryMode: "tiered",
+    memoryMode: "live",
     status: participants.length === 0 ? "active" : "opening",
     participants,
     sceneAttendance,
@@ -2673,7 +2735,6 @@ async function enterVenueOnce(
     memoryProgress: null,
     memoryPending: false,
     memoryReview: { status: "none", attempts: 0, error: "", nextRecollection: 0, decisions: [] },
-    relationshipReview: { seed: village.seed, applied: false, batches: [], receipts: [] },
     recap: "",
   };
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => Object.assign(value, session));
@@ -2760,6 +2821,31 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
       throw new VillagesRequestError(410, "Interrupted: Inactivity. This Scene ended while you were away.");
     const at = new Date().toISOString();
     const savedLineIds = appendVenueReply(state, reply.lines, at);
+    if (state.memoryMode === "live") {
+      const wishes = bindWishProposals(
+        reply.wishChanges,
+        greetingVillage,
+        state.lines,
+        "",
+        savedLineIds,
+        reply.wishContexts,
+      );
+      state.submissions.push({
+        id: "greeting",
+        mode: "chat",
+        message: "",
+        targetId: "",
+        at,
+        verdict: null,
+        wishId: "",
+        wishMemory: "",
+        activeIdsAtTurn: [...state.activeIds],
+        replyLineIds: savedLineIds,
+        wishProposals: wishes.proposals,
+        wishProposalError: wishes.error,
+        liveProposals: bindLiveProposals(reply, "", savedLineIds),
+      });
+    }
     if (reply.invitationSignal)
       reply.invitationSignal.sourceLineId =
         savedLineIds[
@@ -2799,7 +2885,8 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
       await applyResidenceEditApproval(greeted.placeId, approval.proposalId, approval.residentId, approval.approved);
   }
   await markZoneSeen(greeted, greeted.zoneId === session.zoneId);
-  return refreshZoneParticipants(greeted, true);
+  if (greeted.memoryMode === "live") await processSavedExchange(id, "greeting");
+  return refreshZoneParticipants(await readSession(id), true);
 }
 
 export async function continueVenueWithoutGreeting(id: string): Promise<VenueScene> {
@@ -2834,6 +2921,10 @@ function quietContactReply(text: string, localIds: string[]): SceneReply {
     recollections: [],
     wishChanges: [],
     wishContexts: [],
+    memoryChanges: [],
+    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+    earlierLineIds: [],
+    memoryVersions: {},
     contactIntent: null,
     contactMoves: [],
     contactRelay: null,
@@ -3097,6 +3188,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     invitationSignal: conveyed.invitationSignal ?? reply.invitationSignal,
     // Only witnessed direct speech qualifies as Project speech; a messenger's quote is not target approval.
     recollections: reply.recollections,
+    ...mergeLiveReplyProposals(reply, conveyed, reply.lines.length + 1),
   };
 }
 
@@ -3227,6 +3319,7 @@ async function finishActReply(
     );
     entry.wishProposals = wishChanges.proposals;
     entry.wishProposalError = wishChanges.error;
+    entry.liveProposals = bindLiveProposals(reply, playerLineId, ids);
     if (reply.invitationSignal) {
       reply.invitationSignal.sourceLineId =
         ids[
@@ -3786,6 +3879,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       recollections,
       wishProposals: wishChanges.proposals,
       wishProposalError: wishChanges.error,
+      liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
@@ -4324,6 +4418,7 @@ function sameIds(left: readonly string[], right: readonly string[]): boolean {
 }
 
 async function applyTurnRecollections(session: VenueScene, submission: VenueSubmission): Promise<void> {
+  if (session.memoryMode === "live") return;
   if (!submission.recollections?.length) return;
   const occurredAt = new Date(submission.at || Date.now()).toISOString();
   const expiry = new Date(Date.parse(occurredAt) + RECOLLECTION_LIFETIME_MS).toISOString();
@@ -4425,6 +4520,8 @@ async function applyTurnMemories(session: VenueScene, submission: VenueSubmissio
 }
 
 async function receiptForTurn(session: VenueScene, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
+  // Domain bookkeeping can finish after the reply's original Scene object was read.
+  submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
   const village = await readVillageState();
   const cached = (submission.recordEvents ?? []).map((event) => {
     if (event.kind !== "memory" || event.detail) return event;
@@ -4432,6 +4529,14 @@ async function receiptForTurn(session: VenueScene, submission: VenueSubmission):
     return memory ? { ...event, detail: memory.text } : event;
   });
   const events: VenueRecordEvent[] = [];
+  if (village.relationshipContext && submission.liveProposals) {
+    const receiptIds = new Set(submission.processing?.domains.relationships.receiptIds ?? []);
+    // A retry reconstructs notices from effects committed in the relationship document.
+    const receipts = Object.values(village.relationshipContext.receipts).filter((receipt) =>
+      receiptIds.has(receipt.id),
+    );
+    events.push(...relationshipClosingNotices(receipts, village.relationshipContext, village));
+  }
   for (const receipt of Object.values(village.exchangeReceipts))
     if (receipt.sceneId === session.id && receipt.submissionId === submission.id && receipt.notice)
       events.push(receipt.notice);
@@ -5241,6 +5346,7 @@ export async function closeVenueSession(
 async function closeVenueSessionOnce(id: string): Promise<VenueScene> {
   stopInterpretationComparisons(id);
   const session = await readSession(id);
+  if (session.memoryMode === "live") return closeLiveScene(session);
   return session.memoryMode === "tiered" || session.relationshipReview
     ? closeTieredVenueSession(session)
     : endVenueSession(id);
@@ -5257,6 +5363,19 @@ export async function closeVenueSessionWithReceipts(
 
 const closingTasks = new Map<string, Promise<VenueScene>>();
 const closingControllers = new Map<string, AbortController>();
+
+async function closeLiveScene(session: VenueScene): Promise<VenueScene> {
+  const closed = await changeSession(session.id, (state) => {
+    state.status = "closed";
+    state.endedAt ||= new Date().toISOString();
+    state.endReason ||= "player";
+    state.memoryPending = false;
+    state.memoryReview.status = "complete";
+  });
+  await clearActivePointer(session.id);
+  await pruneVenueVisits();
+  return closed;
+}
 
 async function closeTieredVenueSession(session: VenueScene): Promise<VenueScene> {
   if (session.status !== "closed") {
@@ -5307,6 +5426,11 @@ async function endTieredVenueSession(session: VenueScene, signal: AbortSignal): 
 
 async function endVenueSessionOnce(id: string, signal: AbortSignal): Promise<VenueScene> {
   const session = await readSession(id);
+  if (session.memoryMode === "live") {
+    for (const turn of session.submissions.filter((turn) => turn.processing && unfinishedExchange(turn.processing)))
+      await processSavedExchange(id, turn.id);
+    return closeLiveScene(await readSession(id));
+  }
   if (session.memoryMode === "tiered" || session.relationshipReview) return endTieredVenueSession(session, signal);
   if (session.status === "closed" && !session.memoryPending) {
     await clearActivePointer(id);
@@ -5465,6 +5589,15 @@ export async function recordVenueAction(
       actionReplyDone: !!prepared || state.activeIds.length === 0,
       wishProposals: wishChanges.proposals,
       wishProposalError: wishChanges.error,
+      ...(prepared
+        ? {
+            liveProposals: bindLiveProposals(
+              prepared,
+              state.lines.find((line) => line.role === "user" && line.at === at)?.id ?? "",
+              preparedIds,
+            ),
+          }
+        : {}),
       areaAtTurn: state.area,
       zoneIdAtTurn: state.zoneId,
       activeIdsAtTurn: [...state.activeIds],
