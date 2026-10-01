@@ -79,6 +79,15 @@ export function DecisionsControl({
   useEffect(() => {
     if (!open) return;
     panel.current?.focus();
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      trigger.current?.focus();
+    };
+    window.addEventListener("keydown", escape, true);
+    return () => window.removeEventListener("keydown", escape, true);
   }, [open]);
   const save = async (patch: Partial<Settings>) => {
     if (savingRef.current || !configuration) return;

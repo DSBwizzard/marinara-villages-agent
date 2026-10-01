@@ -1769,7 +1769,7 @@ async function interpretRoomDraft(
   if (roomInterpretation) {
     const proposedInvitation = reply.invitationSignal;
     // Narrator metadata is a proposal, not permission. Contextual interpretation replaces its phrase gates.
-    if (reply.invitationSignal?.venueId === session.placeId) reply.invitationSignal = null;
+    reply.invitationSignal = null;
     const invitations = roomInterpretation.results.flatMap((result, index) =>
       ["invite-now", "invite-later"].includes(result.outcome)
         ? [{ result, check: roomInterpretation.checks[index] }]
@@ -2336,7 +2336,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
   return refreshZoneParticipants(moved, true);
 }
 
-async function markZoneSeen(session: VenueScene): Promise<void> {
+async function markZoneSeen(session: VenueScene, generateImage = true): Promise<void> {
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     const zone =
@@ -2347,7 +2347,8 @@ async function markZoneSeen(session: VenueScene): Promise<void> {
       );
     if (zone) zone.seen = true;
   });
-  if (session.area === "private") await markResidenceSeen(session);
+  if (session.area === "private") await markResidenceSeen(session, generateImage);
+  if (!generateImage) return;
   const village = await readVillageState(),
     venue = village.venues.find((entry) => entry.id === session.placeId),
     zone = venue && resolveVenueZone(venue, session.zoneId ?? "");
@@ -2596,6 +2597,7 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
     state.status = "active";
   });
   if (reply.roomInterpretation) {
+    await finalizeRoomInvitationDiagnostics(greeted, reply.roomInterpretation, reply.invitationSignal);
     await writeInterpretationDiagnostics(id, reply.roomInterpretation.traces).catch(() => {});
     scheduleSystemComparisons(id, reply.roomInterpretation);
   }
@@ -2615,7 +2617,7 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
     )
       await applyResidenceEditApproval(greeted.placeId, approval.proposalId, approval.residentId, approval.approved);
   }
-  if (greeted.zoneId === session.zoneId) await markZoneSeen(greeted);
+  await markZoneSeen(greeted, greeted.zoneId === session.zoneId);
   return refreshZoneParticipants(greeted, true);
 }
 
@@ -3029,13 +3031,33 @@ async function finishActReply(
   const completed = await changeSession(session.id, (state) => {
     const entry = state.submissions.find((item) => item.id === submissionId);
     if (!entry || entry.actionReplyDone) return;
-    appendVenueReply(state, reply.lines, new Date().toISOString());
+    const ids = appendVenueReply(state, reply.lines, new Date().toISOString());
+    if (reply.invitationSignal) {
+      reply.invitationSignal.sourceLineId =
+        ids[
+          reply.lines.findIndex(
+            (line) =>
+              (reply.invitationSignal?.evidenceKind === "action"
+                ? line.kind === "narration"
+                : line.speakerId === reply.invitationSignal?.residentId) &&
+              line.content.includes(reply.invitationSignal!.quote),
+          )
+        ];
+      entry.invitationSignal = reply.invitationSignal;
+    }
     if (reply.invitationSignal?.venueId === state.placeId && reply.invitationSignal.timing === "now")
       applyImmediateZoneInvitation(state, reply.invitationSignal);
     applyInterpretedRoomEvents(state, reply.roomInterpretation, currentVillage);
     entry.actionReplyDone = true;
   });
+  if (completed.zoneId !== session.zoneId) await markZoneSeen(completed, false);
+  if (
+    reply.invitationSignal &&
+    (reply.invitationSignal.timing === "later" || reply.invitationSignal.venueId !== completed.placeId)
+  )
+    await recordSpokenInvitation(completed, reply.invitationSignal);
   if (reply.roomInterpretation) {
+    await finalizeRoomInvitationDiagnostics(completed, reply.roomInterpretation, reply.invitationSignal);
     await writeInterpretationDiagnostics(session.id, reply.roomInterpretation.traces).catch(() => {});
     scheduleSystemComparisons(session.id, reply.roomInterpretation);
   }
@@ -3067,7 +3089,10 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     await applyFulfilledWish(session, prior);
     await applyVenueRequests(session, prior);
     await processLegacyProjectTurn(session, prior);
-    if (prior.invitationSignal && prior.invitationSignal.timing === "later")
+    if (
+      prior.invitationSignal &&
+      (prior.invitationSignal.timing === "later" || prior.invitationSignal.venueId !== session.placeId)
+    )
       await recordSpokenInvitation(session, prior.invitationSignal);
     await applyTurnMemories(session, prior);
     await applyTurnRecollections(session, prior);
@@ -3538,8 +3563,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     (submission.invitationSignal.timing === "later" || submission.invitationSignal.venueId !== updated.placeId)
   )
     await recordSpokenInvitation(updated, submission.invitationSignal);
-  if (updated.zoneId === session.zoneId) await markZoneSeen(updated);
+  await markZoneSeen(updated, updated.zoneId === session.zoneId);
   if (reply.roomInterpretation) {
+    await finalizeRoomInvitationDiagnostics(updated, reply.roomInterpretation, submission.invitationSignal);
     await writeInterpretationDiagnostics(updated.id, reply.roomInterpretation.traces).catch(() => {});
     scheduleSystemComparisons(updated.id, reply.roomInterpretation);
   }
@@ -3558,6 +3584,30 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     action: null,
     recordEvents,
   };
+}
+
+async function finalizeRoomInvitationDiagnostics(
+  scene: VenueScene,
+  batch: InterpretationBatch,
+  signal: VenueSubmission["invitationSignal"],
+) {
+  const queued = batch.traces.filter((trace) => trace.applied.startsWith("Future invitation queued"));
+  if (!queued.length) return;
+  if (signal && (signal.timing === "later" || signal.venueId !== scene.placeId))
+    await recordSpokenInvitation(scene, signal);
+  const state = await readVillageState();
+  for (const trace of queued) {
+    const facts = asRecord(batch.checks[batch.traces.indexOf(trace)].facts);
+    const venue = state.venues.find((entry) => entry.id === facts.venueId);
+    const recorded =
+      signal &&
+      venue?.playerInvitations?.some(
+        (invitation) => invitation.sourceLineId === signal.sourceLineId && invitation.zoneId === facts.zoneId,
+      );
+    trace.applied = recorded
+      ? `Next-visit invitation recorded using ${trace.result.source}; authority and saved evidence validated`
+      : "Rejected: future invitation did not validate against saved evidence and current authority";
+  }
 }
 
 function validateCurrentRoomInvitation(reply: Awaited<ReturnType<typeof generate>>, village: VillageState): void {
@@ -3724,7 +3774,7 @@ async function recordSpokenInvitation(
   });
 }
 
-async function markResidenceSeen(session: VenueScene): Promise<void> {
+async function markResidenceSeen(session: VenueScene, generateImage = true): Promise<void> {
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     if (!venue || !venueClasses(venue).includes("residence")) return;
@@ -3735,7 +3785,7 @@ async function markResidenceSeen(session: VenueScene): Promise<void> {
     if (!session.zoneId && session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
       venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
   });
-  if (session.area === "private" && session.privateOwnerId) {
+  if (generateImage && session.area === "private" && session.privateOwnerId) {
     outsideVenueOperation(() => {
       void import("./location-image.js")
         .then(({ generateFirstPrivateSpaceImage }) =>

@@ -92,6 +92,11 @@ export function roomInterpretationChecks(
           domain: "room" as const,
           question: `Did ${name} invite you into ${label} at ${venue.name ?? "this Venue"}, refuse entry, or ask you to leave it?`,
           facts: {
+            playerId: "player",
+            playerName: village.playerPersonaName || "Player",
+            possibleRecipients: scene.participants
+              .filter((person) => scene.activeIds.includes(person.characterId))
+              .map((person) => ({ id: person.characterId, name: person.name })),
             actorId: actor,
             actorName: name,
             zoneId: zone.id,
@@ -112,10 +117,14 @@ export function roomInterpretationChecks(
               id: "invite-later",
               statement: `${name} invites the player to visit ${label} on one future occasion, rather than enter now, in the latest exchange.`,
             },
-            {
-              id: "refuse",
-              statement: `${name} refuses the player's request to enter ${label} in the latest exchange.`,
-            },
+            ...(venue.id !== scene.placeId || zone.id !== scene.zoneId
+              ? [
+                  {
+                    id: "refuse",
+                    statement: `${name} refuses the player's request to enter ${label} in the latest exchange.`,
+                  },
+                ]
+              : []),
             ...(venue.id === scene.placeId && zone.id === scene.zoneId
               ? [
                   {

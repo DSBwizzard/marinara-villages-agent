@@ -100,7 +100,7 @@ const errorStart = source.indexOf("class VillageApiError");
 assert.ok(errorStart > hintStart && errorStart < refusalStart);
 // Run the actual class and helper; transpilation preserves structured refusal codes.
 const refusalCode = transpileModule(
-  `const PRIVILEGED_ACCESS_HINT = ${hintLiteral};\n${source.slice(errorStart, requestStart)}`,
+  `const PRIVILEGED_ACCESS_HINT = ${hintLiteral};\n${source.slice(errorStart, source.indexOf("\nfunction ", errorStart))}\n${source.slice(refusalStart, requestStart)}`,
   { compilerOptions: { target: ScriptTarget.ES2022 } },
 ).outputText;
 const buildRefusal = new Function(`${refusalCode}\nreturn requestRefusal;`)() as (
