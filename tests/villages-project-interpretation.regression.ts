@@ -160,6 +160,15 @@ function saveTurn(message: string, content: string, speakerId = "rosa", venueId 
   return { sessionId, submissionId, lineId, at };
 }
 
+function doorway(turn: ReturnType<typeof saveTurn>) {
+  const data = records.get(`villages-venue-visit-${turn.sessionId}`).data;
+  data.submissions[0].mode = "contact";
+  data.submissions[0].speechIdsAtTurn = [...data.submissions[0].activeIdsAtTurn];
+  data.submissions[0].activeIdsAtTurn = [];
+  data.activeIds = [];
+  data.lines[1].viaDoorway = true;
+}
+
 async function main() {
   try {
     await createNewVenueProject({ name: "Repair Kiosk", venueClass: "workplace", description: "Small repairs." });
@@ -405,6 +414,14 @@ async function main() {
     );
     await processSavedProgressSubmission(wrongVenue.sessionId, wrongVenue.submissionId);
     assert.equal((await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt, "");
+    const remoteHandoff = saveTurn("Please hand over timber for Repair Kiosk", "Here is timber.", "ivo");
+    doorway(remoteHandoff);
+    await processSavedProgressSubmission(remoteHandoff.sessionId, remoteHandoff.submissionId);
+    assert.equal(
+      (await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt,
+      "",
+      "doorway speech cannot hand over a physical item",
+    );
     const handoff = saveTurn("Please hand over timber for Repair Kiosk", "Here is timber.", "ivo");
     await processSavedProgressSubmission(handoff.sessionId, handoff.submissionId);
     assert.ok((await project()).lifecycle!.requirements.find((item) => item.id === timberId)!.carriedAt);
@@ -441,7 +458,16 @@ async function main() {
       improvement: { title: "Roof", description: "Weatherproof", extraBeds: 0 },
     });
     const roofId = (await readVillageState()).projects.find((entry) => entry.kind === "renovation")!.id;
+    const relayedApproval = saveTurn("Do you approve Mill roof?", "Yes, I approve Mill roof.");
+    records.get(`villages-venue-visit-${relayedApproval.sessionId}`).data.lines[1].contactHidden = true;
+    await processSavedProgressSubmission(relayedApproval.sessionId, relayedApproval.submissionId);
+    assert.equal(
+      (await readVillageState()).projects.find((entry) => entry.id === roofId)!.lifecycle!.phase,
+      "approval",
+      "hidden relay speech cannot become a witnessed Project approval",
+    );
     const approval = saveTurn("Do you approve Mill roof?", "Yes, I approve Mill roof.");
+    doorway(approval);
     await processSavedProgressSubmission(approval.sessionId, approval.submissionId);
     assert.equal((await readVillageState()).projects.find((entry) => entry.id === roofId)!.lifecycle!.phase, "builder");
     await mutateVillageState((current) => {

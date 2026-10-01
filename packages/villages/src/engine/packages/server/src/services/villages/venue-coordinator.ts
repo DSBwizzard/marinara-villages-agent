@@ -345,6 +345,8 @@ export async function coordinateVenue<T>(
           operation.status =
             Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
             operation.checkpoints["turn-reply"] ||
+            operation.checkpoints["contact-response"] ||
+            operation.checkpoints["contact-relay-response"] ||
             operation.checkpoints["action-reply"] ||
             operation.checkpoints["greeting-reply"] ||
             operation.checkpoints["move-invitation"] ||
