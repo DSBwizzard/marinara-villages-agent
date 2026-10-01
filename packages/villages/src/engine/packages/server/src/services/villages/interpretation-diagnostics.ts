@@ -47,6 +47,12 @@ export async function writeInterpretationDiagnostics(sceneId: string, traces: In
         .slice(-12);
       const trace = {
         ...original,
+        result: {
+          outcome: original.result.outcome,
+          source: original.result.source,
+          evidenceIds: original.result.evidenceIds.slice(0, 100),
+          reason: original.result.reason,
+        },
         evidence: selected.map((line) => ({ ...line, content: line.content.slice(0, 600) })),
       };
       const prior = state.checks.find((row) => row.id === trace.id);
@@ -94,7 +100,15 @@ export function scheduleSystemComparisons(sceneId: string, batch: Interpretation
       if (!claimed) return;
       const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
       signal.throwIfAborted();
-      const result = await systemInterpretations(structuredClone(eligible), signal);
+      let abort: () => void = () => {};
+      const result = await Promise.race([
+        systemInterpretations(structuredClone(eligible), signal),
+        new Promise<never>((_resolve, reject) => {
+          abort = () => reject(new Error("Comparison interrupted"));
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+        }),
+      ]).finally(() => signal.removeEventListener("abort", abort));
       await mutateDocument(documentId(sceneId), slot, (state) => {
         for (const trace of state.checks) {
           if (trace.comparisonAttempt?.id !== attemptId) continue;

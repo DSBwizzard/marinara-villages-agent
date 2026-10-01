@@ -58,6 +58,7 @@ import { extractJsonObject } from "./village-bootstrap.js";
 // rules. See `completeWithRoom`.
 const JUDGE_MAX_TOKENS = 1_000;
 const JUDGE_TEMPERATURE = 0.15;
+class WishEvidenceError extends Error {}
 
 /**
  * Everything the judgement is allowed to read.
@@ -104,7 +105,9 @@ function buildJudgeMessages(context: VillageWishClaimContext): CapabilityLanguag
   ]
     .filter((line) => line.length > 0)
     .join("\n");
-  const said = context.transcript.map((line) => `${line.role === "user" ? player : card.name}: ${line.content.trim()}`);
+  const said = context.transcript.map(
+    (line, index) => `[L${index + 1}] ${line.role === "user" ? player : card.name}: ${line.content.trim()}`,
+  );
   const lately = context.happenings.map((entry) => entry.text.trim()).filter((line) => line.length > 0);
   const worldState = (context.worldState ?? []).map((line) => line.trim()).filter(Boolean);
   const known = context.memory.map((entry) => entry.text.trim()).filter((line) => line.length > 0);
@@ -146,7 +149,8 @@ function buildJudgeMessages(context: VillageWishClaimContext): CapabilityLanguag
     known.length > 0 ? [`What ${card.name} already remembers:`, ...known.map((line) => `- ${line}`)].join("\n") : "",
     [
       "Answer with JSON only, in exactly this shape and nothing else:",
-      '{"fulfilled":false,"wishId":"","reason":"...","memory":""}',
+      '{"fulfilled":false,"wishId":"","reason":"...","memory":"","evidenceIds":["L1"]}',
+      "For fulfillment, cite original L-numbered record lines supporting every condition. After evidence scanning, preserve embedded original L numbers. Claims, promises, and gratitude alone do not establish a physical deed.",
     ].join("\n"),
     [
       "Rules:",
@@ -179,6 +183,8 @@ export type VillageWishVerdictResult = {
   wish: VillageWish | null;
   /** The line to remember a fulfilled wish by. Empty unless `fulfilled`. */
   memory: string;
+  interpretationStatus?: "unresolved";
+  evidenceIds?: string[];
 };
 
 /** What a claim is answered with when it is fulfilled and no reason was written. */
@@ -228,20 +234,16 @@ export function coerceVerdict(
     // the chronicle, so it is the one field of the reply that leaves this call
     // and lands in the record.
     memory: fulfilled ? boundText(payload.memory, MAX_CHRONICLE_LENGTH) : "",
+    ...(Array.isArray(payload.evidenceIds)
+      ? { evidenceIds: payload.evidenceIds.filter((id): id is string => typeof id === "string").slice(0, 100) }
+      : {}),
+    ...(typeof payload.fulfilled !== "boolean" || (payload.fulfilled === true && !wish)
+      ? { interpretationStatus: "unresolved" as const }
+      : {}),
   };
 }
 
-/**
- * Put the claim to the judge.
- *
- * A judgement that could not be read is a NO rather than an error, and that is
- * a deliberate difference from the closing summary, which throws. Throwing here
- * would tell the player to try again, and the second attempt would be the same
- * claim against the same record — but a model that has just failed to produce
- * a shape it was asked for twice is not the model you want deciding anything.
- * Failing closed costs the player a refusal they can retry by acting instead of
- * asking, which is the correct remedy for a wish that was not really satisfied.
- */
+/** Full native fallback; known malformed evidence stays unresolved, interrupted requests propagate for explicit recovery. */
 export async function proposeWishVerdict(
   context: VillageWishClaimContext,
   options: { signal?: AbortSignal } = {},
@@ -289,21 +291,22 @@ export async function proposeWishVerdict(
         temperature: JUDGE_TEMPERATURE,
         debugMode: false,
         signal: options.signal,
+        retryEmpty: false,
       });
       const payload = extractJsonObject(completion.content ?? "");
       if (completion.finishReason === "length" || payload?.more === true || payload?.complete !== true) {
-        if (end - start < 2) throw new Error("Incomplete wish evidence scan.");
+        if (end - start < 2) throw new WishEvidenceError("Incomplete wish evidence scan.");
         const middle = start + Math.floor((end - start) / 2);
         await scan(start, middle);
         await scan(middle, end);
         return;
       }
-      if (!Array.isArray(payload.evidence)) throw new Error("Unreadable wish evidence scan.");
+      if (!Array.isArray(payload.evidence)) throw new WishEvidenceError("Unreadable wish evidence scan.");
       for (const item of payload.evidence) {
         const lineId = String((item as { lineId?: unknown }).lineId ?? "");
         const quote = String((item as { quote?: unknown }).quote ?? "");
         const source = units.slice(start, end).find((line) => line.lineId === lineId && line.content.includes(quote));
-        if (!source || !quote || quote.length > 600) throw new Error("Unverified wish quotation.");
+        if (!source || !quote || quote.length > 600) throw new WishEvidenceError("Unverified wish quotation.");
         if (!quotes.some((entry) => entry.lineId === lineId && entry.quote === quote))
           quotes.push({ lineId, quote, role: source.role });
       }
@@ -311,7 +314,7 @@ export async function proposeWishVerdict(
     try {
       for (let cursor = 0; cursor < units.length;) {
         let end = cursor + 1;
-        if (!fits(scanMessages(cursor, end))) throw new Error("Wish evidence does not fit the model.");
+        if (!fits(scanMessages(cursor, end))) throw new WishEvidenceError("Wish evidence does not fit the model.");
         while (end < units.length && fits(scanMessages(cursor, end + 1))) end += 1;
         await scan(cursor, end);
         cursor = end;
@@ -320,11 +323,13 @@ export async function proposeWishVerdict(
         ...context,
         transcript: quotes.map((entry) => ({ role: entry.role, content: `[${entry.lineId}] ${entry.quote}`, at: "" })),
       });
-    } catch {
+    } catch (error) {
+      if (!(error instanceof WishEvidenceError)) throw error;
       return {
         verdict: { fulfilled: false, reason: "The full Scene could not be checked for that wish. Try again later." },
         wish: null,
         memory: "",
+        interpretationStatus: "unresolved",
       };
     }
   }
@@ -334,6 +339,7 @@ export async function proposeWishVerdict(
       verdict: { fulfilled: false, reason: "The Scene evidence could not fit the wish check." },
       wish: null,
       memory: "",
+      interpretationStatus: "unresolved",
     };
   const fitted = model.fitContext(judgeMessages, { maxTokens: requestedMaxTokens });
   const debugEnabled = villagesDebugAgentsEnabled();
@@ -349,6 +355,7 @@ export async function proposeWishVerdict(
     temperature: JUDGE_TEMPERATURE,
     debugMode: debugEnabled,
     signal: options.signal,
+    retryEmpty: false,
   });
 
   // Logged on the same switch as every other prompt, and logged even though the
@@ -366,9 +373,10 @@ export async function proposeWishVerdict(
   const payload = extractJsonObject(completion.content ?? "");
   if (!payload) {
     return {
-      verdict: { fulfilled: false, reason: `${context.card.name} did not take that as settling it.` },
+      verdict: { fulfilled: false, reason: "That wish's meaning is still unclear; clarify what happened." },
       wish: null,
       memory: "",
+      interpretationStatus: "unresolved",
     };
   }
   return coerceVerdict(payload, context.wishes);

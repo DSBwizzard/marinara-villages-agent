@@ -97,12 +97,20 @@ import {
   queueVillageVenueRequest,
   villagerPlaceView,
 } from "./village.js";
-import { proposeWishVerdict } from "./wishes.js";
+import {
+  interpretWishClaim,
+  wishFingerprint,
+  matchingWishReceipts,
+  wishReceiptRecords,
+  coerceWishApplicationProof,
+  type WishCriteria,
+} from "./wish-interpretation.js";
 import {
   interpretProjectDraft,
   projectProposals,
   finalizeProjectDiagnostics,
   applyLegacyProjectInterpretation,
+  applyProjectPickup,
 } from "./project-checks.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VenueActionResult } from "./venue-actions.js";
@@ -247,6 +255,7 @@ type VenueSubmission = {
   projectContexts?: ProjectSpeechContext[];
   projectSpeech?: ProjectSpeechProposal[];
   projectInterpretationVersion?: 1;
+  wishInterpretationProof?: { fingerprint: string; criteria: WishCriteria; receiptIds: string[] };
   progressProcessedAt?: string;
   progressError?: string;
   verdict: { fulfilled: boolean; reason: string } | null;
@@ -697,6 +706,9 @@ function coerceSession(value: unknown): VenueScene {
                 : {}),
               ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
               ...(row.projectInterpretationVersion === 1 ? { projectInterpretationVersion: 1 as const } : {}),
+              ...(Object.hasOwn(row, "wishInterpretationProof")
+                ? { wishInterpretationProof: coerceWishApplicationProof(row.wishInterpretationProof) }
+                : {}),
               ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
               verdict:
                 row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
@@ -1033,6 +1045,8 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "characterZoneId",
             "checkpoints",
             "attempts",
+            "optionalAttempts",
+            "wishInterpretationProof",
             "snapshot",
           ].includes(key),
       )
@@ -1111,7 +1125,7 @@ async function generateOnce(
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
   targetId: string,
-  settled: { fulfilled: boolean; wish: string } | null,
+  settled: { fulfilled: boolean; wish: string; unresolved?: boolean; reason?: string } | null,
   signal?: AbortSignal,
   trace?: GreetingTrace,
   actionOutcome?: string,
@@ -1344,7 +1358,7 @@ async function generateOnce(
     mode === "greet"
       ? ""
       : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
-    `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
+    `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
     mode === "greet"
       ? "Open on a specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
       : "",
@@ -1839,7 +1853,7 @@ async function generate(
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
   targetId: string,
-  settled: { fulfilled: boolean; wish: string } | null,
+  settled: { fulfilled: boolean; wish: string; unresolved?: boolean; reason?: string } | null,
   signal?: AbortSignal,
   trace?: GreetingTrace,
   actionOutcome?: string,
@@ -2188,17 +2202,24 @@ async function refreshZoneParticipants(session: VenueScene, completing = false):
     });
     return refreshZoneParticipants(refreshed);
   }
-  if (!session.zoneId)
-    return changeSession(session.id, (state) => {
+  if (!session.zoneId) {
+    const migrated = await changeSession(session.id, (state) => {
       if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = zoneId;
       state.legacyCast = true;
       if (state.area !== "outside") state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zoneId])];
     });
+    return refreshZoneParticipants(migrated, completing);
+  }
   if (!session.sceneAttendance) {
     // Older Scenes cannot reconstruct rewritten agendas. Preserve their current cast,
     // and capture unencountered residents at the original Scene time once.
     const captured = captureSceneAttendance(village, venue.id, new Date(session.startedAt));
+    // An older Scene already established its visible cast. Schedule reconstruction cannot add a witness there.
+    const known = new Set(session.participants.map((person) => person.characterId));
+    captured.occupants = captured.occupants.filter(
+      (person) => person.zoneId !== zoneId || known.has(person.characterId),
+    );
     for (const person of session.participants) {
       const original = captured.occupants.find((entry) => entry.characterId === person.characterId);
       const lastZone =
@@ -3086,15 +3107,19 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   if (prior) {
     if (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId)
       throw conflict("That submission ID belongs to a different line.");
-    if (prior.mode === "act" && prior.action && !prior.actionReplyDone)
+    if (prior.mode === "act" && prior.action && !prior.actionReplyDone) {
+      session = await finishActReply(session, input.submissionId, input.message, prior.action);
+      await applyProjectPickup(session.id, input.submissionId);
       return {
-        session: await finishActReply(session, input.submissionId, input.message, prior.action),
+        session,
         verdict: null,
         action: prior.action,
         recordEvents: prior.action.happened
           ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
           : [],
       };
+    }
+    if (prior.mode === "act" && prior.action?.happened) await applyProjectPickup(session.id, input.submissionId);
     try {
       await processSavedProgressSubmission(session.id, prior.id);
     } catch (error) {
@@ -3122,7 +3147,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     };
   }
   session = await requireLiveVenueSession(session.id);
-  session = venueOperationSnapshot<VenueScene>() ?? session;
+  const admitted = venueOperationSnapshot<unknown>();
+  if (admitted) session = coerceSession(admitted);
   if (session.status !== "active") throw conflict("That Scene is not active.");
   if (input.mode !== "leave" && session.zoneId) {
     const village = await readVillageState(),
@@ -3172,6 +3198,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       action,
       preparedReply,
     );
+    await applyProjectPickup(session.id, input.submissionId);
     return {
       session: completed,
       verdict: null,
@@ -3187,6 +3214,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   let wishId = "";
   let wishMemory = "";
   let wishText = "";
+  let wishInterpretation: InterpretationBatch | null = null;
+  let wishUnresolved = false;
+  let wishInterpretationProof: VenueSubmission["wishInterpretationProof"];
   if (input.mode === "fulfill") {
     const resident = village.villagers.find((person) => person.characterId === input.targetId);
     if (!resident) throw notFound("That villager no longer lives here.");
@@ -3195,8 +3225,36 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     const player = readPlayerIdentity(village);
     const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() });
     const judged = await venueCheckpoint("wish-verdict", () =>
-      proposeWishVerdict(
+      interpretWishClaim(
         {
+          actorId: input.targetId,
+          evidence: [
+            ...heardLines(session, input.targetId)
+              .filter(
+                (line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper",
+              )
+              .map((line) => ({
+                id: line.id,
+                speakerId: line.role === "user" ? "player" : line.speakerId,
+                name: line.role === "user" ? player.name : line.name,
+                content: line.content,
+                kind: line.kind,
+                at: line.at,
+              })),
+            ...(session.activeIds.includes(input.targetId)
+              ? [
+                  {
+                    id: "scene-attendance",
+                    speakerId: "player",
+                    name: player.name,
+                    kind: "attendance",
+                    content: `Current authoritative Scene position: ${player.name} and ${resident.cardSnapshot.name} are together in this Zone.`,
+                    at: new Date().toISOString(),
+                  },
+                ]
+              : []),
+          ],
+          receipts: wishReceiptRecords(village, input.targetId, session),
           village: village.name,
           setting: villageCurrentSetting(village),
           moment,
@@ -3207,14 +3265,16 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           claim: input.message,
           transcript: heardLines(session, input.targetId).map((line) => ({
             role: line.role,
-            content: line.content,
+            content: `[Original speaker: ${line.role === "user" ? player.name : line.name}] ${line.content}`,
             at: line.at,
           })),
-          happenings: village.venueEvents.slice(0, 20),
+          happenings: wishReceiptRecords(village, input.targetId, session),
           worldState: (() => {
             const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
             const place = storedPlace
-              ? venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
+              ? session.zoneId
+                ? venueInZone(storedPlace, session.zoneId)
+                : venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
               : undefined;
             if (!place) return [];
             return [
@@ -3230,13 +3290,29 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
             `${input.message} ${wishes.map((wish) => wish.wish).join(" ")}`,
           ),
         },
-        { signal: venueOperationSignal() },
+        session.id,
+        input.submissionId,
       ),
     );
     verdict = judged.verdict;
     wishId = judged.wish?.id ?? "";
     wishMemory = judged.memory;
     wishText = judged.wish?.wish ?? "";
+    wishInterpretation = judged.batch;
+    wishUnresolved = judged.interpretationStatus === "unresolved";
+    if (judged.wish) {
+      const check = judged.batch.checks.find((item) => asRecord(item.facts).wishId === judged.wish!.id)!;
+      wishInterpretationProof = {
+        fingerprint: wishFingerprint(judged.wish),
+        criteria: asRecord(check.facts).criteria as WishCriteria,
+        receiptIds: asRecord(check.facts).matchingReceiptIds as string[],
+      };
+      const currentWish = (await readVillageState()).villagers
+        .find((person) => person.characterId === input.targetId)
+        ?.agenda?.wishes.find((item) => item.id === wishId);
+      if (!currentWish || wishFingerprint(currentWish) !== wishInterpretationProof.fingerprint)
+        throw conflict("That wish changed during interpretation. Your draft is preserved.");
+    }
   }
   const responseTargetId = input.targetId || (session.activeIds.length === 1 ? session.activeIds[0]! : "");
   let contactIntentUsed: ContactIntent | null =
@@ -3294,7 +3370,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           input.message,
           input.mode === "contact" ? "chat" : input.mode,
           responseTargetId,
-          verdict ? { fulfilled: verdict.fulfilled, wish: wishText } : null,
+          verdict
+            ? { fulfilled: verdict.fulfilled, wish: wishText, unresolved: wishUnresolved, reason: verdict.reason }
+            : null,
           venueOperationSignal() ?? AbortSignal.timeout(90_000),
         ),
       );
@@ -3351,6 +3429,24 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   const applicationVillage = await readVillageState();
   validateCurrentRoomInvitation(reply, applicationVillage);
+  if (wishInterpretationProof) {
+    const currentWish = applicationVillage.villagers
+      .find((person) => person.characterId === input.targetId)
+      ?.agenda?.wishes.find((wish) => wish.id === wishId);
+    if (
+      !currentWish ||
+      wishFingerprint(currentWish) !== wishInterpretationProof.fingerprint ||
+      (wishInterpretationProof.criteria.requiresPhysical &&
+        !matchingWishReceipts(
+          wishInterpretationProof.criteria,
+          { actorId: input.targetId, receipts: wishReceiptRecords(applicationVillage, input.targetId, session) },
+          currentWish,
+        ).some((event) => wishInterpretationProof!.receiptIds.includes(event.id)))
+    )
+      throw conflict(
+        "The wish or its authoritative evidence changed while the reply was prepared. Your draft is preserved.",
+      );
+  }
   const projectInterpretation =
     input.mode === "chat" || input.mode === "ask" || input.mode === "contact"
       ? await interpretProjectDraft(
@@ -3518,6 +3614,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       verdict,
       wishId,
       wishMemory,
+      ...(wishInterpretationProof ? { wishInterpretationProof } : {}),
       recollections,
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
@@ -3601,6 +3698,17 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   await applyVenueTurnChange(updated, submission);
   await applyFulfilledWish(updated, submission);
+  if (wishInterpretation) {
+    const current = await readVillageState();
+    const applied = current.chronicle.some((entry) => entry.id === `${updated.id}:wish:${submission.wishId}`);
+    for (const trace of wishInterpretation.traces)
+      if (trace.applied === "Wish supported; awaiting current-state application")
+        trace.applied = applied
+          ? `Wish fulfilled using ${trace.result.source}; conditions, witnesses and current state validated`
+          : "Rejected: wish or authoritative evidence changed before application";
+    await writeInterpretationDiagnostics(updated.id, wishInterpretation.traces).catch(() => {});
+    scheduleSystemComparisons(updated.id, wishInterpretation);
+  }
   await applyVenueRequests(updated, submission);
   await processLegacyProjectTurn(updated, submission);
   if (
@@ -4004,6 +4112,18 @@ async function applyFulfilledWish(session: VenueScene, submission: VenueSubmissi
     const resident = state.villagers.find((person) => person.characterId === submission.targetId);
     const wish = resident?.agenda?.wishes.find((entry) => entry.id === submission.wishId);
     if (!resident?.agenda || !wish) return;
+    const proof = submission.wishInterpretationProof;
+    if (
+      proof &&
+      (proof.fingerprint !== wishFingerprint(wish) ||
+        (proof.criteria.requiresPhysical &&
+          !matchingWishReceipts(
+            proof.criteria,
+            { actorId: submission.targetId, receipts: wishReceiptRecords(state, submission.targetId, session) },
+            wish,
+          ).some((event) => proof.receiptIds.includes(event.id))))
+    )
+      return;
     applied = true;
     const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() });
     fulfillResidentWish(resident, wish.id, moment.instant, memoryId);
