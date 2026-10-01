@@ -54,14 +54,24 @@ export function applyRecordedProjectPickup(
     receipt.itemTransfer?.recipientId !== "player" ||
     receipt.removeItem !== receipt.itemTransfer.itemName ||
     !receipt.removeItem ||
+    !Number.isFinite(Date.parse(event.at)) ||
     state.projectSourceClaims.some((claim) => claim.sourceId === event.id)
   )
     return false;
   if (state.progressEngineVersion === 1) {
     const source = flow.sources.find((item) => item.requirementId === requirementId);
+    const task = state.progressTasks.find(
+      (item) => item.definition.owner.kind === "project" && item.definition.owner.id === project.id,
+    );
     // Selected finite physical stock is already debited by Act. No second debit or invented supplier handoff.
     if (
       !source ||
+      !task ||
+      task.definition.phases[task.phaseIndex]?.id !== "materials" ||
+      !task.receipts.some(
+        (receipt) =>
+          receipt.requirementId === `source:${requirementId}` && receipt.evidence.sourceId === source.evidenceId,
+      ) ||
       source.kind !== "existing-item" ||
       source.acquiredAt ||
       source.venueId !== event.venueId ||

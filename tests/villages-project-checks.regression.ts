@@ -237,6 +237,15 @@ for (const version of [0, 1] as const) {
     );
   }
   const revision = version === 1 ? stock.progressTasks[0].definition.revision : legacyProjectRevision(project);
+  if (version === 1) {
+    const absentSourceProof = structuredClone(stock);
+    absentSourceProof.progressTasks[0].receipts = [];
+    assert.equal(
+      applyRecordedProjectPickup(absentSourceProof, "pickup", project.id, "wood", revision, "act"),
+      false,
+      "Missing canonical source proof rejects allocation without failing a saved action",
+    );
+  }
   assert.equal(applyRecordedProjectPickup(stock, "pickup", project.id, "wood", revision + 1, "act"), false);
   const missing = structuredClone(stock);
   delete missing.venueEvents[0].actionReceipt!.itemTransfer;
