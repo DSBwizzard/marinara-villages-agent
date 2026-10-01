@@ -112,6 +112,7 @@ jobs:
           node tests/villages-contact.e2e.mjs
           node tests/villages-runtime-debug.e2e.mjs
           node tests/villages-scene-staging.e2e.mjs
+          node tests/villages-scene-controls.e2e.mjs
 
       - name: Verify greeting recovery without paid retries
         run: node tests/villages-greeting-recovery.e2e.mjs

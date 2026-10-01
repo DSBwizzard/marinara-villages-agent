@@ -120,11 +120,8 @@ export function DecisionsControl({
     <div
       className="villages-decisions-control"
       style={{
-        position: "absolute",
-        top: ".65rem",
-        left: ".65rem",
-        zIndex: 120,
-        maxWidth: "calc(100% - 1.3rem)",
+        position: "relative",
+        maxWidth: "100%",
         color: "var(--foreground)",
         fontSize: ".75rem",
       }}

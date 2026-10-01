@@ -189,6 +189,8 @@ try {
       const mara = cast.locator('[data-character-id="mara"]');
       const composer = page.getByRole("textbox", { name: "Message at The Mill" });
       const mobile = width <= 704 || (width <= 880 && height <= 512);
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
       await expect(decisionSwitch).toBeVisible();
       await expect(decisionSwitch).toHaveAttribute("aria-checked", "false");
@@ -204,6 +206,7 @@ try {
       await expect(page.getByRole("region", { name: "Interpretation checks" })).toHaveCount(0);
       const switchBox = await decisionSwitch.boundingBox();
       assert.ok(switchBox.x >= 0 && switchBox.x + switchBox.width <= width && switchBox.y >= 0);
+      await page.getByRole("button", { name: "Close Scene settings" }).click();
       async function checkSpriteSize(isMobile) {
         const measurements = await cast.evaluate((node) => {
           const floor = node.getBoundingClientRect();

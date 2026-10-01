@@ -185,7 +185,7 @@ try {
   assert.equal(calls, 1, "completion polling never resends the second draft");
   await send(two).click();
   await expect.poll(() => record.data.operation.status).toBe("complete");
-  if (await next.isVisible()) await next.click();
+  if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
   await expect(composer(two)).toHaveValue("");
   assert.equal(calls, 2);
   assert.equal(record.data.lines.filter((line) => line.content === "Second tab draft").length, 1);
@@ -209,7 +209,7 @@ try {
   await expect(composer(two)).toHaveValue("Review the updated scene");
   await send(two).click();
   await expect.poll(() => record.data.submissions.length).toBe(3);
-  if (await next.isVisible()) await next.click();
+  if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
   await expect(composer(two)).toHaveValue("");
   assert.equal(calls, 3);
 
