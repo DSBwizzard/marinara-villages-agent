@@ -52,6 +52,8 @@ Owner-authenticated GET /api/villages/debug/runtime returns { verbose, effective
 
 ## Scene coordination
 
+Saved exchanges now carry versioned village/Scene/submission identifiers, evidence line references, physical receipt references, and independent Project, Wish, Memory and Relationship processing records. The first delivery routes Projects through this layer; subsequent deliveries replace the other domains' existing paths. This record references the exact saved transcript and does not snapshot the village after each reply. Project effects retain their own atomic duplicate receipts; a failed Scene bookkeeping write can replay saved interpretations without a model call. Unfinished application is protected from automatic archive cleanup. The owner-only `GET /api/villages/rooms/:id/changes?cursor=0&limit=20` reads bounded saved statuses and notices without starting generation. Domain failures record their reason and measured application time.
+
 Each live Scene admits one scene operation at a time. Another tab's send is refused before any reply, action judgement, or Wish call; its draft stays available. Sends and movement identify the scene revision the player saw. A stale draft requires reading the updated scene and deliberately sending again. Refreshes, activity timestamps, and bookkeeping do not invalidate admitted work.
 
 Identical submissions share running work and replay completed exchanges. Server-owned work continues if a browser disconnects. Completed generation stages are saved so recovery can reuse them; cancelled or replaced owners cannot append a late response. Snapshot reads preserve Scene attendance and the admitted turn's witnesses across agenda boundaries and Zone movement.

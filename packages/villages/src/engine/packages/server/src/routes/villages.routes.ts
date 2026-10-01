@@ -55,6 +55,7 @@ import {
   greetVenue,
   listVenueVisitSummaries,
   readVenueVisit,
+  readSceneChanges,
   recheckRecentBuilderConversations,
   progressBacklog,
   deleteVenueVisit,
@@ -936,6 +937,21 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "discarding a debug Scene");
     }
   });
+
+  app.get<{ Params: { id: string }; Querystring: { cursor?: string; limit?: string } }>(
+    "/rooms/:id/changes",
+    async (request, reply) => {
+      try {
+        return await readSceneChanges(
+          readChatId(request.params.id),
+          request.query?.cursor,
+          Number(request.query?.limit ?? 20),
+        );
+      } catch (error) {
+        return fail(reply, error, "reading saved Scene changes");
+      }
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/rooms/:id/operation", async (request, reply) => {
     try {

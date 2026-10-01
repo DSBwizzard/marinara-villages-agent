@@ -1,4 +1,11 @@
 import { runtimeDebug } from "./runtime-debug.js";
+import {
+  createExchangeProcessing,
+  coerceExchangeProcessing,
+  dispatchExchange,
+  unfinishedExchange,
+  type ExchangeProcessing,
+} from "./exchange-processing.js";
 import { relationshipZoneController, mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
 import { relationshipPrompt, relationshipClosingNotices, captureRelationshipKnowledge } from "./relationships.js";
 import {
@@ -239,6 +246,7 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
   };
 }
 type VenueSubmission = {
+  processing?: ExchangeProcessing;
   id: string;
   message: string;
   mode: "chat" | "ask" | "fulfill" | "act" | "leave" | "contact";
@@ -342,6 +350,8 @@ type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 /** One document is both the active transcript and the player's durable Scene archive. */
 export type VenueScene = {
   version: 1;
+  processingVersion?: 1;
+  villageSeed?: string;
   sceneRevision: number;
   operation?: VenueOperation;
   generationReceipts?: {
@@ -525,6 +535,7 @@ function coerceSession(value: unknown): VenueScene {
     : [];
   return {
     version: 1,
+    ...(raw.processingVersion === 1 ? { processingVersion: 1 as const, villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
     generationReceipts: Array.isArray(raw.generationReceipts)
@@ -649,6 +660,9 @@ function coerceSession(value: unknown): VenueScene {
             const row = asRecord(value);
             return {
               id: asTrimmedString(row.id),
+              ...(coerceExchangeProcessing(row.processing)
+                ? { processing: coerceExchangeProcessing(row.processing) }
+                : {}),
               message: asString(row.message),
               ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
               ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
@@ -846,6 +860,27 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
     if (session.id !== id) throw notFound("That Scene is no longer available.");
     const before = sceneFingerprint(session);
     change(session);
+    if (session.processingVersion === 1 && session.villageSeed)
+      session.submissions.forEach((turn, order) => {
+        if (turn.processing || !turn.at) return;
+        turn.processing = createExchangeProcessing({
+          seed: session.villageSeed!,
+          sceneId: id,
+          submissionId: turn.id,
+          order,
+          lineIds: session.lines
+            .filter((line) => turn.replyLineIds?.includes(line.id) || (line.role === "user" && line.at === turn.at))
+            .map((line) => line.id),
+          actionReceiptIds: turn.action?.happened ? [`venue-action:${turn.id}`] : [],
+        });
+        // This delivery introduces Project replay. Other domains still own their existing settlement paths.
+        for (const domain of ["wishes", "memories", "relationships"] as const)
+          turn.processing.domains[domain] = {
+            ...turn.processing.domains[domain],
+            status: "applied",
+            reason: "No exchange-level proposals supplied",
+          };
+      });
     if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
     result = session;
   });
@@ -886,7 +921,7 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
     );
     if (hasAutomaticRoute)
       await mutateVillageState((state) => {
-        if (state.progressEngineVersion !== 1) return;
+        if (state.progressEngineVersion !== 1 || state.seed !== village.seed) return;
         for (const line of session.lines) {
           if (
             submission.replyLineIds?.includes(line.id) &&
@@ -935,19 +970,88 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
   }
 }
 
+/** Replay only saved interpretations. Effects and duplicate receipts remain in their owning documents. */
+export async function processSavedExchange(sessionId: string, submissionId: string): Promise<void> {
+  const scene = await readSession(sessionId);
+  const turn = scene.submissions.find((entry) => entry.id === submissionId);
+  if (!turn?.processing) return processSavedProgressSubmission(sessionId, submissionId);
+  const village = await readVillageState();
+  const processing = turn.processing;
+  const valid =
+    village.seed === processing.seed &&
+    scene.villageSeed === village.seed &&
+    processing.sceneId === scene.id &&
+    processing.submissionId === turn.id;
+  const applyProjects = async () => {
+    if (!valid) return { status: "rejected" as const, reason: "Village identity changed; saved effects cannot apply" };
+    await applyVenueTurnChange(scene, turn);
+    await processSavedProgressSubmission(scene.id, turn.id);
+    if (village.progressEngineVersion !== 1 && turn.projectInterpretationVersion === 1)
+      await applyLegacyProjectInterpretation(scene.id, turn.id);
+    const current = await readVillageState();
+    const receiptIds = current.progressTasks.flatMap((task) =>
+      task.receipts
+        .filter(
+          (receipt) =>
+            receipt.evidence.sourceId === turn.id || processing.lineIds.includes(receipt.evidence.lineId ?? ""),
+        )
+        .map((receipt) => receipt.id),
+    );
+    return { reason: "Physical effects and saved Project interpretations checked", receiptIds };
+  };
+  await dispatchExchange(processing, { projects: applyProjects }, async (domain, result) => {
+    await changeSession(scene.id, (saved) => {
+      const entry = saved.submissions.find((entry) => entry.id === turn.id);
+      if (entry?.processing?.seed === processing.seed) entry.processing.domains[domain] = result;
+    });
+    runtimeDebug("exchange processing", {
+      sceneId: sessionId,
+      submissionId,
+      domain,
+      interpretationVersion: processing.interpretationVersion,
+      ...result,
+    });
+  });
+}
+
+/** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
+export async function readSceneChanges(id: string, cursor = "", limit = 20) {
+  const scene = await readSession(id);
+  const offset = cursor ? Number(cursor) : 0;
+  if (!Number.isSafeInteger(offset) || offset < 0) throw badRequest("Invalid changes cursor.");
+  const size = Math.max(1, Math.min(50, Math.floor(Number(limit) || 20)));
+  const turns = scene.submissions.slice(offset, offset + size);
+  return {
+    sceneId: id,
+    changes: turns.map((turn) => ({
+      submissionId: turn.id,
+      at: turn.at,
+      processing: turn.processing ?? null,
+      notices: turn.recordEvents ?? [],
+    })),
+    nextCursor: offset + turns.length < scene.submissions.length ? String(offset + turns.length) : null,
+  };
+}
+
 export async function progressBacklog() {
   const village = await readVillageState();
-  if (village.progressEngineVersion !== 1) return [];
   const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
   return records
     .flatMap((record) => {
       const session = coerceSession(record.data);
-      return pendingProgressTurns(session, village.foundedAt).map((turn) => ({
-        sessionId: session.id,
-        submissionId: turn.id,
-        at: turn.at,
-        error: turn.progressError ?? "",
-      }));
+      if (session.processingVersion === 1 && session.villageSeed !== village.seed) return [];
+      return session.submissions
+        .filter((turn) =>
+          turn.processing
+            ? unfinishedExchange(turn.processing)
+            : village.progressEngineVersion === 1 && pendingProgressTurns(session, village.foundedAt).includes(turn),
+        )
+        .map((turn) => ({
+          sessionId: session.id,
+          submissionId: turn.id,
+          at: turn.at,
+          error: turn.progressError ?? "",
+        }));
     })
     .slice(0, 100);
 }
@@ -963,7 +1067,7 @@ export function startProgressRecovery(): () => void {
         for (const turn of queue.splice(0, 8)) {
           if (stopped) return;
           try {
-            await processSavedProgressSubmission(turn.sessionId, turn.submissionId);
+            await processSavedExchange(turn.sessionId, turn.submissionId);
           } catch (error) {
             villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));
           }
@@ -2498,6 +2602,8 @@ async function enterVenueOnce(
   const session: VenueScene = {
     version: 1,
     sceneRevision: 0,
+    processingVersion: 1,
+    villageSeed: village.seed,
     stagingVersion: 1,
     id,
     placeId,
@@ -3121,14 +3227,14 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     }
     if (prior.mode === "act" && prior.action?.happened) await applyProjectPickup(session.id, input.submissionId);
     try {
-      await processSavedProgressSubmission(session.id, prior.id);
+      await processSavedExchange(session.id, prior.id);
     } catch (error) {
       villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", prior.id, String(error));
     }
-    await applyVenueTurnChange(session, prior);
+    if (!prior.processing) await applyVenueTurnChange(session, prior);
     await applyFulfilledWish(session, prior);
     await applyVenueRequests(session, prior);
-    await processLegacyProjectTurn(session, prior);
+    if (!prior.processing) await processLegacyProjectTurn(session, prior);
     if (
       prior.invitationSignal &&
       (prior.invitationSignal.timing === "later" || prior.invitationSignal.venueId !== session.placeId)
@@ -3692,11 +3798,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   });
   const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
   try {
-    await processSavedProgressSubmission(updated.id, submission.id);
+    await processSavedExchange(updated.id, submission.id);
   } catch (error) {
     villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", submission.id, String(error));
   }
-  await applyVenueTurnChange(updated, submission);
+  if (!submission.processing) await applyVenueTurnChange(updated, submission);
   await applyFulfilledWish(updated, submission);
   if (wishInterpretation) {
     const current = await readVillageState();
@@ -3710,7 +3816,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     scheduleSystemComparisons(updated.id, wishInterpretation);
   }
   await applyVenueRequests(updated, submission);
-  await processLegacyProjectTurn(updated, submission);
+  if (!submission.processing) await processLegacyProjectTurn(updated, submission);
   if (
     submission.invitationSignal &&
     (submission.invitationSignal.timing === "later" || submission.invitationSignal.venueId !== updated.placeId)
@@ -4026,6 +4132,7 @@ async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmis
   const privateOwnerId = submission.privateOwnerIdAtTurn ?? session.privateOwnerId;
   const id = `venue-chat:${session.id}:${submission.id}`;
   await mutateVillageState((state) => {
+    if (session.villageSeed && state.seed !== session.villageSeed) return;
     if (state.venues.some((venue) => venue.id === session.placeId && venue.constructionStatus === "worksite")) return;
     if (
       area === "shared" &&
@@ -5289,7 +5396,7 @@ export async function recordVenueAction(
     });
   });
   try {
-    await processSavedProgressSubmission(session.id, submissionId);
+    await processSavedExchange(session.id, submissionId);
   } catch (error) {
     villagesLogger().warn("[villages] saved action progress deferred for %s: %s", submissionId, String(error));
   }
@@ -5473,6 +5580,7 @@ export async function pruneVenueVisits(): Promise<void> {
       ({ session }) =>
         session.status === "closed" &&
         !session.memoryPending &&
+        !session.submissions.some((turn) => turn.processing && unfinishedExchange(turn.processing)) &&
         (village.progressEngineVersion !== 1 || pendingProgressTurns(session, village.foundedAt).length === 0),
     )
     .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
