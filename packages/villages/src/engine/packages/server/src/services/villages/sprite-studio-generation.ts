@@ -2,7 +2,8 @@
 // one image submission and never applies the Engine's sprite matte cleanup.
 import { createHash } from "node:crypto";
 import { badRequest } from "./errors.js";
-import { villageEngineJson, villageEngineBaseUrl } from "./engine-loopback.js";
+import { studioConnection, studioEngineJson } from "./sprite-studio-engine.js";
+import { villageEngineBaseUrl } from "./engine-loopback.js";
 import { asRecord, asString } from "./coerce.js";
 import { decodeVillageImageDataUrl, imagePromptId } from "./image-generation.js";
 import {
@@ -15,33 +16,23 @@ import {
 } from "./sprite-studio-model.js";
 
 type Expression = { label: string; pose: string };
-type Identity = { name: string; appearance: string; style: string; view: StudioView; referenceUrl: string };
-type Connection = { id: string; name: string; model: string; source: string };
+type Identity = {
+  name: string;
+  appearance: string;
+  style: string;
+  view: StudioView;
+  referenceUrl: string;
+  references?: Array<{ url: string; role: string }>;
+};
+type Connection = Awaited<ReturnType<typeof studioConnection>>;
 export const STUDIO_PIPELINE_VERSION = 2;
 const PATH = "/api/characters/avatar-generation";
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
-const enabled = (value: unknown) => value === true || value === "true";
 const layouts: Record<number, [number, number]> = { 1: [1, 1], 2: [2, 1], 3: [2, 2], 4: [2, 2], 5: [3, 2], 6: [3, 2] };
 
 /** A separate configured fallback would let the host switch providers after a failure. */
 export async function studioImageConnection(connectionId: string): Promise<Connection> {
-  const rows = await villageEngineJson<unknown>("/api/connections");
-  const images = (Array.isArray(rows) ? rows : [])
-    .map(asRecord)
-    .filter((row) => row.provider === "image_generation" && !enabled(row.profileImportReviewRequired));
-  const chosen = images.find((row) => row.id === connectionId);
-  if (!chosen) throw badRequest("The selected image connection is missing. Choose another in Sprite Studio.");
-  const fallback = images.find((row) => enabled(row.fallbackForAgents));
-  if (fallback && fallback.id !== connectionId)
-    throw badRequest(
-      "This image connection has a different automatic fallback in Marinara. Choose that fallback connection directly, or turn off image fallback before drawing in Sprite Studio.",
-    );
-  return {
-    id: connectionId,
-    name: asString(chosen.name) || connectionId,
-    model: asString(chosen.model),
-    source: asString(chosen.imageGenerationSource || chosen.imageService || chosen.model),
-  };
+  return studioConnection(connectionId);
 }
 
 export function selectStudioMatte(appearance: string): string {
@@ -78,7 +69,7 @@ async function readReference(url: string): Promise<string> {
 function requestBody(
   connectionId: string,
   identity: Identity,
-  reference: string,
+  reference: string[],
   batch: StudioBatch,
   prompt: string,
   negativePrompt = STUDIO_NEGATIVE_PROMPT,
@@ -90,13 +81,13 @@ function requestBody(
     purpose: "character-sheet",
     width: batch.width,
     height: batch.height,
-    referenceImages: [reference],
+    referenceImages: reference,
     promptOverrides: [{ id: imagePromptId(identity.name, "character-sheet"), prompt, negativePrompt }],
   };
 }
 
 async function preview(body: ReturnType<typeof requestBody>) {
-  const answer = asRecord(await villageEngineJson<unknown>(PATH + "/preview", { body }));
+  const answer = asRecord(await studioEngineJson<unknown>(PATH + "/preview", { body }));
   const items = Array.isArray(answer.items) ? answer.items.map(asRecord) : [];
   const item = items[0];
   if (items.length !== 1 || !item || item.id !== body.promptOverrides[0]!.id)
@@ -121,7 +112,11 @@ export async function planVillageStudioSheets(
   individual: boolean,
 ): Promise<StudioPlan> {
   const connection = await studioImageConnection(connectionId);
-  const reference = await readReference(identity.referenceUrl);
+  const roles = identity.references?.map((r) => r.role) ?? [];
+  const reference = await Promise.all(
+    (identity.references?.map((r) => r.url) ?? [identity.referenceUrl]).map(readReference),
+  );
+  if (reference.length > 4) throw badRequest("This Engine supports at most four Studio references.");
   const matteHex = selectStudioMatte(identity.name + " " + identity.appearance);
   const batches: StudioBatch[] = [];
   for (let offset = 0; offset < expressions.length;) {
@@ -132,7 +127,13 @@ export async function planVillageStudioSheets(
     // A provider may constrain the requested dimensions. Compile the layout at
     // that actual size and require it to settle before displaying the plan.
     for (let pass = 0; pass < 3; pass++) {
-      const draftPrompt = studioPrompt({ ...identity, expressions: chosen, batch: target, matteHex });
+      const draftPrompt = studioPrompt({
+        ...identity,
+        expressions: chosen,
+        batch: target,
+        matteHex,
+        referenceRoles: roles,
+      });
       const compiled = await preview(requestBody(connectionId, identity, reference, target, draftPrompt));
       if (compiled.width !== target.width || compiled.height !== target.height) {
         target = { ...target, width: compiled.width, height: compiled.height };
@@ -146,6 +147,11 @@ export async function planVillageStudioSheets(
         prompt: draftPrompt,
         negativePrompt: STUDIO_NEGATIVE_PROMPT,
         fingerprint: fingerprint(connection, body, matteHex),
+        connection,
+        referenceHashes: reference.map((r) =>
+          digest(decodeVillageImageDataUrl(r, { label: "reference", maxBase64Length: 16000000 }).bytes),
+        ),
+        referenceRoles: roles,
       };
       break;
     }
@@ -159,6 +165,17 @@ export async function planVillageStudioSheets(
     batches,
     estimatedCost: null,
     localWorkflow: /comfy|swarm|runpod|local/i.test(connection.source),
+    providerResolution: "unknown",
+    exportDimensions: { width: 512, height: 768 },
+    capabilities: {
+      resolution: Object.keys(asRecord(connection.defaults.customParameters)).some((k) =>
+        /size|width|height|aspect|resolution/i.test(k),
+      )
+        ? "configured"
+        : "unknown",
+      references: "configured",
+      editing: "unknown",
+    },
   };
 }
 
@@ -186,8 +203,16 @@ export async function generateVillageStudioSheet(input: {
   const request = batch.request;
   if (!request || request.pipelineVersion !== STUDIO_PIPELINE_VERSION)
     throw badRequest("The generation plan changed. Refresh the request summary.");
-  const reference = await readReference(identity.referenceUrl);
-  const prompt = studioPrompt({ ...identity, expressions, batch, matteHex: request.matteHex });
+  const reference = await Promise.all(
+    (identity.references?.map((r) => r.url) ?? [identity.referenceUrl]).map(readReference),
+  );
+  const prompt = studioPrompt({
+    ...identity,
+    expressions,
+    batch,
+    matteHex: request.matteHex,
+    referenceRoles: identity.references?.map((r) => r.role) ?? [],
+  });
   const body = requestBody(connectionId, identity, reference, batch, prompt);
   const compiled = await preview(body);
   if (
@@ -202,7 +227,7 @@ export async function generateVillageStudioSheet(input: {
   )
     throw badRequest("The generation plan changed. Refresh the request summary before generating.");
   await onSubmit();
-  const answer = asRecord(await villageEngineJson<unknown>(PATH, { body }));
+  const answer = asRecord(await studioEngineJson<unknown>(PATH, { body }));
   const image = asString(answer.image);
   const source = studioImageSource(image, "generated-raw", batch);
   return { image, source };

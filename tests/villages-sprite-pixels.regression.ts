@@ -1,0 +1,124 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  processStudioCell,
+  analyzeStudioSheet,
+  foregroundBounds,
+  validateStudioExport,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-pixels.ts";
+import {
+  decodeStudioPng,
+  encodeStudioPng,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-processing.ts";
+import type { StudioPixels } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-pixels.ts";
+import type {
+  StudioSheet,
+  StudioCell,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts";
+function fixture(w = 100, h = 150): StudioPixels {
+  return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+}
+function rect(im: StudioPixels, x: number, y: number, w: number, h: number, color = [50, 100, 180, 255]) {
+  for (let py = y; py < y + h; py++) for (let px = x; px < x + w; px++) im.data.set(color, (py * im.width + px) * 4);
+}
+const cell: StudioCell = {
+  id: "test",
+  label: "happy",
+  pose: "wave",
+  view: "front",
+  x: 0,
+  y: 0,
+  width: 100,
+  height: 150,
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  cleanup: true,
+  status: "candidate",
+};
+const sheet: StudioSheet = {
+  assetId: "test",
+  url: "",
+  width: 100,
+  height: 150,
+  cells: [cell],
+  attempts: 0,
+  usage: null,
+};
+const full = fixture();
+rect(full, 25, 15, 50, 120);
+const clean = processStudioCell(full, sheet, cell);
+assert.equal(clean.validation.status, "passed");
+assert.deepEqual([clean.image.width, clean.image.height], [512, 768]);
+assert.equal(foregroundBounds(clean.image).bottom, 751);
+assert.deepEqual(decodeStudioPng(encodeStudioPng(clean.image)), clean.image, "PNG roundtrip preserves export pixels");
+assert.equal(validateStudioExport(clean.image).status, "passed");
+const offset = processStudioCell(full, sheet, { ...cell, offsetY: 1 });
+assert.equal(offset.validation.status, "blocked", "foot offset beyond the safe baseline blocks assignment");
+const clipped = fixture();
+rect(clipped, 25, 15, 50, 135);
+const clippedResult = processStudioCell(clipped, sheet, cell);
+assert.equal(clippedResult.validation.status, "needs-review");
+assert.ok(clippedResult.validation.findings.some((f) => f.code === "source-edge"));
+assert.equal(
+  validateStudioExport(clippedResult.image).status,
+  "passed",
+  "fitting succeeds without clearing source clipping",
+);
+assert.equal(processStudioCell(fixture(), sheet, cell).validation.status, "blocked", "empty cells block exports");
+const matte = fixture();
+rect(matte, 0, 0, 100, 150, [255, 0, 255, 255]);
+rect(matte, 25, 15, 50, 120);
+assert.equal(
+  processStudioCell(matte, { ...sheet, source: { kind: "generated-raw", matteHex: "#FF00FF" } }, cell).validation
+    .status,
+  "passed",
+);
+const residue = fixture();
+rect(residue, 25, 15, 50, 120);
+rect(residue, 40, 40, 10, 10, [255, 0, 255, 255]);
+assert.ok(
+  processStudioCell(
+    residue,
+    { ...sheet, source: { kind: "generated-raw", matteHex: "#FF00FF" } },
+    cell,
+  ).validation.findings.some((f) => f.code === "residue"),
+  "residual matte is visible review evidence",
+);
+const grid = fixture(200, 300),
+  layout = { ...sheet, width: 200, height: 300, layout: { cols: 2, rows: 2, count: 3 } };
+rect(grid, 25, 15, 50, 120);
+rect(grid, 140, 170, 20, 50);
+rect(grid, 98, 50, 5, 50);
+const findings = analyzeStudioSheet(grid, layout).findings;
+assert.ok(findings.some((f) => f.code === "unused-cell"));
+assert.ok(findings.some((f) => f.code === "sheet-gutter"));
+assert.throws(() => decodeStudioPng("data:image/png;base64,aW52YWxpZA=="));
+// Optional recorded-source check reads the installed data without changing it or committing personal artwork.
+if (process.env.ROXIE_SPRITE_DATA) {
+  const ids = [
+    "3712da33-e188-41af-9d60-1a93bbf434ba",
+    "65c3b912-4640-420c-900d-94777102dd1e",
+    "7401d49f-e40d-41ea-aba7-7e40382a38a0",
+    "a2bfda3d-788e-4263-89d7-1293d7732e3a",
+    "6735d841-2590-4f32-bb9a-c17cfe9bea6e",
+    "2694ac14-0492-4571-be78-268fab10b15e",
+  ];
+  for (const [i, id] of ids.entries()) {
+    const raw = readFileSync(join(process.env.ROXIE_SPRITE_DATA, "villages-" + id, "original.png"));
+    const source = decodeStudioPng("data:image/png;base64," + raw.toString("base64"));
+    const c = { ...cell, width: source.width, height: source.height };
+    const result = processStudioCell(source, { ...sheet, width: source.width, height: source.height }, c);
+    assert.equal(validateStudioExport(result.image).status, "passed");
+    if (i === 2)
+      assert.ok(
+        result.validation.findings.some((f) => f.code === "source-edge"),
+        "recorded cropped sad image retains clipping finding",
+      );
+    console.log("Recorded Roxie", i, result.validation.status, result.validation.findings.map((f) => f.code).join(","));
+  }
+}
+console.log(
+  "Sprite pixel checks passed: safe bounds, clipping persistence, empty cells, matte residue, occupied gutters and unused cells.",
+);
