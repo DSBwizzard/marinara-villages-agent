@@ -190,6 +190,31 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
+          if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+            const { checks } = JSON.parse(messages[1].content);
+            return {
+              content: JSON.stringify({
+                results: checks.map((check: any) => {
+                  const speech = check.evidence.filter(
+                    (line: any) => line.current && line.speakerId === check.facts.actorId,
+                  );
+                  const text = speech.map((line: any) => line.content).join(" ");
+                  const outcome =
+                    (check.facts.zoneId === "office" && text === "Come into my office now.") ||
+                    (check.facts.zoneId === "common" && text === "Come into our Common Space now.")
+                      ? "invite-now"
+                      : "none";
+                  return {
+                    id: check.id,
+                    outcome,
+                    evidenceIds: speech.map((line: any) => line.id),
+                    reason: "Labeled witnessed contact response",
+                  };
+                }),
+              }),
+              finishReason: "stop",
+            };
+          }
           calls++;
           const system = String(messages[0]?.content),
             user = String(messages[1]?.content);

@@ -148,7 +148,10 @@ export async function validateVillageSetupConnections(settings: VillageConnectio
   const byId = new Map(rows.map((row) => [asTrimmedString(row.id), asTrimmedString(row.provider)]));
   const isLanguageConnection = (id: string) => {
     const provider = byId.get(id);
-    return provider !== undefined && provider !== "image_generation" && provider !== "video_generation";
+    return (
+      provider !== undefined &&
+      !["image_generation", "video_generation", "decision", "audio_generation"].includes(provider)
+    );
   };
   if (!isLanguageConnection(systemId)) throw badRequest("Choose a valid language connection for System.");
   if (!isLanguageConnection(narrationId)) throw badRequest("Choose a valid language connection for Narration.");

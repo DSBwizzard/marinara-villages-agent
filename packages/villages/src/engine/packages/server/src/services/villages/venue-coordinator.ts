@@ -3,8 +3,18 @@ import { randomUUID } from "node:crypto";
 import { runtimeDebug } from "./runtime-debug.js";
 import { VillagesRequestError } from "./errors.js";
 import { villagesDocuments, villagesLogger, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
+import {
+  coerceInterpretationSettings,
+  readInterpretationSettings,
+  type InterpretationSettings,
+} from "./interpretation-settings.js";
 
 export type VenueOperation = {
+  interpretationSettings?: InterpretationSettings;
+  optionalAttempts?: Record<
+    string,
+    { status: "dispatching" | "complete" | "unknown"; elapsedMs: number; result?: unknown }
+  >;
   id: string;
   kind: string;
   input: Record<string, unknown>;
@@ -20,6 +30,7 @@ export type VenueOperation = {
   error: string;
 };
 type Context = {
+  decisionRemainingMs?: number;
   sessionId: string;
   operation: VenueOperation;
   controller: AbortController;
@@ -65,6 +76,69 @@ export function venueSavedCheckpoint<T>(stage: string): T | undefined {
 }
 export function venueOperationSignal(): AbortSignal | undefined {
   return context.getStore()?.controller.signal;
+}
+export function venueOperationId(): string {
+  return context.getStore()?.operation.id ?? "uncoordinated";
+}
+export function venueInterpretationSettings(): InterpretationSettings {
+  return coerceInterpretationSettings(context.getStore()?.operation.interpretationSettings);
+}
+
+/** Optional calls cannot leave a required checkpoint blocked or repeat a possibly billed request. */
+export async function coordinatedOptionalCompletion<T>(
+  fingerprint: string,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T | undefined> {
+  const current = context.getStore();
+  if (!current) return undefined;
+  assertVenueOwnership();
+  const prior = current.operation.optionalAttempts?.[fingerprint];
+  if (prior) return prior.status === "complete" ? (structuredClone(prior.result) as T) : undefined;
+  if (!current.allowPaid) return undefined;
+  current.decisionRemainingMs ??= Math.max(
+    0,
+    10_000 -
+      Object.values(current.operation.optionalAttempts ?? {}).reduce((sum, attempt) => sum + attempt.elapsedMs, 0),
+  );
+  if (current.decisionRemainingMs <= 0) return undefined;
+  const allowance = current.decisionRemainingMs;
+  const receipt = {
+    status: "dispatching" as "dispatching" | "complete" | "unknown",
+    elapsedMs: allowance,
+    result: undefined as T | undefined,
+  };
+  (current.operation.optionalAttempts ??= {})[fingerprint] = receipt;
+  await persist(current);
+  const started = performance.now();
+  const timeout = new AbortController();
+  const signal = AbortSignal.any([current.controller.signal, timeout.signal]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    const expired = new Promise<never>((_resolve, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+      timer = setTimeout(() => {
+        timeout.abort();
+        reject(new Error("Optional Decisions allowance expired"));
+      }, allowance);
+    });
+    const result = await Promise.race([work(signal), expired]);
+    assertVenueOwnership();
+    receipt.status = "complete";
+    receipt.result = structuredClone(result);
+    return result;
+  } catch {
+    current.controller.signal.throwIfAborted();
+    receipt.status = "unknown";
+    return undefined;
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+    clearTimeout(timer);
+    receipt.elapsedMs = Math.min(allowance, Math.ceil(performance.now() - started));
+    current.decisionRemainingMs = Math.max(0, allowance - receipt.elapsedMs);
+    await persist(current);
+  }
 }
 export function assertVenueOwnership(data?: Record<string, unknown>): void {
   const current = context.getStore();
@@ -235,6 +309,7 @@ export async function coordinateVenue<T>(
     300_000,
   );
   const task = Promise.resolve().then(async () => {
+    const capturedInterpretationSettings = await readInterpretationSettings();
     let operation!: VenueOperation;
     let authorizedRetry = false;
     await update(sessionId, (data) => {
@@ -295,6 +370,7 @@ export async function coordinateVenue<T>(
         const { operation: _old, ...snapshot } = data;
         operation = {
           id,
+          interpretationSettings: capturedInterpretationSettings,
           kind,
           input,
           token: randomUUID(),

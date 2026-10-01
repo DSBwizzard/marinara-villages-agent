@@ -162,6 +162,7 @@ const villagesOwnedSourcePaths = [
   "packages/client/src/villages-chat-paragraphs.ts",
   "packages/client/src/villages-inline-markdown.ts",
   "packages/client/src/villages-package-entry.tsx",
+  "packages/client/src/villages-decisions-control.tsx",
   "packages/client/src/villages-player-role.tsx",
   "packages/client/src/villages-relationships.tsx",
   "packages/client/src/villages-founding-editor.tsx",
@@ -3101,7 +3102,7 @@ const features = [
     // 0.2.x still renders.
     // 0.6.0: continuous device-local time, exact repeating agenda intervals,
     // durable restart reconciliation, bounded story pacing, and return recaps.
-    version: "0.6.102",
+    version: "0.6.103",
     minEngineVersion: "2.4.6",
     maxEngineExclusive: MAX_ENGINE_EXCLUSIVE,
     name: "Villages",
@@ -3513,6 +3514,16 @@ export async function selfCheck() {
     );
     if (result.status !== 0) {
       throw new Error(result.stderr || result.stdout || result.error?.message || `esbuild failed for ${feature.id}`);
+    }
+    if (feature.id === "villages") {
+      const built = JSON.parse(await readFile(metafile, "utf8"));
+      const privateRuntime = Object.keys(built.inputs).filter((input) =>
+        /packages\/server\/src\/services\/(?:decision\/|storage\/(?:connections|app-settings)\.storage\.)/u.test(
+          input.split("\\").join("/"),
+        ),
+      );
+      if (privateRuntime.length)
+        throw new Error("Villages must use live Engine Decisions modules; bundling them is forbidden");
     }
     if (feature.ownedSourcePaths?.length) {
       await capturePackageSources(metafile, prepared.buildRoot, feature.ownedSourcePaths);

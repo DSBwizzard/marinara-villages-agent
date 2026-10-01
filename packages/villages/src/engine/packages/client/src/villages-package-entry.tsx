@@ -1,4 +1,5 @@
 import { VillagesRelationships } from "./villages-relationships.js";
+import { DecisionsControl } from "./villages-decisions-control.js";
 import { contactNeighborIds } from "../../shared/src/villages/zone-contact.js";
 import {
   DEFAULT_PLAYER_ROLE,
@@ -6465,7 +6466,7 @@ function connectionOptionsFrom(rows: readonly EngineConnectionRow[]): VillageCon
     const id = typeof row.id === "string" ? row.id.trim() : "";
     if (id.length === 0) continue;
     const provider = typeof row.provider === "string" ? row.provider : "";
-    if (provider === "video_generation") continue;
+    if (["video_generation", "decision", "audio_generation"].includes(provider)) continue;
     const name = typeof row.name === "string" && row.name.trim() ? row.name.trim() : id;
     options.push({
       id,
@@ -16282,6 +16283,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   if (screen === "room") {
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
+        {room ? (
+          <DecisionsControl sceneId={room.id} busy={roomBusy || room.operation?.status === "running"} api={request} />
+        ) : null}
         {room?.operation?.status === "running" ? (
           <div role="status">This Scene is responding. Your draft stays here.</div>
         ) : null}

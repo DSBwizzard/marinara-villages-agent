@@ -290,6 +290,30 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
+          if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+            const { checks } = JSON.parse(messages[1].content);
+            return {
+              content: JSON.stringify({
+                results: checks.map((check: any) => {
+                  const current = check.evidence.filter((line: any) => line.current && line.speakerId === "chef");
+                  const text = current.map((line: any) => line.content).join(" ");
+                  const outcome =
+                    check.facts.zoneId === "stock" && text === "Come into the stockroom with me now."
+                      ? "invite-now"
+                      : check.facts.zoneId === "stock" && text === "Come back tomorrow and visit the stockroom."
+                        ? "invite-later"
+                        : "none";
+                  return {
+                    id: check.id,
+                    outcome,
+                    evidenceIds: current.map((line: any) => line.id),
+                    reason: "Labeled stockroom fixture",
+                  };
+                }),
+              }),
+              finishReason: "stop",
+            };
+          }
           paidCalls++;
           if (replyGate) {
             const gate = replyGate;

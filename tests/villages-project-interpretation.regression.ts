@@ -112,6 +112,20 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
+          if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+            const { checks } = JSON.parse(messages[1].content);
+            return {
+              content: JSON.stringify({
+                results: checks.map((check: any) => ({
+                  id: check.id,
+                  outcome: "none",
+                  evidenceIds: [],
+                  reason: "No room event in this fixture",
+                })),
+              }),
+              finishReason: "stop",
+            };
+          }
           modelCalls++;
           lastPrompt = messages.map((message) => message.content).join("\n");
           return { content: JSON.stringify(modelReply), finishReason: "stop" };
