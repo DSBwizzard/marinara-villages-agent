@@ -14,11 +14,6 @@ import {
   validateStudioCell,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts";
 import {
-  approveStudioDesign,
-  validateStudioCandidates,
-  reviewStudioCandidates,
-  planStudioComparison,
-  startStudioComparison,
   readSpriteStudio,
   saveSpriteStudioSettings,
   planSpriteStudio,
@@ -153,7 +148,6 @@ let calls = 0,
   fallbackConfigured = false,
   generationRelease: (() => void) | undefined;
 const requests: any[] = [];
-const comparisonReleases: Array<() => void> = [];
 let savedWrites = 0,
   failSaveAt = 0,
   failDelete = false;
@@ -176,7 +170,9 @@ function fixture(cols = 1, rows = 1, count = 1) {
 }
 const png = fixture();
 const sixPng = fixture(3, 2, 6);
-let reviewCalls = 0;
+let reviewCalls = 0,
+  cleanupCalls = 0,
+  failCleanup = false;
 globalThis.fetch = async (url, init) => {
   const path = new URL(String(url)).pathname;
   const body = init?.body ? JSON.parse(String(init.body)) : {};
@@ -208,6 +204,15 @@ globalThis.fetch = async (url, init) => {
         },
       ],
     });
+  if (path === "/api/characters/mara") return Response.json({ avatarPath: "/api/avatars/file/mara.png" });
+  if (path === "/api/characters/no-avatar") return Response.json({ avatarPath: "" });
+  if (path === "/api/avatars/file/mara.png")
+    return new Response(Buffer.from(png.split(",")[1]!, "base64"), { headers: { "content-type": "image/png" } });
+  if (path === "/api/sprites/cleanup") {
+    cleanupCalls++;
+    if (failCleanup) return Response.json({ error: "Cleanup unavailable" }, { status: 503 });
+    return Response.json({ cells: body.cells });
+  }
   if (path === "/api/sprites/capabilities")
     return Response.json({ backgroundRemovalAvailable: true, backgroundRemover: { installed: false } });
   if (path === "/api/generate/raw") {
@@ -219,7 +224,6 @@ globalThis.fetch = async (url, init) => {
     requests.push(body);
     await new Promise<void>((resolve) => {
       generationRelease = resolve;
-      comparisonReleases.push(resolve);
     });
     if (failGeneration) return Response.json({ error: "Provider timeout" }, { status: 504 });
     return Response.json({
@@ -268,9 +272,9 @@ globalThis.fetch = async (url, init) => {
   }
   throw new Error("Unexpected Engine call: " + path);
 };
-async function settle() {
+async function settle(characterId = "mara") {
   for (let i = 0; i < 1000; i++) {
-    const data = await readSpriteStudio("mara");
+    const data = await readSpriteStudio(characterId);
     if (!data.jobs.some((job) => job.status === "running")) return data;
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
@@ -311,7 +315,6 @@ async function assignBatch(jobId: string, overrides: Record<string, string> = {}
   const job = (await readSpriteStudio("mara")).jobs.find((item) => item.id === jobId)!;
   return assignStudioCells("mara", {
     batchId: jobId,
-    acknowledge: true,
     cells: cellsOf(job).map((cell: any) => ({
       id: cell.id,
       expressionId: overrides[cell.id] ?? cell.expressionId,
@@ -351,7 +354,15 @@ async function main() {
     });
     const importedId = withoutReference.jobs.at(-1)!.id;
     await deleteStudioArtwork("mara", { batchId: importedId, confirmed: true, deleteFiles: true });
-    await captureStudioReference("mara", { image: png });
+    const automatic = await planSpriteStudio("mara", {
+      settings: { ...defaultStudioState().settings, connectionId: "image" },
+      expressions: [{ label: "happy" }],
+    });
+    assert.equal(
+      automatic.batches[0]!.request!.referenceRoles!.length,
+      1,
+      "existing avatar is captured automatically without design approval",
+    );
     const reference = (await readSpriteStudio("mara")).reference!;
     await assert.rejects(() => captureStudioReference("mara", { image: png }), /already/);
     const oldSprite = activeSprite();
@@ -363,13 +374,10 @@ async function main() {
     assert.equal(activeSprite(), null);
     const settings = defaultStudioState().settings;
     settings.connectionId = "image";
-    settings.strategy = "original";
     settings.prompts.Custom = "Ink";
     await saveSpriteStudioSettings("mara", settings);
-    await assert.rejects(() => planSpriteStudio("mara", { expressions: [{ label: "happy" }] }), /Approve both/);
-    await approveStudioDesign("mara", { view: "front", image: png });
-    await assert.rejects(() => planSpriteStudio("mara", { expressions: [{ label: "happy" }] }), /Approve both/);
-    await approveStudioDesign("mara", { view: "side", image: png });
+    await planSpriteStudio("mara", { expressions: [{ label: "happy" }] });
+    assert.equal((await readSpriteStudio("mara")).designs!.length, 0, "no design approval is needed");
     await assert.rejects(() => saveSpriteStudioSettings("mara", { ...settings, style: "__proto__" }));
     for (const count of [1, 5, 6, 11]) {
       const input = {
@@ -398,7 +406,7 @@ async function main() {
     });
     assert.equal(individual.batches.length, 5);
     fallbackConfigured = true;
-    await assert.rejects(() => planSpriteStudio("mara", { expressions: [{ label: "happy" }] }), /automatic fallback/);
+    await planSpriteStudio("mara", { expressions: [{ label: "happy" }] });
     fallbackConfigured = false;
 
     const a = await generateBatch(6, "a");
@@ -437,7 +445,7 @@ async function main() {
     const source = a.job.sheets[0].source!;
     assert.equal(source.kind, "generated-raw");
     assert.equal(source.matteHex, "#FF00FF");
-    assert.equal(source.pipelineVersion, 2);
+    assert.equal(source.pipelineVersion, 3);
     assert.equal(
       source.sha256,
       createHash("sha256")
@@ -764,60 +772,99 @@ async function main() {
         assert.ok(cellsOf(workflow.job).every((cell: any) => cell.validation.status === "passed"));
         await assignBatch(workflow.job.id);
       }
-    const reviewJob = (await readSpriteStudio("mara")).jobs.find((j) => j.id === a.job.id)!;
-    const reviewIds = reviewJob.sheets.flatMap((s) => s.cells.slice(0, 6).map((c) => c.id)).slice(0, 6);
-    const beforeLocal = calls,
-      beforeReviews = reviewCalls;
-    await validateStudioCandidates("mara", { batchId: a.job.id });
-    assert.equal(calls, beforeLocal);
-    assert.equal(reviewCalls, beforeReviews, "local checks make zero paid calls");
-    const reviewInput = { submissionId: randomUUID(), connectionId: "vision", cellIds: reviewIds };
-    const reviewData = await reviewStudioCandidates("mara", reviewInput);
-    assert.equal(reviewCalls, beforeReviews + 1, "a selected set of six makes exactly one vision call");
-    const receipt = reviewData.reviews!.find((r) => r.id === reviewInput.submissionId)!;
-    assert.equal(receipt.status, "unknown");
-    assert.equal(receipt.findings.length, 36);
-    assert.ok(receipt.findings.every((f) => f.verdict === "unknown"));
-    assert.ok(receipt.prompt);
-    await reviewStudioCandidates("mara", reviewInput);
-    assert.equal(reviewCalls, beforeReviews + 1, "review replay cannot add a paid call");
-    await assert.rejects(
-      () =>
-        reviewStudioCandidates("mara", {
-          ...reviewInput,
-          submissionId: randomUUID(),
-          cellIds: [...reviewIds, "extra"],
-        }),
-      /one to six/,
+    assert.ok(cleanupCalls > 0, "Engine built-in cleanup is used automatically");
+    failCleanup = true;
+    const fallback = await generateBatch(2, "cleanup_fallback");
+    assert.ok(
+      cellsOf(fallback.job).every((cell: any) => cell.rendered && cell.cleanupEngine === "studio"),
+      "cleanup failure falls back to local matte processing",
     );
-    const comparison = await planStudioComparison("mara", { settings });
-    assert.equal(comparison.imageCalls, 4);
-    assert.equal(comparison.reviewCalls, 0);
-    assert.deepEqual(
-      comparison.requests.map((r) => [r.selection.view, r.selection.settings.strategy]),
-      [
-        ["front", "original"],
-        ["front", "anchored"],
-        ["side", "original"],
-        ["side", "anchored"],
-      ],
-    );
-    assert.deepEqual(
-      comparison.requests.map((r) => r.plan.batches[0].request!.referenceRoles!.length),
-      [1, 3, 1, 3],
-    );
-    comparisonReleases.length = 0;
-    const comparisonId = randomUUID(),
-      beforeComparison = calls;
-    await startStudioComparison("mara", { submissionId: comparisonId, plan: comparison });
-    for (let i = 0; i < 100 && comparisonReleases.length < 4; i++) await new Promise((r) => setTimeout(r, 5));
-    assert.equal(comparisonReleases.length, 4);
-    comparisonReleases.splice(0).forEach((done) => done());
+    failCleanup = false;
+    const currentVillage = records.get("villages-village").data;
+    currentVillage.villagers.push({
+      ...structuredClone(currentVillage.villagers[0]),
+      characterId: "no-avatar",
+      sprite: null,
+      cardSnapshot: {
+        ...structuredClone(currentVillage.villagers[0].cardSnapshot),
+        id: "no-avatar",
+        spriteReference: undefined,
+      },
+    });
+    const textInput = {
+      settings: { ...defaultStudioState().settings, connectionId: "image" },
+      view: "side",
+      expressions: [{ label: "happy" }],
+    };
+    const textPlan = await planSpriteStudio("no-avatar", textInput);
+    assert.deepEqual(textPlan.batches[0]!.request!.referenceRoles, [], "a missing avatar uses appearance text");
+    generationRelease = undefined;
+    await startSpriteStudioJob("no-avatar", { ...textInput, plan: textPlan, submissionId: randomUUID() });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
+    const textResult = await settle("no-avatar");
+    assert.ok(textResult.jobs[0]!.sheets[0]!.cells[0]!.rendered);
+    assert.deepEqual(requests.at(-1).referenceImages, []);
+    assert.equal(reviewCalls, 0, "all generation, processing and assignment make zero AI review calls");
+    const neutralInput = { view: "front", expressions: [{ label: "neutral" }] };
+    const neutralPlan = await planSpriteStudio("mara", neutralInput),
+      neutralId = randomUUID();
+    generationRelease = undefined;
+    await startSpriteStudioJob("mara", { ...neutralInput, plan: neutralPlan, submissionId: neutralId });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
     await settle();
-    assert.equal(calls, beforeComparison + 4);
-    await startStudioComparison("mara", { submissionId: comparisonId, plan: comparison });
-    assert.equal(calls, beforeComparison + 4);
-    assert.equal(reviewCalls, beforeReviews + 1, "comparison includes no implicit review call");
+    await assignBatch(neutralId);
+    const anchored = await planSpriteStudio("mara", { view: "front", expressions: [{ label: "happy" }] });
+    assert.deepEqual(anchored.batches[0]!.request!.referenceRoles, [
+      "original character identity",
+      "styled neutral for the requested view",
+    ]);
+    const noOtherView = await planSpriteStudio("mara", { view: "side", expressions: [{ label: "happy" }] });
+    assert.deepEqual(
+      noOtherView.batches[0]!.request!.referenceRoles,
+      ["original character identity"],
+      "front-only neutral is optional and not used for the side view",
+    );
+    const beforeDesignMigration = activeSprite();
+    const legacyDesign = {
+      id: "uploaded-design",
+      revision: 1,
+      style: settings.style,
+      stylePrompt: settings.prompts[settings.style],
+      identityUrl: reference.url,
+      side: { url: reference.url, approvedAt: "2026-09-30T00:00:00Z" },
+      framing: { scale: 1, baseline: 752 },
+    };
+    records.get(studioId).data.designs.push(legacyDesign);
+    const restoredDesign = (
+      await Promise.all([readSpriteStudio("mara"), readSpriteStudio("mara"), readSpriteStudio("mara")])
+    )[0]!;
+    assert.ok(restoredDesign.jobs.some((job) => job.model === "Saved design" && job.view === "side"));
+    assert.deepEqual(activeSprite(), beforeDesignMigration, "design gallery migration does not change assignments");
+    const migratedCount = restoredDesign.jobs.length;
+    assert.equal((await readSpriteStudio("mara")).jobs.length, migratedCount, "legacy design migration is idempotent");
+    const designReference = await planSpriteStudio("mara", { view: "side", expressions: [{ label: "happy" }] });
+    assert.equal(
+      designReference.batches[0]!.request!.referenceRoles!.length,
+      2,
+      "a previously approved single view remains a usable optional reference",
+    );
+    const clippedImage = PNG.sync.read(Buffer.from(png.split(",")[1]!, "base64"));
+    for (let x = 240; x < 270; x++) clippedImage.data.set([52, 103, 171, 255], (767 * 512 + x) * 4);
+    const clippedImport = await importStudioSheet("mara", {
+      image: "data:image/png;base64," + PNG.sync.write(clippedImage).toString("base64"),
+      cells: [{ view: "front", label: "clipped_usable", x: 0, y: 0, width: 512, height: 768 }],
+    });
+    const clippedJob = clippedImport.jobs.at(-1)!;
+    assert.equal(clippedJob.sheets[0]!.cells[0]!.validation!.status, "needs-review");
+    await assignBatch(clippedJob.id);
+    assert.ok(
+      activeSprite().expressions.some((entry: any) => entry.label === "clipped_usable"),
+      "framing notices require no acknowledgment checkbox",
+    );
     const stale = await planSpriteStudio("mara", { expressions: [{ label: "happy" }] });
     await saveSpriteStudioSettings("mara", { ...settings, individual: true });
     await assert.rejects(

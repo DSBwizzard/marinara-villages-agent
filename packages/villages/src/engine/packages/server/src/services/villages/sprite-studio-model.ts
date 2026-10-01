@@ -1,6 +1,6 @@
 export const SPRITE_STYLES = {
   PAPERCRAFT:
-    "Preserve the approved character design, clothing, colors, anatomy, identifying features, and proportions. Render as a handcrafted 2D papercraft game character with bold clean near-black outlines and a distinct thin off-white paper-cut border around the silhouette. Construct flat overlapping cut-paper shapes with crisp angular cel-shaded color regions, subtle layered-paper depth, and tiny contact shadows between overlapping pieces. Apply matte handmade paper texture with fine fibers and gentle printed color variation to the character only. Slightly imperfect physical cut edges. Clean, expressive, polished storybook design. Avoid painterly rendering, realistic lighting, smooth gradients, glossy 3D materials, and photorealistic detail. Look like an illustrated paper character assembled from printed cutouts. Anatomy and proportions come from the approved design, never from a new interpretation of the style.",
+    "Preserve the reference character design, clothing, colors, anatomy, identifying features, and proportions. Render as a handcrafted 2D papercraft game character with bold clean near-black outlines and a distinct thin off-white paper-cut border around the silhouette. Construct flat overlapping cut-paper shapes with crisp angular cel-shaded color regions, subtle layered-paper depth, and tiny contact shadows between overlapping pieces. Apply matte handmade paper texture with fine fibers and gentle printed color variation to the character only. Slightly imperfect physical cut edges. Clean, expressive, polished storybook design. Avoid painterly rendering, realistic lighting, smooth gradients, glossy 3D materials, and photorealistic detail. Look like an illustrated paper character assembled from printed cutouts. Anatomy and proportions come from the character references, never from a new interpretation of the style.",
   BATTLEHIGHWAY:
     "Use the reference image ONLY as a character-design reference for identity, species/anatomy, core outfit, colors, proportions, and defining features. Redraw the character strictly in the visual style of early-2000s Sonic Battle character art. Reconstruct the character from bold angular graphic shapes, not smooth modern anatomy. Use exaggerated proportions, a strong asymmetrical silhouette, and slightly hand-drawn, irregular contours. Build the design from large faceted masses, wedges, spikes, tapered limbs, and simplified shape clusters. Do not just take normal anatomy and make it slightly angular. Use thick dark outer outlines and selective thinner interior lines to divide important forms only. Group repeated details like feathers, fur, hair, folds, fingers, and accessories into a few large simplified shapes instead of many small ones. Use flat saturated colors with one large hard-edged shadow shape per major form and only occasional small highlight accents. Keep strong value separation and graphic cutout-like shading, not realistic form rendering. Include some medium-scale structural details that define the character, but remove microdetail. The final image should feel like Sonic Battle character key art: graphic, angular, simplified, lively, and highly readable, not polished modern anime art, not painterly, not vector-clean, and not realistic. No gradients, soft shading, painterly texture, glossy rendering, realistic lighting, detailed folds, excessive feather/fur/hair separation, or 3D volume.",
   Custom: "",
@@ -125,6 +125,7 @@ export type StudioSheet = {
   source?: StudioSource;
   layout?: { cols: number; rows: number; count: number };
   expectedHeight?: number;
+  framingVersion?: number;
   baseScale?: number;
   assetId: string;
   url: string;
@@ -163,6 +164,7 @@ export type StudioPlan = {
   designId?: string;
 };
 export type StudioJob = {
+  targetHeight?: number;
   requestedExpressions?: Array<{ label: string; pose: string; expressionId?: string }>;
   individual?: boolean;
   style?: string;
@@ -218,7 +220,6 @@ export const defaultStudioState = (): StudioState => ({
     style: "PAPERCRAFT",
     prompts: { ...SPRITE_STYLES },
     connectionId: "",
-    strategy: "anchored",
     individual: false,
     cleanupEngine: "studio",
   },
@@ -278,18 +279,21 @@ export function studioPrompt(input: {
       : "Right-facing three-quarter theatrical stance. Cheat the torso open toward the audience so the pose is readable, but direct the head, eyes, attention, and gestures toward another villager OFF-CANVAS TO THE RIGHT. Do NOT make eye contact with the viewer.";
   return [
     `Character: ${input.name}. ${input.appearance}`,
-    "Identity reference: preserve the reference character’s species, anatomy, core outfit, colors, proportions, and identifying features. Reconstruct the requested poses instead of copying the source pose.",
+    input.referenceRoles?.length
+      ? "Identity reference: preserve the reference character’s species, anatomy, core outfit, colors, proportions, and identifying features. Reconstruct the requested poses instead of copying the source pose."
+      : "Preserve the character description’s species, anatomy, core outfit, colors, proportions, and identifying features consistently in every cell.",
     ...(input.referenceRoles?.length
       ? [
           "Reference order and roles: " +
             input.referenceRoles.map((role, i) => `${i + 1}: ${role}`).join("; ") +
-            ". Original controls identity; approved designs control proportions, clothing details, and style. An exemplar controls material/style only, never identity. Do not redesign, add footwear, remove accessories, or change the outfit.",
+            ". The original avatar controls identity; a styled neutral reference controls proportions, clothing details, and style. Do not redesign, add footwear, remove accessories, or change the outfit.",
         ]
       : []),
     `Draw it in this style: ${input.style || "Preserve the visual style of the identity reference."}`,
     gaze,
     `Create ONE image, ${input.batch.width} by ${input.batch.height}, with exactly ${input.batch.cols} columns and ${input.batch.rows} rows of equal cells. Read cells left-to-right, top-to-bottom. Leave unused cells empty. No labels, cell frames, scenery, text, or floor shadows.`,
-    "Every occupied cell contains one full-body isolated character, including feet and all gestures. Maintain a shared character scale and foot baseline. Leave generous clear gutters and margins; no body part may cross into another cell. Allow distinct expressive poses rather than requiring the same neutral standing body.",
+    `Each equal cell is ${input.batch.width / input.batch.cols} by ${input.batch.height / input.batch.rows} pixels. Vertical cuts: ${Array.from({ length: input.batch.cols - 1 }, (_, i) => ((i + 1) * input.batch.width) / input.batch.cols).join(", ") || "none"}; horizontal cuts: ${Array.from({ length: input.batch.rows - 1 }, (_, i) => ((i + 1) * input.batch.height) / input.batch.rows).join(", ") || "none"}. These are invisible crop boundaries, not drawn lines.`,
+    "Every occupied cell contains one complete full-body character, including the top of the head, both feet and all gestures. Keep the silhouette within the central 80% of cell width and 76% of cell height, with at least 10% clear space above the head and 12% below the feet. Keep the same character proportions, camera distance and body scale across every cell. Align feet at 88% of each cell’s height. No body part may cross a crop boundary. Allow distinct expressive poses rather than requiring the same neutral standing body.",
     ...input.expressions.map(
       (item, i) =>
         `Cell ${i + 1}: ${item.label.replace(/_/g, " ")}. ${item.pose || (item.label === "neutral" ? "Relaxed neutral standing pose." : "Use a readable facial expression and fitting expressive body gesture.")}`,
@@ -301,3 +305,6 @@ export function studioPrompt(input: {
 // Migrate only the exact previous built-in preset; custom prose and historical jobs stay intact.
 export const LEGACY_STUDIO_PAPERCRAFT =
   "Faithfully preserve the source character’s design, clothing, colors, anatomy, and identifying features. Render as a handcrafted 2D papercraft game character: simplified cartoon proportions, bold clean near-black outlines, and a distinct thin off-white paper-cut border around the entire silhouette. Construct the character from flat overlapping cut-paper shapes with crisp angular cel-shaded color regions, subtle layered-paper depth, and tiny contact shadows between overlapping pieces. Apply a clearly visible matte handmade paper texture with fine fibers and gentle printed color variation across the entire character. Slightly imperfect physical cut edges. Clean, expressive, polished storybook character design. Avoid painterly rendering, realistic lighting, smooth gradients, glossy 3D materials, and photorealistic detail. The result should look like a physical illustrated paper character assembled from printed cutouts.";
+
+export const PREVIOUS_STUDIO_PAPERCRAFT =
+  "Preserve the approved character design, clothing, colors, anatomy, identifying features, and proportions. Render as a handcrafted 2D papercraft game character with bold clean near-black outlines and a distinct thin off-white paper-cut border around the silhouette. Construct flat overlapping cut-paper shapes with crisp angular cel-shaded color regions, subtle layered-paper depth, and tiny contact shadows between overlapping pieces. Apply matte handmade paper texture with fine fibers and gentle printed color variation to the character only. Slightly imperfect physical cut edges. Clean, expressive, polished storybook design. Avoid painterly rendering, realistic lighting, smooth gradients, glossy 3D materials, and photorealistic detail. Look like an illustrated paper character assembled from printed cutouts. Anatomy and proportions come from the approved design, never from a new interpretation of the style.";

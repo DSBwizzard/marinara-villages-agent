@@ -29,7 +29,7 @@ type Props = {
   onBack: () => void;
   onExport: () => Promise<void>;
 };
-const STUDIO_RENDER_VERSION = 2;
+const STUDIO_RENDER_VERSION = 3;
 type Candidate = { sheet: StudioSheet; cell: StudioCell };
 const message = (error: unknown) => (error instanceof Error ? error.message : "The sprite action failed.");
 // LAN HTTP is common on phones; randomUUID requires a secure context, getRandomValues does not.
@@ -106,8 +106,7 @@ async function renderUncachedStudioCell(
   cleanup = false,
 ): Promise<HTMLCanvasElement> {
   validateStudioCell(cell, sheet);
-  if (cell.cleanupEngine && cell.cleanupEngine !== "studio" && cleanup) {
-    if (!cell.rendered) throw new Error("Run local checks to preview Engine cleanup.");
+  if (cell.cleanupEngine && cell.cleanupEngine !== "studio" && cleanup && cell.rendered) {
     const canvas = document.createElement("canvas");
     canvas.width = 512;
     canvas.height = 768;
@@ -239,23 +238,9 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   const [custom, setCustom] = useState("");
   const [poses, setPoses] = useState<Record<string, string>>({});
   const [individual, setIndividual] = useState(false);
-  const comparisonSubmission = useRef<string | null>(null);
-  const [comparisonPlan, setComparisonPlan] = useState<{
-    imageCalls: number;
-    reviewCalls: number;
-    requests: Array<{ selection: { view: string; settings: StudioSettings }; plan: StudioPlan }>;
-  } | null>(null);
-  const [purpose, setPurpose] = useState<"expressions" | "design">("expressions");
-  const [acknowledge, setAcknowledge] = useState(false);
-  const reviewSubmission = useRef<{ key: string; id: string } | null>(null);
-  const [reviewConnection, setReviewConnection] = useState("");
-  const [parameterText, setParameterText] = useState("{}");
-  const [showBounds, setShowBounds] = useState(true);
-  const [comparisonBackground, setComparisonBackground] = useState("checker");
   const [plan, setPlan] = useState<StudioPlan | null>(null);
   const [planError, setPlanError] = useState("");
   const [planning, setPlanning] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
   const [picked, setPicked] = useState("");
   const [target, setTarget] = useState("");
   const [draft, setDraft] = useState<StudioCell | null>(null);
@@ -288,38 +273,21 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   );
   const current = candidates.find((item) => item.cell.id === picked);
   const adjusting = draft ? candidates.find((item) => item.cell.id === draft.id) : null;
-  const activeDesign = [...(data?.designs ?? [])]
-    .reverse()
-    .find(
-      (d) =>
-        d.identityUrl === data?.reference?.url &&
-        d.style === settings?.style &&
-        d.stylePrompt === settings?.prompts[settings.style],
-    );
   const running = data?.jobs.some((job) => job.status === "running") ?? false;
   const approved = villager.sprite?.images ?? [];
   const pending = candidates.filter((item) => item.cell.pending).length;
   const slots = data?.expressions ?? [];
   const payload = {
     view,
-    purpose,
-    individual: purpose === "design" || individual,
+    individual,
     settings: settings ? { ...settings, individual } : settings,
-    expressions:
-      purpose === "design"
-        ? [{ label: "neutral", pose: "Relaxed standing full-body design, complete outfit and feet visible." }]
-        : labels
-            .filter((label) => slots.some((slot) => slot.label === label))
-            .map((label) => {
-              const slot = slots.find((item) => item.label === label)!;
-              return { label, pose: poses[label] ?? slot.pose, expressionId: slot.id };
-            }),
+    expressions: labels
+      .filter((label) => slots.some((slot) => slot.label === label))
+      .map((label) => {
+        const slot = slots.find((item) => item.label === label)!;
+        return { label, pose: poses[label] ?? slot.pose, expressionId: slot.id };
+      }),
   };
-  const comparisonSettingsKey = JSON.stringify(settings);
-  useEffect(() => {
-    setComparisonPlan(null);
-    comparisonSubmission.current = null;
-  }, [comparisonSettingsKey, activeDesign?.id]);
   const planKey = JSON.stringify(payload),
     referenceUrl = data?.reference?.url;
   useEffect(() => {
@@ -334,7 +302,6 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
           setData(next);
           setSettings(next.settings);
           setIndividual(next.settings.individual ?? false);
-          setParameterText(JSON.stringify(next.settings.customParameters ?? {}, null, 2));
           if (next.jobs.length) setTab("Review");
         }
       })
@@ -363,7 +330,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
       submission.current = null;
       lastPayload.current = planKey;
     }
-    if (!referenceUrl || !JSON.parse(planKey).expressions.length) {
+    if (!JSON.parse(planKey).settings || !JSON.parse(planKey).expressions.length) {
       setPlanning(false);
       return;
     }
@@ -406,11 +373,6 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   async function generate() {
     const refreshed = await call<StudioPlan>("plan", payload);
     setPlan(refreshed);
-    if (JSON.stringify(refreshed) !== JSON.stringify(plan)) {
-      submission.current = null;
-      setNote("Summary refreshed. Review the image request and click Generate again.");
-      return;
-    }
     submission.current ??= submissionId();
     try {
       const submittedId = submission.current;
@@ -446,7 +408,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
               ),
             }),
       });
-    saved(await call<{ studio: StudioData; snapshot: unknown }>("assign", { cells, batchId, acknowledge }));
+    saved(await call<{ studio: StudioData; snapshot: unknown }>("assign", { cells, batchId }));
     setNote("Assigned. These images are now used in scenes.");
   }
   async function applyBatch(job: StudioJob) {
@@ -455,6 +417,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     for (const sheet of job.sheets)
       for (const cell of sheet.cells) {
         if (
+          cell.validation?.status === "blocked" ||
           !cell.expressionId ||
           !slots.some((slot) => slot.id === cell.expressionId) ||
           remembered.some((entry) => entry.cellId === cell.id)
@@ -467,7 +430,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
       }
     for (const entry of remembered) {
       const item = candidates.find((candidate) => candidate.cell.id === entry.cellId);
-      if (item)
+      if (item && item.cell.validation?.status !== "blocked")
         choices.set(entry.view + ":" + entry.expressionId, { candidate: item, expressionId: entry.expressionId });
     }
     await assign([...choices.values()], job.id);
@@ -505,7 +468,6 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     setData(result.studio);
     setDeletion(null);
     submission.current = null;
-    setSelected([]);
     setPicked("");
     setDraft(null);
     setNote(
@@ -549,13 +511,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
     setManifest(null);
     setTab("Review");
   }
-  function reviewSubmissionId(ids: string[]) {
-    const key = JSON.stringify([reviewConnection, ids]);
-    if (reviewSubmission.current?.key !== key) reviewSubmission.current = { key, id: submissionId() };
-    return reviewSubmission.current!.id;
-  }
   function retry(job: StudioJob) {
-    setPurpose(job.purpose === "design" ? "design" : "expressions");
     if (job.style && Object.hasOwn(SPRITE_STYLES, job.style)) {
       const style = job.style as StudioStyle;
       setSettings((prior) =>
@@ -574,9 +530,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
       (item) => !saved.has(item.label),
     );
     if (!expressions.length) {
-      setNote(
-        "All requested source images are saved. Run local checks or prepare a selected replacement; no retry request was prepared.",
-      );
+      setNote("All requested images are saved. Choose Regenerate on an image to replace it.");
       return;
     }
     setLabels([...new Set(expressions.map((item) => item.label))]);
@@ -593,7 +547,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
       <p className="vss-hint">
         {current
           ? "Selected: " + current.cell.label + " · " + current.cell.view
-          : "Select a cutout, then Assign. Or drag it onto an expression."}
+          : "Select a sprite, then choose its expression and Assign."}
       </p>
       <label>
         Assign selected cutout to
@@ -624,18 +578,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
         {slots.map((slot) => {
           const assigned = (data?.assignments ?? []).filter((entry) => entry.expressionId === slot.id);
           return (
-            <div
-              key={slot.id}
-              className="vss-slot"
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                const item = candidates.find(
-                  (candidate) => candidate.cell.id === event.dataTransfer.getData("application/x-villages-cutout"),
-                );
-                if (item && !busy) void perform(() => assign([{ candidate: item, expressionId: slot.id }]));
-              }}
-            >
+            <div key={slot.id} className="vss-slot">
               <strong>
                 {slot.name}
                 {data?.defaultExpressionId === slot.id ? " · Default" : ""}
@@ -759,7 +702,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
             {villager.name}’s Sprite Studio
           </h2>
           <small>
-            {approved.length} in use · {candidates.length} saved cutouts · {pending} pending review
+            {approved.length} in use · {candidates.length} saved sprites
           </small>
         </div>
         <button
@@ -786,42 +729,6 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
         <p>Loading saved sprite work…</p>
       ) : (
         <>
-          <section className="vss-panel" aria-label="Design comparison">
-            <div className="vss-row">
-              <strong>Design comparison</strong>
-              <select
-                aria-label="Comparison background"
-                value={comparisonBackground}
-                onChange={(event) => setComparisonBackground(event.target.value)}
-              >
-                <option value="checker">Checkerboard</option>
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-              <label className="vss-check">
-                <input type="checkbox" checked={showBounds} onChange={(event) => setShowBounds(event.target.checked)} />
-                Safe region and baseline
-              </label>
-            </div>
-            <div className="vss-designs">
-              {[data?.reference?.url, activeDesign?.front?.url, activeDesign?.side?.url].map((url, index) =>
-                url ? (
-                  <figure key={url}>
-                    <div className="vss-stage" data-background={comparisonBackground}>
-                      <img src={url} alt={["Original identity", "Approved front", "Approved side"][index]} />
-                      {showBounds && index > 0 ? <span className="vss-safe" /> : null}
-                    </div>
-                    <figcaption>{["Original identity", "Approved front", "Approved side"][index]}</figcaption>
-                  </figure>
-                ) : null,
-              )}
-            </div>
-            <label className="vss-check">
-              <input type="checkbox" checked={acknowledge} onChange={(event) => setAcknowledge(event.target.checked)} />
-              I inspected flagged clipping, margins, and framing before approval.
-            </label>
-            <small>Local checks cannot confirm identity, outfit, anatomy, or art style.</small>
-          </section>
           <nav className="vss-nav" aria-label="Sprite Studio sections">
             {(["Create", "Review", "In use"] as const).map((name) => (
               <button
@@ -837,265 +744,10 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
               </button>
             ))}
           </nav>
-          {!data.reference ? (
-            <div className="vss-panel">
-              <h3>Capture an identity reference</h3>
-              <button
-                disabled={busy}
-                onClick={() => void perform(async () => setData(await call<StudioData>("reference", {})))}
-              >
-                Capture current avatar
-              </button>
-              <label>
-                Upload reference
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file)
-                      void perform(async () =>
-                        setData(await call<StudioData>("reference", { image: await readFile(file) })),
-                      );
-                  }}
-                />
-              </label>
-            </div>
-          ) : null}
           {tab === "Create" ? (
-            <div className="vss-create">
-              <div className="vss-panel">
-                <h3>Character design</h3>
-                <p className="vss-hint">
-                  Approve both styled views before expressions. Upload a complete design or generate one neutral view,
-                  then approve it in Review. This does not change scene sprites.
-                </p>
-                {(["front", "side"] as const).map((direction) => (
-                  <div key={direction}>
-                    <strong>
-                      {direction} · {activeDesign?.[direction] ? "Approved" : "Needs approval"}
-                    </strong>
-                    {activeDesign?.[direction] ? (
-                      <img
-                        className="vss-design-thumb"
-                        src={activeDesign![direction]!.url}
-                        alt={"Approved " + direction + " design"}
-                      />
-                    ) : null}
-                    <label>
-                      Upload and approve {direction} design
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        disabled={busy || running}
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file)
-                            void perform(async () =>
-                              setData(
-                                await call<StudioData>("design", {
-                                  view: direction,
-                                  settings,
-                                  image: await readFile(file),
-                                  acknowledge,
-                                }),
-                              ),
-                            );
-                        }}
-                      />
-                    </label>
-                  </div>
-                ))}
-                <label>
-                  Optional style exemplar
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={busy || running}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file)
-                        void perform(async () => {
-                          if (settings) await call("settings", settings);
-                          setData(await call<StudioData>("exemplar", { image: await readFile(file) }));
-                        });
-                    }}
-                  />
-                </label>
-                <label>
-                  Generation purpose
-                  <select
-                    value={purpose}
-                    onChange={(event) => setPurpose(event.target.value as "expressions" | "design")}
-                  >
-                    <option value="expressions">Expression sprites · approved designs required</option>
-                    <option value="design">One neutral design</option>
-                  </select>
-                </label>
-                <details>
-                  <summary>Compare reference strategies · four image requests</summary>
-                  <p>
-                    Matched front and side waves: original identity only versus original identity plus both approved
-                    designs. No visual review calls. Choose your preferred strategy after inspecting the results.
-                  </p>
-                  <button
-                    disabled={busy || running || !activeDesign?.front || !activeDesign.side}
-                    onClick={() =>
-                      void perform(async () => setComparisonPlan(await call("comparison-plan", { settings })))
-                    }
-                  >
-                    Prepare four-request comparison
-                  </button>
-                  {comparisonPlan ? (
-                    <>
-                      <p>
-                        {comparisonPlan.imageCalls} image requests · {comparisonPlan.reviewCalls} review calls ·{" "}
-                        {comparisonPlan.requests[0]?.plan.connection.name} /{" "}
-                        {comparisonPlan.requests[0]?.plan.connection.model}
-                      </p>
-                      <button
-                        disabled={busy || running}
-                        onClick={() =>
-                          void perform(async () => {
-                            setData(
-                              await call<StudioData>("comparison-start", {
-                                submissionId: (comparisonSubmission.current ??= submissionId()),
-                                plan: comparisonPlan,
-                              }),
-                            );
-                            comparisonSubmission.current = null;
-                            setComparisonPlan(null);
-                            setTab("Review");
-                          })
-                        }
-                      >
-                        Generate comparison · 4 image requests
-                      </button>
-                    </>
-                  ) : null}
-                </details>
-                <h3>Generate a saved batch</h3>
-                <p className="vss-hint">
-                  Choose any expressions. Neutral is optional. Assign images in Review to use them in scenes.
-                </p>
-                <label>
-                  View
-                  <select
-                    aria-label="View"
-                    value={view}
-                    onChange={(event) => setView(event.target.value as StudioView)}
-                  >
-                    <option value="front">Front · facing you</option>
-                    <option value="side">Side · facing right, mirrored for left</option>
-                  </select>
-                </label>
-                <div className="vss-expressions">
-                  {slots.map((slot) => (
-                    <div key={slot.id}>
-                      <label className="vss-check">
-                        <input
-                          type="checkbox"
-                          checked={labels.includes(slot.label)}
-                          onChange={(event) =>
-                            setLabels(
-                              event.target.checked
-                                ? [...labels, slot.label]
-                                : labels.filter((label) => label !== slot.label),
-                            )
-                          }
-                        />
-                        {slot.name}
-                      </label>
-                      {labels.includes(slot.label) ? (
-                        <label>
-                          Pose · optional
-                          <input
-                            value={poses[slot.label] ?? slot.pose}
-                            maxLength={500}
-                            onChange={(event) => setPoses({ ...poses, [slot.label]: event.target.value })}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-                <label>
-                  Reference strategy
-                  <select
-                    value={settings.strategy ?? "anchored"}
-                    onChange={(event) =>
-                      setSettings({ ...settings, strategy: event.target.value as "original" | "anchored" })
-                    }
-                  >
-                    <option value="anchored">Original identity + approved designs</option>
-                    <option value="original">Original identity only</option>
-                  </select>
-                </label>
-                <details>
-                  <summary>Isolated Engine connection settings</summary>
-                  <p className="vss-hint">
-                    Keys stay exclusively in Engine storage. Applying parameters creates/reuses a named Engine copy.
-                    Controls remain unverified until tested through your host.
-                  </p>
-                  <textarea
-                    aria-label="Studio image parameters JSON"
-                    value={parameterText}
-                    onChange={(event) => setParameterText(event.target.value)}
-                  />
-                  <button
-                    disabled={busy || running || !settings.connectionId}
-                    onClick={() =>
-                      void perform(async () => {
-                        const next = await call<StudioData>("connection-profile", {
-                          settings: { ...settings, customParameters: JSON.parse(parameterText) },
-                        });
-                        setData(next);
-                        setSettings(next.settings);
-                      })
-                    }
-                  >
-                    Apply to Engine-managed Studio copy
-                  </button>
-                  <details>
-                    <summary>Recover uncertain connection setup</summary>
-                    <p>
-                      Inspect the Engine connection list first. This discards the Studio mapping and explicitly creates
-                      a replacement if parameters need isolation. Existing Engine connections remain available.
-                    </p>
-                    <button
-                      disabled={busy || running || !settings.connectionId}
-                      onClick={() =>
-                        void perform(async () => {
-                          const next = await call<StudioData>("connection-profile", {
-                            resetProfile: true,
-                            settings: { ...settings, customParameters: JSON.parse(parameterText) },
-                          });
-                          setData(next);
-                          setSettings(next.settings);
-                        })
-                      }
-                    >
-                      Reset mapping and apply replacement
-                    </button>
-                  </details>
-                </details>
-                <label>
-                  Background processing
-                  <select
-                    value={settings.cleanupEngine ?? "studio"}
-                    onChange={(event) =>
-                      setSettings({ ...settings, cleanupEngine: event.target.value as StudioSettings["cleanupEngine"] })
-                    }
-                  >
-                    <option value="studio">Studio matte cleanup</option>
-                    {data?.cleanupCapabilities?.builtin ? (
-                      <option value="builtin">Engine built-in cleanup</option>
-                    ) : null}
-                    {data?.cleanupCapabilities?.backgroundremover ? (
-                      <option value="backgroundremover">Engine AI cleanup</option>
-                    ) : null}
-                  </select>
-                </label>
+            <div className="vss-panel">
+              <h3>Create sprites</h3>
+              <div className="vss-fields">
                 <label>
                   Art style
                   <select
@@ -1108,32 +760,79 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                     <option value="Custom">Custom</option>
                   </select>
                 </label>
-                <details>
-                  <summary>Style prompt</summary>
-                  <label>
-                    Drawing instructions
-                    <textarea
-                      value={settings.prompts[settings.style]}
-                      maxLength={6000}
+                <label>
+                  View
+                  <select
+                    aria-label="View"
+                    value={view}
+                    onChange={(event) => setView(event.target.value as StudioView)}
+                  >
+                    <option value="front">Front · facing you</option>
+                    <option value="side">Side · facing right</option>
+                  </select>
+                </label>
+              </div>
+              <div className="vss-expressions">
+                {slots.map((slot) => (
+                  <label className="vss-check" key={slot.id}>
+                    <input
+                      type="checkbox"
+                      checked={labels.includes(slot.label)}
                       onChange={(event) =>
-                        setSettings({
-                          ...settings,
-                          prompts: { ...settings.prompts, [settings.style]: event.target.value },
-                        })
+                        setLabels(
+                          event.target.checked
+                            ? [...labels, slot.label]
+                            : labels.filter((label) => label !== slot.label),
+                        )
                       }
                     />
+                    {slot.name}
                   </label>
-                  <button
-                    onClick={() =>
-                      setSettings({
-                        ...settings,
-                        prompts: { ...settings.prompts, [settings.style]: SPRITE_STYLES[settings.style] },
-                      })
-                    }
-                  >
-                    Restore style prompt
-                  </button>
-                </details>
+                ))}
+              </div>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const name = custom.trim();
+                  void perform(async () => {
+                    saved(await call<{ studio: StudioData; snapshot: unknown }>("expression", { name }));
+                    setCustom("");
+                    setLabels((prior) => [...new Set([...prior, name.toLowerCase().replace(/\s+/g, "_")])]);
+                  });
+                }}
+              >
+                <label>
+                  New expression
+                  <input
+                    value={custom}
+                    maxLength={40}
+                    onChange={(event) => setCustom(event.target.value)}
+                    placeholder="Delighted, running…"
+                  />
+                </label>
+                <button disabled={busy || !custom.trim()}>Add expression</button>
+              </form>
+              <div aria-label="Generation request summary">
+                {planning ? (
+                  <p>Preparing…</p>
+                ) : plan ? (
+                  <p>
+                    {payload.expressions.length} expressions · {plan.batches.length} image{" "}
+                    {plan.batches.length === 1 ? "request" : "requests"} · {plan.connection.name}
+                  </p>
+                ) : (
+                  <p className="vss-hint">{planError || "Select expressions to generate."}</p>
+                )}
+              </div>
+              <button
+                className="vss-primary"
+                disabled={busy || running || planning || !plan || !payload.expressions.length}
+                onClick={() => void perform(generate)}
+              >
+                {busy ? "Working…" : "Generate"}
+              </button>
+              <details>
+                <summary>Advanced</summary>
                 <label>
                   Image connection
                   <select
@@ -1156,203 +855,175 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                     value={individual ? "individual" : "sheet"}
                     onChange={(event) => setIndividual(event.target.value === "individual")}
                   >
-                    <option value="sheet">Efficient sheets · up to six sprites each</option>
-                    <option value="individual">Individual · more drawing space per sprite</option>
+                    <option value="sheet">Sheets · up to six sprites each</option>
+                    <option value="individual">Individual sprites</option>
                   </select>
                 </label>
-                <div className="vss-panel" aria-label="Generation request summary">
-                  {planning ? (
-                    <p>Updating request summary…</p>
-                  ) : plan ? (
-                    <>
-                      <strong>
-                        {plan.connection.name} · {plan.connection.model}
-                      </strong>
-                      <p>
-                        {payload.expressions.length} expressions · {plan.batches.length} image{" "}
-                        {plan.batches.length === 1 ? "request" : "requests"} ·{" "}
-                        {plan.estimatedCost === null
-                          ? "Cost unavailable"
-                          : "Estimated $" + plan.estimatedCost.toFixed(3)}
-                      </p>
-                      {plan.batches.map((batch, index) => (
-                        <small key={index}>
-                          Sheet {index + 1}: {batch.count} sprites · {batch.cols} × {batch.rows} · {batch.width} ×{" "}
-                          {batch.height}px requested canvas
-                        </small>
-                      ))}
-                      <details className="vss-request">
-                        <summary>Image request</summary>
-                        {plan.batches.map((batch, index) =>
-                          batch.request ? (
-                            <section key={index} aria-label={"Sheet " + (index + 1) + " image request"}>
-                              <strong>Sheet {index + 1}</strong>
-                              <p>Positive prompt</p>
-                              <pre aria-label={"Sheet " + (index + 1) + " positive prompt"}>{batch.request.prompt}</pre>
-                              <p>Negative prompt</p>
-                              <pre aria-label={"Sheet " + (index + 1) + " negative prompt"}>
-                                {batch.request.negativePrompt}
-                              </pre>
-                            </section>
-                          ) : null,
-                        )}
-                      </details>
-                      <small>
-                        Exports: 512 × 768; foreground inside 480 × 736. Provider resolution is unverified; decoded
-                        source dimensions appear in Review.{" "}
-                        {plan.localWorkflow ? "Local workflow internal steps and costs are unavailable. " : ""}No
-                        automatic retries or provider changes.
-                      </small>
-                    </>
-                  ) : (
-                    <p className="vss-hint">
-                      {planError || "Select expressions and capture a reference to see the request summary."}
-                    </p>
-                  )}
-                </div>
+                {slots
+                  .filter((slot) => labels.includes(slot.label))
+                  .map((slot) => (
+                    <label key={slot.id}>
+                      Pose · {slot.name}
+                      <input
+                        value={poses[slot.label] ?? slot.pose}
+                        maxLength={500}
+                        onChange={(event) => setPoses({ ...poses, [slot.label]: event.target.value })}
+                      />
+                    </label>
+                  ))}
+                <label>
+                  Drawing instructions
+                  <textarea
+                    value={settings.prompts[settings.style]}
+                    maxLength={6000}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        prompts: { ...settings.prompts, [settings.style]: event.target.value },
+                      })
+                    }
+                  />
+                </label>
                 <button
-                  className="vss-primary"
-                  disabled={
-                    busy ||
-                    running ||
-                    planning ||
-                    !plan ||
-                    !payload.expressions.length ||
-                    (purpose === "expressions" && (!activeDesign?.front || !activeDesign.side))
+                  onClick={() =>
+                    setSettings({
+                      ...settings,
+                      prompts: { ...settings.prompts, [settings.style]: SPRITE_STYLES[settings.style] },
+                    })
                   }
-                  onClick={() => void perform(generate)}
                 >
-                  {busy ? "Working…" : "Generate"}
+                  Restore style prompt
                 </button>
                 <details>
-                  <summary>Import images or a sheet</summary>
-                  <label>
-                    Image
-                    <input
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void perform(async () => setImportImage(await readFile(file)));
-                      }}
-                    />
-                  </label>
-                  <label>
-                    Optional exported JSON manifest
-                    <input
-                      type="file"
-                      accept=".json,application/json"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void perform(async () => setManifest(JSON.parse(await file.text())));
-                      }}
-                    />
-                  </label>
-                  {!manifest ? (
-                    <>
-                      <div className="vss-fields">
-                        <label>
-                          Columns
-                          <input
-                            type="number"
-                            min={1}
-                            value={columns}
-                            onChange={(event) => setColumns(Number(event.target.value))}
-                          />
-                        </label>
-                        <label>
-                          Rows
-                          <input
-                            type="number"
-                            min={1}
-                            value={rows}
-                            onChange={(event) => setRows(Number(event.target.value))}
-                          />
-                        </label>
-                      </div>
-                      <label>
-                        Expression names in reading order
-                        <input value={importLabels} onChange={(event) => setImportLabels(event.target.value)} />
-                      </label>
-                    </>
-                  ) : (
-                    <small>Using manifest cell positions and views.</small>
-                  )}
-                  <button disabled={busy || !importImage} onClick={() => void perform(importSheet)}>
-                    Import to gallery
-                  </button>
+                  <summary>Image request</summary>
+                  {plan?.batches.map((batch, index) => (
+                    <section key={index}>
+                      <strong>
+                        Sheet {index + 1} · {batch.width} × {batch.height}
+                      </strong>
+                      <pre aria-label={"Sheet " + (index + 1) + " positive prompt"}>{batch.request?.prompt}</pre>
+                      <pre aria-label={"Sheet " + (index + 1) + " negative prompt"}>
+                        {batch.request?.negativePrompt}
+                      </pre>
+                    </section>
+                  ))}
                 </details>
-              </div>
-              <div>
-                {data.reference ? (
-                  <div className="vss-panel">
-                    <h3>Original identity reference</h3>
-                    <img className="vss-reference" src={data.reference.url} alt="Captured identity reference" />
-                    <small>Used for every generation and art style.</small>
-                  </div>
-                ) : null}
-                {panel}
-              </div>
+              </details>
+              <details>
+                <summary>Import images or a sheet</summary>
+                <label>
+                  Image
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void perform(async () => setImportImage(await readFile(file)));
+                    }}
+                  />
+                </label>
+                <label>
+                  Optional exported JSON manifest
+                  <input
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void perform(async () => setManifest(JSON.parse(await file.text())));
+                    }}
+                  />
+                </label>
+                {!manifest ? (
+                  <>
+                    <div className="vss-fields">
+                      <label>
+                        Columns
+                        <input
+                          type="number"
+                          min={1}
+                          value={columns}
+                          onChange={(event) => setColumns(Number(event.target.value))}
+                        />
+                      </label>
+                      <label>
+                        Rows
+                        <input
+                          type="number"
+                          min={1}
+                          value={rows}
+                          onChange={(event) => setRows(Number(event.target.value))}
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      Expression names in reading order
+                      <input value={importLabels} onChange={(event) => setImportLabels(event.target.value)} />
+                    </label>
+                  </>
+                ) : (
+                  <small>Using manifest cell positions and views.</small>
+                )}
+                <button disabled={busy || !importImage} onClick={() => void perform(importSheet)}>
+                  Import to gallery
+                </button>
+              </details>
             </div>
           ) : tab === "Review" ? (
             <>
-              <div className="vss-row">
-                <h3>Saved artwork</h3>
-                <button
-                  disabled={busy || !pending}
-                  onClick={() =>
-                    void perform(async () => {
-                      setData(await call<StudioData>("clear-review", {}));
-                      setPendingOnly(false);
-                      setNote("Pending review cleared. All saved artwork remains available.");
-                    })
-                  }
-                >
-                  Clear pending review
-                </button>
-                <label className="vss-check">
-                  <input
-                    type="checkbox"
-                    checked={pendingOnly}
-                    onChange={(event) => setPendingOnly(event.target.checked)}
-                  />
-                  Pending only
-                </label>
-                <button
-                  disabled={busy || !selected.length}
-                  onClick={() => setDeletion({ ids: selected, deleteFiles: false })}
-                >
-                  Delete selected cutouts ({selected.length})
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void perform(async () => {
-                      if (
-                        !window.confirm(
-                          "Delete unused Studio-owned files? Saved alternatives, active assignments, shared originals, and the identity reference are retained.",
+              <h3>Saved artwork</h3>
+              <details>
+                <summary>Gallery options</summary>
+                <div className="vss-row">
+                  <button
+                    disabled={busy || !pending}
+                    onClick={() =>
+                      void perform(async () => {
+                        setData(await call<StudioData>("clear-review", {}));
+                        setPendingOnly(false);
+                        setNote("Pending review cleared. All saved artwork remains available.");
+                      })
+                    }
+                  >
+                    Clear pending review
+                  </button>
+                  <label className="vss-check">
+                    <input
+                      type="checkbox"
+                      checked={pendingOnly}
+                      onChange={(event) => setPendingOnly(event.target.checked)}
+                    />
+                    Pending only
+                  </label>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      void perform(async () => {
+                        if (
+                          !window.confirm(
+                            "Delete unused Studio-owned files? Saved alternatives, active assignments, shared originals, and the identity reference are retained.",
+                          )
                         )
-                      )
-                        return;
-                      const result = await call<{
-                        studio: StudioData;
-                        deleted: number;
-                        failures: Array<{ error: string }>;
-                      }>("delete-unused", {});
-                      setData(result.studio);
-                      setNote(
-                        result.deleted +
-                          " unused files deleted." +
-                          (result.failures.length
-                            ? " Retry needed: " + result.failures.map((item) => item.error).join("; ")
-                            : ""),
-                      );
-                    })
-                  }
-                >
-                  Delete unused files
-                </button>
-              </div>
+                          return;
+                        const result = await call<{
+                          studio: StudioData;
+                          deleted: number;
+                          failures: Array<{ error: string }>;
+                        }>("delete-unused", {});
+                        setData(result.studio);
+                        setNote(
+                          result.deleted +
+                            " unused files deleted." +
+                            (result.failures.length
+                              ? " Retry needed: " + result.failures.map((item) => item.error).join("; ")
+                              : ""),
+                        );
+                      })
+                    }
+                  >
+                    Delete unused files
+                  </button>
+                </div>
+              </details>
               <div className="vss-library">
                 <div className="vss-gallery">
                   {!data.jobs.length ? (
@@ -1378,60 +1049,10 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                           {new Date(job.createdAt).toLocaleString()} · {job.model} · {job.attempted} submitted /{" "}
                           {job.planned} planned requests ·{" "}
                           {job.status === "ready" ? "Generation completed" : job.status} ·{" "}
-                          {job.strategy ?? "legacy references"} · User approval is separate
+                          {job.sheets.reduce((count, sheet) => count + sheet.cells.length, 0)} sprites
                         </small>
                         {job.error ? <p className="vss-hint">{job.error}</p> : null}
                         <div className="vss-row">
-                          <button
-                            disabled={busy || job.status === "running"}
-                            onClick={() =>
-                              void perform(async () =>
-                                setData(
-                                  await call<StudioData>("validate", {
-                                    batchId: job.id,
-                                    engine: settings?.cleanupEngine ?? "studio",
-                                  }),
-                                ),
-                              )
-                            }
-                          >
-                            Run local checks · no generation call
-                          </button>
-                          <select
-                            aria-label="Vision review connection"
-                            value={reviewConnection}
-                            onChange={(event) => setReviewConnection(event.target.value)}
-                          >
-                            <option value="">Select a vision-capable language connection</option>
-                            {data.reviewConnections?.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name} · {c.model}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            disabled={
-                              busy ||
-                              job.status === "running" ||
-                              !reviewConnection ||
-                              !items.length ||
-                              (selected.length ? selected.length > 6 : items.length > 6)
-                            }
-                            onClick={() =>
-                              void perform(async () => {
-                                const ids = selected.length ? selected : items.map((item) => item.cell.id);
-                                const next = await call<StudioData>("visual-review", {
-                                  submissionId: reviewSubmissionId(ids),
-                                  connectionId: reviewConnection,
-                                  cellIds: ids,
-                                });
-                                setData(next);
-                                reviewSubmission.current = null;
-                              })
-                            }
-                          >
-                            Check visual consistency · {selected.length || items.length} candidates · 1 paid review call
-                          </button>
                           <button
                             className="vss-primary"
                             disabled={busy || job.status === "running" || !items.length}
@@ -1467,13 +1088,6 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                             </button>
                           ) : null}
                         </div>
-                        {job.sheets.some((sheet) => !sheet.source || sheet.source.kind === "legacy") ? (
-                          <p>
-                            Earlier saved sources may already contain transparency damage. Repair backgrounds cannot
-                            restore missing opacity. Generate a new batch to review replacements; existing artwork stays
-                            saved.
-                          </p>
-                        ) : null}
                         <div className="vss-originals">
                           {job.sheets.map((sheet, index) => (
                             <details key={sheet.assetId + ":" + index}>
@@ -1499,82 +1113,73 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                           {items.map((item) => {
                             const active = data.assignments.filter((entry) => entry.cellId === item.cell.id);
                             return (
-                              <div
-                                className="vss-card"
-                                key={item.cell.id}
-                                draggable={!busy}
-                                onDragStart={(event) => {
-                                  event.dataTransfer.setData("application/x-villages-cutout", item.cell.id);
-                                  event.dataTransfer.effectAllowed = "copy";
-                                  pick(item);
-                                }}
-                              >
+                              <div className="vss-card" key={item.cell.id}>
                                 <button
                                   aria-label={"Select " + item.cell.view + " " + item.cell.label + " cutout"}
                                   aria-pressed={picked === item.cell.id}
                                   onClick={() => pick(item)}
                                 >
-                                  <div className="vss-aligned" data-background={comparisonBackground}>
+                                  <div className="vss-aligned" data-background="checker">
                                     <CellPreview renderCache={renderCache} candidate={item} />
-                                    {showBounds ? <span className="vss-safe" /> : null}
                                   </div>
                                 </button>
                                 <strong>{item.cell.label.replaceAll("_", " ")}</strong>
-                                <small>
-                                  {item.cell.view} · Local checks:{" "}
-                                  {item.cell.validation?.status ?? "legacy / unverified"}
-                                </small>
-                                {item.cell.validation?.findings.map((f) => (
-                                  <small key={f.code} role={f.severity === "blocking" ? "alert" : undefined}>
-                                    {f.message}
-                                  </small>
-                                ))}
-                                {data.reviews
-                                  ?.filter((r) => r.cellIds.includes(item.cell.id))
-                                  .slice(-1)
-                                  .map((r) => (
-                                    <details key={r.id}>
-                                      <summary>Visual review: {r.status}</summary>
-                                      <p>{r.consistency}</p>
-                                      {r.findings
-                                        .filter((f) => f.cellId === item.cell.id)
-                                        .map((f) => (
-                                          <small key={f.category}>
-                                            {f.category}: {f.verdict} · {f.detail}
-                                          </small>
-                                        ))}
-                                      {r.error ? <small>{r.error}</small> : null}
-                                    </details>
-                                  ))}
+                                <small>{item.cell.view}</small>
+                                {item.cell.validation?.findings.length ? (
+                                  <details>
+                                    <summary>
+                                      {item.cell.validation.status === "blocked"
+                                        ? "Image unavailable"
+                                        : "Check framing"}
+                                    </summary>
+                                    {item.cell.validation.findings.map((f) => (
+                                      <small key={f.code}>{f.message}</small>
+                                    ))}
+                                  </details>
+                                ) : null}
                                 <button
-                                  disabled={busy || running || item.cell.validation?.status === "blocked"}
+                                  className="vss-primary"
+                                  disabled={
+                                    busy ||
+                                    job.status === "running" ||
+                                    item.cell.validation?.status === "blocked" ||
+                                    !item.cell.expressionId
+                                  }
                                   onClick={() =>
-                                    void perform(async () =>
-                                      setData(
-                                        await call<StudioData>("design", {
-                                          cellId: item.cell.id,
-                                          view: item.cell.view,
-                                          settings,
-                                          acknowledge,
-                                        }),
-                                      ),
+                                    void perform(() =>
+                                      assign([{ candidate: item, expressionId: item.cell.expressionId! }]),
                                     )
                                   }
                                 >
-                                  Approve as {item.cell.view} design
+                                  Use
                                 </button>
                                 <button
                                   disabled={busy || running}
                                   onClick={() => {
-                                    setPurpose("expressions");
+                                    if (job.style && Object.hasOwn(SPRITE_STYLES, job.style)) {
+                                      const style = job.style as StudioStyle;
+                                      setSettings((prior) =>
+                                        prior
+                                          ? {
+                                              ...prior,
+                                              style,
+                                              connectionId: job.connectionId || prior.connectionId,
+                                              prompts: {
+                                                ...prior.prompts,
+                                                [style]: job.stylePrompt ?? prior.prompts[style],
+                                              },
+                                            }
+                                          : prior,
+                                      );
+                                    }
                                     setView(item.cell.view);
                                     setLabels([item.cell.label]);
                                     setPoses({ [item.cell.label]: item.cell.pose });
                                     setTab("Create");
-                                    setNote("One sprite selected. Review the request count before generating.");
+                                    setNote("Ready to regenerate this expression.");
                                   }}
                                 >
-                                  Prepare replacement
+                                  Regenerate
                                 </button>
                                 {active.length ? (
                                   <span className="vss-badge">
@@ -1586,21 +1191,6 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                 ) : (
                                   <small>{item.cell.pending ? "Pending review" : "Saved alternative"}</small>
                                 )}
-                                <label className="vss-check">
-                                  <input
-                                    type="checkbox"
-                                    checked={selected.includes(item.cell.id)}
-                                    aria-label={"Select " + item.cell.label + " for review or deletion"}
-                                    onChange={(event) =>
-                                      setSelected(
-                                        event.target.checked
-                                          ? [...selected, item.cell.id]
-                                          : selected.filter((id) => id !== item.cell.id),
-                                      )
-                                    }
-                                  />
-                                  Select for review or deletion
-                                </label>
                                 <button
                                   disabled={busy}
                                   onClick={() => {
@@ -1608,7 +1198,13 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                     setDraft(structuredClone(item.cell));
                                   }}
                                 >
-                                  Adjust image
+                                  Adjust
+                                </button>
+                                <button
+                                  disabled={busy || job.status === "running"}
+                                  onClick={() => setDeletion({ ids: [item.cell.id], deleteFiles: false })}
+                                >
+                                  Delete
                                 </button>
                               </div>
                             );
@@ -1618,7 +1214,10 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                     );
                   })}
                 </div>
-                {panel}
+                <details>
+                  <summary>Manage expressions and assignments</summary>
+                  {panel}
+                </details>
               </div>
               {draft && adjusting ? (
                 <div className="vss-panel" aria-label="Adjust image">
@@ -1829,10 +1428,10 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   );
 }
 const libraryCss = `
-.vss-request{min-width:0}.vss-request pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:.85rem;max-height:20rem;overflow:auto;background:#0c1524;padding:.7rem;border-radius:.5rem}
+.vss-request{min-width:0}.vss pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:.85rem;max-height:20rem;overflow:auto;background:#0c1524;padding:.7rem;border-radius:.5rem}
 .vss-create{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:1rem;align-items:start}
-.vss-create>div:last-child{display:grid;gap:1rem}.vss-library{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:1rem;align-items:start}
-.vss-gallery{display:grid;gap:1.25rem;min-width:0}.vss-slots{position:sticky;top:1rem}.vss-slot-list{display:grid;gap:.75rem;max-height:65vh;overflow:auto;padding:.2rem}
+.vss-create>div:last-child{display:grid;gap:1rem}.vss-library{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;align-items:start}
+.vss-library:has(>details[open]){grid-template-columns:minmax(0,1fr) 310px}.vss-gallery{display:grid;gap:1.25rem;min-width:0}.vss-slots{position:sticky;top:1rem}.vss-slot-list{display:grid;gap:.75rem;max-height:65vh;overflow:auto;padding:.2rem}
 .vss-slot{display:grid;gap:.5rem;padding:.7rem;border:1px solid #405577;border-radius:.75rem;background:#0d182b}.vss-slot:hover{border-color:#ac96fa}
 .vss-slot form,.vss-slots>form{display:grid;gap:.5rem}.vss-mini{display:grid;gap:.2rem}.vss-mini canvas,.vss-mini img{width:64px;height:96px;object-fit:contain}.vss-slot-toggle{display:none}.vss-originals img.vss-sheet-thumb{display:block;width:150px;height:110px;margin-top:.5rem}
 .vss-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.8rem}.vss-card{padding:.7rem;gap:.5rem}.vss-card canvas,.vss-card img{height:270px;width:100%;object-fit:contain}
@@ -1841,5 +1440,5 @@ const libraryCss = `
 .vss-originals details{max-width:100%;flex:1 1 150px}.vss-originals img{max-width:100%;max-height:280px;object-fit:contain;background:#0c172a}
 .vss-expressions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem}.vss-adjust{display:grid;grid-template-columns:220px minmax(0,1fr);gap:1rem}.vss-delete-dialog{padding:0;max-width:550px;width:calc(100% - 2rem);background:#142038;color:#eef2ff;border:1px solid #ac96fa;border-radius:1rem}.vss-delete-dialog::backdrop{background:#000a}
 .vss-adjust .vss-stage{height:300px}.vss-reference{max-width:100%;width:100%;max-height:240px}
-@media(max-width:850px){.vss-library,.vss-create{grid-template-columns:1fr}.vss-slots{position:static;order:-1}.vss-slot-toggle{display:block}.vss-slots[data-open=false] .vss-slot-list{display:none}.vss-slot-list{max-height:330px}.vss-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vss-card canvas,.vss-card img{height:180px}.vss-adjust{grid-template-columns:1fr}.vss-expressions{grid-template-columns:1fr}}
+@media(max-width:850px){.vss-library,.vss-library:has(>details[open]),.vss-create{grid-template-columns:1fr}.vss-slots{position:static;order:-1}.vss-slot-toggle{display:block}.vss-slots[data-open=false] .vss-slot-list{display:none}.vss-slot-list{max-height:330px}.vss-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vss-card canvas,.vss-card img{height:180px}.vss-adjust{grid-template-columns:1fr}.vss-expressions{grid-template-columns:1fr}}
 `;
