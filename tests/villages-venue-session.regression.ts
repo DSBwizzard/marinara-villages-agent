@@ -1645,7 +1645,7 @@ async function main() {
       lastVenueSystem,
       /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u,
     );
-    assert.match(lastVenueSystem, /Narrate only an action the player explicitly submitted/u);
+    assert.match(lastVenueSystem, /When describing the player's actions, narrate only what they explicitly submitted/u);
     await saveVillageWriting({ person: "second" });
     const aside = lively.session.lines.find((line) => line.kind === "side")!;
     const main = lively.session.lines.find((line) => line.id === aside.asideFor)!;

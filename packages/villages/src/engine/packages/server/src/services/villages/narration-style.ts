@@ -76,7 +76,7 @@ export function venueWritingDirection(style: VillageNarrationStyle, playerName: 
     "## Venue writing",
     `Write narration segments and other non-dialogue scene description in ${style.tense} tense. ${person}`,
     "Tense and person govern scene prose, not a resident's spoken grammar or pronouns.",
-    "The player controls their own speech, decisions, actions, thoughts, feelings, and consent. Never write a new player response or imply one. Narrate only an action the player explicitly submitted, the departure they chose, or an outcome already verified in the scene. Leave their next response to them.",
+    "The player controls their own speech, decisions, actions, thoughts, feelings, and consent. Never write a new player response or imply one. When describing the player's actions, narrate only what they explicitly submitted, the departure they chose, or an outcome already verified in the scene. Leave their next response to them. Residents may initiate plausible actions according to their own cards and current Scene circumstances; consequential effects remain subject to Scene evidence and permission rules.",
     style.rating === "nsfw"
       ? "Content rating: NSFW. Adult explicit content may occur when the player and scene lead there; do not force it into an otherwise ordinary visit."
       : "Content rating: SFW. Keep narration and dialogue non-explicit; ordinary romance and difficult themes may still occur.",

@@ -118,6 +118,9 @@ async function run() {
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("present tense"));
     assert.ok(prompt.includes('Address the player as "you"'));
+    assert.ok(prompt.includes("When describing the player's actions, narrate only what they explicitly submitted"));
+    assert.ok(prompt.includes("Residents may initiate plausible actions according to their own cards"));
+    assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
     assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Recent scene history:"));
     const background = buildTickMessages({
