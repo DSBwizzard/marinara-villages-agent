@@ -1456,7 +1456,10 @@ async function main() {
     assert.match(lastVenueSystem, /Write narration segments.*present tense/u);
     assert.match(lastVenueSystem, /Address the player as "you"/u);
     assert.match(lastVenueSystem, /Content rating: SFW/u);
-    assert.ok(lastVenueSystem.startsWith(VENUE_SCENE_WRITING_FOUNDATION), "fixed scene rules survive context fitting");
+    assert.ok(
+      lastVenueSystem.startsWith("## Writing direction\n\n" + VENUE_SCENE_WRITING_FOUNDATION),
+      "fixed scene rules survive context fitting in the writing section",
+    );
     assert.match(lastVenueSystem, /dialogue alone may be the complete reply/u);
     assert.doesNotMatch(lastVenueSystem, /Grounded, concise slice-of-life prose/u);
     assert.match(lastVenueSystem, /moment already underway/u);

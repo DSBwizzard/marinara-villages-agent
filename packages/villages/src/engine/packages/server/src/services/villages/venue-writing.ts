@@ -29,6 +29,37 @@ export const EVENT_MEMORY_GUIDANCE =
 
 export type VenueWritingBlock = { text: string; optional?: "history" | "memory" | "lore" };
 
+export type VenueWritingSections = {
+  direction: VenueWritingBlock[];
+  identity: VenueWritingBlock[];
+  circumstances: VenueWritingBlock[];
+  conversation: VenueWritingBlock[];
+  authoredInstructions: VenueWritingBlock[];
+  metadata: VenueWritingBlock[];
+};
+
+/** Keep the writing task distinct from evidence bookkeeping within one request. */
+export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWritingBlock[] {
+  const headings: Record<keyof VenueWritingSections, string> = {
+    direction: "Writing direction",
+    identity: "Complete authored character identity",
+    circumstances: "Current Scene circumstances",
+    conversation: "Witnessed conversation and contextual recollections",
+    authoredInstructions: "Authored post-history direction",
+    metadata: "Response format and evidence metadata",
+  };
+  return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
+    const blocks = sections[section].filter((block) => block.text.trim());
+    return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
+  });
+}
+
+export const VENUE_RESIDENT_REQUESTS =
+  "Capture spontaneous resident proposals only when they actually occur in spoken dialogue, using speakerId and an exact quote. residenceRequest also needs an available venueId for a requested move; residenceDecision needs approved for acceptance/refusal of a pending player move request. upgradeRequest identifies one concrete structural improvement to this Venue. venueRequest needs name and classes (one or two of workplace, gathering, other) for a NEW public venue, rather than an upgrade here. If a required resident approves or declines a listed exact edit proposal, editApproval needs proposalId and approved. Omit unused fields. Player requests, hypothetical speech, silence, or a different speaker are never resident consent. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.";
+
+export const VENUE_DEPARTURE_METADATA =
+  'For an explicitly departing resident return departures:[{speakerId,quote:"exact spoken departure"}]. Return sceneEnded:{speakerId,quote:"exact spoken ending"} only when dialogue ends the whole encounter, never for player silence or ordinary company.';
+
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   return [

@@ -6,6 +6,8 @@ Scenes use complete captured character cards, including appearance, dialogue exa
 
 Narration defaults to second person and present tense. Writing Settings retain tense, person, rating, and additional prose guidance; presentation preferences cannot overwrite character identity. Conversation may consist entirely of dialogue, with narration added when it contributes action, information, atmosphere, or consequences. Personal preferences and suggestions do not require Project approval, while commitments, access, and lasting changes retain their evidence checks.
 
+Writing context treats missing relationship history as neither distrust nor intimacy. Established ties and witnessed experiences affect particular relationships without replacing authored temperament. Scene direction, complete cards, circumstances, witnessed context, authored post-history instructions, and response metadata are assembled as separate sections in the same narration request. Pending proposals appear when present; ordinary conversation retains the evidence contract for spontaneous invitations and proposals. This organization adds no generation or automatic metadata-review calls.
+
 Wishes are private natural motives. They require no visible tell, recurring gesture, or mention in unrelated conversation. Legacy tells remain readable but are excluded from Scene-writing inputs. If complete character identity and required Scene context cannot fit the Narration connection after optional history, memories, and lore are reduced, Villages reports the problem before requesting a reply.
 
 ## Optional Decisions interpretation
