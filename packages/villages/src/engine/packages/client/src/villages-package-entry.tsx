@@ -7804,8 +7804,7 @@ type MapPin = {
    * founding wizard and the houses editor is: those are places being put down.
    */
   kind?: "place" | "person";
-  face?: ReactNode;
-  offsetY?: number;
+  venueId?: string;
   /** True while this place's View venue and Visit choices are open. */
   selected?: boolean;
   /** Absent for a pin that leads nowhere, which is drawn as a label rather than a button. */
@@ -16652,14 +16651,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           text: villager.name,
           tone: "resident",
           kind: "person",
-          offsetY: 72 * (index + 1),
-          face: (
-            <AvatarFace
-              portrait={portraits[villager.characterId]}
-              name={villager.name}
-              className={ELEMENT_TAG + "-explore-face"}
-            />
-          ),
+          venueId: place.id,
           selected: mobile && openPlaceId === place.id,
           onSelect: mobile ? () => openVenue(place) : undefined,
         });
