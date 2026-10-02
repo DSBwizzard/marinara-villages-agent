@@ -10,6 +10,8 @@ Writing context treats missing relationship history as neither distrust nor inti
 
 Wishes are private natural motives. They require no visible tell, recurring gesture, or mention in unrelated conversation. Legacy tells remain readable but are excluded from Scene-writing inputs. If complete character identity and required Scene context cannot fit the Narration connection after optional history, memories, and lore are reduced, Villages reports the problem before requesting a reply.
 
+Draft 0.6.115 retains the established writing direction after an isolated shorter-direction experiment failed to improve character fidelity consistently. An internal response-contract builder consolidates evidence, witnesses, authority and field instructions within the existing narration request; validation, output fields and explicit recovery remain unchanged. The compact contract remains under quality review: shorter instructions alone have not established better dialogue, and this draft is not cleared for release. Conditional willingness remains distinct from unconditional commitments or standing invitations; contextual entry cautions still apply.
+
 ## Optional Decisions interpretation
 
 Scenes have a **Use Decisions · On / Off** switch. It defaults Off and saves across Scenes and refreshes. System interpretation supports the complete room, Project and Wish paths. When On, Villages uses the Engine's current Decision selection for suitable interpretation checks and automatically falls back to System for unavailable, incomplete, contradictory, or unresolved answers. Switch changes affect the next admitted Scene operation, including in another tab; submitted work keeps its original setting.

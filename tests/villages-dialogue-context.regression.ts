@@ -209,6 +209,8 @@ async function run() {
     ])
       assert.ok(prompt.includes(field), field);
     assert.ok(prompt.includes("One-visit permission and unconditional standing invitations are distinct"));
+    assert.ok(prompt.includes("Conditional willingness is not an unconditional commitment or standing invitation"));
+    assert.ok(prompt.includes("contextual entry cautions remain meaningful"));
     assert.ok(prompt.includes("Only an authorized controller"));
     assert.ok(prompt.includes("Targeting is intent, not isolation"));
     assert.ok(prompt.includes("Never narrate a lasting change without a valid sceneChange"));
