@@ -116,14 +116,11 @@ try {
         if (scenario.label === "steward") await screenshot(page, "settings-" + width);
         await page.getByRole("button", { name: "Run setup again" }).click();
       } else {
-        await page.getByRole("textbox", { name: "What is this village called?" }).fill("Harbor");
-        await page.getByRole("textbox", { name: "Where are we?" }).fill("A fishing village on sea cliffs.");
-        await page
-          .getByRole("textbox", { name: "What brings you and the others together here?" })
-          .fill("Neighbors arrived with damaged boats.");
+        await page.locator(".marinara-capability-villages-identity-card").filter({ hasText: "Ada" }).click();
+        await expect(page.getByLabel("System", { exact: true })).toBeVisible();
       }
       await page.getByRole("button", { name: "Next →", exact: true }).click();
-      await expect(page.getByText("Step 2 of 5 · Connections & Persona")).toBeVisible();
+      await expect(page.getByText("Step 2 of 5 · Your Role & Villagers")).toBeVisible();
       if (scenario.founded) {
         const summary = page.getByRole("region", { name: "Your place in the village" });
         await expect(summary).toContainText(
@@ -136,6 +133,7 @@ try {
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
       } else {
+        await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         const role = page.getByRole("group", { name: "Your place in the village" });
         await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("Project Coordinator");
         await role.scrollIntoViewIfNeeded();

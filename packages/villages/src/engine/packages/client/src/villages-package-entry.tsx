@@ -160,8 +160,6 @@ const LEGACY_FOUNDING_REASONS: Readonly<Record<string, string>> = {
 };
 const foundingScenario = (value: FoundingScenarioId) =>
   FOUNDING_SCENARIOS.find((scenario) => scenario.value === value)!;
-const foundingScenarioArt = (value: FoundingScenarioId) =>
-  `/api/capability-packages/villages/assets/founding-${value}.jpg`;
 type MapElementChoice = "auto" | "include" | "exclude";
 type TownMapOptions = { roads: MapElementChoice; structures: MapElementChoice; water: MapElementChoice };
 const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "auto", water: "auto" };
@@ -170,7 +168,13 @@ const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "a
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
-const SETUP_STEPS = ["Village Beginning", "Connections & Persona", "Village Map", "Starting Spaces", "Review"] as const;
+const SETUP_STEPS = [
+  "Persona & Connections",
+  "Your Role & Villagers",
+  "Village & Map",
+  "Starting Spaces",
+  "Review",
+] as const;
 const SETUP_MIN_VILLAGER_COUNT = 1;
 const SETUP_MAX_VILLAGER_COUNT = 3;
 
@@ -4896,7 +4900,6 @@ const VILLAGES_STYLES = `
   font-size: clamp(1.25rem, 1.8vw, 1.65rem); color: #f5f5ff;
 }
 .${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-field { margin-top: .15rem; }
-.${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-overlay { height: 100%; min-height: 0; overflow: hidden; }
 .${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-search,
 .${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-textarea,
 .${ELEMENT_TAG}-setup-body .${ELEMENT_TAG}-select,
@@ -5062,7 +5065,6 @@ const VILLAGES_STYLES = `
   .${ELEMENT_TAG}-setup-body { flex: none; }
   .${ELEMENT_TAG}-setup-body > .${ELEMENT_TAG}-side,
   .${ELEMENT_TAG}-setup-visual { flex: 1 1 100%; }
-  .${ELEMENT_TAG}-setup-body[data-step="1"] .${ELEMENT_TAG}-overlay { height: auto; overflow: visible; }
   .${ELEMENT_TAG}-identity-preview { max-height: none; }
   .${ELEMENT_TAG}-connections-grid { grid-template-columns: 1fr; }
   .${ELEMENT_TAG}-scenario-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -6030,6 +6032,79 @@ a chat is the moment this tab stops being a picture of a village and starts
   .${ELEMENT_TAG}-sectioned-menu .${ELEMENT_TAG}-menu-nav .${ELEMENT_TAG}-button { flex: 0 0 auto; min-height: 2.5rem; white-space: nowrap; }
   .${ELEMENT_TAG}-menu-content { grid-column: 1; grid-row: 3; padding: .75rem; }
   .${ELEMENT_TAG}-sectioned-menu > .${ELEMENT_TAG}-header { padding: .75rem; }
+}
+
+/* Approved founding flow: a shared footer and compact, direct venue editing. */
+.${ELEMENT_TAG}-setup-root { display: flex; flex-direction: column; gap: .65rem; padding: .75rem; height: 100%; overflow: hidden; }
+.${ELEMENT_TAG}-setup-heading h1 { margin: 0; font-size: 1.5rem; }
+.${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-body { display: grid; grid-template-columns: 10rem minmax(0, 1fr); flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.${ELEMENT_TAG}-setup-workspace { display: flex; flex-direction: column; gap: .65rem; min-width: 0; padding: .15rem .25rem .5rem; }
+.${ELEMENT_TAG}-setup-workspace > h2 { margin: 0; }
+.${ELEMENT_TAG}-setup-workspace .${ELEMENT_TAG}-search, .${ELEMENT_TAG}-setup-workspace .${ELEMENT_TAG}-select { min-height: 44px; font-size: .875rem; }
+.${ELEMENT_TAG}-setup-workspace .${ELEMENT_TAG}-label { font-size: .85rem; }
+.${ELEMENT_TAG}-setup-workspace .${ELEMENT_TAG}-hint { font-size: .8rem; line-height: 1.4; }
+.${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-footer { flex: none; background: #192c4c; padding: .5rem; border-radius: .6rem; }
+.${ELEMENT_TAG}-setup-world-map { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; align-items: start; }
+.${ELEMENT_TAG}-setup-spaces { display: grid; grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); gap: .75rem; align-items: start; }
+.${ELEMENT_TAG}-setup-placement, .${ELEMENT_TAG}-setup-editor-column { min-width: 0; }
+.${ELEMENT_TAG}-setup-persona-summary { display: flex; gap: .65rem; align-items: center; border: 1px solid #5265ac; border-radius: .65rem; padding: .5rem; }
+.${ELEMENT_TAG}-setup-persona-summary button { margin-left: auto; }
+.${ELEMENT_TAG}-founding-roster { display: flex; flex-direction: column; gap: .4rem; min-width: 0; }
+.${ELEMENT_TAG}-founding-roster .${ELEMENT_TAG}-identity-picker-head { justify-content: space-between; }
+.${ELEMENT_TAG}-founding-roster h3, .${ELEMENT_TAG}-founding-roster p { margin: 0; }
+.${ELEMENT_TAG}-founding-roster-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 4.4rem; gap: .45rem; height: 14.3rem; padding: .15rem; overflow-y: scroll; scrollbar-width: thin; scrollbar-gutter: stable; border: 1px solid #51688c; border-radius: .6rem; }
+.${ELEMENT_TAG}-founding-roster-card { display: flex; gap: .5rem; align-items: center; min-width: 0; padding: .4rem; background: #192c4c; border: 1px solid #51688c; border-radius: .5rem; color: #f3f5ff; font: inherit; text-align: left; cursor: pointer; }
+.${ELEMENT_TAG}-founding-roster-card > span:nth-child(2) { display: flex; flex-direction: column; gap: .15rem; min-width: 0; flex: 1; }
+.${ELEMENT_TAG}-founding-roster-card strong, .${ELEMENT_TAG}-founding-roster-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.${ELEMENT_TAG}-founding-roster-card small { font-size: .7rem; color: #b3bee8; }
+.${ELEMENT_TAG}-founding-roster-card[aria-pressed="true"] { border-color: #b49aff; box-shadow: inset 0 0 0 1px #b49aff; background: #303561; }
+.${ELEMENT_TAG}-founding-roster-card:disabled { opacity: .65; cursor: default; }
+.${ELEMENT_TAG}-roster-check { flex: none; width: 1rem; height: 1rem; border: 1px solid #7082cf; border-radius: .2rem; text-align: center; }
+.${ELEMENT_TAG}-founding-roster-card[aria-pressed="true"] .${ELEMENT_TAG}-roster-check { background: #7461d5; }
+.${ELEMENT_TAG}-setup-spaces .${ELEMENT_TAG}-setup-venue-card { grid-template-columns: 2rem minmax(0, 1fr); min-height: 2.8rem; padding: .3rem .5rem; }
+.${ELEMENT_TAG}-setup-spaces .${ELEMENT_TAG}-setup-venue-card img, .${ELEMENT_TAG}-setup-spaces .${ELEMENT_TAG}-setup-venue-placeholder { width: 2rem; height: 2rem; }
+.villages-founding-backdrop { position: static; display: block; background: transparent; }
+.villages-founding-dialog { width: 100%; max-height: min(42rem, max(14rem, calc(100cqh - 12rem))); box-sizing: border-box; }
+.villages-founding-dialog header, .villages-founding-dialog footer, .villages-founding-editor-body { padding: .65rem; }
+.villages-founding-dialog header h3, .villages-founding-dialog header p { margin: .2rem 0; }
+.villages-founding-dialog textarea { min-height: 4rem; }
+.villages-founding-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; padding: .5rem .65rem; }
+.villages-founding-tabs button[aria-selected="true"], .villages-layout-choice[aria-pressed="true"], .villages-layout-exterior { background: #7461d5; color: #fff; border: 1px solid #b49aff; }
+.villages-layout-exterior { display: block; border-radius: .5rem; padding: .5rem; }
+.villages-layout-toggles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; }
+.villages-layout-choice { font: inherit; border: 1px solid #65799c; border-radius: .5rem; padding: .5rem; color: #f3f5ff; background: #192c4c; min-height: 44px; cursor: pointer; }
+.villages-layout-fields p { font-size: .75rem; }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"][data-photo-pins="true"] .${ELEMENT_TAG}-pin-photo-card { width: 5.5rem; }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo img { object-fit: contain; }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo { overflow: hidden; }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-holder:has(.${ELEMENT_TAG}-pin:hover), .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-holder:focus-within { z-index: 7; }
+@media (hover: hover) { .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin:hover .${ELEMENT_TAG}-pin-photo-card { transform: scale(1) !important; } }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin:focus-visible .${ELEMENT_TAG}-pin-photo-card { transform: scale(1) !important; }
+.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo-tack { width: .4rem; height: .4rem; }
+@container (max-width: 70rem) {
+  .${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content max-content; align-content: start; }
+  .${ELEMENT_TAG}-setup-world-map { grid-template-columns: minmax(0, 1fr); }
+  .${ELEMENT_TAG}-setup-spaces { grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem); }
+}
+@container (max-width: 42rem) {
+  .${ELEMENT_TAG}-setup-root { padding: .4rem; }
+  .${ELEMENT_TAG}-setup-spaces { grid-template-columns: minmax(0, 1fr); }
+  .${ELEMENT_TAG}-setup-persona-summary { flex-wrap: wrap; }
+  .${ELEMENT_TAG}-founding-roster-card { gap: .25rem; font-size: .75rem; }
+  .${ELEMENT_TAG}-founding-roster-card .${ELEMENT_TAG}-identity-card-face { width: 1.8rem; height: 1.8rem; }
+}
+@media (max-width: 704px) {
+  .villages-founding-backdrop { position: fixed; inset: 0; z-index: 1000; background: #070b1bd9; }
+  .villages-founding-dialog { width: 100%; height: 100%; max-height: 100dvh; border-radius: 0; }
+}
+
+.${ELEMENT_TAG}-founding-role-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.${ELEMENT_TAG}-founding-role-fields label { display: flex; flex-direction: column; gap: .3rem; min-width: 0; }
+.villages-founding-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.villages-founding-editor-heading button { flex: none; }
+@container (max-width: 42rem) {
+  .${ELEMENT_TAG}-founding-role-fields { grid-template-columns: minmax(0, 1fr); }
+  .${ELEMENT_TAG}-founding-role-fields textarea { min-height: 8rem; }
 }
 `;
 
@@ -7958,6 +8033,7 @@ function MapStage({
   navigationView,
   onNavigationView,
   photoPins,
+  compactPhotos = false,
   placementCursor,
   children,
 }: {
@@ -8000,6 +8076,7 @@ function MapStage({
   onNavigationView?(next: MobileMapView | null): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
+  compactPhotos?: boolean;
   placementCursor?: { x: number; y: number };
   /**
    * Anything that belongs on the picture rather than beside it. Drawn inside the
@@ -8357,6 +8434,7 @@ function MapStage({
       data-mobile={mobile ? "true" : "false"}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
       data-photo-pins={photoPins ? "true" : "false"}
+      data-compact-photos={compactPhotos ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
         if (mobile) {
@@ -8502,7 +8580,11 @@ function MapStage({
                       className={`${ELEMENT_TAG}-pin-photo-card`}
                       style={{
                         transform: `scale(${focusedPhotoScale(
-                          mobile ? mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom) : DESKTOP_PHOTO_SCALE,
+                          compactPhotos
+                            ? 0.36
+                            : mobile
+                              ? mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)
+                              : DESKTOP_PHOTO_SCALE,
                           pin.selected === true,
                         )})`,
                       }}
@@ -8707,34 +8789,6 @@ type IdentityPreview = IdentityChoice & {
   context: string;
 };
 
-function FoundingScenarioArtwork({ scenario }: { scenario: FoundingScenarioId }) {
-  const src = foundingScenarioArt(scenario);
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  return (
-    <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
-      {failedSrc === src ? (
-        <span
-          className={`${ELEMENT_TAG}-scenario-art-placeholder`}
-          role="img"
-          aria-label="Example illustration unavailable"
-        >
-          ⌂
-        </span>
-      ) : (
-        <img
-          src={src}
-          alt={`${foundingScenario(scenario).label} example illustration`}
-          onError={() => setFailedSrc(src)}
-        />
-      )}
-      <div className={`${ELEMENT_TAG}-scenario-art-content`}>
-        <p>Example illustration · your place can be anything.</p>
-        <strong>{foundingScenario(scenario).description}</strong>
-      </div>
-    </div>
-  );
-}
-
 /** Shared visual selection pattern; callers supply their own identity and status data. */
 function IdentityChoiceStrip({
   label,
@@ -8815,7 +8869,7 @@ function identityExcerpt(value: string, limit: number): string {
   return `${compact.slice(0, boundary > 0 ? boundary : nextBoundary > 0 ? nextBoundary : compact.length).trimEnd()}…`;
 }
 
-function personaPortrait(persona: { avatarPath: string | null; avatarCrop: unknown }): Portrait | undefined {
+function personaChoicePortrait(persona: { avatarPath: string | null; avatarCrop: unknown }): Portrait | undefined {
   return persona.avatarPath ? { url: persona.avatarPath, crop: readAvatarCrop(persona.avatarCrop) } : undefined;
 }
 
@@ -8842,7 +8896,7 @@ function FoundingPersonaSelector({
     .map((entry) => ({
       id: entry.id,
       name: entry.name,
-      portrait: personaPortrait(entry),
+      portrait: personaChoicePortrait(entry),
       hint: entry.summary,
     }));
 
@@ -8868,7 +8922,7 @@ function FoundingPersonaSelector({
       ? {
           id: preview.id,
           name: preview.name,
-          portrait: personaPortrait(preview),
+          portrait: personaChoicePortrait(preview),
           overview: identityExcerpt(
             preview.description || preview.appearance || preview.personality || preview.backstory,
             180,
@@ -8932,6 +8986,95 @@ function FoundingPersonaSelector({
         <p className={`${ELEMENT_TAG}-hint`}>Choose a Persona to see how Villages will know you.</p>
       )}
     </div>
+  );
+}
+
+function FoundingVillagerPicker({
+  catalog,
+  portraits,
+  selectedIds,
+  onChange,
+  disabled,
+}: {
+  catalog: CatalogEntry[] | null;
+  portraits: PortraitMap;
+  selectedIds: string[];
+  onChange(ids: string[]): void;
+  disabled: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const choices = [
+    ...(catalog ?? []),
+    ...selectedIds
+      .filter((id) => !catalog?.some((entry) => entry.id === id))
+      .map((id) => ({
+        id,
+        name: "Unavailable character",
+        summary: "Remove this selection and choose an available card.",
+      })),
+  ];
+  const visible = choices
+    .filter((entry) => entry.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return (
+    <section className={`${ELEMENT_TAG}-founding-roster`} aria-label="Founding villagers">
+      <div className={`${ELEMENT_TAG}-identity-picker-head`}>
+        <h3>Who joins the village?</h3>
+        <span role="status">{selectedIds.length} of 3 selected</span>
+      </div>
+      <p className={`${ELEMENT_TAG}-hint`}>
+        {disabled ? "Your existing founding villagers are kept." : "Choose 1–3 villagers from your character cards."}
+      </p>
+      <input
+        className={`${ELEMENT_TAG}-search`}
+        type="search"
+        aria-label="Search character cards by name"
+        placeholder="Search character cards by name"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div className={`${ELEMENT_TAG}-founding-roster-grid`} role="group" aria-label="Choose founding villagers">
+        {visible.map((entry) => {
+          const selected = selectedIds.includes(entry.id);
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              className={`${ELEMENT_TAG}-founding-roster-card`}
+              aria-label={entry.name}
+              aria-pressed={selected}
+              disabled={disabled || (!selected && selectedIds.length >= 3)}
+              onClick={() =>
+                onChange(selected ? selectedIds.filter((id) => id !== entry.id) : [...selectedIds, entry.id])
+              }
+            >
+              <AvatarFace
+                portrait={portraits[entry.id]}
+                name={entry.name}
+                className={`${ELEMENT_TAG}-identity-card-face`}
+                glyph="person"
+              />
+              <span>
+                <strong>{entry.name}</strong>
+                <small>{entry.summary}</small>
+              </span>
+              <span className={`${ELEMENT_TAG}-roster-check`} aria-hidden="true">
+                {selected ? "✓" : ""}
+              </span>
+            </button>
+          );
+        })}
+        {!visible.length ? (
+          <p className={`${ELEMENT_TAG}-hint`}>
+            {catalog === null
+              ? "Reading your character cards…"
+              : choices.length
+                ? "No character cards match your search."
+                : "Add character cards to your library before founding."}
+          </p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -9048,7 +9191,7 @@ function VillageLorebookPicker({
   const shown = filtered.slice(0, 50);
   return (
     <fieldset className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-lore-picker`}>
-      <legend className={`${ELEMENT_TAG}-label`}>Lorebooks for this village</legend>
+      <legend className={`${ELEMENT_TAG}-label`}>Village Lorebooks</legend>
       <p className={`${ELEMENT_TAG}-hint`}>
         Selected books supply live world facts for places, stories, conversations, wishes, agendas, and generated
         scenery. Villages never edits them.
@@ -13137,7 +13280,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
   const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
-  const [setupHomeCount, setSetupHomeCount] = useState(1);
+  const [setupFoundingVillagerIds, setSetupFoundingVillagerIds] = useState<string[]>([]);
+  const setupHomeCount = setupFoundingVillagerIds.length;
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
   const [setupEditorOpen, setSetupEditorOpen] = useState(false);
   const [setupCompletedIds, setSetupCompletedIds] = useState<string[]>([]);
@@ -15475,6 +15619,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       } else if (placingPublicCenter) {
         const venue = {
           ...newSetupVenue(freshRowKey(), "gathering", x, y),
+          layout: "exterior" as const,
           imageContext: { useAssignedVillagerContext: personalizeHomes, useVisualLore: visualLoreDefault },
         };
         setSetupVenues((rows) => [...rows, venue]);
@@ -15494,8 +15639,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             !residences.some((venue) => venue.occupancy.playerHome),
             residences.length + 1,
           ),
+          layout: "exterior" as const,
           imageContext: { useAssignedVillagerContext: personalizeHomes, useVisualLore: visualLoreDefault },
         };
+        if (!venue.occupancy.playerHome) {
+          const id = setupFoundingVillagerIds.find(
+            (id) => !residences.some((home) => home.occupancy.residentCharacterId === id),
+          );
+          if (!id) return;
+          venue.occupancy.residentCharacterId = id;
+          venue.residentIds = [id];
+          venue.name = (catalog?.find((entry) => entry.id === id)?.name ?? "Villager") + "'s residence";
+        }
         setSetupVenues((rows) => [...rows, venue]);
         setSelectedSetupVenueId(venue.id);
         setSetupNewVenueId(venue.id);
@@ -15511,6 +15666,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       placingHome,
       placingPublicCenter,
       setupHomeCount,
+      setupFoundingVillagerIds,
+      catalog,
       setupVenues,
       personalizeHomes,
       visualLoreDefault,
@@ -15596,7 +15753,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           ? { ...DEFAULT_PLAYER_ROLE }
           : village?.isFounded
             ? (village.settings.playerRole ?? null)
-            : { ...(village?.settings.playerRole ?? DEFAULT_PLAYER_ROLE) },
+            : { ...(village?.settings.playerRole ?? DEFAULT_PLAYER_ROLE), enabled: true },
       );
       setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
@@ -15607,10 +15764,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               (venue) => venue.classes?.includes("residence") || venue.category === "public-center",
             );
       setSetupVenues(foundingPlaces);
-      setSetupHomeCount(
-        Math.max(
-          1,
-          foundingPlaces.filter((venue) => venue.classes?.includes("residence") && !venue.occupancy.playerHome).length,
+      setSetupFoundingVillagerIds(
+        foundingPlaces.flatMap((venue) =>
+          venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [],
         ),
       );
       setSetupCompletedIds(
@@ -15651,32 +15807,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // respective steps are ready when the player reaches them.
       void loadPersonas();
       void loadLorebooks();
+      void loadCatalog();
       setScreen("setup");
     },
-    [loadLorebooks, loadPersonas],
+    [loadCatalog, loadLorebooks, loadPersonas],
   );
 
   const gotoSetupStep = useCallback(
     (step: number) => {
       if (setupStep === 0 && step > 0) {
-        if (setupName.trim().length === 0) {
-          setSetupProblem("Give the village a name before continuing.");
-          return;
-        }
-        if (setupSetting.trim().length === 0) {
-          setSetupProblem("Describe what the village is like before continuing.");
-          return;
-        }
-        if (!snapshot?.isFounded && !setupFoundingDetails.trim()) {
-          setSetupProblem("Describe what brings you and the others together here before continuing.");
-          return;
-        }
-      }
-      if (setupStep === 1 && step > 1) {
-        if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) {
-          setSetupProblem(playerRoleProblem(setupPlayerRole));
-          return;
-        }
         if (!personaDraft.trim()) {
           setSetupProblem("Choose the Persona who lives in this village.");
           return;
@@ -15694,13 +15833,36 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
       }
+      if (setupStep === 1 && step > 1 && !snapshot?.isFounded) {
+        const problem = playerRoleProblem(setupPlayerRole);
+        if (problem) {
+          setSetupProblem(problem);
+          return;
+        }
+        if (setupHomeCount < 1 || setupHomeCount > 3) {
+          setSetupProblem("Choose one to three founding villagers before continuing.");
+          return;
+        }
+        if (setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id))) {
+          setSetupProblem("A chosen villager is no longer in your character cards. Choose another villager.");
+          return;
+        }
+      }
       if (setupStep === 2 && step > 2) {
+        if (!setupName.trim()) {
+          setSetupProblem("Give the village a name before continuing.");
+          return;
+        }
+        if (!setupSetting.trim()) {
+          setSetupProblem("Describe what the village is like before continuing.");
+          return;
+        }
+        if (!snapshot?.isFounded && !setupFoundingDetails.trim()) {
+          setSetupProblem("Describe what brings you and the others together here before continuing.");
+          return;
+        }
         if (setupMapSource !== "none" && !setupMapSrc) {
-          setSetupProblem(
-            setupMapSource === "generate"
-              ? "Generate the map, or choose an upload or no background image."
-              : "Choose a map image, or select no background image.",
-          );
+          setSetupProblem("Choose, generate, or upload a map, or select no background image.");
           return;
         }
       }
@@ -15731,7 +15893,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
         const assigned = villagerHomes.map((venue) => venue.occupancy.residentCharacterId).filter(Boolean);
-        if (assigned.length !== villagerHomes.length || new Set(assigned).size !== assigned.length) {
+        if (
+          assigned.length !== villagerHomes.length ||
+          new Set(assigned).size !== assigned.length ||
+          (!snapshot?.isFounded &&
+            (assigned.length !== setupHomeCount || assigned.some((id) => !setupFoundingVillagerIds.includes(id!))))
+        ) {
           setSetupProblem("Assign a different villager to each villager Residence before review.");
           return;
         }
@@ -15765,10 +15932,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setImageWarningOpen(false);
       setSetupProblem("");
       setSetupStep(step);
-      // The build step assigns homes from the library, so the library is only read
-      // when that step is reached.
-      if (step === 1) void loadPersonas();
-      if (step === 0) void loadLorebooks();
+      if (step === 0) void loadPersonas();
+      if (step === 1) void loadCatalog();
+      if (step === 2) void loadLorebooks();
       if (step === 3) {
         void loadCatalog();
         setSetupEditorOpen(false);
@@ -15788,6 +15954,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     },
     [
       setupHomeCount,
+      setupFoundingVillagerIds,
+      catalog,
       setupCompletedIds,
       connectionSetupProblem,
       setupVenues,
@@ -15812,10 +15980,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const acknowledgeImageWarning = useCallback(() => {
     setImageWarningOpen(false);
     setSetupProblem("");
-    setSetupStep(2);
+    setSetupStep(1);
+    void loadCatalog();
     setPlacingHome(false);
     setPlacingPublicCenter(false);
-  }, []);
+  }, [loadCatalog]);
 
   const returnToImageSetup = useCallback(() => {
     setImageWarningOpen(false);
@@ -16035,10 +16204,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       .filter((id): id is string => id !== null);
     if (occupants.length !== villagerHomes.length) return "Choose who lives in each villager home.";
     if (new Set(occupants).size !== occupants.length) return "A villager can only live in one house.";
+    if (
+      !snapshot?.isFounded &&
+      (occupants.length !== setupHomeCount || occupants.some((id) => !setupFoundingVillagerIds.includes(id)))
+    )
+      return "Assign every villager chosen in Step 2 to one Residence.";
+    if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
+      return "A chosen villager is no longer in your character cards. Choose another villager in Step 2.";
     if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)
       return "Place one Gathering Place.";
     return "";
   }, [
+    setupHomeCount,
+    setupFoundingVillagerIds,
+    catalog,
     setupVenues,
     setupCompletedIds,
     personaDraft,
@@ -16104,6 +16283,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           // Founding is authoritative: submit the complete graph, including
           // the named public center, rather than relying on stored destinations.
           venues: setupVenues,
+          foundingCharacterIds: snapshot?.isFounded ? undefined : setupFoundingVillagerIds,
         }),
       });
       setSnapshot(founded);
@@ -16123,6 +16303,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, [
     element,
     setupVenues,
+    setupFoundingVillagerIds,
     snapshot?.isFounded,
     snapshot?.settings.foundingReason,
     snapshot?.settings.foundingDetails,
@@ -16443,6 +16624,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const portraitWanted = [
     ...(snapshot?.villagers ?? []).map((villager) => villager.characterId),
     ...(pickerOpen ? visibleCatalog.map((entry) => entry.id) : []),
+    ...(screen === "setup" && setupStep === 1 ? (catalog ?? []).map((entry) => entry.id) : []),
   ].join("\n");
 
   /**
@@ -16674,6 +16856,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         text: venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence"),
         image: venue.presentation.image?.url ?? null,
         tone: venue.category === "public-center" ? "venue" : venue.occupancy.playerHome ? "player" : "resident",
+        selected: setupEditorOpen && selectedSetupVenueId === venue.id,
         onSelect: () => {
           setupEditorOriginal.current = structuredClone(venue);
           setSelectedSetupVenueId(venue.id);
@@ -20508,9 +20691,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }
 
   if (screen === "setup") {
-    const wizardVillagers = (catalog ?? []).map((entry) => ({ id: entry.id, name: entry.name }));
+    const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
+      id,
+      name: catalog?.find((entry) => entry.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
+    }));
+    const selectedPersona = personas?.find((entry) => entry.id === personaDraft);
+    const chooseFoundingVillagers = (ids: string[]) => {
+      const removed = setupVenues.filter(
+        (venue) => venue.occupancy.residentCharacterId && !ids.includes(venue.occupancy.residentCharacterId),
+      );
+      setSetupFoundingVillagerIds(ids);
+      setSetupVenues((rows) => rows.filter((venue) => !removed.some((row) => row.id === venue.id)));
+      setSetupCompletedIds((completed) => completed.filter((id) => !removed.some((row) => row.id === id)));
+      setSetupProblem("");
+    };
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root`}>
+        <header className={`${ELEMENT_TAG}-setup-heading`}>
+          <h1>{snapshot?.isFounded ? "Setting the village up again" : "Founding your village"}</h1>
+        </header>
         <div className={`${ELEMENT_TAG}-home-body ${ELEMENT_TAG}-setup-body`} data-step={setupStep}>
           <aside className={`${ELEMENT_TAG}-setup-rail`} aria-label="Founding progress">
             {SETUP_STEPS.map((label, index) => (
@@ -20526,514 +20725,622 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </div>
             ))}
           </aside>
-          <div className={`${ELEMENT_TAG}-side`}>
-            <div className={`${ELEMENT_TAG}-overlay`}>
-              <div className={`${ELEMENT_TAG}-overlay-head`}>
-                <h2 className={`${ELEMENT_TAG}-panel-title`}>
-                  {snapshot?.isFounded ? "Setting the village up again" : "Founding your village"}
-                </h2>
-              </div>
-              <p className={`${ELEMENT_TAG}-setup-kicker`}>
-                Step {setupStep + 1} of {SETUP_STEPS.length} · {SETUP_STEPS[setupStep]}
-              </p>
 
-              {setupStep === 0 ? (
-                <>
-                  <div className={`${ELEMENT_TAG}-field`}>
-                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-name`}>
-                      What is this village called?
-                    </label>
-                    <input
-                      id={`${ELEMENT_TAG}-setup-name`}
-                      className={`${ELEMENT_TAG}-search`}
-                      type="text"
-                      value={setupName}
-                      maxLength={snapshot?.settings.villageNameMaxLength}
-                      placeholder="Ashwater"
-                      disabled={busy}
-                      onChange={(event) => setSetupName(event.target.value)}
-                    />
-                  </div>
-                  <fieldset className={`${ELEMENT_TAG}-field`}>
-                    <legend className={ELEMENT_TAG + "-label"}>Starting circumstances</legend>
-                    <p className={ELEMENT_TAG + "-hint"}>
-                      These examples show starting circumstances. Rewrite them completely to fit your place and people;
-                      they do not decide what happens next.
+          <main className={`${ELEMENT_TAG}-setup-workspace`}>
+            <h2 className={`${ELEMENT_TAG}-panel-title`}>{SETUP_STEPS[setupStep]}</h2>
+            <p className={`${ELEMENT_TAG}-setup-kicker`}>
+              Step {setupStep + 1} of {SETUP_STEPS.length} · {SETUP_STEPS[setupStep]}
+            </p>
+            {setupStep === 0 ? (
+              <section className={`${ELEMENT_TAG}-overlay`}>
+                <FoundingPersonaSelector
+                  personas={personas}
+                  draft={personaDraft}
+                  onDraft={setPersonaDraft}
+                  disabled={busy}
+                />
+                <AgentConnections
+                  onSetupProblem={setConnectionSetupProblem}
+                  onImageWarningChange={setImageConnectionWarning}
+                  compact
+                />
+                {imageWarningOpen ? (
+                  <div
+                    className={`${ELEMENT_TAG}-chat-confirm`}
+                    role="alertdialog"
+                    aria-label="Image connection recommendation"
+                  >
+                    <p className={`${ELEMENT_TAG}-chat-confirm-note`}>
+                      Villages is meant to be an immersive experience with dynamic locations and expressive characters.
+                      An image connection is highly recommended for the complete Villages experience.
                     </p>
-                    <div className={`${ELEMENT_TAG}-scenario-options`}>
-                      {FOUNDING_SCENARIOS.map((scenario) => (
-                        <label key={scenario.value} className={`${ELEMENT_TAG}-scenario-option`}>
-                          <input
-                            type="radio"
-                            name={`${ELEMENT_TAG}-founding-scenario`}
-                            checked={setupFoundingReason === scenario.value}
-                            disabled={busy || snapshot?.isFounded}
-                            onChange={() => chooseSetupScenario(scenario.value)}
-                          />
-                          <span className={`${ELEMENT_TAG}-scenario-icon`} aria-hidden="true">
-                            {scenario.icon}
-                          </span>
-                          <strong>{scenario.label}</strong>
-                          <small>{scenario.description}</small>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                  {snapshot?.isFounded ? (
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      The original starting circumstances are part of this place&apos;s history.
+                    <p className={`${ELEMENT_TAG}-macro-help`}>
+                      Villages is still playable without an image connection. You can always manually add images to
+                      locations, characters, and more.
                     </p>
-                  ) : null}
-                </>
-              ) : null}
-
-              {setupStep === 1 ? (
-                <>
-                  <FoundingPersonaSelector
-                    personas={personas}
-                    draft={personaDraft}
-                    onDraft={setPersonaDraft}
-                    disabled={busy}
-                  />
-                  {snapshot?.isFounded ? (
-                    <PlayerRoleSummary role={setupPlayerRole} />
-                  ) : (
-                    <PlayerRoleFields
-                      role={setupPlayerRole ?? { ...DEFAULT_PLAYER_ROLE }}
-                      onChange={setSetupPlayerRole}
-                      disabled={busy}
-                    />
-                  )}
-                  <AgentConnections
-                    onSetupProblem={setConnectionSetupProblem}
-                    onImageWarningChange={setImageConnectionWarning}
-                    compact
-                  />
-                  {imageWarningOpen ? (
-                    <div
-                      className={`${ELEMENT_TAG}-chat-confirm`}
-                      role="alertdialog"
-                      aria-label="Image connection recommendation"
-                    >
-                      <p className={`${ELEMENT_TAG}-chat-confirm-note`}>
-                        Villages is meant to be an immersive experience with dynamic locations and expressive
-                        characters. An image connection is highly recommended for the complete Villages experience.
-                      </p>
-                      <p className={`${ELEMENT_TAG}-macro-help`}>
-                        Villages is still playable without an image connection. You can always manually add images to
-                        locations, characters, and more.
-                      </p>
-                      <span className={`${ELEMENT_TAG}-chat-confirm-row`}>
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={busy}
-                          onClick={returnToImageSetup}
-                        >
-                          Set up an image connection
-                        </button>
-                        <button
-                          type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={busy}
-                          onClick={acknowledgeImageWarning}
-                        >
-                          I understand, continue
-                        </button>
-                      </span>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-
-              {setupStep === 0 ? (
-                <>
-                  <div className={`${ELEMENT_TAG}-field`}>
-                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-setting`}>
-                      Where are we?
-                    </label>
-                    <textarea
-                      id={`${ELEMENT_TAG}-setup-setting`}
-                      className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
-                      value={setupSetting}
-                      maxLength={snapshot?.settings.settingMaxLength}
-                      placeholder="An unused shopping mall in a city where housing is scarce. The building still has power and water."
-                      disabled={busy || setupMapBusy}
-                      onChange={(event) => {
-                        setSetupSetting(event.target.value);
-                      }}
-                    />
-                    <span className={`${ELEMENT_TAG}-hint`}>
-                      Required. Ground the place, surrounding world, and relevant current conditions. Its identity and
-                      shared life develop through play.
-                    </span>
-                  </div>
-                  {snapshot?.isFounded ? (
-                    <div className={`${ELEMENT_TAG}-field`}>
-                      <strong>Starting circumstances</strong>
-                      <p className={`${ELEMENT_TAG}-hint`}>
-                        {snapshot.settings.foundingDetails || "This place has no recorded starting circumstances."}
-                      </p>
-                      <span className={`${ELEMENT_TAG}-hint`}>
-                        The original starting circumstances are history and cannot be rewritten here.
-                      </span>
-                    </div>
-                  ) : (
-                    <div className={`${ELEMENT_TAG}-field`}>
-                      <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
-                        What brings you and the others together here?
-                      </label>
-                      <textarea
-                        id={`${ELEMENT_TAG}-founding-details`}
-                        className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
-                        value={setupFoundingDetails}
-                        maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
-                        placeholder="Housing elsewhere is unavailable, so you and the others are staying in the mall."
-                        disabled={busy}
-                        onChange={(event) => setSetupFoundingDetails(event.target.value)}
-                      />
-                      <span className={`${ELEMENT_TAG}-hint`}>
-                        Required for every village, including No preset. Give a brief reason you share this place;
-                        everyday reasons are enough. Leave individual motives and what happens next open. In the next
-                        step, choose your place in this community.
-                      </span>
-                    </div>
-                  )}
-                  {snapshot?.isFounded ? (
-                    <div className={`${ELEMENT_TAG}-field`}>
-                      <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-world-facts`}>
-                        Current world facts
-                      </label>
-                      <textarea
-                        id={`${ELEMENT_TAG}-world-facts`}
-                        className={`${ELEMENT_TAG}-textarea`}
-                        value={setupWorldFacts.join("\n")}
-                        disabled={busy}
-                        placeholder="One stable fact per line, up to four."
-                        onChange={(event) => setSetupWorldFacts(event.target.value.split(/\r?\n/u))}
-                      />
-                      <span className={`${ELEMENT_TAG}-hint`}>
-                        Edit these when the village changes. They are current facts, separate from its locked beginning.
-                      </span>
-                    </div>
-                  ) : null}
-                  <VillageLorebookPicker
-                    books={lorebooks}
-                    error={lorebooksError}
-                    selected={setupLorebookDraft}
-                    onChange={(ids) => {
-                      setSetupLorebookDraft(ids);
-                    }}
-                    disabled={busy}
-                  />
-                  <details className={`${ELEMENT_TAG}-field`}>
-                    <summary className={`${ELEMENT_TAG}-label`}>Advanced lore settings</summary>
-                    <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-lore-budget`}>
-                      Lorebook token budget
-                    </label>
-                    <input
-                      id={`${ELEMENT_TAG}-setup-lore-budget`}
-                      className={`${ELEMENT_TAG}-notice-input`}
-                      type="number"
-                      min={snapshot?.settings.loreTokenBudgetMin ?? 200}
-                      max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
-                      step={100}
-                      value={setupLoreTokenBudgetDraft}
-                      disabled={busy}
-                      onChange={(event) => setSetupLoreTokenBudgetDraft(Number(event.target.value))}
-                    />
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      Maximum approximate lore tokens for village text, wishes, and agendas.
-                    </p>
-                  </details>
-                </>
-              ) : null}
-
-              {setupStep === 2 && snapshot?.isFounded ? (
-                <p className={`${ELEMENT_TAG}-hint`}>
-                  Replace the map and review venue pins in Village Settings → Village Map. Finish this setup to keep
-                  changes you made on earlier steps.
-                </p>
-              ) : null}
-              {setupStep === 2 && !snapshot?.isFounded ? (
-                <>
-                  <SceneryStyleFields value={sceneryStyle} onChange={setSceneryStyle} />
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={mapVisualLore}
-                      onChange={(event) => setMapVisualLore(event.target.checked)}
-                    />
-                    Use selected visual lore for the map
-                  </label>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={visualLoreDefault}
-                      onChange={(event) => setVisualLoreDefault(event.target.checked)}
-                    />
-                    Use visual lore for new venues by default
-                  </label>
-                  <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="Village map image source">
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-step`}
-                      data-clickable="true"
-                      data-active={setupMapSource === "generate" ? "true" : "false"}
-                      aria-pressed={setupMapSource === "generate"}
-                      disabled={setupMapBusy}
-                      onClick={() => setSetupMapSource("generate")}
-                    >
-                      Generate with AI
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-step`}
-                      data-clickable="true"
-                      data-active={setupMapSource === "upload" ? "true" : "false"}
-                      aria-pressed={setupMapSource === "upload"}
-                      disabled={setupMapBusy}
-                      onClick={() => setSetupMapSource("upload")}
-                    >
-                      Upload an image
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-step`}
-                      data-clickable="true"
-                      data-active={setupMapSource === "none" ? "true" : "false"}
-                      aria-pressed={setupMapSource === "none"}
-                      disabled={setupMapBusy}
-                      onClick={() => setSetupMapSource("none")}
-                    >
-                      No background image
-                    </button>
-                    {snapshot?.settings.townMapImageSetAt ? (
+                    <span className={`${ELEMENT_TAG}-chat-confirm-row`}>
                       <button
                         type="button"
-                        className={`${ELEMENT_TAG}-step`}
-                        data-clickable="true"
-                        data-active={setupMapSource === "existing" ? "true" : "false"}
-                        aria-pressed={setupMapSource === "existing"}
-                        disabled={setupMapBusy}
-                        onClick={() => setSetupMapSource("existing")}
+                        className={`${ELEMENT_TAG}-button`}
+                        disabled={busy}
+                        onClick={returnToImageSetup}
                       >
-                        Keep current map
+                        Set up an image connection
                       </button>
-                    ) : null}
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        disabled={busy}
+                        onClick={acknowledgeImageWarning}
+                      >
+                        I understand, continue
+                      </button>
+                    </span>
                   </div>
-                  {setupMapSource === "generate" ? (
+                ) : null}
+              </section>
+            ) : null}
+            {setupStep === 1 ? (
+              <section className={`${ELEMENT_TAG}-overlay`}>
+                <section className={`${ELEMENT_TAG}-setup-persona-summary`} aria-label="Your selected Persona">
+                  <AvatarFace
+                    portrait={selectedPersona ? personaChoicePortrait(selectedPersona) : undefined}
+                    name={selectedPersona?.name ?? "You"}
+                    className={`${ELEMENT_TAG}-identity-preview-face`}
+                    glyph="person"
+                  />
+                  <strong>{selectedPersona?.name ?? "Selected Persona"}</strong>
+                  <span className={`${ELEMENT_TAG}-hint`}>Your selected Persona</span>
+                  <button
+                    className={`${ELEMENT_TAG}-button`}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => gotoSetupStep(0)}
+                  >
+                    Change in Step 1
+                  </button>
+                </section>
+                {snapshot?.isFounded ? (
+                  <PlayerRoleSummary role={setupPlayerRole} />
+                ) : (
+                  <PlayerRoleFields
+                    role={setupPlayerRole ?? { ...DEFAULT_PLAYER_ROLE }}
+                    onChange={setSetupPlayerRole}
+                    disabled={busy}
+                  />
+                )}
+
+                <FoundingVillagerPicker
+                  catalog={catalog}
+                  portraits={portraits}
+                  selectedIds={setupFoundingVillagerIds}
+                  onChange={chooseFoundingVillagers}
+                  disabled={busy || !!snapshot?.isFounded}
+                />
+              </section>
+            ) : null}
+            {setupStep === 2 ? (
+              <div className={`${ELEMENT_TAG}-setup-world-map`}>
+                <section className={`${ELEMENT_TAG}-overlay`}>
+                  {setupStep === 2 ? (
                     <>
-                      <details className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-advanced`}>
-                        <summary className={`${ELEMENT_TAG}-label`}>Advanced map elements</summary>
-                        <p className={`${ELEMENT_TAG}-hint`}>
-                          Auto follows your village description. Include or exclude a feature only when you want to
-                          override it.
+                      <div className={`${ELEMENT_TAG}-field`}>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-name`}>
+                          What is this village called?
+                        </label>
+                        <input
+                          id={`${ELEMENT_TAG}-setup-name`}
+                          className={`${ELEMENT_TAG}-search`}
+                          type="text"
+                          value={setupName}
+                          maxLength={snapshot?.settings.villageNameMaxLength}
+                          placeholder="Ashwater"
+                          disabled={busy}
+                          onChange={(event) => setSetupName(event.target.value)}
+                        />
+                      </div>
+                      <fieldset className={`${ELEMENT_TAG}-field`}>
+                        <legend className={ELEMENT_TAG + "-label"}>Starting circumstances</legend>
+                        <p className={ELEMENT_TAG + "-hint"}>
+                          These examples show starting circumstances. Rewrite them completely to fit your place and
+                          people; they do not decide what happens next.
                         </p>
-                        <div className={`${ELEMENT_TAG}-reason-options`}>
-                          {(
-                            [
-                              ["roads", "Roads and paths"],
-                              ["structures", "Structures"],
-                              ["water", "Water"],
-                            ] as const
-                          ).map(([key, label]) => (
-                            <label key={key} className={`${ELEMENT_TAG}-label`}>
-                              {label}
-                              <select
-                                className={`${ELEMENT_TAG}-select`}
-                                value={setupMapOptions[key]}
-                                disabled={setupMapBusy}
-                                onChange={(event) =>
-                                  setSetupMapOptions((previous) => ({
-                                    ...previous,
-                                    [key]: event.target.value as MapElementChoice,
-                                  }))
+                        <div className={`${ELEMENT_TAG}-scenario-options`}>
+                          {FOUNDING_SCENARIOS.filter((scenario) => scenario.value !== "none").map((scenario) => (
+                            <label key={scenario.value} className={`${ELEMENT_TAG}-scenario-option`}>
+                              <input
+                                type="radio"
+                                name={`${ELEMENT_TAG}-founding-scenario`}
+                                checked={
+                                  setupFoundingReason === scenario.value ||
+                                  (setupFoundingReason === "none" && scenario.value === "custom")
                                 }
-                              >
-                                <option value="auto">Auto</option>
-                                <option value="include">Include</option>
-                                <option value="exclude">Exclude</option>
-                              </select>
+                                disabled={busy || snapshot?.isFounded}
+                                onChange={() => chooseSetupScenario(scenario.value)}
+                              />
+                              <span className={`${ELEMENT_TAG}-scenario-icon`} aria-hidden="true">
+                                {scenario.icon}
+                              </span>
+                              <strong>{scenario.label}</strong>
+                              <small>{scenario.description}</small>
                             </label>
                           ))}
                         </div>
-                      </details>
-                      <details className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-advanced`}>
-                        <summary className={`${ELEMENT_TAG}-label`}>Testing prompt controls</summary>
+                      </fieldset>
+                      {snapshot?.isFounded ? (
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          The original starting circumstances are part of this place&apos;s history.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
+
+                  {setupStep === 2 ? (
+                    <>
+                      <div className={`${ELEMENT_TAG}-field`}>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-setting`}>
+                          Where are we?
+                        </label>
+                        <textarea
+                          id={`${ELEMENT_TAG}-setup-setting`}
+                          className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
+                          value={setupSetting}
+                          maxLength={snapshot?.settings.settingMaxLength}
+                          placeholder="An unused shopping mall in a city where housing is scarce. The building still has power and water."
+                          disabled={busy || setupMapBusy}
+                          onChange={(event) => {
+                            setSetupSetting(event.target.value);
+                          }}
+                        />
+                        <span className={`${ELEMENT_TAG}-hint`}>
+                          Required. Ground the place, surrounding world, and relevant current conditions. Its identity
+                          and shared life develop through play.
+                        </span>
+                      </div>
+                      {snapshot?.isFounded ? (
                         <div className={`${ELEMENT_TAG}-field`}>
-                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-prompt`}>
-                            <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Map layout prompt
-                          </label>
-                          <textarea
-                            id={`${ELEMENT_TAG}-setup-map-prompt`}
-                            className={`${ELEMENT_TAG}-textarea`}
-                            value={setupMapPrompt}
-                            maxLength={1500}
-                            disabled={setupMapBusy}
-                            onChange={(event) => setSetupMapPrompt(event.target.value)}
-                          />
+                          <strong>Starting circumstances</strong>
+                          <p className={`${ELEMENT_TAG}-hint`}>
+                            {snapshot.settings.foundingDetails || "This place has no recorded starting circumstances."}
+                          </p>
                           <span className={`${ELEMENT_TAG}-hint`}>
-                            Temporary testing override. The default comes from the server; edits apply only to this
-                            setup session.
+                            The original starting circumstances are history and cannot be rewritten here.
                           </span>
                         </div>
+                      ) : (
                         <div className={`${ELEMENT_TAG}-field`}>
-                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-negative`}>
-                            <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Negative map tags
+                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
+                            What brings you and the others together here?
                           </label>
                           <textarea
-                            id={`${ELEMENT_TAG}-setup-map-negative`}
-                            className={`${ELEMENT_TAG}-textarea`}
-                            value={setupMapNegativePrompt}
-                            maxLength={1500}
-                            disabled={setupMapBusy}
-                            onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
+                            id={`${ELEMENT_TAG}-founding-details`}
+                            className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
+                            value={setupFoundingDetails}
+                            maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
+                            placeholder="Housing elsewhere is unavailable, so you and the others are staying in the mall."
+                            disabled={busy}
+                            onChange={(event) => setSetupFoundingDetails(event.target.value)}
                           />
                           <span className={`${ELEMENT_TAG}-hint`}>
-                            Image providers handle negative tags differently. Review the resulting map before
-                            continuing.
+                            Required for every village. Give a brief reason you share this place; everyday reasons are
+                            enough. Leave individual motives and what happens next open. Choose a circumstance that fits
+                            your selected villagers.
                           </span>
                         </div>
-                        <div className={`${ELEMENT_TAG}-row`}>
-                          <button
-                            type="button"
-                            className={`${ELEMENT_TAG}-button`}
-                            disabled={
-                              setupMapBusy ||
-                              (setupMapPrompt === snapshot?.settings.townMapLayoutPrompt &&
-                                setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt)
-                            }
-                            onClick={() => {
-                              setSetupMapPrompt(snapshot?.settings.townMapLayoutPrompt ?? "");
-                              setSetupMapNegativePrompt(snapshot?.settings.townMapNegativePrompt ?? "");
-                            }}
-                          >
-                            Restore default prompt
-                          </button>
+                      )}
+                      {snapshot?.isFounded ? (
+                        <div className={`${ELEMENT_TAG}-field`}>
+                          <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-world-facts`}>
+                            Current world facts
+                          </label>
+                          <textarea
+                            id={`${ELEMENT_TAG}-world-facts`}
+                            className={`${ELEMENT_TAG}-textarea`}
+                            value={setupWorldFacts.join("\n")}
+                            disabled={busy}
+                            placeholder="One stable fact per line, up to four."
+                            onChange={(event) => setSetupWorldFacts(event.target.value.split(/\r?\n/u))}
+                          />
+                          <span className={`${ELEMENT_TAG}-hint`}>
+                            Edit these when the village changes. They are current facts, separate from its locked
+                            beginning.
+                          </span>
                         </div>
+                      ) : null}
+                      <VillageLorebookPicker
+                        books={lorebooks}
+                        error={lorebooksError}
+                        selected={setupLorebookDraft}
+                        onChange={(ids) => {
+                          setSetupLorebookDraft(ids);
+                        }}
+                        disabled={busy}
+                      />
+                      <details className={`${ELEMENT_TAG}-field`}>
+                        <summary className={`${ELEMENT_TAG}-label`}>Advanced lore settings</summary>
+                        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-lore-budget`}>
+                          Lorebook token budget
+                        </label>
+                        <input
+                          id={`${ELEMENT_TAG}-setup-lore-budget`}
+                          className={`${ELEMENT_TAG}-notice-input`}
+                          type="number"
+                          min={snapshot?.settings.loreTokenBudgetMin ?? 200}
+                          max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
+                          step={100}
+                          value={setupLoreTokenBudgetDraft}
+                          disabled={busy}
+                          onChange={(event) => setSetupLoreTokenBudgetDraft(Number(event.target.value))}
+                        />
+                        <p className={`${ELEMENT_TAG}-hint`}>
+                          Maximum approximate lore tokens for village text, wishes, and agendas.
+                        </p>
                       </details>
-                      <div className={`${ELEMENT_TAG}-row`}>
+                    </>
+                  ) : null}
+                </section>
+                <section className={`${ELEMENT_TAG}-overlay`}>
+                  <h3>Village Map</h3>
+                  {setupStep === 2 && snapshot?.isFounded ? (
+                    <p className={`${ELEMENT_TAG}-hint`}>
+                      Replace the map and review venue pins in Village Settings → Village Map. Finish this setup to keep
+                      changes you made on earlier steps.
+                    </p>
+                  ) : null}
+                  {setupStep === 2 && !snapshot?.isFounded ? (
+                    <>
+                      <SceneryStyleFields value={sceneryStyle} onChange={setSceneryStyle} />
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={mapVisualLore}
+                          onChange={(event) => setMapVisualLore(event.target.checked)}
+                        />
+                        Use Village lorebooks for the map
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={visualLoreDefault}
+                          onChange={(event) => setVisualLoreDefault(event.target.checked)}
+                        />
+                        Use Village lorebooks for new venues by default
+                      </label>
+                      <p className={`${ELEMENT_TAG}-hint`}>
+                        Uses matching entries from your selected Village Lorebooks to guide artwork.
+                      </p>
+                      <div className={`${ELEMENT_TAG}-steps`} role="group" aria-label="Village map image source">
                         <button
                           type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={setupMapBusy || setupSetting.trim().length === 0}
-                          onClick={() => void generateSetupTownMap()}
+                          className={`${ELEMENT_TAG}-step`}
+                          data-clickable="true"
+                          data-active={setupMapSource === "generate" ? "true" : "false"}
+                          aria-pressed={setupMapSource === "generate"}
+                          disabled={setupMapBusy}
+                          onClick={() => setSetupMapSource("generate")}
                         >
-                          {setupMapBusy
-                            ? "Generating map…"
-                            : setupMapImageSource === "generate"
-                              ? "Generate again"
-                              : "Generate map"}
+                          Generate with AI
                         </button>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-step`}
+                          data-clickable="true"
+                          data-active={setupMapSource === "upload" ? "true" : "false"}
+                          aria-pressed={setupMapSource === "upload"}
+                          disabled={setupMapBusy}
+                          onClick={() => setSetupMapSource("upload")}
+                        >
+                          Upload an image
+                        </button>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-step`}
+                          data-clickable="true"
+                          data-active={setupMapSource === "none" ? "true" : "false"}
+                          aria-pressed={setupMapSource === "none"}
+                          disabled={setupMapBusy}
+                          onClick={() => setSetupMapSource("none")}
+                        >
+                          No background image
+                        </button>
+                        {snapshot?.settings.townMapImageSetAt ? (
+                          <button
+                            type="button"
+                            className={`${ELEMENT_TAG}-step`}
+                            data-clickable="true"
+                            data-active={setupMapSource === "existing" ? "true" : "false"}
+                            aria-pressed={setupMapSource === "existing"}
+                            disabled={setupMapBusy}
+                            onClick={() => setSetupMapSource("existing")}
+                          >
+                            Keep current map
+                          </button>
+                        ) : null}
                       </div>
+                      {setupMapSource === "generate" ? (
+                        <>
+                          <details className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-advanced`}>
+                            <summary className={`${ELEMENT_TAG}-label`}>Advanced map elements</summary>
+                            <p className={`${ELEMENT_TAG}-hint`}>
+                              Auto follows your village description. Include or exclude a feature only when you want to
+                              override it.
+                            </p>
+                            <div className={`${ELEMENT_TAG}-reason-options`}>
+                              {(
+                                [
+                                  ["roads", "Roads and paths"],
+                                  ["structures", "Structures"],
+                                  ["water", "Water"],
+                                ] as const
+                              ).map(([key, label]) => (
+                                <label key={key} className={`${ELEMENT_TAG}-label`}>
+                                  {label}
+                                  <select
+                                    className={`${ELEMENT_TAG}-select`}
+                                    value={setupMapOptions[key]}
+                                    disabled={setupMapBusy}
+                                    onChange={(event) =>
+                                      setSetupMapOptions((previous) => ({
+                                        ...previous,
+                                        [key]: event.target.value as MapElementChoice,
+                                      }))
+                                    }
+                                  >
+                                    <option value="auto">Auto</option>
+                                    <option value="include">Include</option>
+                                    <option value="exclude">Exclude</option>
+                                  </select>
+                                </label>
+                              ))}
+                            </div>
+                          </details>
+                          <details className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-setup-advanced`}>
+                            <summary className={`${ELEMENT_TAG}-label`}>Testing prompt controls</summary>
+                            <div className={`${ELEMENT_TAG}-field`}>
+                              <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-prompt`}>
+                                <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Map layout prompt
+                              </label>
+                              <textarea
+                                id={`${ELEMENT_TAG}-setup-map-prompt`}
+                                className={`${ELEMENT_TAG}-textarea`}
+                                value={setupMapPrompt}
+                                maxLength={1500}
+                                disabled={setupMapBusy}
+                                onChange={(event) => setSetupMapPrompt(event.target.value)}
+                              />
+                              <span className={`${ELEMENT_TAG}-hint`}>
+                                Temporary testing override. The default comes from the server; edits apply only to this
+                                setup session.
+                              </span>
+                            </div>
+                            <div className={`${ELEMENT_TAG}-field`}>
+                              <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-map-negative`}>
+                                <span className={`${ELEMENT_TAG}-debug-label`}>DEBUG</span> Negative map tags
+                              </label>
+                              <textarea
+                                id={`${ELEMENT_TAG}-setup-map-negative`}
+                                className={`${ELEMENT_TAG}-textarea`}
+                                value={setupMapNegativePrompt}
+                                maxLength={1500}
+                                disabled={setupMapBusy}
+                                onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
+                              />
+                              <span className={`${ELEMENT_TAG}-hint`}>
+                                Image providers handle negative tags differently. Review the resulting map before
+                                continuing.
+                              </span>
+                            </div>
+                            <div className={`${ELEMENT_TAG}-row`}>
+                              <button
+                                type="button"
+                                className={`${ELEMENT_TAG}-button`}
+                                disabled={
+                                  setupMapBusy ||
+                                  (setupMapPrompt === snapshot?.settings.townMapLayoutPrompt &&
+                                    setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt)
+                                }
+                                onClick={() => {
+                                  setSetupMapPrompt(snapshot?.settings.townMapLayoutPrompt ?? "");
+                                  setSetupMapNegativePrompt(snapshot?.settings.townMapNegativePrompt ?? "");
+                                }}
+                              >
+                                Restore default prompt
+                              </button>
+                            </div>
+                          </details>
+                          <div className={`${ELEMENT_TAG}-row`}>
+                            <button
+                              type="button"
+                              className={`${ELEMENT_TAG}-button`}
+                              disabled={setupMapBusy || setupSetting.trim().length === 0}
+                              onClick={() => void generateSetupTownMap()}
+                            >
+                              {setupMapBusy
+                                ? "Generating map…"
+                                : setupMapImageSource === "generate"
+                                  ? "Generate again"
+                                  : "Generate map"}
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                      {setupMapSource === "upload" ? (
+                        <>
+                          <input
+                            className={`${ELEMENT_TAG}-file`}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/avif"
+                            disabled={setupMapBusy}
+                            aria-label="Choose a village map image"
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              event.target.value = "";
+                              void pickSetupTownMap(file);
+                            }}
+                          />
+                          <p className={`${ELEMENT_TAG}-hint`}>
+                            Landscape images work best. PNG, JPEG, WebP, and AVIF are accepted at their native size; the
+                            file must fit the size limit shown if it is refused.
+                          </p>
+                        </>
+                      ) : null}
+                      {setupMapSource === "none" ? (
+                        <p className={`${ELEMENT_TAG}-empty`}>
+                          Venues will remain clickable on a clean logical map surface. You can add an image in Village
+                          Settings → Village Map later.
+                        </p>
+                      ) : null}
+                      {setupMapSize &&
+                      setupMapSource !== "none" &&
+                      setupMapImageSource === setupMapSource &&
+                      setupMapShape ? (
+                        <p className={`${ELEMENT_TAG}-hint`} data-tone={pictureAdvice(setupMapSize).tone}>
+                          {pictureAdvice(setupMapSize).text}
+                        </p>
+                      ) : null}
                     </>
                   ) : null}
-                  {setupMapSource === "upload" ? (
-                    <>
-                      <input
-                        className={`${ELEMENT_TAG}-file`}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp,image/avif"
-                        disabled={setupMapBusy}
-                        aria-label="Choose a village map image"
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          event.target.value = "";
-                          void pickSetupTownMap(file);
-                        }}
-                      />
-                      <p className={`${ELEMENT_TAG}-hint`}>
-                        Landscape images work best. PNG, JPEG, WebP, and AVIF are accepted at their native size; the
-                        file must fit the size limit shown if it is refused.
-                      </p>
-                    </>
-                  ) : null}
-                  {setupMapSource === "none" ? (
-                    <p className={`${ELEMENT_TAG}-empty`}>
-                      Venues will remain clickable on a clean logical map surface. You can add an image in Village
-                      Settings → Village Map later.
-                    </p>
-                  ) : null}
-                  {setupMapSize &&
-                  setupMapSource !== "none" &&
-                  setupMapImageSource === setupMapSource &&
-                  setupMapShape ? (
-                    <p className={`${ELEMENT_TAG}-hint`} data-tone={pictureAdvice(setupMapSize).tone}>
-                      {pictureAdvice(setupMapSize).text}
-                    </p>
-                  ) : null}
-                </>
-              ) : null}
 
-              {setupStep === 3 && snapshot?.isFounded ? (
-                <p className={`${ELEMENT_TAG}-hint`}>
-                  Existing Venues keep their locations. Use Village Settings → Village Map to reposition them with a
-                  replacement map, and View Venue to edit their details.
-                </p>
-              ) : null}
-              {setupStep === 3 && !snapshot?.isFounded ? (
-                <>
-                  <h3>Place your village</h3>
-                  <label className={ELEMENT_TAG + "-label"}>
-                    Villager homes
-                    <select
-                      aria-label="Number of villager homes"
-                      value={setupHomeCount}
-                      onChange={(event) => {
-                        const count = Number(event.target.value);
-                        setSetupHomeCount(count);
-                        const homes = setupVenues.filter((venue) => venue.classes?.includes("residence")).length;
-                        setPlacingHome(homes < 1 + count);
-                        setPlacingPublicCenter(
-                          homes >= 1 + count && !setupVenues.some((venue) => venue.category === "public-center"),
-                        );
+                  <div className={`${ELEMENT_TAG}-setup-map-shell`}>
+                    <div
+                      className={`${ELEMENT_TAG}-setup-map-viewport`}
+                      tabIndex={0}
+                      aria-label="Venue placement map. Arrow keys choose a spot; Enter places a venue."
+                      onKeyDown={(event) => {
+                        if (
+                          event.target !== event.currentTarget ||
+                          setupStep !== 3 ||
+                          setupEditorOpen ||
+                          !(placingHome || placingPublicCenter || movingSetupVenueId)
+                        )
+                          return;
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          placeSetupPin(setupKeyboardSpot.x, setupKeyboardSpot.y);
+                        } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+                          event.preventDefault();
+                          setSetupKeyboardSpot((spot) => ({
+                            x: Math.max(
+                              0.02,
+                              Math.min(
+                                0.98,
+                                spot.x + (event.key === "ArrowLeft" ? -0.025 : event.key === "ArrowRight" ? 0.025 : 0),
+                              ),
+                            ),
+                            y: Math.max(
+                              0.02,
+                              Math.min(
+                                0.98,
+                                spot.y + (event.key === "ArrowUp" ? -0.025 : event.key === "ArrowDown" ? 0.025 : 0),
+                              ),
+                            ),
+                          }));
+                        }
                       }}
                     >
-                      {[1, 2, 3].map((count) => (
-                        <option key={count} value={count}>
-                          {count}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Home image default
-                    <select
-                      aria-label="Home image default"
-                      value={personalizeHomes ? "personalized" : "generic"}
-                      onChange={(event) => setPersonalizeHomes(event.target.value === "personalized")}
+                      <MapStage
+                        src={setupMapSrc}
+                        alt={`A map of ${setupName.trim() || "your new village"}.`}
+                        pins={setupStep < 3 ? [] : draftPins}
+                        placing={
+                          setupStep === 3 &&
+                          !snapshot?.isFounded &&
+                          (placingHome || placingPublicCenter || movingSetupVenueId !== null)
+                        }
+                        view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
+                        shape={setupMapShape}
+                        onPlace={setupStep === 3 && !snapshot?.isFounded ? placeSetupPin : undefined}
+                        compact={false}
+                        mobile={mobile && setupStep >= 2}
+                        photoPins={setupStep >= 3}
+                        compactPhotos={setupStep >= 3}
+                        placementCursor={setupStep === 3 ? setupKeyboardSpot : undefined}
+                      />
+                    </div>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+            {setupStep === 3 ? (
+              <div className={`${ELEMENT_TAG}-setup-spaces`}>
+                <div className={`${ELEMENT_TAG}-setup-placement`}>
+                  <div className={`${ELEMENT_TAG}-setup-map-shell`}>
+                    <div
+                      className={`${ELEMENT_TAG}-setup-map-viewport`}
+                      tabIndex={0}
+                      aria-label="Venue placement map. Arrow keys choose a spot; Enter places a venue."
+                      onKeyDown={(event) => {
+                        if (
+                          event.target !== event.currentTarget ||
+                          setupStep !== 3 ||
+                          setupEditorOpen ||
+                          !(placingHome || placingPublicCenter || movingSetupVenueId)
+                        )
+                          return;
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          placeSetupPin(setupKeyboardSpot.x, setupKeyboardSpot.y);
+                        } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+                          event.preventDefault();
+                          setSetupKeyboardSpot((spot) => ({
+                            x: Math.max(
+                              0.02,
+                              Math.min(
+                                0.98,
+                                spot.x + (event.key === "ArrowLeft" ? -0.025 : event.key === "ArrowRight" ? 0.025 : 0),
+                              ),
+                            ),
+                            y: Math.max(
+                              0.02,
+                              Math.min(
+                                0.98,
+                                spot.y + (event.key === "ArrowUp" ? -0.025 : event.key === "ArrowDown" ? 0.025 : 0),
+                              ),
+                            ),
+                          }));
+                        }
+                      }}
                     >
-                      <option value="personalized">Personalized homes</option>
-                      <option value="generic">Generic homes</option>
-                    </select>
-                  </label>
-                  <p className={ELEMENT_TAG + "-hint"}>
-                    A Residence is a living space: a room, cell, bunk, storefront, or area within a larger place. The
-                    Gathering Place is somewhere to meet. Map pins need not represent detached buildings.
+                      <MapStage
+                        src={setupMapSrc}
+                        alt={`A map of ${setupName.trim() || "your new village"}.`}
+                        pins={setupStep < 3 ? [] : draftPins}
+                        placing={
+                          setupStep === 3 &&
+                          !snapshot?.isFounded &&
+                          (placingHome || placingPublicCenter || movingSetupVenueId !== null)
+                        }
+                        view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
+                        shape={setupMapShape}
+                        onPlace={setupStep === 3 && !snapshot?.isFounded ? placeSetupPin : undefined}
+                        compact={false}
+                        mobile={mobile && setupStep >= 2}
+                        photoPins={setupStep >= 3}
+                        compactPhotos={setupStep >= 3}
+                        placementCursor={setupStep === 3 ? setupKeyboardSpot : undefined}
+                      />
+                    </div>
+                  </div>
+
+                  <p className={`${ELEMENT_TAG}-hint`} role="status">
+                    {snapshot?.isFounded
+                      ? "Existing Venues keep their locations. Use Village Settings → Village Map to reposition them."
+                      : movingSetupVenueId
+                        ? "Select a new spot for this venue."
+                        : placingHome
+                          ? setupVenues.some((venue) => venue.occupancy.playerHome)
+                            ? "Select a spot for the next villager home."
+                            : "Select a spot for your home."
+                          : placingPublicCenter
+                            ? "Select a spot for the Gathering Venue."
+                            : "Your venues are placed. Review the village when ready."}
                   </p>
-                  <p role="status">
-                    {movingSetupVenueId
-                      ? "Select a new spot for this venue."
-                      : placingHome
-                        ? setupVenues.some((venue) => venue.occupancy.playerHome)
-                          ? "Select a spot for the next villager home."
-                          : "Select a spot for your home."
-                        : placingPublicCenter
-                          ? "Select a spot for the Gathering Venue."
-                          : "Your venues are placed. Review the village when ready."}
-                  </p>
-                  {setupVenues.filter((venue) => venue.classes?.includes("residence")).length > 1 + setupHomeCount ? (
-                    <p role="alert">
-                      Completed homes are kept when you lower the count. You can review these homes or remove one
-                      explicitly.
-                    </p>
-                  ) : null}
-                  <div className={ELEMENT_TAG + "-setup-venue-list"}>
+                  <div className={`${ELEMENT_TAG}-setup-venue-list`}>
                     {setupVenues.map((venue) => (
                       <button
                         type="button"
-                        className={ELEMENT_TAG + "-setup-venue-card"}
+                        className={`${ELEMENT_TAG}-setup-venue-card`}
+                        data-selected={setupEditorOpen && selectedSetupVenueId === venue.id ? "true" : "false"}
                         key={venue.id}
                         onClick={() => {
                           setupEditorOriginal.current = structuredClone(venue);
@@ -21042,15 +21349,31 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           setSetupProblem("");
                         }}
                       >
-                        {venue.name} · {setupCompletedIds.includes(venue.id) ? "Done" : "Edit"}
+                        {venue.presentation.image ? (
+                          <img src={venue.presentation.image.url} alt="" />
+                        ) : (
+                          <span className={`${ELEMENT_TAG}-setup-venue-placeholder`} aria-hidden="true">
+                            ⌂
+                          </span>
+                        )}
+                        <span>
+                          {venue.name} ·{" "}
+                          {setupEditorOpen && selectedSetupVenueId === venue.id
+                            ? "Editing"
+                            : setupCompletedIds.includes(venue.id)
+                              ? "Done"
+                              : "Edit"}
+                        </span>
                       </button>
                     ))}
                   </div>
                   {setupPlacementError ? (
-                    <p role="alert" className={ELEMENT_TAG + "-error"}>
+                    <p role="alert" className={`${ELEMENT_TAG}-error`}>
                       {setupPlacementError}
                     </p>
                   ) : null}
+                </div>
+                <div className={`${ELEMENT_TAG}-setup-editor-column`}>
                   {setupEditorOpen && selectedSetupVenue ? (
                     <FoundingVenueEditor
                       key={selectedSetupVenue.id}
@@ -21086,117 +21409,96 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       onUpload={(area, file) => void uploadSetupImage(selectedSetupVenue, area, file)}
                     />
                   ) : null}
-                  {catalog === null ? <p>Reading your villager library…</p> : null}
-                </>
-              ) : null}
 
-              {setupStep === 4 ? (
-                <>
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    Review your village before opening its gates. Return to Step 4 to change a venue.
+                  {!setupEditorOpen ? (
+                    <section className={`${ELEMENT_TAG}-overlay`}>
+                      <h3>Venue details</h3>
+                      <p>
+                        Select a spot to place a venue, or select a photograph to edit it. Define its form, spaces,
+                        descriptions, and images here.
+                      </p>
+                    </section>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {setupStep === 4 ? (
+              <>
+                <p className={`${ELEMENT_TAG}-empty`}>
+                  Review your village before opening its gates. Return to Step 4 to change a venue.
+                </p>
+                <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                  <h3>Village Beginning</h3>
+                  <p className={`${ELEMENT_TAG}-hint`}>
+                    <strong>{setupName.trim()}</strong> · {setupSetting.trim()}
                   </p>
-                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
-                    <h3>Village Beginning</h3>
+                  <p className={`${ELEMENT_TAG}-hint`}>
+                    <strong>Persona:</strong>{" "}
+                    {personas?.find((persona) => persona.id === personaDraft)?.name ?? "Selected Persona"}
+                    {" · "}
+                    <strong>Scenario:</strong> {foundingScenario(setupFoundingReason).label}
+                  </p>
+                  <p className={`${ELEMENT_TAG}-hint`}>
+                    <strong>Starting circumstances:</strong>{" "}
+                    {setupFoundingDetails || "No starting circumstances were recorded."}
+                  </p>
+                  {setupFoundingGuidance ? (
                     <p className={`${ELEMENT_TAG}-hint`}>
-                      <strong>{setupName.trim()}</strong> · {setupSetting.trim()}
+                      <strong>Original founding direction:</strong> {setupFoundingGuidance}
                     </p>
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      <strong>Persona:</strong>{" "}
-                      {personas?.find((persona) => persona.id === personaDraft)?.name ?? "Selected Persona"}
-                      {" · "}
-                      <strong>Scenario:</strong> {foundingScenario(setupFoundingReason).label}
-                    </p>
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      <strong>Starting circumstances:</strong>{" "}
-                      {setupFoundingDetails || "No starting circumstances were recorded."}
-                    </p>
-                    {setupFoundingGuidance ? (
-                      <p className={`${ELEMENT_TAG}-hint`}>
-                        <strong>Original founding direction:</strong> {setupFoundingGuidance}
-                      </p>
-                    ) : null}
-                  </section>
-                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
-                    <PlayerRoleSummary role={setupPlayerRole} />
-                  </section>
-                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
-                    <h3>Map and lore</h3>
-                    <p className={`${ELEMENT_TAG}-hint`}>
-                      <strong>Map:</strong> {setupMapSource === "none" ? "Logical map" : "Chosen picture"}
-                      {" · "}
-                      <strong>Lorebooks:</strong>{" "}
-                      {setupLorebookDraft
-                        .map((id) => lorebooks?.find((book) => book.id === id)?.name ?? id)
-                        .join(", ") || "None"}
-                    </p>
-                  </section>
-                  <section className={`${ELEMENT_TAG}-setup-review-card`}>
-                    <h3>Starting places</h3>
-                    <div className={`${ELEMENT_TAG}-setup-venue-list`}>
-                      {setupVenues.map((venue) => (
-                        <div key={venue.id} className={`${ELEMENT_TAG}-setup-venue-card`}>
-                          {venue.presentation.image ? (
-                            <img src={venue.presentation.image.url} alt="" />
-                          ) : (
-                            <span className={`${ELEMENT_TAG}-setup-venue-placeholder`} aria-hidden="true">
-                              ⌂
-                            </span>
-                          )}
-                          <span>
-                            <strong>
-                              {venue.name} · {venue.category === "public-center" ? "Gathering Place" : "Residence"}
-                            </strong>
-                            <small>
-                              {venue.form} ·{" "}
-                              {venue.occupancy.playerHome
-                                ? "You"
-                                : nameOfCharacter(venue.occupancy.residentCharacterId) || "Community"}
-                            </small>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                  ) : null}
+                </section>
+                <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                  <PlayerRoleSummary role={setupPlayerRole} />
+                </section>
+                <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                  <h3>Map and lore</h3>
+                  <p className={`${ELEMENT_TAG}-hint`}>
+                    <strong>Map:</strong> {setupMapSource === "none" ? "Logical map" : "Chosen picture"}
+                    {" · "}
+                    <strong>Lorebooks:</strong>{" "}
+                    {setupLorebookDraft.map((id) => lorebooks?.find((book) => book.id === id)?.name ?? id).join(", ") ||
+                      "None"}
+                  </p>
+                </section>
+                <section className={`${ELEMENT_TAG}-setup-review-card`}>
+                  <h3>Starting places</h3>
+                  <div className={`${ELEMENT_TAG}-setup-venue-list`}>
                     {setupVenues.map((venue) => (
-                      <p key={`${venue.id}-summary`} className={`${ELEMENT_TAG}-hint`}>
-                        <strong>{venue.name}:</strong> Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Spaces ·{" "}
-                        {venueHasPrivate(venue) ? "1" : "0"} Private Spaces. {venue.description}{" "}
-                        {venue.spaces?.[0]?.description}
-                      </p>
+                      <div key={venue.id} className={`${ELEMENT_TAG}-setup-venue-card`}>
+                        {venue.presentation.image ? (
+                          <img src={venue.presentation.image.url} alt="" />
+                        ) : (
+                          <span className={`${ELEMENT_TAG}-setup-venue-placeholder`} aria-hidden="true">
+                            ⌂
+                          </span>
+                        )}
+                        <span>
+                          <strong>
+                            {venue.name} · {venue.category === "public-center" ? "Gathering Place" : "Residence"}
+                          </strong>
+                          <small>
+                            {venue.form} ·{" "}
+                            {venue.occupancy.playerHome
+                              ? "You"
+                              : nameOfCharacter(venue.occupancy.residentCharacterId) || "Community"}
+                          </small>
+                        </span>
+                      </div>
                     ))}
-                  </section>
-                </>
-              ) : null}
+                  </div>
+                  {setupVenues.map((venue) => (
+                    <p key={`${venue.id}-summary`} className={`${ELEMENT_TAG}-hint`}>
+                      <strong>{venue.name}:</strong> Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Spaces ·{" "}
+                      {venueHasPrivate(venue) ? "1" : "0"} Private Spaces. {venue.description}{" "}
+                      {venue.spaces?.[0]?.description}
+                    </p>
+                  ))}
+                </section>
+              </>
+            ) : null}
 
-              {setupProblem ? (
-                <p className={`${ELEMENT_TAG}-error`} role="alert">
-                  {setupProblem}
-                </p>
-              ) : null}
-              {settingsError ? (
-                <p className={`${ELEMENT_TAG}-error`} role="alert">
-                  {settingsError}
-                </p>
-              ) : null}
-            </div>
-          </div>
-
-          {/*
-            The map takes the click on the step that places houses and only on
-            that step, so a stray click while answering a question cannot leave
-            a pin somewhere the player did not mean.
-
-            The step before that one shows the picture small and inert — an
-            example of the thing being named rather than somewhere to click —
-            and the step after it still shows the pins at full size, because by
-            then the question is who lives where and the answer is on the map.
-            The houses are pinned at the size a map is really drawn at: a pin set
-            on a shrunken one would be a guess, and it would be a guess stored on
-            the village forever.
-          */}
-          <div className={`${ELEMENT_TAG}-setup-visual`}>
-            {setupStep <= 1 ? (
-              <FoundingScenarioArtwork scenario={setupFoundingReason} />
-            ) : (
+            {setupStep === 4 ? (
               <div className={`${ELEMENT_TAG}-setup-map-shell`}>
                 <div
                   className={`${ELEMENT_TAG}-setup-map-viewport`}
@@ -21246,100 +21548,74 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
                     shape={setupMapShape}
                     onPlace={setupStep === 3 && !snapshot?.isFounded ? placeSetupPin : undefined}
-                    compact={setupStep < 2}
+                    compact={false}
                     mobile={mobile && setupStep >= 2}
                     photoPins={setupStep >= 3}
+                    compactPhotos={setupStep >= 3}
                     placementCursor={setupStep === 3 ? setupKeyboardSpot : undefined}
                   />
                 </div>
               </div>
-            )}
-            <nav className={`${ELEMENT_TAG}-setup-footer`} aria-label="Founding navigation">
-              {setupStep > 0 ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy || setupMapBusy || setupVenueBusy}
-                  onClick={() => gotoSetupStep(setupStep - 1)}
-                >
-                  ← Back
-                </button>
-              ) : null}
-              {setupStep < SETUP_STEPS.length - 1 ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
-                  disabled={busy || setupMapBusy || setupVenueBusy}
-                  onClick={() => gotoSetupStep(setupStep + 1)}
-                >
-                  {setupStep === 3 ? "Review village" : "Next →"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
-                  disabled={busy || setupMapBusy || !snapshot}
-                  onClick={() => void foundVillage()}
-                >
-                  {snapshot?.isFounded ? "Save this village" : "Found the village"}
-                </button>
-              )}
-              {snapshot?.isFounded ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy}
-                  onClick={() => {
-                    setPlacingHome(false);
-                    setScreen("home");
-                  }}
-                >
-                  Show me the village
-                </button>
-              ) : null}
-            </nav>
-          </div>
+            ) : null}
+            {setupProblem && !setupEditorOpen ? (
+              <p className={`${ELEMENT_TAG}-error`} role="alert">
+                {setupProblem}
+              </p>
+            ) : null}
+            {settingsError ? (
+              <p className={`${ELEMENT_TAG}-error`} role="alert">
+                {settingsError}
+              </p>
+            ) : null}
+          </main>
         </div>
+        <nav className={`${ELEMENT_TAG}-setup-footer`} aria-label="Founding navigation">
+          {setupStep > 0 ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={busy || setupMapBusy || setupVenueBusy}
+              onClick={() => gotoSetupStep(setupStep - 1)}
+            >
+              ← Back
+            </button>
+          ) : null}
+          {setupStep < SETUP_STEPS.length - 1 ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
+              disabled={busy || setupMapBusy || setupVenueBusy}
+              onClick={() => gotoSetupStep(setupStep + 1)}
+            >
+              {setupStep === 3 ? "Review village" : "Next →"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-setup-forward`}
+              disabled={busy || setupMapBusy || !snapshot}
+              onClick={() => void foundVillage()}
+            >
+              {snapshot?.isFounded ? "Save this village" : "Found the village"}
+            </button>
+          )}
+          {snapshot?.isFounded ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={busy}
+              onClick={() => {
+                setPlacingHome(false);
+                setScreen("home");
+              }}
+            >
+              Show me the village
+            </button>
+          ) : null}
+        </nav>
       </div>
     );
   }
-
-  // ── The homepage ───────────────────────────────────────────────────────────
-  // The map is the whole tab. Everything that describes the village rather than
-  // a square of the picture — who lives here, the noticeboard, the houses, the
-  // settings — went into the Menu. What is drawn over the map is what belongs to
-  // it: the date, the way into the Menu, the village's news behind its own
-  // button, and the way onto the whole screen. A villager's conversation is the
-  // exception that slides in over the picture and back out again, so looking at
-  // the map and talking about it are the same screen.
-  //
-  // The two wrappers the panels used to sit in went with them. The map is still
-  // measured against the drawn picture rather than against this frame, so a
-  // picture that does not share the frame's shape is cropped, stretched or
-  // letterboxed by the framing the player chose, and the pins stay on the right
-  // houses in every one of those cases.
-  //
-  // The row is down to one child now that the news is not a column of it, and it
-  // is kept rather than flattened for two reasons: the root stacks its children
-  // down the page and this screen's one child is the map, and the frame's own two
-  // numbers and the room that keeps the frame clear of the edge are stated
-  // against this row.
-  // ── RETIRED 0.4.43 — the branch that stopped being the tab ──────────────────
-  // What stood here was `const sceneLock = sceneListing?.lock ?? null;` and an
-  // early return that drew `SceneGate` INSTEAD of the village whenever the
-  // listing carried a lock. The village stood still while one villager was out.
-  //
-  // It is gone because there is nothing left to be true of. A lock needed a link
-  // record, the link record is what 0.4.43 deleted, and the reason it could be
-  // deleted is that a spin-off is a roleplay the player owns: the village takes a
-  // snapshot at the moment the chat is made and then has nothing further to do
-  // with it. "The village still reaches the chat without a live feed" is answered
-  // by the snapshot being frozen, and a gate was only ever needed while the
-  // answer was a live feed.
-  //
-  // See the RETIRED note above where `SceneGate` used to be for what a revival
-  // would need: `readVillageSceneLock` and `sceneLockedRoutes` are both still
-  // there on the server, exported and uncalled.
 
   return (
     <div

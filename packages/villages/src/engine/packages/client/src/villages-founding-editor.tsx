@@ -58,6 +58,7 @@ type AreaDraftCache = {
 };
 export function VenueLayoutFields({
   drafts,
+  compact = false,
   venue,
   onChange,
   onReveal,
@@ -66,6 +67,7 @@ export function VenueLayoutFields({
   onChange(venue: VillageVenue): void;
   onReveal?(area: "common" | "private", layout: VenueLayout): void;
   drafts?: AreaDraftCache;
+  compact?: boolean;
 }) {
   const savedCommon = useRef(venue.spaces?.[0] ?? drafts?.current.common);
   const savedPrivate = useRef(venue.privateSpaces?.[0] ?? drafts?.current.personal);
@@ -103,6 +105,53 @@ export function VenueLayoutFields({
     });
     if (reveal) onReveal?.(reveal, layout);
   };
+  if (compact)
+    return (
+      <fieldset className="villages-scenery-fields villages-layout-fields">
+        <legend>Venue layout</legend>
+        <span className="villages-layout-exterior">✓ Exterior</span>
+        <p>Exterior is always included.</p>
+        <div className="villages-layout-toggles">
+          <button
+            type="button"
+            className="villages-layout-choice"
+            aria-pressed={venueHasCommon(venue)}
+            onClick={() =>
+              choose(
+                venueHasCommon(venue)
+                  ? venueHasPrivate(venue)
+                    ? "private"
+                    : "exterior"
+                  : venueHasPrivate(venue)
+                    ? "both"
+                    : "common",
+              )
+            }
+          >
+            Add a Common Space
+          </button>
+          <button
+            type="button"
+            className="villages-layout-choice"
+            aria-pressed={venueHasPrivate(venue)}
+            onClick={() =>
+              choose(
+                venueHasPrivate(venue)
+                  ? venueHasCommon(venue)
+                    ? "common"
+                    : "exterior"
+                  : venueHasCommon(venue)
+                    ? "both"
+                    : "private",
+              )
+            }
+          >
+            Add a Private Space
+          </button>
+        </div>
+        <p>Select or deselect each interior space. Resident capacity is separate.</p>
+      </fieldset>
+    );
   return (
     <fieldset className="villages-scenery-fields">
       <legend>Venue layout</legend>
@@ -566,31 +615,32 @@ export function FoundingVenueEditor({
   const residence = venue.classes?.includes("residence") ?? false;
   const needsResident = residence && !venue.occupancy.playerHome;
   const steps = [
-    ...(needsResident ? ["Resident"] : []),
-    "Name and form",
-    ...(!existing ? ["Layout"] : []),
+    "Details",
     "Exterior",
     ...(venueHasCommon(venue) ? ["Common Space"] : []),
     ...(venueHasPrivate(venue) ? ["Private Space"] : []),
   ];
-  const [stage, setStage] = useState(0),
+  const [stage, setStage] = useState("Details"),
     [error, setError] = useState("");
   const dialog = useRef<HTMLDivElement>(null);
-  const step = steps[Math.min(stage, steps.length - 1)];
+  const step = steps.includes(stage) ? stage : "Details";
+  const modal = window.innerWidth <= 704;
   const space = venue.spaces?.[0];
   const personal = venue.privateSpaces?.find((room) => room.ownerId === "player") ?? personalSpaceDraft();
   const areaDrafts = useRef<AreaDraftCache["current"]>({});
   if (venue.spaces?.[0]) areaDrafts.current.common = venue.spaces[0];
   if (venue.privateSpaces?.[0]) areaDrafts.current.personal = venue.privateSpaces[0];
   useEffect(() => {
-    dialog.current?.querySelector<HTMLElement>("input,textarea,select,button")?.focus();
-  }, [stage, step]);
-  useEffect(() => {
-    if (stage >= steps.length) setStage(steps.length - 1);
-  }, [stage, steps.length]);
+    dialog.current
+      ?.querySelector<HTMLElement>(
+        ".villages-founding-editor-body input, .villages-founding-editor-body textarea, .villages-founding-editor-body select",
+      )
+      ?.focus();
+  }, []);
+  useEffect(() => setError(""), [venue]);
   const imageFields = (area: "exterior" | "interior" | "private", image: VillageVenueImage | null | undefined) => (
     <section>
-      <p>Image · optional</p>
+      <p>{area === "interior" ? "Common Space" : area === "private" ? "Private Space" : "Exterior"} image · optional</p>
       {image ? (
         <img className={tag + "-setup-image-preview"} src={image.url} alt={area + " of " + venue.name} />
       ) : (
@@ -645,39 +695,64 @@ export function FoundingVenueEditor({
     const viewport = window.visualViewport;
     const resize = () => {
       const node = dialog.current;
-      if (!node || !viewport || window.innerWidth > 704) return;
+      if (!node) return;
+      if (window.innerWidth > 704) {
+        const footer = node.closest("." + tag + "-setup-root")?.querySelector("." + tag + "-setup-footer");
+        if (footer)
+          node.style.maxHeight =
+            Math.max(200, footer.getBoundingClientRect().top - node.getBoundingClientRect().top - 6) + "px";
+        return;
+      }
+      if (!viewport) return;
       node.style.height = viewport.height + "px";
       node.parentElement!.style.top = viewport.offsetTop + "px";
       node.parentElement!.style.bottom = "auto";
     };
     resize();
+    const root = dialog.current?.closest("." + tag + "-setup-root");
+    const observer = new ResizeObserver(resize);
+    if (root) observer.observe(root);
     viewport?.addEventListener("resize", resize);
     viewport?.addEventListener("scroll", resize);
     return () => {
+      observer.disconnect();
       viewport?.removeEventListener("resize", resize);
       viewport?.removeEventListener("scroll", resize);
     };
-  }, []);
+  }, [tag]);
   const next = () => {
-    const missing =
-      step === "Resident" && !venue.occupancy.residentCharacterId
-        ? "Choose a villager."
-        : step === "Name and form" && (!venue.name.trim() || !venue.form?.trim())
-          ? "Add a name and describe the form."
-          : step === "Exterior" && !venue.description.trim()
-            ? "Describe the exterior."
-            : step === "Layout" && !venue.layout
-              ? "Choose a venue layout."
-              : step === "Common Space" && !space?.description.trim()
-                ? "Describe the interior."
-                : "";
-    setError(missing);
-    if (missing) {
-      dialog.current?.querySelector<HTMLElement>("input,textarea,select")?.focus();
+    const target =
+      needsResident && !venue.occupancy.residentCharacterId
+        ? { tab: "Details", problem: "Choose a villager." }
+        : !venue.name.trim() || !venue.form?.trim()
+          ? { tab: "Details", problem: "Add a name and describe the form." }
+          : !existing && !venue.layout
+            ? { tab: "Details", problem: "Choose a venue layout." }
+            : !venue.description.trim()
+              ? { tab: "Exterior", problem: "Describe the exterior." }
+              : venueHasCommon(venue) && !space?.description.trim()
+                ? { tab: "Common Space", problem: "Describe the Common Space." }
+                : venue.privateSpaces?.some(
+                      (room) =>
+                        !room.name?.trim() ||
+                        !room.purpose?.trim() ||
+                        (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
+                    )
+                  ? { tab: "Private Space", problem: "Give each Private Space a name, purpose, and controller." }
+                  : null;
+    setError(target?.problem ?? "");
+    if (target) {
+      setStage(target.tab);
+      setTimeout(() => {
+        dialog.current
+          ?.querySelector<HTMLElement>(
+            ".villages-founding-editor-body input, .villages-founding-editor-body textarea, .villages-founding-editor-body select",
+          )
+          ?.focus();
+      }, 0);
       return;
     }
-    if (stage === steps.length - 1) onDone();
-    else setStage(stage + 1);
+    onDone();
   };
   return (
     <div className="villages-founding-backdrop">
@@ -685,11 +760,11 @@ export function FoundingVenueEditor({
         ref={dialog}
         className="villages-founding-dialog"
         role="dialog"
-        aria-modal="true"
+        aria-modal={modal || undefined}
         aria-label={"Define " + venue.name}
         onKeyDown={(event) => {
           if (event.key === "Escape" && !busy) onCancel();
-          if (event.key === "Tab") {
+          if (event.key === "Tab" && modal) {
             const controls = Array.from(
               dialog.current?.querySelectorAll<HTMLElement>(
                 "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)",
@@ -706,13 +781,59 @@ export function FoundingVenueEditor({
         }}
       >
         <header>
-          <h3>{venue.name || "New venue"}</h3>
-          <p>
-            {step} · {stage + 1} of {steps.length}
-          </p>
+          <div className="villages-founding-editor-heading">
+            <h3>{venue.name || "New venue"}</h3>
+            <button type="button" aria-label="Close venue editor" disabled={busy} onClick={onCancel}>
+              ×
+            </button>
+          </div>
+          <p>{step === "Details" ? "Venue details" : step}</p>
         </header>
-        <div className="villages-founding-editor-body">
-          {step === "Resident" ? (
+        <nav className="villages-founding-tabs" role="tablist" aria-label="Venue editor pages">
+          {steps.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              id={"venue-tab:" + tab}
+              aria-selected={step === tab}
+              aria-controls="venue-editor-page"
+              tabIndex={step === tab ? 0 : -1}
+              disabled={busy}
+              onClick={() => {
+                setStage(tab);
+                setError("");
+              }}
+              onKeyDown={(event) => {
+                const index = steps.indexOf(tab);
+                const nextIndex =
+                  event.key === "ArrowRight"
+                    ? (index + 1) % steps.length
+                    : event.key === "ArrowLeft"
+                      ? (index + steps.length - 1) % steps.length
+                      : event.key === "Home"
+                        ? 0
+                        : event.key === "End"
+                          ? steps.length - 1
+                          : -1;
+                if (nextIndex >= 0) {
+                  event.preventDefault();
+                  setStage(steps[nextIndex]);
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[nextIndex]?.focus();
+                }
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </nav>
+        <div
+          className="villages-founding-editor-body"
+          role="tabpanel"
+          id="venue-editor-page"
+          aria-labelledby={"venue-tab:" + step}
+        >
+          {step === "Details" && needsResident ? (
             <label>
               Assigned villager
               <select
@@ -722,6 +843,9 @@ export function FoundingVenueEditor({
                   onPatch({
                     ...venue,
                     residentIds: event.target.value ? [event.target.value] : [],
+                    privateSpaces: venue.privateSpaces?.map((room) =>
+                      room.venueClass === "residence" ? { ...room, ownerId: event.target.value } : room,
+                    ),
                     occupancy: { ...venue.occupancy, residentCharacterId: event.target.value || null },
                   })
                 }
@@ -735,7 +859,7 @@ export function FoundingVenueEditor({
               </select>
             </label>
           ) : null}
-          {step === "Name and form" ? (
+          {step === "Details" ? (
             <>
               <label>
                 Name
@@ -762,15 +886,8 @@ export function FoundingVenueEditor({
               </label>
             </>
           ) : null}
-          {step === "Layout" ? (
-            <VenueLayoutFields
-              venue={venue}
-              drafts={areaDrafts}
-              onChange={onPatch}
-              onReveal={(area, layout) =>
-                setStage((needsResident ? 1 : 0) + 4 + (area === "private" && layout === "both" ? 1 : 0))
-              }
-            />
+          {step === "Details" && !existing ? (
+            <VenueLayoutFields compact venue={venue} drafts={areaDrafts} onChange={onPatch} />
           ) : null}
           {step === "Exterior" || step === "Common Space" ? (
             <>
@@ -829,9 +946,10 @@ export function FoundingVenueEditor({
                       })
                     }
                   />
-                  Use selected visual lore
+                  Use Village lorebooks
                 </label>
               </fieldset>
+              <p>Uses matching entries from selected Village Lorebooks.</p>
               {imageFields(
                 step === "Exterior" ? "exterior" : "interior",
                 step === "Exterior" ? venue.presentation.image : space?.image,
@@ -910,18 +1028,8 @@ export function FoundingVenueEditor({
           <button type="button" disabled={busy} onClick={onCancel}>
             Cancel
           </button>
-          <button
-            type="button"
-            disabled={busy || stage === 0}
-            onClick={() => {
-              setError("");
-              setStage(stage - 1);
-            }}
-          >
-            Back
-          </button>
           <button type="button" disabled={busy} onClick={next}>
-            {stage === steps.length - 1 ? "Done" : "Continue"}
+            Done
           </button>
         </footer>
       </div>

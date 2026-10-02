@@ -10,6 +10,7 @@ const ORDINARY_RESIDENT =
 
 export function playerRoleProblem(role: PlayerRole | null): string {
   if (!role) return "Choose your place in the village.";
+  if (!role.enabled) return "In Villages, you are the one who coordinates construction projects.";
   if (role.title.length > 80 || role.explanation.length > 1_000)
     return "Use a role title of at most 80 characters and an explanation of at most 1,000 characters.";
   if (role.enabled && (!role.title.trim() || !role.explanation.trim()))
@@ -22,6 +23,7 @@ export function PlayerRoleSummary({ role }: { role: PlayerRole | null | undefine
   return (
     <section className={`${PREFIX}-field`} aria-label="Your place in the village" style={{ overflowWrap: "anywhere" }}>
       <h3>Your place in the village</h3>
+      <p className={`${PREFIX}-hint`}>In Villages, you are the one who coordinates construction projects.</p>
       <p className={`${PREFIX}-hint`}>
         <strong>{role ? (role.enabled ? role.title : "Ordinary resident") : "No founding role recorded"}</strong>
       </p>
@@ -49,20 +51,11 @@ export function PlayerRoleFields({
   return (
     <fieldset className={`${PREFIX}-field`}>
       <legend className={`${PREFIX}-label`}>Your place in the village</legend>
-      <label className={`${PREFIX}-hint`}>
-        <input
-          type="checkbox"
-          checked={role.enabled}
-          disabled={disabled}
-          onChange={(event) => onChange({ ...role, enabled: event.target.checked })}
-        />{" "}
-        Recognized village role
-      </label>
-      {role.enabled ? (
-        <>
-          <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-title`}>
-            Role title
-          </label>
+      <p className={`${PREFIX}-hint`}>In Villages, you are the one who coordinates construction projects.</p>
+      <p className={`${PREFIX}-hint`}>Give this responsibility a title and a reason that fit your Persona.</p>
+      <div className={`${PREFIX}-founding-role-fields`}>
+        <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-title`}>
+          Role title
           <input
             id={`${PREFIX}-role-title`}
             className={`${PREFIX}-search`}
@@ -73,27 +66,25 @@ export function PlayerRoleFields({
             disabled={disabled}
             onChange={(event) => onChange({ ...role, title: event.target.value })}
           />
-          <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-explanation`}>
-            Why villagers turn to you
-          </label>
+        </label>
+        <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-explanation`}>
+          Why villagers turn to you
           <textarea
             id={`${PREFIX}-role-explanation`}
             className={`${PREFIX}-textarea`}
             value={role.explanation}
             maxLength={1000}
-            rows={6}
+            rows={3}
             required
             disabled={disabled}
             onChange={(event) => onChange({ ...role, explanation: event.target.value })}
           />
-          <p className={`${PREFIX}-hint`}>
-            Make this role your own. Residents can disagree or refuse; their homes and lives remain theirs. Your choice
-            becomes fixed at founding. You manage Project lifecycles with either role choice.
-          </p>
-        </>
-      ) : (
-        <p className={`${PREFIX}-hint`}>{ORDINARY_RESIDENT}</p>
-      )}
+        </label>
+      </div>
+      <p className={`${PREFIX}-hint`}>
+        Make this role your own. Residents can disagree or refuse; their homes and lives remain theirs. Your choice
+        becomes fixed at founding.
+      </p>
     </fieldset>
   );
 }

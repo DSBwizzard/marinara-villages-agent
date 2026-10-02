@@ -3691,7 +3691,26 @@ export function validateFirstDayDescription(description: string, founding: boole
   if (founding && !description.trim()) throw badRequest("Describe what brings you and the others together here.");
 }
 
+/** Bind a new wizard's selected roster to its assigned homes before generation or writes. */
+export function validateFoundingRoster(
+  value: unknown,
+  assigned: ReadonlySet<string>,
+  available: ReadonlySet<string>,
+): void {
+  if (
+    !Array.isArray(value) ||
+    value.length < 1 ||
+    value.length > 3 ||
+    value.some((id) => typeof id !== "string" || !available.has(id)) ||
+    new Set(value).size !== value.length
+  )
+    throw badRequest("Choose one to three available founding villagers.");
+  if (assigned.size !== value.length || value.some((id) => !assigned.has(id)))
+    throw badRequest("Assign every villager chosen in Step 2 to one Residence.");
+}
+
 export async function runVillageSetup(input: {
+  foundingCharacterIds?: unknown;
   name?: unknown;
   setting?: unknown;
   foundingReason?: unknown;
@@ -3790,7 +3809,11 @@ export async function runVillageSetup(input: {
   // added a fifth house is not made to tear it down to save their own village.
   const places = parsePlaces(input.venues, new Set(cardNames.keys()), founding);
   const privateControllers = places.flatMap((place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? []);
-  const assignedResidents = new Set(places.map((place) => place.occupancy.residentCharacterId).filter(Boolean));
+  const assignedResidents = new Set(
+    places.flatMap((place) => (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : [])),
+  );
+  if (founding && input.foundingCharacterIds !== undefined)
+    validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
   if (founding && privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
     throw badRequest("Choose founding villagers as room controllers.");
   const initialResidentIds = [
