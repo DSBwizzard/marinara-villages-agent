@@ -579,7 +579,8 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
-          if (system.startsWith("Write a brief visual Events update")) {
+          if (system.includes("Write a brief visual Events update")) {
+            assert.match(system, /In Villages, a Village is a shared place/u);
             lastEventsSystem = system;
             assert.match(system, /Do not give them a new turn in an Event/u);
             return {
