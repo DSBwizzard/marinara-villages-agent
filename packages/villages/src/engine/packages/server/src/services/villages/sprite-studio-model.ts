@@ -8,6 +8,14 @@ export const SPRITE_STYLES = {
 export const STUDIO_NEGATIVE_PROMPT =
   "text, labels, captions, logos, watermarks, decorative borders, cell frames, scenery, floor shadows, checkerboard background, gradient background, textured background, overlapping sprites, cropped-off body parts, unrelated characters, inconsistent faces, extra limbs";
 export type StudioStyle = keyof typeof SPRITE_STYLES;
+export type StudioStyleSelection = { kind: "default" } | { kind: "profile"; profileId: string } | { kind: "studio" };
+export type StudioResolvedStyle = {
+  id: string;
+  name: string;
+  profile: ReturnType<typeof import("@marinara-engine/shared").normalizeImageStyleProfileSettings>["profiles"][number];
+  prompt: string;
+  fingerprint: string;
+};
 export type StudioView = "front" | "side";
 export const STUDIO_EXPRESSIONS = ["neutral", "happy", "sad", "angry", "surprised", "thinking"];
 export const STUDIO_MEANINGS: Record<string, string> = {
@@ -30,6 +38,7 @@ export type StudioRendered = { assetId: string; filename: string; url: string; f
 export type StudioAssignment = { expressionId: string; view: StudioView; cellId: string };
 export type StudioFile = { assetId: string; expression: string; url: string; error?: string };
 export type StudioSettings = {
+  styleSelection?: StudioStyleSelection;
   style: StudioStyle;
   prompts: Record<StudioStyle, string>;
   connectionId: string;
@@ -96,12 +105,17 @@ export type StudioCell = {
   status: "candidate" | "approved" | "discarded";
 };
 export type StudioSource = {
+  provenance?: { kind: "character-library"; characterId: string; filename: string; sha256: string };
   kind: "generated-raw" | "imported" | "legacy";
   sha256?: string;
   matteHex?: string;
   pipelineVersion?: number;
 };
 export type StudioGenerationRequest = {
+  overridePrompt?: string;
+  overrideNegativePrompt?: string;
+  resolvedStyle?: StudioResolvedStyle;
+  promptId?: string;
   pipelineVersion: number;
   matteHex: string;
   draftPrompt: string;
@@ -164,6 +178,8 @@ export type StudioPlan = {
   designId?: string;
 };
 export type StudioJob = {
+  styleFingerprint?: string;
+  resolvedStyle?: StudioResolvedStyle;
   targetHeight?: number;
   requestedExpressions?: Array<{ label: string; pose: string; expressionId?: string }>;
   individual?: boolean;
@@ -194,6 +210,8 @@ export type StudioJob = {
   strategy?: "original" | "anchored";
 };
 export type StudioState = {
+  publications?: StudioPublication[];
+  adoptions?: Array<{ id: string; fingerprint: string; cellIds: string[]; status: "prepared" | "used" }>;
   version: 2;
   settings: StudioSettings;
   jobs: StudioJob[];
@@ -204,6 +222,8 @@ export type StudioState = {
   reviews?: StudioReview[];
 };
 export type StudioData = StudioState & {
+  styleProfiles?: { defaultProfileId: string; profiles: Array<{ id: string; name: string }> };
+  styleError?: string;
   adjustedCellId?: string;
   repairedCells?: Array<{ originalId: string; cellId: string }>;
   assignments: StudioAssignment[];
@@ -217,6 +237,7 @@ export type StudioData = StudioState & {
 export const defaultStudioState = (): StudioState => ({
   version: 2,
   settings: {
+    styleSelection: { kind: "default" },
     style: "PAPERCRAFT",
     prompts: { ...SPRITE_STYLES },
     connectionId: "",
@@ -237,6 +258,35 @@ export const defaultStudioState = (): StudioState => ({
   designs: [],
   reviews: [],
 });
+
+export type StudioLibraryItem = {
+  filename: string;
+  expression: string;
+  url: string;
+  sha256: string;
+  label: string;
+  view: StudioView;
+};
+export type StudioPublicationItem = {
+  cellId?: string;
+  name: string;
+  label: string;
+  view: StudioView;
+  sourceUrl: string;
+  sourceHash: string;
+  action: "replace" | "rename" | "skip";
+  expected: Array<{ filename: string; sha256: string }>;
+  backups: Array<{ filename: string; url: string; sha256: string }>;
+  status: "pending" | "saving" | "saved" | "skipped" | "failed" | "unresolved";
+  error?: string;
+};
+export type StudioPublication = {
+  id: string;
+  token: string;
+  createdAt: string;
+  restoreOf?: string;
+  items: StudioPublicationItem[];
+};
 
 export function validateStudioCell(cell: StudioCell, sheet: Pick<StudioSheet, "width" | "height">): void {
   if (!cell || !/^[a-z0-9_-]{1,40}$/.test(cell.label) || !["front", "side"].includes(cell.view))

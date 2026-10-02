@@ -1,5 +1,6 @@
 import { STUDIO_CLEANUP_VERSION } from "./sprite-studio-matte.js";
 import { createHash, randomUUID } from "node:crypto";
+import { studioStyleProfiles, resolveStudioStyle } from "./sprite-studio-styles.js";
 import { badRequest, notFound } from "./errors.js";
 import { villageEngineJson, villageEngineBaseUrl, deleteVillageSpriteFile } from "./engine-loopback.js";
 import { villagesDocuments, VILLAGES_PACKAGE_ID, villagesLogger } from "./package-runtime.js";
@@ -55,6 +56,7 @@ const slot = {
     if ((record.version !== 1 && record.version !== 2) || !Array.isArray(record.jobs) || !record.settings)
       return defaultStudioState();
     const state = { ...defaultStudioState(), ...structuredClone(record), version: 2 } as unknown as StudioState;
+    state.settings.styleSelection ??= { kind: "studio" };
     if ([LEGACY_STUDIO_PAPERCRAFT, PREVIOUS_STUDIO_PAPERCRAFT].includes(state.settings.prompts?.PAPERCRAFT))
       state.settings.prompts.PAPERCRAFT = SPRITE_STYLES.PAPERCRAFT;
     return state;
@@ -339,7 +341,21 @@ export async function readSpriteStudio(characterId: string) {
       ? [{ expressionId: entry.expressionId, view: entry.view, cellId: entry.cutoutId }]
       : [],
   );
+  let styleProfiles: Awaited<ReturnType<typeof studioStyleProfiles>> | undefined;
+  let styleError = "";
+  try {
+    styleProfiles = await studioStyleProfiles();
+  } catch {
+    styleError = "Engine styles are unavailable. Saved artwork and Studio presets remain available.";
+  }
   return {
+    styleProfiles: styleProfiles
+      ? {
+          defaultProfileId: styleProfiles.defaultProfileId,
+          profiles: styleProfiles.profiles.map(({ id, name }) => ({ id, name })),
+        }
+      : undefined,
+    styleError,
     ...state,
     assignments,
     defaultExpressionId: resident.sprite?.defaultExpressionId,
@@ -367,8 +383,18 @@ function readSettings(raw: unknown): StudioSettings {
     if (typeof prompts[key] !== "string" || (prompts[key] as string).length > 6000)
       throw badRequest("Each style prompt must be at most 6,000 characters.");
   const connectionId = asString(body.connectionId);
+  const selected = asRecord(body.styleSelection);
+  const styleSelection =
+    selected.kind === "default"
+      ? { kind: "default" as const }
+      : selected.kind === "profile"
+        ? { kind: "profile" as const, profileId: asString(selected.profileId) }
+        : { kind: "studio" as const };
+  if (styleSelection.kind === "profile" && (!styleSelection.profileId || styleSelection.profileId.length > 120))
+    throw badRequest("Choose an Engine style profile.");
   if (connectionId.length > 200) throw badRequest("Invalid connection.");
   return {
+    styleSelection,
     style,
     prompts: { PAPERCRAFT: prompts.PAPERCRAFT, BATTLEHIGHWAY: prompts.BATTLEHIGHWAY, Custom: prompts.Custom },
     connectionId,
@@ -435,7 +461,7 @@ async function automaticStudioReference(characterId: string, id: string) {
 async function prepare(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
   await ensureLibrary(characterId, id);
-  await automaticStudioReference(characterId, id);
+  if (asRecord(raw).useReference !== false) await automaticStudioReference(characterId, id);
   const resident = await owner(characterId);
   const state = await read(id);
   const settingsToken = hash(JSON.stringify(state.settings));
@@ -448,12 +474,21 @@ async function prepare(characterId: string, raw: unknown) {
     if (entry.expressionId && !slot) throw badRequest("That expression slot no longer exists.");
     entry.expressionId = slot?.id ?? definition(entry.label, entry.pose).id;
   }
-  const referenceUrl = resident.cardSnapshot.spriteReference?.url;
+  const referenceUrl = asRecord(raw).useReference === false ? undefined : resident.cardSnapshot.spriteReference?.url;
   const connectionId = await resolveVillageImageConnectionId(state.settings.connectionId);
-  const design = designFor(state, referenceUrl ?? "");
+  const resolvedStyle = await resolveStudioStyle(
+    state.settings,
+    await import("./sprite-studio-engine.js").then(({ studioConnection }) => studioConnection(connectionId)),
+  );
+  const design = state.settings.styleSelection?.kind === "studio" ? designFor(state, referenceUrl ?? "") : undefined;
   const compatible = [...state.jobs]
     .reverse()
-    .filter((job) => compatibleStudioStyle(job.style, job.stylePrompt, state.settings));
+    .filter((job) =>
+      job.styleFingerprint
+        ? job.styleFingerprint === resolvedStyle.fingerprint
+        : state.settings.styleSelection?.kind === "studio" &&
+          compatibleStudioStyle(job.style, job.stylePrompt, state.settings),
+    );
   const neutral = compatible
     .flatMap((job) =>
       job.sheets.map((sheet) => ({
@@ -469,7 +504,8 @@ async function prepare(characterId: string, raw: unknown) {
       })),
     )
     .find((item) => item.cell);
-  const neutralUrl = neutral?.cell?.rendered?.url ?? design?.[input.view]?.url;
+  const neutralUrl =
+    asRecord(raw).useReference === false ? undefined : (neutral?.cell?.rendered?.url ?? design?.[input.view]?.url);
   let expectedHeight: number | undefined;
   if (neutralUrl) {
     try {
@@ -482,9 +518,15 @@ async function prepare(characterId: string, raw: unknown) {
   const capabilities = await studioCleanupCapabilities();
   state.settings.cleanupEngine = capabilities.builtin ? "builtin" : "studio";
   const identity = {
+    settings: state.settings,
+    resolvedStyle,
     name: resident.cardSnapshot.name,
-    appearance: (resident.cardSnapshot.appearance || resident.cardSnapshot.description).slice(0, 2000),
-    style: state.settings.prompts[state.settings.style],
+    appearance: (
+      asString(asRecord(raw).appearance).trim() ||
+      resident.cardSnapshot.appearance ||
+      resident.cardSnapshot.description
+    ).slice(0, 2000),
+    style: resolvedStyle.prompt,
     view: input.view,
     referenceUrl,
     references: [
@@ -497,7 +539,9 @@ async function prepare(characterId: string, raw: unknown) {
     plan = await planVillageStudioSheets(connectionId, identity, input.expressions, input.individual);
   } catch (error) {
     if (safeMessage(error).includes("(404)"))
-      throw badRequest("This Marinara version cannot preview raw image requests. Import and review remain available.");
+      throw badRequest(
+        "This Engine cannot preview sprite sheets. Character library, import and saved artwork remain available.",
+      );
     throw error;
   }
   plan.designId = design?.id;
@@ -509,6 +553,31 @@ export async function planSpriteStudio(characterId: string, raw: unknown) {
   const prepared = await prepare(characterId, raw);
   return prepared.plan;
 }
+/** The historical single-sprite route uses the durable Studio pipeline too. */
+export async function generateLegacyStudioSprite(
+  characterId: string,
+  input: { view: "front" | "side"; expression: string; appearance?: unknown; useReference?: unknown },
+) {
+  if (asString(input.appearance).length > 2000)
+    throw badRequest("Describe the resident's appearance in at most 2,000 characters.");
+  const submissionId = randomUUID();
+  const selection = {
+    view: input.view,
+    appearance: input.appearance,
+    useReference: input.useReference,
+    individual: true,
+    expressions: [{ label: input.expression }],
+  };
+  const plan = await planSpriteStudio(characterId, selection);
+  await startSpriteStudioJob(characterId, { ...selection, plan, submissionId });
+  const { id } = await scope(characterId);
+  while (active.has(id + ":" + submissionId)) await new Promise((resolve) => setTimeout(resolve, 50));
+  const job = (await read(id)).jobs.find((item) => item.id === submissionId);
+  const cell = job?.sheets[0]?.cells[0];
+  if (!cell?.rendered || cell.validation?.status === "blocked")
+    throw badRequest(job?.error || "The original is saved in Studio. Repair its cutout before using it.");
+  return studioAsset(cell.rendered.url);
+}
 function cellsFor(
   jobId: string,
   batchIndex: number,
@@ -518,18 +587,21 @@ function cellsFor(
   rows: number,
   width: number,
   height: number,
+  native = false,
 ): StudioCell[] {
   return expressions.map((entry, index) => {
-    const x = Math.floor(((index % cols) * width) / cols),
-      y = Math.floor((Math.floor(index / cols) * height) / rows);
+    const x = native ? (index % cols) * Math.floor(width / cols) : Math.floor(((index % cols) * width) / cols),
+      y = native
+        ? Math.floor(index / cols) * Math.floor(height / rows)
+        : Math.floor((Math.floor(index / cols) * height) / rows);
     return {
       ...entry,
       id: `${jobId}-${batchIndex}-${index}`,
       view,
       x,
       y,
-      width: Math.floor((((index % cols) + 1) * width) / cols) - x,
-      height: Math.floor(((Math.floor(index / cols) + 1) * height) / rows) - y,
+      width: native ? Math.floor(width / cols) : Math.floor((((index % cols) + 1) * width) / cols) - x,
+      height: native ? Math.floor(height / rows) : Math.floor(((Math.floor(index / cols) + 1) * height) / rows) - y,
       scale: 1,
       offsetX: 0,
       offsetY: 0,
@@ -547,7 +619,12 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   if (!/^[a-f0-9-]{36}$/i.test(jobId)) throw badRequest("A generation needs a valid submission id.");
   const { id } = await scope(characterId);
   const fingerprint = hash(
-    JSON.stringify({ ...selection(raw), ...(body.settings ? { settings: readSettings(body.settings) } : {}) }),
+    JSON.stringify({
+      ...selection(raw),
+      ...(body.settings ? { settings: readSettings(body.settings) } : {}),
+      ...(body.appearance !== undefined ? { appearance: asString(body.appearance) } : {}),
+      ...(body.useReference !== undefined ? { useReference: body.useReference !== false } : {}),
+    }),
   );
   const stored = await read(id);
   const prior = stored.submissions.find((entry) => entry.id === jobId) ?? stored.jobs.find((job) => job.id === jobId);
@@ -580,6 +657,8 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
         }
       }
       next.jobs.push({
+        resolvedStyle: identity.resolvedStyle,
+        styleFingerprint: identity.resolvedStyle.fingerprint,
         targetHeight: prepared.expectedHeight,
         requestedExpressions: input.expressions,
         individual: input.individual,
@@ -619,7 +698,11 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
         const expressions = input.expressions.slice(offset, offset + batch.count);
         offset += batch.count;
         const assetId = `villages-${randomUUID()}`;
-        const { image, source } = await generateVillageStudioSheet({
+        const {
+          image,
+          source,
+          cells: engineCells,
+        } = await generateVillageStudioSheet({
           connectionId,
           expectedModel: plan.connection.model,
           identity,
@@ -660,6 +743,7 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
               batch.rows,
               output.width,
               output.height,
+              true,
             ).map((cell) => ({
               ...cell,
               scale: 1,
@@ -677,6 +761,7 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
           currentJob.sheets.at(-1)!,
           prepared.state.settings.cleanupEngine ?? "studio",
           image,
+          engineCells,
         );
       }
       await mutate(id, (next) => {
@@ -720,7 +805,7 @@ async function importStudioSheetUnlocked(characterId: string, raw: unknown) {
       offsetX: 0,
       offsetY: 0,
       status: "candidate" as const,
-      cleanup: true,
+      cleanup: cell.cleanup !== false,
       processingVersion: STUDIO_PROCESSING_VERSION,
     };
     validateStudioCell(result, size);
@@ -772,7 +857,7 @@ async function importStudioSheetUnlocked(characterId: string, raw: unknown) {
   });
   const imported = (await read(id)).jobs.find((j) => j.id === jobId)!;
   for (const sheet of imported.sheets) await processSavedSheet(id, sheet, "studio", image);
-  return readSpriteStudio(characterId);
+  return { ...(await readSpriteStudio(characterId)), importedJobId: jobId };
 }
 function findCell(state: StudioState, cellId: string) {
   for (const job of state.jobs)
@@ -1089,6 +1174,11 @@ export const clearStudioReview = (characterId: string) =>
 
 function retainedUrls(state: StudioState, resident: Awaited<ReturnType<typeof owner>>) {
   const keep = new Set<string>();
+  for (const publication of state.publications ?? [])
+    for (const item of publication.items) {
+      keep.add(item.sourceUrl.split("?")[0]!);
+      for (const backup of item.backups) keep.add(backup.url.split("?")[0]!);
+    }
   const reference = resident.cardSnapshot.spriteReference?.url;
   if (reference) keep.add(reference.split("?")[0]!);
   for (const entry of resident.sprite?.expressions ?? []) keep.add(imageUrl(resident.sprite!, entry));
@@ -1231,6 +1321,7 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
         batch.rows,
         size.width,
         size.height,
+        (batch.request?.pipelineVersion ?? 0) >= 4,
       ),
     });
     delete current.pendingAssetId;
@@ -1265,6 +1356,7 @@ async function processSavedSheet(
   sheet: StudioSheet,
   engine: "studio" | "builtin" | "backgroundremover",
   raw?: string,
+  engineCells?: Array<{ expression: string; image: string }>,
 ) {
   const sourceImage = raw ?? (await studioAsset(sheet.url));
   if (sheet.source?.sha256 && studioImageSource(sourceImage, sheet.source.kind).sha256 !== sheet.source.sha256)
@@ -1286,7 +1378,35 @@ async function processSavedSheet(
   let decoded;
   try {
     decoded = await decodeStudioSource(sourceImage);
-    if (engine !== "studio" && sheet.cells.some((cell) => cell.cleanup !== false)) {
+    if (engineCells) {
+      if (
+        engineCells.length !== sheet.cells.length ||
+        engineCells.some((item, i) => item.expression !== sheet.cells[i]!.label)
+      )
+        throw badRequest("Engine returned unexpected sprite crops. The original is saved; recover it locally.");
+      for (const [index, entry] of engineCells.entries()) {
+        const cell = sheet.cells[index]!;
+        const crop = await decodeStudioSource(entry.image);
+        if (crop.width !== cell.width || crop.height !== cell.height)
+          throw badRequest("Engine crop dimensions changed. The original is saved; recover it locally.");
+        let cutout = crop;
+        if (engine !== "studio" && cell.cleanup !== false) {
+          try {
+            cutout = await decodeStudioSource(await studioCleanup(entry.image, engine));
+          } catch {
+            engine = "studio";
+          }
+        }
+        if (cutout.width !== cell.width || cutout.height !== cell.height)
+          throw badRequest("Engine cleanup changed the crop dimensions.");
+        for (let y = 0; y < cell.height; y++)
+          decoded.data.set(
+            cutout.data.subarray(y * cell.width * 4, (y + 1) * cell.width * 4),
+            ((cell.y + y) * decoded.width + cell.x) * 4,
+          );
+      }
+    }
+    if (!engineCells && engine !== "studio" && sheet.cells.some((cell) => cell.cleanup !== false)) {
       try {
         const cleaned = await decodeStudioSource(await studioCleanup(sourceImage, engine));
         if (cleaned.width !== sheet.width || cleaned.height !== sheet.height)
@@ -1363,6 +1483,58 @@ async function processSavedSheet(
       });
     }
   }
+}
+
+// Narrow access for library operations; callers serialize through the same resident queue.
+export async function withStudioLibrary<T>(
+  characterId: string,
+  action: (context: {
+    snapshot: () => ReturnType<typeof buildVillageSnapshot>;
+    resident: Awaited<ReturnType<typeof owner>>;
+    read: () => Promise<StudioState>;
+    mutate: (change: (state: StudioState) => void) => Promise<void>;
+    importImage: (raw: unknown) => ReturnType<typeof importStudioSheetUnlocked>;
+    assign: (raw: unknown) => ReturnType<typeof assignStudioCellsUnlocked>;
+    cell: (id: string) => Promise<{ image: string; cell: StudioCell }>;
+  }) => Promise<T>,
+) {
+  return serializeCells(characterId, async () => {
+    const { resident, id } = await scope(characterId);
+    await ensureLibrary(characterId, id);
+    return action({
+      snapshot: () => buildVillageSnapshot(),
+      resident,
+      read: () => read(id),
+      mutate: (change) => mutate(id, change),
+      importImage: (raw) => importStudioSheetUnlocked(characterId, raw),
+      assign: (raw) => assignStudioCellsUnlocked(characterId, raw),
+      cell: async (cellId) => {
+        const { cell, sheet } = findCell(await read(id), cellId);
+        const cached = await cachedStudioCell(sheet, cell);
+        if (cached.validation.status === "blocked" || cell.status === "discarded")
+          throw badRequest("Choose a valid saved cutout.");
+        const sourceHash = studioImageSource(cached.image, "imported").sha256;
+        if (!cell.rendered || cell.rendered.sha256 !== sourceHash) {
+          const expression = "p-" + randomUUID().replaceAll("-", "");
+          await mutate(id, (state) =>
+            retainFile(state, sheet.assetId, expression, `/api/sprites/${sheet.assetId}/file/${expression}.png`),
+          );
+          const saved = await saveStudioImage(cached.image, expression, sheet.assetId);
+          await mutate(id, (state) => {
+            const current = findCell(state, cellId).cell;
+            current.rendered = {
+              assetId: sheet.assetId,
+              filename: saved.filename,
+              url: saved.url,
+              fingerprint: cellFingerprint(current),
+              sha256: sourceHash,
+            };
+          });
+        }
+        return { image: cached.image, cell: findCell(await read(id), cellId).cell };
+      },
+    });
+  });
 }
 async function cachedStudioCell(sheet: StudioSheet, cell: StudioCell) {
   if (

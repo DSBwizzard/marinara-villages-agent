@@ -16,7 +16,7 @@ Change `MARINARA_ENGINE_ROOT` if your Engine checkout is elsewhere. Before packa
 
 ## Install into the existing Engine
 
-Sprite Studio runs within Marinara Engine and uses its existing image connections, configured defaults and fallbacks, image generation, inspection, cleanup, and sprite storage. Villages supplies the sheet prompt, preserves originals, and automatically slices and fits transparent sprites for its scenes. No separate connections, design approvals, or AI review passes are required. The standing restriction in [AGENTS.md](AGENTS.md) concerns Engine source edits, not use of Engine services. Sideloading a merged, validated Villages package through the helper below is allowed.
+Sprite Studio runs within Marinara Engine and uses its character sprite library, image connections, saved style profiles, configured defaults and fallbacks, sprite-sheet generation, inspection, cleanup, and sprite storage. The public shared profile normalizer and prompt compiler enter the Villages build through `sources/package-shared.ts`. Villages previews provider dimensions, submits its opaque-matte prompt override through the sprite-sheet API with generation cleanup and native transparency disabled, saves the untouched original, then cleans Engine-returned crops separately and fits transparent Scene cutouts. No Engine source edits or builds, separate connections, design approvals, or AI review passes are required. Sideloading a merged, validated Villages package through the helper below is allowed.
 
 The sideload helper installs Villages into either an existing package registry or a fresh data directory. It preserves other installed package records and saves a registry backup when one already exists. After the package has merged to `staging` and passed checks and build, run:
 
@@ -42,6 +42,9 @@ Sprite reliability checks:
 npx tsx tests/villages-sprite-engine.regression.ts
 npx tsx tests/villages-sprite-pixels.regression.ts
 npx tsx tests/villages-sprite-studio.regression.ts
+npx tsx tests/villages-sprite-library.regression.ts
+npx tsx tests/villages-sprite-pipeline.regression.ts
+npx tsx tests/villages-resident-sprites.regression.ts
 node tests/villages-sprite-studio.e2e.mjs
 ```
 

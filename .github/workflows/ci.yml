@@ -60,6 +60,7 @@ jobs:
           npx tsx tests/villages-sprite-pixels.regression.ts
           npx tsx tests/villages-sprite-matte.regression.ts
           npx tsx tests/villages-sprite-studio.regression.ts
+          npx tsx tests/villages-sprite-library.regression.ts
 
       - name: Verify scene staging
         run: npx tsx tests/villages-scene-staging.regression.ts

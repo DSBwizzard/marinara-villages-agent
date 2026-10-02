@@ -1,4 +1,4 @@
-// Villages owns the sheet and all derivatives. The raw image endpoint performs
+// Villages owns the sheet and all derivatives. The Engine sprite endpoint performs
 // one Engine generation request, honoring Engine defaults and fallbacks. Cleanup
 // is applied separately so the unmodified original remains available.
 import { createHash } from "node:crypto";
@@ -6,7 +6,10 @@ import { badRequest } from "./errors.js";
 import { studioConnection, studioEngineJson } from "./sprite-studio-engine.js";
 import { villageEngineBaseUrl } from "./engine-loopback.js";
 import { asRecord, asString } from "./coerce.js";
-import { decodeVillageImageDataUrl, imagePromptId } from "./image-generation.js";
+import { decodeVillageImageDataUrl } from "./image-generation.js";
+import { generatedMime } from "./resident-sprites.js";
+import { compileStudioPrompt, resolveStudioStyle } from "./sprite-studio-styles.js";
+import type { StudioSettings, StudioResolvedStyle } from "./sprite-studio-model.js";
 import {
   studioPrompt,
   STUDIO_NEGATIVE_PROMPT,
@@ -18,6 +21,8 @@ import {
 
 type Expression = { label: string; pose: string };
 type Identity = {
+  settings?: StudioSettings;
+  resolvedStyle?: StudioResolvedStyle;
   name: string;
   appearance: string;
   style: string;
@@ -26,8 +31,8 @@ type Identity = {
   references?: Array<{ url: string; role: string }>;
 };
 type Connection = Awaited<ReturnType<typeof studioConnection>>;
-export const STUDIO_PIPELINE_VERSION = 3;
-const PATH = "/api/characters/avatar-generation";
+export const STUDIO_PIPELINE_VERSION = 4;
+const PATH = "/api/sprites/generate-sheet";
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const layouts: Record<number, [number, number]> = { 1: [1, 1], 2: [2, 1], 3: [2, 2], 4: [2, 2], 5: [3, 2], 6: [3, 2] };
 
@@ -74,16 +79,23 @@ function requestBody(
   batch: StudioBatch,
   prompt: string,
   negativePrompt = STUDIO_NEGATIVE_PROMPT,
+  expressions: Expression[] = [],
 ) {
+  const labels = expressions.map((entry) => entry.label);
+  const id = `sprite:full-body:sheet:${`${batch.cols}x${batch.rows}-${labels.join(",")}`.slice(0, 120)}`;
   return {
     connectionId,
-    name: identity.name,
     appearance: `${identity.name}. ${identity.appearance}`.slice(0, 2000),
-    purpose: "character-sheet",
-    width: batch.width,
-    height: batch.height,
+    expressions: labels,
+    cols: batch.cols,
+    rows: batch.rows,
+    spriteType: "full-body",
+    fullBodyExpressionMode: false,
+    noBackground: false,
+    nativeTransparentPng: false,
     referenceImages: reference,
-    promptOverrides: [{ id: imagePromptId(identity.name, "character-sheet"), prompt, negativePrompt }],
+    styleProfileId: "off",
+    promptOverrides: [{ id, prompt, negativePrompt }],
   };
 }
 
@@ -97,9 +109,8 @@ async function preview(body: ReturnType<typeof requestBody>) {
     height = Number(item.height);
   if (![width, height].every((v) => Number.isInteger(v) && v > 0 && v <= 4096) || width * height > 16_000_000)
     throw badRequest("The image connection did not report a usable sprite request.");
-  // Character-sheet previews ignore overrides and return a generic design-sheet
-  // prompt. Only their dimensions describe our request; Villages owns its text.
-  return { width, height };
+  if (!asString(item.prompt)) throw badRequest("Engine could not preview the sprite prompt.");
+  return { width, height, prompt: asString(item.prompt), negativePrompt: asString(item.negativePrompt) };
 }
 
 function fingerprint(connection: Connection, body: ReturnType<typeof requestBody>, matteHex: string) {
@@ -113,6 +124,9 @@ export async function planVillageStudioSheets(
   individual: boolean,
 ): Promise<StudioPlan> {
   const connection = await studioImageConnection(connectionId);
+  const resolvedStyle = identity.settings
+    ? await resolveStudioStyle(identity.settings, connection)
+    : identity.resolvedStyle;
   const roles = identity.references?.map((r) => r.role) ?? [];
   const reference = await Promise.all(
     (identity.references?.map((r) => r.url) ?? (identity.referenceUrl ? [identity.referenceUrl] : [])).map(
@@ -137,19 +151,36 @@ export async function planVillageStudioSheets(
         matteHex,
         referenceRoles: roles,
       });
-      const compiled = await preview(requestBody(connectionId, identity, reference, target, draftPrompt));
+      const override = resolvedStyle
+        ? compileStudioPrompt(draftPrompt, STUDIO_NEGATIVE_PROMPT, resolvedStyle, connection)
+        : { prompt: draftPrompt, negativePrompt: STUDIO_NEGATIVE_PROMPT };
+      const body = requestBody(
+        connectionId,
+        identity,
+        reference,
+        target,
+        override.prompt,
+        override.negativePrompt,
+        chosen,
+      );
+      const compiled = await preview(body);
       if (compiled.width !== target.width || compiled.height !== target.height) {
         target = { ...target, width: compiled.width, height: compiled.height };
         continue;
       }
-      const body = requestBody(connectionId, identity, reference, target, draftPrompt);
       target.request = {
+        resolvedStyle,
+        promptId: body.promptOverrides[0].id,
+        overridePrompt: override.prompt,
+        overrideNegativePrompt: override.negativePrompt,
         pipelineVersion: STUDIO_PIPELINE_VERSION,
         matteHex,
         draftPrompt,
-        prompt: draftPrompt,
-        negativePrompt: STUDIO_NEGATIVE_PROMPT,
-        fingerprint: fingerprint(connection, body, matteHex),
+        prompt: compiled.prompt,
+        negativePrompt: compiled.negativePrompt,
+        fingerprint: digest(
+          JSON.stringify([fingerprint(connection, body, matteHex), resolvedStyle?.fingerprint, compiled]),
+        ),
         connection,
         referenceHashes: reference.map((r) =>
           digest(decodeVillageImageDataUrl(r, { label: "reference", maxBase64Length: 16000000 }).bytes),
@@ -163,7 +194,7 @@ export async function planVillageStudioSheets(
     offset += count;
   }
   return {
-    protocol: 3,
+    protocol: 4,
     connection,
     batches,
     estimatedCost: null,
@@ -198,7 +229,7 @@ export async function generateVillageStudioSheet(input: {
   expressions: Expression[];
   batch: StudioBatch;
   onSubmit: () => Promise<void>;
-}): Promise<{ image: string; source: StudioSource }> {
+}): Promise<{ image: string; source: StudioSource; cells: Array<{ expression: string; image: string }> }> {
   const { connectionId, expectedModel, identity, expressions, batch, onSubmit } = input;
   const connection = await studioImageConnection(connectionId);
   if (connection.model !== expectedModel)
@@ -218,22 +249,44 @@ export async function generateVillageStudioSheet(input: {
     matteHex: request.matteHex,
     referenceRoles: identity.references?.map((r) => r.role) ?? [],
   });
-  const body = requestBody(connectionId, identity, reference, batch, prompt);
+  const resolvedStyle = identity.settings
+    ? await resolveStudioStyle(identity.settings, connection)
+    : identity.resolvedStyle;
+  const override = resolvedStyle
+    ? compileStudioPrompt(prompt, STUDIO_NEGATIVE_PROMPT, resolvedStyle, connection)
+    : { prompt, negativePrompt: STUDIO_NEGATIVE_PROMPT };
+  const body = requestBody(
+    connectionId,
+    identity,
+    reference,
+    batch,
+    override.prompt,
+    override.negativePrompt,
+    expressions,
+  );
   const compiled = await preview(body);
   if (
     expressions.length !== batch.count ||
     request.matteHex !== selectStudioMatte(identity.name + " " + identity.appearance) ||
     request.draftPrompt !== prompt ||
-    request.prompt !== prompt ||
-    request.negativePrompt !== STUDIO_NEGATIVE_PROMPT ||
+    request.resolvedStyle?.fingerprint !== resolvedStyle?.fingerprint ||
+    request.prompt !== compiled.prompt ||
+    request.negativePrompt !== compiled.negativePrompt ||
     compiled.width !== batch.width ||
     compiled.height !== batch.height ||
-    fingerprint(connection, body, request.matteHex) !== request.fingerprint
+    digest(JSON.stringify([fingerprint(connection, body, request.matteHex), resolvedStyle?.fingerprint, compiled])) !==
+      request.fingerprint
   )
     throw badRequest("The generation plan changed. Refresh the request summary before generating.");
   await onSubmit();
   const answer = asRecord(await studioEngineJson<unknown>(PATH, { body }));
-  const image = asString(answer.image);
+  const bytes = Buffer.from(asString(answer.sheetBase64), "base64");
+  const image = `data:${generatedMime(bytes)};base64,${bytes.toString("base64")}`;
   const source = studioImageSource(image, "generated-raw", batch);
-  return { image, source };
+  // The caller saves the paid original before validating or processing crops.
+  const cells = (Array.isArray(answer.cells) ? answer.cells : []).map(asRecord).map((cell) => ({
+    expression: asString(cell.expression),
+    image: `data:image/png;base64,${asString(cell.base64)}`,
+  }));
+  return { image, source, cells };
 }

@@ -59,25 +59,28 @@ globalThis.fetch = async (url, init) => {
     return Response.json([{ id: "image", name: "Test", model, provider: "image_generation" }]);
   if (path.endsWith("/reference.png"))
     return new Response(Buffer.from(reference.split(",")[1]!, "base64"), { headers: { "content-type": "image/png" } });
-  if (path === "/api/characters/avatar-generation/preview") {
+  if (path === "/api/sprites/generate-sheet/preview") {
     previews.push(body);
     return Response.json({
       items: [
         {
           id: body.promptOverrides[0].id,
-          prompt: "Generic character reference sheet, hero view, turnarounds and palette. Host " + revision,
-          negativePrompt: "no labels " + revision,
-          width: constrained ? 1024 : body.width,
-          height: constrained ? 1024 : body.height,
+          prompt: body.promptOverrides[0].prompt,
+          negativePrompt: body.promptOverrides[0].negativePrompt + (revision === "first" ? "" : " no labels changed"),
+          width: constrained ? 1024 : body.cols * 512,
+          height: constrained ? 1024 : body.rows * 768,
         },
       ],
     });
   }
-  assert.equal(path, "/api/characters/avatar-generation", "Studio never calls the sprite cleanup endpoint");
+  assert.equal(path, "/api/sprites/generate-sheet", "the adapter makes only the one admitted sprite request");
   generated++;
   requests.push(body);
   if (fail) return Response.json({ error: "Unknown provider timeout" }, { status: 504 });
-  return Response.json({ image: png, prompt: body.promptOverrides[0].prompt });
+  return Response.json({
+    sheetBase64: bytes.toString("base64"),
+    cells: body.expressions.map((expression: string) => ({ expression, base64: bytes.toString("base64") })),
+  });
 };
 async function main() {
   try {
@@ -94,7 +97,7 @@ async function main() {
     const expressions = Array.from({ length: 13 }, (_, i) => ({ label: "e_" + i, pose: "Pose " + i }));
     constrained = true;
     const plan = await planVillageStudioSheets("image", identity, expressions, false);
-    assert.equal(plan.protocol, 3);
+    assert.equal(plan.protocol, 4);
     assert.deepEqual(
       plan.batches.map((b) => b.count),
       [6, 6, 1],
@@ -119,7 +122,8 @@ async function main() {
       assert.equal(result.source.kind, "generated-raw");
       const body = requests[i];
       assert.deepEqual(body.referenceImages, [png]);
-      assert.equal(body.purpose, "character-sheet");
+      assert.equal(body.spriteType, "full-body");
+      assert.equal(body.fullBodyExpressionMode, false);
       assert.equal(body.promptOverrides[0].prompt, batch.request!.prompt);
       assert.equal(body.promptOverrides[0].negativePrompt, batch.request!.negativePrompt);
       assert.equal(body.promptOverrides[0].negativePrompt, STUDIO_NEGATIVE_PROMPT);
@@ -142,10 +146,10 @@ async function main() {
       assert.doesNotMatch(body.promptOverrides[0].prompt, /hero view|turnarounds|palette|Host/);
       assert.match(body.promptOverrides[0].prompt, /#FF00FF/);
       assert.doesNotMatch(body.promptOverrides[0].prompt, /transparent background/i);
-      assert.equal(body.width, batch.width);
-      assert.equal(body.height, batch.height);
-      assert.equal(body.noBackground, undefined);
-      assert.equal(body.nativeTransparentPng, undefined);
+      assert.equal(body.cols, batch.cols);
+      assert.equal(body.rows, batch.rows);
+      assert.equal(body.noBackground, false);
+      assert.equal(body.nativeTransparentPng, false);
     }
     assert.equal(generated, 3);
     assert.equal(submissions, 3);
@@ -160,7 +164,9 @@ async function main() {
           submissions++;
         },
       });
-    revision = "changed"; // Generic Engine wording does not control Studio submissions.
+    revision = "changed";
+    await assert.rejects(run, /plan changed/, "the final Engine preview must still match");
+    revision = "first";
     model = "changed";
     await assert.rejects(run, /model changed/);
     model = "test-image";
@@ -175,7 +181,7 @@ async function main() {
     reference = png;
     plan.batches[0]!.request!.pipelineVersion = 1;
     await assert.rejects(run, /plan changed/);
-    plan.batches[0]!.request!.pipelineVersion = 3;
+    plan.batches[0]!.request!.pipelineVersion = 4;
     const frozen = plan.batches[0]!.request!;
     const originalPrompt = frozen.prompt;
     frozen.prompt = "Generic character reference sheet";
@@ -243,7 +249,7 @@ async function main() {
       const sized = await planVillageStudioSheets("image", identity, expressions.slice(0, count), false);
       assert.equal(sized.batches[0]!.count, count);
       assert.equal(sized.batches.length, 1);
-      assert.equal(sized.batches[0]!.request!.pipelineVersion, 3);
+      assert.equal(sized.batches[0]!.request!.pipelineVersion, 4);
     }
   } finally {
     globalThis.fetch = originalFetch;
@@ -324,7 +330,7 @@ async function main() {
   releaseOne!();
   await Promise.all([held, heldTwo]);
   console.log(
-    "Raw Studio pipeline passed: reviewed request parity, source alpha/bytes, references, matte selection, stale plans, batching, no retries and bounded render ownership.",
+    "Engine Studio pipeline passed: reviewed request parity, source alpha/bytes, references, matte selection, stale plans, batching, no retries and bounded render ownership.",
   );
 }
 void main().catch((error) => {

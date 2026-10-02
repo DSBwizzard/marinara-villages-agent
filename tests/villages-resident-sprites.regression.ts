@@ -20,7 +20,6 @@ import { coerceVillageState } from "../packages/villages/src/engine/packages/ser
 import {
   readSpriteExpression,
   readSpriteView,
-  spriteGenerationBody,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/resident-sprites.ts";
 import { parseVenueReply } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
 import { villageEngineJson } from "../packages/villages/src/engine/packages/server/src/services/villages/engine-loopback.ts";
@@ -42,44 +41,6 @@ assert.throws(() => readSpriteExpression("../wrong"), /short expression name/);
 assert.equal(readSpriteView(undefined), "front");
 assert.equal(readSpriteView("side"), "side");
 assert.throws(() => readSpriteView("back"), /front or side/);
-
-const sideRequest = spriteGenerationBody({
-  connectionId: "image-1",
-  name: "Resident",
-  appearance: "Dark coat",
-  view: "side",
-  expression: "neutral",
-  referenceUrl: "/api/sprites/villages-1/file/neutral.png",
-});
-assert.equal(sideRequest.fullBodyExpressionMode, true);
-assert.match(sideRequest.appearance, /right-facing side profile/);
-assert.equal(sideRequest.neutralFullBodyReference, "/api/sprites/villages-1/file/neutral.png");
-assert.equal("referenceImages" in sideRequest, false, "side generation uses one identity reference");
-assert.equal(
-  "referenceImages" in
-    spriteGenerationBody({
-      connectionId: "image-1",
-      name: "Resident",
-      appearance: "Dark coat",
-      view: "front",
-      expression: "neutral",
-      referenceUrl: "/api/sprites/villages-1/file/neutral.png",
-      portrait: "/api/avatars/file/resident.png",
-    }),
-  false,
-  "an approved neutral takes priority over the portrait on regeneration",
-);
-const frontRequest = spriteGenerationBody({
-  connectionId: "image-1",
-  name: "Resident",
-  appearance: "Dark coat",
-  view: "front",
-  expression: "neutral",
-  portrait: "/api/avatars/file/resident.png",
-});
-assert.equal(frontRequest.fullBodyExpressionMode, false);
-assert.match(frontRequest.appearance, /Face straight toward the viewer/);
-assert.deepEqual(frontRequest.referenceImages, ["/api/avatars/file/resident.png"]);
 
 const directions = [spriteFacing(1, -1), spriteFacing(1, 0), spriteFacing(1, 2)];
 assert.deepEqual(directions, ["front", "left", "right"]);

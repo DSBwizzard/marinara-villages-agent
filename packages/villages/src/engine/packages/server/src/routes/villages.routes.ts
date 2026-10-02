@@ -1,4 +1,10 @@
 import { readRuntimeDebug, saveRuntimeDebug, runtimeDebug } from "../services/villages/runtime-debug.js";
+import {
+  listStudioCharacterLibrary,
+  adoptStudioCharacterSprites,
+  planStudioPublication,
+  executeStudioPublication,
+} from "../services/villages/sprite-studio-library.js";
 import { readRelationshipsView, changeRelationshipCreator } from "../services/villages/relationships.js";
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
 import { setScenerySettings } from "../services/villages/village.js";
@@ -587,6 +593,11 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
   const studioActions: Record<string, (id: string, body: unknown) => Promise<unknown>> = {
+    "character-library": listStudioCharacterLibrary,
+    "adopt-character": adoptStudioCharacterSprites,
+    "publish-plan": planStudioPublication,
+    publish: executeStudioPublication,
+    "restore-plan": planStudioPublication,
     settings: saveSpriteStudioSettings,
     reference: captureStudioReference,
     plan: planSpriteStudio,

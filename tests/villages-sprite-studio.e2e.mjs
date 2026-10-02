@@ -86,6 +86,7 @@ for (const profile of browserProfiles) {
     seq = 0;
   let planRevision = "first";
   const submittedPlans = [];
+  const nativeLibrary = [];
   const cellsOf = (job) => job.sheets.flatMap((sheet) => sheet.cells);
   const allCells = () => state.jobs.flatMap(cellsOf);
   const snapshot = () => ({
@@ -123,11 +124,77 @@ for (const profile of browserProfiles) {
         reference: null,
       };
     let result = state;
+    if (action === "/character-library") result = { available: true, items: nativeLibrary, error: "" };
+    if (action === "/publish-plan" || action === "/restore-plan") {
+      result = {
+        id: "publication-" + seq++,
+        token: "reviewed",
+        createdAt: new Date().toISOString(),
+        items: body.items.map((item) => {
+          const cell = allCells().find((cell) => cell.id === item.cellId);
+          return {
+            ...item,
+            label: cell.label,
+            view: cell.view,
+            sourceUrl: cell.rendered.url,
+            sourceHash: "fixture",
+            expected: [],
+            backups: [],
+            status: "pending",
+          };
+        }),
+      };
+      (state.publications ??= []).push(result);
+    }
+    if (action === "/publish") {
+      const publication = state.publications.find((entry) => entry.id === body.id);
+      for (const item of publication.items) {
+        item.status = "saved";
+        nativeLibrary.push({
+          filename: item.name + ".png",
+          expression: item.name,
+          url: item.sourceUrl,
+          sha256: "fixture",
+          label: item.label,
+          view: item.view,
+        });
+      }
+      result = state;
+    }
+    if (action === "/adopt-character") {
+      const cells = body.items.map((item) => {
+        const original = allCells().find(
+          (cell) => cell.rendered?.url === nativeLibrary.find((row) => row.filename === item.filename).url,
+        );
+        return {
+          ...structuredClone(original),
+          id: "adopted-" + seq++,
+          label: item.label,
+          view: item.view,
+          status: "approved",
+        };
+      });
+      state.jobs.push({
+        id: "adoption-" + seq++,
+        style: "Imported",
+        model: "Imported",
+        status: "ready",
+        createdAt: new Date().toISOString(),
+        sheets: [{ ...state.jobs[0].sheets[0], cells }],
+      });
+      for (const cell of cells) {
+        state.assignments = state.assignments.filter(
+          (entry) => entry.expressionId !== cell.expressionId || entry.view !== cell.view,
+        );
+        state.assignments.push({ cellId: cell.id, expressionId: cell.expressionId, view: cell.view });
+      }
+      result = { studio: state, snapshot: snapshot() };
+    }
     if (action === "/settings") state.settings = body;
     if (action === "/plan") {
       previewed++;
       result = {
-        protocol: 3,
+        protocol: 4,
         connection: { id: "mock", name: "Mock images", model: "fixture", source: "openai" },
         batches: [],
         estimatedCost: null,
@@ -149,7 +216,7 @@ for (const profile of browserProfiles) {
               matteHex: "#FF00FF",
             });
             return {
-              pipelineVersion: 3,
+              pipelineVersion: 4,
               matteHex: "#FF00FF",
               draftPrompt: prompt,
               prompt,
@@ -676,6 +743,47 @@ for (const profile of browserProfiles) {
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Mara · Sprite Studio" }).click();
     await expect(page.locator(".vss-gallery article")).toHaveCount(1);
+    const publishing = page.getByRole("region", { name: "Save to character", exact: true });
+    await publishing.getByRole("checkbox").first().check();
+    await publishing.getByLabel("Character sprite name").fill("full_browser_roundtrip");
+    await publishing.getByRole("button", { name: "Review saving to character", exact: true }).click();
+    await expect(publishing.getByRole("img", { name: "New full_browser_roundtrip", exact: true })).toBeVisible();
+    const assignmentsBeforePublish = structuredClone(state.assignments);
+    await publishing.getByRole("button", { name: "Save reviewed sprites to character", exact: true }).click();
+    await expect(publishing.getByRole("status")).toContainText("Only items marked Saved");
+    assert.deepEqual(state.assignments, assignmentsBeforePublish);
+    const requestsBeforeRoundtrip = generated;
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+    const library = page.getByRole("region", { name: "Character library", exact: true });
+    await library.getByRole("button", { name: "Refresh character library", exact: true }).click();
+    await library.getByRole("checkbox", { name: "full_browser_roundtrip.png", exact: true }).check();
+    await library
+      .getByLabel("Character artwork view · full_browser_roundtrip.png", { exact: true })
+      .selectOption("side");
+    await library.getByRole("button", { name: "Use selected", exact: true }).click();
+    await expect(library.getByRole("status")).toContainText("now in use");
+    assert.ok(state.assignments.some((entry) => entry.view === "side" && entry.cellId.startsWith("adopted-")));
+    nativeLibrary.length = 0;
+    await library.getByRole("button", { name: "Refresh character library", exact: true }).click();
+    assert.ok(
+      state.assignments.some((entry) => entry.cellId.startsWith("adopted-")),
+      "adopted art survives native deletion",
+    );
+    assert.equal(generated, requestsBeforeRoundtrip, "the round trip spends no generation");
+    await page.getByRole("button", { name: /^Review(?: · \d+)?$/ }).click();
+    const stage = publishing.getByRole("img").first();
+    for (const background of ["dark", "light", "checker"]) {
+      await stage.evaluate((node, value) => {
+        node.style.background =
+          value === "light"
+            ? "#f3f1ec"
+            : value === "dark"
+              ? "#111522"
+              : "repeating-conic-gradient(#c1c5cf 0 25%,#edf0f5 0 50%) 0 0/16px 16px";
+      }, background);
+      await stage.screenshot({ path: join(output, profile.name + "-roundtrip-" + background + ".png") });
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
     assert.deepEqual(errors, []);
     console.log(
       profile.name +
