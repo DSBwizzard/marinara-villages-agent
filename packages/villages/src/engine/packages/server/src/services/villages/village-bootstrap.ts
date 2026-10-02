@@ -28,6 +28,7 @@ import { venueZones, canOccupyZone } from "./venue-zones.js";
 //     is an annoyance rather than a broken village.
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { condense } from "./coerce.js";
+import { EVENT_MEMORY_GUIDANCE, fitVenueWritingMessages } from "./venue-writing.js";
 import { villageAgendaDay } from "./agenda-plan.js";
 import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
@@ -366,6 +367,8 @@ const TICK_TEMPERATURE = 0.85;
 export type VillageTickResident = {
   characterId: string;
   name: string;
+  /** Complete authored identity for background encounters; optional on old fixtures. */
+  profile?: string;
   /** The card's one-line blurb, empty when the card is gone or says nothing. */
   summary: string;
   tags: readonly string[];
@@ -692,9 +695,7 @@ export function renderResidentsBlock(residents: readonly VillageTickResident[]):
       // the faintest wish and the loudest as equally worth a happening, and
       // every happening it writes comes back in `{{happenings}}` next turn.
       for (const wish of [...wishes].sort((left, right) => right.intensity - left.intensity)) {
-        const tell = wish.tell.trim();
-        const surface = tell.length > 0 ? ` (it shows: ${tell})` : "";
-        lines.push(`  - ${wish.wish}${surface} — ${wishWeightWords(wish.intensity)}`);
+        lines.push(`  - ${wish.wish} — ${wishWeightWords(wish.intensity)}`);
       }
     }
     const remembered = resident.remembered.map((line) => line.trim()).filter((line) => line.length > 0);
@@ -707,7 +708,7 @@ export function renderResidentsBlock(residents: readonly VillageTickResident[]):
   return ["Who lives here, and what is already known about each of them:", ...lines].join("\n");
 }
 
-function buildTickMessages(context: VillageTickContext): CapabilityLanguageModelMessage[] {
+export function buildTickMessages(context: VillageTickContext): CapabilityLanguageModelMessage[] {
   if (!LEGACY_EVENTS_CAN_AFFECT_VILLAGE) {
     // Events prose is visual only. Housing requests are a separate, structured
     // decision signal and are checked against the live roster and venue state.
@@ -738,6 +739,18 @@ function buildTickMessages(context: VillageTickContext): CapabilityLanguageModel
             .map((resident) => resident.name)
             .join(", ")}.`
         : "No residents yet.",
+      ...context.residents
+        .filter((resident) =>
+          context.opportunities.some((opportunity) => opportunity.actorIds.includes(resident.characterId)),
+        )
+        .map((resident) =>
+          [
+            resident.profile || resident.summary,
+            `Current activity: ${resident.doing}. Private current desires: ${(resident.agenda?.wishes ?? []).map((wish) => wish.wish).join("; ") || "none"}.`,
+          ].join("\n"),
+        ),
+      "Cards govern each resident's personality, voice, mannerisms, values, and initiative. Setting, relationships, schedules, and memories supply circumstances, not a replacement identity. A private wish may inform a relevant choice; it requires no hint, prescribed gesture, publicity, or pursuit in an unrelated exchange.",
+      EVENT_MEMORY_GUIDANCE,
       context.recent.length
         ? `Recent visual entries (avoid repetition): ${context.recent
             .slice(0, 4)
@@ -852,7 +865,7 @@ For a CURRENT encounter opportunity with at least two actors in the same zone, s
       ...(wishesSomewhere
         ? [
             "- Some of the people above wish for something. That is what is on their mind and the reason behind what they do; it is not a task and nobody has asked you to settle it.",
-            "- In what YOU write here, a wish is never announced and never acted on for its own sake. It may show ONLY as the small ordinary thing written in brackets after it, or as the reason behind a happening that was worth writing down on its own. Whether one of them ever says it out loud is theirs to decide, in their own conversation, and is not your business.",
+            "- A wish may inform a relevant, character-consistent choice or ordinary activity. It does not require a hint, repeated gesture, announcement, or public disclosure. Do not prescribe tells. Respect this person's complete personality, rather than turning every event into the same desire. Visual happenings do not establish physical outcomes, fulfillment, consent, or new knowledge.",
             HAPPENING_RULES.noWish,
             `- There is one thing in this reply that only you can do, and it is not news. If the world has made one of those wishes IMPOSSIBLE for good — the thing was broken up, the ground it was going to stand on is under water, the chance has gone — name it in "lapsed", with the person's name spelled exactly as it appears above and the wish written out word for word as it is written above. Nothing else in the village can notice this, and a wish that has become impossible is one its owner will otherwise carry for the rest of their life.`,
             `- A wish is impossible only when the world has decided it. Never because it is quiet, never because nothing has been written about it, and never because it does not suit what you are writing today: a wish that is merely unmentioned is still a wish, and most wishes are still possible. "lapsed" is empty in almost every reply — up to ${MAX_LAPSES_PER_WRITE} entries, and none at all is the ordinary answer.`,
@@ -1229,7 +1242,14 @@ export async function proposeHappenings(
     connectionId: await villagesConnectionIdFor("system"),
   });
   const requestedMaxTokens = Math.min(model.maxOutputTokens ?? TICK_MAX_TOKENS, TICK_MAX_TOKENS);
-  const fitted = model.fitContext(buildTickMessages(context), { maxTokens: requestedMaxTokens });
+  const messages = buildTickMessages(context);
+  const fitted = fitVenueWritingMessages(
+    model,
+    [{ text: String(messages[0].content) }],
+    String(messages[1].content),
+    requestedMaxTokens,
+    "System",
+  );
   const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
   villagesLogger().debugOverride(debugEnabled, "[villages] creative prompt: %s", JSON.stringify(fitted.messages));
 

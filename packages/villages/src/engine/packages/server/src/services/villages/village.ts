@@ -1,12 +1,13 @@
 import { relationshipZoneController } from "./relationship-store.js";
 import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
-import { relationshipPrompt, relationshipClosingNotices } from "./relationships.js";
+import { relationshipWritingPrompt, relationshipClosingNotices } from "./relationships.js";
 import { readBaseVenueLayout, assertResidencePrivateDestination } from "./venue-layout.js";
 import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import { DEFAULT_SCENERY_STYLE, sceneryImageKey, readSceneryStyle } from "./scenery-context.js";
 import { preparePrivateSpaces } from "./private-space-preparation.js";
 import { zoneControllerIds } from "./venue-zones.js";
+import { venueCardProfile } from "./venue-writing.js";
 import {
   correctResidentWish,
   expireResidentWishes,
@@ -1497,6 +1498,7 @@ export async function addVillager(characterId: string): Promise<void> {
           backstory: card.backstory,
           appearance: card.appearance,
           exampleDialogue: card.exampleDialogue,
+          postHistoryInstructions: card.postHistoryInstructions ?? "",
           nameColor: card.nameColor,
           dialogueColor: card.dialogueColor,
           capturedAt: addedAt,
@@ -1537,6 +1539,7 @@ function snapshotFromCard(card: VillagerCard, revision: number): VillageVillager
     backstory: card.backstory,
     appearance: card.appearance,
     exampleDialogue: card.exampleDialogue,
+    postHistoryInstructions: card.postHistoryInstructions ?? "",
     nameColor: card.nameColor,
     dialogueColor: card.dialogueColor,
     capturedAt: new Date().toISOString(),
@@ -1557,6 +1560,7 @@ function snapshotContent(snapshot: VillageVillagerCardSnapshot): string {
     backstory: snapshot.backstory,
     appearance: snapshot.appearance,
     exampleDialogue: snapshot.exampleDialogue,
+    postHistoryInstructions: snapshot.postHistoryInstructions ?? "",
     nameColor: snapshot.nameColor ?? "",
     dialogueColor: snapshot.dialogueColor ?? "",
   });
@@ -4797,6 +4801,7 @@ export async function reconcileVillage(
         name: card.name,
         summary: card.summary,
         tags: card.tags,
+        profile: venueCardProfile(card, readPlayerIdentity(village).name),
         // What they are doing, said the way it happens here. A miss answers with
         // the village's own default rather than with the Engine's sentence,
         // which is the leak this whole file exists to close: see
@@ -4856,7 +4861,7 @@ export async function reconcileVillage(
               !activeSocialPlan && storyAllowance(village.storyPace, village.seed, dateKey) > 1
                 ? socialPlanCandidates(village, now)
                 : [],
-            relationships: opportunity.actorIds.map((actorId) => relationshipPrompt(village, actorId)),
+            relationships: opportunity.actorIds.map((actorId) => relationshipWritingPrompt(village, actorId)),
           }
         : undefined,
     opportunities: [opportunity],

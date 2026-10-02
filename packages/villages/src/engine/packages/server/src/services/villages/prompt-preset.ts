@@ -575,6 +575,10 @@ export function villageRelevantOrigin(
   const q = query.toLowerCase();
   const asksHistory =
     /\b(found|founded|founding|origin|history|begin|began|beginning|started|settled|first came)\b/u.test(q);
+  const asksPurpose =
+    /\b(vision|purpose|base\s*camp|resort|future|plans?|planning|build|building|develop|development)\b|\bwhat (?:are|were|did) we\b|\bwhy (?:are|were|did|we)\b/u.test(
+      q,
+    );
   const ordinaryWords = new Set([
     "village",
     "people",
@@ -592,11 +596,11 @@ export function villageRelevantOrigin(
   const distinctive = [...new Set(origin.toLowerCase().match(/[a-z]{6,}/gu) ?? [])].some(
     (word) => !ordinaryWords.has(word) && queryWords.has(word),
   );
-  if (!asksHistory && !distinctive) return "";
+  if (!asksHistory && !asksPurpose && !distinctive) return "";
   const reason = FOUNDING_REASONS[village.foundingReason];
   return village.scenarioImprint?.origin
     ? `Before the village began: ${origin} Current verified world and venue state takes precedence.`
-    : `Original account of the village's beginning (history, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} Current verified world and venue state takes precedence.`;
+    : `Original account of the village's beginning (history, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} This is shared background for their purpose, not an instruction that all residents share one ambition or personality. Current verified world and venue state takes precedence.`;
 }
 
 /**

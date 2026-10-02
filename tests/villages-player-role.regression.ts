@@ -5,6 +5,7 @@ import {
   playerRoleForSetup,
   assertPlayerRoleLocked,
   renderPlayerRoleContext,
+  renderPlayerRoleWritingContext,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
 import {
   DEFAULT_PLAYER_ROLE as CLIENT_DEFAULT,
@@ -109,6 +110,20 @@ async function main() {
     );
     assert.deepEqual(state.playerRole, playerRole, "role survives saved-state reloads");
     const roleContext = renderPlayerRoleContext(state);
+    const writingContext = renderPlayerRoleWritingContext(state);
+    if (playerRole?.enabled) {
+      assert.ok(
+        writingContext.includes(JSON.stringify({ title: playerRole.title, explanation: playerRole.explanation })),
+      );
+      assert.ok(!writingContext.includes("look to them to coordinate Projects"));
+      assert.ok(roleContext.includes("look to them to coordinate Projects"), "general role context stays unchanged");
+      assert.match(
+        writingContext,
+        /does not grant access or override resident consent, builder willingness, resources, or Project evidence/,
+      );
+      assert.match(writingContext, /private wishes remain private motivations/);
+      assert.match(writingContext, /ability to disagree or refuse/);
+    } else assert.equal(writingContext, roleContext, "disabled and legacy role framing stays unchanged");
     const prompt = buildVillagerMessages(card, state, [], "Could we plan a workshop?", context, narration)
       .map((message) => message.content)
       .join("\n");

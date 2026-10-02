@@ -24,6 +24,8 @@ export type VillagerCard = {
   summary: string;
   tags: string[];
   systemPrompt: string;
+  /** Authored instructions applied after history; absent in older snapshots. */
+  postHistoryInstructions?: string;
   description: string;
   personality: string;
   scenario: string;
@@ -59,6 +61,7 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
     summary: snapshot.summary,
     tags: [...snapshot.tags],
     systemPrompt: snapshot.systemPrompt,
+    postHistoryInstructions: snapshot.postHistoryInstructions ?? "",
     description: snapshot.description,
     personality: snapshot.personality,
     scenario: snapshot.scenario,
@@ -123,7 +126,8 @@ export function readVillagerCard(record: CapabilityCharacterRecord): VillagerCar
   // Card prose is authored with the Engine's macros. Resolve them here, once,
   // so no consumer can leak a raw `{{char}}` into a tile or a prompt.
   const expand = (value: unknown) => expandCardMacros(asString(value), name);
-  const summary = asTrimmedString(data.summary) || condense(expand(data.description), 180);
+  const summary =
+    asTrimmedString(data.summary) || condense(expand(data.description).replace(/\{\{user\}\}/gi, "the player"), 180);
   return {
     id: record.id,
     name,
@@ -131,6 +135,7 @@ export function readVillagerCard(record: CapabilityCharacterRecord): VillagerCar
     summary,
     tags: asStringArray(data.tags),
     systemPrompt: expand(data.system_prompt).trim(),
+    postHistoryInstructions: expand(data.post_history_instructions).trim(),
     description: expand(data.description),
     personality: expand(data.personality),
     scenario: expand(data.scenario),
@@ -230,14 +235,13 @@ export function toCatalogEntry(card: VillagerCard, inVillage: boolean): VillageC
 }
 
 /**
- * Expand the macros a card's prose fields may carry. `{{user}}` becomes "the
- * player" because the village has no name for the person visiting it.
+ * Resolve the character name at capture. Keep the player macro for the actual
+ * Scene's linked persona, rather than baking a generic name into the card.
  *
- * Applied once, inside `readVillagerCard`, so every card field downstream is
- * already plain text.
+ * Applied inside `readVillagerCard`; Scene assembly resolves the player macro.
  */
 function expandCardMacros(text: string, characterName: string): string {
-  return text.replace(/\{\{char\}\}/gi, characterName).replace(/\{\{user\}\}/gi, "the player");
+  return text.replace(/\{\{char\}\}/gi, characterName);
 }
 
 // ── Personas ─────────────────────────────────────────────────────────────────
@@ -275,7 +279,7 @@ export function readPersona(record: CapabilityPersonaRecord): VillagePersona {
   // The Conversation display name is what the Engine's own chat shows, so it
   // wins over the name when the player has set one and they differ.
   const name = asTrimmedString(data.convoDisplayName) || asTrimmedString(data.name) || "Unnamed persona";
-  const expand = (value: unknown) => expandCardMacros(asString(value), name);
+  const expand = (value: unknown) => expandCardMacros(asString(value), name).replace(/\{\{user\}\}/gi, "the player");
   const description = expand(data.description).trim();
   const appearance = expand(data.appearance).trim();
   const personality = expand(data.personality).trim();

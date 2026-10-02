@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_PLAYER_ROLE,
   renderPlayerRoleContext,
+  renderPlayerRoleWritingContext,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
 import { requestProjectMailbox } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
@@ -312,7 +313,7 @@ const release = configureVillagesRuntime({
             return { content: fixtureJson({ events: [] }), finishReason: "stop" };
           // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
           if (system.startsWith("Describe a stable ordinary routine")) return { content: "{}", finishReason: "stop" };
-          if (user.startsWith("The player arrives outside this Residence"))
+          if (user.startsWith("The player arrives in this Residence's Exterior Zone"))
             return {
               content: fixtureJson({
                 heardPlayerBy: [],
@@ -1439,7 +1440,7 @@ async function main() {
     assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
     group = await greetVenue(group.id);
     assert.ok(
-      lastVenueSystem.includes(renderPlayerRoleContext(await readVillageState())),
+      lastVenueSystem.includes(renderPlayerRoleWritingContext(await readVillageState())),
       "venue greetings know the recognized role",
     );
     assert.doesNotMatch(
@@ -1456,8 +1457,11 @@ async function main() {
     assert.match(lastVenueSystem, /Write narration segments.*present tense/u);
     assert.match(lastVenueSystem, /Address the player as "you"/u);
     assert.match(lastVenueSystem, /Content rating: SFW/u);
-    assert.ok(lastVenueSystem.startsWith(VENUE_SCENE_WRITING_FOUNDATION), "fixed scene rules survive context fitting");
-    assert.match(lastVenueSystem, /Narration can show observable gestures, pauses, attention, activity/u);
+    assert.ok(
+      lastVenueSystem.startsWith("## Writing direction\n\n" + VENUE_SCENE_WRITING_FOUNDATION),
+      "fixed scene rules survive context fitting in the writing section",
+    );
+    assert.match(lastVenueSystem, /dialogue alone may be the complete reply/u);
     assert.doesNotMatch(lastVenueSystem, /Grounded, concise slice-of-life prose/u);
     assert.match(lastVenueSystem, /moment already underway/u);
     assert.doesNotMatch(
@@ -1594,7 +1598,7 @@ async function main() {
       1,
       "the optional guidance is sent once",
     );
-    assert.match(lastVenueSystem, /resident card is the authority/u);
+    assert.match(lastVenueSystem, /Character dialogue retains its authored voice/u);
     assert.doesNotMatch(lastVenueSystem, /LEGACY GUIDANCE|obsolete-preset/u);
     await saveVillageWriting({
       tense: "present",
@@ -1645,7 +1649,7 @@ async function main() {
       lastVenueSystem,
       /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u,
     );
-    assert.match(lastVenueSystem, /Narrate only an action the player explicitly submitted/u);
+    assert.match(lastVenueSystem, /When describing the player's actions, narrate only what they explicitly submitted/u);
     await saveVillageWriting({ person: "second" });
     const aside = lively.session.lines.find((line) => line.kind === "side")!;
     const main = lively.session.lines.find((line) => line.id === aside.asideFor)!;
@@ -1660,7 +1664,7 @@ async function main() {
       "another character's expression is dropped without losing movement",
     );
     assert.match(lastVenueSystem, /Current presentation state/u);
-    assert.match(lastVenueSystem, /A lone villager may look away/u);
+    assert.match(lastVenueSystem, /direction:"left\|right"/u);
     assert.deepEqual(
       (await activeVenueSession())?.lines.find((line) => line.id === stagedLine.id)?.staging,
       stagedLine.staging,
@@ -2351,9 +2355,9 @@ async function main() {
       appearance: "",
       exampleDialogue: "That hinge has opinions.",
     });
-    assert.ok(longCard.length <= 2_800, "the card stays within its existing prompt budget");
-    assert.match(longCard, /Personality: Speaks in clipped, dry phrases/u);
-    assert.match(longCard, /Example dialogue: That hinge has opinions/u);
+    assert.ok(longCard.includes("S".repeat(3_000)), "the whole authored card survives");
+    assert.match(longCard, /Personality:\nSpeaks in clipped, dry phrases/u);
+    assert.match(longCard, /Example dialogue:\nThat hinge has opinions/u);
     const scene = parseVenueReply(
       {
         heardPlayerBy: ["bob"],

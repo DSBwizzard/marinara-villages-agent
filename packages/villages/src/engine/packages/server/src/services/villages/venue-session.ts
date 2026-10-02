@@ -1,3 +1,4 @@
+import { buildVenueResponseContract } from "./venue-response-contract.js";
 import { runtimeDebug } from "./runtime-debug.js";
 import {
   LIVE_MEMORY_INSTRUCTION,
@@ -24,7 +25,12 @@ import {
   type ExchangeProcessing,
 } from "./exchange-processing.js";
 import { relationshipZoneController, mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
-import { relationshipPrompt, relationshipClosingNotices, captureRelationshipKnowledge } from "./relationships.js";
+import {
+  relationshipWritingPrompt,
+  relationshipPrompt,
+  relationshipClosingNotices,
+  captureRelationshipKnowledge,
+} from "./relationships.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
@@ -32,7 +38,8 @@ import {
   RELATIONSHIP_REVIEW_INSTRUCTION,
 } from "./relationship-review.js";
 import type { RelationshipReview, RelationshipEvidenceLine, RelationshipReceipt } from "./relationship-types.js";
-import { renderPlayerRoleContext } from "./player-role.js";
+import { renderPlayerRoleWritingContext } from "./player-role.js";
+import { venueFoundingBackground } from "./venue-scene-context.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
 import { zoneControllerIds } from "./venue-zones.js";
 import { interpretRoomReply, dismissalDestination } from "./room-interpretation.js";
@@ -84,7 +91,15 @@ import {
 import { describeSpriteExpressions, validateSpriteExpression } from "./sprite-expressions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { agendaAt } from "./agenda-plan.js";
-import { readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
+import { readEffectiveVillagerCard } from "./catalog.js";
+import {
+  buildVenueSceneBlocks,
+  venueCardProfile,
+  fitVenueWritingMessages,
+  EVENT_MEMORY_GUIDANCE,
+  type VenueWritingBlock,
+} from "./venue-writing.js";
+export { venueCardProfile } from "./venue-writing.js";
 import { memoryForVillager } from "./chat.js";
 import { asRecord, asString, asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -104,12 +119,7 @@ import {
   villagesLogger,
   villagesDebugAgentsEnabled,
 } from "./package-runtime.js";
-import {
-  MAX_CHRONICLE_LENGTH,
-  prependHappenings,
-  villageCurrentSetting,
-  villageRelevantOrigin,
-} from "./prompt-preset.js";
+import { MAX_CHRONICLE_LENGTH, prependHappenings, villageCurrentSetting } from "./prompt-preset.js";
 import type { VillageChronicleEntry, VillageMemoryCategory, VillageRecollection, VillageState } from "./types.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
@@ -1583,30 +1593,8 @@ function venueRepairHint(kind: VenueReplyFailureKind): string {
   return "Return one valid JSON object with heardPlayerBy and a nonempty segments array using active resident IDs.";
 }
 
-/** Keep the card's voice examples visible even when its background is long. */
-export function venueCardProfile(card: VillagerCard): string {
-  const prefix = "Card:\n";
-  const fields = [
-    { label: "System prompt", value: card.systemPrompt.trim(), reserve: 900 },
-    { label: "Personality", value: card.personality.trim(), reserve: 500 },
-    { label: "Example dialogue", value: card.exampleDialogue.trim(), reserve: 500 },
-    { label: "Description", value: card.description.trim(), reserve: 0 },
-    { label: "Scenario", value: card.scenario.trim(), reserve: 0 },
-    { label: "Backstory", value: card.backstory.trim(), reserve: 0 },
-  ].filter((field) => field.value);
-  if (!fields.length) return "Card: no details recorded.";
-  const textBudget = 2_800 - prefix.length - fields.reduce((total, field) => total + field.label.length + 3, 0);
-  const lengths = fields.map((field) => Math.min(field.value.length, field.reserve));
-  let remaining = textBudget - lengths.reduce((total, length) => total + length, 0);
-  for (const [index, field] of fields.entries()) {
-    const extra = Math.min(remaining, field.value.length - lengths[index]!);
-    lengths[index] = lengths[index]! + extra;
-    remaining -= extra;
-  }
-  return prefix + fields.map((field, index) => `${field.label}: ${field.value.slice(0, lengths[index])}`).join("\n");
-}
-
-async function generateOnce(
+/** Assemble and fit the exact live request without making a generation call. */
+export async function prepareVenueTurnMessages(
   session: VenueScene,
   message: string,
   mode: "greet" | "chat" | "ask" | "fulfill" | "act" | "leave",
@@ -1651,6 +1639,9 @@ async function generateOnce(
   const earlierEvidence = session.lines
     .filter((line) => !line.contactReport && line.heardBy.some((id) => audibleIds.includes(id)))
     .slice(-18);
+  const optionalKnowledge: VenueWritingBlock[] = [];
+  const residentContexts: string[] = [];
+  const expressionContexts: string[] = [];
   const profiles = active.map((person) => {
     const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
     if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
@@ -1667,35 +1658,41 @@ async function generateOnce(
       .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
       .map((entry) => entry.text);
     const spriteLabels = describeSpriteExpressions(resident.sprite);
-    return [
-      `${card.name} (${person.characterId})`,
-      venueCardProfile(card),
-      relationshipPrompt(village, person.characterId),
-      "Relationships influence new Project requests alongside personal benefit and availability. A neutral resident may volunteer. Existing accepted commitments remain binding until explicitly withdrawn. Do not treat high scores as automatic romance.",
-      session.contactGeneration && session.memoryMode !== "live"
-        ? `Earlier exchanges witnessed by ${card.name}:\n${
-            venueSceneHistory(
-              session.lines.filter((line) => line.heardBy.includes(person.characterId)),
-              player.name,
-            ) || "none"
-          }. The latest call is supplied separately; unseen conversations are unknown to this resident.`
-        : "",
-      `Scene activity: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}. Background agendas do not advance this Scene or relocate its residents. A resident may leave naturally after saying so.`,
-      `Current Residence: ${
-        village.venues
-          .filter((venue) => venueResidentIds(venue).includes(person.characterId))
-          .map((venue) => `${venue.name} (${venue.id})`)
-          .join(", ") || "none"
-      }.`,
-      `Private wishes and tells: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish} (${wish.tell})`).join("; ") || "none"}. Treat these as motivations, never public quests.`,
-      `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}`,
-      `Recent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
-      spriteLabels
-        ? `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id using its meaning. Pose-specific pictures must match actions already occurring in the scene. Omit expression to use the default image.`
-        : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
+    optionalKnowledge.push({
+      text: `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}\nRecent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
+      optional: "memory",
+    });
+    if (session.contactGeneration && session.memoryMode !== "live")
+      optionalKnowledge.push({
+        text: `Earlier exchanges witnessed by ${card.name}:\n${
+          venueSceneHistory(
+            session.lines.filter((line) => line.heardBy.includes(person.characterId)),
+            player.name,
+          ) || "none"
+        }. The latest call is supplied separately; unseen conversations are unknown to this resident.`,
+        optional: "history",
+      });
+    residentContexts.push(
+      [
+        `${card.name} (${person.characterId})`,
+        relationshipWritingPrompt(village, person.characterId),
+        `Activity captured at Scene start: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}.`,
+        `Current Residence: ${
+          village.venues
+            .filter((venue) => venueResidentIds(venue).includes(person.characterId))
+            .map((venue) => `${venue.name} (${venue.id})`)
+            .join(", ") || "none"
+        }.`,
+        `Private current desires of ${card.name}: ${resident.agenda?.wishes.map((wish) => `[${wish.id}] ${wish.wish}`).join("; ") || "none"}. These can inform a relevant choice; they require no gesture, hint, mention, or player errand.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    if (spriteLabels)
+      expressionContexts.push(
+        `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id using its meaning. Pose-specific pictures must match actions already occurring in the scene. Omit expression to use the default image.`,
+      );
+    return venueCardProfile(card, player.name, false);
   });
   const history = venueSceneHistory(
     session.lines.filter(
@@ -1775,139 +1772,17 @@ async function generateOnce(
           session.placeId,
         )
       : [];
-  const system = [
-    VENUE_SCENE_WRITING_FOUNDATION,
-    session.contactGeneration?.instruction ?? "",
-    !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
-      ? `For a CURRENT deliberate knock, call, or directed follow-up to a doorway speaker, optionally return contactIntent:{kind:"knock"|"call",targetId:"known villager ID or empty",boundaryZoneId:"doorway ID or empty",quote:"exact player words conveying the contact",delivery:"voice"|"loud"|"device",deliveryQuote:"exact current words establishing raised volume or device use",deviceFeatureId:"existing visible feature ID for device use"}. A normal call reaches adjacent Zones; clearly loud calls may reach farther within this Venue but never guarantee hearing. Devices must already exist in this Zone. Do not interpret hypothetical, historical, quoted, or merely mentioned calls. Do not narrate a remote answer, movement, invitation, or lack of response yet; the server will route a supported attempt. Ordinary conversation remains local. Known villagers (not an attendance list): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
-      : "",
-    `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
-    venueWritingDirection(village.narrationStyle, player.name),
-    venueAdditionalWritingGuidance(village.narrationStyle),
-    `The player is ${player.name}. ${player.description}`,
-    renderPlayerRoleContext(village),
-    projectSpeechPrompt(village, projectContexts),
-    session.pendingProjectQuestions?.length
-      ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval, commitment, or complete requirements. Do not demand formal wording.`
-      : "",
-    session.pendingRoomQuestions?.length
-      ? `These room matters remain unresolved: ${session.pendingRoomQuestions.join("; ")}. Resolve them through natural contextual clarification before reacting as though permission or dismissal were established. Do not ask for formal permission wording.`
-      : "",
-    `Zone: ${storedPlace ? (resolveVenueZone(storedPlace, session.zoneId ?? "")?.name ?? session.area) : session.area} (${session.zoneId ?? "legacy"}). Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
-      place?.state.traces
-        ?.filter((trace) => trace.kind !== "note" && (!trace.expiresAt || Date.parse(trace.expiresAt) > now.getTime()))
-        .map((trace) => `${trace.id}: ${trace.text}`)
-        .join("; ") || "none"
-    }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines and happenings.`,
-    `Approved room description: ${place?.description || "none"}. Structural Upgrades in this zone: ${
-      place?.improvements
-        ?.filter(Boolean)
-        .map((upgrade) => upgrade!.title + ": " + upgrade!.description)
-        .join("; ") || "none"
-    }.`,
-    place?.constructionStatus === "worksite"
-      ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
-      : "",
-    `Available venues for a requested move: ${
-      village.venues
-        .filter(
-          (venue) =>
-            venue.constructionStatus !== "worksite" &&
-            !venue.occupancy.playerHome &&
-            !venue.occupancy.residentCharacterId,
-        )
-        .map((venue) => `${venue.id}: ${venue.name}`)
-        .join("; ") || "none"
-    }.`,
-    `Pending player requests to move: ${
-      pendingMoves
-        .filter((move) => move.requestedBy === "player")
-        .map((move) => `${move.characterId} to ${move.proposedVenueId}`)
-        .join("; ") || "none"
-    }. A villager may freely approve or deny their own pending request in spoken dialogue. Never infer consent from silence or a different speaker.`,
-    `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
-    `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
-    `Relevant world lore: ${[...lore, villageRelevantOrigin(village, message)].filter(Boolean).join("\n") || "none"}`,
-    `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
-    session.area === "outside"
-      ? session.spaceClass === "residence"
-        ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
-        : "The player is outside this Venue. Show only what they can observe from outside; do not describe them entering an interior."
-      : active.length
-        ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
-        : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
-    ...profiles,
-    session.stagingVersion === 1
-      ? "Current presentation state: " +
-        JSON.stringify(
-          session.activeIds.map((characterId) => ({ characterId, ...stageState[characterId], ...layout[characterId] })),
-        )
-      : "",
-    `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
-    session.memoryMode === "live" ? "" : `Recent scene history:\n${history || "The Scene has just begun."}`,
-    mode === "greet"
-      ? ""
-      : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
-    `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
-    mode === "greet"
-      ? "Open on a specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
-      : "",
-    mode === "leave"
-      ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate only that chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
-      : "",
-    `Zones that may be invited into: ${
-      storedPlace
-        ? venueZones(storedPlace)
-            .filter((zone) => audience.some((id) => canInviteToZone(storedPlace, zone, id)))
-            .map(
-              (zone) =>
-                `${zone.id}: ${zone.name} (${zone.kind}; controllers ${audience.filter((id) => canInviteToZone(storedPlace, zone, id)).join(", ")})`,
-            )
-            .join("; ")
-        : "none"
-    }. An invitation never admits anyone to another zone. Include accompanies=true only when the quoted speaker explicitly offers to accompany the player. Permission alone does not move anyone.`,
-    "Room permission and dismissal use natural conversation: a contextual oh yeah, reluctant sure, or a clear named nod and step aside can communicate permission. A caution can accompany an invitation. Do not force room-name repetition or formal access language. Only an authorized controller can invite or dismiss; silence, an open door alone, quotations, and third-party permission establish nothing. If meaning is unresolved, clarify naturally. Optional invitation metadata describes evidence; Villages separately interprets and validates it. Entry never grants permission to change the space.",
-    `Pending exact Residence edit proposals: ${
-      (storedPlace?.editProposals ?? [])
-        .filter(
-          (proposal) =>
-            !proposal.declined &&
-            (!proposal.zoneId || proposal.zoneId === session.zoneId) &&
-            (proposal.zoneId === session.zoneId ||
-              proposal.target === "shared" ||
-              proposal.ownerId === session.privateOwnerId),
-        )
-        .map(
-          (proposal) =>
-            `${proposal.id}: ${proposal.target} ${proposal.ownerId || "shared"}; description ${proposal.proposed.description}; condition ${proposal.proposed.state.condition}; items ${proposal.proposed.state.items.join(", ")}; public facts ${proposal.proposed.state.publicFacts.join(", ")}; features ${proposal.proposed.state.features.map((feature) => feature.text).join(", ")}; required ${proposal.requiredIds.join(", ")}; approved ${proposal.approvedIds.join(", ")}`,
-        )
-        .join(" | ") || "none"
-    }. If a required resident explicitly approves or declines one exact proposal aloud, return editApproval with its proposalId, speakerId, approved boolean, and exact spoken quote. Never infer approval from silence or a general invitation.`,
-    actionOutcome
-      ? `The action was checked separately. Its settled outcome is: ${actionOutcome}. React to this outcome; do not redo or contradict the action judgment.`
-      : "",
-    "Targeting is intent, not isolation. Decide contextually who heard the player's words and each reply; moving aside is narrative and does not guarantee privacy.",
-    (mode === "chat" || mode === "ask") &&
-    (session.area === "shared" ||
-      session.area === "private" ||
-      (storedPlace && zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length > 0))
-      ? "This is a resident-controlled Residence space. Player actions may be attempted and residents may react, but do not return sceneChange or narrate a lasting change until the exact Zone edit proposal has every required resident's explicit approval. Entry is not edit consent."
-      : "",
-    mode === "chat" || mode === "ask"
-      ? `If the player physically acts in this scene, including plausible first-person past tense such as "I fixed the drip", resolve it as part of this SAME reply. Mere speech about a deed, a promise, an unsupported claim elsewhere, or an impossible attempt changes nothing. Return sceneChange only for a completed, persistent physical result: {"happened":true,"narration":"short past-tense public result","conditionBefore":"exact current condition","conditionAfter":"complete updated condition","featureId":"existing id","featureText":"updated text","publicFactBefore":"exact old fact","publicFactAfter":"updated fact","resolveTraceId":"existing id","addItem":"item","removeItem":"exact item","sceneNote":"temporary layout detail"}. Omit unused fields. Use an exact old value or ID to replace or resolve stale state; use sceneNote for a small temporary layout change, never for a repaired condition that must stay repaired. The player may change a locked feature; its lock remains. Do not invent exceptional supplies or consent. If the action fails, narrate the failure and omit sceneChange. Never narrate a lasting change without a valid sceneChange. A resident's reaction does not independently change physical state.`
-      : "",
-    mode === "chat" || mode === "ask"
-      ? "If a resident explicitly asks to move to an available Residence, return residenceRequest with speakerId, venueId and an exact quote from that resident's dialogue. If a resident explicitly accepts or refuses a pending player move request, return residenceDecision with speakerId, approved boolean and an exact quote from that resident's dialogue. If a resident or worker suggests one concrete structural improvement to this Venue, return upgradeRequest with speakerId and an exact quote. Omit all three unless the corresponding speech actually occurs. A player request alone is never consent."
-      : "",
-    mode === "chat" || mode === "ask"
-      ? "If a resident explicitly asks for a NEW public venue, return venueRequest with speakerId, name, classes (one or two of workplace, gathering, other), and an exact quote from their spoken dialogue. Omit it if the request is only the player's claim, a hypothetical, or an upgrade to this venue. Approval starts planning, not instant construction."
-      : "",
-    session.lines.length >= 12
-      ? "Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state."
-      : "",
+  const pendingEdits = (storedPlace?.editProposals ?? []).filter(
+    (proposal) =>
+      !proposal.declined &&
+      (!proposal.zoneId || proposal.zoneId === session.zoneId) &&
+      (proposal.zoneId === session.zoneId ||
+        proposal.target === "shared" ||
+        proposal.ownerId === session.privateOwnerId),
+  );
+  const earlierContext =
     session.memoryMode === "live"
-      ? LIVE_MEMORY_INSTRUCTION +
-        "\nEarlier evidence: " +
+      ? "Earlier evidence: " +
         JSON.stringify(
           earlierEvidence.map((line) => ({
             id: line.id,
@@ -1925,46 +1800,215 @@ async function generateOnce(
             knownByCharacterIds: memory.knownByCharacterIds ?? memory.actors.map((actor) => actor.id),
           })),
         )
-      : mode !== "greet"
-        ? 'Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line. For a resident explicitly leaving, return departures as [{"speakerId":"ID","quote":"exact words from their dialogue"}]. Return sceneEnded only when the dialogue explicitly ends the whole encounter, with {"speakerId":"ID","quote":"exact words"}. Do not end a scene for player silence or ordinary conversation.'
+      : "";
+  const blocksFor = (parts: string[]): VenueWritingBlock[] =>
+    parts.map((text) => ({
+      text,
+      optional:
+        optionalKnowledge.find((block) => block.text === text)?.optional ??
+        (/^(Recent scene history:|Earlier Scene recap:)/u.test(text)
+          ? "history"
+          : /^(Shared village memories:|Only .* knows:)/u.test(text)
+            ? "memory"
+            : text.startsWith("Relevant world lore:")
+              ? "lore"
+              : undefined),
+    }));
+  const blocks = buildVenueSceneBlocks({
+    direction: blocksFor([
+      VENUE_SCENE_WRITING_FOUNDATION,
+      venueWritingDirection(village.narrationStyle, player.name),
+      venueAdditionalWritingGuidance(village.narrationStyle),
+      mode === "greet"
+        ? ""
+        : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
+      mode === "greet"
+        ? "Open on a specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
         : "",
-    session.memoryMode === "live" || mode !== "greet" ? WISH_PROPOSAL_INSTRUCTION : "",
-    session.memoryMode === "live"
-      ? 'Put heardPlayerBy and the complete segments array FIRST, before change metadata. For an explicitly departing resident return departures:[{speakerId,quote:"exact spoken departure"}]. Return sceneEnded:{speakerId,quote:"exact spoken ending"} only when dialogue ends the whole encounter, never for player silence or ordinary company.'
-      : "",
-    repairHint
-      ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
-      : "",
-    session.stagingVersion !== 1
-      ? "Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player."
-      : "",
-    session.stagingVersion === 1
-      ? 'Any segment, including narration, may include staging: [{characterId, position?, expression?, look?}]. position is "left", "center", or "right". expression is that character’s filled expression ID. look is {target:"player"}, {target:"villager",characterId:"active ID"}, or {target:"direction",direction:"left"|"right"}. Use at most one cue per active character per segment. Position, expression, and attention persist until changed; omitted fields preserve state. You may cue silent listeners, but reactions must respect who witnessed the moment. Move sides only when motivated by the scene, such as approaching, withdrawing, making room, or joining an interaction; changing speakers alone never moves anyone. Turns and expressions need no walking. A lone villager may look away left or right. Select the default expression ID or look toward the player explicitly to reset. Staging is presentation only, never proof of knowledge, consent, memory, or world changes. Use existing artwork and grounded actions. Main cues appear at the first paragraph; side and whisper cues appear with their attached chatter. Prefer staging over the older expression/gazeAt fields; omission does not reset attention in this Scene.'
-      : "",
-    "Return one JSON object with heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Legacy gazeAt may name another active resident ID or player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
-  ].join("\n\n");
-  const messages: CapabilityLanguageModelMessage[] = [
-    { role: "system", content: system },
-    {
-      role: "user",
-      content:
-        mode === "greet"
-          ? session.area === "outside"
-            ? session.spaceClass === "residence"
-              ? "The player arrives outside this Residence. Show a brief moment already underway from outside."
-              : "The player arrives outside this Venue. Show a brief moment already underway from outside."
-            : "The player enters this space. Show a brief moment already underway here."
-          : mode === "leave" && !message.trim()
-            ? "The player leaves without saying anything."
-            : message,
-    },
-  ];
+      mode === "leave"
+        ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate only that chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
+        : "",
+      repairHint
+        ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
+        : "",
+    ]),
+    identity: blocksFor([...profiles]),
+    circumstances: blocksFor([
+      `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
+      `The player is ${player.name}. ${player.description}`,
+      renderPlayerRoleWritingContext(village),
+      session.contactGeneration?.instruction ?? "",
+      `Zone: ${storedPlace ? (resolveVenueZone(storedPlace, session.zoneId ?? "")?.name ?? session.area) : session.area} (${session.zoneId ?? "legacy"}). Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
+        place?.state.traces
+          ?.filter(
+            (trace) => trace.kind !== "note" && (!trace.expiresAt || Date.parse(trace.expiresAt) > now.getTime()),
+          )
+          .map((trace) => `${trace.id}: ${trace.text}`)
+          .join("; ") || "none"
+      }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines and happenings.`,
+      `Approved room description: ${place?.description || "none"}. Structural Upgrades in this zone: ${
+        place?.improvements
+          ?.filter(Boolean)
+          .map((upgrade) => upgrade!.title + ": " + upgrade!.description)
+          .join("; ") || "none"
+      }.`,
+      place?.constructionStatus === "worksite"
+        ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
+        : "",
+      `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
+      venueFoundingBackground(village),
+      `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Scene-start activities describe the opening situation; witnessed developments establish what is happening now. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
+      session.area === "outside"
+        ? session.spaceClass === "residence"
+          ? "The player is in this Residence's Exterior Zone, outside its interior. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from this Zone. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
+          : "The player is in this Venue's Exterior Zone. Show only what they can observe from this Zone; do not describe them entering an interior."
+        : active.length
+          ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
+          : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
+      ...residentContexts,
+      projectSpeechPrompt(village, projectContexts),
+      session.pendingProjectQuestions?.length
+        ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval, commitment, or complete requirements. Do not demand formal wording.`
+        : "",
+      session.pendingRoomQuestions?.length
+        ? `These room matters remain unresolved: ${session.pendingRoomQuestions.join("; ")}. Resolve them through natural contextual clarification before reacting as though permission or dismissal were established. Do not ask for formal permission wording.`
+        : "",
+      `Available venues for a requested move: ${
+        village.venues
+          .filter(
+            (venue) =>
+              venue.constructionStatus !== "worksite" &&
+              !venue.occupancy.playerHome &&
+              !venue.occupancy.residentCharacterId,
+          )
+          .map((venue) => `${venue.id}: ${venue.name}`)
+          .join("; ") || "none"
+      }.`,
+      pendingMoves.some((move) => move.requestedBy === "player")
+        ? `Pending player requests to move: ${pendingMoves
+            .filter((move) => move.requestedBy === "player")
+            .map((move) => `${move.characterId} to ${move.proposedVenueId}`)
+            .join("; ")}.`
+        : "",
+      pendingEdits.length
+        ? `Pending exact Residence edit proposals: ${pendingEdits.map((proposal) => `${proposal.id}: ${proposal.target} ${proposal.ownerId || "shared"}; description ${proposal.proposed.description}; condition ${proposal.proposed.state.condition}; items ${proposal.proposed.state.items.join(", ")}; public facts ${proposal.proposed.state.publicFacts.join(", ")}; features ${proposal.proposed.state.features.map((feature) => feature.text).join(", ")}; required ${proposal.requiredIds.join(", ")}; approved ${proposal.approvedIds.join(", ")}`).join(" | ")}`
+        : "",
+      actionOutcome
+        ? `The action was checked separately. Its settled outcome is: ${actionOutcome}. React to this outcome; do not redo or contradict the action judgment.`
+        : "",
+      `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
+    ]),
+    conversation: blocksFor([
+      `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
+      `Relevant world lore: ${lore.join("\n") || "none"}`,
+      ...optionalKnowledge.map((block) => block.text),
+      `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
+      session.memoryMode === "live" ? "" : `Recent scene history:\n${history || "The Scene has just begun."}`,
+      earlierContext,
+    ]),
+    authoredInstructions: blocksFor([
+      ...active.map((person) => {
+        const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
+        const card = resident ? readEffectiveVillagerCard(resident) : null;
+        return card?.postHistoryInstructions
+          ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}`
+          : "";
+      }),
+    ]),
+    metadata: blocksFor(
+      buildVenueResponseContract({
+        opening: mode === "greet",
+        conversational: mode === "chat" || mode === "ask",
+        liveMemory: session.memoryMode === "live",
+        residentControlled:
+          session.area === "shared" ||
+          session.area === "private" ||
+          !!(
+            storedPlace && zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length
+          ),
+        recapNeeded: session.lines.length >= 12,
+        staging: session.stagingVersion === 1,
+        projects: projectContexts.length > 0,
+        exampleSpeakerId: stageIds[0],
+        exampleWitnessIds: stageIds,
+        contactFacts:
+          !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
+            ? `Known villagers (not attendance): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
+            : "",
+        invitationZones: storedPlace
+          ? venueZones(storedPlace)
+              .filter((zone) => audience.some((id) => canInviteToZone(storedPlace, zone, id)))
+              .map(
+                (zone) =>
+                  `${zone.id}: ${zone.name} (${zone.kind}; controllers ${audience.filter((id) => canInviteToZone(storedPlace, zone, id)).join(", ")})`,
+              )
+              .join("; ")
+          : "none",
+        presentation:
+          session.stagingVersion === 1
+            ? "Current presentation state: " +
+              JSON.stringify(
+                session.activeIds.map((characterId) => ({
+                  characterId,
+                  ...stageState[characterId],
+                  ...layout[characterId],
+                })),
+              )
+            : "",
+        expressions: expressionContexts,
+      }),
+    ),
+  });
+  const input =
+    mode === "greet"
+      ? session.area === "outside"
+        ? session.spaceClass === "residence"
+          ? "The player arrives in this Residence's Exterior Zone, outside its interior. Show a brief moment already underway from this Zone."
+          : "The player arrives in this Venue's Exterior Zone. Show a brief moment already underway from this Zone."
+        : "The player enters this space. Show a brief moment already underway here."
+      : mode === "leave" && !message.trim()
+        ? "The player leaves without saying anything."
+        : message;
   // Keep the opening brief, with enough room for reasoning models.
   const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS * (repairHint ? 2 : 1);
   const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
   const fitStarted = performance.now();
-  const fitted = model.fitContext(messages, { maxTokens });
+  const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
   trace?.("context fit", performance.now() - fitStarted);
+  return {
+    fitted,
+    maxTokens,
+    model,
+    village,
+    audience,
+    active,
+    pendingMoves,
+    storedPlace,
+    place,
+    projectContexts,
+    earlierEvidence,
+    promptMemories,
+  };
+}
+
+async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
+  const [session, message, mode] = args;
+  const signal = args[5];
+  const trace = args[6];
+  const {
+    fitted,
+    maxTokens,
+    model,
+    village,
+    audience,
+    active,
+    pendingMoves,
+    storedPlace,
+    place,
+    projectContexts,
+    earlierEvidence,
+    promptMemories,
+  } = await prepareVenueTurnMessages(...args);
   trace?.("model request", 0, `${model.model} (${model.connectionId})`);
   let attempts = 0;
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
@@ -5056,6 +5100,8 @@ function memoryReviewMessages(
       role: "system",
       content:
         'You adjudicate short-term conversational recollections after a Villages visit. Review EVERY supplied recollection exactly once by its batch-local index. Consolidate related recollections when they describe one event, but do not combine recollections whose witnesses did not hear the same evidence. Promote only: (1) commitments or obligations, (2) stable personal facts, (3) meaningful preferences, sensitivities, or boundaries, (4) relationship or trust changes, or (5) significant shared experiences not already represented in current world state. Reject routine timing or presence, greetings, courtesy, transient mood, weak inference, one-off jokes, duplicates, and facts already represented in world state or previous promotions. There is NO promotion quota. Return JSON only: {"decisions":[{"action":"promote","indices":[0],"reason":"brief explanation","category":"commitment|personal-fact|preference|relationship|shared-experience","text":"concise durable event"},{"action":"reject","indices":[1],"reason":"routine|transient|weak-inference|duplicate|world-state|other"}],"complete":true}. Every index must appear in exactly one decision. Do not invent evidence or indices.' +
+        "\n" +
+        EVENT_MEMORY_GUIDANCE +
         "\n\n" +
         (session.relationshipReview ? RELATIONSHIP_REVIEW_INSTRUCTION : ""),
     },
@@ -5547,7 +5593,9 @@ function memoryMessages(session: VenueScene, evidence: MemoryUnit[]): Capability
     {
       role: "system",
       content:
-        'Distill one Scene into a SELECTIVE set of short, attributed memories, at most 8 for this evidence chunk. Evidence rows are [lineId, part, role, speaker, text, heardBy]. Keep consequential player actions, promises, relationships, and distinctive details; omit routine dialogue, repeated details, and changes already held in world state. Each memory must cite one or more lineIds heard by that character. Do not share private information with anyone who did not hear it. Return JSON only: {"memories":[{"characterId":"...","text":"...","lineIds":["..."]}],"complete":true}. Complete means you considered ALL supplied evidence, not that every line became a memory. Each text is at most 320 characters. Return "more":true only if the answer cannot hold the selected memories.',
+        'Distill one Scene into a SELECTIVE set of short, attributed memories, at most 8 for this evidence chunk. Evidence rows are [lineId, part, role, speaker, text, heardBy]. Keep consequential player actions, promises, relationships, and distinctive details; omit routine dialogue, repeated details, and changes already held in world state. Each memory must cite one or more lineIds heard by that character. Do not share private information with anyone who did not hear it. Return JSON only: {"memories":[{"characterId":"...","text":"...","lineIds":["..."]}],"complete":true}. Complete means you considered ALL supplied evidence, not that every line became a memory. Each text is at most 320 characters. Return "more":true only if the answer cannot hold the selected memories.' +
+        "\n" +
+        EVENT_MEMORY_GUIDANCE,
     },
     {
       role: "user",

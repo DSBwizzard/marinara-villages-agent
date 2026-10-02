@@ -9,8 +9,21 @@ import { parseRelationshipReview, substantiveContact, RELATIONSHIP_REVIEW_INSTRU
 import { captureRelationshipKnowledge } from "./relationships.js";
 import type { RelationshipEvidenceLine } from "./relationship-types.js";
 import { deriveVillageMoment } from "./village-clock.js";
+import { EVENT_MEMORY_GUIDANCE } from "./venue-writing.js";
 
-export const LIVE_MEMORY_INSTRUCTION = `Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Memory proposals use {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Numeric evidence is a zero-based segment index in this reply; "player" means the latest player line. You may also cite exact earlier evidence IDs listed below. Recaps are context, never evidence. Every knower must directly witness EVERY cited line. Use passing for useful temporary continuity (24 hours); durable only for commitments, stable personal facts, meaningful preferences/boundaries, relationship changes, or significant shared experiences. Omit greetings, filler, weak inference, transient mood, repetition and facts already represented in world state. There is NO promotion quota. For reinforcement or a correction, cite the supplied existing memory ID in memoryIds, with new witnessed evidence; supersede replaces an obsolete fact, reinforce preserves its text. A memory does not prove a physical action or grant authority. Relationship proposals are independent of memories. Use evidence references in relationship lineIds in the same format as memory evidence. ${RELATIONSHIP_REVIEW_INSTRUCTION.replace("Also return relationshipReview:", "For relationshipChanges use:")}`;
+// Saved reviews have exact line IDs; a reply being written has only segment
+// indexes. Keep the same policy without importing the review's conflicting example.
+const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
+  "Also return relationshipReview:",
+  "For relationshipChanges use:",
+)
+  .replace('lineIds:["exact evidence ID"]', 'lineIds:["player",0]')
+  .replace(
+    "Use only listed IDs and evidence in this batch.",
+    'Use only listed character and Zone IDs. In every relationship lineIds array, use numeric zero-based indexes for current segments, "player" for the current player line, or exact supplied earlier evidence IDs. Do not quote numeric indexes (0 is valid; "0" is not), invent future saved line IDs, or cite unsupplied history.',
+  );
+
+export const LIVE_MEMORY_INSTRUCTION = `Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Memory proposals use {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Numeric evidence is a zero-based segment index in this reply; "player" means the latest player line. You may also cite exact earlier evidence IDs listed below. Recaps are context, never evidence. Every knower must directly witness EVERY cited line. Use passing for useful temporary continuity (24 hours); durable only for commitments, stable personal facts, meaningful preferences/boundaries, relationship changes, or significant shared experiences. Omit greetings, filler, weak inference, transient mood, repetition and facts already represented in world state. There is NO promotion quota. For reinforcement or a correction, cite the supplied existing memory ID in memoryIds, with new witnessed evidence; supersede replaces an obsolete fact, reinforce preserves its text. A memory does not prove a physical action or grant authority. ${EVENT_MEMORY_GUIDANCE} Relationship proposals are independent of memories. Use evidence references in relationship lineIds in the same format as memory evidence. ${LIVE_RELATIONSHIP_INSTRUCTION}`;
 
 export type LiveExchangeProposals = {
   version: 1;
