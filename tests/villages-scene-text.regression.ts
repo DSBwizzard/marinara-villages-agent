@@ -17,13 +17,38 @@ for (const opening of [false, true]) {
     assert.ok(reply.lines.every((line) => line.heardBy.includes("reserved")));
     assert.ok(reply.lines.filter((line) => line.kind !== "narration").every((line) => line.speakerId === "reserved"));
   }
-  const split = parseVenueReply(extractSceneReply(examples[1]!), ["outgoing", "reserved"]);
+  const spoken = parseVenueReply(extractSceneReply(examples[0]!), ["outgoing", "reserved"]);
   assert.deepEqual(
-    split.lines.map((line) => line.kind),
-    ["dialogue", "narration", "dialogue"],
+    spoken.lines.map((line) => line.kind),
+    ["dialogue"],
   );
-  assert.equal(split.lines[2]!.content, 'next spoken words, including a quoted phrase: "quoted words"');
+  assert.equal(spoken.lines[0]!.content, 'spoken words containing a quoted phrase: "quoted words"');
+  const narrated = parseVenueReply(extractSceneReply(examples[1]!), ["outgoing", "reserved"]);
+  assert.deepEqual(
+    narrated.lines.map((line) => line.kind),
+    ["narration"],
+  );
 }
+// The illustrations impose no alternation. Mixed exchanges still preserve their
+// actual order and quoted speech through the production extractor and parser.
+const mixed = parseVenueReply(
+  extractSceneReply(
+    JSON.stringify({
+      heardPlayerBy: ["reserved"],
+      segments: [
+        { kind: "narration", text: "She moves the chair.", heardBy: ["reserved"] },
+        { kind: "dialogue", speakerId: "reserved", text: 'I called it "mine".', heardBy: ["reserved"] },
+        { kind: "dialogue", speakerId: "reserved", text: "Want a seat?", heardBy: ["reserved"] },
+      ],
+    }),
+  ),
+  ["reserved"],
+);
+assert.deepEqual(
+  mixed.lines.map((line) => line.kind),
+  ["narration", "dialogue", "dialogue"],
+);
+assert.equal(mixed.lines[1]!.content, 'I called it "mine".');
 assert.equal(
   buildVenueTextContract()
     .split("\n")

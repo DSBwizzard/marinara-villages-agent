@@ -18,19 +18,15 @@ export type VenueResponseContext = {
 /** Syntax examples teach the boundary without supplying dialogue or mannerisms to imitate. */
 export function buildVenueTextContract(speakerId?: string, heardBy: string[] = [], opening = false): string {
   const direction =
-    "Each text value is one JSON string. Dialogue, side and whisper text contain only that speaker's audible words; action, description and delivery belong in separate narration segments. A reply may be entirely dialogue. When speech surrounds a meaningful action, split it into dialogue, narration, then dialogue, in encounter order. Escape quotation marks inside text; never continue scene prose outside a text value or the JSON object. Segment kinds provide attribution, so do not wrap an entire spoken line in quotation marks or add speaker labels.";
+    "Each text value is one JSON string. Dialogue, side and whisper text contain only that speaker's audible words; action, description and delivery belong in separate narration segments. Order segments by the actual encounter. A reply may be entirely dialogue or narration; neither kind requires the other beside it. Escape quotation marks inside text; never continue scene prose outside a text value or the JSON object. Segment kinds provide attribution, so do not wrap an entire spoken line in quotation marks or add speaker labels. Evidence indexes count EVERY segment from zero, including narration, side and whisper. A spoken disclosure cites that resident's own speech, not neighboring narration.";
   if (!speakerId) return direction;
   const dialogue = (text: string) => ({ kind: "dialogue", speakerId, text, heardBy });
   const heardPlayerBy = opening ? [] : heardBy;
   const examples = [
-    { heardPlayerBy, segments: [dialogue("spoken words")] },
+    { heardPlayerBy, segments: [dialogue('spoken words containing a quoted phrase: "quoted words"')] },
     {
       heardPlayerBy,
-      segments: [
-        dialogue("first spoken words"),
-        { kind: "narration", text: "observable action", heardBy },
-        dialogue('next spoken words, including a quoted phrase: "quoted words"'),
-      ],
+      segments: [{ kind: "narration", text: "observable event", heardBy }],
     },
   ];
   return (
