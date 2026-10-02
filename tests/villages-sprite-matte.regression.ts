@@ -19,7 +19,7 @@ function fixture(background: Color, frame?: Color) {
     }
   return { rgba, set, pixel: (x: number, y: number) => [...rgba.slice((y * width + x) * 4, (y * width + x) * 4 + 4)] };
 }
-for (const frame of [undefined, [0, 0, 0, 0] as Color, [20, 20, 20, 255] as Color]) {
+for (const frame of [undefined, [0, 0, 0, 0] as Color, [20, 20, 20, 255] as Color, [255, 255, 255, 255] as Color]) {
   const image = fixture(magenta, frame);
   image.set(19, 30, magenta); // enclosed gap between the arm and torso
   assert.equal(removeStudioMatte(image.rgba, width, height), true);
@@ -54,6 +54,16 @@ transparent.set(19, 30, magenta); // intentional costume detail on an already tr
 const native = transparent.rgba.slice();
 assert.equal(removeStudioMatte(transparent.rgba, width, height), false);
 assert.deepEqual(transparent.rgba, native, "native transparency and saturated character details remain intact");
+const pinkCostume = fixture([0, 255, 0, 255]);
+pinkCostume.set(19, 30, magenta);
+assert.equal(removeStudioMatte(pinkCostume.rgba, width, height, "#00FF00"), true);
+assert.deepEqual(pinkCostume.pixel(19, 30), magenta, "known green matte preserves intentional pink costume");
+assert.equal(
+  removeStudioMatte(transparent.rgba, width, height, "#FF00FF"),
+  false,
+  "known key alone is not background evidence",
+);
+assert.deepEqual(transparent.rgba, native);
 const nonuniform = fixture([30, 40, 80, 255]);
 const original = nonuniform.rgba.slice();
 assert.equal(removeStudioMatte(nonuniform.rgba, width, height), false);

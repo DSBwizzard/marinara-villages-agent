@@ -1,7 +1,12 @@
 /** Shared, local chroma cleanup. No provider call or style-specific segmentation. */
-export const STUDIO_CLEANUP_VERSION = 4;
+export const STUDIO_CLEANUP_VERSION = 5;
 
-export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height: number): boolean {
+export function removeStudioMatte(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  expectedHex?: string,
+): boolean {
   const count = width * height;
   if (!count || rgba.length !== count * 4) return false;
   const original = rgba.slice();
@@ -9,6 +14,9 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
   const bandY = Math.max(1, Math.ceil(height * 0.18));
   const step = Math.max(1, Math.floor(Math.sqrt(count / 40000)));
   const buckets = new Map<string, { rgb: number[]; count: number }>();
+  const expected = /^#[a-f0-9]{6}$/i.test(expectedHex ?? "")
+    ? [1, 3, 5].map((start) => parseInt(expectedHex!.slice(start, start + 2), 16))
+    : undefined;
   let opaque = 0;
   for (let y = 0; y < height; y += step)
     for (let x = 0; x < width; x += step) {
@@ -17,6 +25,8 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
       if (rgba[p + 3]! < 128) continue;
       opaque++;
       const rgb = [rgba[p]!, rgba[p + 1]!, rgba[p + 2]!];
+      // Known generated mattes cannot turn a different bright costume color into background.
+      if (expected && Math.hypot(...rgb.map((value, channel) => value - expected[channel]!)) > 64) continue;
       if (Math.max(...rgb) < 180 || Math.max(...rgb) - Math.min(...rgb) < 140) continue;
       const key = rgb.map((value) => Math.floor(value / 32)).join(":");
       const bucket = buckets.get(key) ?? { rgb: [0, 0, 0], count: 0 };
@@ -199,11 +209,14 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
   }
   // Strip thin neutral cell frames outside a rectangular chroma backdrop.
   const edgeCoverage = (indices: number[]) => indices.filter((index) => mask[index]).length / indices.length;
+  // Host cutouts can retain an inset rectangular backdrop inside their export
+  // margins. A recorded key still requires four evidenced rectangular edges.
+  const frameMargin = expected ? 0.22 : 0.1;
   const framed =
-    left <= width * 0.1 &&
-    right >= width * 0.9 - 1 &&
-    top <= height * 0.1 &&
-    bottom >= height * 0.9 - 1 &&
+    left <= width * frameMargin &&
+    right >= width * (1 - frameMargin) - 1 &&
+    top <= height * frameMargin &&
+    bottom >= height * (1 - frameMargin) - 1 &&
     edgeCoverage(Array.from({ length: right - left + 1 }, (_, x) => top * width + left + x)) > 0.7 &&
     edgeCoverage(Array.from({ length: right - left + 1 }, (_, x) => bottom * width + left + x)) > 0.7 &&
     edgeCoverage(Array.from({ length: bottom - top + 1 }, (_, y) => (top + y) * width + left)) > 0.7 &&
@@ -217,7 +230,8 @@ export function removeStudioMatte(rgba: Uint8ClampedArray, width: number, height
       mask[index] ||
       (framed &&
         (x < left || x > right || y < top || y > bottom) &&
-        ((Math.max(...rgb) < 100 && Math.max(...rgb) - Math.min(...rgb) < 50) || dominance(index) > 8))
+        (((Math.max(...rgb) < 100 || Math.min(...rgb) > 220) && Math.max(...rgb) - Math.min(...rgb) < 50) ||
+          dominance(index) > 8))
     )
       rgba[p + 3] = 0;
   }

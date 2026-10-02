@@ -194,7 +194,8 @@ for (const profile of browserProfiles) {
     if (action === "/plan") {
       previewed++;
       result = {
-        protocol: 4,
+        protocol: 5,
+        preparationRequests: 1,
         connection: { id: "mock", name: "Mock images", model: "fixture", source: "openai" },
         batches: [],
         estimatedCost: null,
@@ -216,7 +217,7 @@ for (const profile of browserProfiles) {
               matteHex: "#FF00FF",
             });
             return {
-              pipelineVersion: 4,
+              pipelineVersion: 5,
               matteHex: "#FF00FF",
               draftPrompt: prompt,
               prompt,
@@ -240,6 +241,16 @@ for (const profile of browserProfiles) {
         style: body.settings.style,
         createdAt: new Date().toISOString(),
         status: "ready",
+        phase: "review",
+        preparation: {
+          status: "ready",
+          attempts: [{ status: "answered", model: "fixture-system" }],
+          interpretation: "Warm and grounded.",
+          expressions: body.expressions.map((entry) => ({
+            ...entry,
+            direction: "A natural, character-specific stance.",
+          })),
+        },
         error: "",
         planned: body.plan.batches.length,
         attempted: body.plan.batches.length,
@@ -282,15 +293,15 @@ for (const profile of browserProfiles) {
       const repairedCells = [];
       for (const sheet of job.sheets)
         for (const cell of [...sheet.cells]) {
-          if (cell.repairedFrom && cell.cleanupVersion === 4) continue;
+          if (cell.repairedFrom && cell.cleanupVersion === 5) continue;
           const originalId = cell.repairedFrom ?? cell.id;
-          let repaired = sheet.cells.find((item) => item.repairedFrom === originalId && item.cleanupVersion === 4);
+          let repaired = sheet.cells.find((item) => item.repairedFrom === originalId && item.cleanupVersion === 5);
           if (!repaired) {
             repaired = {
               ...cell,
               id: "repair-" + seq++,
               repairedFrom: originalId,
-              cleanupVersion: 4,
+              cleanupVersion: 5,
               cleanup: true,
               pending: true,
               rendered: undefined,
@@ -457,6 +468,10 @@ for (const profile of browserProfiles) {
     assert.equal(generated, 1);
     assert.ok(previewed >= 2, "plan refreshes automatically");
     await expect(page.locator(".vss-card")).toHaveCount(6);
+    await page.getByText("Character expression directions", { exact: true }).click();
+    await expect(page.getByText("Warm and grounded.", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 System preparation request(s).", { exact: false })).toBeVisible();
+    await page.getByText("Character expression directions", { exact: true }).click();
     await page.getByText("Original sheet 1", { exact: true }).click();
     await expect(page.getByRole("img", { name: "Original sheet 1", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Use", exact: true }).nth(1).click();
@@ -711,14 +726,16 @@ for (const profile of browserProfiles) {
     const originalAssignments = structuredClone(state.assignments);
     await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
     await expect(
-      page.getByText("Backgrounds repaired. Original artwork retained; active sprites updated.", { exact: true }),
+      page.getByText("Repaired options saved. Choose Use on a repaired sprite to replace its current assignment.", {
+        exact: true,
+      }),
     ).toBeVisible();
     assert.equal(generated, 2, "batch repair makes no generation requests");
     for (const prior of originalAssignments) {
       const current = state.assignments.find(
         (entry) => entry.expressionId === prior.expressionId && entry.view === prior.view,
       );
-      assert.notEqual(current.cellId, prior.cellId, "active image switches to the repaired cutout");
+      assert.equal(current.cellId, prior.cellId, "repair preserves active assignments until Use");
       assert.ok(
         allCells().some((cell) => cell.id === prior.cellId),
         "original retained",
@@ -727,7 +744,9 @@ for (const profile of browserProfiles) {
     const repairedCount = allCells().length;
     await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
     await expect(
-      page.getByText("Backgrounds repaired. Original artwork retained; active sprites updated.", { exact: true }),
+      page.getByText("Repaired options saved. Choose Use on a repaired sprite to replace its current assignment.", {
+        exact: true,
+      }),
     ).toBeVisible();
     assert.equal(allCells().length, repairedCount, "repeated repair reuses candidates");
     await page.screenshot({ path: join(output, profile.name + "-repaired.png"), fullPage: true });

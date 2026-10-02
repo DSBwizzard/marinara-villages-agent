@@ -30,7 +30,7 @@ type Props = {
   onBack: () => void;
   onExport: () => Promise<void>;
 };
-const STUDIO_RENDER_VERSION = 3;
+const STUDIO_RENDER_VERSION = 4;
 type Candidate = { sheet: StudioSheet; cell: StudioCell };
 const message = (error: unknown) => (error instanceof Error ? error.message : "The sprite action failed.");
 // LAN HTTP is common on phones; randomUUID requires a secure context, getRandomValues does not.
@@ -64,7 +64,7 @@ export function clearStudioMatte(context: CanvasRenderingContext2D, width: numbe
 
 export function studioRenderKey(sheet: StudioSheet, cell: StudioCell, cleanup = false): string {
   return JSON.stringify({
-    source: [sheet.url, sheet.source?.sha256],
+    source: [sheet.url, sheet.source?.sha256, sheet.source?.matteHex],
     sheetSize: [sheet.width, sheet.height],
     baseScale:
       sheet.baseScale ??
@@ -439,17 +439,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
   async function repairBatch(job: StudioJob) {
     const next = await call<StudioData>("repair-background", { batchId: job.id });
     setData(next);
-    const replacements = new Map((next.repairedCells ?? []).map((item) => [item.originalId, item.cellId]));
-    const active = next.assignments.flatMap((entry) => {
-      const cellId = replacements.get(entry.cellId);
-      const sheet = next.jobs
-        .flatMap((batch) => batch.sheets)
-        .find((item) => item.cells.some((cell) => cell.id === cellId));
-      const cell = sheet?.cells.find((item) => item.id === cellId);
-      return sheet && cell ? [{ candidate: { sheet, cell }, expressionId: entry.expressionId }] : [];
-    });
-    if (active.length) await assign(active, job.id);
-    setNote("Backgrounds repaired. Original artwork retained; active sprites updated.");
+    setNote("Repaired options saved. Choose Use on a repaired sprite to replace its current assignment.");
   }
   function pick(item: Candidate) {
     setPicked(item.cell.id);
@@ -864,6 +854,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                   <p>
                     {payload.expressions.length} expressions · {plan.batches.length} image{" "}
                     {plan.batches.length === 1 ? "request" : "requests"} · {plan.connection.name}
+                    {plan.preparationRequests ? " · 1 System request to prepare character expressions on Generate" : ""}
                   </p>
                 ) : (
                   <p className="vss-hint">{planError || "Select expressions to generate."}</p>
@@ -1113,10 +1104,22 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                         <small>
                           {new Date(job.createdAt).toLocaleString()} · {job.model} · {job.attempted} submitted /{" "}
                           {job.planned} planned requests ·{" "}
-                          {job.status === "ready" ? "Generation completed" : job.status} ·{" "}
-                          {job.sheets.reduce((count, sheet) => count + sheet.cells.length, 0)} sprites
+                          {job.status === "ready"
+                            ? "Generation completed"
+                            : job.status === "running"
+                              ? job.phase === "preparing"
+                                ? "Preparing expressions"
+                                : "Drawing sprites"
+                              : job.status}{" "}
+                          · {job.sheets.reduce((count, sheet) => count + sheet.cells.length, 0)} sprites
                         </small>
                         {job.error ? <p className="vss-hint">{job.error}</p> : null}
+                        {job.status === "interrupted" && job.preparation ? (
+                          <p className="vss-hint">
+                            Retry reuses saved work. An uncertain request may already have been billed and may be
+                            repeated.
+                          </p>
+                        ) : null}
                         <div className="vss-row">
                           <button
                             className="vss-primary"
@@ -1137,7 +1140,23 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                           >
                             Repair backgrounds
                           </button>
-                          {job.status === "interrupted" ? (
+                          {job.status === "interrupted" && job.preparation ? (
+                            <button
+                              disabled={busy || running}
+                              onClick={() =>
+                                void perform(async () => {
+                                  setData(await call<StudioData>("recover", { id: job.id, retryGeneration: true }));
+                                  setNote(
+                                    "Retrying this saved batch. Completed directions and artwork will be reused.",
+                                  );
+                                })
+                              }
+                            >
+                              {job.preparation.status === "ready"
+                                ? "Retry remaining images"
+                                : "Retry expression preparation"}
+                            </button>
+                          ) : job.status === "interrupted" ? (
                             <button disabled={busy || running} onClick={() => retry(job)}>
                               Prepare retry
                             </button>
@@ -1153,6 +1172,28 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                             </button>
                           ) : null}
                         </div>
+                        {job.preparation ? (
+                          <details>
+                            <summary>Character expression directions</summary>
+                            <p>{job.preparation.interpretation || "Expressions have not been prepared yet."}</p>
+                            {job.preparation.expressions?.map((entry) => (
+                              <p key={entry.label}>
+                                <strong>{entry.name || entry.label}</strong>: {entry.direction}
+                                {entry.pose ? " User pose: " + entry.pose : ""}
+                              </p>
+                            ))}
+                            <small>
+                              {job.preparation.attempts.length} System preparation request(s). Use Regenerate and edit
+                              the pose instructions to change a direction.
+                            </small>
+                            {job.receipts?.map((batch, index) => (
+                              <details key={index}>
+                                <summary>Saved image prompt {index + 1}</summary>
+                                <pre>{batch.request?.prompt}</pre>
+                              </details>
+                            ))}
+                          </details>
+                        ) : null}
                         <div className="vss-originals">
                           {job.sheets.map((sheet, index) => (
                             <details key={sheet.assetId + ":" + index}>

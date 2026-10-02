@@ -97,7 +97,7 @@ async function main() {
     const expressions = Array.from({ length: 13 }, (_, i) => ({ label: "e_" + i, pose: "Pose " + i }));
     constrained = true;
     const plan = await planVillageStudioSheets("image", identity, expressions, false);
-    assert.equal(plan.protocol, 4);
+    assert.equal(plan.protocol, 5);
     assert.deepEqual(
       plan.batches.map((b) => b.count),
       [6, 6, 1],
@@ -181,7 +181,7 @@ async function main() {
     reference = png;
     plan.batches[0]!.request!.pipelineVersion = 1;
     await assert.rejects(run, /plan changed/);
-    plan.batches[0]!.request!.pipelineVersion = 4;
+    plan.batches[0]!.request!.pipelineVersion = 5;
     const frozen = plan.batches[0]!.request!;
     const originalPrompt = frozen.prompt;
     frozen.prompt = "Generic character reference sheet";
@@ -249,7 +249,7 @@ async function main() {
       const sized = await planVillageStudioSheets("image", identity, expressions.slice(0, count), false);
       assert.equal(sized.batches[0]!.count, count);
       assert.equal(sized.batches.length, 1);
-      assert.equal(sized.batches[0]!.request!.pipelineVersion, 4);
+      assert.equal(sized.batches[0]!.request!.pipelineVersion, 5);
     }
   } finally {
     globalThis.fetch = originalFetch;
