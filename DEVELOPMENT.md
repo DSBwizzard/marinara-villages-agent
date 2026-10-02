@@ -42,6 +42,7 @@ Sprite reliability checks:
 npx tsx tests/villages-sprite-engine.regression.ts
 npx tsx tests/villages-sprite-pixels.regression.ts
 npx tsx tests/villages-sprite-studio.regression.ts
+npx tsx tests/villages-sprite-preparation.regression.ts
 npx tsx tests/villages-sprite-library.regression.ts
 npx tsx tests/villages-sprite-pipeline.regression.ts
 npx tsx tests/villages-resident-sprites.regression.ts

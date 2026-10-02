@@ -9,29 +9,19 @@ import { asRecord, asString } from "./coerce.js";
 import { decodeVillageImageDataUrl } from "./image-generation.js";
 import { generatedMime } from "./resident-sprites.js";
 import { compileStudioPrompt, resolveStudioStyle } from "./sprite-studio-styles.js";
-import type { StudioSettings, StudioResolvedStyle } from "./sprite-studio-model.js";
+import type { StudioIdentity, StudioRequestedExpression } from "./sprite-studio-model.js";
 import {
   studioPrompt,
   STUDIO_NEGATIVE_PROMPT,
   type StudioBatch,
   type StudioPlan,
-  type StudioView,
   type StudioSource,
 } from "./sprite-studio-model.js";
 
-type Expression = { label: string; pose: string };
-type Identity = {
-  settings?: StudioSettings;
-  resolvedStyle?: StudioResolvedStyle;
-  name: string;
-  appearance: string;
-  style: string;
-  view: StudioView;
-  referenceUrl?: string;
-  references?: Array<{ url: string; role: string }>;
-};
+type Expression = StudioRequestedExpression;
+type Identity = StudioIdentity;
 type Connection = Awaited<ReturnType<typeof studioConnection>>;
-export const STUDIO_PIPELINE_VERSION = 4;
+export const STUDIO_PIPELINE_VERSION = 5;
 const PATH = "/api/sprites/generate-sheet";
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
 const layouts: Record<number, [number, number]> = { 1: [1, 1], 2: [2, 1], 3: [2, 2], 4: [2, 2], 5: [3, 2], 6: [3, 2] };
@@ -194,7 +184,7 @@ export async function planVillageStudioSheets(
     offset += count;
   }
   return {
-    protocol: 4,
+    protocol: 5,
     connection,
     batches,
     estimatedCost: null,

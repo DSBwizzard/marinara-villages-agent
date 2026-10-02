@@ -36,6 +36,7 @@ import {
 const records = new Map<string, any>();
 let failVillageWrite = false;
 let failSourceWrite = false;
+let failPreparationReadyWrite = false;
 const documents = {
   async getById(_package: string, id: string) {
     return structuredClone(records.get(id) ?? null);
@@ -54,6 +55,11 @@ const documents = {
     if (failSourceWrite && input.data?.jobs?.some((job: any) => job.pendingSource)) {
       throw new Error("Source metadata disk unavailable");
     }
+    if (
+      failPreparationReadyWrite &&
+      input.data?.jobs?.some((job: any) => job.preparation?.status === "ready" && job.phase === "preparing")
+    )
+      throw new Error("Prepared direction write failed");
     const prior = records.get(input.id);
     if (!prior || prior.revision !== input.expectedRevision) return null;
     const row = { ...prior, ...structuredClone(input), revision: prior.revision + 1 };
@@ -138,6 +144,34 @@ records.get(studioId).data.settings.prompts.PAPERCRAFT = LEGACY_STUDIO_PAPERCRAF
 delete records.get(studioId).data.settings.styleSelection;
 records.get(studioId).data.jobs[0].stylePrompt = LEGACY_STUDIO_PAPERCRAFT;
 const release = configureVillagesRuntime({
+  languageModels: {
+    async resolveForRequest() {
+      return {
+        connectionId: "system",
+        model: "test-system",
+        maxOutputTokens: 8192,
+        fitContext: (messages: any[], options: any) => ({ messages, maxTokens: options.maxTokens }),
+        async chatComplete(messages: any[]) {
+          preparationCalls++;
+          const input = JSON.parse(messages[1].content);
+          preparationInputs.push(input);
+          if (failPreparation) throw new Error("System outcome unknown");
+          return {
+            content: invalidPreparation
+              ? ""
+              : JSON.stringify({
+                  interpretation: input.character.personality || "Warm and thoughtful",
+                  expressions: input.expressions.map((entry: any) => ({
+                    label: entry.label,
+                    direction: entry.userPose || "Soft eyes and a relaxed, attentive stance.",
+                  })),
+                }),
+            usage: { inputTokens: 100, outputTokens: 50 },
+          };
+        },
+      };
+    },
+  },
   resources: { listCharacters: async () => [] },
   persistence: { documents },
   isDebugAgentsEnabled: () => false,
@@ -149,6 +183,10 @@ let calls = 0,
   constrainedCanvas = false,
   fallbackConfigured = false,
   generationRelease: (() => void) | undefined;
+let preparationCalls = 0,
+  failPreparation = false,
+  invalidPreparation = false;
+const preparationInputs: any[] = [];
 const requests: any[] = [];
 let savedWrites = 0,
   failSaveAt = 0,
@@ -447,12 +485,14 @@ async function main() {
     assert.equal(requests[0].noBackground, false);
     assert.equal(requests[0].nativeTransparentPng, false);
     assert.equal(requests[0].fullBodyExpressionMode, false);
-    assert.equal(requests[0].promptOverrides[0].prompt, a.plan.batches[0].request!.prompt);
-    assert.equal(requests[0].promptOverrides[0].negativePrompt, a.plan.batches[0].request!.negativePrompt);
+    assert.equal(requests[0].promptOverrides[0].prompt, a.job.receipts![0].request!.prompt);
+    assert.equal(requests[0].promptOverrides[0].negativePrompt, a.job.receipts![0].request!.negativePrompt);
+    assert.equal(a.job.preparation!.status, "ready");
+    assert.equal(a.job.preparation!.attempts.length, 1, "duplicate submissions share one preparation");
     const source = a.job.sheets[0].source!;
     assert.equal(source.kind, "generated-raw");
     assert.equal(source.matteHex, "#FF00FF");
-    assert.equal(source.pipelineVersion, 4);
+    assert.equal(source.pipelineVersion, 5);
     assert.equal(
       source.sha256,
       createHash("sha256")
@@ -615,7 +655,7 @@ async function main() {
     for (const mapping of repaired.repairedCells) {
       const cell = cellsOf(repairedJob).find((item) => item.id === mapping.cellId)!;
       assert.equal(cell.cleanup, true);
-      assert.equal(cell.cleanupVersion, 4);
+      assert.equal(cell.cleanupVersion, 5);
       assert.ok(cell.rendered?.sha256, "repair saves a newly validated derivative");
       assert.ok(cellsOf(repairedJob).some((item) => item.id === mapping.originalId));
     }
@@ -656,7 +696,7 @@ async function main() {
     const upgraded = await repairStudioBackgrounds("mara", { batchId: a.job.id });
     assert.deepEqual(activeSprite(), priorVersionSprite, "preparing an upgrade leaves old assignments intact");
     const upgradedJob = upgraded.jobs.find((job) => job.id === a.job.id)!;
-    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 4);
+    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 5);
     assert.equal(upgradedCells.length, originalCount, "each root artwork gets one current-version repair");
     for (const entry of repairedAssignments) {
       const replacement = upgraded.repairedCells.find((item) => item.originalId === entry.id);
@@ -914,8 +954,144 @@ async function main() {
     assert.equal(legacySprite.height, 768);
     const legacyJob = (await readSpriteStudio("mara")).jobs.at(-1)!;
     assert.equal((await readSpriteStudio("mara")).jobs.length, beforeLegacyJobs + 1);
-    assert.equal(legacyJob.sheets[0]!.source?.pipelineVersion, 4);
+    assert.equal(legacyJob.sheets[0]!.source?.pipelineVersion, 5);
     assert.deepEqual(legacyJob.receipts?.[0]?.request?.referenceRoles ?? [], []);
+
+    const beforePreviewPreparation = preparationCalls;
+    const groundedSlot = (
+      await saveStudioExpression("mara", {
+        name: "Quiet disappointment",
+        useWhen: "Sad after a modest setback",
+        pose: "Keep arms relaxed.",
+      })
+    ).studio.expressions.find((slot) => slot.name === "Quiet disappointment")!;
+    const groundedInput = {
+      view: "front",
+      expressions: [{ expressionId: groundedSlot.id, label: groundedSlot.label, pose: "Keep arms relaxed." }],
+    };
+    const savedCard = records.get("villages-village").data.villagers[0].cardSnapshot;
+    Object.assign(savedCard, {
+      personality: "Sociable, street-wise, cheerful, protective of friends.",
+      summary: "An adventurous day-bar owner.",
+      description: "Outgoing but grounded.",
+      backstory: "Travel taught her to stay composed.",
+      exampleDialogue: "Well, that could have gone better.",
+      appearance: "Bird with feathers along her arms. No wings on her back. Sleeveless top and trousers.",
+    });
+    const groundedPlan = await planSpriteStudio("mara", groundedInput);
+    await planSpriteStudio("mara", groundedInput);
+    assert.equal(preparationCalls, beforePreviewPreparation, "previews never prepare expressions");
+    const personality = savedCard.personality;
+    savedCard.personality = "Reserved and wary.";
+    await assert.rejects(
+      () =>
+        startSpriteStudioJob("mara", {
+          ...groundedInput,
+          plan: groundedPlan,
+          submissionId: randomUUID(),
+        }),
+      /plan changed/,
+    );
+    assert.equal(preparationCalls, beforePreviewPreparation, "stale character context is refused before spending");
+    savedCard.personality = personality;
+    const groundedId = randomUUID();
+    failPreparation = true;
+    const beforeFailureImages = calls;
+    await startSpriteStudioJob("mara", { ...groundedInput, plan: groundedPlan, submissionId: groundedId });
+    const failedPreparation = (await settle()).jobs.find((job) => job.id === groundedId)!;
+    assert.equal(failedPreparation.phase, "preparing");
+    assert.equal(failedPreparation.preparation!.status, "unknown");
+    assert.equal(failedPreparation.preparation!.attempts.length, 1);
+    assert.equal(calls, beforeFailureImages, "failed preparation submits no images");
+    await startSpriteStudioJob("mara", { ...groundedInput, plan: groundedPlan, submissionId: groundedId });
+    assert.equal(preparationCalls, beforePreviewPreparation + 1, "duplicate failed submissions never retry");
+    assert.equal(preparationInputs.at(-1).character.personality, savedCard.personality);
+    assert.equal(preparationInputs.at(-1).character.backstory, savedCard.backstory);
+    assert.equal(preparationInputs.at(-1).character.exampleDialogue, savedCard.exampleDialogue);
+    assert.equal(preparationInputs.at(-1).expressions[0].name, groundedSlot.name);
+    assert.equal(preparationInputs.at(-1).expressions[0].useWhen, groundedSlot.useWhen);
+    assert.equal(preparationInputs.at(-1).expressions[0].userPose, "Keep arms relaxed.");
+    failPreparation = false;
+    generationRelease = undefined;
+    await recoverStudioJob("mara", { id: groundedId, retryGeneration: true });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
+    const groundedJob = (await settle()).jobs.find((job) => job.id === groundedId)!;
+    assert.equal(groundedJob.preparation!.attempts.length, 2);
+    assert.equal(groundedJob.preparation!.attempts[0].status, "unknown");
+    assert.match(groundedJob.receipts![0].request!.prompt, /street-wise/);
+    assert.match(groundedJob.receipts![0].request!.prompt, /Quiet disappointment/);
+    assert.match(groundedJob.receipts![0].request!.prompt, /Sad after a modest setback/);
+    assert.match(groundedJob.receipts![0].request!.prompt, /User pose constraint: Keep arms relaxed/);
+    assert.match(groundedJob.receipts![0].request!.prompt, /No wings on her back/);
+    assert.match(groundedJob.receipts![0].request!.prompt, /original avatar controls the visible outfit/);
+    assert.match(
+      groundedJob.receipts![0].request!.prompt,
+      /cannot override the original outfit or explicit written anatomy/,
+    );
+    assert.doesNotMatch(groundedJob.receipts![0].request!.prompt, /fitting expressive body gesture/);
+    assert.equal(groundedJob.phase, "review");
+
+    // A durably saved answer can be parsed again after a metadata write fails.
+    const replayPlan = await planSpriteStudio("mara", groundedInput);
+    const replayId = randomUUID(),
+      beforeReplayCalls = preparationCalls;
+    failPreparationReadyWrite = true;
+    await startSpriteStudioJob("mara", { ...groundedInput, plan: replayPlan, submissionId: replayId });
+    const replayInterrupted = (await settle()).jobs.find((job) => job.id === replayId)!;
+    assert.equal(replayInterrupted.preparation!.attempts.at(-1)!.status, "answered");
+    failPreparationReadyWrite = false;
+    generationRelease = undefined;
+    await recoverStudioJob("mara", { id: replayId, retryGeneration: true });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
+    await settle();
+    assert.equal(preparationCalls, beforeReplayCalls + 1, "saved answer recovery makes no new System call");
+
+    // Empty output is invalid and must not trigger completeWithRoom's usual empty retry.
+    invalidPreparation = true;
+    const invalidId = randomUUID(),
+      beforeInvalidCalls = preparationCalls,
+      beforeInvalidImages = calls;
+    const invalidPlan = await planSpriteStudio("mara", groundedInput);
+    await startSpriteStudioJob("mara", { ...groundedInput, plan: invalidPlan, submissionId: invalidId });
+    const invalidJob = (await settle()).jobs.find((job) => job.id === invalidId)!;
+    assert.equal(invalidJob.preparation!.status, "failed");
+    assert.equal(preparationCalls, beforeInvalidCalls + 1);
+    assert.equal(calls, beforeInvalidImages);
+    invalidPreparation = false;
+    generationRelease = undefined;
+    await recoverStudioJob("mara", { id: invalidId, retryGeneration: true });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
+    await settle();
+
+    // Retry an uncertain image using the same frozen, completed directions.
+    const retryImagePlan = await planSpriteStudio("mara", groundedInput);
+    const retryImageId = randomUUID(),
+      beforeImagePreparation = preparationCalls;
+    failGeneration = true;
+    generationRelease = undefined;
+    await startSpriteStudioJob("mara", { ...groundedInput, plan: retryImagePlan, submissionId: retryImageId });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
+    const imageInterrupted = (await settle()).jobs.find((job) => job.id === retryImageId)!;
+    assert.equal(imageInterrupted.preparation!.status, "ready");
+    assert.ok(imageInterrupted.pendingAssetId);
+    failGeneration = false;
+    await recoverStudioJob("mara", { id: retryImageId, retryGeneration: true });
+    await waitForCall();
+    generationRelease!();
+    generationRelease = undefined;
+    const imageRetried = (await settle()).jobs.find((job) => job.id === retryImageId)!;
+    assert.equal(preparationCalls, beforeImagePreparation + 1);
+    assert.equal(imageRetried.imageAttempts![0].status, "unknown");
+    assert.equal(imageRetried.imageAttempts![1].status, "saved");
+    assert.deepEqual(imageRetried.preparation, imageInterrupted.preparation);
     console.log(
       "Sprite Studio regression passed: generation counts, optional neutral, migration, stable meanings, mixed batches, cached swaps, atomic failures, shared-file protection and cleanup retries.",
     );

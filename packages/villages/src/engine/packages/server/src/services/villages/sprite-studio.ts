@@ -1,3 +1,4 @@
+import { parseStudioPreparation, prepareStudioExpressions } from "./sprite-studio-preparation.js";
 import { STUDIO_CLEANUP_VERSION } from "./sprite-studio-matte.js";
 import { createHash, randomUUID } from "node:crypto";
 import { studioStyleProfiles, resolveStudioStyle } from "./sprite-studio-styles.js";
@@ -22,6 +23,9 @@ import {
   type StudioPlan,
   type StudioCell,
   type StudioSettings,
+  type StudioRequestedExpression,
+  type StudioJob,
+  type StudioCharacterContext,
 } from "./sprite-studio-model.js";
 import { planVillageStudioSheets, generateVillageStudioSheet, studioImageSource } from "./sprite-studio-generation.js";
 import { buildVillageSnapshot } from "./village.js";
@@ -322,6 +326,11 @@ export async function readSpriteStudio(characterId: string) {
       const found = next.jobs.find((item) => item.id === job.id);
       if (found) {
         found.status = "interrupted";
+        if (found.preparation?.status === "submitted") {
+          found.preparation.status = "unknown";
+          const attempt = found.preparation.attempts.at(-1);
+          if (attempt?.status === "submitted") attempt.status = "unknown";
+        }
         found.error = "The generation was interrupted. Its outcome may be unknown. No automatic retry was made.";
       }
     });
@@ -473,6 +482,10 @@ async function prepare(characterId: string, raw: unknown) {
       : state.expressions.find((item) => item.label === entry.label);
     if (entry.expressionId && !slot) throw badRequest("That expression slot no longer exists.");
     entry.expressionId = slot?.id ?? definition(entry.label, entry.pose).id;
+    Object.assign(entry, {
+      name: slot?.name ?? entry.label.replaceAll("_", " "),
+      useWhen: slot?.useWhen ?? STUDIO_MEANINGS[entry.label] ?? "",
+    });
   }
   const referenceUrl = asRecord(raw).useReference === false ? undefined : resident.cardSnapshot.spriteReference?.url;
   const connectionId = await resolveVillageImageConnectionId(state.settings.connectionId);
@@ -521,6 +534,12 @@ async function prepare(characterId: string, raw: unknown) {
     settings: state.settings,
     resolvedStyle,
     name: resident.cardSnapshot.name,
+    character: Object.fromEntries(
+      ["name", "personality", "description", "summary", "backstory", "appearance", "exampleDialogue"].map((key) => [
+        key,
+        asString(resident.cardSnapshot[key as keyof typeof resident.cardSnapshot]),
+      ]),
+    ) as StudioCharacterContext,
     appearance: (
       asString(asRecord(raw).appearance).trim() ||
       resident.cardSnapshot.appearance ||
@@ -544,6 +563,7 @@ async function prepare(characterId: string, raw: unknown) {
       );
     throw error;
   }
+  plan.preparationRequests = 1;
   plan.designId = design?.id;
   plan.settingsToken = settingsToken;
   plan.reviewToken = hash(JSON.stringify({ input, settings: state.settings, identity, plan }));
@@ -582,7 +602,7 @@ function cellsFor(
   jobId: string,
   batchIndex: number,
   view: "front" | "side",
-  expressions: Array<{ label: string; pose: string; expressionId?: string }>,
+  expressions: StudioRequestedExpression[],
   cols: number,
   rows: number,
   width: number,
@@ -596,6 +616,7 @@ function cellsFor(
         : Math.floor((Math.floor(index / cols) * height) / rows);
     return {
       ...entry,
+      pose: entry.direction ?? entry.pose,
       id: `${jobId}-${batchIndex}-${index}`,
       view,
       x,
@@ -657,6 +678,10 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
         }
       }
       next.jobs.push({
+        frozenIdentity: structuredClone(identity),
+        phase: "preparing",
+        preparation: { status: "pending", attempts: [] },
+        imageAttempts: [],
         resolvedStyle: identity.resolvedStyle,
         styleFingerprint: identity.resolvedStyle.fingerprint,
         targetHeight: prepared.expectedHeight,
@@ -691,94 +716,185 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
     active.delete(id + ":" + jobId);
     return readSpriteStudio(characterId);
   }
-  void (async () => {
-    let offset = 0;
-    try {
-      for (const [index, batch] of plan.batches.entries()) {
-        const expressions = input.expressions.slice(offset, offset + batch.count);
-        offset += batch.count;
-        const assetId = `villages-${randomUUID()}`;
-        const {
-          image,
-          source,
-          cells: engineCells,
-        } = await generateVillageStudioSheet({
-          connectionId,
-          expectedModel: plan.connection.model,
-          identity,
-          expressions,
-          batch,
-          onSubmit: () =>
-            mutate(id, (next) => {
-              const job = next.jobs.find((item) => item.id === jobId)!;
-              job.pendingAssetId = assetId;
-              job.pendingBatch = batch;
-              job.pendingExpressions = expressions;
-              retainFile(next, assetId, "original", `/api/sprites/${assetId}/file/original.png`);
-              job.attempted += 1;
-            }),
-        });
-        // Save paid artwork before any further document write can fail.
-        const output = await saveStudioImage(image, "original", assetId);
-        await mutate(id, (next) => {
-          next.jobs.find((item) => item.id === jobId)!.pendingSource = source;
-        });
-        await mutate(id, (next) => {
-          retainFile(next, assetId, fileStem(output.url), output.url);
-          const job = next.jobs.find((item) => item.id === jobId)!;
-          job.sheets.push({
-            ...output,
-            source,
-            expectedHeight: prepared.expectedHeight,
-            layout: { cols: batch.cols, rows: batch.rows, count: batch.count },
-            attempts: 1,
-            usage: null,
-            baseScale: Math.min(512 / (output.width / batch.cols), 768 / (output.height / batch.rows)),
-            cells: cellsFor(
-              jobId,
-              index,
-              input.view,
-              expressions,
-              batch.cols,
-              batch.rows,
-              output.width,
-              output.height,
-              true,
-            ).map((cell) => ({
-              ...cell,
-              scale: 1,
-              processingVersion: STUDIO_PROCESSING_VERSION,
-            })),
-          });
-          delete job.pendingAssetId;
-          delete job.pendingBatch;
-          delete job.pendingExpressions;
-          delete job.pendingSource;
-        });
-        const currentJob = (await read(id)).jobs.find((job) => job.id === jobId)!;
-        await processSavedSheet(
-          id,
-          currentJob.sheets.at(-1)!,
-          prepared.state.settings.cleanupEngine ?? "studio",
-          image,
-          engineCells,
-        );
-      }
-      await mutate(id, (next) => {
-        next.jobs.find((item) => item.id === jobId)!.status = "ready";
-      });
-    } catch (error) {
-      villagesLogger().warn("Sprite studio job interrupted", { error: safeMessage(error) });
-      await mutate(id, (next) => {
-        const job = next.jobs.find((item) => item.id === jobId)!;
-        job.status = "interrupted";
-        job.error = safeMessage(error) + " No automatic retry was made.";
-      });
-    } finally {
-      active.delete(id + ":" + jobId);
-    }
-  })().catch((error) => villagesLogger().error(error, "Could not persist sprite job status"));
+  launchStudioJob(id, jobId);
   return readSpriteStudio(characterId);
+}
+async function runStudioJob(id: string, jobId: string) {
+  let offset = 0;
+  try {
+    let job = (await read(id)).jobs.find((item) => item.id === jobId)!;
+    let identity = job.frozenIdentity!;
+    if (job.phase === "preparing") {
+      let directions =
+        job.preparation?.status === "ready"
+          ? { interpretation: job.preparation.interpretation!, expressions: job.preparation.expressions! }
+          : undefined;
+      const answered = job.preparation?.attempts.at(-1);
+      if (!directions && answered?.status === "answered") {
+        try {
+          directions = parseStudioPreparation(answered.content ?? "", job.requestedExpressions!);
+        } catch {
+          /* Explicit retry replaces invalid directions. */
+        }
+      }
+      directions ??= await prepareStudioExpressions(
+        identity,
+        job.requestedExpressions!,
+        (attempt) =>
+          mutate(id, (next) => {
+            const current = next.jobs.find((item) => item.id === jobId)!;
+            current.preparation!.attempts.push(attempt);
+            current.preparation!.status = "submitted";
+          }),
+        (content, usage) =>
+          mutate(id, (next) => {
+            const attempt = next.jobs.find((item) => item.id === jobId)!.preparation!.attempts.at(-1)!;
+            attempt.status = "answered";
+            attempt.content = content;
+            attempt.usage = usage;
+          }),
+      );
+      await mutate(id, (next) => {
+        const current = next.jobs.find((item) => item.id === jobId)!;
+        Object.assign(current.preparation!, directions, { status: "ready" });
+        current.frozenIdentity!.interpretation = directions!.interpretation;
+      });
+      identity = { ...identity, interpretation: directions.interpretation };
+      const compiled = await planVillageStudioSheets(
+        job.connectionId,
+        identity,
+        directions.expressions,
+        job.individual ?? false,
+      );
+      const baseline = job.receipts!;
+      if (
+        compiled.connection.model !== job.model ||
+        compiled.batches.length !== baseline.length ||
+        compiled.batches.some((batch, index) => {
+          const before = baseline[index]!;
+          return (
+            batch.width !== before.width ||
+            batch.height !== before.height ||
+            JSON.stringify(batch.request?.connection) !== JSON.stringify(before.request?.connection) ||
+            JSON.stringify(batch.request?.referenceHashes) !== JSON.stringify(before.request?.referenceHashes) ||
+            batch.request?.resolvedStyle?.fingerprint !== before.request?.resolvedStyle?.fingerprint
+          );
+        })
+      )
+        throw badRequest(
+          "The image configuration or reference changed during preparation. Review a new generation plan.",
+        );
+      await mutate(id, (next) => {
+        const current = next.jobs.find((item) => item.id === jobId)!;
+        current.receipts = compiled.batches;
+        current.phase = "drawing";
+      });
+    }
+    job = (await read(id)).jobs.find((item) => item.id === jobId)!;
+    const plan = { batches: job.receipts!, connection: { model: job.model } };
+    const input = { expressions: job.preparation!.expressions!, view: job.view };
+    identity = job.frozenIdentity!;
+    const connectionId = job.connectionId;
+    for (const [index, batch] of plan.batches.entries()) {
+      const expressions = input.expressions.slice(offset, offset + batch.count);
+      offset += batch.count;
+      if (index < job.sheets.length) {
+        await processSavedSheet(id, job.sheets[index]!, job.frozenSettings?.cleanupEngine ?? "studio");
+        continue;
+      }
+      const assetId = `villages-${randomUUID()}`;
+      const {
+        image,
+        source,
+        cells: engineCells,
+      } = await generateVillageStudioSheet({
+        connectionId,
+        expectedModel: plan.connection.model,
+        identity,
+        expressions,
+        batch,
+        onSubmit: () =>
+          mutate(id, (next) => {
+            const job = next.jobs.find((item) => item.id === jobId)!;
+            job.pendingAssetId = assetId;
+            job.pendingBatch = batch;
+            job.pendingExpressions = expressions;
+            retainFile(next, assetId, "original", `/api/sprites/${assetId}/file/original.png`);
+            job.attempted += 1;
+            (job.imageAttempts ??= []).push({ assetId, batchIndex: index, status: "submitted" });
+          }),
+      });
+      // Save paid artwork before any further document write can fail.
+      const output = await saveStudioImage(image, "original", assetId);
+      await mutate(id, (next) => {
+        next.jobs.find((item) => item.id === jobId)!.pendingSource = source;
+      });
+      await mutate(id, (next) => {
+        retainFile(next, assetId, fileStem(output.url), output.url);
+        const job = next.jobs.find((item) => item.id === jobId)!;
+        job.sheets.push({
+          ...output,
+          source,
+          expectedHeight: job.targetHeight,
+          layout: { cols: batch.cols, rows: batch.rows, count: batch.count },
+          attempts: 1,
+          usage: null,
+          baseScale: Math.min(512 / (output.width / batch.cols), 768 / (output.height / batch.rows)),
+          cells: cellsFor(
+            jobId,
+            index,
+            input.view,
+            expressions,
+            batch.cols,
+            batch.rows,
+            output.width,
+            output.height,
+            true,
+          ).map((cell) => ({
+            ...cell,
+            scale: 1,
+            processingVersion: STUDIO_PROCESSING_VERSION,
+          })),
+        });
+        const attempt = job.imageAttempts?.find((item) => item.assetId === assetId);
+        if (attempt) attempt.status = "saved";
+        delete job.pendingAssetId;
+        delete job.pendingBatch;
+        delete job.pendingExpressions;
+        delete job.pendingSource;
+      });
+      const currentJob = (await read(id)).jobs.find((job) => job.id === jobId)!;
+      await processSavedSheet(
+        id,
+        currentJob.sheets.at(-1)!,
+        job.frozenSettings?.cleanupEngine ?? "studio",
+        image,
+        engineCells,
+      );
+    }
+    await mutate(id, (next) => {
+      const current = next.jobs.find((item) => item.id === jobId)!;
+      current.status = "ready";
+      current.phase = "review";
+    });
+  } catch (error) {
+    villagesLogger().warn("Sprite studio job interrupted", { error: safeMessage(error) });
+    await mutate(id, (next) => {
+      const job = next.jobs.find((item) => item.id === jobId)!;
+      job.status = "interrupted";
+      if (job.preparation && job.preparation.status !== "ready") {
+        const attempt = job.preparation.attempts.at(-1);
+        job.preparation.status = attempt?.status === "submitted" ? "unknown" : "failed";
+        if (attempt?.status === "submitted") attempt.status = "unknown";
+      }
+      job.error = safeMessage(error) + " No automatic retry was made.";
+    });
+  } finally {
+    active.delete(id + ":" + jobId);
+  }
+}
+function launchStudioJob(id: string, jobId: string) {
+  void runStudioJob(id, jobId).catch((error) => villagesLogger().error(error, "Could not persist sprite job status"));
 }
 export const importStudioSheet = (characterId: string, raw: unknown) =>
   serializeCells(characterId, () => importStudioSheetUnlocked(characterId, raw));
@@ -1186,6 +1302,8 @@ function retainedUrls(state: StudioState, resident: Awaited<ReturnType<typeof ow
     for (const url of [d.identityUrl, d.front?.url, d.side?.url, d.front?.sourceUrl, d.side?.sourceUrl, d.exemplar])
       if (url) keep.add(url.split("?")[0]);
   for (const job of state.jobs) {
+    if (job.status !== "ready")
+      for (const reference of job.frozenIdentity?.references ?? []) keep.add(reference.url.split("?")[0]!);
     if (job.pendingAssetId) keep.add(`/api/sprites/${job.pendingAssetId}/file/original.png`);
     for (const sheet of job.sheets)
       if (sheet.cells.length) {
@@ -1278,11 +1396,53 @@ export const deleteStudioArtwork = (characterId: string, raw: unknown) =>
       ? cleanUnusedFiles(characterId, id)
       : { studio: await readSpriteStudio(characterId), deleted: 0, failures: [] };
   });
+/** Explicit retry may repeat an unknown request, but always reuses saved preparation. */
+async function retryPreparedStudioJob(characterId: string, id: string, initial: StudioJob | undefined) {
+  if (!initial?.frozenIdentity || !initial.preparation || initial.status !== "interrupted")
+    throw badRequest("Choose an interrupted character-prepared batch.");
+  const key = id + ":" + initial.id;
+  if (active.has(key)) return readSpriteStudio(characterId);
+  active.add(key);
+  try {
+    let job = initial;
+    if (job.pendingAssetId) {
+      const files = await villageEngineJson<Array<{ expression: string }>>("/api/sprites/" + job.pendingAssetId);
+      if (files.some((file) => file.expression === "original")) {
+        await recoverStudioOriginal(characterId, id, job);
+        job = (await read(id)).jobs.find((item) => item.id === job.id)!;
+      }
+    }
+    await mutate(id, (next) => {
+      const current = next.jobs.find((item) => item.id === job.id)!;
+      if (next.jobs.some((item) => item.id !== job.id && item.status === "running"))
+        throw badRequest("This villager already has a generation running.");
+      if (current.pendingAssetId) {
+        const attempt = current.imageAttempts?.find((item) => item.assetId === current.pendingAssetId);
+        if (attempt) attempt.status = "unknown";
+        delete current.pendingAssetId;
+        delete current.pendingBatch;
+        delete current.pendingExpressions;
+        delete current.pendingSource;
+      }
+      current.status = "running";
+      current.error = "";
+    });
+    launchStudioJob(id, job.id);
+  } catch (error) {
+    active.delete(key);
+    throw error;
+  }
+  return readSpriteStudio(characterId);
+}
 export async function recoverStudioJob(characterId: string, raw: unknown) {
   const { id } = await scope(characterId);
   const job = (await read(id)).jobs.find((item) => item.id === asString(asRecord(raw).id));
+  if (asRecord(raw).retryGeneration === true) return retryPreparedStudioJob(characterId, id, job);
   if (!job?.pendingAssetId || !job.pendingBatch || !job.pendingExpressions || active.has(id + ":" + job.id))
     throw badRequest("This job has no interrupted image to recover.");
+  return recoverStudioOriginal(characterId, id, job);
+}
+async function recoverStudioOriginal(characterId: string, id: string, job: StudioJob) {
   const files = await villageEngineJson<Array<{ url: string; expression: string }>>(
     `/api/sprites/${job.pendingAssetId}`,
   );
@@ -1294,7 +1454,8 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
     return `data:${response.headers.get("content-type")?.split(";")[0] || "image/png"};base64,${Buffer.from(await response.arrayBuffer()).toString("base64")}`;
   });
   const size = await inspectVillageImage(image);
-  const source = studioImageSource(image, job.pendingBatch.request ? "generated-raw" : "legacy", job.pendingBatch);
+  const pendingBatch = job.pendingBatch!;
+  const source = studioImageSource(image, pendingBatch.request ? "generated-raw" : "legacy", pendingBatch);
   if (job.pendingSource?.sha256 && job.pendingSource.sha256 !== source.sha256)
     throw badRequest("The saved source changed. Recovery left existing artwork untouched.");
   await mutate(id, (next) => {
@@ -1324,11 +1485,14 @@ export async function recoverStudioJob(characterId: string, raw: unknown) {
         (batch.request?.pipelineVersion ?? 0) >= 4,
       ),
     });
+    const attempt = current.imageAttempts?.find((item) => item.assetId === current.pendingAssetId);
+    if (attempt) attempt.status = "saved";
     delete current.pendingAssetId;
     delete current.pendingBatch;
     delete current.pendingExpressions;
     delete current.pendingSource;
-    current.status = "ready";
+    current.status = current.preparation && current.sheets.length < current.planned ? "interrupted" : "ready";
+    if (current.preparation && current.status === "ready") current.phase = "review";
     current.error = "Recovered saved artwork. Unsubmitted sheets were not generated.";
   });
   const recovered = (await read(id)).jobs.find((j) => j.id === job.id)!;

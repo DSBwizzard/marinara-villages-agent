@@ -56,7 +56,9 @@ export async function processedStudioCell(
     ));
   if (source.width !== sheet.width || source.height !== sheet.height)
     throw new Error("Saved source dimensions changed.");
-  const result = processStudioCell(source, sheet, engine === "studio" ? cell : { ...cell, cleanup: false });
+  // A successful host response can still contain the requested chroma backdrop.
+  // Always run the shared, evidenced local cleanup before bounds and export.
+  const result = processStudioCell(source, sheet, cell);
   return { image: encodeStudioPng(result.image), validation: result.validation, version: STUDIO_PROCESSING_VERSION };
 }
 export function validateStudioPng(image: string) {

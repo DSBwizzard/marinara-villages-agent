@@ -26,6 +26,49 @@ export const STUDIO_MEANINGS: Record<string, string> = {
   surprised: "Reacting to something unexpected.",
   thinking: "Considering an idea or deciding what to do.",
 };
+export type StudioCharacterContext = {
+  name: string;
+  personality: string;
+  description: string;
+  summary: string;
+  backstory: string;
+  appearance: string;
+  exampleDialogue: string;
+};
+export type StudioRequestedExpression = {
+  label: string;
+  pose: string;
+  expressionId?: string;
+  name?: string;
+  useWhen?: string;
+  direction?: string;
+};
+export type StudioIdentity = {
+  settings?: StudioSettings;
+  resolvedStyle?: StudioResolvedStyle;
+  name: string;
+  appearance: string;
+  style: string;
+  view: StudioView;
+  referenceUrl?: string;
+  references?: Array<{ url: string; role: string }>;
+  character?: StudioCharacterContext;
+  interpretation?: string;
+};
+export type StudioPreparationAttempt = {
+  status: "submitted" | "answered" | "unknown";
+  connectionId: string;
+  model: string;
+  submittedAt: string;
+  content?: string;
+  usage?: Record<string, unknown>;
+};
+export type StudioPreparation = {
+  status: "pending" | "submitted" | "ready" | "failed" | "unknown";
+  attempts: StudioPreparationAttempt[];
+  interpretation?: string;
+  expressions?: StudioRequestedExpression[];
+};
 export type StudioExpression = {
   id: string;
   label: string;
@@ -164,6 +207,7 @@ export type StudioPlan = {
   providerToken?: string;
   settingsToken?: string;
   customParametersIgnored?: boolean;
+  preparationRequests?: number;
   connection: { id: string; name: string; model: string; source: string };
   batches: StudioBatch[];
   estimatedCost: number | null;
@@ -181,7 +225,11 @@ export type StudioJob = {
   styleFingerprint?: string;
   resolvedStyle?: StudioResolvedStyle;
   targetHeight?: number;
-  requestedExpressions?: Array<{ label: string; pose: string; expressionId?: string }>;
+  requestedExpressions?: StudioRequestedExpression[];
+  frozenIdentity?: StudioIdentity;
+  phase?: "preparing" | "drawing" | "review";
+  preparation?: StudioPreparation;
+  imageAttempts?: Array<{ assetId: string; batchIndex: number; status: "submitted" | "saved" | "unknown" }>;
   individual?: boolean;
   style?: string;
   stylePrompt?: string;
@@ -316,9 +364,10 @@ export function validateStudioCell(cell: StudioCell, sheet: Pick<StudioSheet, "w
 export function studioPrompt(input: {
   name: string;
   appearance: string;
+  interpretation?: string;
   style: string;
   view: StudioView;
-  expressions: Array<{ label: string; pose: string }>;
+  expressions: StudioRequestedExpression[];
   batch: StudioBatch;
   matteHex?: string;
   referenceRoles?: string[];
@@ -329,6 +378,11 @@ export function studioPrompt(input: {
       : "Right-facing three-quarter theatrical stance. Cheat the torso open toward the audience so the pose is readable, but direct the head, eyes, attention, and gestures toward another villager OFF-CANVAS TO THE RIGHT. Do NOT make eye contact with the viewer.";
   return [
     `Character: ${input.name}. ${input.appearance}`,
+    "Explicit written anatomy is authoritative: preserve stated limb placement, flight structures, hands, feet, and absent features even if a reference or style suggests otherwise. Never add separate wings, limbs, or species features that contradict the description.",
+    input.interpretation
+      ? "Character interpretation: " + input.interpretation
+      : "Expressions will be prepared from this character’s saved personality before drawing.",
+    "Show this character’s own interpretation of each emotion through facial tension, gaze, posture, and gestures. Choose intensity from their personality. Sadness does not automatically mean crying; surprise does not automatically mean a gasping mouth; anger does not automatically mean raised fists. Broad gestures are appropriate only when grounded in this character or explicitly requested.",
     input.referenceRoles?.length
       ? "Identity reference: preserve the reference character’s species, anatomy, core outfit, colors, proportions, and identifying features. Reconstruct the requested poses instead of copying the source pose."
       : "Preserve the character description’s species, anatomy, core outfit, colors, proportions, and identifying features consistently in every cell.",
@@ -336,17 +390,17 @@ export function studioPrompt(input: {
       ? [
           "Reference order and roles: " +
             input.referenceRoles.map((role, i) => `${i + 1}: ${role}`).join("; ") +
-            ". The original avatar controls identity; a styled neutral reference controls proportions, clothing details, and style. Do not redesign, add footwear, remove accessories, or change the outfit.",
+            ". The original avatar controls the visible outfit, colors, and accessories in EVERY cell. Keep its tops, trousers, skirts, scarves, bags, and other visible garments; never omit clothing or replace it with bare skin, feathers, or fur. A styled neutral reference guides rendering and proportions only and cannot override the original outfit or explicit written anatomy. Simplify garment rendering for the style without removing garments. Do not redesign, add footwear, remove accessories, or change the outfit.",
         ]
       : []),
     `Draw it in this style: ${input.style || "Preserve the visual style of the identity reference."}`,
     gaze,
     `Create ONE image, ${input.batch.width} by ${input.batch.height}, with exactly ${input.batch.cols} columns and ${input.batch.rows} rows of equal cells. Read cells left-to-right, top-to-bottom. Leave unused cells empty. No labels, cell frames, scenery, text, or floor shadows.`,
     `Each equal cell is ${input.batch.width / input.batch.cols} by ${input.batch.height / input.batch.rows} pixels. Vertical cuts: ${Array.from({ length: input.batch.cols - 1 }, (_, i) => ((i + 1) * input.batch.width) / input.batch.cols).join(", ") || "none"}; horizontal cuts: ${Array.from({ length: input.batch.rows - 1 }, (_, i) => ((i + 1) * input.batch.height) / input.batch.rows).join(", ") || "none"}. These are invisible crop boundaries, not drawn lines.`,
-    "Every occupied cell contains one complete full-body character, including the top of the head, both feet and all gestures. Keep the silhouette within the central 80% of cell width and 76% of cell height, with at least 10% clear space above the head and 12% below the feet. Keep the same character proportions, camera distance and body scale across every cell. Align feet at 88% of each cell’s height. No body part may cross a crop boundary. Allow distinct expressive poses rather than requiring the same neutral standing body.",
+    "Every occupied cell contains one complete full-body character, including the top of the head, both feet and all gestures. Keep the silhouette within the central 80% of cell width and 76% of cell height, with at least 10% clear space above the head and 12% below the feet. Keep the same character proportions, camera distance and body scale across every cell. Align feet at 88% of each cell’s height. No body part may cross a crop boundary. Allow distinct character-grounded poses while preserving this character’s usual bearing and anatomy.",
     ...input.expressions.map(
       (item, i) =>
-        `Cell ${i + 1}: ${item.label.replace(/_/g, " ")}. ${item.pose || (item.label === "neutral" ? "Relaxed neutral standing pose." : "Use a readable facial expression and fitting expressive body gesture.")}`,
+        `Cell ${i + 1}: ${item.label.replace(/_/g, " ")}. ${item.name && item.name !== item.label ? "Expression name: " + item.name + ". " : ""}${item.useWhen ? "Meaning: " + item.useWhen + " " : ""}${item.direction || item.pose || (item.label === "neutral" ? "Use the character’s natural resting posture." : "Interpret this emotion through the character’s personality and usual bearing.")}${item.direction && item.pose ? " User pose constraint: " + item.pose : ""}`,
     ),
     `Use one perfectly flat, uniform solid background ${input.matteHex ?? "#FF00FF"} across the entire canvas, including gutters and unused cells. Do not generate transparency, checkerboards, gradients, grid lines, background texture, or color spill. Keep character colors fully opaque, including internal highlights and shadows. Preserve intentional character outlines in the chosen style. Background removal happens after generation.`,
   ].join("\n\n");

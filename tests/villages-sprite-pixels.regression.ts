@@ -11,6 +11,7 @@ import {
 import {
   decodeStudioPng,
   encodeStudioPng,
+  processedStudioCell,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-processing.ts";
 import type { StudioPixels } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-pixels.ts";
 import type {
@@ -81,6 +82,35 @@ rect(residue, 25, 15, 50, 120);
 rect(residue, 40, 40, 10, 10, [255, 0, 255, 255]);
 const retained = processStudioCell(residue, sheet, cell);
 assert.ok(foregroundBounds(retained.image).count > 0, "internal costume colors do not block export");
+const leftover = fixture();
+rect(leftover, 2, 2, 96, 146, [255, 0, 255, 255]);
+rect(leftover, 25, 15, 50, 120);
+const expectedSheet = { ...sheet, source: { kind: "generated-raw" as const, matteHex: "#FF00FF" } };
+const expectedClean = processStudioCell(leftover, expectedSheet, cell);
+assert.deepEqual(
+  expectedClean.validation.foreground,
+  clean.validation.foreground,
+  "inset host leftovers do not inflate bounds",
+);
+const partial = fixture();
+rect(partial, 2, 2, 96, 146, [255, 0, 255, 255]);
+rect(partial, 25, 15, 50, 120);
+rect(partial, 0, 0, 20, 40, [0, 0, 0, 0]);
+assert.deepEqual(processStudioCell(partial, expectedSheet, cell).validation.foreground, clean.validation.foreground);
+void processedStudioCell(
+  expectedSheet,
+  { ...cell, cleanupEngine: "builtin" },
+  "builtin",
+  encodeStudioPng(leftover),
+  leftover,
+).then((result) => {
+  assert.deepEqual(
+    decodeStudioPng(result.image),
+    expectedClean.image,
+    "successful host cleanup still runs local matte removal",
+  );
+  assert.equal(result.validation.status, "passed");
+});
 const grid = fixture(200, 300),
   layout = { ...sheet, width: 200, height: 300, layout: { cols: 2, rows: 2, count: 3 } };
 rect(grid, 25, 15, 50, 120);

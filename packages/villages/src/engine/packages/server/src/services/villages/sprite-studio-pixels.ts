@@ -1,7 +1,7 @@
 import { removeStudioMatte } from "./sprite-studio-matte.js";
 import type { StudioCell, StudioSheet, StudioValidation } from "./sprite-studio-model.js";
 
-export const STUDIO_PROCESSING_VERSION = 3;
+export const STUDIO_PROCESSING_VERSION = 4;
 export const STUDIO_CANVAS = { width: 512, height: 768, left: 16, top: 16, right: 496, bottom: 752 };
 export type StudioPixels = { width: number; height: number; data: Uint8ClampedArray };
 
@@ -48,7 +48,7 @@ export function processStudioCell(source: StudioPixels, sheet: StudioSheet, cell
     crop.data.set(source.data.subarray(start, start + cell.width * 4), y * cell.width * 4);
   }
   const hadAlpha = crop.data.some((value, i) => i % 4 === 3 && value <= 16);
-  const cleaned = cell.cleanup ? removeStudioMatte(crop.data, crop.width, crop.height) : false;
+  const cleaned = cell.cleanup ? removeStudioMatte(crop.data, crop.width, crop.height, sheet.source?.matteHex) : false;
   const b = foregroundBounds(crop);
   const findings: StudioValidation["findings"] = [...(sheet.validation?.findings ?? [])];
   if (!b.count) findings.push({ code: "empty", severity: "blocking", message: "No visible character remains." });
@@ -136,7 +136,7 @@ export function studioSheetScale(source: StudioPixels, sheet: StudioSheet) {
         const start = ((cell.y + y) * source.width + cell.x) * 4;
         data.set(source.data.subarray(start, start + cell.width * 4), y * cell.width * 4);
       }
-      if (cell.cleanup) removeStudioMatte(data, cell.width, cell.height);
+      if (cell.cleanup) removeStudioMatte(data, cell.width, cell.height, sheet.source?.matteHex);
       return { cell, bounds: foregroundBounds({ width: cell.width, height: cell.height, data }) };
     })
     .filter((item) => item.bounds.count);
@@ -158,7 +158,7 @@ export function analyzeStudioSheet(source: StudioPixels, sheet: StudioSheet): St
   const layout = sheet.layout;
   if (!layout) return { version: STUDIO_PROCESSING_VERSION, status: "passed", findings };
   const clean = source.data.slice();
-  removeStudioMatte(clean, source.width, source.height);
+  removeStudioMatte(clean, source.width, source.height, sheet.source?.matteHex);
   const cw = source.width / layout.cols,
     ch = source.height / layout.rows;
   let unused = 0,
