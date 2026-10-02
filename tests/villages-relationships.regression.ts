@@ -559,6 +559,27 @@ assert.throws(
   /disclosure/,
 );
 
+const speechDisclosure = {
+  changes: [],
+  permissions: [],
+  disclosures: [{ fromId: "Rosa", toId: "player", kind: "preference", text: "Enjoys sharing stories", lineIds: ["r"] }],
+};
+assert.equal(parseRelationshipReview(speechDisclosure, "speech-disclosure", evidence, village).disclosures.length, 1);
+assert.throws(
+  () =>
+    parseRelationshipReview(
+      speechDisclosure,
+      "narration-disclosure",
+      evidence.map((line) =>
+        line.id === "r"
+          ? { ...line, speakerId: "__venue_scene__", content: "Rosa turns toward you.", playerHeard: true }
+          : line,
+      ),
+      village,
+    ),
+  /villager's own speech/,
+  "A disclosure citing the narration between spoken segments is rejected even when the player witnessed it",
+);
 const knowledge = defaultRelationshipState(village.seed);
 set("Rosa", "player", 50, 50, knowledge);
 set("Rosa", "Ives", -40, 10, knowledge);

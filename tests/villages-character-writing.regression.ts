@@ -154,6 +154,7 @@ async function run() {
       );
       assert.ok(outsidePrompt.includes("FOUNDING PREMISE"), "history is retained in ordinary conversation");
       assert.ok(outsidePrompt.includes("Every knower must directly witness EVERY cited line"));
+      assert.ok(outsidePrompt.includes("Dialogue, side and whisper text contain only that speaker's audible words"));
       assert.ok(outsidePrompt.includes("unconditional standing invitations are distinct"));
       assert.ok(
         outsidePrompt.includes(

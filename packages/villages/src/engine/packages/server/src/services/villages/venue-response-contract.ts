@@ -11,7 +11,34 @@ export type VenueResponseContext = {
   presentation: string;
   expressions: string[];
   projects: boolean;
+  exampleSpeakerId?: string;
+  exampleWitnessIds?: string[];
 };
+
+/** Syntax examples teach the boundary without supplying dialogue or mannerisms to imitate. */
+export function buildVenueTextContract(speakerId?: string, heardBy: string[] = [], opening = false): string {
+  const direction =
+    "Each text value is one JSON string. Dialogue, side and whisper text contain only that speaker's audible words; action, description and delivery belong in separate narration segments. A reply may be entirely dialogue. When speech surrounds a meaningful action, split it into dialogue, narration, then dialogue, in encounter order. Escape quotation marks inside text; never continue scene prose outside a text value or the JSON object. Segment kinds provide attribution, so do not wrap an entire spoken line in quotation marks or add speaker labels.";
+  if (!speakerId) return direction;
+  const dialogue = (text: string) => ({ kind: "dialogue", speakerId, text, heardBy });
+  const heardPlayerBy = opening ? [] : heardBy;
+  const examples = [
+    { heardPlayerBy, segments: [dialogue("spoken words")] },
+    {
+      heardPlayerBy,
+      segments: [
+        dialogue("first spoken words"),
+        { kind: "narration", text: "observable action", heardBy },
+        dialogue('next spoken words, including a quoted phrase: "quoted words"'),
+      ],
+    },
+  ];
+  return (
+    direction +
+    "\nSyntax illustrations only: replace the placeholder text with this encounter's content, use its actual witnesses, and include the required bookkeeping. Neither illustration prescribes a response shape or an action.\n" +
+    examples.map((example) => JSON.stringify(example)).join("\n")
+  );
+}
 
 export const VENUE_RESPONSE_EVIDENCE =
   'Use supplied IDs for each field. Targeting is intent, not isolation: heardPlayerBy and each heardBy identify actual witnesses. Moving aside does not guarantee privacy. Private knowledge stays with its knowers. Evidence and relationship lineIds use numeric zero-based segment indexes, "player" for the latest player line, or exact supplied earlier evidence IDs (0 is valid; "0" is not). Every knower must directly witness EVERY cited line. Recaps and unsupplied history are not evidence. Speech signals require speakerId and an exact quote from that resident\'s actual dialogue; hypothetical or quoted speech, silence, and a different speaker cannot establish consent. Conditional willingness is not an unconditional commitment or standing invitation; contextual entry cautions remain meaningful. Metadata proposes effects; server validation establishes outcomes.';
@@ -26,6 +53,7 @@ export function buildVenueResponseContract(context: VenueResponseContext): strin
   return [
     'Return one JSON object only: heardPlayerBy and segments FIRST, bookkeeping afterward. At least one main segment, narration or dialogue. Segments: {kind:"narration|dialogue|side|whisper",text,heardBy:[],speakerId?,expression?,gazeAt?,targetId?,staging?}. Speakers/targets are active IDs; expression is a filled expression ID. Narration has no speakerId and is visible to the active cast. Dialogue/side/whisper require speakerId. Side/whisper attach to the preceding main segment, with their own witnesses; whisper requires targetId. Legacy gazeAt names an active resident or player.' +
       (context.opening ? " Opening heardPlayerBy is empty." : ""),
+    buildVenueTextContract(context.exampleSpeakerId, context.exampleWitnessIds, context.opening),
     VENUE_RESPONSE_EVIDENCE,
     context.contactFacts
       ? 'contactIntent:{kind:"knock|call",targetId,boundaryZoneId,quote,delivery:"voice|loud|device",deliveryQuote,deviceFeatureId} for a CURRENT deliberate knock/call or doorway follow-up in the player\'s words. Unknown target/boundary may be empty. Loud/device delivery needs current-word evidence; deviceFeatureId must exist visibly in this Zone. Normal voice reaches adjacent Zones; loud calls may reach farther, never guaranteeing hearing. Ordinary speech remains local. Historical/hypothetical/quoted mentions are not contact. Server routes the attempt: do not narrate remote answers, movement, invitations, or silence yet. ' +

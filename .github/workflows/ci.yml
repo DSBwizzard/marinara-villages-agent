@@ -68,6 +68,7 @@ jobs:
       - name: Verify complete character identity and writing context
         run: |
           npx tsx tests/villages-character-writing.regression.ts
+          npx tsx tests/villages-scene-text.regression.ts
           npx tsx tests/villages-dialogue-context.regression.ts
 
       - name: Verify finite wishes and routine isolation

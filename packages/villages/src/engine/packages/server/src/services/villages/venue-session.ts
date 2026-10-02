@@ -1929,6 +1929,8 @@ export async function prepareVenueTurnMessages(
         recapNeeded: session.lines.length >= 12,
         staging: session.stagingVersion === 1,
         projects: projectContexts.length > 0,
+        exampleSpeakerId: stageIds[0],
+        exampleWitnessIds: stageIds,
         contactFacts:
           !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
             ? `Known villagers (not attendance): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
