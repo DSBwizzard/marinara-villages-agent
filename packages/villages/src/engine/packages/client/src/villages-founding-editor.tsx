@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { VillageVenue, VillageVenueImage } from "./villages-package-entry";
 
 export const SCENERY_STYLES = {
@@ -623,6 +623,7 @@ export function FoundingVenueEditor({
   const [stage, setStage] = useState("Details"),
     [error, setError] = useState("");
   const dialog = useRef<HTMLDivElement>(null);
+  const [focusRequest, requestFocus] = useState(0);
   const step = steps.includes(stage) ? stage : "Details";
   const modal = window.innerWidth <= 704;
   const space = venue.spaces?.[0];
@@ -630,13 +631,13 @@ export function FoundingVenueEditor({
   const areaDrafts = useRef<AreaDraftCache["current"]>({});
   if (venue.spaces?.[0]) areaDrafts.current.common = venue.spaces[0];
   if (venue.privateSpaces?.[0]) areaDrafts.current.personal = venue.privateSpaces[0];
-  useEffect(() => {
+  useLayoutEffect(() => {
     dialog.current
       ?.querySelector<HTMLElement>(
         ".villages-founding-editor-body input, .villages-founding-editor-body textarea, .villages-founding-editor-body select",
       )
       ?.focus();
-  }, []);
+  }, [focusRequest]);
   useEffect(() => setError(""), [venue]);
   const imageFields = (area: "exterior" | "interior" | "private", image: VillageVenueImage | null | undefined) => (
     <section>
@@ -743,13 +744,7 @@ export function FoundingVenueEditor({
     setError(target?.problem ?? "");
     if (target) {
       setStage(target.tab);
-      setTimeout(() => {
-        dialog.current
-          ?.querySelector<HTMLElement>(
-            ".villages-founding-editor-body input, .villages-founding-editor-body textarea, .villages-founding-editor-body select",
-          )
-          ?.focus();
-      }, 0);
+      requestFocus((request) => request + 1);
       return;
     }
     onDone();
