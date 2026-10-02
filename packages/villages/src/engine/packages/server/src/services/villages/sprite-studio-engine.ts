@@ -92,7 +92,11 @@ export async function studioConnection(id: string) {
   return settings;
 }
 export async function studioAsset(url: string): Promise<string> {
-  if (!/^\/api\/sprites\/villages-[a-f0-9-]{36}\/file\/[a-z0-9_-]+\.(png|jpeg|jpg|webp)(\?[^#]*)?$/i.test(url))
+  if (
+    !/^\/api\/sprites\/villages-[a-f0-9-]{36}\/file\/[a-z0-9_-]+\.(png|jpeg|jpg|webp|avif|gif|svg)(\?[^#]*)?$/i.test(
+      url,
+    )
+  )
     throw badRequest("Choose a captured Studio asset.");
   const response = await fetch(villageEngineBaseUrl() + url);
   if (!response.ok) throw badRequest("The saved Studio image could not be read.");
@@ -104,7 +108,7 @@ export async function studioAsset(url: string): Promise<string> {
 export async function studioCleanup(image: string, engine: "builtin" | "backgroundremover") {
   const result = asRecord(
     await studioEngineJson("/api/sprites/cleanup", {
-      body: { cells: [{ expression: "cutout", base64: image }], engine },
+      body: { cells: [{ expression: "cutout", base64: image.split(",")[1] }], engine },
     }),
   );
   const cell = asRecord((Array.isArray(result.cells) ? result.cells : [])[0]);

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { asRecord, asString } from "./coerce.js";
 import { villageEngineBaseUrl, villageEngineJson } from "./engine-loopback.js";
 import { badRequest, notFound } from "./errors.js";
-import { decodeVillageImageDataUrl, inspectVillageImage, resolveVillageImageConnectionId } from "./image-generation.js";
+import { decodeVillageImageDataUrl, inspectVillageImage } from "./image-generation.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 import { buildVillageSnapshot } from "./village.js";
 
@@ -30,49 +30,11 @@ async function resident(characterId: string) {
   return found;
 }
 
-function spriteUrl(assetId: string, filename: string): string {
-  return `/api/sprites/${assetId}/file/${encodeURIComponent(filename)}`;
-}
-
-async function sourcePortrait(characterId: string): Promise<string | null> {
-  try {
-    const card = asRecord(await villageEngineJson<unknown>(`/api/characters/${encodeURIComponent(characterId)}`));
-    const path = asString(card.avatarPath);
-    return /^\/api\/avatars\/file\/[A-Za-z0-9_.-]+$/.test(path) ? path : null;
-  } catch {
-    return null;
-  }
-}
-
 export function generatedMime(bytes: Uint8Array): string {
   if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71) return "image/png";
   if (bytes[0] === 255 && bytes[1] === 216) return "image/jpeg";
   if (bytes[0] === 82 && bytes[1] === 73 && bytes[8] === 87 && bytes[9] === 69) return "image/webp";
   throw badRequest("The image connection returned a sprite format Villages cannot preview.");
-}
-
-export function spriteGenerationBody(input: {
-  connectionId: string;
-  name: string;
-  appearance: string;
-  view: SpriteView;
-  expression: string;
-  referenceUrl?: string | null;
-  portrait?: string | null;
-}) {
-  return {
-    connectionId: input.connectionId,
-    appearance: `${input.name}: ${input.appearance}. ${input.view === "front" ? "Face straight toward the viewer, both eyes visible." : "Show a strict right-facing side profile, head and body turned right with one eye visible; keep the full body in frame."}`,
-    expressions: [input.expression],
-    cols: 1,
-    rows: 1,
-    spriteType: "full-body",
-    fullBodyExpressionMode: input.expression !== "neutral" || input.view === "side",
-    noBackground: true,
-    nativeTransparentPng: true,
-    ...(input.referenceUrl ? { neutralFullBodyReference: input.referenceUrl } : {}),
-    ...(input.portrait && !input.referenceUrl ? { referenceImages: [input.portrait] } : {}),
-  };
 }
 
 export async function generateResidentSprite(
@@ -84,47 +46,12 @@ export async function generateResidentSprite(
     useReference?: unknown;
   },
 ): Promise<{ view: SpriteView; expression: string; image: string; width: number; height: number }> {
-  const owner = await resident(characterId);
+  await resident(characterId);
   const view = readSpriteView(input.view);
   const expression = readSpriteExpression(input.expression);
-  const frontNeutral = owner.sprite?.expressions.find((entry) => entry.view === "front" && entry.label === "neutral");
-  const neutral = owner.sprite?.expressions.find((entry) => entry.view === view && entry.label === "neutral");
-  const appearance =
-    typeof input.appearance === "string" && input.appearance.trim()
-      ? input.appearance.trim()
-      : owner.cardSnapshot.appearance.trim() || owner.cardSnapshot.description.trim();
-  if (!appearance || appearance.length > 2000)
-    throw badRequest("Describe the resident's appearance in at most 2,000 characters.");
-  const useReference = input.useReference !== false;
-  const reference = useReference ? (view === "side" && expression === "neutral" ? frontNeutral : neutral) : null;
-  const portrait =
-    useReference && !reference && view === "front" && expression === "neutral"
-      ? await sourcePortrait(characterId)
-      : null;
-  const connectionId = await resolveVillageImageConnectionId();
-  const referenceAssetId =
-    view === "side" && expression !== "neutral" ? owner.sprite?.sideAssetId : owner.sprite?.assetId;
-  const body = spriteGenerationBody({
-    connectionId,
-    name: owner.cardSnapshot.name,
-    appearance,
-    view,
-    expression,
-    referenceUrl:
-      owner.cardSnapshot.spriteReference?.url ??
-      (reference && referenceAssetId ? spriteUrl(reference.assetId ?? referenceAssetId, reference.filename) : null),
-    portrait,
-  });
-  const generated = await villageEngineJson<unknown>("/api/sprites/generate-sheet", { body });
-  const answer = asRecord(generated);
-  const cell = Array.isArray(answer.cells) ? asRecord(answer.cells[0]) : {};
-  const base64 = asString(cell.base64);
-  if (!base64 || base64.length > MAX_SPRITE_DATA_URL)
-    throw badRequest("The image connection returned no usable sprite or exceeded the image limit.");
-  const bytes = Uint8Array.from(Buffer.from(base64, "base64"));
-  const image = `data:${generatedMime(bytes)};base64,${base64}`;
-  const size = await inspectVillageImage(image);
-  return { view, expression, image, ...size };
+  const { generateLegacyStudioSprite } = await import("./sprite-studio.js");
+  const image = await generateLegacyStudioSprite(characterId, { ...input, view, expression });
+  return { view, expression, image, width: 512, height: 768 };
 }
 
 export async function approveResidentSprite(

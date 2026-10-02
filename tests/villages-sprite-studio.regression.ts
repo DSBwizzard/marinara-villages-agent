@@ -1,4 +1,5 @@
 import { PNG } from "pngjs";
+import { generateResidentSprite } from "../packages/villages/src/engine/packages/server/src/services/villages/resident-sprites.ts";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
@@ -134,6 +135,7 @@ records.set(studioId, {
   },
 });
 records.get(studioId).data.settings.prompts.PAPERCRAFT = LEGACY_STUDIO_PAPERCRAFT;
+delete records.get(studioId).data.settings.styleSelection;
 records.get(studioId).data.jobs[0].stylePrompt = LEGACY_STUDIO_PAPERCRAFT;
 const release = configureVillagesRuntime({
   resources: { listCharacters: async () => [] },
@@ -192,15 +194,16 @@ globalThis.fetch = async (url, init) => {
           ]
         : []),
     ]);
-  if (path === "/api/characters/avatar-generation/preview")
+  if (path === "/api/app-settings/ui") return Response.json({ value: null });
+  if (path === "/api/sprites/generate-sheet/preview")
     return Response.json({
       items: [
         {
           id: body.promptOverrides[0].id,
-          width: constrainedCanvas && body.width > 1024 ? 1536 : body.width,
-          height: constrainedCanvas && body.width > 1024 ? 1024 : body.height,
-          prompt: "Generic character reference sheet, hero view, turnarounds and palette.",
-          negativePrompt: "no labels",
+          width: constrainedCanvas && body.cols * 512 > 1024 ? 1536 : body.cols * 512,
+          height: constrainedCanvas && body.cols * 512 > 1024 ? 1024 : body.rows * 768,
+          prompt: body.promptOverrides[0].prompt,
+          negativePrompt: body.promptOverrides[0].negativePrompt,
         },
       ],
     });
@@ -219,23 +222,26 @@ globalThis.fetch = async (url, init) => {
     reviewCalls++;
     return Response.json({ content: "malformed" });
   }
-  if (path === "/api/characters/avatar-generation") {
+  if (path === "/api/sprites/generate-sheet") {
     calls++;
     requests.push(body);
     await new Promise<void>((resolve) => {
       generationRelease = resolve;
     });
     if (failGeneration) return Response.json({ error: "Provider timeout" }, { status: 504 });
-    return Response.json({
-      image: fixture(
-        ...body.promptOverrides[0].prompt
-          .match(/with exactly (\d+) columns and (\d+) rows/)
-          .slice(1)
-          .map(Number),
-        (body.promptOverrides[0].prompt.match(/Cell \d+:/g) || []).length,
-      ),
-      prompt: body.promptOverrides[0].prompt,
+    const sheet = fixture(body.cols, body.rows, body.expressions.length);
+    const decoded = PNG.sync.read(Buffer.from(sheet.split(",")[1]!, "base64"));
+    const cw = Math.floor(decoded.width / body.cols),
+      ch = Math.floor(decoded.height / body.rows);
+    const cells = body.expressions.map((expression: string, index: number) => {
+      const crop = new PNG({ width: cw, height: ch });
+      for (let y = 0; y < ch; y++) {
+        const from = ((Math.floor(index / body.cols) * ch + y) * decoded.width + (index % body.cols) * cw) * 4;
+        decoded.data.copy(crop.data, y * cw * 4, from, from + cw * 4);
+      }
+      return { expression, base64: PNG.sync.write(crop).toString("base64") };
     });
+    return Response.json({ sheetBase64: sheet.split(",")[1], cells });
   }
   if (path === "/api/image-metadata/inspect") {
     const legacy = Buffer.from(String(body.image ?? "").split(",")[1] ?? "", "base64")
@@ -373,6 +379,7 @@ async function main() {
     });
     assert.equal(activeSprite(), null);
     const settings = defaultStudioState().settings;
+    settings.styleSelection = { kind: "studio" };
     settings.connectionId = "image";
     settings.prompts.Custom = "Ink";
     await saveSpriteStudioSettings("mara", settings);
@@ -436,16 +443,16 @@ async function main() {
       /different selection/,
     );
     assert.deepEqual(requests[0].referenceImages, [png]);
-    assert.equal(requests[0].purpose, "character-sheet");
-    assert.equal(requests[0].noBackground, undefined);
-    assert.equal(requests[0].nativeTransparentPng, undefined);
-    assert.equal(requests[0].fullBodyExpressionMode, undefined);
+    assert.equal(requests[0].spriteType, "full-body");
+    assert.equal(requests[0].noBackground, false);
+    assert.equal(requests[0].nativeTransparentPng, false);
+    assert.equal(requests[0].fullBodyExpressionMode, false);
     assert.equal(requests[0].promptOverrides[0].prompt, a.plan.batches[0].request!.prompt);
     assert.equal(requests[0].promptOverrides[0].negativePrompt, a.plan.batches[0].request!.negativePrompt);
     const source = a.job.sheets[0].source!;
     assert.equal(source.kind, "generated-raw");
     assert.equal(source.matteHex, "#FF00FF");
-    assert.equal(source.pipelineVersion, 3);
+    assert.equal(source.pipelineVersion, 4);
     assert.equal(
       source.sha256,
       createHash("sha256")
@@ -852,6 +859,14 @@ async function main() {
       2,
       "a previously approved single view remains a usable optional reference",
     );
+    await saveSpriteStudioSettings("mara", { ...settings, styleSelection: { kind: "default" } });
+    const engineStyleReference = await planSpriteStudio("mara", { view: "side", expressions: [{ label: "happy" }] });
+    assert.deepEqual(
+      engineStyleReference.batches[0]!.request!.referenceRoles,
+      ["original character identity"],
+      "a legacy preset design does not silently become an Engine style reference",
+    );
+    await saveSpriteStudioSettings("mara", settings);
     const clippedImage = PNG.sync.read(Buffer.from(png.split(",")[1]!, "base64"));
     for (let x = 240; x < 270; x++) clippedImage.data.set([52, 103, 171, 255], (767 * 512 + x) * 4);
     const clippedImport = await importStudioSheet("mara", {
@@ -883,6 +898,24 @@ async function main() {
     assert.match(side, /OFF-CANVAS TO THE RIGHT/);
     assert.match(side, /intentional character outlines/);
     assert.doesNotMatch(side, /paper-cut|off-white/);
+    const beforeLegacyJobs = (await readSpriteStudio("mara")).jobs.length;
+    const beforeLegacyCalls = calls;
+    const legacyPromise = generateResidentSprite("mara", {
+      view: "side",
+      expression: "legacy_joy",
+      appearance: "A bird in a coat",
+      useReference: false,
+    });
+    while (calls === beforeLegacyCalls || !generationRelease) await new Promise((resolve) => setTimeout(resolve, 10));
+    generationRelease();
+    generationRelease = undefined;
+    const legacySprite = await legacyPromise;
+    assert.equal(legacySprite.width, 512);
+    assert.equal(legacySprite.height, 768);
+    const legacyJob = (await readSpriteStudio("mara")).jobs.at(-1)!;
+    assert.equal((await readSpriteStudio("mara")).jobs.length, beforeLegacyJobs + 1);
+    assert.equal(legacyJob.sheets[0]!.source?.pipelineVersion, 4);
+    assert.deepEqual(legacyJob.receipts?.[0]?.request?.referenceRoles ?? [], []);
     console.log(
       "Sprite Studio regression passed: generation counts, optional neutral, migration, stable meanings, mixed batches, cached swaps, atomic failures, shared-file protection and cleanup retries.",
     );

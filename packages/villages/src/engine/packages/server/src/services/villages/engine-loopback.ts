@@ -134,6 +134,7 @@ async function villageEngineFetch(path: string, init: RequestInit): Promise<Resp
  * "it answered something I cannot read" is the honest description.
  */
 async function readEngineJson<T>(path: string, response: Response): Promise<T> {
+  if (response.status === 204) return undefined as T;
   try {
     return (await response.json()) as T;
   } catch {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { defaultStudioState } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts";
 import { studioConnection } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-engine.ts";
 import {
   planVillageStudioSheets,
@@ -31,16 +32,42 @@ const png = encodeStudioPng({
 const savedFetch = globalThis.fetch;
 let paid = 0,
   failure = false;
+let profileText = "Watercolor";
+const composition = "\nMandatory full-body composition: entire character from head to feet.";
 globalThis.fetch = async (url, init) => {
   const path = new URL(String(url)).pathname,
     body = init?.body ? JSON.parse(String(init.body)) : undefined;
   transport.push({ path, method: init?.method, body });
   if (path === "/api/connections") return Response.json(rows);
-  if (path === "/api/characters/avatar-generation/preview")
-    return Response.json({ items: [{ id: body.promptOverrides[0].id, width: body.width, height: body.height }] });
-  if (path === "/api/characters/avatar-generation") {
+  if (path === "/api/app-settings/ui")
+    return Response.json({
+      value: JSON.stringify({
+        imageStyleProfiles: {
+          defaultProfileId: "paint",
+          profiles: [{ id: "paint", name: "Paint", baseStyle: "custom", styleText: profileText }],
+        },
+      }),
+    });
+  if (path === "/api/sprites/generate-sheet/preview")
+    return Response.json({
+      items: [
+        {
+          id: body.promptOverrides[0].id,
+          width: 1024,
+          height: 1536,
+          prompt: body.promptOverrides[0].prompt + composition,
+          negativePrompt: body.promptOverrides[0].negativePrompt,
+        },
+      ],
+    });
+  if (path === "/api/sprites/generate-sheet") {
     paid++;
-    return failure ? Response.json({ error: "Outcome unknown" }, { status: 504 }) : Response.json({ image: png });
+    return failure
+      ? Response.json({ error: "Outcome unknown" }, { status: 504 })
+      : Response.json({
+          sheetBase64: png.split(",")[1],
+          cells: body.expressions.map((expression: string) => ({ expression, base64: png.split(",")[1] })),
+        });
   }
   throw Error("Unexpected Engine request " + path);
 };
@@ -83,10 +110,17 @@ async function main() {
     await generate();
     assert.equal(paid, 1);
     assert.equal(submitted, 1);
-    const body = transport.find((t) => t.path === "/api/characters/avatar-generation").body;
+    const body = transport.find((t) => t.path === "/api/sprites/generate-sheet").body;
     assert.equal(body.connectionId, "source");
     assert.deepEqual(body.referenceImages, [png]);
-    assert.equal(body.promptOverrides[0].prompt, plan.batches[0]!.request!.prompt);
+    assert.equal(body.fullBodyExpressionMode, false);
+    assert.equal(body.noBackground, false);
+    assert.equal(body.nativeTransparentPng, false);
+    assert.equal(body.promptOverrides[0].prompt + composition, plan.batches[0]!.request!.prompt);
+    assert.equal(plan.batches[0]!.width, 1024);
+    assert.equal(plan.batches[0]!.height, 1536);
+    assert.match(body.promptOverrides[0].prompt, /1024/);
+    assert.equal(body.promptOverrides[0].prompt.includes(composition), false, "Engine adds its contract once");
     assert.deepEqual(
       rows,
       original,
@@ -97,6 +131,23 @@ async function main() {
     failure = true;
     await assert.rejects(generate, /504/);
     assert.equal(paid, 2, "Studio does not resubmit an uncertain Engine generation");
+    const styledIdentity = { ...identity, settings: defaultStudioState().settings, style: "" };
+    const styledPlan = await planVillageStudioSheets("source", styledIdentity, expressions, false);
+    profileText = "Changed profile";
+    await assert.rejects(
+      generateVillageStudioSheet({
+        connectionId: "source",
+        expectedModel: conn.model,
+        identity: styledIdentity,
+        expressions,
+        batch: styledPlan.batches[0]!,
+        onSubmit: async () => {
+          submitted++;
+        },
+      }),
+      /plan changed/,
+    );
+    assert.equal(paid, 2, "a changed profile cannot submit an old plan");
     console.log(
       "Engine sprite checks passed: configured defaults and fallback, credential-free receipts, no copies, and no automatic resubmission.",
     );
