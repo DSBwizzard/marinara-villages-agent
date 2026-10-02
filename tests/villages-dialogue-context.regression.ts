@@ -11,6 +11,7 @@ import {
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-review.js";
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
@@ -212,6 +213,10 @@ async function run() {
     assert.ok(prompt.includes("Targeting is intent, not isolation"));
     assert.ok(prompt.includes("Never narrate a lasting change without a valid sceneChange"));
     assert.ok(prompt.includes("Every knower must directly witness EVERY cited line"));
+    assert.ok(prompt.includes('lineIds:["player",0]'));
+    assert.ok(prompt.includes('0 is valid; "0" is not'));
+    assert.ok(!prompt.includes('lineIds:["exact evidence ID"]'));
+    assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes('lineIds:["exact evidence ID"]'));
     assert.ok(prompt.includes("Existing accepted commitments remain binding"));
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
