@@ -78,9 +78,9 @@ try {
     const homeCount = width === 390 ? (height === 650 ? 3 : 2) : height === 500 ? 3 : 1;
     const expectedRole = {
       enabled: true,
-      title: "Village Steward",
+      title: "Project Coordinator",
       explanation:
-        "The village recognizes you as its trusted coordinator. Residents bring you proposals for improvements, and you help organize Projects, find willing builders, and see agreed plans through.",
+        "People here recognize you as the coordinator for shared Projects. You help consider proposals, find willing builders, and see agreed plans through.",
     };
     const roleMode =
       width === 1917 && height === 655 && fontSize === 20
@@ -194,7 +194,7 @@ try {
     await expect(root).toBeVisible();
     await expect(root.locator(".marinara-capability-villages-mapbar")).toHaveCount(0);
     const cards = root.locator(".marinara-capability-villages-scenario-option");
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(5);
     const artPanel = root.locator(".marinara-capability-villages-scenario-art-panel");
     await expect(artPanel).toBeVisible();
     const checkTheme = async () => {
@@ -220,16 +220,18 @@ try {
     await checkTheme();
     await expect(root.getByText("Step 1 of 5 · Village Beginning")).toBeVisible();
     await expect(root.getByLabel("What is this village called?")).toBeVisible();
-    await expect(root.getByLabel("What is this village like?")).toBeVisible();
-    const dayOne = root.getByLabel("What happens on the village's first day?");
-    await expect(dayOne).toHaveValue(/On Day 1/);
-    await root.getByText("Pioneer", { exact: true }).click();
+    await expect(root.getByLabel("Where are we?")).toBeVisible();
+    const circumstances = root.getByLabel("What brings you and the others together here?");
+    await expect(circumstances).toHaveValue(/Housing elsewhere/);
+    await root.getByText("Arriving somewhere new", { exact: true }).click();
     await expect.poll(() => artPanel.locator("img").evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
-    await dayOne.fill("On Day 1, neighbors arrive with damaged boats.");
-    await root.getByText("Open beginning", { exact: true }).click();
-    await expect(dayOne).toHaveValue("On Day 1, neighbors arrive with damaged boats.");
+    await circumstances.fill("Neighbors share the coast because their boats need repair.");
+    await root.getByText("No preset", { exact: true }).click();
+    await expect(circumstances).toHaveValue("Neighbors share the coast because their boats need repair.");
     await root.getByLabel("What is this village called?").fill("Willowbrook");
-    await root.getByLabel("What is this village like?").fill("A fishing village on sea cliffs.");
+    await root
+      .getByLabel("Where are we?")
+      .fill("A coastal shelter where neighbors live while their boats are repaired.");
     await root.getByText("Choose lorebooks (0/24)").click();
     await root.getByRole("searchbox", { name: "Search lorebooks" }).fill("Lorebook 37");
     await root.getByRole("checkbox", { name: "Lorebook 37" }).check();
@@ -295,7 +297,7 @@ try {
     await root.getByRole("button", { name: "No background image" }).click();
     await (await visibleForward()).click();
 
-    await expect(root.getByText("Step 4 of 5 · Build the Village")).toBeVisible();
+    await expect(root.getByText("Step 4 of 5 · Starting Spaces")).toBeVisible();
     await checkTheme();
 
     await root.getByLabel("Number of villager homes", { exact: true }).selectOption(String(homeCount));
@@ -482,7 +484,9 @@ try {
 
     await expect(root.getByText("Step 5 of 5 · Review")).toBeVisible();
     await checkTheme();
-    await expect(root.getByText("On Day 1, neighbors arrive with damaged boats.", { exact: false })).toBeVisible();
+    await expect(
+      root.getByText("Neighbors share the coast because their boats need repair.", { exact: false }),
+    ).toBeVisible();
     const roleReview = root.getByRole("region", { name: "Your place in the village" });
     await expect(roleReview).toContainText(expectedRole.enabled ? expectedRole.title : "Ordinary resident");
     if (expectedRole.enabled) await expect(roleReview).toContainText(expectedRole.explanation);
@@ -494,8 +498,8 @@ try {
     await root.getByRole("button", { name: "Found the village" }).click();
     await expect.poll(() => foundingPayload).not.toBeNull();
     assert.equal(foundingPayload.name, "Willowbrook");
-    assert.equal(foundingPayload.setting, "A fishing village on sea cliffs.");
-    assert.equal(foundingPayload.foundingDetails, "On Day 1, neighbors arrive with damaged boats.");
+    assert.equal(foundingPayload.setting, "A coastal shelter where neighbors live while their boats are repaired.");
+    assert.equal(foundingPayload.foundingDetails, "Neighbors share the coast because their boats need repair.");
     assert.equal(foundingPayload.scenarioImprint, null);
     assert.deepEqual(
       foundingPayload.playerRole,

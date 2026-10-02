@@ -106,6 +106,7 @@ jobs:
         run: |
           npx tsx tests/villages-client-scope.regression.ts
           npx tsx tests/villages-founding-flow.regression.ts
+          npx tsx tests/villages-setting-grounding.regression.ts
           npx tsx tests/villages-player-role.regression.ts
           npx tsx tests/villages-private-spaces.regression.ts
           npx tsx tests/villages-optional-layouts.regression.ts

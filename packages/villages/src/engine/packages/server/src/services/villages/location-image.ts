@@ -149,7 +149,7 @@ export function buildLocationPrompt(
   const approvedDescription = venue.description;
   return [
     area === "exterior"
-      ? `A wide, empty exterior view of ${venue.name} and its approach in ${village.name}. Show the building from outside; do not show an interior.`
+      ? `A wide, empty exterior view of ${venue.name} and its approach in ${village.name}. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.`
       : `A wide, empty interior view of ${spaceLabel || "the described space"} at ${venue.name} in ${village.name}. Show the room from inside; do not show the building exterior.`,
     building ? `Building type: ${building}.` : "",
     venue.classes?.length ? `Venue roles: ${venue.classes.join(" and ")}.` : "",

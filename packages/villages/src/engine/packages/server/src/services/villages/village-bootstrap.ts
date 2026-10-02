@@ -1,3 +1,4 @@
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 import type { VillagePlayerRole } from "./types.js";
 import { backgroundCalls, requireBackgroundSuccess } from "./background-context.js";
@@ -91,7 +92,8 @@ const BOOTSTRAP_TEMPERATURE = 0.7;
 const MAX_PROPOSED_VENUES = 3;
 
 const BOOTSTRAP_SYSTEM_PROMPT = [
-  "You are naming the places in a small fictional village for a text roleplay.",
+  "You are naming places in the authored shared setting for a text roleplay.",
+  VILLAGE_SHARED_SETTING_RULE,
   "",
   "The player describes the village like this:",
   '"""',
@@ -287,7 +289,7 @@ export async function proposeVillage(
 /** Three alternative names for the single public venue placed during founding. */
 export async function proposePublicVenueNames(setting: string, lore: readonly string[] = []): Promise<string[]> {
   const world = setting.trim();
-  if (!world) throw badRequest("Write what the village is like before asking for names.");
+  if (!world) throw badRequest("Describe the place and world before asking for names.");
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),
   });
@@ -296,7 +298,8 @@ export async function proposePublicVenueNames(setting: string, lore: readonly st
     {
       role: "system",
       content: [
-        "Suggest exactly three alternative names for one public meeting venue in a small fictional village.",
+        "Suggest exactly three alternative names for one shared gathering venue in the authored setting.",
+        VILLAGE_SHARED_SETTING_RULE,
         "These are choices for the same venue, not three separate places. Keep each name short and distinct.",
         "Stay consistent with the setting and established lore. Do not introduce unsupported technology or geography.",
         'Answer with JSON only: {"names":["...","...","..."]}.',
@@ -726,7 +729,8 @@ export function buildTickMessages(context: VillageTickContext): CapabilityLangua
       }),
     );
     const sections = [
-      `Write a brief visual Events update for ${context.village}, a small fictional village. This feed has no effect on the village or its residents.`,
+      VILLAGE_SHARED_SETTING_RULE,
+      `Write a brief visual Events update for ${context.village}, a shared place. This feed has no effect on the village or its residents.`,
       "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
       context.setting.trim() ? `Setting: ${boundText(context.setting, 500)}` : "",
       renderPlayerRoleContext(context),
@@ -787,13 +791,14 @@ For a CURRENT encounter opportunity with at least two actors in the same zone, s
   const wishesSomewhere = residents.some((resident) => (resident.agenda?.wishes.length ?? 0) > 0);
   const gap = gapSince(context.lastSimulatedAt, context.moment, context.forced);
   const sections = [
-    "You are the narrator of a small village in a text roleplay, writing down what has happened here lately. You are not writing as any one person.",
+    VILLAGE_SHARED_SETTING_RULE,
+    "You are the narrator of a shared place in a text roleplay, writing down what has happened here lately. You are not writing as any one person.",
     "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Do not give them a new turn in an Event. Mention a player action only when it is already established in the supplied village record; never invent what they do next.",
     [
       `The village is called ${context.village}.`,
       world.length > 0
         ? `The player describes it like this:\n"""\n${world}\n"""`
-        : "Nobody has described it beyond its name, so keep everything small and ordinary.",
+        : "Nobody has described it beyond its name, so do not assume a physical form, technology level, or community identity.",
       `It is ${describeMoment(context.moment)}, and the weather is ${context.moment.weather}.`,
       describeGap(gap),
     ].join("\n"),
@@ -1358,7 +1363,7 @@ function buildReactionMessages(context: VillageReactionContext): CapabilityLangu
       `The village is called ${context.village}.`,
       world.length > 0
         ? `The player describes it like this:\n"""\n${world}\n"""`
-        : "Nobody has described it beyond its name, so keep everything small and ordinary.",
+        : "Nobody has described it beyond its name, so do not assume a physical form, technology level, or community identity.",
       `It is ${describeMoment(context.moment)}, and the weather is ${context.moment.weather}.`,
     ].join("\n"),
     [

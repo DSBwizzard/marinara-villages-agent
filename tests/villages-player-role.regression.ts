@@ -35,6 +35,7 @@ async function main() {
     explanation: "Neighbors bring me plans because I coordinate harbor repairs.",
   };
   const disabled = { ...custom, enabled: false };
+  assert.equal(DEFAULT_PLAYER_ROLE.title, "Project Coordinator");
   assert.deepEqual(CLIENT_DEFAULT, DEFAULT_PLAYER_ROLE, "client and server founding defaults agree");
   assert.deepEqual(playerRoleForSetup(null, undefined, true), DEFAULT_PLAYER_ROLE);
   assert.equal(playerRoleForSetup(null, undefined, false), null);
@@ -139,7 +140,7 @@ async function main() {
       );
     } else assert.equal(roleContext, "");
     assert.equal(villageCurrentSetting(state).includes("Harbor Patron"), false, "scenery context excludes the role");
-    assert.equal(villageFoundingSetting(state).includes("Village Steward"), false);
+    assert.equal(villageFoundingSetting(state).includes("Project Coordinator"), false);
     if (playerRole?.enabled === false) {
       assert.match(prompt, /ordinary resident/);
       assert.equal(prompt.includes(custom.explanation), false, "inactive custom role text never reaches the prompt");

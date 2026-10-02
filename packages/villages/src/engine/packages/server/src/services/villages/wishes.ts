@@ -113,7 +113,7 @@ function buildJudgeMessages(context: VillageWishClaimContext): CapabilityLanguag
   const known = context.memory.map((entry) => entry.text.trim()).filter((line) => line.length > 0);
 
   const sections = [
-    `You are the judge of one question in a small village story. ${player} says they did something for ${card.name}, who lives here. You decide whether it is true. You are not on anybody's side, you are not in the story, and you are not writing any part of it.`,
+    `You are the judge of one question in a shared-place story. ${player} says they did something for ${card.name}, who lives here. You decide whether it is true. You are not on anybody's side, you are not in the story, and you are not writing any part of it.`,
     [
       `The village is called ${context.village}.`,
       world.length > 0

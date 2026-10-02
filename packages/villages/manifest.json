@@ -10,8 +10,8 @@
   },
   "id": "villages",
   "name": "Villages",
-  "version": "0.6.120",
-  "description": "A text-first slice-of-life village that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
+  "version": "0.6.121",
+  "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
   "engine": {
     "min": "2.4.6",
     "maxExclusive": "4.0.0"
@@ -50,18 +50,18 @@
   "files": [
     {
       "path": "agents.json",
-      "sha256": "dc302de432bc5f1fd072e67438f7ddb14fdcfb3fd73a04f0c8b658c69443b9de",
-      "bytes": 501
+      "sha256": "c1f83e4a32a12151216624789f1f5f6bd0dfa905606c15ea693f7de00a90611a",
+      "bytes": 510
     },
     {
       "path": "server.mjs",
-      "sha256": "a234711272e637c7f3997436a9db5d5b0161efc44820f9c3bf7e8beea29dc88c",
-      "bytes": 875307
+      "sha256": "66d18d69e85233442450aab9d4e3f558c726bd6503731979affea70b67b08169",
+      "bytes": 876544
     },
     {
       "path": "client.js",
-      "sha256": "35459dd7968552f1e759ac3471ef93d96cd5a41bab49a31e7852083f6212642a",
-      "bytes": 886267
+      "sha256": "659dd449eff6040946a5559ed0ca251a60219bed10e707c7853799ceb3f24549",
+      "bytes": 886772
     },
     {
       "path": "villages-icon.png",

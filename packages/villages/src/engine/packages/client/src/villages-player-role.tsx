@@ -1,12 +1,12 @@
 export type PlayerRole = { enabled: boolean; title: string; explanation: string };
 export const DEFAULT_PLAYER_ROLE: Readonly<PlayerRole> = {
   enabled: true,
-  title: "Village Steward",
+  title: "Project Coordinator",
   explanation:
-    "The village recognizes you as its trusted coordinator. Residents bring you proposals for improvements, and you help organize Projects, find willing builders, and see agreed plans through.",
+    "People here recognize you as the coordinator for shared Projects. You help consider proposals, find willing builders, and see agreed plans through.",
 };
 const ORDINARY_RESIDENT =
-  "You participate as an ordinary resident. You can still receive proposals and organize Projects through cooperation, without an assumed position of authority.";
+  "You participate as an ordinary resident. You can still receive proposals and organize Projects through cooperation, without an assumed position of authority. You still manage Project lifecycles.";
 
 export function playerRoleProblem(role: PlayerRole | null): string {
   if (!role) return "Choose your place in the village.";
@@ -88,7 +88,7 @@ export function PlayerRoleFields({
           />
           <p className={`${PREFIX}-hint`}>
             Make this role your own. Residents can disagree or refuse; their homes and lives remain theirs. Your choice
-            becomes fixed at founding.
+            becomes fixed at founding. You manage Project lifecycles with either role choice.
           </p>
         </>
       ) : (

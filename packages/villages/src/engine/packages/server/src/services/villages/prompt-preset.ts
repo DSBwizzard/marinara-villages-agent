@@ -26,6 +26,7 @@
 // (a card field containing a literal `{{char}}` stays literal), and leaving an
 // unknown macro alone means a typo is visible in the prompt and in the debug
 // dump instead of silently deleting a line.
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { asInstant, asRecord, asTrimmedString } from "./coerce.js";
 import { hasVenueClass } from "./venue-model.js";
 import type {
@@ -521,6 +522,7 @@ export function villageCurrentSetting(village: {
   const builds = (village.projects ?? []).filter((project) => project.kind === "build-venue").slice(-8);
   return [
     village.setting.trim(),
+    VILLAGE_SHARED_SETTING_RULE,
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
     village.villageCapabilities?.length
       ? `Completed village capabilities: ${village.villageCapabilities.join(", ")}.`
@@ -550,16 +552,18 @@ export function villageFoundingSetting(village: {
   const origin = imprint?.origin.trim() ?? "";
   return [
     villageCurrentSetting(village),
-    origin ? `Before the village began (past, not a standing condition): ${origin}` : "",
+    origin ? `Earlier background (past, not a standing condition): ${origin}` : "",
     village.foundingDetails.trim()
-      ? `The player's description of Day 1 (use during founding only): ${village.foundingDetails.trim()}`
+      ? `Shared starting circumstances (use during founding only): ${village.foundingDetails.trim()}`
       : "",
     imprint?.openingConditions.length
-      ? `Day 1 conditions (at founding only): ${imprint.openingConditions.join("; ")}`
+      ? `Starting conditions (at founding only): ${imprint.openingConditions.join("; ")}`
       : "",
     imprint?.visualCues.length ? `Founding visual cues: ${imprint.visualCues.join("; ")}` : "",
-    village.foundingGuidance?.trim() ? `Founding narrative direction: ${village.foundingGuidance.trim()}` : "",
-    "Use first-day details selectively where they fit this person or place. The resident's card, assigned home, and verified village facts take precedence. Do not repeat the opening everywhere.",
+    village.foundingGuidance?.trim()
+      ? `Player-authored creative preferences (not a guaranteed future): ${village.foundingGuidance.trim()}`
+      : "",
+    "Use starting circumstances selectively where they fit this person or place. The resident's card, assigned living space, and verified current facts take precedence. Do not invent shared relationships, player actions, completed events, or a first-day script. Starting play does not mean this place has just been established. Ongoing world conditions remain current setting context; do not expire them merely because setup ends.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -574,7 +578,10 @@ export function villageRelevantOrigin(
   if (!origin) return "";
   const q = query.toLowerCase();
   const asksHistory =
-    /\b(found|founded|founding|origin|history|begin|began|beginning|started|settled|first came)\b/u.test(q);
+    /\b(found|founded|founding|origin|history|begin|began|beginning|started|settled|first came)\b/u.test(q) ||
+    /\bwhy\b.{0,80}\b(here|together|came|arrived|living|staying)\b/u.test(q) ||
+    /\bhow did\b.{0,80}\b(here|together|came|arrived|meet|met)\b/u.test(q) ||
+    /\bwhat\b.{0,40}\b(brings?|brought|led)\b.{0,40}\b(here|together)\b/u.test(q);
   const asksPurpose =
     /\b(vision|purpose|base\s*camp|resort|future|plans?|planning|build|building|develop|development)\b|\bwhat (?:are|were|did) we\b|\bwhy (?:are|were|did|we)\b/u.test(
       q,
@@ -599,8 +606,8 @@ export function villageRelevantOrigin(
   if (!asksHistory && !asksPurpose && !distinctive) return "";
   const reason = FOUNDING_REASONS[village.foundingReason];
   return village.scenarioImprint?.origin
-    ? `Before the village began: ${origin} Current verified world and venue state takes precedence.`
-    : `Original account of the village's beginning (history, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} This is shared background for their purpose, not an instruction that all residents share one ambition or personality. Current verified world and venue state takes precedence.`;
+    ? `Earlier background: ${origin} Current verified world and venue state takes precedence.`
+    : `Original shared starting circumstances (history, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} This is shared background for their purpose, not an instruction that all residents share one ambition or personality. Current verified world and venue state takes precedence.`;
 }
 
 /**
@@ -708,7 +715,7 @@ export const VILLAGE_PRESET_MACROS: readonly VillagePresetMacro[] = [
   {
     token: "{{setting}}",
     label: "The world",
-    help: "Your one-line description of where this village is. Renders nothing when you have not written one.",
+    help: "The authored place and world context, verified current facts, and shared-setting framing.",
   },
   {
     token: "{{venues}}",

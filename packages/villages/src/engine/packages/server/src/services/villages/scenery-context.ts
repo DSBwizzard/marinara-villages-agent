@@ -1,3 +1,4 @@
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { resolveVenueZone } from "./venue-zones.js";
 import { badRequest } from "./errors.js";
 import type { VillageState, VillageVenue } from "./types.js";
@@ -10,7 +11,9 @@ export function readSceneryStyle(value: unknown): string {
   return value.trim();
 }
 export function sceneryPrompt(required: string[], optional: string[], style = ""): string {
-  const base = [...required, style ? `Art style for this scenery: ${style}.` : ""].filter(Boolean).join("\n");
+  const base = [...required, VILLAGE_SHARED_SETTING_RULE, style ? `Art style for this scenery: ${style}.` : ""]
+    .filter(Boolean)
+    .join("\n");
   if (base.length > 4000) throw badRequest("The scenery descriptions are too long for an image prompt.");
   let prompt = base;
   for (const part of optional) if (part && prompt.length + part.length + 1 <= 4000) prompt += "\n" + part;

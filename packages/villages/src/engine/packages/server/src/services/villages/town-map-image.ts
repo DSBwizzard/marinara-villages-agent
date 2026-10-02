@@ -20,12 +20,9 @@ export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 
 export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
   "Create a wide landscape, top-down or three-quarter-view game navigation map. " +
-  "Use the village description for the surroundings and visual character. Show varied, coherent, traversable terrain " +
-  "and natural landmarks. Distribute many visually distinct, usable places for future venue placements " +
-  "across the image, with clear separation. These should read as natural clearings, terraces, platforms, " +
-  "or other setting-appropriate open spaces, never outlined lots, square plots, zones, or a grid. Avoid clutter and " +
-  "large unusable empty regions. Keep useful places clear of the image edges. This is uninterrupted scenery, with " +
-  "no readable marks, writing, numerals, labels, signs, icons, legend, watermark, or UI elements.";
+  "Use cutaways or floor layouts indoors, and terrain and landmarks outdoors. " +
+  "Distribute visually distinct usable areas for venue pins, including rooms within larger structures. " +
+  "Pins need not represent detached buildings. Never add outlined lots or a zoning grid. Keep usable areas uncluttered and clear of edges.";
 
 export type TownMapChoice = "auto" | "include" | "exclude";
 export type TownMapOptions = { roads: TownMapChoice; structures: TownMapChoice; water: TownMapChoice };
@@ -73,22 +70,22 @@ export function buildTownMapPrompt(
   const chosen = readOptions(options);
   const elements = [
     chosen.roads === "include"
-      ? "Include setting-appropriate streets, roads, trails, paths, or bridges connecting usable areas."
+      ? "Include setting-appropriate connecting routes, such as corridors, walkways, streets, trails, or bridges."
       : chosen.roads === "exclude"
-        ? "Do not include streets, roads, trails, paths, or bridges."
+        ? "Do not add streets, roads, trails, paths, or bridges; retain interior circulation required by the setting."
         : "",
     chosen.structures === "include"
-      ? "Decorative buildings may appear, but must not occupy or obscure future locations."
+      ? "Include setting-appropriate structures or interior architecture without obscuring usable areas."
       : chosen.structures === "exclude"
-        ? "Do not include buildings or other decorative structures."
+        ? "Do not add decorative buildings or structures; retain enclosing architecture required by the setting."
         : "",
     chosen.water === "include"
       ? "Include setting-appropriate water features."
       : chosen.water === "exclude"
-        ? "Do not include water, including oceans, rivers, ponds, canals, or waterfalls."
+        ? "Do not include water features."
         : "",
   ].filter(Boolean);
-  const base = `${rules}\n\nFollow the village description for water, paths, and existing structures unless an explicit map preference below says otherwise. Leave room for future village places.${elements.length ? `\n\nExplicit map preferences:\n${elements.join("\n")}` : ""}\n\nImage-only rule: draw scenery without any writing, numerals, glyphs, map symbols, labels, signs, or interface graphics.\n\nVillage description: ${world}`;
+  const base = `${rules}\n\nFollow the village description for water, paths, and existing structures unless explicit preferences below say otherwise.${elements.length ? `\n\nExplicit map preferences:\n${elements.join("\n")}` : ""}\n\nDraw scenery without any writing, numerals, labels, signs, icons, legend, watermark, or UI.\n\nVillage description: ${world}`;
   if (base.length > 4_000)
     throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or village description.");
   const imprint = coerceScenarioImprint(scenarioImprint);
@@ -119,7 +116,7 @@ export function buildTownMapNegativePrompt(options?: unknown, negative?: unknown
           return extra === DEFAULT_TOWN_MAP_NEGATIVE_PROMPT ? "" : extra;
         })(),
     chosen.roads === "exclude" ? "streets, roads, trails, paths, bridges" : "",
-    chosen.structures === "exclude" ? "buildings, decorative structures" : "",
+    chosen.structures === "exclude" ? "additional standalone buildings, decorative structures" : "",
     chosen.water === "exclude" ? "ocean, sea, lake, river, pond, canal, waterfall, water" : "",
   ]
     .filter(Boolean)

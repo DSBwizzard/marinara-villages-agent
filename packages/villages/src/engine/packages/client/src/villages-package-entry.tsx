@@ -112,30 +112,30 @@ const DESKTOP_PHOTO_SCALE = 0.7;
 const FOUNDING_SCENARIOS = [
   {
     value: "rebuild",
-    label: "Rebuild",
-    description: "Begin again, together.",
+    label: "Starting over",
+    description: "A change brings people together.",
     icon: "⌂",
     premise:
-      "On Day 1, survivors of a devastating upheaval gather to build a village together. They have a few supplies, uncertain shelter, and a reason to depend on one another.",
+      "Housing elsewhere is no longer available, and an unused shopping mall offers somewhere for you and the others to stay.",
   },
   {
     value: "pioneer",
-    label: "Pioneer",
-    description: "Follow the horizon.",
+    label: "Arriving somewhere new",
+    description: "Different reasons, a shared destination.",
     icon: "△",
     premise:
-      "On Day 1, a small group arrives in unfamiliar country to establish a village. They must choose a place to settle and decide what to build first.",
+      "You and the others have been assigned accommodation aboard a remote station. Each of you has your own reason for accepting the posting.",
   },
   {
     value: "prosper",
-    label: "Prosper",
-    description: "Make opportunity grow.",
+    label: "A shared undertaking",
+    description: "Something puts you in the same place.",
     icon: "▥",
     premise:
-      "On Day 1, makers, merchants, and newcomers gather at a promising crossroads. They are choosing where to live, work, and begin trading together.",
+      "You and the others are staying onsite at a server facility because its operation requires a resident team.",
   },
-  { value: "custom", label: "Custom", description: "Define your own scenario.", icon: "✦", premise: "" },
-  { value: "none", label: "Open beginning", description: "Write your own first day.", icon: "∞", premise: "" },
+  { value: "custom", label: "Custom", description: "Write your own shared circumstances.", icon: "✦", premise: "" },
+  { value: "none", label: "No preset", description: "Start without an example.", icon: "∞", premise: "" },
 ] as const;
 type FoundingScenarioId = (typeof FOUNDING_SCENARIOS)[number]["value"];
 type ScenarioImprint = {
@@ -170,13 +170,7 @@ const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "a
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
-const SETUP_STEPS = [
-  "Village Beginning",
-  "Connections & Persona",
-  "Village Map",
-  "Build the Village",
-  "Review",
-] as const;
+const SETUP_STEPS = ["Village Beginning", "Connections & Persona", "Village Map", "Starting Spaces", "Review"] as const;
 const SETUP_MIN_VILLAGER_COUNT = 1;
 const SETUP_MAX_VILLAGER_COUNT = 3;
 
@@ -8719,14 +8713,22 @@ function FoundingScenarioArtwork({ scenario }: { scenario: FoundingScenarioId })
   return (
     <div className={`${ELEMENT_TAG}-scenario-art-panel`}>
       {failedSrc === src ? (
-        <span className={`${ELEMENT_TAG}-scenario-art-placeholder`} role="img" aria-label="Village scene unavailable">
+        <span
+          className={`${ELEMENT_TAG}-scenario-art-placeholder`}
+          role="img"
+          aria-label="Example illustration unavailable"
+        >
           ⌂
         </span>
       ) : (
-        <img src={src} alt={`${foundingScenario(scenario).label} village scene`} onError={() => setFailedSrc(src)} />
+        <img
+          src={src}
+          alt={`${foundingScenario(scenario).label} example illustration`}
+          onError={() => setFailedSrc(src)}
+        />
       )}
       <div className={`${ELEMENT_TAG}-scenario-art-content`}>
-        <p>A new beginning awaits.</p>
+        <p>Example illustration · your place can be anything.</p>
         <strong>{foundingScenario(scenario).description}</strong>
       </div>
     </div>
@@ -15528,7 +15530,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   // ── Founding the village ───────────────────────────────────────────────────
-  // The wizard collects identity, the Day 1 world, map, and residents before
+  // The wizard collects place, shared circumstances, map, and residents before
   // writing the village. A half-answered setup never claims to be founded.
 
   const chooseSetupScenario = (value: FoundingScenarioId) => {
@@ -15666,7 +15668,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           return;
         }
         if (!snapshot?.isFounded && !setupFoundingDetails.trim()) {
-          setSetupProblem("Describe the village's first day before continuing.");
+          setSetupProblem("Describe what brings you and the others together here before continuing.");
           return;
         }
       }
@@ -16001,7 +16003,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const setupBlocker = useCallback((): string => {
     if (setupName.trim().length === 0) return "Give the village a name.";
     if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
-    if (!snapshot?.isFounded && !setupFoundingDetails.trim()) return "Describe the village's first day.";
+    if (!snapshot?.isFounded && !setupFoundingDetails.trim())
+      return "Describe what brings you and the others together here.";
     if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) return playerRoleProblem(setupPlayerRole);
     const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
     if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
@@ -18867,8 +18870,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
                 <div className={`${ELEMENT_TAG}-field`}>
                   <p className={`${ELEMENT_TAG}-empty`}>
-                    Revisit the founding setup to update the village as it stands now. Its original first day stays in
-                    the founding record.
+                    Revisit the founding setup to update the village as it stands now. Its original starting
+                    circumstances stay in the founding record.
                   </p>
                   <div className={`${ELEMENT_TAG}-row`}>
                     <button
@@ -18910,7 +18913,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 */}
                 <div className={`${ELEMENT_TAG}-field`}>
                   <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setting`}>
-                    What is this village like?
+                    Where are we?
                   </label>
                   <textarea
                     id={`${ELEMENT_TAG}-setting`}
@@ -18922,7 +18925,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     onChange={(event) => setSettingDraft(event.target.value)}
                   />
                   <p className={`${ELEMENT_TAG}-macro-help`}>
-                    Read-only here. Change the village description on World &amp; First Day in the founding wizard. This
+                    Read-only here. Change the place and world context on Village Beginning in the founding wizard. This
                     description still guides what villagers know about their home.
                   </p>
                 </div>
@@ -20552,12 +20555,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     />
                   </div>
                   <fieldset className={`${ELEMENT_TAG}-field`}>
-                    <legend className={`${ELEMENT_TAG}-label`}>Choose a scenario</legend>
+                    <legend className={ELEMENT_TAG + "-label"}>Starting circumstances</legend>
+                    <p className={ELEMENT_TAG + "-hint"}>
+                      These examples show starting circumstances. Rewrite them completely to fit your place and people;
+                      they do not decide what happens next.
+                    </p>
                     <div className={`${ELEMENT_TAG}-scenario-options`}>
-                      {FOUNDING_SCENARIOS.filter(
-                        (scenario) =>
-                          scenario.value !== "custom" || (snapshot?.isFounded && setupFoundingReason === "custom"),
-                      ).map((scenario) => (
+                      {FOUNDING_SCENARIOS.map((scenario) => (
                         <label key={scenario.value} className={`${ELEMENT_TAG}-scenario-option`}>
                           <input
                             type="radio"
@@ -20577,7 +20581,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   </fieldset>
                   {snapshot?.isFounded ? (
                     <p className={`${ELEMENT_TAG}-hint`}>
-                      The founding choice and Day 1 record are part of this village&apos;s history.
+                      The original starting circumstances are part of this place&apos;s history.
                     </p>
                   ) : null}
                 </>
@@ -20646,52 +20650,52 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <>
                   <div className={`${ELEMENT_TAG}-field`}>
                     <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-setting`}>
-                      What is this village like?
+                      Where are we?
                     </label>
                     <textarea
                       id={`${ELEMENT_TAG}-setup-setting`}
                       className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
                       value={setupSetting}
                       maxLength={snapshot?.settings.settingMaxLength}
-                      placeholder="A fishing village on steep sea cliffs, with salt-worn cottages, rope bridges, and foggy mornings."
+                      placeholder="An unused shopping mall in a city where housing is scarce. The building still has power and water."
                       disabled={busy || setupMapBusy}
                       onChange={(event) => {
                         setSetupSetting(event.target.value);
                       }}
                     />
                     <span className={`${ELEMENT_TAG}-hint`}>
-                      Required. Describe the surroundings, buildings, and everyday life. Villagers use this as the
-                      village grows; the next field describes only Day 1.
+                      Required. Ground the place, surrounding world, and relevant current conditions. Its identity and
+                      shared life develop through play.
                     </span>
                   </div>
                   {snapshot?.isFounded ? (
                     <div className={`${ELEMENT_TAG}-field`}>
-                      <strong>Day 1 record</strong>
+                      <strong>Starting circumstances</strong>
                       <p className={`${ELEMENT_TAG}-hint`}>
-                        {snapshot.settings.foundingDetails || "This village has no recorded first-day description."}
+                        {snapshot.settings.foundingDetails || "This place has no recorded starting circumstances."}
                       </p>
                       <span className={`${ELEMENT_TAG}-hint`}>
-                        The village&apos;s beginning is history and cannot be rewritten here.
+                        The original starting circumstances are history and cannot be rewritten here.
                       </span>
                     </div>
                   ) : (
                     <div className={`${ELEMENT_TAG}-field`}>
                       <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-founding-details`}>
-                        What happens on the village&apos;s first day?
+                        What brings you and the others together here?
                       </label>
                       <textarea
                         id={`${ELEMENT_TAG}-founding-details`}
                         className={`${ELEMENT_TAG}-textarea ${ELEMENT_TAG}-setup-beginning-textarea`}
                         value={setupFoundingDetails}
                         maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
-                        placeholder="The group arrives with tools and supplies, chooses a place to gather, and begins building together."
+                        placeholder="Housing elsewhere is unavailable, so you and the others are staying in the mall."
                         disabled={busy}
                         onChange={(event) => setSetupFoundingDetails(event.target.value)}
                       />
                       <span className={`${ELEMENT_TAG}-hint`}>
-                        Required for every village, including Open beginning. Describe what the group faces and the
-                        feeling of its first day. This guides founding, then becomes history. In the next step, choose
-                        your place in this community.
+                        Required for every village, including No preset. Give a brief reason you share this place;
+                        everyday reasons are enough. Leave individual motives and what happens next open. In the next
+                        step, choose your place in this community.
                       </span>
                     </div>
                   )}
@@ -21004,6 +21008,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       <option value="generic">Generic homes</option>
                     </select>
                   </label>
+                  <p className={ELEMENT_TAG + "-hint"}>
+                    A Residence is a living space: a room, cell, bunk, storefront, or area within a larger place. The
+                    Gathering Place is somewhere to meet. Map pins need not represent detached buildings.
+                  </p>
                   <p role="status">
                     {movingSetupVenueId
                       ? "Select a new spot for this venue."
@@ -21099,7 +21107,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       <strong>Scenario:</strong> {foundingScenario(setupFoundingReason).label}
                     </p>
                     <p className={`${ELEMENT_TAG}-hint`}>
-                      <strong>Day 1:</strong> {setupFoundingDetails || "No first-day description was recorded."}
+                      <strong>Starting circumstances:</strong>{" "}
+                      {setupFoundingDetails || "No starting circumstances were recorded."}
                     </p>
                     {setupFoundingGuidance ? (
                       <p className={`${ELEMENT_TAG}-hint`}>

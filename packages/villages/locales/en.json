@@ -6,12 +6,12 @@
   },
   "package": {
     "name": "Villages",
-    "description": "A text-first slice-of-life village that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab."
+    "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab."
   },
   "agents": {
     "villages": {
       "name": "Villages",
-      "description": "A text-first slice-of-life village that reconstructs elapsed life when you return."
+      "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return."
     }
   }
 }

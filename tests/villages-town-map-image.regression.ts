@@ -42,13 +42,14 @@ async function main() {
       visualCues: ["Reused timber"],
     },
   };
-  assert.equal(villageCurrentSetting(founded), "Misty cliffs\nCurrent world facts:\n- The cliffs shelter seabirds");
+  assert.match(villageCurrentSetting(founded), /^Misty cliffs\n/);
+  assert.match(villageCurrentSetting(founded), /Current world facts:\n- The cliffs shelter seabirds/);
   assert.doesNotMatch(villageCurrentSetting(founded), /early days|flood|footbridge|solidarity/);
   assert.match(
     villageFoundingSetting(founded),
-    /Day 1 conditions \(at founding only\): The old footbridge needs repair/,
+    /Starting conditions \(at founding only\): The old footbridge needs repair/,
   );
-  assert.match(villageFoundingSetting(founded), /description of Day 1.*Survivors gathered after the flood/);
+  assert.match(villageFoundingSetting(founded), /Shared starting circumstances.*Survivors gathered after the flood/);
   assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
   const openBeginning = {
     ...founded,
@@ -57,7 +58,7 @@ async function main() {
     foundingGuidance: "",
     scenarioImprint: { origin: "", worldFacts: [], openingConditions: ["A temporary camp"], visualCues: [] },
   };
-  assert.match(villageFoundingSetting(openBeginning), /Day 1.*Friends gather with tools/);
+  assert.match(villageFoundingSetting(openBeginning), /Shared starting circumstances.*Friends gather with tools/);
   assert.doesNotMatch(villageCurrentSetting(openBeginning), /temporary camp|Friends gather/);
   const freshBeginning = {
     setting: "A fishing village above the sea",
@@ -67,8 +68,8 @@ async function main() {
     foundingGuidance: "",
     scenarioImprint: null,
   };
-  assert.match(villageFoundingSetting(freshBeginning), /description of Day 1.*storm-damaged boats/);
-  assert.doesNotMatch(villageFoundingSetting(freshBeginning), /Before the village began/);
+  assert.match(villageFoundingSetting(freshBeginning), /Shared starting circumstances.*storm-damaged boats/);
+  assert.doesNotMatch(villageFoundingSetting(freshBeginning), /Earlier background/);
   assert.doesNotMatch(villageCurrentSetting(freshBeginning), /storm-damaged/);
   assert.match(villageRelevantOrigin(freshBeginning, "How did this village begin?"), /storm-damaged boats/);
   assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
@@ -87,7 +88,7 @@ async function main() {
   });
   assert.equal(legacy.scenarioImprint, null);
   assert.deepEqual(legacy.worldFacts, []);
-  assert.equal(villageCurrentSetting(legacy), "Misty cliffs");
+  assert.match(villageCurrentSetting(legacy), /^Misty cliffs\n/);
   assert.match(villageRelevantOrigin(legacy, "Tell me the village history"), /After the flood/);
   assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [1536, 1024]);
   assert.deepEqual(
@@ -122,11 +123,11 @@ async function main() {
   assert.ok(oversizedMap.length > MAX_TOWN_MAP_IMAGE_LENGTH);
   assert.equal(coerceVillageState({ townMapImage: acceptedMap }).townMapImage.length, acceptedMap.length);
   assert.equal(coerceVillageState({ townMapImage: oversizedMap }).townMapImage, "");
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /many visually distinct, usable places/);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /visually distinct usable areas/);
   assert.doesNotMatch(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /\d/);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /wide landscape/);
   assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /never outlined lots, square plots, zones, or a grid/);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Never add outlined lots or a zoning grid/);
   const defaultPrompt = buildTownMapPrompt(undefined, "cozy forest village");
   assert.ok(defaultPrompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
   assert.match(defaultPrompt, /Follow the village description for water, paths, and existing structures/);
@@ -152,7 +153,7 @@ async function main() {
   );
   assert.match(imprintMap, /Reused timber/);
   assert.match(imprintMap, /Do not include water/);
-  assert.match(imprintMap, /Do not include buildings/);
+  assert.match(imprintMap, /Do not add decorative buildings/);
   assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, digits, numbers, labels/);
   assert.equal(buildTownMapNegativePrompt(), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
   assert.match(
@@ -170,8 +171,8 @@ async function main() {
       water: !!(mask & 4),
     });
     assert.match(prompt, /Village description.*harbor city with canals/s);
-    assert.equal(prompt.includes("Do not include streets"), !(mask & 1));
-    assert.equal(prompt.includes("Do not include buildings"), !(mask & 2));
+    assert.equal(prompt.includes("Do not add streets"), !(mask & 1));
+    assert.equal(prompt.includes("Do not add decorative buildings"), !(mask & 2));
     assert.equal(prompt.includes("Do not include water"), !(mask & 4));
   }
   assert.throws(() => buildTownMapPrompt(undefined, "   "), /cannot be blank/);
@@ -202,7 +203,7 @@ async function main() {
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  for (const step of ["Village Beginning", "Connections & Persona", "Village Map", "Build the Village", "Review"]) {
+  for (const step of ["Village Beginning", "Connections & Persona", "Village Map", "Starting Spaces", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/setup/town-map/generate"'));
@@ -233,7 +234,7 @@ async function main() {
 
   const village = await readFile(join(services, "village.ts"), "utf8");
   assert.ok(
-    village.includes('if (setting.length === 0) throw badRequest("Say what the village is like before founding it.")'),
+    village.includes('if (setting.length === 0) throw badRequest("Describe the place and world before founding.")'),
   );
   assert.ok(village.includes("state.townMapImage = townMap.image"));
 

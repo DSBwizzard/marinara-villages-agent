@@ -11,7 +11,7 @@ import { venueCardProfile } from "./venue-writing.js";
 import { villagerCardFromSnapshot } from "./catalog.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { deriveVillageMoment, randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { coerceWish } from "./prompt-preset.js";
+import { coerceWish, villageCurrentSetting } from "./prompt-preset.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 import { readVillageLore } from "./lorebooks.js";
@@ -381,7 +381,7 @@ async function generateWish(input: { state: VillageState; characterId: string; n
         role: "user",
         content: JSON.stringify({
           village: state.name.slice(0, 100),
-          setting: state.setting.slice(0, 2400),
+          setting: villageCurrentSetting(state),
           person: {
             name: card.name,
             profile: venueCardProfile(villagerCardFromSnapshot(card)),

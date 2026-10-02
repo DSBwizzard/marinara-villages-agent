@@ -457,7 +457,7 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
     {
       role: "system",
       content: [
-        `You are translating one person's week so that it happens in a small village called ${context.village}. Their name is ${context.name}, and their week was written somewhere else.`,
+        `You are translating one person's week so that it happens in the shared place called ${context.village}. Their name is ${context.name}, and their week was written somewhere else.`,
         // Joined with a newline and not with a blank line: these are one list, and
         // twenty rules each separated by an empty line read as twenty unrelated
         // notes rather than as the one set of instructions they are.
