@@ -27,6 +27,7 @@ import type { VenueLine, VenueScene, VenueRecordEvent } from "./venue-session.js
 import type { DomainProcessing } from "./exchange-processing.js";
 
 export type ExchangeEffectReceipt = {
+  noticeSequence?: number;
   status?: "applied" | "rejected";
   actorId?: string;
   wishId?: string;
@@ -77,7 +78,13 @@ export function bindWishProposals(
     const lineIds = [
       ...new Set(
         refs.map((ref) =>
-          ref === "player" ? playerLineId : Number.isInteger(ref) && Number(ref) >= 0 ? replyLineIds[Number(ref)] : "",
+          ref === "player"
+            ? playerLineId
+            : Number.isInteger(ref) && Number(ref) >= 0
+              ? replyLineIds[Number(ref)]
+              : typeof ref === "string" && (ref === playerLineId || replyLineIds.includes(ref))
+                ? ref
+                : "",
         ),
       ),
     ];
@@ -281,6 +288,8 @@ export function applyPreparedWishVerdict(
     const previous = Object.values(state.exchangeReceipts).some(
       (receipt) =>
         receipt.domain === "wishes" &&
+        receipt.actorId === input.proposal.actorId &&
+        receipt.wishId === wish.id &&
         receipt.reason === "New Wish evidence accepted" &&
         receipt.evidenceIds.length === verdict.evidenceIds.length &&
         receipt.evidenceIds.every((id) => verdict.evidenceIds.includes(id)),
@@ -340,14 +349,40 @@ registerBackgroundHandler("wish-check", {
 /** Opening a Project saves this finite outbox alongside its physical result. No periodic Wish completion scan. */
 export async function processProjectWishOutbox(): Promise<void> {
   const state = await readVillageState();
+  const cached = await cachedWishCriteria();
   for (const event of state.projectWishOutbox.slice(0, 32)) {
     const project = state.projects.find((project) => project.id === event.projectId && project.status === "complete");
     if (project) {
-      const titleWords = project.title.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
+      const routingWords = (
+        `${project.title} ${project.plan?.need ?? ""} ${project.venueDraft?.description ?? ""}`
+          .toLocaleLowerCase()
+          .match(/[\p{L}\p{N}]{4,}/gu) ?? []
+      ).filter(
+        (word) =>
+          ![
+            "project",
+            "village",
+            "building",
+            "build",
+            "with",
+            "that",
+            "this",
+            "will",
+            "have",
+            "from",
+            "into",
+            "their",
+          ].includes(word),
+      );
       for (const resident of state.villagers)
         for (const wish of resident.agenda?.wishes ?? []) {
           // Routing only; the System check must still establish ALL conditions using canonical completion receipts.
-          if (!titleWords.some((word) => wish.wish.toLocaleLowerCase().includes(word))) continue;
+          const criteria = cached.get(`${resident.characterId}:${wishFingerprint(wish)}`);
+          if (
+            !routingWords.some((word) => wish.wish.toLocaleLowerCase().includes(word)) &&
+            !(criteria?.requiresPhysical && criteria.venueId && criteria.venueId === project.venueId)
+          )
+            continue;
           const receipt = wishReceiptRecords(state, resident.characterId).find(
             (receipt) => receipt.completedProject && receipt.actionReceipt?.submissionId === `project:${project.id}`,
           );

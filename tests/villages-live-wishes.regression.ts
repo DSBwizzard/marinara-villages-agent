@@ -108,6 +108,8 @@ async function main() {
   let calls = 0,
     outcome = "fulfilled",
     fail = false;
+  let storageFault = false,
+    lostAcknowledgement = false;
   const release = configureVillagesRuntime({
     persistence: {
       documents: {
@@ -125,8 +127,12 @@ async function main() {
         async update(input: any) {
           const prior = records.get(input.id);
           if (!prior || prior.revision !== input.expectedRevision) return null;
+          if (storageFault && input.id === "villages-village" && !lostAcknowledgement)
+            throw new Error("Wish owner write failure");
           const row = { ...prior, ...structuredClone(input), revision: prior.revision + 1 };
           records.set(input.id, row);
+          if (storageFault && input.id === "villages-village" && lostAcknowledgement)
+            throw new Error("Wish owner acknowledgement lost");
           return row;
         },
         async remove(_package: string, id: string) {
@@ -264,6 +270,50 @@ async function main() {
     );
     assert.equal(physicalState.villagers[0].agenda?.wishes.length, 1);
     assert.match(Object.values(physicalState.exchangeReceipts)[0].reason, /receipt absent/);
+    const progressState = structuredClone(state);
+    const first = { ...wish, id: "partial-one", learnedAt: at };
+    const second = { ...wish, id: "partial-two", learnedAt: at };
+    const hidden = { ...wish, id: "partial-hidden" };
+    progressState.villagers[0].agenda!.wishes = [first, second, hidden];
+    const progressVerdict: any = {
+      criteria: { kind: "conversation", goal: wish.wish, requiresPhysical: false },
+      outcome: "progress",
+      evidenceIds: ["p"],
+      receiptIds: [],
+      reason: "Garden discussed; planting day not yet agreed",
+      memory: "",
+    };
+    const applyPartial = (entry: any, submissionId: string) =>
+      applyPreparedWishVerdict(
+        progressState,
+        {
+          sceneId: "progress",
+          submissionId,
+          seed: state.seed,
+          at,
+          wish: entry,
+          proposal: {
+            actorId: "a",
+            wishId: entry.id,
+            fingerprint: wishFingerprint(entry),
+            intent: "progress",
+            lineIds: ["p"],
+          },
+          context: { actorId: "a", evidence: [{ id: "p", at }], card: { name: "Ada" } },
+        } as any,
+        progressVerdict,
+      );
+    applyPartial(first, "one");
+    applyPartial(first, "duplicate");
+    applyPartial(second, "two");
+    applyPartial(hidden, "hidden");
+    assert.equal(
+      Object.values(progressState.exchangeReceipts).filter((entry) => entry.notice).length,
+      2,
+      "new evidence notifies each learned Wish once, with no hidden notice",
+    );
+    assert.equal(progressState.villagers[0].agenda!.wishes.length, 3, "partial evidence cannot settle a compound goal");
+    assert.equal(progressState.progressTasks.filter((entry) => entry.resolvedAt).length, 0);
     const pendingWish = { ...wish, id: "uncertain" };
     const villageDocument = records.get("villages-village");
     villageDocument.data.villagers[0].agenda.wishes = [pendingWish];
@@ -310,6 +360,66 @@ async function main() {
     await settleBackgroundWork();
     assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
     assert.equal(calls, afterUnknown + 2, "explicit retry can incur new preparation and interpretation requests");
+    const callsBeforeStorage = calls;
+    for (const after of [false, true]) {
+      const sceneId = "wish-storage-" + after,
+        submissionId = "fault-turn";
+      const restored = { ...wish, id: "storage-wish-" + after };
+      records.get("villages-village").data.villagers[0].agenda.wishes = [restored];
+      const saved: any = structuredClone(scene);
+      saved.id = sceneId;
+      saved.villageSeed = state.seed;
+      saved.submissions = [
+        {
+          id: submissionId,
+          at,
+          mode: "chat",
+          message: lines[0].content,
+          activeIdsAtTurn: ["a"],
+          replyLineIds: ["r"],
+          wishProposals: [
+            {
+              actorId: "a",
+              wishId: restored.id,
+              fingerprint: wishFingerprint(restored),
+              intent: "reveal",
+              lineIds: ["r"],
+            },
+          ],
+          wishProposalError: "",
+        },
+      ];
+      saved.submissions[0].processing = createExchangeProcessing({
+        seed: state.seed,
+        sceneId,
+        submissionId,
+        order: 0,
+        lineIds: ["p", "r"],
+        actionReceiptIds: [],
+      });
+      for (const domain of ["projects", "memories", "relationships"])
+        saved.submissions[0].processing.domains[domain].status = "applied";
+      records.set("villages-venue-visit-" + sceneId, {
+        id: "villages-venue-visit-" + sceneId,
+        kind: "venue-visit",
+        revision: 1,
+        data: saved,
+      });
+      storageFault = true;
+      lostAcknowledgement = after;
+      await processSavedExchange(sceneId, submissionId);
+      storageFault = false;
+      await processSavedExchange(sceneId, submissionId);
+      await processSavedExchange(sceneId, submissionId);
+      assert.equal(
+        Object.values((await readVillageState()).exchangeReceipts).filter(
+          (receipt) => receipt.sceneId === sceneId && receipt.notice,
+        ).length,
+        1,
+      );
+      assert.equal((await readSceneChanges(sceneId)).changes[0].processing?.domains.wishes.status, "applied");
+    }
+    assert.equal(calls, callsBeforeStorage, "Wish storage replay reuses evidence without interpretation requests");
     console.log(
       "Live Wishes: free disclosure, relevant background check, faithful compound goal, fulfillment, physical rejection and free replay passed. Mocked judgments do not establish live model accuracy.",
     );

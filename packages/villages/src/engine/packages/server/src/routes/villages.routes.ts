@@ -56,6 +56,9 @@ import {
   listVenueVisitSummaries,
   readVenueVisit,
   readSceneChanges,
+  dismissSceneNotice,
+  replaySceneChanges,
+  retrySceneChangeInterpretation,
   recheckRecentBuilderConversations,
   progressBacklog,
   deleteVenueVisit,
@@ -960,6 +963,42 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading scene operation");
     }
   });
+
+  app.post<{ Params: { id: string; noticeId: string } }>(
+    "/rooms/:id/notices/:noticeId/dismiss",
+    async (request, reply) => {
+      try {
+        return await dismissSceneNotice(readChatId(request.params.id), readChatId(request.params.noticeId));
+      } catch (error) {
+        return fail(reply, error, "saving notice dismissal");
+      }
+    },
+  );
+  app.post<{ Params: { id: string } }>("/rooms/:id/changes/replay", async (request, reply) => {
+    try {
+      return await replaySceneChanges(readChatId(request.params.id));
+    } catch (error) {
+      return fail(reply, error, "replaying saved changes without model requests");
+    }
+  });
+  app.post<{ Params: { id: string; submissionId: string }; Body: { domain?: string; retryOfAttemptId?: string } }>(
+    "/rooms/:id/changes/:submissionId/interpret",
+    async (request, reply) => {
+      try {
+        const domain = request.body?.domain;
+        if (domain !== "memories" && domain !== "relationships" && domain !== "wishes")
+          throw badRequest("Choose memories, relationships, or wishes.");
+        return await retrySceneChangeInterpretation(
+          readChatId(request.params.id),
+          readChatId(request.params.submissionId),
+          domain,
+          request.body?.retryOfAttemptId,
+        );
+      } catch (error) {
+        return fail(reply, error, "explicitly retrying a change interpretation");
+      }
+    },
+  );
   app.get<{ Params: { id: string; operationId: string } }>(
     "/rooms/:id/operations/:operationId",
     async (request, reply) => {

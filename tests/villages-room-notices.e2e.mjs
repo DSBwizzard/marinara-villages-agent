@@ -55,6 +55,14 @@ const endMemory = memoryEvent(
   "The player entrusted Bob with the brass key.",
 );
 let session = newSession("visit-natural");
+const dismissedLive = new Set();
+let disconnected = false;
+let liveEvents = [],
+  livePending = false,
+  liveFailed = false,
+  livePolls = 0,
+  liveReplays = 0,
+  liveInterpretRequests = 0;
 const snapshot = {
   status: "ready",
   isFounded: true,
@@ -136,11 +144,33 @@ const relationships = {
 const creatorValues = [
   { fromId: "bob", toId: "ives", fromName: "Bob", toName: "Ives", warmth: 50, trust: -25, proposed: true },
 ];
-await page.route("**/api/villages**", async (route) => {
+const apiHandler = async (route) => {
   const path = new URL(route.request().url()).pathname;
+  if (disconnected && route.request().frame().page() === page && path.endsWith("/changes")) return route.abort();
   let value = snapshot;
   if (path.endsWith("/rooms/active")) value = { session: serverExpired ? null : session, debugDiscardEnabled: true };
-  else if (path.endsWith(`/rooms/archive/${session.id}/retry-memory`)) {
+  else if (path.endsWith("/changes") && session.memoryMode === "live") {
+    livePolls++;
+    value = {
+      changes: [],
+      notices: liveEvents.filter((event) => !dismissedLive.has(event.id)),
+      dismissedNoticeIds: [...dismissedLive],
+      processingSummary: { pending: livePending ? 1 : 0, failed: liveFailed ? 1 : 0, rejected: 0 },
+      unresolved: liveFailed ? [{ submissionId: "saved-turn", domain: "memories" }] : [],
+      nextCursor: String(livePolls) + ":" + String(liveEvents.length),
+      hasMore: false,
+    };
+  } else if (path.endsWith("/dismiss")) {
+    dismissedLive.add(decodeURIComponent(path.split("/").at(-2)));
+    value = { dismissed: true };
+  } else if (path.endsWith("/interpret")) {
+    liveInterpretRequests++;
+    liveFailed = false;
+    value = {};
+  } else if (path.endsWith("/changes/replay")) {
+    liveReplays++;
+    value = {};
+  } else if (path.endsWith(`/rooms/archive/${session.id}/retry-memory`)) {
     if (session.id !== "visit-pending") {
       await new Promise((resolve) => {
         releaseReview = resolve;
@@ -265,18 +295,20 @@ await page.route("**/api/villages**", async (route) => {
   } else if (path.endsWith("/relationships")) value = relationships;
   else if (path.endsWith("/catalog")) value = { characters: [] };
   await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
-});
+};
+await page.route("**/api/villages**", apiHandler);
 await page.route("http://villages.test/", (route) =>
   route.fulfill({
     status: 200,
     contentType: "text/html",
-    body: "<style>html,body{margin:0;width:100%;height:100%}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+    body: "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
   }),
 );
 
 try {
-  const mountVisit = async (id) => {
+  const mountVisit = async (id, live = false) => {
     session = newSession(id);
+    if (live) session.memoryMode = "live";
     serverExpired = false;
     releaseReview = null;
     await page.goto("http://villages.test/");
@@ -466,8 +498,93 @@ try {
     "relationship controls fit desktop width",
   );
   await page.screenshot({ path: "artifacts/relationships-desktop.png" });
+  await mountVisit("visit-live", true);
+  await composer.waitFor();
+  livePending = true;
+  const immediate = memoryEvent("live-forged", "A memory was forged.", "Bob will bring seedlings on Saturday.");
+  liveEvents = [
+    immediate,
+    {
+      id: "live-heart",
+      kind: "relationship-up",
+      text: "Bob's warmth toward you increased.",
+      detail: "Planting together",
+    },
+  ];
+  await expect(page.getByRole("status", { name: "Saved change status" })).toContainText("still being checked");
+  await expect(stack).toContainText(immediate.text);
+  await expect(stack).toContainText("♥");
+  assert.equal(session.status, "active", "memory and relationship notices appear before closing");
+  liveEvents.push({ id: "live-wish", kind: "wish", text: "Bob shared a wish." });
+  liveEvents.push({ id: "live-progress", kind: "wish", text: "New evidence for Bob's wish was accepted." });
+  livePending = false;
+  await expect(stack).toContainText("New evidence for Bob's wish");
+  await expect(page.getByRole("status", { name: "Saved change status" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Dismiss A memory was forged." }).click();
+  await expect.poll(() => dismissedLive.has(immediate.id)).toBe(true);
+  const turnsBeforeRefresh = turn;
+  await page.reload();
+  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await expect(stack).toContainText("Bob shared a wish.");
+  await expect(stack).not.toContainText(immediate.text);
+  assert.equal(turn, turnsBeforeRefresh, "refresh restores committed notices without generating a reply");
+  assert.equal(liveInterpretRequests, 0, "polling and dismissal never request interpretation");
+  liveEvents.push({ id: "live-complete", kind: "wish", text: "Bob's wish was fulfilled." });
+  await expect(stack).toContainText("Bob's wish was fulfilled.");
+  const second = await browser.newPage({ viewport: { width: 375, height: 740 } });
+  await second.route("**/api/villages**", apiHandler);
+  await second.route("http://villages.test/", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+    }),
+  );
+  await second.goto("http://villages.test/");
+  await second.addScriptTag({ path: resolve("packages/villages/client.js") });
+  const secondStack = second.locator("[aria-label='Village events']");
+  await expect(secondStack).toContainText("Bob shared a wish.");
+  await page.getByRole("button", { name: "Dismiss Bob shared a wish." }).click();
+  await expect(secondStack).not.toContainText("Bob shared a wish.");
+  disconnected = true;
+  const missed = { id: "disconnected-notice", kind: "wish", text: "Evidence was saved while disconnected." };
+  liveEvents.push(missed);
+  await expect(secondStack).toContainText(missed.text);
+  disconnected = false;
+  await expect(stack).toContainText(missed.text);
+  await second.close();
+  assert.equal(liveInterpretRequests, 0, "tabs and reconnection only read saved work");
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await page.getByRole("menuitem", { name: "Scene settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Scene settings" });
+  await settings.getByText("Saved change diagnostics · includes private evidence", { exact: true }).click();
+  await expect(settings.locator("pre")).toContainText("processingSummary");
+  await settings.getByRole("button", { name: "Refresh saved records" }).click();
+  await expect(settings.locator("pre")).toContainText("dismissedNoticeIds");
+  assert.equal(liveInterpretRequests, 0, "diagnostic reads make no interpretation request");
+  await page.screenshot({ path: "artifacts/live-change-diagnostics-desktop.png" });
+  await page.setViewportSize({ width: 375, height: 740 });
+  await expect(settings).toBeVisible();
+  assert.ok(
+    await settings.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+    "saved diagnostics fit phone width",
+  );
+  await page.screenshot({ path: "artifacts/live-change-diagnostics-phone.png" });
+  await settings.getByRole("button", { name: "Close Scene settings" }).click();
+  liveFailed = true;
+  const failedStatus = page.getByRole("status", { name: "Saved change status" });
+  await expect(failedStatus).toContainText("need attention");
+  await failedStatus.locator("summary").click();
+  await failedStatus.getByRole("button", { name: "Replay saved work · no model request" }).click();
+  assert.equal(liveInterpretRequests, 0, "replay does not authorize paid repair");
+  await expect.poll(() => liveReplays).toBe(1);
+  await failedStatus.getByRole("button", { name: "Retry memories interpretation · may use model requests" }).click();
+  await expect.poll(() => liveInterpretRequests).toBe(1);
+  await expect(failedStatus).toHaveCount(0);
   assert.deepEqual(errors, []);
-  console.log("villages-room-notices: durable ending receipts, popup controls, pending review and stale input ok");
+  console.log(
+    "villages-room-notices: live stars/hearts, pending status, refresh and persisted dismissal, plus legacy controls passed (mock server; not model accuracy)",
+  );
 } finally {
   await browser.close();
 }

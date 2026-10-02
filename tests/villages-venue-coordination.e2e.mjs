@@ -176,6 +176,9 @@ try {
   assert.equal(calls, 1);
   held();
   await expect.poll(() => record.data.operation.status).toBe("complete");
+  // Completion polling intentionally pauses in hidden tabs. Activate the tab
+  // whose preserved draft and refreshed transcript this assertion exercises.
+  await two.bringToFront();
   const next = two.getByRole("button", { name: "Next paragraph", exact: true });
   await expect(next).toBeVisible({ timeout: 10000 });
   await next.click();

@@ -26,7 +26,10 @@ export type VenueOperation = {
   sceneRevision: number;
   snapshot: Record<string, unknown> | null;
   checkpoints: Record<string, unknown>;
-  attempts: Record<string, { status: "dispatching" | "complete" | "interrupted" | "rejected"; result?: unknown }>;
+  attempts: Record<
+    string,
+    { status: "dispatching" | "complete" | "interrupted" | "rejected"; elapsedMs?: number; result?: unknown }
+  >;
   error: string;
 };
 type Context = {
@@ -79,6 +82,15 @@ export function venueOperationSignal(): AbortSignal | undefined {
 }
 export function venueOperationId(): string {
   return context.getStore()?.operation.id ?? "uncoordinated";
+}
+export function venueRequestMetrics(operation = context.getStore()?.operation) {
+  if (!operation) return null;
+  return Object.entries(operation.attempts).map(([stage, attempt]) => ({
+    stage,
+    status: attempt.status,
+    elapsedMs: attempt.elapsedMs,
+    usage: (attempt.result as { usage?: unknown } | undefined)?.usage ?? null,
+  }));
 }
 export function venueInterpretationSettings(): InterpretationSettings {
   return coerceInterpretationSettings(context.getStore()?.operation.interpretationSettings);
@@ -239,7 +251,11 @@ export async function coordinatedCompletion<T>(
   const started = performance.now();
   const result = await work(current.controller.signal);
   assertVenueOwnership();
-  current.operation.attempts[key] = { status: "complete", result: structuredClone(result) };
+  current.operation.attempts[key] = {
+    status: "complete",
+    elapsedMs: Math.round(performance.now() - started),
+    result: structuredClone(result),
+  };
   await persist(current);
   villagesLogger().info(
     "[villages] operation %s stage=%s attempt=%d durationMs=%d usage=%s",

@@ -1226,6 +1226,8 @@ export type VillageScenarioImprint = {
 
 export type VillageState = {
   exchangeReceipts: Record<string, import("./wish-progress.js").ExchangeEffectReceipt>;
+  noticeSequence: number;
+  dismissedNoticeIds: string[];
   wishKnowledge: Record<string, { wishId: string; text: string; learnedAt: string; lineIds: string[] }[]>;
   projectWishOutbox: { projectId: string; at: string }[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;

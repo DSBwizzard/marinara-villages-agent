@@ -83,6 +83,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
 .${tag}-scene-settings-head h2 { margin: 0 0 .75rem; font-size: 1rem; }
 .${tag}-scene-settings button { cursor: pointer; font: inherit; color: inherit; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); }
 .${tag}-scene-settings .villages-decisions-control > [role="region"] { width: 100% !important; box-sizing: border-box; }
+.${tag}-saved-change-status { position: absolute; z-index: 20; top: 5.5rem; left: .75rem; right: .75rem; max-width: 36rem; max-height: max(2rem, calc(var(--villages-scene-visible-height, 100cqh) - 12rem)); overflow-y: auto; padding: .5rem .75rem; box-sizing: border-box; border: 1px solid var(--border); border-radius: .5rem; background: var(--popover); font-size: .75rem; }
+.${tag}-saved-change-status summary { cursor: pointer; }
+.${tag}-saved-change-status button { display: block; margin-top: .5rem; max-width: 100%; cursor: pointer; font: inherit; color: inherit; border: 1px solid var(--border); border-radius: .5rem; padding: .25rem .5rem; background: var(--secondary); }
 @media (min-width: 768px) {
   .${tag}-room-screen .${tag}-chat-vn-row { padding: 1rem; gap: 1rem; }
   .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }

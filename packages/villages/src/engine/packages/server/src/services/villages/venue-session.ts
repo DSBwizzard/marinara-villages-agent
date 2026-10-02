@@ -6,6 +6,7 @@ import {
   memoryVersion,
   processLiveMemories,
   processLiveRelationships,
+  liveEvidence,
   type LiveExchangeProposals,
 } from "./live-memory.js";
 import {
@@ -51,6 +52,7 @@ import {
   outsideVenueOperation,
   venueOperationSignal,
   venueOperationId,
+  venueRequestMetrics,
   venueOperationSnapshot,
   assertVenueOwnership,
   sceneRevision,
@@ -326,6 +328,10 @@ type VenueSubmission = {
   turnMemories?: VenueMemory[];
   recollections?: VenueRecollection[];
   liveProposals?: LiveExchangeProposals;
+  wishContexts?: { actorId: string; wishId: string; fingerprint: string }[];
+  requestMetrics?: ReturnType<typeof venueRequestMetrics>;
+  interpretationHistory?: { at: string; domain: string; source: string; proposals: unknown }[];
+  changeSequence?: number;
   recordEvents?: VenueRecordEvent[];
   at?: string;
 };
@@ -371,6 +377,7 @@ type MemoryProgress = { nextUnit: number; entries: VenueMemory[] };
 export type VenueScene = {
   version: 1;
   processingVersion?: 1;
+  changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
   operation?: VenueOperation;
@@ -555,6 +562,7 @@ function coerceSession(value: unknown): VenueScene {
     : [];
   return {
     version: 1,
+    changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.processingVersion === 1 ? { processingVersion: 1 as const, villageSeed: asString(raw.villageSeed) } : {}),
     sceneRevision: sceneRevision(raw),
     operation: raw.operation as VenueOperation | undefined,
@@ -782,6 +790,16 @@ function coerceSession(value: unknown): VenueScene {
               ...(asRecord(row.liveProposals).version === 1
                 ? { liveProposals: structuredClone(row.liveProposals) as LiveExchangeProposals }
                 : {}),
+              changeSequence: Math.max(0, Math.floor(Number(row.changeSequence) || 0)),
+              ...(Array.isArray(row.wishContexts)
+                ? { wishContexts: row.wishContexts as VenueSubmission["wishContexts"] }
+                : {}),
+              ...(Array.isArray(row.requestMetrics)
+                ? { requestMetrics: row.requestMetrics as VenueSubmission["requestMetrics"] }
+                : {}),
+              ...(Array.isArray(row.interpretationHistory)
+                ? { interpretationHistory: row.interpretationHistory as VenueSubmission["interpretationHistory"] }
+                : {}),
               ...(Array.isArray(row.recollections)
                 ? {
                     recollections: row.recollections
@@ -891,6 +909,12 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
     if (session.id !== id) throw notFound("That Scene is no longer available.");
     const before = sceneFingerprint(session);
+    const priorChanges = new Map(
+      session.submissions.map((turn) => [
+        turn.id,
+        JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]),
+      ]),
+    );
     change(session);
     if (session.processingVersion === 1 && session.villageSeed)
       session.submissions.forEach((turn, order) => {
@@ -914,6 +938,9 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
               reason: "No exchange-level proposals supplied",
             };
       });
+    for (const turn of session.submissions)
+      if (priorChanges.get(turn.id) !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
+        turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
     if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
     result = session;
   });
@@ -1071,43 +1098,318 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
 /** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
 export async function readSceneChanges(id: string, cursor = "", limit = 20) {
   const scene = await readSession(id);
-  const offset = cursor ? Number(cursor) : 0;
-  if (!Number.isSafeInteger(offset) || offset < 0) throw badRequest("Invalid changes cursor.");
+  const village = await readVillageState();
+  if (scene.villageSeed && scene.villageSeed !== village.seed)
+    throw conflict("This Scene belongs to a previous village.");
+  const parts = (cursor || "0:0").split(":").map(Number);
+  if (parts.length > 2 || parts.some((part) => !Number.isSafeInteger(part) || part < 0))
+    throw badRequest("Invalid changes cursor.");
+  const [afterScene, afterNotice = 0] = parts;
   const size = Math.max(1, Math.min(50, Math.floor(Number(limit) || 20)));
-  const turns = scene.submissions.slice(offset, offset + size);
+  const changed = scene.submissions
+    .map((turn, index) => ({ turn, sequence: turn.changeSequence || index + 1 }))
+    .filter((entry) => entry.sequence > afterScene)
+    .sort((a, b) => a.sequence - b.sequence);
+  const turns = changed.slice(0, size);
+  const notices = Object.values(village.exchangeReceipts)
+    .filter(
+      (receipt) =>
+        receipt.notice &&
+        (receipt.noticeSequence ?? 0) > afterNotice &&
+        !village.dismissedNoticeIds.includes(receipt.id),
+    )
+    .sort((a, b) => (a.noticeSequence ?? 0) - (b.noticeSequence ?? 0));
+  const page = notices.slice(0, size);
+  const backgroundChecks = (await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-work"))
+    .map((record) => asRecord(record.data))
+    .filter((job) => job.seed === village.seed && String(job.subjectId).startsWith(`wish-change:${id}:`))
+    .slice(0, 50)
+    .map((job) => ({
+      id: job.id,
+      subjectId: job.subjectId,
+      status: job.status,
+      requests: job.requests,
+      tokens: job.usageComplete ? job.tokens : null,
+      error: job.error,
+    }));
+  const sceneCursor = turns.at(-1)?.sequence ?? afterScene;
+  const noticeCursor = notices.length > page.length ? page.at(-1)!.noticeSequence! : village.noticeSequence;
   return {
     sceneId: id,
-    changes: turns.map((turn) => ({
+    backgroundChecks,
+    activeRequest: {
+      status: scene.operation?.status,
+      error: scene.operation?.error,
+      requests: venueRequestMetrics(scene.operation),
+    },
+    changes: turns.map(({ turn }) => ({
       submissionId: turn.id,
       at: turn.at,
       processing: turn.processing ?? null,
-      notices: turn.recordEvents ?? [],
+      receipts: {
+        physical: turn.action ?? null,
+        domainEffects: Object.values(village.exchangeReceipts).filter(
+          (receipt) => receipt.sceneId === id && receipt.submissionId === turn.id,
+        ),
+        relationships: Object.values(village.relationshipContext?.receipts ?? {}).filter((receipt) =>
+          turn.processing?.domains.relationships.receiptIds.includes(receipt.id),
+        ),
+        projects: village.progressTasks.flatMap((task) =>
+          task.receipts.filter((receipt) => turn.processing?.domains.projects.receiptIds.includes(receipt.id)),
+        ),
+        memories: village.chronicle.filter(
+          (memory) =>
+            memory.sourceVisitId === id &&
+            memory.sourceLineIds?.some((lineId) => turn.processing?.lineIds.includes(lineId)),
+        ),
+      },
+      requests: turn.requestMetrics ?? null,
+      interpretationHistory: turn.interpretationHistory ?? [],
+      notices: (turn.recordEvents ?? []).filter((event) => !village.dismissedNoticeIds.includes(event.id)),
+      evidence: scene.lines.filter(
+        (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
+      ),
+      interpretations: {
+        source: turn.interpretationHistory?.at(-1)?.source ?? "saved narration reply",
+        version: turn.processing?.interpretationVersion,
+        memory: turn.liveProposals?.memoryChanges,
+        relationship: turn.liveProposals?.relationshipChanges,
+        wishes: turn.wishProposals,
+        memoryVersions: turn.liveProposals?.memoryVersions,
+      },
     })),
-    nextCursor: offset + turns.length < scene.submissions.length ? String(offset + turns.length) : null,
+    notices: page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
+    dismissedNoticeIds: village.dismissedNoticeIds,
+    unresolved: scene.submissions
+      .flatMap((turn) =>
+        Object.entries(turn.processing?.domains ?? {})
+          .filter(([, result]) => result.status === "failed")
+          .map(([domain]) => ({ submissionId: turn.id, domain })),
+      )
+      .slice(0, 50),
+    processingSummary: sceneProcessingSummary(scene),
+    nextCursor: `${sceneCursor}:${noticeCursor}`,
+    hasMore: changed.length > turns.length || notices.length > page.length,
   };
+}
+
+export function sceneProcessingSummary(scene: VenueScene) {
+  const domains = scene.submissions.flatMap((turn) => (turn.processing ? Object.values(turn.processing.domains) : []));
+  return {
+    pending: domains.filter((domain) => domain.status === "pending").length,
+    failed: domains.filter((domain) => domain.status === "failed").length,
+    rejected: domains.filter((domain) => domain.status === "rejected").length,
+  };
+}
+
+export async function dismissSceneNotice(id: string, noticeId: string) {
+  const scene = await readSession(id),
+    village = await readVillageState();
+  if (scene.villageSeed && scene.villageSeed !== village.seed) throw conflict("Village identity changed.");
+  const known =
+    scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId)) ||
+    !!village.exchangeReceipts[noticeId]?.notice;
+  if (!known) throw notFound("That saved notice is unavailable.");
+  await mutateVillageState((state) => {
+    if (state.seed !== village.seed) throw conflict("Village identity changed.");
+    if (!state.dismissedNoticeIds.includes(noticeId)) state.dismissedNoticeIds.push(noticeId);
+  });
+  return { dismissed: true };
+}
+
+/** An explicit free recovery request applies saved results only. */
+export async function replaySceneChanges(id: string) {
+  const scene = await readSession(id);
+  for (const turn of scene.submissions.filter((turn) => turn.processing && unfinishedExchange(turn.processing)))
+    await processSavedExchange(id, turn.id);
+  return readSceneChanges(id);
+}
+
+/** Only this explicit request may replace missing/invalid metadata with another interpretation. */
+export async function retrySceneChangeInterpretation(
+  id: string,
+  submissionId: string,
+  domain: "memories" | "relationships" | "wishes",
+  retryOfAttemptId?: string,
+) {
+  return coordinateVenue(
+    id,
+    `change:${submissionId}:${domain}`,
+    "change-interpretation",
+    { submissionId, domain },
+    undefined,
+    retryOfAttemptId,
+    () => retrySceneChangeInterpretationOnce(id, submissionId, domain),
+  );
+}
+
+async function retrySceneChangeInterpretationOnce(
+  id: string,
+  submissionId: string,
+  domain: "memories" | "relationships" | "wishes",
+) {
+  await processSavedExchange(id, submissionId);
+  const scene = await readSession(id),
+    turn = scene.submissions.find((turn) => turn.id === submissionId);
+  if (!turn?.processing || !turn.liveProposals || scene.memoryMode !== "live")
+    throw badRequest("No saved live exchange to interpret.");
+  if (turn.processing.domains[domain].status !== "failed") return readSceneChanges(id);
+  const village = await readVillageState();
+  if (village.seed !== scene.villageSeed) throw conflict("Village identity changed.");
+  const proposals = turn.liveProposals;
+  if (domain === "wishes") {
+    const jobs = await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-work");
+    const failed = jobs.filter((record) => {
+      const job = asRecord(record.data),
+        input = asRecord(job.input);
+      return (
+        job.kind === "wish-check" &&
+        job.seed === village.seed &&
+        input.sceneId === id &&
+        input.submissionId === submissionId &&
+        ["failed", "interrupted", "paused"].includes(String(job.status))
+      );
+    });
+    if (failed.length) {
+      const { retryBackgroundJob } = await import("./background-work.js");
+      const action = venueOperationId();
+      await venueCheckpoint("wish-background-retry", async () => {
+        for (const record of failed) {
+          const job = asRecord(record.data);
+          await outsideVenueOperation(() =>
+            retryBackgroundJob(record.id, Number(job.attempt), action + ":" + String(job.attempt)),
+          );
+        }
+        return true;
+      });
+      await processSavedExchange(id, submissionId);
+      return readSceneChanges(id);
+    }
+  }
+  const memoryIds = Object.keys(proposals.memoryVersions);
+  const memories = village.chronicle.filter((memory) => memoryIds.includes(memory.id) && !memory.supersededBy);
+  const result = await venueCheckpoint("change-interpretation", async () => {
+    const model = await villagesLanguageModels().resolveForRequest({
+      connectionId: await villagesConnectionIdFor("system"),
+    });
+    const messages: CapabilityLanguageModelMessage[] = [
+      {
+        role: "system",
+        content: `Interpret ONLY the supplied saved exchange for ${domain}. Do not rewrite narration, change physical state, or invent evidence. ${domain === "wishes" ? WISH_PROPOSAL_INSTRUCTION : LIVE_MEMORY_INSTRUCTION} Use exact saved evidence IDs, not numeric indexes. Return JSON only.`,
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          evidence: liveEvidence(scene, proposals).filter(
+            (line) =>
+              domain !== "wishes" || line.id === proposals.playerLineId || proposals.replyLineIds.includes(line.id),
+          ),
+          residents: village.villagers.map((person) => ({ id: person.characterId, name: person.cardSnapshot.name })),
+          memories,
+          wishes: (turn.wishContexts ?? []).flatMap((context) => {
+            const wish = village.villagers
+              .find((person) => person.characterId === context.actorId)
+              ?.agenda?.wishes.find(
+                (wish) => wish.id === context.wishId && wishFingerprint(wish) === context.fingerprint,
+              );
+            return wish ? [{ ...context, text: wish.wish }] : [];
+          }),
+          zones: village.venues.map((venue) => ({ id: venue.id, zones: venueZones(venue) })),
+          zoneControllers: village.venues.flatMap((venue) =>
+            venueZones(venue).map((zone) => ({
+              venueId: venue.id,
+              zoneId: zone.id,
+              controllerIds: zoneControllerIds(venue, zone),
+            })),
+          ),
+        }),
+      },
+    ];
+    const fitted = model.fitContext(messages, { maxTokens: VENUE_REPLY_MAX_TOKENS });
+    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, {
+      temperature: 0,
+      reasoningEffort: null,
+      verbosity: null,
+      debugMode: false,
+      signal: venueOperationSignal(),
+      retryEmpty: false,
+    });
+    const raw = extractJsonObject(completion.content ?? "");
+    const value =
+      domain === "memories" ? raw?.memoryChanges : domain === "wishes" ? raw?.wishChanges : raw?.relationshipChanges;
+    if (
+      domain !== "relationships"
+        ? !Array.isArray(value)
+        : !["changes", "permissions", "disclosures"].every((key) => Array.isArray(asRecord(value)[key]))
+    ) {
+      await rejectVenueCompletion();
+      throw badGateway("Interpretation metadata is still incomplete. Another model request requires explicit retry.");
+    }
+    return {
+      value,
+      memoryVersions: Object.fromEntries(memories.map((memory) => [memory.id, memoryVersion(memory)])),
+      requests: venueRequestMetrics(),
+    };
+  });
+  await changeSession(id, (saved) => {
+    if (saved.villageSeed !== village.seed) throw conflict("Village identity changed.");
+    const entry = saved.submissions.find((turn) => turn.id === submissionId)!;
+    if (!entry.liveProposals || entry.processing?.domains[domain].status !== "failed") return;
+    entry.interpretationHistory ||= [];
+    entry.interpretationHistory.push({
+      at: turn.at ?? "",
+      domain,
+      source: "saved narration reply",
+      proposals:
+        domain === "wishes"
+          ? entry.wishProposals
+          : entry.liveProposals[domain === "memories" ? "memoryChanges" : "relationshipChanges"],
+    });
+    entry.interpretationHistory.push({
+      at: new Date().toISOString(),
+      domain,
+      source: "explicit System retry",
+      proposals: result.value,
+    });
+    if (domain === "wishes") {
+      const bound = bindWishProposals(
+        result.value,
+        village,
+        saved.lines,
+        entry.liveProposals.playerLineId,
+        entry.liveProposals.replyLineIds,
+        entry.wishContexts,
+      );
+      entry.wishProposals = bound.proposals;
+      entry.wishProposalError = bound.error;
+    } else entry.liveProposals[domain === "memories" ? "memoryChanges" : "relationshipChanges"] = result.value;
+    entry.liveProposals.memoryVersions = result.memoryVersions;
+    entry.requestMetrics = [...(entry.requestMetrics ?? []), ...(result.requests ?? [])];
+    entry.processing.domains[domain].status = "pending";
+  });
+  await processSavedExchange(id, submissionId);
+  return readSceneChanges(id);
 }
 
 export async function progressBacklog() {
   const village = await readVillageState();
   const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
-  return records
-    .flatMap((record) => {
-      const session = coerceSession(record.data);
-      if (session.processingVersion === 1 && session.villageSeed !== village.seed) return [];
-      return session.submissions
-        .filter((turn) =>
-          turn.processing
-            ? unfinishedExchange(turn.processing)
-            : village.progressEngineVersion === 1 && pendingProgressTurns(session, village.foundedAt).includes(turn),
-        )
-        .map((turn) => ({
-          sessionId: session.id,
-          submissionId: turn.id,
-          at: turn.at,
-          error: turn.progressError ?? "",
-        }));
-    })
-    .slice(0, 100);
+  return records.flatMap((record) => {
+    const session = coerceSession(record.data);
+    if (session.processingVersion === 1 && session.villageSeed !== village.seed) return [];
+    return session.submissions
+      .filter((turn) =>
+        turn.processing
+          ? unfinishedExchange(turn.processing)
+          : village.progressEngineVersion === 1 && pendingProgressTurns(session, village.foundedAt).includes(turn),
+      )
+      .map((turn) => ({
+        sessionId: session.id,
+        submissionId: turn.id,
+        at: turn.at,
+        error: turn.progressError ?? "",
+      }));
+  });
 }
 
 /** One startup scan, then bounded asynchronous batches; never part of the minute snapshot. */
@@ -1190,7 +1492,11 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
     ? new Set(row.participants.map((entry) => asTrimmedString(asRecord(entry).characterId)))
     : visibleIds;
   return Object.fromEntries(
-    Object.entries(value)
+    Object.entries(
+      Array.isArray(row.lines) && Array.isArray(row.submissions)
+        ? { ...row, processingSummary: sceneProcessingSummary(row as VenueScene) }
+        : row,
+    )
       .filter(
         ([key]) =>
           ![
@@ -1207,7 +1513,10 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "optionalAttempts",
             "wishInterpretationProof",
             "wishProposals",
+            "wishContexts",
             "liveProposals",
+            "interpretationHistory",
+            "requestMetrics",
             "memoryChanges",
             "relationshipChanges",
             "earlierLineIds",
@@ -1219,26 +1528,36 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
       )
       .map(([key, entry]) => [
         key,
-        visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
-          ? entry.filter((id) => visible.has(id))
-          : key === "recollections" && visible && Array.isArray(entry)
-            ? publicSceneResponse(
-                entry.filter((memory) => {
-                  const row = asRecord(memory);
-                  return ["subjectCharacterIds", "knownByCharacterIds"].every(
-                    (field) =>
-                      !Array.isArray(row[field]) ||
-                      row[field].every((id: unknown) => typeof id === "string" && visible.has(id)),
-                  );
-                }),
-                visible,
-              )
-            : key === "heardHistory" && visible && Array.isArray(entry)
+        key === "processing" && entry
+          ? {
+              version: 1,
+              domains: Object.fromEntries(
+                Object.entries(asRecord(asRecord(entry).domains)).map(([domain, result]) => [
+                  domain,
+                  { status: asRecord(result).status },
+                ]),
+              ),
+            }
+          : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
+            ? entry.filter((id) => visible.has(id))
+            : key === "recollections" && visible && Array.isArray(entry)
               ? publicSceneResponse(
-                  entry.filter((history) => visible.has(asTrimmedString(asRecord(history).characterId))),
+                  entry.filter((memory) => {
+                    const row = asRecord(memory);
+                    return ["subjectCharacterIds", "knownByCharacterIds"].every(
+                      (field) =>
+                        !Array.isArray(row[field]) ||
+                        row[field].every((id: unknown) => typeof id === "string" && visible.has(id)),
+                    );
+                  }),
                   visible,
                 )
-              : publicSceneResponse(entry, visible),
+              : key === "heardHistory" && visible && Array.isArray(entry)
+                ? publicSceneResponse(
+                    entry.filter((history) => visible.has(asTrimmedString(asRecord(history).characterId))),
+                    visible,
+                  )
+                : publicSceneResponse(entry, visible),
       ]),
   ) as T;
 }
@@ -2843,7 +3162,9 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
         replyLineIds: savedLineIds,
         wishProposals: wishes.proposals,
         wishProposalError: wishes.error,
+        wishContexts: reply.wishContexts,
         liveProposals: bindLiveProposals(reply, "", savedLineIds),
+        requestMetrics: venueRequestMetrics(),
       });
     }
     if (reply.invitationSignal)
@@ -3319,7 +3640,9 @@ async function finishActReply(
     );
     entry.wishProposals = wishChanges.proposals;
     entry.wishProposalError = wishChanges.error;
+    entry.wishContexts = reply.wishContexts;
     entry.liveProposals = bindLiveProposals(reply, playerLineId, ids);
+    entry.requestMetrics = venueRequestMetrics();
     if (reply.invitationSignal) {
       reply.invitationSignal.sourceLineId =
         ids[
@@ -3355,6 +3678,9 @@ async function finishActReply(
 async function sendVenueTurnOnce(input: VenueTurnInput) {
   if (movingSessions.has(input.sessionId)) throw conflict("Wait for zone navigation to finish before sending.");
   let session = await readSession(input.sessionId);
+  const compatibilityWishCheck = session.memoryMode === "live" && input.mode === "fulfill";
+  // Retain the old request shape while using the same witnessed reply/checking path.
+  if (session.memoryMode === "live" && input.mode === "fulfill") input = { ...input, mode: "chat" };
   const prior = session.submissions.find((entry) => entry.id === input.submissionId);
   if (prior) {
     if (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId)
@@ -3824,6 +4150,20 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       replyLineIds,
       reply.wishContexts,
     );
+    if (
+      compatibilityWishCheck &&
+      state.lines.find((line) => line.id === playerLineId)?.heardBy.includes(input.targetId)
+    ) {
+      const cited = [
+        playerLineId,
+        ...replyLineIds.filter((id) => state.lines.find((line) => line.id === id)?.heardBy.includes(input.targetId)),
+      ];
+      for (const context of reply.wishContexts.filter((context) => context.actorId === input.targetId))
+        if (
+          !wishChanges.proposals.some((proposal) => proposal.wishId === context.wishId && proposal.intent !== "reveal")
+        )
+          wishChanges.proposals.push({ ...context, intent: "check", lineIds: cited });
+    }
     const recollections: VenueRecollection[] = reply.recollections.map((memory, index) => ({
       id: `${session.id}:recollection:${input.submissionId}:${index}`,
       text: memory.text,
@@ -3879,7 +4219,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       recollections,
       wishProposals: wishChanges.proposals,
       wishProposalError: wishChanges.error,
+      wishContexts: reply.wishContexts,
       liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
+      requestMetrics: venueRequestMetrics(),
       ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
@@ -5587,6 +5929,8 @@ export async function recordVenueAction(
       wishMemory: "",
       action: result,
       actionReplyDone: !!prepared || state.activeIds.length === 0,
+      requestMetrics: venueRequestMetrics(),
+      wishContexts: prepared?.wishContexts ?? [],
       wishProposals: wishChanges.proposals,
       wishProposalError: wishChanges.error,
       ...(prepared
@@ -5597,7 +5941,15 @@ export async function recordVenueAction(
               preparedIds,
             ),
           }
-        : {}),
+        : state.memoryMode === "live" && state.activeIds.length === 0
+          ? {
+              liveProposals: bindLiveProposals(
+                quietContactReply("", []),
+                state.lines.find((line) => line.role === "user" && line.at === at)?.id ?? "",
+                [],
+              ),
+            }
+          : {}),
       areaAtTurn: state.area,
       zoneIdAtTurn: state.zoneId,
       activeIdsAtTurn: [...state.activeIds],
@@ -5753,6 +6105,8 @@ export async function listVenueVisitSummaries(
 
 export async function deleteVenueVisit(id: string): Promise<void> {
   const before = await readSession(id);
+  if (before.submissions.some((turn) => turn.processing && unfinishedExchange(turn.processing)))
+    throw conflict("This Scene has unfinished saved changes. Replay or explicitly resolve them before deletion.");
   for (const turn of pendingProgressTurns(before, (await readVillageState()).foundedAt))
     await processSavedProgressSubmission(id, turn.id);
   const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
@@ -5875,6 +6229,22 @@ export async function resetVenueSessions(): Promise<void> {
 
 export async function recoverVenueSceneWork() {
   await recoverVenueOperations(async (id, operation) => {
+    if (operation.kind === "change-interpretation")
+      return coordinateVenue(
+        id,
+        operation.id,
+        operation.kind,
+        operation.input,
+        undefined,
+        undefined,
+        () =>
+          retrySceneChangeInterpretationOnce(
+            id,
+            String(operation.input.submissionId),
+            operation.input.domain as "memories" | "relationships" | "wishes",
+          ),
+        { recovery: true },
+      );
     if (operation.kind === "move")
       return coordinateVenue(
         id,
