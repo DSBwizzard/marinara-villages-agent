@@ -91,39 +91,3 @@ export function mobileDoorPoint(
     top: clamp(top, 0, Math.max(0, frame.height - menuHeight)),
   };
 }
-
-export type ProjectedMapMarker = { id: string; left: number; top: number; width: number; height: number };
-export type MobileMapGroup = { ids: string[]; left: number; top: number };
-
-/** Recheck merged screen targets until no rendered targets overlap. Saved coordinates never change. */
-export function groupMobileMapMarkers(markers: readonly ProjectedMapMarker[]): MobileMapGroup[] {
-  const byId = new Map(markers.map((marker) => [marker.id, marker]));
-  const overlaps = (a: ProjectedMapMarker, b: ProjectedMapMarker) =>
-    Math.abs(a.left - b.left) < (a.width + b.width) / 2 + 4 && Math.abs(a.top - b.top) < (a.height + b.height) / 2 + 4;
-  const groups = markers.map((marker) => ({ ...marker, ids: [marker.id] }));
-  for (let changed = true; changed;) {
-    changed = false;
-    outer: for (let i = 0; i < groups.length; i++) {
-      for (let j = i + 1; j < groups.length; j++) {
-        const a = groups[i]!;
-        const b = groups[j]!;
-        const originalOverlap = a.ids.some((id) => b.ids.some((other) => overlaps(byId.get(id)!, byId.get(other)!)));
-        if (!originalOverlap && !overlaps(a, b)) continue;
-        const ids = [...a.ids, ...b.ids].sort();
-        const members = markers.filter((marker) => ids.includes(marker.id));
-        groups[i] = {
-          id: ids.join("|"),
-          ids,
-          left: members.reduce((sum, marker) => sum + marker.left, 0) / members.length,
-          top: members.reduce((sum, marker) => sum + marker.top, 0) / members.length,
-          width: 100,
-          height: 64,
-        };
-        groups.splice(j, 1);
-        changed = true;
-        break outer;
-      }
-    }
-  }
-  return groups.map(({ ids, left, top }) => ({ ids, left, top }));
-}

@@ -13,7 +13,23 @@ const image = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000"><rect width="1500" height="1000" fill="${color}"/><path d="M0 500h1500M750 0v1000" stroke="#eee1bf" stroke-width="80"/></svg>`).toString("base64")}`;
 const spriteImage = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="700"><circle cx="150" cy="100" r="65" fill="${color}"/><path d="M90 175h120l45 360H45zM105 530h35v170h-45zM160 530h35l45 170h-45z" fill="${color}"/></svg>`).toString("base64")}`;
-const residentNames = ["Mara", "Eli", "Lina", "Taro"];
+const photo = (width, height, color) =>
+  `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="${color}"/><path d="M0 0L${width} ${height}M${width} 0L0 ${height}" stroke="white" stroke-width="30"/><rect x="${width * 0.2}" y="${height * 0.2}" width="${width * 0.6}" height="${height * 0.6}" fill="#785f99"/></svg>`).toString("base64")}`;
+const residentNames = ["Mara", "Eli", "Lina", "Taro", "Noor"];
+const portraitRows = [
+  { id: "mara", avatarUrl: photo(1800, 3600, "#c888aa") },
+  {
+    id: "eli",
+    avatarUrl: photo(1800, 3600, "#81b9d0"),
+    avatarCrop: { srcX: 0.25, srcY: 0.2, srcWidth: 0.5, srcHeight: 0.25 },
+  },
+  { id: "lina", avatarUrl: photo(2400, 1600, "#d2bd79"), avatarCrop: { zoom: 2, offsetX: 15, offsetY: -10 } },
+  {
+    id: "taro",
+    avatarUrl: photo(1800, 3600, "#96c395"),
+    avatarCrop: { zoom: 1.5, offsetX: -10, offsetY: 5, fullImage: true },
+  },
+];
 const residents = residentNames.map((name, index) => ({
   characterId: name.toLowerCase(),
   name,
@@ -21,7 +37,11 @@ const residents = residentNames.map((name, index) => ({
     assetId: name.toLowerCase(),
     expressions: [],
     images: [
-      { view: "front", label: "neutral", url: spriteImage(["#e8ba91", "#a7cdf2", "#d9a8cd", "#bbd59a"][index]) },
+      {
+        view: "front",
+        label: "neutral",
+        url: spriteImage(["#e8ba91", "#a7cdf2", "#d9a8cd", "#bbd59a", "#c8baef"][index]),
+      },
     ],
     framing: { mode: "full", cropPercent: 0 },
   },
@@ -158,7 +178,7 @@ try {
     await page.route("**/api/characters/summaries", (route) =>
       route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify([{ id: "mara", avatarUrl: image("#c888aa") }]),
+        body: JSON.stringify(portraitRows),
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -232,11 +252,93 @@ try {
     }
     await expect.poll(async () => (await geometry()).width).not.toBe("");
     const initial = await geometry();
+    const screenshot = async (name) => {
+      if (process.env.VILLAGES_VISUAL_OUTPUT)
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "marker-fix-" + name + "-" + width + "x" + height + ".png"),
+        });
+    };
+    // Distinct nearby venues never collapse into a synthetic marker.
+    await expect(home.locator('[data-pin-id="market"]')).toHaveCount(1);
+    await expect(home.locator('[data-pin-id="crowded"]')).toHaveCount(1);
+    await expect(home.locator("[data-group-ids], ." + P + "-explore-count")).toHaveCount(0);
+    // Add actual saved anchors at all four visible frame edges, including in landscape.
+    const pictureBox = Object.fromEntries(Object.entries(initial).map(([key, value]) => [key, parseFloat(value)]));
+    const frameBox = await canvas.boundingBox();
+    for (const [id, px, py] of [
+      ["left-edge", 2, frameBox.height / 2],
+      ["right-edge", frameBox.width - 2, frameBox.height / 2],
+      ["top-edge", frameBox.width / 2, 2],
+      ["bottom-edge", frameBox.width / 2, frameBox.height - 2],
+    ]) {
+      const venue = place(id, (px - pictureBox.left) / pictureBox.width, (py - pictureBox.top) / pictureBox.height);
+      venue.name = id + " Venue";
+      venue.presentation.image.url = photo(id === "left-edge" ? 2400 : 800, id === "left-edge" ? 800 : 2400, "#7596a4");
+      fixture.settings.venues.push(venue);
+    }
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(home.locator('[data-pin-id="left-edge"]')).toHaveCount(1);
+    const assertMapMarkers = async () => {
+      const map = await geometry();
+      const picture = Object.fromEntries(Object.entries(map).map(([key, value]) => [key, parseFloat(value)]));
+      const frame = await canvas.boundingBox();
+      const expected = fixture.settings.venues.filter(
+        (v) =>
+          typeof v.presentation.x === "number" &&
+          typeof v.presentation.y === "number" &&
+          picture.left + v.presentation.x * picture.width >= 0 &&
+          picture.left + v.presentation.x * picture.width <= frame.width &&
+          picture.top + v.presentation.y * picture.height >= 0 &&
+          picture.top + v.presentation.y * picture.height <= frame.height,
+      );
+      await expect(home.locator("." + P + '-explore-marker[data-kind="place"]')).toHaveCount(expected.length);
+      for (const venue of expected) {
+        const marker = home.locator('[data-pin-id="' + venue.id + '"]');
+        const anchor = await marker.evaluate((el) => ({
+          left: parseFloat(el.parentElement.style.left),
+          top: parseFloat(el.parentElement.style.top),
+        }));
+        assert.ok(
+          Math.abs(anchor.left - (picture.left + venue.presentation.x * picture.width)) < 0.01,
+          "venue anchor retains its exact x coordinate",
+        );
+        assert.ok(
+          Math.abs(anchor.top - (picture.top + venue.presentation.y * picture.height)) < 0.01,
+          "venue anchor retains its exact y coordinate",
+        );
+        const button = await marker.boundingBox();
+        assert.equal(button.width, 100, "legacy styles cannot shrink venue buttons");
+        assert.equal(button.height, 64);
+        assert.ok(
+          button.x >= frame.x - 1 &&
+            button.y >= frame.y - 1 &&
+            button.x + button.width <= frame.x + frame.width + 1 &&
+            button.y + button.height <= frame.y + frame.height + 1,
+          "edge marker artwork and labels remain inside the map",
+        );
+        const thumbnail = marker.locator("." + P + "-explore-photo");
+        const bounds = await thumbnail.boundingBox();
+        assert.equal(bounds.width, 40);
+        assert.equal(bounds.height, 40);
+        await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "contain");
+        await expect(marker).toHaveAttribute("aria-label", venue.name);
+      }
+      for (const face of await home.locator("." + P + "-explore-marker ." + P + "-explore-face").all()) {
+        const bounds = await face.boundingBox();
+        assert.equal(bounds.width, 36);
+        assert.equal(bounds.height, 36);
+        await expect(face).toHaveCSS("position", "relative");
+        await expect(face).toHaveCSS("overflow", "hidden");
+      }
+    };
+    await assertMapMarkers();
+    await screenshot("map");
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     let sheet = page.getByRole("dialog", { name: "Places", exact: true });
     await expect(sheet.getByRole("heading", { name: "Places", exact: true })).toBeFocused();
     await expect(sheet.getByRole("button", { name: /Unplaced Venue/ })).toBeVisible();
     assert.deepEqual(await geometry(), initial, "opening a sheet never resizes the map");
+    await screenshot("places");
     await sheet.getByRole("searchbox", { name: "Search places" }).fill("unPLACED");
     await expect(sheet.locator("." + P + "-explore-row")).toHaveCount(1);
     if (height >= 800) {
@@ -262,21 +364,43 @@ try {
     await nav.getByRole("button", { name: "People", exact: true }).click();
     sheet = page.getByRole("dialog", { name: "People", exact: true });
     await expect(sheet.getByRole("button", { name: /Taro Current location unavailable/ })).toBeDisabled();
-    await expect(sheet.locator("." + P + "-explore-face img")).toHaveCount(1);
+    await expect(sheet.locator("." + P + "-explore-face img")).toHaveCount(4);
+    for (const row of await sheet.locator("." + P + "-explore-row").all()) {
+      const face = row.locator("." + P + "-explore-face");
+      const bounds = await face.boundingBox();
+      assert.equal(bounds.width, 36);
+      assert.equal(bounds.height, 36);
+      const rowBounds = await row.boundingBox();
+      assert.ok(rowBounds.height >= 60 && rowBounds.height <= 85, "People stays a compact row list");
+      await expect(face).toHaveCSS("position", "relative");
+      await expect(face).toHaveCSS("overflow", "hidden");
+      const cropped = face.locator('img[style*="position: absolute"]');
+      if (await cropped.count())
+        assert.ok(
+          await cropped.evaluate((img) => img.offsetParent === img.parentElement),
+          "saved rectangle crop belongs to its portrait frame",
+        );
+    }
+    const eli = sheet.getByRole("button", { name: /Eli Village Market/ }).locator("." + P + "-explore-face img");
+    await expect(eli).toHaveCSS("position", "absolute");
+    assert.equal(await eli.evaluate((img) => img.style.width), "200%");
+    assert.equal(await eli.evaluate((img) => img.style.height), "400%");
+    await expect(sheet.getByRole("button", { name: /Lina Village Market/ }).locator("img")).toHaveCSS(
+      "transform",
+      /matrix\(2,/,
+    );
+    await expect(sheet.getByRole("button", { name: /Taro Current location unavailable/ }).locator("img")).toHaveCSS(
+      "object-fit",
+      "contain",
+    );
+    await expect(sheet.getByRole("button", { name: /Noor Village Market/ }).locator("img")).toHaveCount(0);
+    await screenshot("people");
     await sheet.getByRole("button", { name: /Mara Village Market/ }).click();
     sheet = page.getByRole("dialog", { name: "Village Market", exact: true });
     await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toBeVisible();
     assert.equal(sceneRequests.length, 0);
     await sheet.getByRole("button", { name: "Close exploration card" }).click();
     await expect(nav.getByRole("button", { name: "People", exact: true })).toBeFocused();
-    // A group contains all nearby members, not just its first venue.
-    const group = home.locator("[data-group-ids]").filter({ hasText: "Explore" }).first();
-    await expect(group).toBeVisible();
-    await group.tap();
-    sheet = page.getByRole("dialog", { name: "Nearby places and people", exact: true });
-    await expect(sheet.getByRole("button", { name: /Village Market/ }).first()).toBeVisible();
-    await expect(sheet.getByRole("button", { name: /A nearby venue/ })).toBeVisible();
-    await page.keyboard.press("Escape");
     // Gesture handling uses real Chromium touch events, including anchored two-finger pinch.
     const box = await canvas.boundingBox();
     const client = await page.context().newCDPSession(page);
@@ -345,6 +469,7 @@ try {
     await expect.poll(geometry, { message: "Venue roundtrip retains map view" }).toEqual(retained);
     await home.getByRole("button", { name: "Reset map view", exact: true }).click();
     assert.deepEqual(await geometry(), initial);
+    await assertMapMarkers();
     // A worksite preview offers its existing Project action, never an invalid Visit.
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     sheet = page.getByRole("dialog", { name: "Places", exact: true });
@@ -377,10 +502,7 @@ try {
       .getByRole("button", { name: /Village Market/ })
       .click();
     assert.equal(sceneRequests.length, 0, "all exploration remains free of scene operations");
-    if (process.env.VILLAGES_VISUAL_OUTPUT)
-      await page.screenshot({
-        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "mobile-preview-" + width + "x" + height + ".png"),
-      });
+    await screenshot("preview");
     await page
       .getByRole("dialog", { name: "Village Market" })
       .getByRole("button", { name: "Visit", exact: true })
@@ -398,7 +520,7 @@ try {
     await page.close();
   }
   console.log(
-    "Mobile exploration: compact shell, sheets, search, groups, portraits, pinch, retained views, worksites, snapshot changes and explicit Visit passed",
+    "Mobile exploration: compact shell, sheets, search, individual markers, contained avatar crops, full venue thumbnails, pinch, retained views, worksites, snapshot changes and explicit Visit passed",
   );
 } finally {
   await browser.close();

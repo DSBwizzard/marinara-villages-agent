@@ -7964,7 +7964,6 @@ function MapStage({
   exploration = false,
   navigationView,
   onNavigationView,
-  onGroup,
   photoPins,
   placementCursor,
   children,
@@ -8006,7 +8005,6 @@ function MapStage({
   exploration?: boolean;
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
-  onGroup?(ids: string[]): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
   placementCursor?: { x: number; y: number };
@@ -8475,9 +8473,7 @@ function MapStage({
             }}
           />
         ) : null}
-        {exploration && picture && frame ? (
-          <MobileMarkers pins={pins} picture={picture} frame={frame} onGroup={onGroup ?? (() => {})} />
-        ) : null}
+        {exploration && picture && frame ? <MobileMarkers pins={pins} picture={picture} frame={frame} /> : null}
         {picture && !exploration
           ? pins.map((pin) => (
               <span
@@ -21474,11 +21470,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             exploration={mobile && !placingProjectId}
             navigationView={navigationView}
             onNavigationView={setNavigationView}
-            onGroup={(ids) => {
-              explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-              setOpenPlaceId(null);
-              setExploreSheet({ tab: "group", ids });
-            }}
             photoPins
           >
             {/* Anything that went wrong, or anything the village is in the middle of
@@ -21550,20 +21541,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 };
               });
               const title =
-                exploreSheet?.tab === "group"
-                  ? "Nearby places and people"
-                  : exploreSheet?.tab === "places"
-                    ? "Places"
-                    : exploreSheet?.tab === "people"
-                      ? "People"
-                      : venue?.name;
+                exploreSheet?.tab === "places" ? "Places" : exploreSheet?.tab === "people" ? "People" : venue?.name;
               if (!title) return null;
-              const rows =
-                exploreSheet?.tab === "people"
-                  ? peopleRows
-                  : exploreSheet?.tab === "group"
-                    ? [...placeRows, ...peopleRows].filter((row) => exploreSheet.ids?.includes(row.id))
-                    : placeRows;
+              const rows = exploreSheet?.tab === "people" ? peopleRows : placeRows;
               return (
                 <MobileSheet key={exploreSheet?.tab ?? venue?.id} title={title} onClose={closeExploration}>
                   {exploreSheet ? (
