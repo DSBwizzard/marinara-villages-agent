@@ -109,6 +109,8 @@ jobs:
           npx playwright install --with-deps chromium
           node tests/villages-founding-layout.e2e.mjs
           node tests/villages-venue-layout.e2e.mjs
+          npx tsx tests/villages-mobile-map.regression.ts
+          node tests/villages-mobile-exploration.e2e.mjs
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs
           node tests/villages-contact.e2e.mjs

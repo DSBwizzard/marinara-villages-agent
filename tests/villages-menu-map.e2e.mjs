@@ -181,7 +181,7 @@ try {
       "data-mobile",
       String(mobile),
     );
-    await page.getByRole("button", { name: "Open settings menu" }).click();
+    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
     await expect(page.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Homes", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Town map", exact: true })).toHaveCount(0);
@@ -231,7 +231,7 @@ try {
     await expect(
       page.locator(".marinara-capability-villages-home-full .marinara-capability-villages-canvas-img"),
     ).toHaveAttribute("src", savedImage);
-    await page.getByRole("button", { name: "Open settings menu" }).click();
+    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();
     await page.getByRole("button", { name: "Cancel replacement" }).click();
     assert.equal(writes.length, 2);

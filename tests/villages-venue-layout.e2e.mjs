@@ -80,7 +80,7 @@ try {
       );
       await page.goto("http://layout.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await page.getByRole("button", { name: "Open settings menu" }).click();
+      await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
       await page.getByRole("button", { name: "Projects (1)", exact: true }).click();
       await page.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
       await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();

@@ -58,6 +58,8 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLIENT_ROOT = resolve(repoRoot, "packages/villages/src/engine/packages/client/src");
 const CLIENT_SOURCES = [
   "villages-package-entry.tsx",
+  "villages-mobile-exploration.tsx",
+  "villages-mobile-map.ts",
   "villages-founding-editor.tsx",
   "villages-player-role.tsx",
   "villages-chat-paragraphs.ts",
