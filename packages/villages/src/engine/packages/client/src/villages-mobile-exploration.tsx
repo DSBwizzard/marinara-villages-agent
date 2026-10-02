@@ -21,9 +21,8 @@ export type ExplorationPin = {
   y: number;
   text: string;
   image?: string | null;
-  face?: ReactNode;
   kind?: "place" | "person";
-  offsetY?: number;
+  venueId?: string;
   selected?: boolean;
   onSelect?: () => void;
 };
@@ -233,42 +232,49 @@ export function MobileMarkers({
 }) {
   return (
     <>
-      {pins.map((pin) => {
-        const left = picture.left + pin.x * picture.width;
-        const top = picture.top + pin.y * picture.height + (pin.offsetY ?? 0);
-        if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
-        // The anchor stays at its projected location. Only its content aligns inward at an edge.
-        const contentLeft = Math.max(0, Math.min(frame.width - 100, left - 50)) - left;
-        const contentTop = Math.max(0, Math.min(frame.height - 64, top - 32)) - top;
-        return (
-          <span key={pin.id} className={P + "-explore-anchor"} style={{ left, top }}>
-            <button
-              type="button"
-              className={P + "-pin " + P + "-explore-marker"}
-              style={{ left: contentLeft, top: contentTop }}
-              data-selected={pin.selected ? "true" : "false"}
-              data-pin-id={pin.id}
-              data-kind={pin.kind ?? "place"}
-              aria-label={pin.text}
-              title={pin.text}
-              disabled={!pin.onSelect}
-              onClick={(event) => {
-                event.stopPropagation();
-                pin.onSelect?.();
-              }}
-            >
-              {pin.kind === "person" ? (
-                (pin.face ?? <span className={P + "-explore-face"}>{pin.text[0]}</span>)
-              ) : (
-                <span className={P + "-explore-photo"}>
-                  {pin.image ? <img src={pin.image} alt="" draggable={false} /> : <MapIcon name="places" />}
+      {pins
+        .filter((pin) => pin.kind !== "person")
+        .map((pin) => {
+          const left = picture.left + pin.x * picture.width;
+          const top = picture.top + pin.y * picture.height;
+          if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
+          const people = pins.filter((person) => person.kind === "person" && person.venueId === pin.id);
+          return (
+            <span key={pin.id} className={P + "-explore-anchor"} style={{ left, top }}>
+              <button
+                type="button"
+                className={P + "-pin " + P + "-explore-marker"}
+                data-selected={pin.selected ? "true" : "false"}
+                data-pin-id={pin.id}
+                data-kind="place"
+                aria-label={pin.text}
+                title={pin.text}
+                disabled={!pin.onSelect}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  pin.onSelect?.();
+                }}
+              >
+                <span className={P + "-pin-photo-card " + P + "-explore-polaroid"}>
+                  <span className={P + "-pin-photo"} aria-hidden="true">
+                    {pin.image ? <img src={pin.image} alt="" draggable={false} /> : <MapIcon name="places" />}
+                    <span className={P + "-pin-photo-tack"} />
+                  </span>
+                  <span className={P + "-pin-name"}>{pin.text}</span>
                 </span>
-              )}
-              <span className={P + "-explore-label"}>{pin.text}</span>
-            </button>
-          </span>
-        );
-      })}
+                {people.length ? (
+                  <span className={P + "-explore-initials"} aria-hidden="true">
+                    {people.slice(0, 3).map((person) => (
+                      <span key={person.id} className={P + "-explore-initial"} title={person.text}>
+                        {Array.from(person.text.trim())[0]?.toLocaleUpperCase() || "•"}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+              </button>
+            </span>
+          );
+        })}
     </>
   );
 }
@@ -403,14 +409,20 @@ export const MOBILE_EXPLORATION_STYLES = `
 .${P}-explore-controls button:disabled { opacity: .55; }
 .${P}-explore-anchor { position: absolute; width: 0; height: 0; z-index: 2; }
 .${P}-explore-anchor:has([data-selected="true"]) { z-index: 3; }
-.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-marker.${P}-pin { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: start; width: 100px; height: 64px; min-width: 48px; min-height: 48px; max-width: none; box-sizing: border-box; transform: none; background: transparent; color: #eef2ff; border: 0; padding: 0; box-shadow: none; gap: 2px; cursor: pointer; z-index: 2; overflow: visible; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-marker.${P}-pin { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 64px; height: 76px; min-width: 48px; min-height: 48px; max-width: none; box-sizing: border-box; left: 0; top: 0; transform: translate(-50%, -50%); background: transparent; color: #eef2ff; border: 0; padding: 0; box-shadow: none; gap: 2px; cursor: pointer; z-index: 2; overflow: visible; }
 .${P}-explore-photo { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; border: 2px solid #eee5d5; box-sizing: border-box; border-radius: 5px; background: #1c2e52; color: #c8d4ef; overflow: hidden; }
 .${P}-explore-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .${P}-explore-photo svg { width: 24px; height: 24px; }
 .${P}-explore-face { position: relative; display: grid; place-items: center; flex: 0 0 auto; width: 36px; height: 36px; min-width: 36px; max-width: 36px; min-height: 36px; max-height: 36px; border-radius: 50%; border: 2px solid #eee5d5; background: #1c2e52; overflow: hidden; box-sizing: border-box; color: #eef2ff; }
 .${P}-explore-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.${P}-explore-label { max-width: 98px; height: 20px; padding: 2px 5px; box-sizing: border-box; border-radius: 5px; background: #111b35ef; color: #eef2ff; font-size: 11px; font-weight: 600; line-height: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.${P}-explore-marker[data-selected="true"] .${P}-explore-photo, .${P}-explore-marker[data-selected="true"] .${P}-explore-face { border-color: #ba9cff; box-shadow: 0 0 0 3px #9676ed; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid.${P}-pin-photo-card { width: 56px; flex: 0 0 auto; padding: 3px; gap: 2px; box-sizing: border-box; border: 1px solid #e5dac5; border-radius: 2px; background: #faf4e7; color: #30261c; box-shadow: 0 3px 8px #0009; transform: none; transition: none; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-photo { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1 / 1; background: #201e29; overflow: visible; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-photo img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+.${P}-explore-polaroid .${P}-pin-photo svg { width: 24px; height: 24px; color: #c8d4ef; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-polaroid .${P}-pin-name { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 600; line-height: 12px; color: #30261c; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-marker[data-selected="true"] .${P}-explore-polaroid.${P}-pin-photo-card { box-shadow: 0 0 0 2px #ba9cff, 0 3px 8px #0009; }
+.${P}-explore-initials { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; pointer-events: none; }
+.${P}-explore-initial { display: grid; place-items: center; width: 14px; height: 14px; flex: 0 0 auto; box-sizing: border-box; border: 1px solid #c8b8e5; border-radius: 50%; background: #27304b; color: #eee5fa; font-size: 9px; line-height: 1; font-weight: 600; }
 .${P}-explore-sheet { position: absolute; z-index: 20; bottom: 0; left: 0; right: 0; display: flex; flex-direction: column; max-height: 82%; border: 1px solid #405984; border-radius: 16px 16px 5px 5px; background: #111b35fa; color: #eef2ff; box-shadow: 0 -6px 24px #050a1870; overflow: hidden; }
 .${P}-explore-sheet header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 0 12px; }
 .${P}-explore-sheet h2 { margin: 0; font-size: 18px; line-height: 1.3; overflow-wrap: anywhere; max-height: 3.9em; overflow-y: auto; }

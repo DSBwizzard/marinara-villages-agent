@@ -255,7 +255,10 @@ try {
     const screenshot = async (name) => {
       if (process.env.VILLAGES_VISUAL_OUTPUT)
         await page.screenshot({
-          path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "marker-fix-" + name + "-" + width + "x" + height + ".png"),
+          path: resolve(
+            process.env.VILLAGES_VISUAL_OUTPUT,
+            "polaroid-map-" + name + "-" + width + "x" + height + ".png",
+          ),
         });
     };
     // Distinct nearby venues never collapse into a synthetic marker.
@@ -307,32 +310,54 @@ try {
           "venue anchor retains its exact y coordinate",
         );
         const button = await marker.boundingBox();
-        assert.equal(button.width, 100, "legacy styles cannot shrink venue buttons");
-        assert.equal(button.height, 64);
+        assert.equal(button.width, 64, "legacy styles cannot shrink venue buttons");
+        assert.equal(button.height, 76);
         assert.ok(
-          button.x >= frame.x - 1 &&
-            button.y >= frame.y - 1 &&
-            button.x + button.width <= frame.x + frame.width + 1 &&
-            button.y + button.height <= frame.y + frame.height + 1,
-          "edge marker artwork and labels remain inside the map",
+          Math.abs(button.x + button.width / 2 - frame.x - anchor.left) < 0.1,
+          "marker stays centered on its map anchor even at an edge",
         );
-        const thumbnail = marker.locator("." + P + "-explore-photo");
+        assert.ok(
+          Math.abs(button.y + button.height / 2 - frame.y - anchor.top) < 0.1,
+          "marker never follows the viewport vertically",
+        );
+        const card = marker.locator("." + P + "-pin-photo-card");
+        assert.equal((await card.boundingBox()).width, 56);
+        await expect(card).toHaveCSS("background-color", "rgb(250, 244, 231)");
+        await expect(card.locator("." + P + "-pin-photo-tack")).toHaveCount(1);
+        await expect(card.locator("." + P + "-pin-name")).toHaveText(venue.name);
+        const thumbnail = card.locator("." + P + "-pin-photo");
         const bounds = await thumbnail.boundingBox();
-        assert.equal(bounds.width, 40);
-        assert.equal(bounds.height, 40);
+        assert.equal(bounds.width, 48);
+        assert.equal(bounds.height, 48);
         await expect(thumbnail.locator("img")).toHaveCSS("object-fit", "contain");
+        const names = fixture.villagers
+          .filter((resident) => resident.place?.id === venue.id)
+          .slice(0, 3)
+          .map((resident) => resident.name);
+        const initials = marker.locator("." + P + "-explore-initial");
+        await expect(initials).toHaveCount(names.length);
+        for (let i = 0; i < names.length; i++) {
+          await expect(initials.nth(i)).toHaveAttribute("title", names[i]);
+          await expect(initials.nth(i)).toHaveText(Array.from(names[i])[0].toLocaleUpperCase());
+          const badge = await initials.nth(i).boundingBox();
+          assert.equal(badge.width, 14);
+          assert.equal(badge.height, 14);
+        }
         await expect(marker).toHaveAttribute("aria-label", venue.name);
       }
-      for (const face of await home.locator("." + P + "-explore-marker ." + P + "-explore-face").all()) {
-        const bounds = await face.boundingBox();
-        assert.equal(bounds.width, 36);
-        assert.equal(bounds.height, 36);
-        await expect(face).toHaveCSS("position", "relative");
-        await expect(face).toHaveCSS("overflow", "hidden");
-      }
+      await expect(home.locator("." + P + "-explore-marker[data-kind=person]")).toHaveCount(0);
+      await expect(home.locator("." + P + "-explore-marker ." + P + "-explore-face")).toHaveCount(0);
+      await expect(canvas).toHaveCSS("overflow", "hidden");
     };
     await assertMapMarkers();
     await screenshot("map");
+    const edgeMarker = home.locator('[data-pin-id="left-edge"]');
+    const edgeBounds = await edgeMarker.boundingBox();
+    assert.ok(edgeBounds.x < frameBox.x, "edge cards clip naturally instead of sliding inward");
+    await edgeMarker.tap({ position: { x: 56, y: 38 } });
+    await expect(page.getByRole("dialog", { name: "left-edge Venue" })).toBeVisible();
+    assert.equal(sceneRequests.length, 0);
+    await page.getByRole("button", { name: "Close exploration card" }).click();
     await nav.getByRole("button", { name: "Places", exact: true }).click();
     let sheet = page.getByRole("dialog", { name: "Places", exact: true });
     await expect(sheet.getByRole("heading", { name: "Places", exact: true })).toBeFocused();
@@ -440,6 +465,8 @@ try {
     await touch("touchMove", [[x + 25, y + 20]]);
     await touch("touchEnd", []);
     assert.notDeepEqual(await geometry(), afterPinch, "one-finger pan moves the zoomed map");
+    await assertMapMarkers();
+    await screenshot("panned");
 
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const zoom = Number(await stage.getAttribute("data-navigation-zoom"));
@@ -520,7 +547,7 @@ try {
     await page.close();
   }
   console.log(
-    "Mobile exploration: compact shell, sheets, search, individual markers, contained avatar crops, full venue thumbnails, pinch, retained views, worksites, snapshot changes and explicit Visit passed",
+    "Mobile exploration: compact shell, sheets, search, anchored Polaroids, tiny resident initials, contained list portraits, full venue thumbnails, pinch, retained views, worksites, snapshot changes and explicit Visit passed",
   );
 } finally {
   await browser.close();
