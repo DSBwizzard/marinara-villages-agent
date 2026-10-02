@@ -1,3 +1,4 @@
+import { buildVenueResponseContract } from "./venue-response-contract.js";
 import { runtimeDebug } from "./runtime-debug.js";
 import {
   LIVE_MEMORY_INSTRUCTION,
@@ -92,8 +93,6 @@ import { agendaAt } from "./agenda-plan.js";
 import { readEffectiveVillagerCard } from "./catalog.js";
 import {
   buildVenueSceneBlocks,
-  VENUE_RESIDENT_REQUESTS,
-  VENUE_DEPARTURE_METADATA,
   venueCardProfile,
   fitVenueWritingMessages,
   EVENT_MEMORY_GUIDANCE,
@@ -1920,24 +1919,25 @@ export async function prepareVenueTurnMessages(
           : "";
       }),
     ]),
-    metadata: blocksFor([
-      "Return one JSON object only. Put heardPlayerBy and the complete segments array FIRST, before change metadata. Include heardPlayerBy (array of active resident IDs) and segments (ordered array). Include at least one main segment, narration or dialogue, and as many as the moment needs. Each segment has kind, text, and heardBy (array of active resident IDs). Choose exactly one kind: narration, dialogue, side, or whisper. Dialogue, side, and whisper also need speakerId (an active resident ID); expression is optional and must be one of that speaker's visible expressions. Narration has no speakerId and is visible to the whole active cast. Legacy gazeAt may name another active resident ID or player. A side or whisper is brief cross-talk attached to the preceding main segment; each has its OWN speakerId and heardBy. Whisper also needs targetId (an active resident ID). Use only active IDs; keep private knowledge with those who know it. For an opening, heardPlayerBy is empty.",
-      !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
-        ? `For a CURRENT deliberate knock, call, or directed follow-up to a doorway speaker, optionally return contactIntent:{kind:"knock"|"call",targetId:"known villager ID or empty",boundaryZoneId:"doorway ID or empty",quote:"exact player words conveying the contact",delivery:"voice"|"loud"|"device",deliveryQuote:"exact current words establishing raised volume or device use",deviceFeatureId:"existing visible feature ID for device use"}. A normal call reaches adjacent Zones; clearly loud calls may reach farther within this Venue but never guarantee hearing. Devices must already exist in this Zone. Do not interpret hypothetical, historical, quoted, or merely mentioned calls. Do not narrate a remote answer, movement, invitation, or lack of response yet; the server will route a supported attempt. Ordinary conversation remains local. Known villagers (not an attendance list): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
-        : "",
-      session.stagingVersion === 1
-        ? "Current presentation state: " +
-          JSON.stringify(
-            session.activeIds.map((characterId) => ({
-              characterId,
-              ...stageState[characterId],
-              ...layout[characterId],
-            })),
-          )
-        : "",
-      ...expressionContexts,
-      `Zones that may be invited into: ${
-        storedPlace
+    metadata: blocksFor(
+      buildVenueResponseContract({
+        opening: mode === "greet",
+        conversational: mode === "chat" || mode === "ask",
+        liveMemory: session.memoryMode === "live",
+        residentControlled:
+          session.area === "shared" ||
+          session.area === "private" ||
+          !!(
+            storedPlace && zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length
+          ),
+        recapNeeded: session.lines.length >= 12,
+        staging: session.stagingVersion === 1,
+        projects: projectContexts.length > 0,
+        contactFacts:
+          !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
+            ? `Known villagers (not attendance): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
+            : "",
+        invitationZones: storedPlace
           ? venueZones(storedPlace)
               .filter((zone) => audience.some((id) => canInviteToZone(storedPlace, zone, id)))
               .map(
@@ -1945,39 +1945,21 @@ export async function prepareVenueTurnMessages(
                   `${zone.id}: ${zone.name} (${zone.kind}; controllers ${audience.filter((id) => canInviteToZone(storedPlace, zone, id)).join(", ")})`,
               )
               .join("; ")
-          : "none"
-      }. An invitation never admits anyone to another zone. Include accompanies=true only when the quoted speaker explicitly offers to accompany the player. Permission alone does not move anyone.`,
-      "Entry permission and dismissal may use natural dialogue or an unambiguous named gesture. Preserve accompanying cautions and contextual meaning; formal room-name repetition is unnecessary. Only an authorized controller can invite or dismiss. Silence, an open door alone, quotations, and third-party permission establish nothing. One-visit permission and unconditional standing invitations are distinct. Optional invitation metadata describes evidence; Villages separately interprets and validates it. Entry grants no authority to edit or invite others.",
-      "Targeting is intent, not isolation. Decide contextually who heard the player's words and each reply; moving aside is narrative and does not guarantee privacy.",
-      (mode === "chat" || mode === "ask") &&
-      (session.area === "shared" ||
-        session.area === "private" ||
-        (storedPlace &&
-          zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length > 0))
-        ? "This is a resident-controlled Residence space. Player actions may be attempted and residents may react, but do not return sceneChange or narrate a lasting change until the exact Zone edit proposal has every required resident's explicit approval. Entry is not edit consent."
-        : "",
-      mode === "chat" || mode === "ask"
-        ? `If the player physically acts in this scene, including plausible first-person past tense such as "I fixed the drip", resolve it as part of this SAME reply. Mere speech about a deed, a promise, an unsupported claim elsewhere, or an impossible attempt changes nothing. Return sceneChange only for a completed, persistent physical result: {"happened":true,"narration":"short past-tense public result","conditionBefore":"exact current condition","conditionAfter":"complete updated condition","featureId":"existing id","featureText":"updated text","publicFactBefore":"exact old fact","publicFactAfter":"updated fact","resolveTraceId":"existing id","addItem":"item","removeItem":"exact item","sceneNote":"temporary layout detail"}. Omit unused fields. Use an exact old value or ID to replace or resolve stale state; use sceneNote for a small temporary layout change, never for a repaired condition that must stay repaired. The player may change a locked feature; its lock remains. Do not invent exceptional supplies or consent. If the action fails, narrate the failure and omit sceneChange. Never narrate a lasting change without a valid sceneChange. A resident's reaction does not independently change physical state.`
-        : "",
-      mode === "chat" || mode === "ask" ? VENUE_RESIDENT_REQUESTS : "",
-      session.lines.length >= 12
-        ? `Also return recap: an updated summary of meaningful earlier visit context in at most 600 characters, including who heard private details. Preserve the previous recap and add only meaningful new context; omit routine repairs already represented in current venue state.`
-        : "",
-      session.memoryMode === "live"
-        ? LIVE_MEMORY_INSTRUCTION
-        : mode !== "greet"
-          ? EVENT_MEMORY_GUIDANCE +
-            ' Capture compact event recollections from THIS turn, including ordinary details that may help continuity later; do not decide which are durable. Consolidate one event heard by several people into one item. Omit greetings, filler, and facts already represented in current venue state. Return recollections as [{"text":"short grounded event","subjectCharacterIds":["active ID"],"knownByCharacterIds":["active ID"],"evidence":["player",0]}], where subjects are who the event concerns, knowers are every resident who directly heard every cited line, and numeric evidence refers to zero-based segment indexes in this response. Never add a knower who missed any cited line.'
-          : "",
-      session.memoryMode === "live" || mode !== "greet" ? WISH_PROPOSAL_INSTRUCTION : "",
-      session.memoryMode === "live" || mode !== "greet" ? VENUE_DEPARTURE_METADATA : "",
-      session.stagingVersion !== 1
-        ? "Spoken segments may set gazeAt to another active resident ID when the speaker looks toward them; omit it when facing the player."
-        : "",
-      session.stagingVersion === 1
-        ? 'Any segment, including narration, may include staging: [{characterId, position?, expression?, look?}]. position is "left", "center", or "right". expression is that character’s filled expression ID. look is {target:"player"}, {target:"villager",characterId:"active ID"}, or {target:"direction",direction:"left"|"right"}. Use at most one cue per active character per segment. Position, expression, and attention persist until changed; omitted fields preserve state. You may cue silent listeners, but reactions must respect who witnessed the moment. Move sides only when motivated by the scene, such as approaching, withdrawing, making room, or joining an interaction; changing speakers alone never moves anyone. Turns and expressions need no walking. A lone villager may look away left or right. Select the default expression ID or look toward the player explicitly to reset. Staging is presentation only, never proof of knowledge, consent, memory, or world changes. Use existing artwork and grounded actions. Main cues appear at the first paragraph; side and whisper cues appear with their attached chatter. Prefer staging over the older expression/gazeAt fields; omission does not reset attention in this Scene.'
-        : "",
-    ]),
+          : "none",
+        presentation:
+          session.stagingVersion === 1
+            ? "Current presentation state: " +
+              JSON.stringify(
+                session.activeIds.map((characterId) => ({
+                  characterId,
+                  ...stageState[characterId],
+                  ...layout[characterId],
+                })),
+              )
+            : "",
+        expressions: expressionContexts,
+      }),
+    ),
   });
   const input =
     mode === "greet"

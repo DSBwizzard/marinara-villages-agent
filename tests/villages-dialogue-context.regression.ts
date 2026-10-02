@@ -220,6 +220,25 @@ async function run() {
     assert.ok(prompt.includes("Existing accepted commitments remain binding"));
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
+    scene.memoryMode = "legacy";
+    const opening = String((await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages[0].content);
+    assert.ok(opening.includes("Opening heardPlayerBy is empty"));
+    assert.ok(!opening.includes("memoryChanges:"));
+    assert.ok(!opening.includes("recollections:["));
+    assert.ok(!opening.includes("contactIntent:"));
+    const legacyTurn = String(
+      (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages[0].content,
+    );
+    assert.ok(legacyTurn.includes("recollections:["));
+    assert.ok(!legacyTurn.includes("memoryChanges:"));
+    scene.memoryMode = "live";
+    scene.area = "private";
+    const controlled = String(
+      (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages[0].content,
+    );
+    assert.ok(controlled.includes("every required resident's explicit approval of the exact Zone edit proposal"));
+    assert.ok(controlled.includes("Entry is not edit consent"));
+    scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
       (await prepareVenueTurnMessages(scene, "Your move.", "ask", "reserved", null)).fitted.messages[0].content,

@@ -1663,7 +1663,7 @@ async function main() {
       "another character's expression is dropped without losing movement",
     );
     assert.match(lastVenueSystem, /Current presentation state/u);
-    assert.match(lastVenueSystem, /A lone villager may look away/u);
+    assert.match(lastVenueSystem, /direction:"left\|right"/u);
     assert.deepEqual(
       (await activeVenueSession())?.lines.find((line) => line.id === stagedLine.id)?.staging,
       stagedLine.staging,
