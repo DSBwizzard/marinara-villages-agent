@@ -15,6 +15,11 @@ import {
   processSavedExchange,
   closeVenueSession,
   publicSceneResponse,
+  readSceneChanges,
+  replaySceneChanges,
+  dismissSceneNotice,
+  deleteVenueVisit,
+  retrySceneChangeInterpretation,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 import { extractSceneReply } from "../packages/villages/src/engine/packages/server/src/services/villages/scene-reply-json.js";
 import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
@@ -62,6 +67,8 @@ async function main() {
     writes = 0,
     fault = "",
     faultAfter = false;
+  let allowInterpretation = false,
+    unknownInterpretation = false;
   const readVenueVisit = async (_id: string) => structuredClone(records.get("villages-venue-visit-live").data);
   const release = configureVillagesRuntime({
     persistence: {
@@ -81,11 +88,24 @@ async function main() {
         async update(input: any) {
           const prior = records.get(input.id);
           if (!prior || prior.revision !== input.expectedRevision) return null;
-          if (fault === input.id && !faultAfter) throw new Error("injected write failure");
+          const injected =
+            fault === input.id ||
+            (fault === "relationships" && input.id.startsWith("villages-relationships-")) ||
+            (fault.startsWith("status:") &&
+              input.id === "villages-venue-visit-live" &&
+              input.data.submissions.some((turn: any) => {
+                const previous = prior.data.submissions.find((entry: any) => entry.id === turn.id);
+                const domain = fault.slice(7);
+                return (
+                  JSON.stringify(previous?.processing?.domains[domain]) !==
+                  JSON.stringify(turn.processing?.domains[domain])
+                );
+              }));
+          if (injected && !faultAfter) throw new Error("injected write failure");
           writes++;
           const row = { ...prior, ...structuredClone(input), revision: prior.revision + 1 };
           records.set(input.id, row);
-          if (fault === input.id && faultAfter) throw new Error("injected lost acknowledgement");
+          if (injected && faultAfter) throw new Error("injected lost acknowledgement");
           return structuredClone(row);
         },
         async remove(_pkg: string, id: string) {
@@ -100,7 +120,25 @@ async function main() {
     languageModels: {
       async resolveForRequest() {
         requests++;
-        throw new Error("Application must never generate");
+        if (!allowInterpretation) throw new Error("Application must never generate");
+        return {
+          model: "labeled-fixture",
+          fitContext(messages: any[], options: any) {
+            return { messages, ...options };
+          },
+          async chatComplete() {
+            if (unknownInterpretation) throw new Error("unknown paid-request outcome");
+            return {
+              content: JSON.stringify({
+                memoryChanges: [],
+                relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+                wishChanges: [],
+              }),
+              finishReason: "stop",
+              usage: { inputTokens: 100, outputTokens: 12 },
+            };
+          },
+        };
       },
     },
   } as any);
@@ -120,7 +158,7 @@ async function main() {
         role: "user",
         speakerId: "",
         name: "Player",
-        content: "We can plant the garden beds on Saturday.",
+        content: options.playerText ?? "We can plant the garden beds on Saturday.",
         at,
         heardBy: options.knowers ?? ["a"],
       },
@@ -254,6 +292,43 @@ async function main() {
     saveExchange("passing", [{ ...memory, kind: "passing", text: "The seedlings are beside the bench." }]);
     await processSavedExchange("live", "passing");
     assert.equal((await readVillageState()).recollections[0].text, "The seedlings are beside the bench.");
+    // Human-labeled narration outputs exercise application, not a live model's interpretation accuracy.
+    for (const fixture of [
+      { label: "greeting", player: "Hello.", reply: "Hello!", proposals: [], durable: 0 },
+      { label: "repetition", player: "Saturday, then.", reply: "Yes, Saturday.", proposals: [], durable: 0 },
+      { label: "ambiguous", player: "Maybe sometime?", reply: "We will see.", proposals: [], durable: 0 },
+      { label: "ordinary-company", player: "Nice weather.", reply: "It is.", proposals: [], durable: 0 },
+      { label: "conditional", player: "Would you help?", reply: "If I have time, perhaps.", proposals: [], durable: 0 },
+      {
+        label: "quoted",
+        player: "What did Bea say?",
+        reply: "Bea said 'I will bring tools'.",
+        proposals: [],
+        durable: 0,
+      },
+      {
+        label: "commitment",
+        player: "Can you bring a spade?",
+        reply: "I will bring my spade tomorrow.",
+        proposals: [{ ...memory, text: "Ada will bring her spade tomorrow." }],
+        durable: 1,
+      },
+      {
+        label: "stable-fact",
+        player: "What food should we avoid?",
+        reply: "I am allergic to peanuts.",
+        proposals: [{ ...memory, category: "personal-fact", text: "Ada is allergic to peanuts." }],
+        durable: 1,
+      },
+    ]) {
+      const beforeCount = (await readVillageState()).chronicle.length;
+      saveExchange("labeled-" + fixture.label, fixture.proposals, emptyRelations, {
+        playerText: fixture.player,
+        text: fixture.reply,
+      });
+      await processSavedExchange("live", "labeled-" + fixture.label);
+      assert.equal((await readVillageState()).chronicle.length - beforeCount, fixture.durable, fixture.label);
+    }
     for (const after of [false, true]) {
       const id = after ? "after-write" : "before-write";
       saveExchange(id, [{ ...memory, text: "Commitment " + id }]);
@@ -265,6 +340,58 @@ async function main() {
       await processSavedExchange("live", id);
       assert.equal((await readVillageState()).chronicle.filter((entry) => entry.text === "Commitment " + id).length, 1);
     }
+    const positiveRelationship = {
+      changes: [
+        {
+          fromId: "a",
+          toId: "player",
+          dimension: "warmth",
+          strength: "minor",
+          direction: "increase",
+          ordinary: false,
+          reason: "Working together",
+          lineIds: ["player", 0],
+          disclosed: false,
+        },
+      ],
+      permissions: [],
+      disclosures: [],
+    };
+    for (const after of [false, true]) {
+      const id = "relationship-write-" + after;
+      saveExchange(id, [{ ...memory, text: "Commitment " + id }], positiveRelationship);
+      fault = "relationships";
+      faultAfter = after;
+      await processSavedExchange("live", id);
+      fault = "";
+      await processSavedExchange("live", id);
+      assert.equal((await readVillageState()).chronicle.filter((entry) => entry.text === "Commitment " + id).length, 1);
+      const context = (await readVillageState()).relationshipContext!;
+      const count = Object.keys(context.receipts).length;
+      await processSavedExchange("live", id);
+      assert.equal(Object.keys((await readVillageState()).relationshipContext!.receipts).length, count);
+    }
+    for (const domain of ["projects", "wishes", "memories", "relationships"])
+      for (const after of [false, true]) {
+        const id = "bookkeeping-" + domain + "-" + after;
+        saveExchange(id, [{ ...memory, text: "Commitment " + id }], positiveRelationship);
+        records.get("villages-venue-visit-live").data.submissions.at(-1).processing.domains.projects.status = "pending";
+        fault = "status:" + domain;
+        faultAfter = after;
+        await processSavedExchange("live", id).catch(() => {});
+        assert.equal(
+          (await readVillageState()).chronicle.filter((entry) => entry.text === "Commitment " + id).length,
+          1,
+          "another domain's status failure must not block memory commitment",
+        );
+        fault = "";
+        await processSavedExchange("live", id);
+        assert.ok(
+          Object.values((await readVenueVisit("live")).submissions.at(-1).processing.domains).every(
+            (result: any) => result.status === "applied",
+          ),
+        );
+      }
     for (const count of [97, 125]) {
       const started = performance.now(),
         initialWrites = writes;
@@ -280,6 +407,50 @@ async function main() {
     await closeVenueSession("live");
     assert.equal((await readVenueVisit("live")).memoryPending, false);
     assert.equal(requests, 0);
+    await assert.rejects(deleteVenueVisit("live"), /unfinished saved changes/);
+    const firstPage = await readSceneChanges("live", "", 1);
+    assert.equal(firstPage.changes.length, 1);
+    assert.equal(firstPage.hasMore, true);
+    let cursor = firstPage.nextCursor,
+      pages = 1;
+    while (true) {
+      const page = await readSceneChanges("live", cursor, 50);
+      cursor = page.nextCursor;
+      pages++;
+      if (!page.hasMore) break;
+    }
+    assert.ok(pages > 2);
+    assert.equal((await readSceneChanges("live", cursor)).changes.length, 0);
+    const forgedId = "live:one:memory:0";
+    await dismissSceneNotice("live", forgedId);
+    assert.ok((await readSceneChanges("live")).dismissedNoticeIds.includes(forgedId));
+    assert.ok((await readSceneChanges("live")).notices.every((event) => event.id !== forgedId));
+    await replaySceneChanges("live");
+    assert.equal(requests, 0, "reads, dismissal and saved recovery never generate");
+    allowInterpretation = true;
+    unknownInterpretation = true;
+    await assert.rejects(retrySceneChangeInterpretation("live", "missing", "memories"), /unknown paid/);
+    const afterUnknown = requests;
+    await assert.rejects(retrySceneChangeInterpretation("live", "missing", "memories"), /explicit|retry|billed/);
+    await replaySceneChanges("live");
+    assert.equal(requests, afterUnknown, "an unknown interpretation is never automatically repeated");
+    const attemptId = (await readVenueVisit("live")).operation.attemptId;
+    unknownInterpretation = false;
+    await retrySceneChangeInterpretation("live", "missing", "memories", attemptId);
+    assert.equal(requests, afterUnknown + 1, "explicit retry authorizes one new interpretation");
+    assert.equal(
+      (await readVenueVisit("live")).submissions.find((turn: any) => turn.id === "missing").processing.domains.memories
+        .status,
+      "applied",
+    );
+    const updates = await readSceneChanges("live", cursor);
+    assert.ok(
+      updates.changes.some((change) => change.submissionId === "missing"),
+      "cursor receives an update to an earlier exchange",
+    );
+    assert.ok(
+      updates.changes.find((change) => change.submissionId === "missing")?.requests?.some((request) => request.usage),
+    );
     console.log("villages-live-memory: ok (saved proposal fixtures; not live model accuracy)");
   } finally {
     release();

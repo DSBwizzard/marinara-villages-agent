@@ -1,5 +1,6 @@
 import { VillagesRelationships } from "./villages-relationships.js";
 import { DecisionsControl } from "./villages-decisions-control.js";
+import { SavedChangesDiagnostics } from "./villages-saved-changes.js";
 import { useSceneViewport } from "./villages-scene-viewport.js";
 import { VILLAGES_SCENE_STYLES } from "./villages-scene-styles.js";
 import { contactNeighborIds } from "../../shared/src/villages/zone-contact.js";
@@ -1144,6 +1145,7 @@ type RoomOperation = {
   input?: { message?: string; mode?: string; targetId?: string };
 };
 type SceneView = {
+  memoryMode?: "live" | "tiered" | "turn" | "end";
   version: 1;
   sceneRevision?: number;
   operation?: RoomOperation | null;
@@ -9878,6 +9880,10 @@ function RoomPanel({
   onContinueWithoutGreeting,
   notices,
   onDismissNotice,
+  changeStatus,
+  onReplayChanges,
+  unresolvedChanges,
+  onRetryChangeInterpretation,
   debugDiscardEnabled,
   onDebugDiscard,
   onUseMailbox,
@@ -9925,6 +9931,10 @@ function RoomPanel({
   onContinueWithoutGreeting: () => void;
   notices: RoomRecordEvent[];
   onDismissNotice: (id: string) => void;
+  changeStatus?: { pending: number; failed: number; rejected: number };
+  onReplayChanges?: () => void;
+  unresolvedChanges?: { submissionId: string; domain: string }[];
+  onRetryChangeInterpretation?: (submissionId: string, domain: "memories" | "relationships" | "wishes") => void;
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
@@ -10490,6 +10500,39 @@ function RoomPanel({
             ? "You’re outside this Residence. A resident needs to invite you in. You can speak in your own words, or leave whenever you like."
             : "You’re outside this Venue. You can speak in your own words, or leave whenever you like."}
         </p>
+      ) : null}
+      {changeStatus && (changeStatus.pending > 0 || changeStatus.failed > 0 || changeStatus.rejected > 0) ? (
+        <details className={`${ELEMENT_TAG}-saved-change-status`} role="status" aria-label="Saved change status">
+          <summary>
+            {changeStatus.pending > 0 ? "Some changes are still being checked. " : ""}
+            {changeStatus.failed > 0 ? "Some saved changes need attention. " : ""}
+            {changeStatus.rejected > 0 ? "Some proposals lacked valid evidence. " : ""}
+          </summary>
+          <div style={{ maxHeight: "9rem", overflow: "auto" }}>
+            {changeStatus.failed > 0 && onReplayChanges ? (
+              <button type="button" onClick={onReplayChanges}>
+                Replay saved work · no model request
+              </button>
+            ) : null}
+            {(unresolvedChanges ?? [])
+              .filter((change) => ["memories", "relationships", "wishes"].includes(change.domain))
+              .map((change) => (
+                <button
+                  key={change.submissionId + change.domain}
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    onRetryChangeInterpretation?.(
+                      change.submissionId,
+                      change.domain as "memories" | "relationships" | "wishes",
+                    )
+                  }
+                >
+                  Retry {change.domain} interpretation · may use model requests
+                </button>
+              ))}
+          </div>
+        </details>
       ) : null}
       {notices.length > 0 ? (
         <div className={`${ELEMENT_TAG}-room-notices`} aria-live="polite">
@@ -13167,6 +13210,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [roomRuling, setRoomRuling] = useState("");
   const [roomNotices, setRoomNotices] = useState<RoomRecordEvent[]>([]);
   const seenRoomEventIdsRef = useRef(new Set<string>());
+  const dismissedRoomEventIdsRef = useRef(new Set<string>());
+  const [roomChangeStatus, setRoomChangeStatus] = useState({ pending: 0, failed: 0, rejected: 0 });
+  const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<{ submissionId: string; domain: string }[]>([]);
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
   const lastRoomActivitySentRef = useRef(0);
   const lastRoomDeliberateAtRef = useRef(0);
@@ -13192,7 +13238,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const receiveRoomRecordEvents = useCallback((events: readonly RoomRecordEvent[]) => {
     const fresh: RoomRecordEvent[] = [];
     for (const event of events) {
-      if (seenRoomEventIdsRef.current.has(event.id)) continue;
+      if (seenRoomEventIdsRef.current.has(event.id) || dismissedRoomEventIdsRef.current.has(event.id)) continue;
       seenRoomEventIdsRef.current.add(event.id);
       fresh.push(event);
     }
@@ -13201,6 +13247,60 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const roomSendInFlightRef = useRef(false);
   /** What the room's last attempt had to say, and empty when it has nothing to. */
   const [roomError, setRoomError] = useState("");
+  useEffect(() => {
+    if (!room?.id || room.memoryMode !== "live") return;
+    setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
+    setRoomUnresolvedChanges([]);
+    let stopped = false,
+      timer: ReturnType<typeof setTimeout>;
+    let cursor = "";
+    const poll = async () => {
+      try {
+        const answer = await request<{
+          changes: { notices: RoomRecordEvent[] }[];
+          notices: RoomRecordEvent[];
+          dismissedNoticeIds: string[];
+          processingSummary: typeof roomChangeStatus;
+          nextCursor: string;
+          hasMore: boolean;
+          unresolved: { submissionId: string; domain: string }[];
+        }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`);
+        if (stopped) return;
+        for (const id of answer.dismissedNoticeIds ?? []) dismissedRoomEventIdsRef.current.add(id);
+        setRoomNotices((current) => current.filter((event) => !dismissedRoomEventIdsRef.current.has(event.id)));
+        receiveRoomRecordEvents([
+          ...(answer.notices ?? []),
+          ...(answer.changes ?? []).flatMap((change) => change.notices ?? []),
+        ]);
+        setRoomChangeStatus(answer.processingSummary ?? { pending: 0, failed: 0, rejected: 0 });
+        setRoomUnresolvedChanges(answer.unresolved ?? []);
+        cursor = answer.nextCursor ?? cursor;
+        timer = setTimeout(() => void poll(), answer.hasMore ? 25 : 1500);
+      } catch {
+        if (!stopped) timer = setTimeout(() => void poll(), 3000);
+      }
+    };
+    void poll();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [room?.id, room?.memoryMode, receiveRoomRecordEvents]);
+  const dismissRoomNotice = useCallback(
+    (id: string) => {
+      if (!room?.id) return;
+      dismissedRoomEventIdsRef.current.add(id);
+      setRoomNotices((current) => current.filter((event) => event.id !== id));
+      void request(`/rooms/${encodeURIComponent(room.id)}/notices/${encodeURIComponent(id)}/dismiss`, {
+        method: "POST",
+      }).catch((cause) => {
+        dismissedRoomEventIdsRef.current.delete(id);
+        seenRoomEventIdsRef.current.delete(id);
+        setRoomError(messageFrom(cause, "The notice dismissal could not be saved. It will return after refresh."));
+      });
+    },
+    [room?.id],
+  );
   const [roomGreetingError, setRoomGreetingError] = useState<{ sessionId: string; message: string } | null>(null);
   const [roomGreetingNotice, setRoomGreetingNotice] = useState("");
   /**
@@ -16606,7 +16706,37 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             privateSpaceOwnerName={nameOfCharacter(room.privateAccessOwnerId)}
             onEnd={() => void closeRoom()}
             notices={roomNotices}
-            onDismissNotice={(id) => setRoomNotices((current) => current.filter((event) => event.id !== id))}
+            onDismissNotice={dismissRoomNotice}
+            changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
+            unresolvedChanges={roomUnresolvedChanges}
+            onRetryChangeInterpretation={(submissionId, domain) => {
+              if (!room?.id || roomBusy) return;
+              setRoomBusy(true);
+              void request(
+                `/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/interpret`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({ domain, retryOfAttemptId: room.operation?.attemptId }),
+                },
+              )
+                .catch(async (cause) => {
+                  setRoomError(messageFrom(cause, "Interpretation needs an explicit retry."));
+                  const result = await request<{ operation: RoomOperation | null }>(
+                    `/rooms/${encodeURIComponent(room.id)}/operation`,
+                  ).catch(() => null);
+                  if (result)
+                    setRoom((current) =>
+                      current?.id === room.id ? { ...current, operation: result.operation } : current,
+                    );
+                })
+                .finally(() => setRoomBusy(false));
+            }}
+            onReplayChanges={() => {
+              if (!room?.id) return;
+              void request(`/rooms/${encodeURIComponent(room.id)}/changes/replay`, { method: "POST" }).catch((cause) =>
+                setRoomError(messageFrom(cause, "Saved changes could not be replayed.")),
+              );
+            }}
             debugDiscardEnabled={debugDiscardEnabled}
             onDebugDiscard={() => void discardRoomDebug()}
             onLeavePending={() => void leaveRoomPending()}
@@ -16635,11 +16765,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             onProjects={() => openMenu("projects")}
             onProposals={() => openMenu("venueRequests")}
             sceneSettings={
-              <DecisionsControl
-                sceneId={room.id}
-                busy={roomBusy || room.operation?.status === "running"}
-                api={request}
-              />
+              <>
+                <DecisionsControl
+                  sceneId={room.id}
+                  busy={roomBusy || room.operation?.status === "running"}
+                  api={request}
+                />
+                {room.memoryMode === "live" ? (
+                  <SavedChangesDiagnostics key={room.id} sceneId={room.id} api={request} />
+                ) : null}
+              </>
             }
           />
         ) : (

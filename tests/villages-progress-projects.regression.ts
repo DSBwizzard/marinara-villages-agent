@@ -45,6 +45,8 @@ import type {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
 
 const records = new Map<string, any>();
+let faultTask = "",
+  faultAfterWrite = false;
 const documents = {
   async getById(_packageId: string, id: string) {
     return records.get(id) ?? null;
@@ -60,8 +62,15 @@ const documents = {
   async update(input: any) {
     const previous = records.get(input.id);
     if (!previous || previous.revision !== input.expectedRevision) return null;
+    const addedReceipt =
+      faultTask &&
+      input.id === "villages-village" &&
+      (input.data.progressTasks.find((task: any) => task.definition.id === faultTask)?.receipts.length ?? 0) >
+        (previous.data.progressTasks.find((task: any) => task.definition.id === faultTask)?.receipts.length ?? 0);
+    if (addedReceipt && !faultAfterWrite) throw new Error("Project owner write failed");
     const row = { ...previous, ...input, revision: previous.revision + 1 };
     records.set(input.id, row);
+    if (addedReceipt && faultAfterWrite) throw new Error("Project owner acknowledgement lost");
     return row;
   },
   async remove(_packageId: string, id: string) {
@@ -270,7 +279,69 @@ async function main() {
       "rejected",
     );
     await assert.rejects(readSceneChanges(recorded.sessionId, "-1"), /cursor/);
-    assert.equal((await readSceneChanges(recorded.sessionId, "1")).changes.length, 0);
+    const lastChanges = await readSceneChanges(recorded.sessionId);
+    assert.equal((await readSceneChanges(recorded.sessionId, lastChanges.nextCursor)).changes.length, 0);
+    for (const after of [false, true]) {
+      const taskId = "fault-project-" + after;
+      await mutateVillageState((current) =>
+        current.progressTasks.push(
+          createProgressTask({
+            id: taskId,
+            revision: 1,
+            owner: { kind: "test", id: taskId },
+            resolver: "progress.noop",
+            phases: [
+              {
+                id: "evidence",
+                title: "Witnessed evidence",
+                requirements: [
+                  {
+                    id: "line",
+                    title: "Hear Rosa",
+                    routes: [
+                      {
+                        id: "saved",
+                        verifier: "core.saved-event",
+                        params: { speakerId: "rosa", venueId: "mill" },
+                        automatic: true,
+                        evidenceKinds: ["saved-resident-line"],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+        ),
+      );
+      const turn = saveTurn("A new Project exchange", "I checked this condition.");
+      const saved = records.get("villages-venue-visit-" + turn.sessionId).data;
+      saved.processingVersion = 1;
+      saved.villageSeed = village.seed;
+      const submission = saved.submissions[0];
+      submission.wishProposals = [];
+      submission.wishProposalError = "";
+      submission.processing = createExchangeProcessing({
+        seed: village.seed,
+        sceneId: turn.sessionId,
+        submissionId: turn.submissionId,
+        order: 0,
+        lineIds: saved.lines.map((line: any) => line.id),
+        actionReceiptIds: [],
+      });
+      for (const domain of ["memories", "relationships"]) submission.processing.domains[domain].status = "applied";
+      faultTask = taskId;
+      faultAfterWrite = after;
+      await processSavedExchange(turn.sessionId, turn.submissionId);
+      faultTask = "";
+      await processSavedExchange(turn.sessionId, turn.submissionId);
+      await processSavedExchange(turn.sessionId, turn.submissionId);
+      assert.equal(
+        (await readVillageState()).progressTasks.find((task) => task.definition.id === taskId)!.receipts.length,
+        1,
+        "the Project effect and its receipt survive replay once",
+      );
+    }
     await createNewVenueProject({
       name: "Lantern House",
       venueClass: "gathering",
