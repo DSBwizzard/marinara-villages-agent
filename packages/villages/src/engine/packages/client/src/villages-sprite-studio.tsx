@@ -3,6 +3,7 @@ import { STUDIO_CLEANUP_VERSION } from "../../server/src/services/villages/sprit
 import { createStudioRenderCache, type StudioRenderCache } from "./villages-sprite-render-cache.js";
 import { removeStudioMatte } from "../../server/src/services/villages/sprite-studio-matte.js";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SpriteCharacterLibrary } from "./villages-sprite-library.js";
 import {
   SPRITE_STYLES,
   STUDIO_EXPRESSIONS,
@@ -210,7 +211,7 @@ const css = `
 .vss input:not([type=checkbox]),.vss select,.vss textarea{min-width:0;width:100%;background:#0c172a;border:1px solid #405577;border-radius:.5rem;color:#eef2ff;padding:.6rem}
 .vss textarea{min-height:8rem;resize:vertical}.vss input[type=checkbox]{accent-color:#a390f3}
 .vss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:.6rem}
-.vss-card{display:grid;gap:.35rem;min-width:0;padding:.5rem;border:1px solid var(--ss-border);border-radius:.65rem;background:#0d182b}
+.vss-card,.vss-character-card{display:grid;gap:.35rem;min-width:0;padding:.5rem;border:1px solid var(--ss-border);border-radius:.65rem;background:#0d182b;overflow-wrap:anywhere}
 .vss-card button{padding:.25rem;display:grid;place-items:center}.vss-card canvas,.vss-card img{height:125px;max-width:100%;object-fit:contain}
 .vss-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem}.vss-source{width:100%;max-height:240px;background:#0c1524}
 .vss-error{border:1px solid #e28c91;background:#472739;padding:.75rem;border-radius:.6rem;overflow-wrap:anywhere}
@@ -749,11 +750,55 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
               <h3>Create sprites</h3>
               <div className="vss-fields">
                 <label>
+                  Style source
+                  <select
+                    aria-label="Style source"
+                    value={settings.styleSelection?.kind ?? "studio"}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        styleSelection:
+                          event.target.value === "profile"
+                            ? { kind: "profile", profileId: data.styleProfiles?.profiles[0]?.id ?? "" }
+                            : { kind: event.target.value as "default" | "studio" },
+                      })
+                    }
+                  >
+                    <option value="default">Engine’s configured style</option>
+                    <option value="profile">Engine profile</option>
+                    <option value="studio">Studio preset / custom</option>
+                  </select>
+                </label>
+                {settings.styleSelection?.kind === "profile" ? (
+                  <label>
+                    Engine profile
+                    <select
+                      aria-label="Engine profile"
+                      value={settings.styleSelection.profileId}
+                      onChange={(event) =>
+                        setSettings({ ...settings, styleSelection: { kind: "profile", profileId: event.target.value } })
+                      }
+                    >
+                      {data.styleProfiles?.profiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                <label>
                   Art style
                   <select
                     aria-label="Art style"
                     value={settings.style}
-                    onChange={(event) => setSettings({ ...settings, style: event.target.value as StudioStyle })}
+                    onChange={(event) =>
+                      setSettings({
+                        ...settings,
+                        style: event.target.value as StudioStyle,
+                        styleSelection: { kind: "studio" },
+                      })
+                    }
                   >
                     <option value="PAPERCRAFT">Papercraft</option>
                     <option value="BATTLEHIGHWAY">Battle Highway</option>
@@ -874,6 +919,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                 <label>
                   Drawing instructions
                   <textarea
+                    disabled={settings.styleSelection?.kind !== "studio"}
                     value={settings.prompts[settings.style]}
                     maxLength={6000}
                     onChange={(event) =>
@@ -885,6 +931,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                   />
                 </label>
                 <button
+                  disabled={settings.styleSelection?.kind !== "studio"}
                   onClick={() =>
                     setSettings({
                       ...settings,
@@ -909,6 +956,15 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                   ))}
                 </details>
               </details>
+              {data.styleError ? <p className="vss-hint">{data.styleError}</p> : null}
+              <SpriteCharacterLibrary
+                characterId={villager.characterId}
+                request={request}
+                data={data}
+                onData={setData}
+                onSaved={saved}
+                mode="adopt"
+              />
               <details>
                 <summary>Import images or a sheet</summary>
                 <label>
@@ -1024,6 +1080,14 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                   </button>
                 </div>
               </details>
+              <SpriteCharacterLibrary
+                characterId={villager.characterId}
+                request={request}
+                data={data}
+                onData={setData}
+                onSaved={saved}
+                mode="publish"
+              />
               <div className="vss-library">
                 <div className="vss-gallery">
                   {!data.jobs.length ? (
@@ -1039,11 +1103,12 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                     return (
                       <article key={job.id} className="vss-panel" aria-label={"Batch " + job.id}>
                         <h3>
-                          {job.style === "PAPERCRAFT"
-                            ? "Papercraft"
-                            : job.style === "BATTLEHIGHWAY"
-                              ? "Battle Highway"
-                              : job.style || job.model || "Saved batch"}
+                          {job.resolvedStyle?.name ||
+                            (job.style === "PAPERCRAFT"
+                              ? "Papercraft"
+                              : job.style === "BATTLEHIGHWAY"
+                                ? "Battle Highway"
+                                : job.style || job.model || "Saved batch")}
                         </h3>
                         <small>
                           {new Date(job.createdAt).toLocaleString()} · {job.model} · {job.attempted} submitted /{" "}
@@ -1163,6 +1228,7 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                                           ? {
                                               ...prior,
                                               style,
+                                              styleSelection: job.frozenSettings?.styleSelection ?? { kind: "studio" },
                                               connectionId: job.connectionId || prior.connectionId,
                                               prompts: {
                                                 ...prior.prompts,
