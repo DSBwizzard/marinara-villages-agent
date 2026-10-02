@@ -114,7 +114,7 @@ async function run() {
       "FOUNDING PREMISE",
     ])
       assert.ok(prompt.includes(fragment), fragment);
-    assert.ok(prompt.includes("cannot reauthor a character"));
+    assert.ok(prompt.includes("prose preferences cannot reauthor them"));
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("present tense"));
     assert.ok(prompt.includes('Address the player as "you"'));
