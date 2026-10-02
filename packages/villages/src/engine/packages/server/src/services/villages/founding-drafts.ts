@@ -119,14 +119,14 @@ export async function seedFoundingVenueDetails(
       content: [
         "Seed a few observable initial physical details for each founding Venue.",
         "Player-written names, form, exterior and interior descriptions are authoritative. Never replace or redefine them.",
-        "Use Day 1 selectively for plausible initial condition; do not repeat it in every Venue.",
+        "Use shared starting circumstances selectively for plausible initial condition; do not invent completed player actions or repeat the premise in every Venue.",
         "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
         'Return JSON only: {"venues":[{"id":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
         "Respect the actual layout. Exterior-only venues have no interior. A Private Space can be the entire interior with no Common Space. Seed only observable exterior/Common Space details, never private contents.",
         "Use short concrete details. Empty lists and an empty condition are valid where nothing is established.",
       ].join("\n"),
     },
-    { role: "user", content: JSON.stringify({ setting: setting.slice(0, 2000), lore, venues: rows }) },
+    { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
   ];
   const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2000, 2000) });
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
@@ -210,7 +210,7 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
     [
       `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
       area === "exterior"
-        ? "Show the building and approach from outside, not an interior."
+        ? "Show the described Venue entrance and approach, not its enterable interior. A room's approach can be a corridor within a larger building; do not invent a detached building or outdoor surroundings."
         : "Show the described enterable space from inside, not the exterior.",
       `${area} description, follow closely: ${areaDescription}.`,
       row.layout
@@ -223,7 +223,7 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
       character ? `Occupant context, reflect preferences in the space without depicting people: ${character}.` : "",
       lore ? `Established lore: ${lore}.` : "",
       asTrimmedString(input.foundingDetails)
-        ? `Day 1 context where visually relevant: ${asTrimmedString(input.foundingDetails).slice(0, 600)}`
+        ? `Starting circumstances where visually relevant: ${asTrimmedString(input.foundingDetails).slice(0, 600)}`
         : "",
     ],
     input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),

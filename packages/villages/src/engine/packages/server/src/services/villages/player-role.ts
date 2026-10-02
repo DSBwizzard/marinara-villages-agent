@@ -3,9 +3,9 @@ import type { VillagePlayerRole } from "./types.js";
 
 export const DEFAULT_PLAYER_ROLE: Readonly<VillagePlayerRole> = {
   enabled: true,
-  title: "Village Steward",
+  title: "Project Coordinator",
   explanation:
-    "The village recognizes you as its trusted coordinator. Residents bring you proposals for improvements, and you help organize Projects, find willing builders, and see agreed plans through.",
+    "People here recognize you as the coordinator for shared Projects. You help consider proposals, find willing builders, and see agreed plans through.",
 };
 export const PLAYER_ROLE_TITLE_MAX_LENGTH = 80;
 export const PLAYER_ROLE_EXPLANATION_MAX_LENGTH = 1_000;

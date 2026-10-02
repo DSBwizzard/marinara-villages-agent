@@ -1,3 +1,4 @@
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -80,8 +81,9 @@ export async function draftScenarioImprint(value: unknown): Promise<{ imprint: V
   const input = record(value);
   const premise = asTrimmedString(input.foundingDetails);
   const setting = asTrimmedString(input.setting);
-  if (!premise || premise.length > 2_000) throw badRequest("Describe Day 1 in at most 2,000 characters.");
-  if (!setting || setting.length > 2_000) throw badRequest("Describe what the village is like first.");
+  if (!premise || premise.length > 2_000)
+    throw badRequest("Describe shared starting circumstances in at most 2,000 characters.");
+  if (!setting || setting.length > 2_000) throw badRequest("Describe the place and world first.");
   const direction = asTrimmedString(input.foundingGuidance).slice(0, 500);
   const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
   const budget = input.loreTokenBudget === undefined ? 800 : readLoreTokenBudget(input.loreTokenBudget);
@@ -93,10 +95,11 @@ export async function draftScenarioImprint(value: unknown): Promise<{ imprint: V
     {
       role: "system",
       content: [
-        "Propose compact, editable details for Day 1 of a fictional village.",
-        "The village begins on Day 1. Distinguish events before the village existed, lasting present world facts, temporary Day 1 conditions, and visual cues.",
-        "Leave origin empty unless the player describes earlier background. Never claim the village was already founded before Day 1.",
-        "An Open beginning has no preset story, but the player's Day 1 description is authoritative.",
+        "Propose compact, editable grounding for the start of play in a shared place.",
+        VILLAGE_SHARED_SETTING_RULE,
+        "Distinguish earlier background, ongoing world conditions, temporary starting conditions, and visual cues. Starting play does not mean the place or group has just been established.",
+        "Leave origin empty unless the player describes earlier background. Do not invent arrivals, shared relationships, player actions, or completed events.",
+        "No preset supplies no story. The player's shared starting circumstances are authoritative background, not a script or a guaranteed future.",
         "Treat the player's text and established lore as authoritative. Do not invent named people, relationships, possessions, or completed events.",
         "Offer specific, grounded suggestions without making every resident or venue repeat the same theme.",
         'Return JSON only: {"origin":"","worldFacts":[],"openingConditions":[],"visualCues":[]}.',

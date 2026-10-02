@@ -210,7 +210,7 @@ async function main() {
       moment,
     ),
     [
-      "A wide, empty exterior view of the mill pond and its approach in Willowbrook. Show the building from outside; do not show an interior.",
+      "A wide, empty exterior view of the mill pond and its approach in Willowbrook. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.",
       "Venue roles: other.",
       "Venue form: where the grain is ground.",
       `Village setting and theme: ${setting}.`,
@@ -1053,7 +1053,7 @@ async function main() {
   );
   assert.ok(
     request.appearance.startsWith(
-      "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show the building from outside; do not show an interior.",
+      "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.",
     ),
     "the picture is of the place, with its own note",
   );
@@ -1134,6 +1134,7 @@ async function main() {
       (file) =>
         file.source.includes("AVATAR_GENERATION_PATH") ||
         file.source.includes(AVATAR_PATH) ||
+        file.source.includes("/api/sprites/generate-sheet") ||
         file.source.includes("generateVillageLocationImage"),
     )
     .map((file) => relative(packageRoot, file.path).split(sep).join("/"))

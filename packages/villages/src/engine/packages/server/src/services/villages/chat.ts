@@ -1,3 +1,4 @@
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { relationshipWritingPrompt } from "./relationships.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 // Villages — shared resident prompt and memory helpers.
@@ -502,6 +503,7 @@ export function renderSceneContextBlock(
     `You are ${card.name}, and you live in ${village.name}. Everything below is true at this moment, and it is what you know about the place you are in.`,
     "It is background, not a script. Nobody here is waiting for you to say any particular thing, and nothing below is a line to repeat.",
     body,
+    body.includes(VILLAGE_SHARED_SETTING_RULE) ? "" : VILLAGE_SHARED_SETTING_RULE,
     playerRoleContext,
   ]
     .filter(Boolean)

@@ -160,7 +160,8 @@ async function main() {
     /locked/,
   );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
-  assert.throws(() => validateFirstDayDescription("", true), /Describe the village's first day/);
+  assert.doesNotThrow(() => validateFirstDayDescription("We share the rent.", true));
+  assert.throws(() => validateFirstDayDescription("", true), /Describe what brings you and the others together here/);
   assert.doesNotThrow(() => validateFirstDayDescription("They gather at dawn.", true));
   assert.doesNotThrow(() => validateFirstDayDescription("", false), "older founded villages keep their record");
   await assert.rejects(
@@ -170,7 +171,7 @@ async function main() {
       foundingDetails: "They gather at dawn.",
       foundingGuidance: "A secret quest",
     }),
-    /Open beginning does not use/,
+    /No preset does not use/,
   );
   await assert.rejects(
     runVillageSetup({
@@ -234,9 +235,9 @@ async function main() {
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
   assert.ok(client.includes("photoPins={setupStep >= 3}"));
   assert.ok(client.includes('"Village Beginning"'));
-  assert.ok(client.includes("What is this village like?"));
-  assert.ok(client.includes("What happens on the village&apos;s first day?"));
-  assert.ok(client.includes("Open beginning"));
+  assert.ok(client.includes("Where are we?"));
+  assert.ok(client.includes("What brings you and the others together here?"));
+  assert.ok(client.includes("No preset"));
   assert.ok(client.includes("Search lorebooks"));
   const editor = await readFile(join(clientRoot, "villages-founding-editor.tsx"), "utf8");
   assert.ok(client.includes("FoundingVenueEditor"));
@@ -252,7 +253,7 @@ async function main() {
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
   const review = client.split("{setupStep === 4 ? (")[1]?.split("{setupProblem ? (")[0] ?? "";
   assert.ok(review.includes("Review your village"));
-  assert.ok(review.includes("Day 1:"));
+  assert.ok(review.includes("Starting circumstances:"));
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
   assert.equal(routes.includes('"/setup/venues/draft"'), false);

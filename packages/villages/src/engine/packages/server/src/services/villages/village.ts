@@ -3686,9 +3686,9 @@ export function assertFoundingScenarioLocked(
     throw conflict("The founding Scenario is locked. Start a new village to choose another one.");
 }
 
-/** Existing villages keep their locked beginning, including older records without a first-day account. */
+/** Existing villages keep their locked beginning, including older records without starting circumstances. */
 export function validateFirstDayDescription(description: string, founding: boolean): void {
-  if (founding && !description.trim()) throw badRequest("Describe the village's first day.");
+  if (founding && !description.trim()) throw badRequest("Describe what brings you and the others together here.");
 }
 
 export async function runVillageSetup(input: {
@@ -3713,7 +3713,7 @@ export async function runVillageSetup(input: {
 }): Promise<VillageSnapshot> {
   const name = readVillageName(input.name);
   const setting = readVillageSetting(input.setting);
-  if (setting.length === 0) throw badRequest("Say what the village is like before founding it.");
+  if (setting.length === 0) throw badRequest("Describe the place and world before founding.");
   const foundingReason = asTrimmedString(input.foundingReason);
   if (
     ![
@@ -3733,7 +3733,7 @@ export async function runVillageSetup(input: {
     throw badRequest("Choose a founding scenario.");
   }
   if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000) {
-    throw badRequest("The first-day description must be text of at most 2,000 characters.");
+    throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
   }
   const foundingDetails = input.foundingDetails.trim();
   if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
@@ -3744,7 +3744,7 @@ export async function runVillageSetup(input: {
   const loreTokenBudget =
     input.loreTokenBudget === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(input.loreTokenBudget);
   if (foundingReason === "none" && foundingGuidance) {
-    throw badRequest("Open beginning does not use a separate narrative direction.");
+    throw badRequest("No preset does not use a separate narrative direction.");
   }
   const village = await readVillageState();
   const founding = !isVillageFounded(village);

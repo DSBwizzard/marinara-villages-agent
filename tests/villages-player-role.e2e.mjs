@@ -117,11 +117,9 @@ try {
         await page.getByRole("button", { name: "Run setup again" }).click();
       } else {
         await page.getByRole("textbox", { name: "What is this village called?" }).fill("Harbor");
+        await page.getByRole("textbox", { name: "Where are we?" }).fill("A fishing village on sea cliffs.");
         await page
-          .getByRole("textbox", { name: "What is this village like?" })
-          .fill("A fishing village on sea cliffs.");
-        await page
-          .getByRole("textbox", { name: "What happens on the village's first day?" })
+          .getByRole("textbox", { name: "What brings you and the others together here?" })
           .fill("Neighbors arrived with damaged boats.");
       }
       await page.getByRole("button", { name: "Next →", exact: true }).click();
@@ -139,7 +137,7 @@ try {
         await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
       } else {
         const role = page.getByRole("group", { name: "Your place in the village" });
-        await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue(steward.title);
+        await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("Project Coordinator");
         await role.scrollIntoViewIfNeeded();
         await screenshot(page, "founding-" + width);
         assert.ok(

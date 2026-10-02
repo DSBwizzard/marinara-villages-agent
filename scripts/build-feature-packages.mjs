@@ -3107,11 +3107,11 @@ const features = [
     // 0.2.x still renders.
     // 0.6.0: continuous device-local time, exact repeating agenda intervals,
     // durable restart reconciliation, bounded story pacing, and return recaps.
-    version: "0.6.120",
+    version: "0.6.121",
     minEngineVersion: "2.4.6",
     maxEngineExclusive: MAX_ENGINE_EXCLUSIVE,
     name: "Villages",
-    description: "A text-first slice-of-life village that reconstructs elapsed life when you return.",
+    description: "A text-first shared-life sim in any setting that reconstructs elapsed life when you return.",
     // NOT a Tracker, and the value is spelled out rather than left to the
     // builder's `?? "misc"` so nobody helpfully puts it back. `tracker` is the
     // library's word for an agent whose JOB is to keep a number the player

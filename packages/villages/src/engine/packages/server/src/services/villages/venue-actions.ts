@@ -100,7 +100,7 @@ function actionMessages(
         "When the action physically adds an item, put its short name in addItem. When it removes an item, copy that item exactly from the listed furniture and items into removeItem. Otherwise use empty strings. Do not change a venue item for inspection or conversation.",
         'For an actual handoff of a listed item to a present resident, put that exact item in removeItem and the actual recipient ID in transferTo. For an actual pickup by the player, use transferTo:"player". Leave transferTo empty for consumption, destruction or other removal. recipientId belongs to notes and is not a transfer. A statement that delivery already happened is not a handoff. Never invent inventory or a recipient.',
         "An active trace is a small ongoing change that can be resolved later, such as a note, stain, open window, wet footprints, or dropped object. For a new trace use a short lowercase traceKind and descriptive traceText. A note needs the intended resident's ID in recipientId. To resolve an existing trace, copy its ID into resolveTraceId. Never alter a locked defining feature.",
-        `Village setting: ${setting || "A small village."}`,
+        `Village setting: ${setting || "A shared place with no specified physical form."}`,
         `Place: ${place.name}. Classes: ${place.classes?.join(", ") || "other"}. Form: ${place.form || "unspecified"}.`,
         `People present: ${people || "none"}. Do not invent words or consent from them.`,
         `Village residents: ${residents || "none"}.`,
