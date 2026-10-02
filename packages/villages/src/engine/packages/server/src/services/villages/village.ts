@@ -1,6 +1,6 @@
 import { relationshipZoneController } from "./relationship-store.js";
 import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
-import { relationshipPrompt, relationshipClosingNotices } from "./relationships.js";
+import { relationshipWritingPrompt, relationshipClosingNotices } from "./relationships.js";
 import { readBaseVenueLayout, assertResidencePrivateDestination } from "./venue-layout.js";
 import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
@@ -4861,7 +4861,7 @@ export async function reconcileVillage(
               !activeSocialPlan && storyAllowance(village.storyPace, village.seed, dateKey) > 1
                 ? socialPlanCandidates(village, now)
                 : [],
-            relationships: opportunity.actorIds.map((actorId) => relationshipPrompt(village, actorId)),
+            relationships: opportunity.actorIds.map((actorId) => relationshipWritingPrompt(village, actorId)),
           }
         : undefined,
     opportunities: [opportunity],

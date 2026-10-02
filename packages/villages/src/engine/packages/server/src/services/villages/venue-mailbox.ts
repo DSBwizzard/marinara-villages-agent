@@ -1,7 +1,7 @@
 import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { venueZones } from "./venue-zones.js";
 import { renderPlayerRoleContext } from "./player-role.js";
-import { relationshipPrompt } from "./relationships.js";
+import { relationshipWritingPrompt } from "./relationships.js";
 import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "./background-work.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -408,7 +408,7 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
           .map((entry) => ({
             characterId: entry.characterId,
             capturedAt: entry.cardSnapshot.capturedAt,
-            relationship: relationshipPrompt(village, entry.characterId),
+            relationship: relationshipWritingPrompt(village, entry.characterId),
             cardSnapshot: { name: entry.cardSnapshot.name, summary: entry.cardSnapshot.summary },
           })),
       },

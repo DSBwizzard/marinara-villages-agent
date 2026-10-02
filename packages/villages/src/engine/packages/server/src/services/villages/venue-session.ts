@@ -24,7 +24,12 @@ import {
   type ExchangeProcessing,
 } from "./exchange-processing.js";
 import { relationshipZoneController, mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
-import { relationshipPrompt, relationshipClosingNotices, captureRelationshipKnowledge } from "./relationships.js";
+import {
+  relationshipWritingPrompt,
+  relationshipPrompt,
+  relationshipClosingNotices,
+  captureRelationshipKnowledge,
+} from "./relationships.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
@@ -1670,7 +1675,7 @@ export async function prepareVenueTurnMessages(
     return [
       `${card.name} (${person.characterId})`,
       venueCardProfile(card, player.name, false),
-      relationshipPrompt(village, person.characterId),
+      relationshipWritingPrompt(village, person.characterId),
       "Relationships influence new Project requests alongside personal benefit and availability. A neutral resident may volunteer. Existing accepted commitments remain binding until explicitly withdrawn. Do not treat high scores as automatic romance.",
       `Scene activity: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}. Background agendas do not advance this Scene or relocate its residents. A resident may leave naturally after saying so.`,
       `Current Residence: ${

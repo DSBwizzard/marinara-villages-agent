@@ -19,6 +19,47 @@ import type {
 } from "./relationship-types.js";
 import type { VillageState } from "./types.js";
 
+/** Writing context describes particular relationships, never a replacement temperament. */
+export function relationshipWritingPrompt(village: VillageState, fromId: string): string {
+  const state = village.relationshipContext;
+  const targets = [
+    { id: "player", name: "the player" },
+    ...village.villagers.map((person) => ({ id: person.characterId, name: person.cardSnapshot.name })),
+  ].filter((target) => target.id !== fromId);
+  const name = (id: string) => targets.find((target) => target.id === id)?.name ?? id;
+  const ties = targets.flatMap((target) => {
+    const edge = relationshipFor(state, fromId, target.id);
+    const established = state?.startingTies.some(
+      (tie) => tie.fromId === fromId && tie.toId === target.id && tie.established,
+    );
+    if (!edge.familiarity && !edge.lastContactAt && !edge.warmth && !edge.trust && !established) return [];
+    const feelings = [
+      edge.warmth ? `warmth: ${relationshipLabel(edge.warmth, "warmth").toLowerCase()}` : "",
+      edge.trust ? `trust: ${relationshipLabel(edge.trust, "trust").toLowerCase()}` : "",
+    ].filter(Boolean);
+    return [`Toward ${target.name} (${target.id}): ${feelings.join("; ") || "shared contact or established history"}.`];
+  });
+  const experiences = Object.values(state?.receipts ?? {})
+    .filter((receipt) => receipt.fromId === fromId && receipt.before !== receipt.after)
+    .slice(-6)
+    .map((receipt) => `Your experience with ${name(receipt.toId)} (${receipt.at}): ${receipt.reason}`);
+  const encounters = (state?.socialEncounters ?? [])
+    .filter((entry) => entry.actorIds.includes(fromId))
+    .slice(-3)
+    .map(
+      (entry) =>
+        `Your recent shared experience (${entry.at}): ${entry.lines.map((line) => `${name(line.speakerId)}: ${line.content}`).join(" | ")}`,
+    );
+  return [
+    "Relationship context for this character's own perspective:",
+    "Where no Village history is recorded, use the card's usual approach to people. Missing history establishes neither distrust nor intimacy. Authored relationships still belong to the character; do not invent shared Village events.",
+    ...ties,
+    ...experiences,
+    ...encounters,
+    "These particular relationships and experiences can affect trust, affection, boundaries, and choices; they do not replace temperament, humor, expressiveness, or initiative. Friendship does not imply romance. Private reasons are known only to this character until they choose to share them.",
+  ].join("\n");
+}
+
 export function relationshipPrompt(village: VillageState, fromId: string): string {
   const state = village.relationshipContext;
   const targets = [
