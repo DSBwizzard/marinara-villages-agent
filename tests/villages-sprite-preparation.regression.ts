@@ -16,6 +16,12 @@ const rows = [
   { label: "sad", direction: "Lowered gaze, a slight release of the shoulders, no tears." },
 ];
 const parsed = parseStudioPreparation(answer(rows), expressions);
+const longDirection = "A composed, character-specific response. ".padEnd(516, "x");
+assert.equal(
+  parseStudioPreparation(answer([{ ...rows[0], direction: longDirection }, rows[1]]), expressions).expressions[1]!
+    .direction,
+  longDirection,
+);
 assert.deepEqual(
   parsed.expressions.map((entry) => entry.expressionId),
   ["e-sad", "e-surprise"],
@@ -30,7 +36,7 @@ for (const invalid of [
   answer([rows[0], rows[0]]),
   answer([rows[0], { label: "unknown", direction: "Pause." }]),
   answer([{ ...rows[0], direction: " " }, rows[1]]),
-  answer([{ ...rows[0], direction: "x".repeat(501) }, rows[1]]),
+  answer([{ ...rows[0], direction: "x".repeat(1001) }, rows[1]]),
   answer(rows, ""),
   answer(rows, "x".repeat(1001)),
 ])
@@ -60,6 +66,17 @@ assert.match(reserved, /Reserved but warm/);
 assert.match(reserved, /Lowered gaze/);
 assert.match(exuberant, /characteristically theatrical/);
 assert.notEqual(reserved, exuberant);
+const profile = studioPrompt({
+  ...base,
+  ...parsed,
+  view: "side",
+  facingPrompt: "Full right-facing profile of the head and body.",
+});
+assert.match(profile, /Full right-facing profile/);
+assert.doesNotMatch(profile, /cheating out|Face the viewer|opening the body/);
+const unrestricted = studioPrompt({ ...base, ...parsed, facingPrompt: "" });
+assert.doesNotMatch(unrestricted, /Facing guidance|Face the viewer|cheating out/);
+assert.match(STUDIO_PREPARATION_PROMPT, /view is only a saved slot label/);
 assert.match(reserved, /User pose constraint: Keep hands at her sides/);
 assert.match(reserved, /explicit written anatomy/);
 assert.match(reserved, /never omit clothing/);

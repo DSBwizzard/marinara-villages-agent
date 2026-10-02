@@ -2,7 +2,7 @@ export const SPRITE_STYLES = {
   PAPERCRAFT:
     "Preserve the reference character design, clothing, colors, anatomy, identifying features, and proportions. Render as a handcrafted 2D papercraft game character with bold clean near-black outlines and a distinct thin off-white paper-cut border around the silhouette. Construct flat overlapping cut-paper shapes with crisp angular cel-shaded color regions, subtle layered-paper depth, and tiny contact shadows between overlapping pieces. Apply matte handmade paper texture with fine fibers and gentle printed color variation to the character only. Slightly imperfect physical cut edges. Clean, expressive, polished storybook design. Avoid painterly rendering, realistic lighting, smooth gradients, glossy 3D materials, and photorealistic detail. Look like an illustrated paper character assembled from printed cutouts. Anatomy and proportions come from the character references, never from a new interpretation of the style.",
   BATTLEHIGHWAY:
-    "Use the reference image ONLY as a character-design reference for identity, species/anatomy, core outfit, colors, proportions, and defining features. Redraw the character strictly in the visual style of early-2000s Sonic Battle character art. Reconstruct the character from bold angular graphic shapes, not smooth modern anatomy. Use exaggerated proportions, a strong asymmetrical silhouette, and slightly hand-drawn, irregular contours. Build the design from large faceted masses, wedges, spikes, tapered limbs, and simplified shape clusters. Do not just take normal anatomy and make it slightly angular. Use thick dark outer outlines and selective thinner interior lines to divide important forms only. Group repeated details like feathers, fur, hair, folds, fingers, and accessories into a few large simplified shapes instead of many small ones. Use flat saturated colors with one large hard-edged shadow shape per major form and only occasional small highlight accents. Keep strong value separation and graphic cutout-like shading, not realistic form rendering. Include some medium-scale structural details that define the character, but remove microdetail. The final image should feel like Sonic Battle character key art: graphic, angular, simplified, lively, and highly readable, not polished modern anime art, not painterly, not vector-clean, and not realistic. No gradients, soft shading, painterly texture, glossy rendering, realistic lighting, detailed folds, excessive feather/fur/hair separation, or 3D volume.",
+    "Use the reference image ONLY as a character-design reference for identity, species/anatomy, core outfit, colors, proportions, and defining features. Redraw the character strictly in the visual style of early-2000s Sonic Battle character art. Reconstruct the character from bold angular graphic shapes, while preserving the character’s anatomy. Preserve the character’s described build, head-to-body ratio, limb lengths, and proportions. Use a strong silhouette and slightly hand-drawn, irregular contours. Build the design from large faceted masses, wedges, spikes, tapered limbs, and simplified shape clusters. Simplify the rendering into angular shapes without shortening limbs or redesigning the body. Use thick dark outer outlines and selective thinner interior lines to divide important forms only. Group repeated details like feathers, fur, hair, folds, fingers, and accessories into a few large simplified shapes instead of many small ones. Use flat saturated colors with one large hard-edged shadow shape per major form and only occasional small highlight accents. Keep strong value separation and graphic cutout-like shading, not realistic form rendering. Include some medium-scale structural details that define the character, but remove microdetail. The final image should feel like Sonic Battle character key art: graphic, angular, simplified, lively, and highly readable, not polished modern anime art, not painterly, not vector-clean, and not realistic. No gradients, soft shading, painterly texture, glossy rendering, realistic lighting, detailed folds, excessive feather/fur/hair separation, or 3D volume.",
   Custom: "",
 };
 export const STUDIO_NEGATIVE_PROMPT =
@@ -17,6 +17,19 @@ export type StudioResolvedStyle = {
   fingerprint: string;
 };
 export type StudioView = "front" | "side";
+export const STUDIO_POSE_MAX_LENGTH = 1000;
+export const STUDIO_FACING_PROMPTS: Record<StudioView, string> = {
+  front:
+    "Face the viewer squarely with head and torso forward. Keep both shoulders readable and the body front-facing. Express emotion through this character’s face, posture and gestures.",
+  side: "Focus on the conversation partner off-screen to the right. Turn the head and eyes toward them while opening the body toward the camera, like an actor cheating out on stage.",
+};
+export const defaultStudioFacingPrompts = (): Record<StudioStyle, Record<StudioView, string>> => ({
+  PAPERCRAFT: { ...STUDIO_FACING_PROMPTS },
+  BATTLEHIGHWAY: { ...STUDIO_FACING_PROMPTS },
+  Custom: { ...STUDIO_FACING_PROMPTS },
+});
+export const PREVIOUS_STUDIO_BATTLEHIGHWAY =
+  "Use the reference image ONLY as a character-design reference for identity, species/anatomy, core outfit, colors, proportions, and defining features. Redraw the character strictly in the visual style of early-2000s Sonic Battle character art. Reconstruct the character from bold angular graphic shapes, not smooth modern anatomy. Use exaggerated proportions, a strong asymmetrical silhouette, and slightly hand-drawn, irregular contours. Build the design from large faceted masses, wedges, spikes, tapered limbs, and simplified shape clusters. Do not just take normal anatomy and make it slightly angular. Use thick dark outer outlines and selective thinner interior lines to divide important forms only. Group repeated details like feathers, fur, hair, folds, fingers, and accessories into a few large simplified shapes instead of many small ones. Use flat saturated colors with one large hard-edged shadow shape per major form and only occasional small highlight accents. Keep strong value separation and graphic cutout-like shading, not realistic form rendering. Include some medium-scale structural details that define the character, but remove microdetail. The final image should feel like Sonic Battle character key art: graphic, angular, simplified, lively, and highly readable, not polished modern anime art, not painterly, not vector-clean, and not realistic. No gradients, soft shading, painterly texture, glossy rendering, realistic lighting, detailed folds, excessive feather/fur/hair separation, or 3D volume.";
 export const STUDIO_EXPRESSIONS = ["neutral", "happy", "sad", "angry", "surprised", "thinking"];
 export const STUDIO_MEANINGS: Record<string, string> = {
   neutral: "Relaxed, listening, or ordinary conversation.",
@@ -50,6 +63,7 @@ export type StudioIdentity = {
   appearance: string;
   style: string;
   view: StudioView;
+  facingPrompt?: string;
   referenceUrl?: string;
   references?: Array<{ url: string; role: string }>;
   character?: StudioCharacterContext;
@@ -84,6 +98,7 @@ export type StudioSettings = {
   styleSelection?: StudioStyleSelection;
   style: StudioStyle;
   prompts: Record<StudioStyle, string>;
+  facingPrompts?: Record<StudioStyle, Record<StudioView, string>>;
   connectionId: string;
   individual?: boolean;
   strategy?: "original" | "anchored";
@@ -285,9 +300,10 @@ export type StudioData = StudioState & {
 export const defaultStudioState = (): StudioState => ({
   version: 2,
   settings: {
-    styleSelection: { kind: "default" },
+    styleSelection: { kind: "studio" },
     style: "PAPERCRAFT",
     prompts: { ...SPRITE_STYLES },
+    facingPrompts: defaultStudioFacingPrompts(),
     connectionId: "",
     individual: false,
     cleanupEngine: "studio",
@@ -339,8 +355,8 @@ export type StudioPublication = {
 export function validateStudioCell(cell: StudioCell, sheet: Pick<StudioSheet, "width" | "height">): void {
   if (!cell || !/^[a-z0-9_-]{1,40}$/.test(cell.label) || !["front", "side"].includes(cell.view))
     throw new Error("Choose a valid view and expression label.");
-  if (typeof cell.pose !== "string" || cell.pose.length > 500)
-    throw new Error("Pose instructions must be at most 500 characters.");
+  if (typeof cell.pose !== "string" || cell.pose.length > STUDIO_POSE_MAX_LENGTH)
+    throw new Error("Pose instructions must be at most 1,000 characters.");
   if (
     ![cell.x, cell.y, cell.width, cell.height].every(Number.isInteger) ||
     cell.x < 0 ||
@@ -367,15 +383,13 @@ export function studioPrompt(input: {
   interpretation?: string;
   style: string;
   view: StudioView;
+  facingPrompt?: string;
   expressions: StudioRequestedExpression[];
   batch: StudioBatch;
   matteHex?: string;
   referenceRoles?: string[];
 }): string {
-  const gaze =
-    input.view === "front"
-      ? "Front view: face and look toward the viewer."
-      : "Right-facing three-quarter theatrical stance. Cheat the torso open toward the audience so the pose is readable, but direct the head, eyes, attention, and gestures toward another villager OFF-CANVAS TO THE RIGHT. Do NOT make eye contact with the viewer.";
+  const gaze = input.facingPrompt ?? STUDIO_FACING_PROMPTS[input.view];
   return [
     `Character: ${input.name}. ${input.appearance}`,
     "Explicit written anatomy is authoritative: preserve stated limb placement, flight structures, hands, feet, and absent features even if a reference or style suggests otherwise. Never add separate wings, limbs, or species features that contradict the description.",
@@ -394,7 +408,7 @@ export function studioPrompt(input: {
         ]
       : []),
     `Draw it in this style: ${input.style || "Preserve the visual style of the identity reference."}`,
-    gaze,
+    ...(gaze ? ["Facing guidance: " + gaze] : []),
     `Create ONE image, ${input.batch.width} by ${input.batch.height}, with exactly ${input.batch.cols} columns and ${input.batch.rows} rows of equal cells. Read cells left-to-right, top-to-bottom. Leave unused cells empty. No labels, cell frames, scenery, text, or floor shadows.`,
     `Each equal cell is ${input.batch.width / input.batch.cols} by ${input.batch.height / input.batch.rows} pixels. Vertical cuts: ${Array.from({ length: input.batch.cols - 1 }, (_, i) => ((i + 1) * input.batch.width) / input.batch.cols).join(", ") || "none"}; horizontal cuts: ${Array.from({ length: input.batch.rows - 1 }, (_, i) => ((i + 1) * input.batch.height) / input.batch.rows).join(", ") || "none"}. These are invisible crop boundaries, not drawn lines.`,
     "Every occupied cell contains one complete full-body character, including the top of the head, both feet and all gestures. Keep the silhouette within the central 80% of cell width and 76% of cell height, with at least 10% clear space above the head and 12% below the feet. Keep the same character proportions, camera distance and body scale across every cell. Align feet at 88% of each cell’s height. No body part may cross a crop boundary. Allow distinct character-grounded poses while preserving this character’s usual bearing and anatomy.",
