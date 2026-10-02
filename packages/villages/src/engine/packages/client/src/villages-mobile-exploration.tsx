@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
-import { groupMobileMapMarkers, type MobileMapBox, type MobileMapSize } from "./villages-mobile-map";
+import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
 const P = "marinara-capability-villages";
 
 export type ExplorationTab = "map" | "places" | "people" | "more";
 
-export type ExplorationSheet = { tab: "places" | "people" | "group"; ids?: string[] };
+export type ExplorationSheet = { tab: "places" | "people" };
 
 export type ExplorationRow = {
   id: string;
@@ -226,62 +226,47 @@ export function MobileMarkers({
   pins,
   picture,
   frame,
-  onGroup,
 }: {
   pins: ExplorationPin[];
   picture: MobileMapBox;
   frame: MobileMapSize;
-  onGroup: (ids: string[]) => void;
 }) {
-  const projected = pins.flatMap((pin) => {
-    const left = picture.left + pin.x * picture.width;
-    const top = picture.top + pin.y * picture.height + (pin.offsetY ?? 0);
-    if (left < 0 || top < 0 || left > frame.width || top > frame.height) return [];
-    return [
-      {
-        id: pin.id,
-        left: Math.max(Math.min(52, frame.width / 2), Math.min(frame.width - Math.min(52, frame.width / 2), left)),
-        top: Math.max(Math.min(34, frame.height / 2), Math.min(frame.height - Math.min(34, frame.height / 2), top)),
-        width: 100,
-        height: 64,
-      },
-    ];
-  });
   return (
     <>
-      {groupMobileMapMarkers(projected).map((group) => {
-        const members = pins.filter((pin) => group.ids.includes(pin.id));
-        const pin = members[0]!;
-        const clustered = members.length > 1;
+      {pins.map((pin) => {
+        const left = picture.left + pin.x * picture.width;
+        const top = picture.top + pin.y * picture.height + (pin.offsetY ?? 0);
+        if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
+        // The anchor stays at its projected location. Only its content aligns inward at an edge.
+        const contentLeft = Math.max(0, Math.min(frame.width - 100, left - 50)) - left;
+        const contentTop = Math.max(0, Math.min(frame.height - 64, top - 32)) - top;
         return (
-          <button
-            key={group.ids.join("|")}
-            type="button"
-            className={P + "-pin " + P + "-explore-marker"}
-            style={{ left: group.left, top: group.top }}
-            data-selected={members.some((member) => member.selected) ? "true" : "false"}
-            data-pin-id={clustered ? undefined : pin.id}
-            data-group-ids={clustered ? group.ids.join("|") : undefined}
-            data-kind={clustered ? "group" : (pin.kind ?? "place")}
-            aria-label={clustered ? "Explore " + members.length + " nearby places and people" : pin.text}
-            disabled={!clustered && !pin.onSelect}
-            onClick={(event) => {
-              event.stopPropagation();
-              if (clustered) onGroup(group.ids);
-              else pin.onSelect?.();
-            }}
-          >
-            {clustered ? (
-              <span className={P + "-explore-count"}>{members.length}</span>
-            ) : pin.kind === "person" ? (
-              (pin.face ?? <span className={P + "-explore-face"}>{pin.text[0]}</span>)
-            ) : (
-              <span className={P + "-explore-photo"}>
-                {pin.image ? <img src={pin.image} alt="" draggable={false} /> : <MapIcon name="places" />}
-              </span>
-            )}
-            <span className={P + "-explore-label"}>{clustered ? "Explore" : pin.text}</span>
-          </button>
+          <span key={pin.id} className={P + "-explore-anchor"} style={{ left, top }}>
+            <button
+              type="button"
+              className={P + "-pin " + P + "-explore-marker"}
+              style={{ left: contentLeft, top: contentTop }}
+              data-selected={pin.selected ? "true" : "false"}
+              data-pin-id={pin.id}
+              data-kind={pin.kind ?? "place"}
+              aria-label={pin.text}
+              title={pin.text}
+              disabled={!pin.onSelect}
+              onClick={(event) => {
+                event.stopPropagation();
+                pin.onSelect?.();
+              }}
+            >
+              {pin.kind === "person" ? (
+                (pin.face ?? <span className={P + "-explore-face"}>{pin.text[0]}</span>)
+              ) : (
+                <span className={P + "-explore-photo"}>
+                  {pin.image ? <img src={pin.image} alt="" draggable={false} /> : <MapIcon name="places" />}
+                </span>
+              )}
+              <span className={P + "-explore-label"}>{pin.text}</span>
+            </button>
+          </span>
         );
       })}
     </>
@@ -416,15 +401,16 @@ export const MOBILE_EXPLORATION_STYLES = `
 .${P}-explore-controls button { width: 48px; height: 48px; border: 1px solid #405984; border-radius: 10px; background: #111b35ed; color: #eef2ff; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; }
 .${P}-explore-controls svg { width: 23px; height: 23px; }
 .${P}-explore-controls button:disabled { opacity: .55; }
-.${P}-stage .${P}-explore-marker.${P}-pin { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: start; width: 100px; height: 64px; min-width: 48px; min-height: 48px; max-width: none; transform: translate(-50%, -50%); background: transparent; color: #eef2ff; border: 0; padding: 0; box-shadow: none; gap: 2px; cursor: pointer; z-index: 2; overflow: visible; }
+.${P}-explore-anchor { position: absolute; width: 0; height: 0; z-index: 2; }
+.${P}-explore-anchor:has([data-selected="true"]) { z-index: 3; }
+.${P}-home-full[data-mobile="true"] .${P}-stage .${P}-explore-marker.${P}-pin { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: start; width: 100px; height: 64px; min-width: 48px; min-height: 48px; max-width: none; box-sizing: border-box; transform: none; background: transparent; color: #eef2ff; border: 0; padding: 0; box-shadow: none; gap: 2px; cursor: pointer; z-index: 2; overflow: visible; }
 .${P}-explore-photo { display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; border: 2px solid #eee5d5; box-sizing: border-box; border-radius: 5px; background: #1c2e52; color: #c8d4ef; overflow: hidden; }
-.${P}-explore-photo img { width: 100%; height: 100%; object-fit: cover; }
+.${P}-explore-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .${P}-explore-photo svg { width: 24px; height: 24px; }
-.${P}-explore-face { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #eee5d5; background: #1c2e52; overflow: hidden; box-sizing: border-box; color: #eef2ff; }
-.${P}-explore-face img { width: 100%; height: 100%; object-fit: cover; }
+.${P}-explore-face { position: relative; display: grid; place-items: center; flex: 0 0 auto; width: 36px; height: 36px; min-width: 36px; max-width: 36px; min-height: 36px; max-height: 36px; border-radius: 50%; border: 2px solid #eee5d5; background: #1c2e52; overflow: hidden; box-sizing: border-box; color: #eef2ff; }
+.${P}-explore-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${P}-explore-label { max-width: 98px; height: 20px; padding: 2px 5px; box-sizing: border-box; border-radius: 5px; background: #111b35ef; color: #eef2ff; font-size: 11px; font-weight: 600; line-height: 16px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.${P}-explore-count { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; border: 2px solid #c8b2ff; background: #273963; color: white; font-size: 18px; font-weight: 700; box-sizing: border-box; }
-.${P}-explore-marker[data-selected="true"] .${P}-explore-photo, .${P}-explore-marker[data-selected="true"] .${P}-explore-face, .${P}-explore-marker[data-selected="true"] .${P}-explore-count { border-color: #ba9cff; box-shadow: 0 0 0 3px #9676ed; }
+.${P}-explore-marker[data-selected="true"] .${P}-explore-photo, .${P}-explore-marker[data-selected="true"] .${P}-explore-face { border-color: #ba9cff; box-shadow: 0 0 0 3px #9676ed; }
 .${P}-explore-sheet { position: absolute; z-index: 20; bottom: 0; left: 0; right: 0; display: flex; flex-direction: column; max-height: 82%; border: 1px solid #405984; border-radius: 16px 16px 5px 5px; background: #111b35fa; color: #eef2ff; box-shadow: 0 -6px 24px #050a1870; overflow: hidden; }
 .${P}-explore-sheet header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 0 12px; }
 .${P}-explore-sheet h2 { margin: 0; font-size: 18px; line-height: 1.3; overflow-wrap: anywhere; max-height: 3.9em; overflow-y: auto; }
@@ -434,8 +420,8 @@ export const MOBILE_EXPLORATION_STYLES = `
 .${P}-explore-search input { width: 100%; box-sizing: border-box; min-height: 44px; border: 1px solid #405984; border-radius: 8px; background: #1c2e52; color: #eef2ff; padding: 8px; font: inherit; font-size: 16px; }
 .${P}-explore-search input::placeholder { color: #b8c6df; }
 .${P}-explore-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 0 12px 10px; }
-.${P}-explore-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 60px; padding: 8px 0; border: 0; border-bottom: 1px solid #33476a; background: transparent; color: #eef2ff; text-align: left; font: inherit; cursor: pointer; }
-.${P}-explore-row > span:last-child { min-width: 0; }
+.${P}-explore-row { box-sizing: border-box; min-width: 0; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 60px; padding: 8px 0; border: 0; border-bottom: 1px solid #33476a; background: transparent; color: #eef2ff; text-align: left; font: inherit; cursor: pointer; }
+.${P}-explore-row > span:last-child { min-width: 0; flex: 1; }
 .${P}-explore-row strong, .${P}-explore-row small { display: block; overflow-wrap: anywhere; }
 .${P}-explore-row strong { font-size: 14px; }
 .${P}-explore-row small { color: #b8c6df; font-size: 12px; margin-top: 3px; }

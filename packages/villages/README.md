@@ -20,7 +20,7 @@ Physical handoffs use an explicit transfer receipt separate from a note's recipi
 
 ## Mobile map exploration
 
-On phones, Map, Places, People, and More sit below the map. Places and People open searchable sheets without moving the map. Readable venue thumbnails and resident portraits stay the same size while zooming; overlapping targets open a list of nearby places and people. A resident selects their currently mapped Venue. Selection shows a preview; only Visit starts entry. New Venue worksites retain their Project action.
+On phones, Map, Places, People, and More sit below the map. Places and People open searchable sheets without moving the map. Readable venue thumbnails and resident portraits stay the same size while zooming; each marker remains individual at its saved location. Venue thumbnails show the entire image, and saved avatar crops stay contained within compact portrait frames. A resident selects their currently mapped Venue. Selection shows a preview; only Visit starts entry. New Venue worksites retain their Project action.
 
 Notices opens the Noticeboard and shows its current entry count, not an unread count. Events remains available under More. Pinch, drag, zoom buttons, and Reset control the map; its view stays in the current tab when returning from menus, Venues, and Scenes. A replaced map resets that browsing view. Unpositioned Venues remain available in Places, and residents with unavailable locations remain visible in People.
 
