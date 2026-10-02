@@ -101,7 +101,7 @@ try {
       await page.goto("http://role.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       if (scenario.founded) {
-        await page.getByRole("button", { name: "Open settings menu" }).click();
+        await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
         await page.getByRole("button", { name: "Village Settings", exact: true }).click();
         const summary = page.getByRole("region", { name: "Your place in the village" });
         await expect(summary).toContainText(

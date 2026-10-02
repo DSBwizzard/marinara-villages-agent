@@ -134,7 +134,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
     // initial image/layout read; a key press can lose focus during that render.
     await page.locator('[data-pin-id="mill"]').click();
     await page
-      .locator(".marinara-capability-villages-doors")
+      .locator(".marinara-capability-villages-explore-sheet")
       .getByRole("button", { name: "Visit", exact: true })
       .click();
   }

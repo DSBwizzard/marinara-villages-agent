@@ -18,6 +18,12 @@ Regression fixtures verify routing, evidence binding, fallback, state validation
 
 Physical handoffs use an explicit transfer receipt separate from a note's recipient. A pickup removes actual recorded Zone inventory and names the player as its recipient. System can allocate that acquired item to a needed Project requirement from the witnessed context; Decisions does not authorize physical allocation. Older Project lifecycles use this path instead of treating supply speech as stock. Progress Engine Projects also require a previously selected matching physical source and its source receipt, without debiting inventory twice. Ambiguous allocation leaves the Project unchanged. Saved interpretation, current revision validation and one-time receipt claims protect retries.
 
+## Mobile map exploration
+
+On phones, Map, Places, People, and More sit below the map. Places and People open searchable sheets without moving the map. Readable venue thumbnails and resident portraits stay the same size while zooming; overlapping targets open a list of nearby places and people. A resident selects their currently mapped Venue. Selection shows a preview; only Visit starts entry. New Venue worksites retain their Project action.
+
+Notices opens the Noticeboard and shows its current entry count, not an unread count. Events remains available under More. Pinch, drag, zoom buttons, and Reset control the map; its view stays in the current tab when returning from menus, Venues, and Scenes. A replaced map resets that browsing view. Unpositioned Venues remain available in Places, and residents with unavailable locations remain visible in People.
+
 ## UI direction
 
 Venue Scenes use Engine's Roleplay Visual Novel presentation: a portrait and one paragraph above a compact send-arrow composer, with paragraph navigation and a history chevron. The left composer icon selects Chat, Knock / Call, or Conclude. Wishes are checked from relevant witnessed conversation and verified actions. View Mailbox appears in the top-right Venue menu only where accessible; Projects, Proposals, and Scene settings also live there. Scene settings contains the Decisions switch, interpretation checks, and read-only saved change diagnostics. Home's browser navigation hides while the Scene screen is open and returns when leaving it.

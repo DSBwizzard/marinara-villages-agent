@@ -289,7 +289,8 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
-    await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(width === 1440 ? 4 : 3);
+    if (!mobile)
+      await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(width === 1440 ? 4 : 3);
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
     await expect(home.locator(`[data-pin-id="${mobile ? "market" : "mill"}"]`)).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
@@ -330,7 +331,7 @@ try {
     await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: "Open settings menu" }).click();
+    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to the village" }).click();
 
@@ -338,7 +339,9 @@ try {
     const pin = home.locator(`[data-pin-id="${visitedId}"]`);
     await pin.focus();
     await page.keyboard.press("Enter");
-    const doors = home.locator(".marinara-capability-villages-doors");
+    const doors = home.locator(
+      mobile ? ".marinara-capability-villages-explore-sheet" : ".marinara-capability-villages-doors",
+    );
     await expect(doors.getByRole("button", { name: "Visit" })).toBeVisible();
     const bounds = await doors.boundingBox();
     assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "edge pin choices stay on screen");
@@ -588,7 +591,7 @@ try {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
       await home
-        .locator(".marinara-capability-villages-doors")
+        .locator(mobile ? ".marinara-capability-villages-explore-sheet" : ".marinara-capability-villages-doors")
         .getByRole("button", { name: /View venue/iu })
         .click();
       const headerActions = page.locator(".marinara-capability-villages-actions");

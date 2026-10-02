@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   focusedPhotoScale,
+  groupMobileMapMarkers,
   mobileCoverZoom,
   mobileDoorPoint,
   mobileGestureMoved,
@@ -81,6 +82,21 @@ assert.deepEqual(mobileDoorPoint({ left: 0, top: 0, width: 360, height: 600 }, f
   left: 90,
   top: 94,
 });
+
+// Screen-space grouping is reversible and leaves world coordinates unchanged.
+const marker = (id: string, left: number, top = 100) => ({ id, left, top, width: 100, height: 64 });
+const crowded = [marker("a", 50), marker("b", 140), marker("c", 220), marker("d", 500)];
+const beforeGrouping = structuredClone(crowded);
+const groups = groupMobileMapMarkers(crowded);
+assert.deepEqual(
+  groups.map((group) => group.ids),
+  [["a", "b", "c"], ["d"]],
+);
+assert.deepEqual(crowded, beforeGrouping);
+assert.equal(new Set(groups.flatMap((group) => group.ids)).size, crowded.length);
+assert.deepEqual(groupMobileMapMarkers([]), []);
+assert.equal(groupMobileMapMarkers([marker("a", 50), marker("b", 300)]).length, 2);
+assert.equal(groupMobileMapMarkers([marker("a", 50, 50), marker("b", 50, 122)]).length, 2);
 
 const source = readFileSync(
   resolve(

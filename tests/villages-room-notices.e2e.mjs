@@ -466,7 +466,7 @@ try {
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect(composer).toHaveCount(0, "a phone refresh after expiry opens on the map");
-  await page.getByRole("button", { name: "Open settings menu" }).click();
+  await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
   await page.getByRole("button", { name: "Relationships", exact: true }).click();
   await expect(page.getByRole("meter", { name: /Warmth toward you/u })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Directional relationship to edit" })).toHaveCount(0);

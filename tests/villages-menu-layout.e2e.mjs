@@ -117,6 +117,7 @@ try {
     { width: 390, height: 844, foreground: "#121212", surface: "#ffffff" },
     { width: 390, height: 650, foreground: "#121212", surface: "#ffffff" },
   ]) {
+    const mobile = width <= 704 || (width <= 880 && height <= 512);
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
     let failMemory = false;
@@ -184,7 +185,7 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
 
     const root = page.locator(`.${tag}-sectioned-menu`);
-    await page.getByRole("button", { name: "Open settings menu" }).click();
+    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
     await expect(root).toBeVisible();
     await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
     const nav = root.getByRole("navigation", { name: "Village menu pages" });
@@ -246,7 +247,7 @@ try {
       const old = document.querySelector(elementName);
       old.replaceWith(document.createElement(elementName));
     }, tag);
-    await page.getByRole("button", { name: "Open settings menu" }).click();
+    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
     await expect(root).toHaveAttribute("data-page", "index");
     await expect(nav).toBeVisible();
     await expect(nav.getByRole("button", { name: /^Homes \(/ })).toHaveCount(0);
@@ -254,7 +255,7 @@ try {
       await root.getByRole("button", { name: "Back to the village" }).click();
       await page.getByRole("button", { name: "Use the whole screen" }).click();
       await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName.toLowerCase())).toBe(tag);
-      await page.getByRole("button", { name: "Open settings menu" }).click();
+      await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
       await expect(root).toBeVisible();
       await expect(nav).toBeVisible();
       await expect(main).toBeVisible();
