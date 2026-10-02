@@ -1,0 +1,6 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@marinara-engine/shared": ["sources/package-shared.ts"] }
+  }
+}

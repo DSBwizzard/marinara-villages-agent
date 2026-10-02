@@ -161,6 +161,7 @@ function diagnose(files: readonly string[]): string[] {
     process.execPath,
     [
       compilerPath(),
+      "--ignoreConfig", // This guard checks explicit files; the root config supplies runtime test aliases.
       "--noEmit",
       "--target",
       "esnext",
