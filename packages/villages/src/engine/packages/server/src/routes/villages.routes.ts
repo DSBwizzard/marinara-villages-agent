@@ -1295,6 +1295,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // half founded by a step that failed in the middle.
   app.post<{
     Body: {
+      foundingCharacterIds?: unknown;
       name?: unknown;
       setting?: unknown;
       foundingReason?: unknown;
@@ -1319,6 +1320,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     try {
       const body = request.body ?? {};
       return await runVillageSetup({
+        foundingCharacterIds: body.foundingCharacterIds,
         name: body.name,
         setting: body.setting,
         foundingReason: body.foundingReason,

@@ -13,13 +13,23 @@ async function main() {
   const { coerceVillageState } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
   );
-  const { parsePlace, runVillageSetup, assertFoundingScenarioLocked, validateFirstDayDescription } = await import(
-    pathToFileURL(join(serverRoot, "services/villages/village.ts")).href
-  );
+  const {
+    parsePlace,
+    runVillageSetup,
+    assertFoundingScenarioLocked,
+    validateFirstDayDescription,
+    validateFoundingRoster,
+  } = await import(pathToFileURL(join(serverRoot, "services/villages/village.ts")).href);
   const { readScenarioImprint } = await import(
     pathToFileURL(join(serverRoot, "services/villages/scenario-imprint.ts")).href
   );
   const { readPersona } = await import(pathToFileURL(join(serverRoot, "services/villages/catalog.ts")).href);
+  const available = new Set(["a", "b", "c", "outsider"]);
+  assert.doesNotThrow(() => validateFoundingRoster(["a", "b"], new Set(["a", "b"]), available));
+  for (const ids of [[], ["a", "a"], ["gone"], ["a", "b", "c", "outsider"], [42], null])
+    assert.throws(() => validateFoundingRoster(ids, new Set(["a"]), available), /available founding villagers/);
+  for (const homes of [new Set(["a"]), new Set(["a", "outsider"]), new Set(["a", "b", "c"])])
+    assert.throws(() => validateFoundingRoster(["a", "b"], homes, available), /chosen in Step 2/);
   const persona = readPersona({
     id: "persona-a",
     data: {
@@ -234,7 +244,9 @@ async function main() {
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
   assert.ok(client.includes("photoPins={setupStep >= 3}"));
-  assert.ok(client.includes('"Village Beginning"'));
+  assert.ok(client.includes('"Persona & Connections"'));
+  assert.ok(client.includes('"Your Role & Villagers"'));
+  assert.ok(client.includes('"Village & Map"'));
   assert.ok(client.includes("Where are we?"));
   assert.ok(client.includes("What brings you and the others together here?"));
   assert.ok(client.includes("No preset"));
@@ -251,12 +263,13 @@ async function main() {
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
   assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
-  const review = client.split("{setupStep === 4 ? (")[1]?.split("{setupProblem ? (")[0] ?? "";
+  const review = client.split("{setupStep === 4 ? (")[1]?.split("{setupStep === 4 ? (")[0] ?? "";
   assert.ok(review.includes("Review your village"));
   assert.ok(review.includes("Starting circumstances:"));
   assert.equal(review.includes("onChange="), false, "the review must not edit fields");
   assert.equal(review.includes("Generate"), false, "the review must not draft content");
   assert.equal(routes.includes('"/setup/venues/draft"'), false);
+  assert.ok(routes.includes("foundingCharacterIds: body.foundingCharacterIds"));
   assert.ok(routes.includes('"/setup/venue-image/generate"'));
   assert.ok(routes.includes('"/setup/venue-image"'));
   assert.ok(routes.includes('"/setup/preparation/retry"'));

@@ -203,7 +203,7 @@ async function main() {
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  for (const step of ["Village Beginning", "Connections & Persona", "Village Map", "Starting Spaces", "Review"]) {
+  for (const step of ["Persona & Connections", "Your Role & Villagers", "Village & Map", "Starting Spaces", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/setup/town-map/generate"'));

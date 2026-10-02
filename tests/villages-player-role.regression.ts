@@ -57,7 +57,9 @@ async function main() {
     );
   assert.equal(readPlayerRole({ enabled: false, title: "", explanation: "" }).enabled, false);
   assert.equal(readPlayerRole({ ...custom, title: "x".repeat(80), explanation: "x".repeat(1000) }).title.length, 80);
-  assert.equal(playerRoleProblem(disabled), "");
+  assert.match(playerRoleProblem(disabled), /coordinates construction projects/);
+  assert.throws(() => playerRoleForSetup(null, disabled, true), /coordinates construction projects/);
+  assert.deepEqual(playerRoleForSetup(disabled, disabled, false), disabled, "saved roles stay compatible");
   assert.ok(playerRoleProblem({ ...custom, explanation: " " }));
   for (const next of [disabled, DEFAULT_PLAYER_ROLE, null])
     assert.throws(

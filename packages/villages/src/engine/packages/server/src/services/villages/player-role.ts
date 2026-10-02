@@ -47,6 +47,8 @@ export function playerRoleForSetup(
 ): VillagePlayerRole | null {
   if (submitted === undefined) return founding ? { ...DEFAULT_PLAYER_ROLE } : saved;
   const role = submitted === null && !founding ? null : readPlayerRole(submitted);
+  if (founding && !role?.enabled)
+    throw badRequest("In Villages, you are the one who coordinates construction projects.");
   if (!founding) assertPlayerRoleLocked(saved, role);
   return role;
 }
