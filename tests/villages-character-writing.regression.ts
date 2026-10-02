@@ -123,6 +123,55 @@ async function run() {
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
     assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Recent scene history:"));
+    row.data.playerRole = {
+      enabled: true,
+      title: "Local organizer",
+      explanation: "People know the player coordinates shared plans.",
+    };
+    for (const spaceClass of ["gathering", "residence"]) {
+      const exterior = {
+        ...session,
+        area: "outside",
+        spaceClass,
+        memoryMode: "live",
+        sceneAttendance: {
+          capturedAt: stamp,
+          occupants: [{ characterId: card.id, zoneId: "exterior", doing: "Checking a map", availability: "free" }],
+        },
+      };
+      const outside = await prepareVenueTurnMessages(exterior, "What do you like playing?", "chat", "", null);
+      const outsidePrompt = String(outside.fitted.messages[0].content);
+      assert.match(outsidePrompt, /player is in this (?:Venue|Residence)'s Exterior Zone/);
+      assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
+      assert.ok(outsidePrompt.includes("Local organizer"));
+      assert.ok(outsidePrompt.includes("People know the player coordinates shared plans."));
+      assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
+      assert.match(outsidePrompt, /Activity captured at Scene start: Checking a map/);
+      assert.match(outsidePrompt, /witnessed developments establish what is happening now/);
+      assert.match(
+        outsidePrompt,
+        /Shared historical background, separate from the current activity and individual ambitions/,
+      );
+      assert.ok(outsidePrompt.includes("FOUNDING PREMISE"), "history is retained in ordinary conversation");
+      assert.ok(outsidePrompt.includes("Every knower must directly witness EVERY cited line"));
+      assert.ok(outsidePrompt.includes("unconditional standing invitations are distinct"));
+      assert.ok(
+        outsidePrompt.includes(
+          "Speech about deeds, unsupported elsewhere-claims, promises, and impossible attempts have no physical effect",
+        ),
+      );
+      for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
+        assert.ok(outsidePrompt.includes(fragment), fragment);
+      const greeting = await prepareVenueTurnMessages(exterior, "", "greet", "", null);
+      assert.match(
+        String(greeting.fitted.messages.at(-1)?.content),
+        /arrives in this (?:Venue|Residence)'s Exterior Zone/,
+      );
+      if (spaceClass === "residence") {
+        assert.match(outsidePrompt, /without validated permission/);
+        assert.match(outsidePrompt, /Do not expose unseen interior details/);
+      } else assert.match(outsidePrompt, /do not describe them entering an interior/);
+    }
     const background = buildTickMessages({
       village: "Camp",
       setting: "Clearing",

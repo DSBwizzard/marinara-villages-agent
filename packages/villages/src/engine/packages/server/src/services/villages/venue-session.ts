@@ -38,7 +38,8 @@ import {
   RELATIONSHIP_REVIEW_INSTRUCTION,
 } from "./relationship-review.js";
 import type { RelationshipReview, RelationshipEvidenceLine, RelationshipReceipt } from "./relationship-types.js";
-import { renderPlayerRoleContext } from "./player-role.js";
+import { renderPlayerRoleWritingContext } from "./player-role.js";
+import { venueFoundingBackground } from "./venue-scene-context.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
 import { zoneControllerIds } from "./venue-zones.js";
 import { interpretRoomReply, dismissalDestination } from "./room-interpretation.js";
@@ -118,12 +119,7 @@ import {
   villagesLogger,
   villagesDebugAgentsEnabled,
 } from "./package-runtime.js";
-import {
-  MAX_CHRONICLE_LENGTH,
-  prependHappenings,
-  villageCurrentSetting,
-  villageRelevantOrigin,
-} from "./prompt-preset.js";
+import { MAX_CHRONICLE_LENGTH, prependHappenings, villageCurrentSetting } from "./prompt-preset.js";
 import type { VillageChronicleEntry, VillageMemoryCategory, VillageRecollection, VillageState } from "./types.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
@@ -1680,7 +1676,7 @@ export async function prepareVenueTurnMessages(
       [
         `${card.name} (${person.characterId})`,
         relationshipWritingPrompt(village, person.characterId),
-        `Scene activity: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}.`,
+        `Activity captured at Scene start: ${sceneOccupant?.doing || person.doing || "unspecified"}; availability at Scene start: ${sceneOccupant?.availability || "unspecified"}.`,
         `Current Residence: ${
           village.venues
             .filter((venue) => venueResidentIds(venue).includes(person.characterId))
@@ -1840,7 +1836,7 @@ export async function prepareVenueTurnMessages(
     circumstances: blocksFor([
       `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
       `The player is ${player.name}. ${player.description}`,
-      renderPlayerRoleContext(village),
+      renderPlayerRoleWritingContext(village),
       session.contactGeneration?.instruction ?? "",
       `Zone: ${storedPlace ? (resolveVenueZone(storedPlace, session.zoneId ?? "")?.name ?? session.area) : session.area} (${session.zoneId ?? "legacy"}). Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
         place?.state.traces
@@ -1860,12 +1856,12 @@ export async function prepareVenueTurnMessages(
         ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
         : "",
       `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
-      villageRelevantOrigin(village, `founding ${message}`),
-      `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
+      venueFoundingBackground(village),
+      `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Scene-start activities describe the opening situation; witnessed developments establish what is happening now. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
       session.area === "outside"
         ? session.spaceClass === "residence"
-          ? "The player is outside this Residence. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from outside. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
-          : "The player is outside this Venue. Show only what they can observe from outside; do not describe them entering an interior."
+          ? "The player is in this Residence's Exterior Zone, outside its interior. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from this Zone. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
+          : "The player is in this Venue's Exterior Zone. Show only what they can observe from this Zone; do not describe them entering an interior."
         : active.length
           ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
           : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
@@ -1965,8 +1961,8 @@ export async function prepareVenueTurnMessages(
     mode === "greet"
       ? session.area === "outside"
         ? session.spaceClass === "residence"
-          ? "The player arrives outside this Residence. Show a brief moment already underway from outside."
-          : "The player arrives outside this Venue. Show a brief moment already underway from outside."
+          ? "The player arrives in this Residence's Exterior Zone, outside its interior. Show a brief moment already underway from this Zone."
+          : "The player arrives in this Venue's Exterior Zone. Show a brief moment already underway from this Zone."
         : "The player enters this space. Show a brief moment already underway here."
       : mode === "leave" && !message.trim()
         ? "The player leaves without saying anything."

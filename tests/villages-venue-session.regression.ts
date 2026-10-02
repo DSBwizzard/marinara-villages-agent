@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_PLAYER_ROLE,
   renderPlayerRoleContext,
+  renderPlayerRoleWritingContext,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
 import { requestProjectMailbox } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
@@ -312,7 +313,7 @@ const release = configureVillagesRuntime({
             return { content: fixtureJson({ events: [] }), finishReason: "stop" };
           // This suite exercises foreground visits, not agenda prose. Block the agenda without a provider failure.
           if (system.startsWith("Describe a stable ordinary routine")) return { content: "{}", finishReason: "stop" };
-          if (user.startsWith("The player arrives outside this Residence"))
+          if (user.startsWith("The player arrives in this Residence's Exterior Zone"))
             return {
               content: fixtureJson({
                 heardPlayerBy: [],
@@ -1439,7 +1440,7 @@ async function main() {
     assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
     group = await greetVenue(group.id);
     assert.ok(
-      lastVenueSystem.includes(renderPlayerRoleContext(await readVillageState())),
+      lastVenueSystem.includes(renderPlayerRoleWritingContext(await readVillageState())),
       "venue greetings know the recognized role",
     );
     assert.doesNotMatch(

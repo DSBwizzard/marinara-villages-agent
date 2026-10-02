@@ -438,7 +438,7 @@ async function sceneAttendanceChecks() {
       ["chef"],
       "unseen Zones do not leak their cast",
     );
-    assert.match(lastPrompt, /Scene activity: captured activity chef/);
+    assert.match(lastPrompt, /Activity captured at Scene start: captured activity chef/);
     assert.doesNotMatch(lastPrompt, /later activity chef/);
     assert.deepEqual(
       (await activeVenueSession())!.activeIds,
