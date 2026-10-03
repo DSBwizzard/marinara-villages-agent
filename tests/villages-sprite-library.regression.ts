@@ -203,9 +203,9 @@ globalThis.fetch = async (url, init) => {
 async function main() {
   try {
     const initial = await readSpriteStudio("mara");
-    assert.equal(initial.settings.styleSelection?.kind, "default");
+    assert.equal(initial.settings.styleSelection?.kind, "studio");
     assert.ok(!JSON.stringify(initial.styleProfiles).includes("DO_NOT_EXPOSE"));
-    const settings = defaultStudioState().settings,
+    const settings = { ...defaultStudioState().settings, styleSelection: { kind: "default" as const } },
       connection = {
         source: "automatic1111",
         defaults: {

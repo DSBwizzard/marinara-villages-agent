@@ -212,6 +212,7 @@ for (const profile of browserProfiles) {
               appearance: "Test character " + planRevision,
               style: body.settings.prompts[body.settings.style],
               view: body.view,
+              facingPrompt: body.settings.facingPrompts?.[body.settings.style]?.[body.view],
               expressions: body.expressions.slice(offset, offset + batch.count),
               batch,
               matteHex: "#FF00FF",
@@ -239,6 +240,8 @@ for (const profile of browserProfiles) {
         id: body.submissionId,
         model: "fixture",
         style: body.settings.style,
+        frozenSettings: structuredClone(body.settings),
+        stylePrompt: body.settings.prompts[body.settings.style],
         createdAt: new Date().toISOString(),
         status: "ready",
         phase: "review",
@@ -431,18 +434,63 @@ for (const profile of browserProfiles) {
       "advanced controls start closed",
     );
     assert.equal(await page.getByLabel("Upload reference", { exact: true }).count(), 0);
+    await expect(page.getByLabel("Style prompt", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Facing prompt", { exact: true })).toBeVisible();
+    await expect(page.getByRole("img", { name: /example placeholder, 512 by 768 pixels/ })).toHaveCount(4);
+    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
+    await page.getByLabel("Style prompt", { exact: true }).fill("My own angular drawing style.");
+    await expect(page.getByText("Edited", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Side · conversation stance", exact: true }).click();
+    await page.getByLabel("Facing prompt", { exact: true }).fill("Full right-facing profile.");
+    await page.getByRole("button", { name: "Papercraft", exact: true }).click();
+    await expect(page.getByLabel("Facing prompt", { exact: true })).toHaveValue(/cheating out/);
+    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
+    await expect(page.getByLabel("Style prompt", { exact: true })).toHaveValue("My own angular drawing style.");
+    await expect(page.getByLabel("Facing prompt", { exact: true })).toHaveValue("Full right-facing profile.");
+    await page.getByRole("button", { name: "Reset to template", exact: true }).click();
+    await page.getByRole("button", { name: "Reset facing prompt", exact: true }).click();
+    await page.getByRole("button", { name: "Front · facing you", exact: true }).click();
+    await page.getByRole("button", { name: "Papercraft", exact: true }).click();
+    for (const name of ["Smug", "Suspicious"]) {
+      await page.getByRole("button", { name: "+ Add expression", exact: true }).click();
+      const form = page.getByRole("form", { name: "New expression", exact: true });
+      await form.getByLabel("New expression name", { exact: true }).fill(name);
+      await form.getByLabel("Pose instructions · optional", { exact: true }).fill("A restrained, knowing look.");
+      await form.getByLabel("Use when · optional", { exact: true }).fill("When noticing an advantage.");
+      await form.getByRole("button", { name: "Add expression", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name, exact: true })).toBeChecked();
+    }
+    await expect(page.getByText("8 expressions · 2 image requests · Mock images")).toBeVisible();
+    assert.equal(generated, 0, "adding and editing prompts/expressions make no paid requests");
     await page.screenshot({ path: join(output, profile.name + "-create.png"), fullPage: true });
+    await page.getByRole("button", { name: "Edit expressions", exact: true }).click();
+    const edits = page.getByLabel("Edit expressions", { exact: true });
+    await edits.getByText("Edit Smug", { exact: true }).click();
+    const smugForm = edits.locator("details").filter({ has: page.getByText("Edit Smug", { exact: true }) });
+    await smugForm.getByLabel("Name", { exact: true }).fill("Self assured");
+    await smugForm.getByRole("button", { name: "Save expression", exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: "Self assured", exact: true })).toBeChecked();
+    for (const name of ["Self assured", "Suspicious"]) {
+      await edits.getByText("Edit " + name, { exact: true }).click();
+      await edits
+        .locator("details")
+        .filter({ has: page.getByText("Edit " + name, { exact: true }) })
+        .getByRole("button", { name: "Remove empty slot", exact: true })
+        .click();
+    }
+    await page.getByRole("button", { name: "Edit expressions", exact: true }).click();
+    await expect(page.getByText("6 expressions · 1 image request · Mock images")).toBeVisible();
     await page.getByText("Advanced", { exact: true }).click();
-    await page.getByLabel("Art style", { exact: true }).selectOption("BATTLEHIGHWAY");
+    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
 
-    await expect(page.getByLabel("Drawing instructions")).toContainText("Sonic Battle");
+    await expect(page.getByLabel("Style prompt", { exact: true })).toHaveValue(/Sonic Battle/);
     await page.getByText("Image request", { exact: true }).click();
     await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText("Sonic Battle");
     await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText(
       "exactly 3 columns and 2 rows",
     );
     await expect(page.getByLabel("Sheet 1 negative prompt", { exact: true })).toContainText("overlapping sprites");
-    await page.getByLabel("Art style", { exact: true }).selectOption("PAPERCRAFT");
+    await page.getByRole("button", { name: "Papercraft", exact: true }).click();
     await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText(
       "handcrafted 2D papercraft",
     );
@@ -494,7 +542,7 @@ for (const profile of browserProfiles) {
     await page.getByRole("button", { name: "Use this batch", exact: true }).click();
     await expect(page.locator(".vss-badge")).toHaveCount(6);
     await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByLabel("Art style", { exact: true }).selectOption("BATTLEHIGHWAY");
+    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
     await page.getByRole("button", { name: "Generate", exact: true }).click();
     await expect(page.locator(".vss-gallery article")).toHaveCount(2);
     await page.getByText("Gallery options", { exact: true }).click();

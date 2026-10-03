@@ -128,7 +128,7 @@ async function main() {
       assert.equal(body.promptOverrides[0].negativePrompt, batch.request!.negativePrompt);
       assert.equal(body.promptOverrides[0].negativePrompt, STUDIO_NEGATIVE_PROMPT);
       assert.match(body.promptOverrides[0].prompt, /Custom art with no outline/);
-      assert.match(body.promptOverrides[0].prompt, /Front view/);
+      assert.match(body.promptOverrides[0].prompt, /Face the viewer squarely/);
       assert.match(body.promptOverrides[0].prompt, /1024 by 1024/);
       assert.ok(
         body.promptOverrides[0].prompt.includes("exactly " + batch.cols + " columns and " + batch.rows + " rows"),
@@ -238,7 +238,7 @@ async function main() {
       });
       const submitted = requests.at(-1).promptOverrides[0];
       assert.ok(submitted.prompt.includes(style));
-      assert.match(submitted.prompt, /OFF-CANVAS TO THE RIGHT/);
+      assert.match(submitted.prompt, /off-screen to the right/);
       assert.match(submitted.prompt, /Cell 1: happy\. Running with arms raised/);
       assert.match(submitted.prompt, /Cell 2: thinking\. Hand on chin/);
       assert.equal(submitted.prompt, styledPlan.batches[0]!.request!.prompt);

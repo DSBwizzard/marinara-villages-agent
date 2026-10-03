@@ -11,6 +11,8 @@ import {
   defaultStudioState,
   SPRITE_STYLES,
   LEGACY_STUDIO_PAPERCRAFT,
+  PREVIOUS_STUDIO_BATTLEHIGHWAY,
+  STUDIO_FACING_PROMPTS,
   studioPrompt,
   validateStudioCell,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-studio-model.ts";
@@ -143,6 +145,8 @@ records.set(studioId, {
 records.get(studioId).data.settings.prompts.PAPERCRAFT = LEGACY_STUDIO_PAPERCRAFT;
 delete records.get(studioId).data.settings.styleSelection;
 records.get(studioId).data.jobs[0].stylePrompt = LEGACY_STUDIO_PAPERCRAFT;
+records.get(studioId).data.settings.prompts.BATTLEHIGHWAY = PREVIOUS_STUDIO_BATTLEHIGHWAY;
+delete records.get(studioId).data.settings.facingPrompts;
 const release = configureVillagesRuntime({
   languageModels: {
     async resolveForRequest() {
@@ -163,7 +167,7 @@ const release = configureVillagesRuntime({
                   interpretation: input.character.personality || "Warm and thoughtful",
                   expressions: input.expressions.map((entry: any) => ({
                     label: entry.label,
-                    direction: entry.userPose || "Soft eyes and a relaxed, attentive stance.",
+                    direction: preparedDirection || entry.userPose || "Soft eyes and a relaxed, attentive stance.",
                   })),
                 }),
             usage: { inputTokens: 100, outputTokens: 50 },
@@ -186,6 +190,7 @@ let calls = 0,
 let preparationCalls = 0,
   failPreparation = false,
   invalidPreparation = false;
+let preparedDirection = "";
 const preparationInputs: any[] = [];
 const requests: any[] = [];
 let savedWrites = 0,
@@ -372,6 +377,31 @@ async function main() {
     const initial = await readSpriteStudio("mara");
     assert.equal(initial.version, 2);
     assert.equal(initial.settings.prompts.PAPERCRAFT, SPRITE_STYLES.PAPERCRAFT);
+    assert.equal(initial.settings.prompts.BATTLEHIGHWAY, SPRITE_STYLES.BATTLEHIGHWAY);
+    assert.equal(initial.settings.facingPrompts!.PAPERCRAFT.front, STUDIO_FACING_PROMPTS.front);
+    const editedSettings = {
+      ...initial.settings,
+      prompts: { ...initial.settings.prompts, BATTLEHIGHWAY: "My angular style with deliberately exaggerated shapes." },
+      facingPrompts: {
+        ...initial.settings.facingPrompts!,
+        BATTLEHIGHWAY: { front: "", side: "Full right-facing profile." },
+      },
+    };
+    await saveSpriteStudioSettings("mara", editedSettings);
+    assert.deepEqual(
+      (await readSpriteStudio("mara")).settings,
+      editedSettings,
+      "custom style and empty/custom facing survive coercion",
+    );
+    await assert.rejects(
+      () =>
+        saveSpriteStudioSettings("mara", {
+          ...editedSettings,
+          facingPrompts: { ...editedSettings.facingPrompts, BATTLEHIGHWAY: { front: "x".repeat(6001), side: "" } },
+        }),
+      /6,000/,
+    );
+    await saveSpriteStudioSettings("mara", initial.settings);
     assert.equal(
       initial.jobs.find((j) => j.id === "old-job")!.stylePrompt,
       LEGACY_STUDIO_PAPERCRAFT,
@@ -935,7 +965,7 @@ async function main() {
       expressions: [{ label: "happy", pose: "" }],
       batch: a.plan.batches[0]!,
     });
-    assert.match(side, /OFF-CANVAS TO THE RIGHT/);
+    assert.match(side, /off-screen to the right/);
     assert.match(side, /intentional character outlines/);
     assert.doesNotMatch(side, /paper-cut|off-white/);
     const beforeLegacyJobs = (await readSpriteStudio("mara")).jobs.length;
@@ -1011,6 +1041,7 @@ async function main() {
     assert.equal(preparationInputs.at(-1).expressions[0].name, groundedSlot.name);
     assert.equal(preparationInputs.at(-1).expressions[0].useWhen, groundedSlot.useWhen);
     assert.equal(preparationInputs.at(-1).expressions[0].userPose, "Keep arms relaxed.");
+    assert.equal(preparationInputs.at(-1).facingPrompt, STUDIO_FACING_PROMPTS.front);
     failPreparation = false;
     generationRelease = undefined;
     await recoverStudioJob("mara", { id: groundedId, retryGeneration: true });
@@ -1038,10 +1069,12 @@ async function main() {
     const replayId = randomUUID(),
       beforeReplayCalls = preparationCalls;
     failPreparationReadyWrite = true;
+    preparedDirection = "A controlled, thoughtful stance. ".padEnd(516, "x");
     await startSpriteStudioJob("mara", { ...groundedInput, plan: replayPlan, submissionId: replayId });
     const replayInterrupted = (await settle()).jobs.find((job) => job.id === replayId)!;
     assert.equal(replayInterrupted.preparation!.attempts.at(-1)!.status, "answered");
     failPreparationReadyWrite = false;
+    preparedDirection = "";
     generationRelease = undefined;
     await recoverStudioJob("mara", { id: replayId, retryGeneration: true });
     await waitForCall();
@@ -1049,6 +1082,13 @@ async function main() {
     generationRelease = undefined;
     await settle();
     assert.equal(preparationCalls, beforeReplayCalls + 1, "saved answer recovery makes no new System call");
+    const recoveredDirections = (await readSpriteStudio("mara")).jobs.find((job) => job.id === replayId)!.preparation!
+      .expressions!;
+    assert.equal(
+      recoveredDirections[0]!.direction!.length,
+      516,
+      "saved over-500-character preparation is reused intact",
+    );
 
     // Empty output is invalid and must not trigger completeWithRoom's usual empty retry.
     invalidPreparation = true;

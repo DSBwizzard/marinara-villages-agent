@@ -128,10 +128,43 @@ async function main() {
     );
     assert.ok(transport.every((t) => !t.path.includes("/duplicate") && t.method !== "PATCH" && t.method !== "PUT"));
     assert.ok(!JSON.stringify(plan).includes("SECRET"));
+    const editableIdentity = {
+      ...identity,
+      settings: defaultStudioState().settings,
+      facingPrompt: "Full right-facing profile.",
+      view: "side" as const,
+    };
+    const editablePlan = await planVillageStudioSheets("source", editableIdentity, expressions, false);
+    assert.match(editablePlan.batches[0]!.request!.prompt, /Full right-facing profile/);
+    assert.doesNotMatch(editablePlan.batches[0]!.request!.prompt, /cheating out/);
+    assert.equal(
+      editablePlan.batches[0]!.request!.prompt.startsWith("VILLAGES SHEET REQUIREMENTS:"),
+      true,
+      "Off profile adds no inferred subject tags from instructions",
+    );
+    await assert.rejects(
+      () =>
+        generateVillageStudioSheet({
+          connectionId: "source",
+          expectedModel: conn.model,
+          identity: { ...editableIdentity, facingPrompt: "" },
+          expressions,
+          batch: editablePlan.batches[0]!,
+          onSubmit: async () => {
+            submitted++;
+          },
+        }),
+      /plan changed/,
+    );
+    assert.equal(paid, 1, "changing facing invalidates the reviewed plan before spending");
     failure = true;
     await assert.rejects(generate, /504/);
     assert.equal(paid, 2, "Studio does not resubmit an uncertain Engine generation");
-    const styledIdentity = { ...identity, settings: defaultStudioState().settings, style: "" };
+    const styledIdentity = {
+      ...identity,
+      settings: { ...defaultStudioState().settings, styleSelection: { kind: "default" as const } },
+      style: "",
+    };
     const styledPlan = await planVillageStudioSheets("source", styledIdentity, expressions, false);
     profileText = "Changed profile";
     await assert.rejects(

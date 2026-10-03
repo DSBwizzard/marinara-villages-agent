@@ -57,7 +57,11 @@ export function compileStudioPrompt(
   const defaults = normalizeImageGenerationProfile(connection.defaults.imageGeneration, service || "api").profile;
   const compiled = compileImagePrompt({
     kind: "sprite",
-    prompt,
+    // Compile only Engine-owned style and defaults, not sheet instructions.
+    // Inferring compact subject tags from those instructions can turn exclusions
+    // such as scenery or wings into unwanted positive cues.
+    prompt: "",
+    generatedStyle: style.profile.styleText,
     negativePrompt,
     styleProfiles: { defaultProfileId: style.id, profiles: [style.profile] },
     styleProfileId: style.id,
@@ -66,7 +70,7 @@ export function compileStudioPrompt(
   });
   // Preserve explicit geometry, references, facing and matte after grammar transforms.
   return {
-    prompt: compiled.prompt + "\n\nVILLAGES SHEET REQUIREMENTS:\n" + prompt,
+    prompt: [compiled.prompt, "VILLAGES SHEET REQUIREMENTS:\n" + prompt].filter(Boolean).join("\n\n"),
     negativePrompt: compiled.negativePrompt,
   };
 }

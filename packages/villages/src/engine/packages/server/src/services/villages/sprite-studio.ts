@@ -16,6 +16,9 @@ import {
   SPRITE_STYLES,
   LEGACY_STUDIO_PAPERCRAFT,
   PREVIOUS_STUDIO_PAPERCRAFT,
+  PREVIOUS_STUDIO_BATTLEHIGHWAY,
+  STUDIO_POSE_MAX_LENGTH,
+  defaultStudioFacingPrompts,
   STUDIO_MEANINGS,
   type StudioExpression,
   type StudioAssignment,
@@ -63,6 +66,18 @@ const slot = {
     state.settings.styleSelection ??= { kind: "studio" };
     if ([LEGACY_STUDIO_PAPERCRAFT, PREVIOUS_STUDIO_PAPERCRAFT].includes(state.settings.prompts?.PAPERCRAFT))
       state.settings.prompts.PAPERCRAFT = SPRITE_STYLES.PAPERCRAFT;
+    if (state.settings.prompts?.BATTLEHIGHWAY === PREVIOUS_STUDIO_BATTLEHIGHWAY)
+      state.settings.prompts.BATTLEHIGHWAY = SPRITE_STYLES.BATTLEHIGHWAY;
+    const facingDefaults = defaultStudioFacingPrompts();
+    state.settings.facingPrompts = Object.fromEntries(
+      Object.keys(facingDefaults).map((style) => [
+        style,
+        {
+          ...facingDefaults[style as keyof typeof facingDefaults],
+          ...asRecord(asRecord(state.settings.facingPrompts)[style]),
+        },
+      ]),
+    ) as StudioSettings["facingPrompts"];
     return state;
   },
 };
@@ -391,6 +406,21 @@ function readSettings(raw: unknown): StudioSettings {
   for (const key of Object.keys(SPRITE_STYLES))
     if (typeof prompts[key] !== "string" || (prompts[key] as string).length > 6000)
       throw badRequest("Each style prompt must be at most 6,000 characters.");
+  const facingDefaults = defaultStudioFacingPrompts();
+  const facingPrompts = Object.fromEntries(
+    Object.keys(SPRITE_STYLES).map((key) => {
+      const supplied = asRecord(asRecord(body.facingPrompts)[key]);
+      const views = Object.fromEntries(
+        (["front", "side"] as const).map((view) => {
+          const prompt = supplied[view] ?? facingDefaults[key as keyof typeof facingDefaults][view];
+          if (typeof prompt !== "string" || prompt.length > 6000)
+            throw badRequest("Each facing prompt must be at most 6,000 characters.");
+          return [view, prompt];
+        }),
+      );
+      return [key, views];
+    }),
+  ) as StudioSettings["facingPrompts"];
   const connectionId = asString(body.connectionId);
   const selected = asRecord(body.styleSelection);
   const styleSelection =
@@ -406,6 +436,7 @@ function readSettings(raw: unknown): StudioSettings {
     styleSelection,
     style,
     prompts: { PAPERCRAFT: prompts.PAPERCRAFT, BATTLEHIGHWAY: prompts.BATTLEHIGHWAY, Custom: prompts.Custom },
+    facingPrompts,
     connectionId,
     individual: body.individual === true,
     cleanupEngine: ["builtin", "backgroundremover"].includes(asString(body.cleanupEngine))
@@ -435,7 +466,7 @@ function selection(raw: unknown) {
   const expressions = (Array.isArray(body.expressions) ? body.expressions : []).map((item) => {
     const entry = asRecord(item);
     const pose = asString(entry.pose);
-    if (pose.length > 500) throw badRequest("Pose instructions must be at most 500 characters.");
+    if (pose.length > STUDIO_POSE_MAX_LENGTH) throw badRequest("Pose instructions must be at most 1,000 characters.");
     return { label: readSpriteExpression(entry.label), pose, expressionId: asString(entry.expressionId) || undefined };
   });
   if (!expressions.length || new Set(expressions.map((item) => item.label)).size !== expressions.length)
@@ -547,6 +578,7 @@ async function prepare(characterId: string, raw: unknown) {
     ).slice(0, 2000),
     style: resolvedStyle.prompt,
     view: input.view,
+    facingPrompt: state.settings.facingPrompts![state.settings.style][input.view],
     referenceUrl,
     references: [
       ...(referenceUrl ? [{ url: referenceUrl, role: "original character identity" }] : []),
@@ -1244,8 +1276,8 @@ export const saveStudioExpression = (characterId: string, raw: unknown) =>
       const name = asString(body.name).trim() || label.replaceAll("_", " ");
       const pose = asString(body.pose),
         useWhen = asString(body.useWhen);
-      if (name.length > 100 || pose.length > 500 || useWhen.length > 1000)
-        throw badRequest("Keep names within 100 characters, poses within 500, and Use when within 1,000.");
+      if (name.length > 100 || pose.length > STUDIO_POSE_MAX_LENGTH || useWhen.length > 1000)
+        throw badRequest("Keep names within 100 characters, poses within 1,000, and Use when within 1,000.");
       let saved: StudioExpression;
       await mutate(id, (state) => {
         const prior = body.id
