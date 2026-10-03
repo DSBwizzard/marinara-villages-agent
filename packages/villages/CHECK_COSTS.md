@@ -5,11 +5,11 @@ Measured on 2026-10-02 (local date), using a saved three-resident planning Scene
 | Domain | Earlier reported tokens | Earlier requests | Replay requests | Replay estimated tokens | Estimated input plus full output allowance |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Room permission | 44,597 | 6 | 0 | 0 | 0 |
-| Wish checks/preparation | 99,472 | 12 | 3 | 6,572 | 8,190 |
+| Wish checks/preparation | 99,472 | 12 | 3 | 5,878 | 7,497 |
 
-Room request admission drops 100%. The Wish token estimate drops 93.4%; estimated input plus all reserved output drops 91.8%. These percentages apply to this reference Scene. Input/output estimates use characters divided by four, rather than the provider's tokenizer. The output allowance is an actual package request cap; the estimated input is not a certified token ceiling. Provider overrides, tokenizer differences and live judgments may change billed usage. Mocked negative judgments test request admission and payload size, not semantic model accuracy.
+Room request admission drops 100%. The Wish token estimate drops 94.1%; estimated input plus all reserved output drops 92.5%. These percentages apply to this reference Scene. Input/output estimates use characters divided by four, rather than the provider's tokenizer. The output allowance is an actual package request cap; the estimated input is not a certified token ceiling. Provider overrides, tokenizer differences and live judgments may change billed usage. Mocked negative judgments test request admission and payload size, not semantic model accuracy.
 
-The old writing requests used 136,540 tokens. Keeping that writing cost fixed would put the reference Scene near 143,112 total tokens instead of 280,609: about 49% overall savings, despite over 90% savings in checks. This work changes check admission and bookkeeping response metadata, not character identities, authored cards, narrative writing directions or the Scene writing model.
+The old writing requests used 136,540 tokens. Keeping that writing cost fixed would put the reference Scene near 142,418 total tokens instead of 280,609: about 49% overall savings, despite over 90% savings in checks. This work changes check admission and bookkeeping response metadata, not character identities, authored cards, narrative writing directions or the Scene writing model.
 
 ## Causes and corrections
 
