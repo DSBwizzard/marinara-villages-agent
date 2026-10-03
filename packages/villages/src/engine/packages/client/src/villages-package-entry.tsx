@@ -20,6 +20,7 @@ import { useReadingPages } from "./villages-reading-viewport.js";
 import { mobileSceneLayout, mobileReadingCounter } from "./villages-mobile-scene.js";
 import { useSceneViewport } from "./villages-scene-viewport.js";
 import { VILLAGES_SCENE_STYLES } from "./villages-scene-styles.js";
+import { SceneAsides, SCENE_ASIDE_STYLES } from "./villages-scene-asides.js";
 import { contactNeighborIds } from "../../shared/src/villages/zone-contact.js";
 import {
   DEFAULT_PLAYER_ROLE,
@@ -6050,13 +6051,16 @@ function syncVillagesStyles() {
     return;
   }
   if (existing) {
-    if (existing.textContent !== VILLAGES_STYLES + VILLAGES_SCENE_STYLES + MOBILE_EXPLORATION_STYLES)
-      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + MOBILE_EXPLORATION_STYLES;
+    if (
+      existing.textContent !==
+      VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + MOBILE_EXPLORATION_STYLES
+    )
+      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + MOBILE_EXPLORATION_STYLES;
     return;
   }
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + MOBILE_EXPLORATION_STYLES;
+  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + MOBILE_EXPLORATION_STYLES;
   document.head.appendChild(style);
 }
 
@@ -10192,7 +10196,12 @@ function RoomPanel({
         register: line.kind,
         text: line.content,
         ...(line.targetId
-          ? { target: room.participants.find((person) => person.characterId === line.targetId)?.name ?? line.targetId }
+          ? {
+              target:
+                line.targetId === "player"
+                  ? playerName
+                  : (room.participants.find((person) => person.characterId === line.targetId)?.name ?? line.targetId),
+            }
           : {}),
         speakerId: line.speakerId,
         name: line.name,
@@ -10946,8 +10955,13 @@ function RoomPanel({
           </div>
         ) : null}
         {step && step.asides.length > 0 ? (
-          <div className={`${ELEMENT_TAG}-chat-vn-asides`} data-side={asideSide} aria-live="polite">
-            {step.asides.map((aside, index) => (
+          <SceneAsides
+            asides={step.asides}
+            mobile={mobile}
+            positions={mobile ? mobileLayout : stageLayout}
+            mainSpeakerId={step.speakerId}
+            desktopSide={asideSide}
+            renderAside={(aside, index) => (
               <div
                 key={`${index}-${aside.register}`}
                 className={`${ELEMENT_TAG}-chat-vn-aside`}
@@ -10982,8 +10996,8 @@ function RoomPanel({
                   </p>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+          />
         ) : null}
 
         {/* One readable paragraph shares the same dock with navigation and the composer at the latest paragraph. */}

@@ -76,6 +76,30 @@ const witnessed = parseVenueReply(
 assert.deepEqual(witnessed.lines[1]!.heardBy, ["reserved", "outgoing"]);
 assert.equal(witnessed.lines[1]!.kind, "whisper");
 assert.equal(witnessed.lines[1]!.targetId, "outgoing");
+const toPlayer = parseVenueReply(
+  {
+    heardPlayerBy: ["reserved", "player"],
+    segments: [
+      { kind: "dialogue", speakerId: "reserved", text: "An answer.", heardBy: ["reserved"] },
+      { kind: "whisper", speakerId: "reserved", targetId: "player", text: "Just between us.", heardBy: ["player"] },
+    ],
+  },
+  ["reserved", "bystander"],
+);
+assert.equal(toPlayer.lines[1]!.kind, "whisper", "player-directed whispers stay as whispers");
+assert.equal(toPlayer.lines[1]!.targetId, "player");
+assert.equal(toPlayer.lines[1]!.gazeAt, "player");
+assert.equal(toPlayer.lines[1]!.anchorIndex, 0);
+assert.deepEqual(toPlayer.lines[1]!.heardBy, ["reserved"], "the player target never enters resident witness IDs");
+assert.deepEqual(toPlayer.heardPlayerBy, ["reserved"]);
+const unknownTarget = parseVenueReply(
+  {
+    heardPlayerBy: [],
+    segments: [{ kind: "whisper", speakerId: "reserved", targetId: "unknown", text: "An answer.", heardBy: [] }],
+  },
+  ["reserved"],
+);
+assert.equal(unknownTarget.lines[0]!.kind, "dialogue", "invalid targets retain the existing safe downgrade");
 assert.throws(() =>
   parseVenueReply(
     { heardPlayerBy: [], segments: [{ kind: "dialogue", speakerId: "player", text: "I agree.", heardBy: [] }] },
