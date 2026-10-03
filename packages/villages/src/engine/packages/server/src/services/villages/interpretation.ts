@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { trackUsage } from "./usage-meter.js";
+import { boundInterpretationEvidence, interpretationPayload } from "./interpretation-evidence.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -34,6 +35,7 @@ export type InterpretationCheck = {
   decisionEligible?: boolean;
   decisionReason?: string;
   systemInstruction?: string;
+  essentialEvidenceIds?: string[];
 };
 export type InterpretationResult = {
   outcome: string;
@@ -107,6 +109,15 @@ export async function systemInterpretations(
       results.push(...(await systemInterpretations(checks.slice(index, index + 4), signal)));
     return results;
   }
+  checks = checks.map(boundInterpretationEvidence);
+  const wire = interpretationPayload(checks);
+  if (!wire.fits)
+    return checks.map(() => ({
+      outcome: "unresolved",
+      source: "system",
+      evidenceIds: [],
+      reason: "Essential checking evidence exceeds the bounded request budget; clarification is needed",
+    }));
   const resolved = await villagesLanguageModels().resolveForRequest({
     connectionId: (await villagesConnectionIdFor("system")) ?? undefined,
   });
@@ -118,11 +129,7 @@ export async function systemInterpretations(
     },
     {
       role: "user",
-      content: JSON.stringify({
-        checks,
-        extraction:
-          "Follow each check's systemInstruction when present; put its structured extraction in details. Preserve exact evidence references and original wording.",
-      }),
+      content: wire.serialized,
     },
   ] as Parameters<typeof completeWithRoom>[1];
   const maxTokens = Math.min(resolved.maxOutputTokens ?? 2400, 2400);
@@ -172,6 +179,7 @@ export async function interpretChecks(
     signal?: AbortSignal,
   ) => Promise<InterpretationResult[]> = systemInterpretations,
 ): Promise<InterpretationBatch> {
+  checks = checks.map(boundInterpretationEvidence);
   const settings = venueInterpretationSettings();
   return venueCheckpoint(stage, async () => {
     const startedAt = new Date().toISOString();
@@ -200,7 +208,12 @@ export async function interpretChecks(
           backend.calibration.defaultThreshold > 1
         )
           return { reason: "Invalid backend calibration" };
-        const state = { checks: eligible.map(({ outcomes: _outcomes, ...check }) => check) };
+        const wire = interpretationPayload(eligible);
+        if (!wire.fits) return { reason: "Essential evidence exceeds the bounded checking allowance" };
+        const state = {
+          ...wire.payload,
+          checks: wire.payload.checks.map(({ outcomes: _outcomes, ...check }) => check),
+        };
         // Do not let Engine truncation remove the very evidence establishing permission.
         if (JSON.stringify(state).length > backend.maxStateTokens * 3)
           return { reason: "Essential evidence exceeds the Decision context budget" };
