@@ -4,6 +4,7 @@ export const EXCHANGE_PROCESSING_VERSION = 1;
 export const EXCHANGE_DOMAINS = ["projects", "wishes", "memories", "relationships"] as const;
 export type ExchangeDomain = (typeof EXCHANGE_DOMAINS)[number];
 export type DomainProcessing = {
+  rejectedProposals?: { kind: string; index: number; reason: string }[];
   status: "pending" | "applied" | "rejected" | "failed";
   reason: string;
   evidenceIds: string[];
@@ -65,6 +66,9 @@ export function coerceExchangeProcessing(value: unknown): ExchangeProcessing | u
   for (const domain of EXCHANGE_DOMAINS) {
     const row = asRecord(asRecord(raw.domains)[domain]);
     result.domains[domain] = {
+      ...(Array.isArray(row.rejectedProposals)
+        ? { rejectedProposals: row.rejectedProposals as DomainProcessing["rejectedProposals"] }
+        : {}),
       status: row.status === "applied" || row.status === "rejected" || row.status === "failed" ? row.status : "pending",
       reason: asTrimmedString(row.reason).slice(0, 500),
       evidenceIds: strings(row.evidenceIds),

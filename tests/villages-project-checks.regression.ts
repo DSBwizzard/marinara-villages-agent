@@ -46,6 +46,34 @@ const draft: any[] = [
   },
 ];
 const checks = projectInterpretationChecks(scene, state, "Would you build the greenhouse?", draft, ["a"], "turn");
+assert.equal(
+  projectInterpretationChecks(
+    scene,
+    state,
+    "Would you like tea?",
+    [{ ...draft[0], content: "Tea sounds lovely." }],
+    ["a"],
+    "tea",
+  ).length,
+  0,
+  "Unrelated conversation produces no Project interpretation candidates",
+);
+scene.submissions = [
+  { message: "Would you build the Greenhouse?", projectContexts: [{ projectId: "p", revision: 4, phase: "builder" }] },
+];
+assert.equal(
+  projectInterpretationChecks(
+    scene,
+    state,
+    "And you?",
+    [{ ...draft[0], content: "Yes, I'll do it." }],
+    ["a"],
+    "implicit",
+  ).length,
+  1,
+  "A witnessed Project question keeps its implicit answer relevant",
+);
+scene.submissions = [];
 assert.equal(checks.length, 1, "State discovers candidates even without exact title phrasing");
 function batch(outcome: string, source: "system" | "decisions" = "system", details?: unknown): InterpretationBatch {
   const result = {

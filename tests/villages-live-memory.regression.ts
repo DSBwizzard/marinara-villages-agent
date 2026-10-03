@@ -344,6 +344,18 @@ async function main() {
       await processSavedExchange("live", id);
       assert.equal((await readVillageState()).chronicle.filter((entry) => entry.text === "Commitment " + id).length, 1);
     }
+    const longMemory = "Ada will help in the garden. ".repeat(18) + "Exception: never on Sunday.";
+    saveExchange("long-memory", [{ ...memory, text: longMemory }], emptyRelations, { text: longMemory });
+    await processSavedExchange("live", "long-memory");
+    assert.equal(
+      (await readVillageState()).chronicle.find((entry) => entry.text === longMemory)?.text,
+      longMemory,
+      "The trailing exception survives persistence and readback",
+    );
+    saveExchange("oversized-memory", [{ ...memory, text: "x".repeat(601) }]);
+    await processSavedExchange("live", "oversized-memory");
+    assert.equal((await readVenueVisit("live")).submissions.at(-1)?.processing?.domains.memories.status, "rejected");
+    assert.ok(!(await readVillageState()).chronicle.some((entry) => entry.text === "x".repeat(600)));
     const positiveRelationship = {
       changes: [
         {
@@ -361,6 +373,45 @@ async function main() {
       permissions: [],
       disclosures: [],
     };
+    const warmthBeforeMixed = relationshipFor((await readVillageState()).relationshipContext, "a", "player").warmth;
+    saveExchange("mixed-relationships", [], {
+      ...positiveRelationship,
+      changes: [
+        ...positiveRelationship.changes,
+        { ...positiveRelationship.changes[0], fromId: "outsider" },
+        { ...positiveRelationship.changes[0], lineIds: [999] },
+      ],
+      permissions: [
+        {
+          controllerId: "a",
+          visitorId: "player",
+          venueId: "missing",
+          zoneId: "missing",
+          action: "grant",
+          lineIds: [0],
+        },
+      ],
+    });
+    await processSavedExchange("live", "mixed-relationships");
+    const mixed = (await readVenueVisit("live")).submissions.at(-1)!.processing!.domains.relationships;
+    assert.equal(mixed.status, "applied");
+    assert.equal(mixed.rejectedProposals?.length, 3);
+    assert.equal(
+      relationshipFor((await readVillageState()).relationshipContext, "a", "player").warmth,
+      warmthBeforeMixed + 2,
+    );
+    const trustBeforeContact = relationshipFor((await readVillageState()).relationshipContext, "a", "player").trust;
+    saveExchange("brief-contact", [], emptyRelations, { playerText: "I am sorry.", text: "I forgive you." });
+    await processSavedExchange("live", "brief-contact");
+    assert.ok(
+      Object.values((await readVillageState()).relationshipContext!.receipts).some(
+        (receipt) => receipt.submissionId === "brief-contact",
+      ),
+    );
+    assert.equal(
+      relationshipFor((await readVillageState()).relationshipContext, "a", "player").trust,
+      trustBeforeContact,
+    );
     for (const after of [false, true]) {
       const id = "relationship-write-" + after;
       saveExchange(id, [{ ...memory, text: "Commitment " + id }], positiveRelationship);

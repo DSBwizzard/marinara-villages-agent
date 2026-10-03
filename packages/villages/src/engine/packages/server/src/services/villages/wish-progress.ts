@@ -132,7 +132,7 @@ export function bindWishProposals(
           line.kind !== "narration" &&
           line.kind !== "whisper" &&
           !line.contactHidden &&
-          !/\b(?:if|perhaps|maybe|would|quoted|said that)\b/iu.test(line.content),
+          !/\b(?:if|perhaps|maybe|quoted|said that)\b/iu.test(line.content),
       )
     ) {
       errors.push("Wish disclosure needs this resident's own speech heard by the player");
