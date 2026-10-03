@@ -147,6 +147,7 @@ export async function systemInterpretations(
     debugMode: false,
     signal,
     retryEmpty: false,
+    checkpointId: `interpretation:${fingerprint(checks)}`,
     usagePurpose: "checks",
   });
   signal?.throwIfAborted();

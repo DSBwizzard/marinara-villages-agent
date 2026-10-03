@@ -344,6 +344,11 @@ registerBackgroundHandler("wish-check", {
     const { processSavedExchange } = await import("./venue-session.js");
     await processSavedExchange(input.sceneId, input.submissionId);
   },
+  async afterFailure(input: WishCheckInput | null) {
+    if (!input || input.sceneId.startsWith("project:")) return;
+    const { processSavedExchange } = await import("./venue-session.js");
+    await processSavedExchange(input.sceneId, input.submissionId);
+  },
 });
 
 /** Opening a Project saves this finite outbox alongside its physical result. No periodic Wish completion scan. */

@@ -26,6 +26,7 @@ export type BackgroundSummary = {
   connectionPaused: boolean;
 };
 type Step = {
+  key?: string;
   fingerprint: string;
   status: "running" | "completed";
   response?: Awaited<ReturnType<BackgroundCompletion>>;
@@ -70,6 +71,7 @@ type Handler = {
   valid(state: VillageState, input: any): boolean;
   apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void;
   afterApply?(input: any, finite: boolean): Promise<void>;
+  afterFailure?(input: any): Promise<void>;
 };
 const KIND = "background-work";
 const handlers = new Map<BackgroundKind, Handler>();
@@ -356,11 +358,18 @@ async function runJob(id: string): Promise<void> {
   const controller = new AbortController();
   controllers.set(id, controller);
   let cursor = 0;
+  let lastIndex = -1;
   let invoked = false;
   const complete: BackgroundCompletion = async (model, messages, maxTokens, options) => {
-    const index = cursor++;
     // Provider and token-limit changes do not invalidate already purchased responses.
     const fingerprint = backgroundRevision(messages);
+    const sequential = cursor++;
+    const named = options.checkpointId ? job!.steps.findIndex((step) => step.key === options.checkpointId) : -1;
+    const legacy = options.checkpointId
+      ? job!.steps.findIndex((step) => !step.key && step.fingerprint === fingerprint)
+      : -1;
+    const index = options.checkpointId ? (named >= 0 ? named : legacy >= 0 ? legacy : job!.steps.length) : sequential;
+    lastIndex = index;
     const saved = job!.steps[index];
     if (saved?.status === "completed") {
       if (saved.fingerprint !== fingerprint)
@@ -386,7 +395,7 @@ async function runJob(id: string): Promise<void> {
         current.status = "running";
         current.owner = runOwner;
         current.connectionId = model.connectionId;
-        current.steps[index] = { fingerprint, status: "running" };
+        current.steps[index] = { key: options.checkpointId, fingerprint, status: "running" };
         current.requests++;
         return current;
       });
@@ -411,7 +420,7 @@ async function runJob(id: string): Promise<void> {
       if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
       job = await changeJob(id, (current) => {
         if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
-        current.steps[index] = { fingerprint, status: "completed", response };
+        current.steps[index] = { key: options.checkpointId, fingerprint, status: "completed", response };
         const tokens =
           response.usage?.totalTokens ??
           (response.usage?.promptTokens !== undefined && response.usage?.completionTokens !== undefined
@@ -489,6 +498,7 @@ async function runJob(id: string): Promise<void> {
     const obsolete = error instanceof Obsolete,
       paused = error instanceof Paused;
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
+    const failedInput = job.input;
     job = await changeJob(id, (current) => ({
       ...current!,
       status: obsolete
@@ -503,9 +513,13 @@ async function runJob(id: string): Promise<void> {
         ? null
         : paused || obsolete || !invoked
           ? current!.failedStep
-          : Math.max(0, cursor - 1),
+          : Math.max(0, lastIndex),
       ...(obsolete ? { steps: [], settings: {}, input: null, result: undefined, hasResult: false } : {}),
     }));
+    await handlers
+      .get(job.kind)
+      ?.afterFailure?.(failedInput)
+      .catch((followup) => villagesLogger().warn("[villages] could not save failed work status: %s", String(followup)));
   } finally {
     controllers.delete(id);
   }

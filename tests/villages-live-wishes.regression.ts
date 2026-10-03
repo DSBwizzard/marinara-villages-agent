@@ -110,6 +110,7 @@ async function main() {
     fail = false;
   let storageFault = false,
     lostAcknowledgement = false;
+  let failJudgment = false;
   const release = configureVillagesRuntime({
     persistence: {
       documents: {
@@ -167,6 +168,7 @@ async function main() {
                 finishReason: "stop",
               };
             const { checks } = JSON.parse(messages[1].content);
+            if (failJudgment) throw new Error("judgment outcome unknown after successful preparation");
             return {
               content: JSON.stringify({
                 results: checks.map((check: any) => ({
@@ -360,6 +362,44 @@ async function main() {
     await settleBackgroundWork();
     assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
     assert.equal(calls, afterUnknown + 2, "explicit retry can incur new preparation and interpretation requests");
+    const cachedWish = { ...wish, id: "cached-retry" };
+    records.get("villages-village").data.villagers[0].agenda.wishes = [cachedWish];
+    const cachedScene = structuredClone(pendingScene);
+    cachedScene.id = "cached-scene";
+    cachedScene.submissions[0].wishProposals[0] = {
+      ...cachedScene.submissions[0].wishProposals[0],
+      wishId: cachedWish.id,
+      fingerprint: wishFingerprint(cachedWish),
+    };
+    cachedScene.submissions[0].processing = createExchangeProcessing({
+      seed: state.seed,
+      sceneId: cachedScene.id,
+      submissionId: "uncertain-turn",
+      order: 0,
+      lineIds: ["p", "r"],
+      actionReceiptIds: [],
+    });
+    records.set("villages-venue-visit-cached-scene", {
+      id: "villages-venue-visit-cached-scene",
+      kind: "venue-visit",
+      revision: 1,
+      data: cachedScene,
+    });
+    failJudgment = true;
+    await processWishExchange(cachedScene, "uncertain-turn");
+    await settleBackgroundWork();
+    const cachedCalls = calls;
+    assert.equal(
+      records.get("villages-venue-visit-cached-scene").data.submissions[0].processing.domains.wishes.status,
+      "failed",
+      "Failed background judgment must not leave the Scene queued",
+    );
+    const cachedJob = (await backgroundWorkSummaries()).find((job) => job.status === "failed")!;
+    failJudgment = false;
+    await retryBackgroundJob(cachedJob.id, cachedJob.attempt, "cached-deliberate-retry");
+    await settleBackgroundWork();
+    assert.equal(calls, cachedCalls + 1, "Cached preparation does not shift or repeat paid stages");
+    assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
     const callsBeforeStorage = calls;
     for (const after of [false, true]) {
       const sceneId = "wish-storage-" + after,

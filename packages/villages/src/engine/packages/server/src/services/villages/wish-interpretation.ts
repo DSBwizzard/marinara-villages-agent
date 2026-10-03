@@ -193,6 +193,7 @@ async function prepareCriteria(wish: VillageWish, context: WishInterpretationCon
       temperature: 0,
       debugMode: false,
       retryEmpty: false,
+      checkpointId: `wish-criteria:${key}`,
       signal: venueOperationSignal(),
     });
     const criteria = readWishCriteria(extractJsonObject(reply.content), wish);
@@ -349,6 +350,18 @@ export async function interpretWishClaim(
     const results: InterpretationResult[] = [];
     for (const check of pending) {
       const index = checks.indexOf(check);
+      if (
+        criteria[index].requiresPhysical &&
+        !matchingWishReceipts(criteria[index], context, context.wishes[index]).length
+      ) {
+        results.push({
+          outcome: "none",
+          source: "system",
+          evidenceIds: [],
+          reason: "No matching witnessed physical receipt; no judgment request needed",
+        });
+        continue;
+      }
       if (criteria[index].kind !== "complex" || allowProgress) {
         const [result] = await systemInterpretations([check], signal);
         if (result.outcome !== "unresolved" || !result.reason.includes("could not fit")) {
@@ -389,7 +402,8 @@ export async function interpretWishClaim(
     const reason = validateWishInterpretation(checks[index], result);
     if (reason) {
       batch.traces[index].applied = `Rejected: ${reason}`;
-      result.outcome = "unresolved";
+      result.outcome = "none";
+      result.reason = reason;
       continue;
     }
     if (result.outcome === "fulfilled" && selected < 0) selected = index;
