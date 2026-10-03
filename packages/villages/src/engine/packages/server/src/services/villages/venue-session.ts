@@ -2013,6 +2013,7 @@ async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>
   let attempts = 0;
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
     temperature: VENUE_REPLY_TEMPERATURE,
+    usagePurpose: "conversation",
     reasoningEffort: null,
     verbosity: null,
     debugMode: false,
