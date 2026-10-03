@@ -125,7 +125,8 @@ export async function dispatchExchange(
         elapsedMs: Math.round(performance.now() - started),
       };
     }
-    pipelineSignal("rejectedProposals", result.rejectedProposals?.length ?? (result.status === "rejected" ? 1 : 0));
+    if (result.rejectedProposals) pipelineSignal("rejectedProposals", result.rejectedProposals.length);
+    if (result.status === "rejected") pipelineSignal("rejectedDomains");
     try {
       await save(domain, result);
       processing.domains[domain] = result;
