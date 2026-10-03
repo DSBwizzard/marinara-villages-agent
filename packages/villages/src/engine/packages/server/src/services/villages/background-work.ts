@@ -32,6 +32,7 @@ type Step = {
   response?: Awaited<ReturnType<BackgroundCompletion>>;
 };
 export type BackgroundInput = {
+  residentIds?: string[];
   residentId?: string;
   kind: BackgroundKind;
   subjectId: string;
@@ -595,7 +596,8 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
     const job = record.data as Job;
     const retired =
       job?.kind === "wish-check"
-        ? job.seed !== state.seed || !state.villagers.some((resident) => resident.characterId === asWishCheckActor(job))
+        ? job.seed !== state.seed ||
+          !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
         : job?.kind === "mail"
           ? !state.venueMail.some((mail) => mail.id === job.subjectId)
           : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
@@ -609,7 +611,7 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
         if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
           const subjectGone =
             job?.kind === "wish-check"
-              ? !state.villagers.some((resident) => resident.characterId === asWishCheckActor(job))
+              ? !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
               : job?.kind === "mail"
                 ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
                 : job?.kind !== "story" && !state.villagers.some((resident) => resident.characterId === job?.subjectId);
@@ -640,8 +642,8 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
     });
   return summaries;
 }
-function asWishCheckActor(job: Job): string {
-  return job.residentId ?? "";
+function asWishCheckActors(job: Job): string[] {
+  return job.residentIds ?? [job.residentId ?? ""];
 }
 export function startBackgroundWork(options: { now?: () => number } = {}): () => void {
   presenceNow = options.now ?? (() => performance.now());

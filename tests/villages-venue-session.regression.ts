@@ -254,7 +254,10 @@ const release = configureVillagesRuntime({
         async chatComplete(messages: any[], options: any) {
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");
-          if (system.startsWith("Interpret the meaning of witnessed Scene evidence")) {
+          if (
+            system.startsWith("Interpret the meaning of witnessed Scene evidence") ||
+            system.startsWith("Interpret only the cited witnessed evidence")
+          ) {
             const checks = fixtureInterpretationChecks(user);
             return {
               content: fixtureJson({
@@ -267,6 +270,7 @@ const release = configureVillagesRuntime({
                       outcome: check.facts.matchingReceiptIds.length ? "fulfilled" : "none",
                       evidenceIds: check.facts.matchingReceiptIds.map((id: string) => `receipt:${id}`),
                       reason: "The parcel was transferred in the labeled fixture",
+                      details: { proofKind: "physical" },
                     };
                   }
                   if (check.domain !== "room")

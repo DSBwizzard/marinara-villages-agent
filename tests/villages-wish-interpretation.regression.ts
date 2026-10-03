@@ -191,7 +191,7 @@ async function main() {
       assert.equal(result.verdict.fulfilled, true);
       assert.equal(result.batch.results[0].source, "system", "Absent Decisions connection always falls back");
     }
-    assert.equal(preparations, 1, "Conditions are reused across settings and claims for the same unchanged wish");
+    assert.equal(preparations, 0, "Condition preparation never dispatches a request");
     const state = defaultVillageState();
     state.venueEvents = context.receipts;
     assert.deepEqual(
