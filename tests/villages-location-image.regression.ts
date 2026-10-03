@@ -139,17 +139,11 @@ async function main() {
       .slice(0, 120) || "character";
   for (const name of ["the mill pond", "  The  Mill Pond!  ", "Mill_Pond-2", "???", "", "   ", "x".repeat(400)]) {
     assert.equal(
-      avatarPromptId(name, "avatar"),
+      avatarPromptId(name),
       `avatar:${slugOf(name)}`,
       `the prompt id for ${JSON.stringify(name)} has to be the one the Engine computes`,
     );
   }
-  assert.equal(avatarPromptId("the mill pond", "character-sheet"), `character-sheet:${slugOf("the mill pond")}`);
-  assert.equal(
-    avatarPromptId("the mill pond", "something-else" as any),
-    `avatar:${slugOf("the mill pond")}`,
-    "anything that is not a reference sheet is a portrait, exactly as it is in the Engine",
-  );
 
   // ── What counts as a picture on the way in ────────────────────────────────
   const decoded = decodeImageDataUrl(TINY_PNG);
@@ -1146,7 +1140,6 @@ async function main() {
       "engine/packages/server/src/services/villages/engine-loopback.ts",
       "engine/packages/server/src/services/villages/image-generation.ts",
       "engine/packages/server/src/services/villages/location-image.ts",
-      "engine/packages/server/src/services/villages/sprite-studio-generation.ts",
     ],
     "only explicit scenery draws, Studio generation and their metered shared transport reach image providers",
   );

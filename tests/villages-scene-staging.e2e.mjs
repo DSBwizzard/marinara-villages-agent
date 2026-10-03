@@ -10,9 +10,9 @@ const browser = await chromium.launch({
 });
 import { now, residents, longGreeting, mapImage, snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-// Match the transparent canvas used by Sprite Studio rather than a narrow test image.
+// Match the transparent canvas used by Sprite Manager rather than a narrow test image.
 const spriteImage = (color) =>
-  `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="512" height="768"><circle cx="256" cy="100" r="70" fill="${color}"/><path d="M175 180h162l65 360H110zM175 530h60v238h-70zM277 530h60l35 238h-70z" fill="${color}"/></svg>`).toString("base64")}`;
+  `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><g transform="scale(2)"><circle cx="256" cy="100" r="70" fill="${color}"/><path d="M175 180h162l65 360H110zM175 530h60v238h-70zM277 530h60l35 238h-70z" fill="${color}"/></g></svg>`).toString("base64")}`;
 
 try {
   for (const { width, height } of [

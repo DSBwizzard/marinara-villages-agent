@@ -39,7 +39,7 @@ import {
   SCENERY_STYLES,
 } from "./villages-founding-editor";
 import { VillagesBurstPreview } from "./villages-burst-preview.js";
-import { SpriteStudio } from "./villages-sprite-studio.js";
+import { SpriteManager } from "./villages-sprite-manager.js";
 // Villages — client entry for the Home → Villages browser tab.
 //
 // The host mounts this module's custom element as `marinara-capability-villages`
@@ -214,12 +214,9 @@ type ResidentSprite = {
     url: string;
     expressionId?: string;
     isDefault?: boolean;
-    aliases?: string[];
   }>;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
-
-const STARTER_SPRITE_EXPRESSIONS = ["neutral", "happy", "sad", "angry", "surprised", "thinking"] as const;
 
 type VillagerRefreshPreview = {
   characterId: string;
@@ -2947,37 +2944,6 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-chat-figure[data-sprite="true"] > img { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; }
 .${ELEMENT_TAG}-chat-figure[data-sprite="true"][data-framing="half"] { overflow: hidden; height: min(54cqh, 25rem); }
 .${ELEMENT_TAG}-chat-figure[data-sprite="true"][data-framing="half"] > img { object-fit: cover; object-position: center top; }
-.${ELEMENT_TAG}-sprite-editor { min-width: 0; border-top: 1px solid var(--border); padding: 1rem .125rem .25rem; margin-top: .625rem; display: grid; gap: .875rem; }
-.${ELEMENT_TAG}-sprite-heading, .${ELEMENT_TAG}-sprite-section-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; }
-.${ELEMENT_TAG}-sprite-heading h3 { margin: 0; font-size: 1.1rem; }
-.${ELEMENT_TAG}-sprite-heading p { margin: .25rem 0 0; color: var(--muted-foreground); font-size: .8125rem; }
-.${ELEMENT_TAG}-sprite-count { border: 1px solid var(--border); border-radius: 99rem; padding: .25rem .625rem; white-space: nowrap; font-size: .75rem; }
-.${ELEMENT_TAG}-sprite-views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
-.${ELEMENT_TAG}-sprite-view { display: grid; gap: .2rem; min-width: 0; text-align: left; border: 1px solid var(--border); border-radius: .7rem; padding: .7rem .8rem; background: var(--popover); color: var(--foreground); cursor: pointer; font: inherit; }
-.${ELEMENT_TAG}-sprite-view span { color: var(--muted-foreground); font-size: .75rem; }
-.${ELEMENT_TAG}-sprite-view[data-active="true"], .${ELEMENT_TAG}-sprite-choice[data-active="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--popover)); box-shadow: inset 0 0 0 1px var(--primary); }
-.${ELEMENT_TAG}-sprite-section-head { color: var(--foreground); font-size: .8125rem; }
-.${ELEMENT_TAG}-sprite-section-head span { color: var(--muted-foreground); }
-.${ELEMENT_TAG}-sprite-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr)); gap: .5rem; }
-.${ELEMENT_TAG}-sprite-choice { display: grid; justify-items: center; gap: .15rem; min-width: 0; border: 1px solid var(--border); border-radius: .65rem; padding: .4rem; background: var(--popover); color: var(--foreground); cursor: pointer; font: inherit; text-transform: capitalize; }
-.${ELEMENT_TAG}-sprite-choice-art { display: grid; place-items: center; width: 100%; height: 6rem; border-radius: .4rem; background: color-mix(in srgb, var(--muted) 75%, transparent); color: var(--muted-foreground); font-size: 1.3rem; overflow: hidden; }
-.${ELEMENT_TAG}-sprite-choice-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.${ELEMENT_TAG}-sprite-choice small { color: var(--muted-foreground); font-size: .6875rem; text-transform: none; }
-.${ELEMENT_TAG}-sprite-selected { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .75rem; font-size: .8125rem; text-transform: capitalize; }
-.${ELEMENT_TAG}-sprite-selected span { color: var(--muted-foreground); text-transform: none; }
-.${ELEMENT_TAG}-sprite-editor label { display: grid; gap: .25rem; font-size: .8125rem; }
-.${ELEMENT_TAG}-sprite-editor label.${ELEMENT_TAG}-row { display: flex; align-items: center; }
-.${ELEMENT_TAG}-sprite-editor textarea { min-height: 5rem; }
-.${ELEMENT_TAG}-sprite-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-.${ELEMENT_TAG}-sprite-candidate { display: grid; gap: .75rem; border: 1px solid var(--border); border-radius: .7rem; padding: .75rem; background: var(--popover); }
-.${ELEMENT_TAG}-sprite-candidate-views { display: flex; flex-wrap: wrap; gap: .75rem; }
-.${ELEMENT_TAG}-sprite-candidate-views > div { display: grid; gap: .25rem; justify-items: center; flex: 0 1 12rem; min-width: 0; font-size: .75rem; color: var(--muted-foreground); }
-.${ELEMENT_TAG}-sprite-candidate-views img { display: block; width: 100%; height: 14rem; object-fit: contain; background: repeating-conic-gradient(#7773 0 25%, transparent 0 50%) 0 0/20px 20px; }
-.${ELEMENT_TAG}-sprite-mirrored { transform: scaleX(-1); }
-.${ELEMENT_TAG}-sprite-more { border-top: 1px solid var(--border); padding-top: .5rem; }
-.${ELEMENT_TAG}-sprite-more summary { cursor: pointer; font-size: .8125rem; }
-.${ELEMENT_TAG}-sprite-more > .${ELEMENT_TAG}-row { margin-top: .75rem; }
-.${ELEMENT_TAG}-sprite-view:focus-visible, .${ELEMENT_TAG}-sprite-choice:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 /*
   THE ROOM'S OWN CAST, standing in the floor the villager stands in.
 
@@ -9551,14 +9517,14 @@ function AgentConnections({
             </select>
             <span className={`${ELEMENT_TAG}-hint`}>
               {compact ? (
-                "Maps, sprites, and places. Recommended."
+                "Maps and places. Recommended."
               ) : (
                 <>
-                  This is the connection that Villages uses to generate images such as character sprites, the Village
-                  map, Venue backgrounds, etc.{" "}
+                  This is the connection that Villages uses to generate images such as the Village map, Venue
+                  backgrounds, etc.{" "}
                   <span className={`${ELEMENT_TAG}-image-recommendation`}>
-                    The intended experience includes an image generation connection to bring the world and characters to
-                    life, and is <em>highly</em> recommended.
+                    The intended experience includes an image generation connection to bring the world to life, and is{" "}
+                    <em>highly</em> recommended.
                   </span>
                 </>
               )}
@@ -9847,75 +9813,6 @@ function VillagerTile({
         ))}
       </div>
     </div>
-  );
-}
-
-function saveSpriteDownload(name: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-}
-
-/** Assemble a predictable sheet from approved cells; the model never has to draw a precise grid. */
-async function downloadResidentSpriteSheet(villager: VillageVillagerView): Promise<void> {
-  const sprites = villager.sprite?.images ?? [];
-  if (!sprites.length) return;
-  const ordered = [...sprites].sort((a, b) => {
-    const rank = (label: string) => {
-      const index = STARTER_SPRITE_EXPRESSIONS.indexOf(label as (typeof STARTER_SPRITE_EXPRESSIONS)[number]);
-      return index < 0 ? STARTER_SPRITE_EXPRESSIONS.length : index;
-    };
-    return rank(a.label) - rank(b.label) || a.label.localeCompare(b.label) || a.view.localeCompare(b.view);
-  });
-  const cellWidth = 512;
-  const cellHeight = 768;
-  const columns = 2;
-  const canvas = document.createElement("canvas");
-  canvas.width = columns * cellWidth;
-  canvas.height = Math.ceil(ordered.length / columns) * cellHeight;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("The browser cannot assemble this sprite sheet.");
-  const cells: Array<{
-    view: "front" | "side";
-    expression: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }> = [];
-  for (let index = 0; index < ordered.length; index += 1) {
-    const sprite = ordered[index]!;
-    const image = new Image();
-    image.src = sprite.url;
-    await image.decode();
-    const x = (index % columns) * cellWidth;
-    const y = Math.floor(index / columns) * cellHeight;
-    const scale = Math.min(cellWidth / image.naturalWidth, cellHeight / image.naturalHeight);
-    const width = Math.round(image.naturalWidth * scale);
-    const height = Math.round(image.naturalHeight * scale);
-    context.drawImage(image, x + Math.floor((cellWidth - width) / 2), y + cellHeight - height, width, height);
-    cells.push({ view: sprite.view, expression: sprite.label, x, y, width: cellWidth, height: cellHeight });
-  }
-  const blob = await new Promise<Blob>((resolve, reject) =>
-    canvas.toBlob(
-      (result) => (result ? resolve(result) : reject(new Error("The browser could not export this sheet."))),
-      "image/png",
-    ),
-  );
-  const stem =
-    villager.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "resident";
-  saveSpriteDownload(`${stem}-sprites.png`, blob);
-  saveSpriteDownload(
-    `${stem}-sprites.json`,
-    new Blob([JSON.stringify({ width: canvas.width, height: canvas.height, cells }, null, 2)], {
-      type: "application/json",
-    }),
   );
 }
 
@@ -19586,14 +19483,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {menuPage === "villagers" &&
             spriteEditorId &&
             snapshot?.villagers.some((entry) => entry.characterId === spriteEditorId) ? (
-              <SpriteStudio
+              <SpriteManager
                 key={spriteEditorId}
                 villager={snapshot.villagers.find((entry) => entry.characterId === spriteEditorId)!}
                 request={request}
                 onSaved={(next) => setSnapshot(next as VillageSnapshot)}
-                onExport={() =>
-                  downloadResidentSpriteSheet(snapshot.villagers.find((entry) => entry.characterId === spriteEditorId)!)
-                }
                 onBack={() => {
                   setSpriteEditorId(null);
                   requestAnimationFrame(() => {
@@ -19736,7 +19630,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   }}
                                   aria-expanded={spriteEditorId === villager.characterId}
                                 >
-                                  {`Sprite Studio · ${villager.sprite?.images.length ?? 0} approved`}
+                                  {`Sprite Manager · ${villager.sprite?.images.length ?? 0} assigned`}
                                 </button>
                                 <button
                                   type="button"

@@ -30,7 +30,6 @@ import {
   canOccupyZone,
   zoneClosed,
 } from "./venue-zones.js";
-import { captureSnapshotSpriteReference } from "./sprite-reference.js";
 // Villages — the village-level operations the routes call.
 //
 // Joining a village record to the live library lives here rather than in the
@@ -228,16 +227,13 @@ function projectVillager(
     sprite: villager.sprite
       ? {
           ...villager.sprite,
-          images: villager.sprite.expressions.map(
-            ({ view, label, filename, revision, assetId, expressionId, aliases }) => ({
-              view,
-              label,
-              expressionId,
-              aliases,
-              isDefault: Boolean(expressionId) && expressionId === villager.sprite!.defaultExpressionId,
-              url: `/api/sprites/${assetId ?? (view === "side" ? villager.sprite!.sideAssetId : villager.sprite!.assetId)}/file/${encodeURIComponent(filename)}${revision ? `?v=${revision}` : ""}`,
-            }),
-          ),
+          images: villager.sprite.expressions.map(({ view, label, filename, assetId, expressionId }) => ({
+            view,
+            label,
+            expressionId,
+            isDefault: Boolean(expressionId) && expressionId === villager.sprite!.defaultExpressionId,
+            url: `/api/sprites/${assetId}/file/${encodeURIComponent(filename)}`,
+          })),
         }
       : null,
     name: cardName ?? villager.cardSnapshot.name,
@@ -1467,7 +1463,6 @@ export async function addVillager(characterId: string): Promise<void> {
 
   if (!alreadyResident) {
     const addedAt = new Date().toISOString();
-    const spriteReference = await captureSnapshotSpriteReference(characterId);
     await mutateVillageState((state) => {
       if (state.villagers.some((villager) => villager.characterId === characterId)) return;
       if (state.villagers.length >= MAX_VILLAGERS) {
@@ -1505,7 +1500,6 @@ export async function addVillager(characterId: string): Promise<void> {
           nameColor: card.nameColor,
           dialogueColor: card.dialogueColor,
           capturedAt: addedAt,
-          ...(spriteReference ? { spriteReference } : {}),
         },
         addedAt,
         agenda: unwrittenVillageAgenda(state.venues, card.name),
@@ -1608,7 +1602,6 @@ export async function applyVillagerRefresh(characterId: string): Promise<Village
     if (!resident) return;
     resident.cardSnapshot = {
       ...proposed,
-      ...(resident.cardSnapshot.spriteReference ? { spriteReference: resident.cardSnapshot.spriteReference } : {}),
     };
     if (proseChanged) {
       resident.agenda = unwrittenVillageAgenda(state.venues, card.name);
@@ -3832,13 +3825,6 @@ export async function runVillageSetup(input: {
   ];
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   const initialResidents = initialResidentIds.map((characterId) => cardsById.get(characterId)!);
-  const capturedReferences = new Map(
-    await Promise.all(
-      initialResidents
-        .filter((card) => !village.villagers.some((entry) => entry.characterId === card.id))
-        .map(async (card) => [card.id, await captureSnapshotSpriteReference(card.id)] as const),
-    ),
-  );
   // Founding posts the houses placed in the wizard. Later setup runs keep the
   // other venues and require every saved pin to stay put; Village Settings owns
   // map replacement and its placement pass.
@@ -3987,7 +3973,6 @@ export async function runVillageSetup(input: {
         characterId: card.id,
         cardSnapshot: {
           ...snapshotFromCard(card, 1),
-          ...(capturedReferences.get(card.id) ? { spriteReference: capturedReferences.get(card.id) } : {}),
         },
         addedAt: new Date().toISOString(),
         agenda: unwrittenVillageAgenda(state.venues, card.name),

@@ -167,10 +167,7 @@ export async function villageEngineJson<T>(
     });
     return readEngineJson<T>(path, response);
   };
-  if (
-    hasBody &&
-    ["/api/characters/avatar-generation", "/api/sprites/generate-sheet", "/api/sprites/generate"].includes(path)
-  ) {
+  if (hasBody && ["/api/characters/avatar-generation"].includes(path)) {
     const body = init.body as Record<string, unknown>;
     return trackUsage(
       {
@@ -203,7 +200,7 @@ export async function villageEngineForm<T>(path: string, form: FormData): Promis
 /** The sprite deletion route returns 204. A missing owned file is already clean. */
 export async function deleteVillageSpriteFile(assetId: string, expression: string): Promise<void> {
   if (!/^villages-[a-f0-9-]{36}$/i.test(assetId) || !/^[a-z0-9_-]{1,40}$/.test(expression))
-    throw new Error("Invalid Studio-owned file.");
+    throw new Error("Invalid Villages-owned sprite file.");
   try {
     await villageEngineFetch(`/api/sprites/${assetId}/${expression}`, { method: "DELETE" });
   } catch (error) {
