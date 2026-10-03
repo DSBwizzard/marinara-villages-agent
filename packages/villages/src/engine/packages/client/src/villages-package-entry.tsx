@@ -22071,10 +22071,12 @@ function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
     return <SpinOffToolbar props={element.capabilityProps ?? {}} />;
   }
   return (
-    <>
-      <VillagesView element={element} />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <VillagesUsageMeter request={request} element={element} />
-    </>
+      <div style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+        <VillagesView element={element} />
+      </div>
+    </div>
   );
 }
 

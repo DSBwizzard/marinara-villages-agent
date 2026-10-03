@@ -173,7 +173,7 @@ import {
 } from "../services/villages/venue-mailbox.js";
 
 import { previewVillageBurst } from "../services/villages/usage-preview.js";
-import { readUsageMeter, resetUsagePeriod, saveUsageRate } from "../services/villages/usage-meter.js";
+import { readUsageMeter, resetUsagePeriod, saveUsageRate, saveLinkApiGroup } from "../services/villages/usage-meter.js";
 
 /** Read one id off a route parameter without trusting its type. */
 function readCharacterId(value: unknown): string {
@@ -1099,6 +1099,16 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "resetting usage period");
     }
   });
+  app.patch<{ Body: { connectionId: string; group: unknown; model?: string } }>(
+    "/usage/linkapi",
+    async (request, reply) => {
+      try {
+        return await saveLinkApiGroup(request.body.connectionId, request.body.group, request.body.model);
+      } catch (error) {
+        return fail(reply, error, "saving LinkAPI token group");
+      }
+    },
+  );
   app.patch<{ Body: { connectionId: string; model: string; rate: unknown } }>(
     "/usage/pricing",
     async (request, reply) => {
