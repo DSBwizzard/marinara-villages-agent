@@ -14,6 +14,7 @@ import {
 import {
   processSavedExchange,
   closeVenueSession,
+  endVenueSessionWithReceipts,
   publicSceneResponse,
   readSceneChanges,
   replaySceneChanges,
@@ -23,7 +24,10 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 import { extractSceneReply } from "../packages/villages/src/engine/packages/server/src/services/villages/scene-reply-json.js";
 import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
-import { relationshipFor } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+import {
+  relationshipFor,
+  mutateRelationships,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
 
 async function main() {
   const at = new Date().toISOString(),
@@ -450,6 +454,55 @@ async function main() {
     );
     assert.ok(
       updates.changes.find((change) => change.submissionId === "missing")?.requests?.some((request) => request.usage),
+    );
+    const unchangedId = "cached-contact-only";
+    await mutateRelationships(state.seed, (relationships) => {
+      relationships.receipts[unchangedId] = {
+        id: unchangedId,
+        fromId: "a",
+        toId: "player",
+        dimension: "warmth",
+        before: 2,
+        after: 2,
+        reason: "Recorded contact",
+        at,
+        sourceId: "live",
+        lineIds: [],
+      };
+    });
+    const falseNotice = {
+      id: unchangedId,
+      kind: "relationship-down",
+      text: "Ada's warmth toward you decreased (2 → 2).",
+    };
+    const storedScene = records.get("villages-venue-visit-live");
+    storedScene.data.submissions[0].recordEvents.push(falseNotice);
+    assert.ok(
+      !(await readSceneChanges("live")).changes
+        .flatMap((change) => change.notices)
+        .some((event) => event.id === unchangedId),
+      "refresh filters a cached false decrease",
+    );
+    await replaySceneChanges("live");
+    assert.ok(
+      !(await readSceneChanges("live")).changes
+        .flatMap((change) => change.notices)
+        .some((event) => event.id === unchangedId),
+      "saved replay does not reintroduce a false decrease",
+    );
+    const legacy = structuredClone(storedScene);
+    legacy.id = "villages-venue-visit-legacy-cached";
+    legacy.data.id = "legacy-cached";
+    legacy.data.status = "closed";
+    legacy.data.memoryMode = "tiered";
+    legacy.data.memoryPending = false;
+    legacy.data.operation = undefined;
+    legacy.data.memoryReview = { status: "complete", decisions: [], attempts: 0, error: "", nextRecollection: 0 };
+    legacy.data.relationshipReview = { seed: state.seed, applied: true, batches: [], receipts: [falseNotice] };
+    records.set(legacy.id, legacy);
+    assert.ok(
+      !(await endVenueSessionWithReceipts("legacy-cached")).recordEvents.some((event) => event.id === unchangedId),
+      "legacy closing receipts are filtered against the same ledger",
     );
     console.log("villages-live-memory: ok (saved proposal fixtures; not live model accuracy)");
   } finally {

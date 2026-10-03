@@ -105,6 +105,7 @@ export function relationshipClosingNotices(
       ? "you"
       : (village.villagers.find((person) => person.characterId === id)?.cardSnapshot.name ?? "a villager");
   return receipts
+    .filter((receipt) => receipt.before !== receipt.after)
     .filter(
       (receipt) =>
         receipt.toId === "player" ||
@@ -119,6 +120,18 @@ export function relationshipClosingNotices(
       // A reviewer inference is not a disclosure. Private reasons remain in the domain ledger.
       ...(state.disclosures[receipt.id] ? { detail: receipt.reason } : {}),
     }));
+}
+
+/** Old saved notices may include contact-only or capped receipts. Keep the ledger intact. */
+export function filterRelationshipNotices<T extends { id: string; kind: string }>(
+  notices: readonly T[],
+  state: RelationshipState | undefined,
+): T[] {
+  return notices.filter((notice) => {
+    if (notice.kind !== "relationship-up" && notice.kind !== "relationship-down") return true;
+    const receipt = state?.receipts[notice.id];
+    return !receipt || receipt.before !== receipt.after;
+  });
 }
 
 export type RelationshipProfile = {

@@ -15,6 +15,7 @@ import { VillagesUsageMeter } from "./villages-usage-meter.js";
 import { VillagesRelationships } from "./villages-relationships.js";
 import { DecisionsControl } from "./villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "./villages-saved-changes.js";
+import { useReadingPages } from "./villages-reading-viewport.js";
 import { useSceneViewport } from "./villages-scene-viewport.js";
 import { VILLAGES_SCENE_STYLES } from "./villages-scene-styles.js";
 import { contactNeighborIds } from "../../shared/src/villages/zone-contact.js";
@@ -10204,23 +10205,19 @@ function RoomPanel({
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
-  const previousNoticeIds = useRef(new Set<string>());
+  const [dialogueHidden, setDialogueHidden] = useState(false);
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
   }, [settingsOpen]);
 
   useEffect(() => {
-    const nextIds = new Set(notices.map((notice) => notice.id));
-    const hasNewMemory = notices.some(
-      (notice) =>
-        (notice.kind === "memory" || notice.kind === "relationship-up" || notice.kind === "relationship-down") &&
-        !previousNoticeIds.current.has(notice.id),
-    );
-    previousNoticeIds.current = nextIds;
-    if (hasNewMemory) setNoticesOpen(true);
-    else if (notices.length === 0) setNoticesOpen(false);
-  }, [notices, room.id]);
+    setNoticesOpen(false);
+  }, [room.id, ended]);
+
+  useEffect(() => {
+    if (notices.length === 0) setNoticesOpen(false);
+  }, [notices.length]);
 
   useEffect(() => {
     if (!historyOpen) return;
@@ -10372,6 +10369,7 @@ function RoomPanel({
 
   const at = Math.min(readStep, Math.max(0, steps.length - 1));
   const step = steps[at];
+  const readingPages = useReadingPages(step?.text ?? "", `${room.id}:${at}`, readingRef);
   const stagingFrames = useMemo(
     () =>
       room.stagingVersion === 1
@@ -10400,10 +10398,11 @@ function RoomPanel({
       restoring: initialRead && at !== Math.max(0, steps.length - 1),
     };
   }, [room.id, at, steps.length]);
-  const canReadPrevious = at > 0;
-  const canReadNext = at < steps.length - 1;
+  const canReadPrevious = at > 0 || readingPages.index > 0;
+  const canReadNext = at < steps.length - 1 || readingPages.index < readingPages.count - 1;
   const canDraft = !ended && room.status === "active";
-  const canCompose = canDraft && !canReadNext && !historyOpen;
+  // Display pages do not impose a new requirement to read every word before replying.
+  const canCompose = canDraft && at === steps.length - 1 && !historyOpen;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -10448,7 +10447,7 @@ function RoomPanel({
 
   useLayoutEffect(() => {
     if (readingRef.current) readingRef.current.scrollTop = 0;
-  }, [at, room.id]);
+  }, [at, room.id, readingPages.index]);
 
   /** Each paragraph keeps its own narration or speech attribution. */
   const register: VillageBeatRegister =
@@ -10727,6 +10726,15 @@ function RoomPanel({
                 ×
               </button>
             </div>
+            <p className={ELEMENT_TAG + "-hint"} role="status">
+              {room.memoryMode === "live"
+                ? "Memories and relationships are handled during replies. Closing the Scene does not run a second review. See saved changes below for pending or failed work."
+                : room.memoryPending
+                  ? "This older Scene has a closing review pending."
+                  : room.memoryReview?.status === "complete"
+                    ? `Closing review complete. ${room.memoryReview.decisions?.filter((decision) => decision.action === "promote").length ?? 0} durable memories saved by that review.`
+                    : "This older Scene uses a closing memory review."}
+            </p>
             {sceneSettings}
           </div>
         </div>
@@ -10955,7 +10963,33 @@ function RoomPanel({
         ) : null}
       </div>
 
-      <div className={`${ELEMENT_TAG}-chat-vn`}>
+      {dialogueHidden ? (
+        <button
+          type="button"
+          className={ELEMENT_TAG + "-dialogue-restore"}
+          onClick={() => {
+            setDialogueHidden(false);
+            window.requestAnimationFrame(() => readingRef.current?.focus());
+          }}
+        >
+          Show dialogue
+        </button>
+      ) : null}
+      <div className={`${ELEMENT_TAG}-chat-vn`} data-dialogue-hidden={dialogueHidden ? "true" : "false"}>
+        <button
+          type="button"
+          className={ELEMENT_TAG + "-dialogue-hide"}
+          onClick={() => {
+            composerRef.current?.blur();
+            setDialogueHidden(true);
+            setModeMenuOpen(false);
+            window.requestAnimationFrame(() =>
+              document.querySelector<HTMLButtonElement>(`.${ELEMENT_TAG}-dialogue-restore`)?.focus(),
+            );
+          }}
+        >
+          Hide dialogue
+        </button>
         {room.lines.length > 0 ? (
           <div className={ELEMENT_TAG + "-chat-tab"}>
             <button
@@ -11100,14 +11134,14 @@ function RoomPanel({
                 {step ? (
                   register === "narration" ? (
                     <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
-                      {renderVillagesMarkdown(step.text, "vn-beat-")}
+                      {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
                     </p>
                   ) : (
                     <p
                       className={`${ELEMENT_TAG}-chat-vn-text`}
                       style={step.player ? undefined : speechStyle(step.speakerId)}
                     >
-                      {renderVillagesMarkdown(step.text, "vn-")}
+                      {drawVillagesNodes(readingPages.nodes, "vn-")}
                     </p>
                   )
                 ) : (
@@ -11128,12 +11162,16 @@ function RoomPanel({
             </div>
           </div>
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            <span className={`${ELEMENT_TAG}-chat-vn-counter`}>{`${at + 1} / ${Math.max(1, steps.length)}`}</span>
+            <span
+              className={`${ELEMENT_TAG}-chat-vn-counter`}
+            >{`${at + 1} / ${Math.max(1, steps.length)}${readingPages.count > 1 ? ` · page ${readingPages.index + 1}/${readingPages.count}` : ""}`}</span>
             <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-chat-vn-button`}
-                onClick={() => setReadStep(at - 1)}
+                onClick={() => {
+                  if (!readingPages.move(-1)) setReadStep(at - 1);
+                }}
                 disabled={!canReadPrevious}
                 aria-label="Previous paragraph"
               >
@@ -11143,7 +11181,9 @@ function RoomPanel({
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
-                  onClick={() => setReadStep(at + 1)}
+                  onClick={() => {
+                    if (!readingPages.move(1)) setReadStep(at + 1);
+                  }}
                   disabled={!canReadNext}
                   aria-label="Next paragraph"
                 >
@@ -11194,14 +11234,6 @@ function RoomPanel({
             {room.memoryPending
               ? `Closing review ${reviewing ? "in progress" : "pending"} · ${room.memoryReview?.nextRecollection ?? 0}/${reviewTotal} evidence groups reviewed. Memories and relationships settle independently; you can leave while review is pending and retry from Memories.`
               : "Closing this Scene…"}
-          </p>
-        ) : null}
-        {ended &&
-        !room.memoryPending &&
-        room.memoryReview?.status === "complete" &&
-        !room.memoryReview.decisions?.some((decision) => decision.action === "promote") ? (
-          <p className={`${ELEMENT_TAG}-hint`} role="status">
-            Review complete. No durable memories were made from this Scene.
           </p>
         ) : null}
 

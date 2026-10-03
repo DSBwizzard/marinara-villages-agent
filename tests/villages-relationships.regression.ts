@@ -30,6 +30,7 @@ import {
   projectRelationshipProfiles,
   proposeStartingTies,
   relationshipClosingNotices,
+  filterRelationshipNotices,
   readRelationshipsView,
   changeRelationshipCreator,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
@@ -195,6 +196,27 @@ assert.equal(
   relationshipFor(state, "Rosa", "player").familiarity,
   beforeDuplicateFamiliarity,
   "duplicate evidence cannot build familiarity",
+);
+const unchangedIds = ["b", "same-evidence"];
+assert.ok(unchangedIds.every((id) => state.receipts[id].before === state.receipts[id].after));
+assert.deepEqual(
+  relationshipClosingNotices(
+    unchangedIds.map((id) => state.receipts[id]),
+    state,
+    village,
+  ),
+  [],
+);
+assert.deepEqual(
+  filterRelationshipNotices(
+    [
+      ...unchangedIds.map((id) => ({ id, kind: "relationship-down" })),
+      { id: "a", kind: "relationship-up" },
+      { id: "memory", kind: "memory" },
+    ],
+    state,
+  ).map((event) => event.id),
+  ["a", "memory"],
 );
 const notices = relationshipClosingNotices(
   apply([change("up", 5), change("down", -5, "trust")], "two"),

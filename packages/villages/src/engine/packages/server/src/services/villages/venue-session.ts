@@ -30,6 +30,7 @@ import {
   relationshipWritingPrompt,
   relationshipPrompt,
   relationshipClosingNotices,
+  filterRelationshipNotices,
   captureRelationshipKnowledge,
 } from "./relationships.js";
 import {
@@ -1176,7 +1177,9 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
       },
       requests: turn.requestMetrics ?? null,
       interpretationHistory: turn.interpretationHistory ?? [],
-      notices: (turn.recordEvents ?? []).filter((event) => !village.dismissedNoticeIds.includes(event.id)),
+      notices: filterRelationshipNotices(turn.recordEvents ?? [], village.relationshipContext).filter(
+        (event) => !village.dismissedNoticeIds.includes(event.id),
+      ),
       evidence: scene.lines.filter(
         (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
       ),
@@ -1189,7 +1192,10 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
         memoryVersions: turn.liveProposals?.memoryVersions,
       },
     })),
-    notices: page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
+    notices: filterRelationshipNotices(
+      page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
+      village.relationshipContext,
+    ),
     dismissedNoticeIds: village.dismissedNoticeIds,
     unresolved: scene.submissions
       .flatMap((turn) =>
@@ -4352,7 +4358,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   let finalSession = updated;
   if (updated.status === "closed") {
     finalSession = await closeVenueSession(updated.id);
-    const byId = new Map([...recordEvents, ...reviewReceipts(finalSession)].map((event) => [event.id, event] as const));
+    const byId = new Map(
+      [...recordEvents, ...(await reviewReceipts(finalSession))].map((event) => [event.id, event] as const),
+    );
     recordEvents = [...byId.values()];
   }
   return {
@@ -4880,7 +4888,7 @@ async function receiptForTurn(session: VenueScene, submission: VenueSubmission):
   // Domain bookkeeping can finish after the reply's original Scene object was read.
   submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
   const village = await readVillageState();
-  const cached = (submission.recordEvents ?? []).map((event) => {
+  const cached = filterRelationshipNotices(submission.recordEvents ?? [], village.relationshipContext).map((event) => {
     if (event.kind !== "memory" || event.detail) return event;
     const memory = village.chronicle.find((entry) => entry.id === event.id);
     return memory ? { ...event, detail: memory.text } : event;
@@ -5505,8 +5513,12 @@ async function reviewTieredMemories(id: string, signal: AbortSignal): Promise<Ve
   }
 }
 
-function reviewReceipts(session: VenueScene): VenueRecordEvent[] {
-  const notices = session.relationshipReview?.applied ? session.relationshipReview.receipts : [];
+async function reviewReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
+  const village = await readVillageState();
+  const notices = filterRelationshipNotices(
+    session.relationshipReview?.applied ? session.relationshipReview.receipts : [],
+    village.relationshipContext,
+  );
   if (!session.memoryReview.applied && session.memoryReview.status !== "complete") return notices;
   return [
     ...notices,
@@ -5691,7 +5703,7 @@ async function endVenueSessionCoordinated(id: string): Promise<VenueScene> {
 /** Complete or retry a review and return only committed durable memories. */
 export async function endVenueSessionWithReceipts(id: string, retryOfAttemptId?: string) {
   const session = await endVenueSession(id, retryOfAttemptId);
-  return { session, recordEvents: reviewReceipts(session) };
+  return { session, recordEvents: await reviewReceipts(session) };
 }
 
 /** Close a visit promptly so its final beat can be read before memory review. */
@@ -5719,7 +5731,7 @@ export async function closeVenueSessionWithReceipts(
   retryOfAttemptId?: string,
 ) {
   const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId);
-  return { session, recordEvents: reviewReceipts(session) };
+  return { session, recordEvents: await reviewReceipts(session) };
 }
 
 const closingTasks = new Map<string, Promise<VenueScene>>();

@@ -186,7 +186,7 @@ assert.equal(
   3,
   "venue history, archive, and memory evidence render Markdown",
 );
-assert.equal(countIn("renderVillagesMarkdown(step.text"), 2, "venue narration and speech render Markdown");
+assert.equal(countIn("drawVillagesNodes(readingPages.nodes"), 2, "venue narration and speech render Markdown");
 assert.equal(countIn("renderVillagesMarkdown(aside.text"), 1, "venue asides render Markdown");
 assert.equal(countIn("{line.content}"), 0, "venue lines are not drawn raw");
 for (const name of ["chat-md-code", "chat-md-link", "chat-md-highlight"]) {
