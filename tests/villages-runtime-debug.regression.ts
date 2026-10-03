@@ -69,11 +69,16 @@ const messages = [{ role: "user" as const, content: "Private conversation contex
 const options = { temperature: 0.3, debugMode: false, retryEmpty: false };
 async function main() {
   try {
-    assert.deepEqual(await readRuntimeDebug(), { verbose: false, effective: false, engineEnabled: false });
+    assert.deepEqual(await readRuntimeDebug(), {
+      verbose: false,
+      effective: false,
+      engineEnabled: false,
+      showUsageMeter: true,
+    });
     await completeWithRoom(model, messages, 1000, options);
     assert.equal(logs.length, 0, "default-off is quiet");
     await assert.rejects(saveRuntimeDebug("true"), /must be true or false/);
-    assert.equal(records.size, 0);
+    assert.equal(records.has("villages-debug"), false);
     await saveRuntimeDebug(true);
     logs.length = 0;
     await completeWithRoom(model, messages, 1000, options);
@@ -101,7 +106,12 @@ async function main() {
     await completeWithRoom(model, messages, 1000, options);
     assert.equal(logs.length, 0, "switching off takes effect immediately");
     engineEnabled = true;
-    assert.deepEqual(await readRuntimeDebug(), { verbose: false, effective: true, engineEnabled: true });
+    assert.deepEqual(await readRuntimeDebug(), {
+      verbose: false,
+      effective: true,
+      engineEnabled: true,
+      showUsageMeter: true,
+    });
     await completeWithRoom(model, messages, 1000, options);
     assert.ok(logs.length > 0, "Engine override prints despite package toggle being off");
     logs.length = 0;

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { trackUsage } from "./usage-meter.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -138,6 +139,7 @@ export async function systemInterpretations(
     debugMode: false,
     signal,
     retryEmpty: false,
+    usagePurpose: "checks",
   });
   signal?.throwIfAborted();
   return readSystemInterpretations(extractJsonObject(answer.content), checks);
@@ -210,7 +212,9 @@ export async function interpretChecks(
         );
         if (questions.length > 32 || questions.some((question) => question.instructions.length > 500))
           return { reason: "This batch exceeds the bounded Decision allowance" };
-        const answers = await backend.ask(state, questions);
+        const answers = await trackUsage({ model: backend.model, purpose: "checks", stage: "decisions" }, () =>
+          backend.ask(state, questions),
+        );
         return {
           reason: answers ? "" : "Decision model supplied no usable answer",
           model: backend.model,

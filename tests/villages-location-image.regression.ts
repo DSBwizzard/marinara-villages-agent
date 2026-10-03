@@ -1143,11 +1143,12 @@ async function main() {
     canDraw,
     [
       "engine/packages/server/src/routes/villages.routes.ts",
+      "engine/packages/server/src/services/villages/engine-loopback.ts",
       "engine/packages/server/src/services/villages/image-generation.ts",
       "engine/packages/server/src/services/villages/location-image.ts",
       "engine/packages/server/src/services/villages/sprite-studio-generation.ts",
     ],
-    "only explicit scenery draws and Studio raw generation reach image providers",
+    "only explicit scenery draws, Studio generation and their metered shared transport reach image providers",
   );
   for (const silent of [
     "village.ts",

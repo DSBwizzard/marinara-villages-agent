@@ -70,6 +70,14 @@ Doorway speech is marked and keeps its own witnesses without adding a distant sp
 
 Explicit contact uses one response stage, with one additional stage if someone relays the request. Natural language contact is extracted with citations from the normal reply before those stages. Travel does not make a generation call per door. Saved responses survive refresh and interrupted saves; retries use the existing **Retry saved request** flow.
 
+## Villages AI usage
+
+A compact **Villages AI** badge is enabled by default throughout setup, the map, menus and Scenes. Open **DEBUG Settings → Show AI usage meter** to hide it independently of terminal logging. Hiding it stops meter polling; request accounting continues. Click the badge for totals since reset, today, purpose breakdowns, recent requests and model price overrides. Reset changes the displayed period without deleting aggregate history. Tokens update after the Engine returns usage.
+
+The owner-only GET /api/villages/usage returns a lightweight projection; ?details=1 adds the latest 200 completed records and unfinished requests. POST /usage/reset starts a new displayed period. PATCH /usage/pricing accepts {connectionId,model,rate} with input/output/cached/cacheWrite USD per million tokens and optional perRequest USD for image generation; rate:null restores recognized pricing. Rates are snapshotted at dispatch. Pricing sources and review dates accompany estimates. Supported direct-provider models use a small reviewed catalog; custom endpoints, other models, subscriptions, missing usage and failed/interrupted requests remain explicitly unknown unless overridden. No conversation text is retained in the meter.
+
+Counts represent actual Villages dispatches, including repairs, background calls, Decisions and generated images. Saved response replay and polling do not generate requests. Ordinary Engine chats and provider-internal retries/fallbacks are outside its complete visibility; estimates are not invoices. There are no spending limits.
+
 ## Runtime debugging
 
 Open **DEBUG Settings** and enable **Verbose runtime logging** to print Villages prompts, raw replies, routing, actual witnesses, validation failures, timings, token usage, and replay details in the server terminal. The package-owned choice is saved and takes effect immediately; missing older settings default off. DEBUG_AGENTS also enables this output, and the toggle shows the effective state. Verbose logs include conversation text and private Scene context. The toggle does not enable destructive DEBUG controls.

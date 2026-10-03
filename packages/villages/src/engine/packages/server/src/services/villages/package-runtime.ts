@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { trackUsage, withUsagePurpose, inferredPurpose } from "./usage-meter.js";
 import { resetRuntimeDebug, readRuntimeDebug, runtimeDebug } from "./runtime-debug.js";
 // Villages — the handle on the Engine services this package is allowed to use.
 //
@@ -82,7 +83,19 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
   if (!languageModels) {
     throw new Error("This Engine version did not provide a language model to packages.");
   }
-  return languageModels;
+  return {
+    ...languageModels,
+    async resolveForRequest(options) {
+      const model = await languageModels.resolveForRequest(options);
+      return {
+        ...model,
+        chatComplete: (messages, requestOptions) =>
+          trackUsage({ connectionId: model.connectionId, model: model.model }, () =>
+            model.chatComplete(messages, requestOptions),
+          ),
+      };
+    },
+  };
 }
 
 /**
@@ -186,6 +199,7 @@ export type VillageCompletionOptions = {
   onAttempt?: (completion: CapabilityLanguageModelCompletion, elapsedMs: number, maxTokens: number) => void;
   /** Scene turns own their two-attempt repair budget; other callers keep the blank retry. */
   retryEmpty?: boolean;
+  usagePurpose?: import("./usage-meter.js").UsagePurpose;
 };
 
 /**
@@ -260,20 +274,22 @@ export async function completeWithRoom(
         )
         .digest("hex"),
       (operationSignal) =>
-        model.chatComplete(messages, {
-          // Left off entirely when the caller has no temperature to ask for, which is
-          // what a preset with temperature switched off means. Sending a number here
-          // would be the package overruling a switch it had already read.
-          ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
-          ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-          ...(options.verbosity ? { verbosity: options.verbosity } : {}),
-          maxTokens: tokens,
-          debugMode: options.debugMode,
-          signal:
-            operationSignal && options.signal
-              ? AbortSignal.any([operationSignal, options.signal])
-              : (operationSignal ?? options.signal),
-        }),
+        withUsagePurpose(options.usagePurpose ?? inferredPurpose(), () =>
+          model.chatComplete(messages, {
+            // Left off entirely when the caller has no temperature to ask for, which is
+            // what a preset with temperature switched off means. Sending a number here
+            // would be the package overruling a switch it had already read.
+            ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+            ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+            ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+            maxTokens: tokens,
+            debugMode: options.debugMode,
+            signal:
+              operationSignal && options.signal
+                ? AbortSignal.any([operationSignal, options.signal])
+                : (operationSignal ?? options.signal),
+          }),
+        ),
     ).catch((error) => {
       runtimeDebug("completion exception", {
         message: String(error),

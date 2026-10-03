@@ -18,6 +18,7 @@
 // at the generate call site rather than a blanket one here.
 
 import { VillagesRequestError } from "./errors.js";
+import { trackUsage } from "./usage-meter.js";
 
 /** The port the Engine serves on, and the default it ships with. */
 const DEFAULT_ENGINE_PORT = 7860;
@@ -154,16 +155,33 @@ export async function villageEngineJson<T>(
   init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
   const hasBody = init.body !== undefined;
-  const response = await villageEngineFetch(path, {
-    method: init.method ?? (hasBody ? "POST" : "GET"),
-    headers: {
-      accept: "application/json",
-      ...(hasBody ? { "content-type": "application/json" } : {}),
-    },
-    ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
-    ...(init.signal ? { signal: init.signal } : {}),
-  });
-  return readEngineJson<T>(path, response);
+  const invoke = async () => {
+    const response = await villageEngineFetch(path, {
+      method: init.method ?? (hasBody ? "POST" : "GET"),
+      headers: {
+        accept: "application/json",
+        ...(hasBody ? { "content-type": "application/json" } : {}),
+      },
+      ...(hasBody ? { body: JSON.stringify(init.body) } : {}),
+      ...(init.signal ? { signal: init.signal } : {}),
+    });
+    return readEngineJson<T>(path, response);
+  };
+  if (
+    hasBody &&
+    ["/api/characters/avatar-generation", "/api/sprites/generate-sheet", "/api/sprites/generate"].includes(path)
+  ) {
+    const body = init.body as Record<string, unknown>;
+    return trackUsage(
+      {
+        connectionId: typeof body.connectionId === "string" ? body.connectionId : undefined,
+        purpose: "images",
+        stage: path,
+      },
+      invoke,
+    );
+  }
+  return invoke();
 }
 
 /**

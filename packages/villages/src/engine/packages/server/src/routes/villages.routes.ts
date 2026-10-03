@@ -193,6 +193,8 @@ import {
   decideVillagerVenueImprovement,
 } from "../services/villages/venue-mailbox.js";
 
+import { readUsageMeter, resetUsagePeriod, saveUsageRate } from "../services/villages/usage-meter.js";
+
 /** Read one id off a route parameter without trusting its type. */
 function readCharacterId(value: unknown): string {
   const characterId = typeof value === "string" ? value.trim() : "";
@@ -1152,6 +1154,30 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
+  app.get<{ Querystring: { details?: string } }>("/usage", async (request, reply) => {
+    try {
+      return await readUsageMeter(request.query.details === "1");
+    } catch (error) {
+      return fail(reply, error, "reading usage");
+    }
+  });
+  app.post("/usage/reset", async (_request, reply) => {
+    try {
+      return await resetUsagePeriod();
+    } catch (error) {
+      return fail(reply, error, "resetting usage period");
+    }
+  });
+  app.patch<{ Body: { connectionId: string; model: string; rate: unknown } }>(
+    "/usage/pricing",
+    async (request, reply) => {
+      try {
+        return await saveUsageRate(request.body.connectionId, request.body.model, request.body.rate);
+      } catch (error) {
+        return fail(reply, error, "saving usage pricing");
+      }
+    },
+  );
   app.get("/debug/runtime", async (_request, reply) => {
     try {
       return await readRuntimeDebug();
@@ -1159,9 +1185,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading runtime debugging");
     }
   });
-  app.patch<{ Body: { verbose?: unknown } }>("/debug/runtime", async (request, reply) => {
+  app.patch<{ Body: { verbose?: unknown; showUsageMeter?: unknown } }>("/debug/runtime", async (request, reply) => {
     try {
-      return await saveRuntimeDebug(request.body?.verbose);
+      return await saveRuntimeDebug(request.body?.verbose, request.body?.showUsageMeter);
     } catch (error) {
       return fail(reply, error, "saving runtime debugging");
     }

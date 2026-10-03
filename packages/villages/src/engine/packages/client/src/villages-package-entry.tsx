@@ -11,6 +11,7 @@ import {
   type ExplorationRow,
   type ExplorationSheet,
 } from "./villages-mobile-exploration";
+import { VillagesUsageMeter } from "./villages-usage-meter.js";
 import { VillagesRelationships } from "./villages-relationships.js";
 import { DecisionsControl } from "./villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "./villages-saved-changes.js";
@@ -6215,9 +6216,12 @@ class VillageApiError extends Error {
   }
 }
 function VillagesRuntimeDebug() {
-  const [settings, setSettings] = useState<{ verbose: boolean; effective: boolean; engineEnabled: boolean } | null>(
-    null,
-  );
+  const [settings, setSettings] = useState<{
+    verbose: boolean;
+    effective: boolean;
+    engineEnabled: boolean;
+    showUsageMeter?: boolean;
+  } | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -6247,6 +6251,31 @@ function VillagesRuntimeDebug() {
   };
   return (
     <section className={ELEMENT_TAG + "-panel"}>
+      <label>
+        <input
+          type="checkbox"
+          checked={settings?.showUsageMeter !== false}
+          disabled={!settings || saving}
+          onChange={async (event) => {
+            setSaving(true);
+            try {
+              const next = await request<typeof settings>("/debug/runtime", {
+                method: "PATCH",
+                body: JSON.stringify({ showUsageMeter: event.currentTarget.checked }),
+              });
+              setSettings(next);
+              window.dispatchEvent(
+                new CustomEvent("villages-usage-visibility", { detail: next?.showUsageMeter !== false }),
+              );
+            } catch (cause) {
+              setError(messageFrom(cause, "Usage display setting could not be saved."));
+            } finally {
+              setSaving(false);
+            }
+          }}
+        />{" "}
+        Show AI usage meter
+      </label>
       <label>
         <input
           type="checkbox"
@@ -21960,7 +21989,12 @@ function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
   if (view === "toolbar") {
     return <SpinOffToolbar props={element.capabilityProps ?? {}} />;
   }
-  return <VillagesView element={element} />;
+  return (
+    <>
+      <VillagesView element={element} />
+      <VillagesUsageMeter request={request} element={element} />
+    </>
+  );
 }
 
 /** A house with a way back into it. The only icon in the package's chrome. */
