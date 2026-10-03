@@ -103,6 +103,7 @@ jobs:
           npx tsx tests/villages-interpretation.regression.ts
           npx tsx tests/villages-interpretation-evidence.regression.ts
           npx tsx tests/villages-interpretation-routing.regression.ts
+          npx tsx tests/villages-room-events.regression.ts
           npx tsx tests/villages-background-work.regression.ts
           npx tsx tests/villages-automatic-refresh.regression.ts
           npx tsx tests/villages-agenda-movement.regression.ts

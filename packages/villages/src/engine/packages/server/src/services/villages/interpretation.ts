@@ -103,6 +103,14 @@ export async function systemInterpretations(
   checks: InterpretationCheck[],
   signal?: AbortSignal,
 ): Promise<InterpretationResult[]> {
+  const rooms = checks.length > 0 && checks.every((check) => check.domain === "room");
+  if (rooms && checks.length > 4)
+    return checks.map(() => ({
+      outcome: "unresolved",
+      source: "system",
+      evidenceIds: [],
+      reason: "Too many permission targets; clarify the destination without a room survey",
+    }));
   if (checks.length > 4) {
     const results: InterpretationResult[] = [];
     for (let index = 0; index < checks.length; index += 4)
@@ -111,7 +119,7 @@ export async function systemInterpretations(
   }
   checks = checks.map(boundInterpretationEvidence);
   const wire = interpretationPayload(checks);
-  if (!wire.fits)
+  if (!wire.fits || (rooms && wire.serialized.length > 6000))
     return checks.map(() => ({
       outcome: "unresolved",
       source: "system",
@@ -133,7 +141,8 @@ export async function systemInterpretations(
       content: wire.serialized,
     },
   ] as Parameters<typeof completeWithRoom>[1];
-  const maxTokens = Math.min(resolved.maxOutputTokens ?? 2400, 2400);
+  const allowance = rooms ? 1024 : 2400;
+  const maxTokens = Math.min(resolved.maxOutputTokens ?? allowance, allowance);
   const fitted = resolved.fitContext(messages, { maxTokens });
   if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
     return checks.map(() => ({

@@ -2204,6 +2204,7 @@ async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>
   return {
     ...parsed,
     interpretationRouting: raw?.interpretationRouting as unknown,
+    roomEvents: raw?.roomEvents as unknown,
     projectContexts,
     contactIntent:
       !session.contactGeneration && (mode === "chat" || mode === "ask")
@@ -2357,6 +2358,8 @@ async function interpretRoomDraft(
         `${venueOperationId()}:${createHash("sha256").update(JSON.stringify(reply.lines)).digest("hex").slice(0, 12)}`,
         reply.heardPlayerBy,
         reply.invitationSignal ? undefined : reply.interpretationRouting,
+        reply.roomEvents,
+        reply.invitationSignal,
       )
     : null;
   const proposedInvitation = reply.invitationSignal;
@@ -3245,6 +3248,7 @@ function quietContactReply(text: string, localIds: string[]): SceneReply {
     lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }],
     heardPlayerBy: localIds,
     interpretationRouting: undefined,
+    roomEvents: undefined,
     projectContexts: [],
     projectSpeech: [],
     sceneChange: null,

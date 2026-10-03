@@ -1,4 +1,5 @@
-import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
+import { recordInterpretationRouting } from "./interpretation-routing.js";
+import { selectRoomEventChecks } from "./room-events.js";
 import { boundInterpretationEvidence, contextualChecks } from "./interpretation-evidence.js";
 import type { VillageState, VillageVenue } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
@@ -103,7 +104,9 @@ export function roomInterpretationChecks(
             actorName: name,
             zoneId: zone.id,
             zoneName: label,
+            zoneKind: zone.kind,
             venueId: venue.id,
+            venueName: venue.name,
             currentPlayerZoneId: scene.zoneId,
             currentPlayerVenueId: scene.placeId,
             controllerId: actor,
@@ -148,18 +151,40 @@ export async function interpretRoomReply(
   key: string,
   heardPlayerBy: string[] = scene.activeIds,
   routing?: unknown,
+  events?: unknown,
+  invitation?: unknown,
 ) {
   const checks = roomInterpretationChecks(scene, village, message, draft, key, heardPlayerBy);
   if (!checks.length) return null;
-  const selection = routeInterpretationChecks(
+  const selection = selectRoomEventChecks(
     (await contextualChecks(scene.id, checks)).map(boundInterpretationEvidence),
+    scene,
     routing,
-    {
-      actorIds: [...scene.activeIds, ...draft.map((line) => line.speakerId)],
-    },
+    events,
+    invitation,
   );
-  await recordInterpretationRouting(scene.id, selection).catch(() => {});
-  return selection.checks.length ? interpretChecks(selection.checks, `room-interpretation:${key}`, scene.id) : null;
+  const ids = new Set([...selection.selected, ...selection.uncertain].map((check) => check.id));
+  const reasons = new Map(selection.selected.map((check) => [check.id, "Cited permission event selected"]));
+  const skipped = checks
+    .filter((check) => !ids.has(check.id))
+    .map((check) => ({ check, reason: "No specific permission event; no model request" }));
+  await recordInterpretationRouting(scene.id, { checks: selection.selected, skipped, reasons }).catch(() => {});
+  const selected = [...selection.selected, ...selection.uncertain];
+  if (!selected.length) return null;
+  return interpretChecks(selected, `room-interpretation:${key}`, scene.id, async (pending, signal) => {
+    const { systemInterpretations } = await import("./interpretation.js");
+    const judge = pending.filter((check) => !selection.uncertain.some((item) => item.id === check.id));
+    const results = judge.length ? await systemInterpretations(judge, signal) : [];
+    return pending.map(
+      (check) =>
+        results[judge.indexOf(check)] ?? {
+          outcome: "unresolved",
+          source: "system" as const,
+          evidenceIds: [],
+          reason: "Permission destination is ambiguous; clarification needed without a model request",
+        },
+    );
+  });
 }
 /** Choose an adjacent admitted Zone, preferring the entry route, then a shortest path toward Exterior. */
 export function dismissalDestination(village: VillageState, venue: VillageVenue, scene: VenueScene): string | null {
