@@ -8,7 +8,7 @@ import {
 } from "./background-work.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import {
-  interpretWishClaim,
+  interpretWishBatch,
   wishFingerprint,
   wishReceiptRecords,
   matchingWishReceipts,
@@ -16,6 +16,7 @@ import {
   type WishCriteria,
   type WishInterpretationContext,
 } from "./wish-interpretation.js";
+import { localWishRequirements, wishEvidenceAdmission } from "./wish-admission.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 import { readEffectiveVillagerCard } from "./catalog.js";
@@ -118,6 +119,17 @@ export function bindWishProposals(
       errors.push("Wish disclosure needs this resident's own speech heard by the player");
       continue;
     }
+    const existing = proposals.find(
+      (proposal) =>
+        proposal.actorId === actorId &&
+        proposal.wishId === wishId &&
+        proposal.intent !== "reveal" &&
+        raw.intent !== "reveal",
+    );
+    if (existing) {
+      existing.lineIds = [...new Set([...existing.lineIds, ...lineIds])];
+      continue;
+    }
     proposals.push({
       actorId,
       wishId,
@@ -146,6 +158,9 @@ type PreparedWishVerdict = {
   memory: string;
   receiptIds: string[];
 };
+type WishBatchInput = { sceneId: string; submissionId: string; seed: string; items: WishCheckInput[] };
+type PreparedWishBatch = { items: { id: string; verdict: PreparedWishVerdict }[] };
+const batchItems = (input: WishCheckInput | WishBatchInput) => ("items" in input ? input.items : [input]);
 const effectId = (sceneId: string, submissionId: string, proposal: WishProposal) =>
   `wish-change:${sceneId}:${submissionId}:${proposal.wishId}:${proposal.intent}`;
 const taskId = (proposal: WishProposal) => `wish:${proposal.actorId}:${proposal.wishId}:${proposal.fingerprint}`;
@@ -216,8 +231,12 @@ export function applyPreparedWishVerdict(
     { actorId: input.proposal.actorId, receipts: wishReceiptRecords(state, input.proposal.actorId) },
     wish,
   );
-  const physical =
-    !verdict.criteria.requiresPhysical || matching.some((receipt) => verdict.receiptIds.includes(receipt.id));
+  const requirements = localWishRequirements(wish);
+  const requiresPhysical =
+    verdict.criteria.requiresPhysical ||
+    (verdict.outcome === "fulfilled" && requirements.criteria.requiresPhysical) ||
+    (verdict.outcome === "progress" && requirements.physicalOnly);
+  const physical = !requiresPhysical || matching.some((receipt) => verdict.receiptIds.includes(receipt.id));
   const supported =
     verdict.evidenceIds.length > 0 &&
     verdict.evidenceIds.every(
@@ -315,36 +334,56 @@ export function applyPreparedWishVerdict(
 }
 
 registerBackgroundHandler("wish-check", {
-  valid: (state, input: WishCheckInput) => state.seed === input.seed && !!currentWish(state, input.proposal),
-  async generate(input: WishCheckInput): Promise<PreparedWishVerdict> {
-    const interpreted = await interpretWishClaim(
-      input.context,
+  valid: (state, input: WishCheckInput | WishBatchInput) =>
+    state.seed === input.seed && batchItems(input).some((item) => !!currentWish(state, item.proposal)),
+  async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
+    const items = batchItems(input);
+    const batch = await interpretWishBatch(
+      items.map((item) => item.context),
       input.sceneId,
-      `live:${input.submissionId}:${input.wish.id}`,
-      true,
+      `live:${input.submissionId}`,
     );
-    const check = interpreted.batch.checks[0],
-      result = interpreted.batch.results[0];
-    await writeInterpretationDiagnostics(input.sceneId, interpreted.batch.traces);
-    if (!result || result.outcome === "unresolved")
-      throw new Error(result?.reason || "Wish interpretation unresolved; explicit retry required");
-    const facts = asRecord(check.facts);
-    return {
-      criteria: facts.criteria as WishCriteria,
-      outcome: result.outcome,
-      evidenceIds: result.evidenceIds,
-      reason: result.reason,
-      memory: interpreted.memory,
-      receiptIds: (facts.matchingReceiptIds as string[]).filter((id) => result.evidenceIds.includes(`receipt:${id}`)),
-    };
+    await writeInterpretationDiagnostics(input.sceneId, batch.traces);
+    const prepared = items.map((item, index) => {
+      const check = batch.checks[index],
+        result = batch.results[index];
+      if (!result) throw new Error("Wish interpretation missing; explicit retry required");
+      if (result.reason.startsWith("Invalid check output:")) throw new Error(result.reason);
+      const facts = asRecord(check.facts);
+      return {
+        id: effectId(item.sceneId, item.submissionId, item.proposal),
+        verdict: {
+          criteria: facts.criteria as WishCriteria,
+          outcome: result.outcome,
+          evidenceIds: result.evidenceIds,
+          reason:
+            result.outcome === "unresolved"
+              ? `Clarification needed: ${result.reason || "Wish meaning remains uncertain"}`
+              : result.reason || "No Wish change",
+          memory: "",
+          receiptIds: (facts.matchingReceiptIds as string[]).filter((id) =>
+            result.evidenceIds.includes(`receipt:${id}`),
+          ),
+        },
+      };
+    });
+    return "items" in input ? { items: prepared } : prepared[0].verdict;
   },
-  apply: applyPreparedWishVerdict,
-  async afterApply(input: WishCheckInput) {
+  apply(state, input: WishCheckInput | WishBatchInput, result: PreparedWishVerdict | PreparedWishBatch) {
+    for (const item of batchItems(input)) {
+      const verdict =
+        "items" in result
+          ? result.items.find((entry) => entry.id === effectId(item.sceneId, item.submissionId, item.proposal))?.verdict
+          : result;
+      if (verdict) applyPreparedWishVerdict(state, item, verdict);
+    }
+  },
+  async afterApply(input: WishCheckInput | WishBatchInput) {
     if (input.sceneId.startsWith("project:")) return;
     const { processSavedExchange } = await import("./venue-session.js");
     await processSavedExchange(input.sceneId, input.submissionId);
   },
-  async afterFailure(input: WishCheckInput | null) {
+  async afterFailure(input: WishCheckInput | WishBatchInput | null) {
     if (!input || input.sceneId.startsWith("project:")) return;
     const { processSavedExchange } = await import("./venue-session.js");
     await processSavedExchange(input.sceneId, input.submissionId);
@@ -461,21 +500,39 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
   if (turn.mode === "act" && !turn.actionReplyDone)
     return { status: "pending", reason: "Waiting for saved action narration" };
   if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
-  const proposals = turn.wishProposals ?? [];
+  const proposals = [
+    ...new Map(
+      (turn.wishProposals ?? []).map((proposal) => [
+        `${proposal.actorId}:${proposal.wishId}:${proposal.intent === "reveal" ? "reveal" : "check"}`,
+        proposal,
+      ]),
+    ).values(),
+  ];
   if (turn.action?.happened) {
     const cached = await cachedWishCriteria();
     for (const resident of state.villagers) {
       for (const wish of resident.agenda?.wishes ?? []) {
         const fingerprint = wishFingerprint(wish),
-          criteria = cached.get(`${resident.characterId}:${fingerprint}`);
-        if (!criteria?.requiresPhysical || criteria.kind === "complex") continue;
+          prepared = cached.get(`${resident.characterId}:${fingerprint}`),
+          criteria = prepared?.goal === wish.wish ? prepared : localWishRequirements(wish).criteria;
+        if (!criteria.requiresPhysical) continue;
         const receipts = matchingWishReceipts(
           criteria,
           { actorId: resident.characterId, receipts: wishReceiptRecords(state, resident.characterId, scene) },
           wish,
         ).filter((receipt) => receipt.actionReceipt?.submissionId === turn.id);
+        const words = wish.wish.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? [];
+        const relevant = receipts.filter(
+          (receipt) =>
+            criteria.kind !== "complex" ||
+            words.some(
+              (word) =>
+                !["have", "with", "that", "this", "here", "where", "inside", "find", "their", "make"].includes(word) &&
+                `${receipt.text} ${receipt.actionReceipt?.narration ?? ""}`.toLocaleLowerCase().includes(word),
+            ),
+        );
         if (
-          !receipts.length ||
+          !relevant.length ||
           proposals.some((proposal) => proposal.wishId === wish.id && proposal.intent !== "reveal")
         )
           continue;
@@ -485,13 +542,14 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
           fingerprint,
           intent: "check",
           lineIds: [],
-          receiptIds: receipts.map((receipt) => receipt.id),
+          receiptIds: relevant.map((receipt) => receipt.id),
         });
       }
     }
   }
   const receiptIds: string[] = [],
     pending: string[] = [];
+  const batchInputs: WishCheckInput[] = [];
   for (const proposal of proposals) {
     const id = effectId(scene.id, turn.id, proposal),
       prior = state.exchangeReceipts[id];
@@ -552,16 +610,30 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
       receiptIds.push(id);
       continue;
     }
+    // Old per-Wish jobs remain recoverable; discovering them never authorizes replacement paid work.
     const player = readPlayerIdentity(state);
-    const evidence = scene.lines
+    const witnessed = scene.lines.filter(
+      (line) =>
+        line.heardBy.includes(proposal.actorId) &&
+        !line.contactReport &&
+        line.kind !== "side" &&
+        (!line.contactHidden || proposal.lineIds.includes(line.id)),
+    );
+    const currentIds = new Set([...(turn.processing?.lineIds ?? proposal.lineIds), ...(turn.replyLineIds ?? [])]);
+    const priorAccepted = Object.values(state.exchangeReceipts)
       .filter(
-        (line) =>
-          line.heardBy.includes(proposal.actorId) &&
-          !line.contactReport &&
-          line.kind !== "side" &&
-          (!line.contactHidden || proposal.lineIds.includes(line.id)),
+        (receipt) => receipt.actorId === proposal.actorId && receipt.wishId === wish.id && receipt.status === "applied",
       )
-      .slice(-64);
+      .flatMap((receipt) => receipt.evidenceIds);
+    const pinned = new Set([...proposal.lineIds, ...priorAccepted]);
+    const recent = witnessed.filter((line) => !currentIds.has(line.id)).slice(-2);
+    const evidence = witnessed.filter(
+      (line) => pinned.has(line.id) || currentIds.has(line.id) || recent.includes(line),
+    );
+    const receipts = wishReceiptRecords(state, proposal.actorId, scene);
+    const newReceipts = receipts.filter(
+      (receipt) => proposal.receiptIds?.includes(receipt.id) || receipt.actionReceipt?.submissionId === turn.id,
+    );
     const context: WishInterpretationContext = {
       actorId: proposal.actorId,
       village: state.name,
@@ -579,8 +651,10 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
         content: line.content,
         kind: line.kind,
         at: line.at,
+        current: currentIds.has(line.id),
       })),
-      receipts: wishReceiptRecords(state, proposal.actorId, scene),
+      receipts,
+      currentReceiptIds: newReceipts.map((receipt) => receipt.id),
       transcript: [],
       happenings: [],
       memory: [],
@@ -595,21 +669,59 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
       at: turn.at!,
       context,
     };
+    const admission = wishEvidenceAdmission(
+      wish,
+      context.evidence.filter((line) => !line.current || proposal.lineIds.includes(line.id)),
+      newReceipts.map((receipt) => receipt.id),
+    );
+    if (!admission.admitted) {
+      await mutateVillageState((live) =>
+        applyPreparedWishVerdict(live, input, {
+          criteria: admission.criteria,
+          outcome: "none",
+          evidenceIds: [],
+          reason: admission.reason,
+          memory: "",
+          receiptIds: [],
+        }),
+      );
+      receiptIds.push(id);
+      continue;
+    }
+    const legacyStatus = await backgroundStatus("wish-check", id);
+    if (legacyStatus && legacyStatus !== "obsolete") {
+      pending.push(`${legacyStatus}: saved Wish check`);
+      continue;
+    }
+    batchInputs.push(input);
+  }
+  if (batchInputs.length) {
+    const subjectId = `wish-batch:${scene.id}:${turn.id}`;
     await outsideVenueOperation(() =>
       queueBackgroundJob({
         kind: "wish-check",
-        subjectId: id,
-        residentId: proposal.actorId,
+        subjectId,
+        residentId: batchInputs[0].proposal.actorId,
+        residentIds: [...new Set(batchInputs.map((item) => item.proposal.actorId))],
         seed: state.seed,
-        revision: backgroundRevision([state.seed, scene.id, turn.id, proposal.fingerprint, proposal.intent]),
+        revision: backgroundRevision([
+          state.seed,
+          scene.id,
+          turn.id,
+          batchInputs.map((item) => [item.proposal.fingerprint, item.proposal.intent]),
+        ]),
         finite: true,
-        label: `Check ${resident.cardSnapshot.name}'s Wish`,
-        input,
+        label: `Check ${batchInputs.length} relevant Scene Wishes`,
+        input: {
+          sceneId: scene.id,
+          submissionId: turn.id,
+          seed: state.seed,
+          items: batchInputs,
+        } satisfies WishBatchInput,
       }),
     );
-    const status = await backgroundStatus("wish-check", id);
-    if (status === "obsolete") continue;
-    pending.push(`${status ?? "queued"}: relevant Wish evidence checking`);
+    const status = await backgroundStatus("wish-check", subjectId);
+    if (status !== "obsolete") pending.push(`${status ?? "queued"}: relevant Wish evidence checking`);
   }
   if (pending.length)
     return {

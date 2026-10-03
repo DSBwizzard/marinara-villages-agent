@@ -223,7 +223,7 @@ async function main() {
     await settleBackgroundWork();
     await processSavedExchange("s", "t");
     const current = await readVillageState();
-    assert.equal(calls, 2, "one cached condition preparation and one required interpretation");
+    assert.equal(calls, 1, "one shared interpretation without condition preparation");
     assert.equal(current.villagers[0].agenda?.wishes.length, 0);
     assert.equal(
       current.progressTasks.filter((task) => task.definition.owner.kind === "wish" && task.resolvedAt).length,
@@ -232,7 +232,7 @@ async function main() {
     assert.match(current.progressTasks[0].definition.phases[0].requirements[0].title, /garden and agree/);
     await processSavedExchange("s", "t");
     await settleBackgroundWork();
-    assert.equal(calls, 2, "saved replay does not bill again");
+    assert.equal(calls, 1, "saved replay does not bill again");
     assert.equal(
       (await backgroundWorkSummaries()).filter((job) => job.kind === "wish-check").length,
       1,
@@ -361,7 +361,7 @@ async function main() {
     await retryBackgroundJob(failedJob.id, failedJob.attempt, "deliberate-retry");
     await settleBackgroundWork();
     assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
-    assert.equal(calls, afterUnknown + 2, "explicit retry can incur new preparation and interpretation requests");
+    assert.equal(calls, afterUnknown + 1, "explicit retry needs only one judgment");
     const cachedWish = { ...wish, id: "cached-retry" };
     records.get("villages-village").data.villagers[0].agenda.wishes = [cachedWish];
     const cachedScene = structuredClone(pendingScene);

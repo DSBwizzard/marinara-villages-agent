@@ -115,6 +115,17 @@ async function main() {
       );
     }
     assert.equal(calls, 0, "absent/malformed routing cannot buy a room survey");
+    assert.equal(
+      await interpretRoomReply(
+        scene,
+        state,
+        "What should we survey?",
+        draft("The entry points need surveying tomorrow."),
+        "entry-points",
+      ),
+      null,
+      "mentioning entry points is physical planning, not permission",
+    );
     const select = (text: string, message = "", events?: unknown, other = scene, kind = "dialogue") =>
       selectRoomEventChecks(
         roomInterpretationChecks(other, state, message, draft(text, kind) as any, "event"),

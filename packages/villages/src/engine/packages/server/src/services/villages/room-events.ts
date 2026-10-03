@@ -3,7 +3,7 @@ import type { InterpretationCheck } from "./interpretation.js";
 import type { VenueScene } from "./venue-session.js";
 
 const access =
-  /\b(?:come (?:in|inside|into|over|up|to)|enter|entry|invite|invitation|visit|welcome (?:in|inside|to)|you (?:can|may) (?:use|go)|my (?:room|bedroom|place)|get out|go away|leave (?:here|now|this|my|the)|please leave)\b|^leave[.!]?$/iu;
+  /\b(?:come (?:in|inside|into|over|upstairs)|(?:allow|grant|deny|refuse|no) entry|invite you|visit me|welcome (?:in|inside|to)|you (?:can|may) (?:use|go|enter|visit)|my (?:room|bedroom|place)|get out|go away|leave (?:here|now|this|my|the)|please leave)\b|^(?:leave|enter)[.!]?$/iu;
 const entryRequest =
   /\b(?:may|can|could|shall) (?:I|we)\b[^?\n]{0,100}\b(?:enter|come|go|visit|use|inside|room|door)\b|\blet (?:me|us) (?:in|inside)\b/iu;
 const gesture = /\b(?:nods?|beckons?|gestures?|motions?|steps? aside|points?)\b/iu;

@@ -1279,6 +1279,12 @@ node --import tsx tests/villages-automatic-refresh.regression.ts
 node tests/villages-background-work.e2e.mjs
 ```
 
+### Bounded Wish evidence checks
+
+New Wish checks use the original Wish directly, with no paid criteria preparation. Witnessed disclosure and clearly unsupported physical plans settle locally. Relevant semantic evidence shares one batch per exchange, with exact current citations, the preceding context and previously accepted evidence references instead of complete resident cards and repeated Scene histories. Mixed goals can record conversational progress while physical completion still needs authoritative receipts. Missing proof is a settled no-change result; genuine semantic uncertainty asks for clarification; invalid output and unknown provider outcomes require deliberate retry. Older jobs retain their recovery path and discovering them does not authorize replacement paid requests.
+
+Wish batches have at most four goals, 12,000 serialized payload characters, low reasoning effort and a 512/768/1,024 output-token allowance according to batch size. Oversized essential evidence asks for clarification without paid splitting. The measured reference replay, method and limitations are in [CHECK_COSTS.md](CHECK_COSTS.md).
+
 ### Conservative narration routing
 
 Scene replies nominate sparse `roomEvents` with exact current segment citations. A missing or malformed routing array does not authorize a room survey. Local admission selects concrete permission speech, named gestures, pending answers and specific entry requests; ordinary conversation makes zero room model requests. Specific older invitation signals remain compatible. Unknown destinations need clarification without a paid scan. Only the existing cited interpretation and server authority checks can grant, refuse or dismiss access. Permission requests are capped at four targets, 6,000 serialized payload characters and 1,024 output tokens; overflow needs clarification and does not split into additional requests. Normal travel on existing grants remains local. DEBUG records include local skip reasons.
