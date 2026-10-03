@@ -122,8 +122,7 @@ try {
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await page.getByRole("button", { name: "Mode: Chat. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Knock / Call", exact: true }).click();
+    await page.getByRole("button", { name: "Knock / Call", exact: true }).click();
     await page.getByLabel("Knock or call").selectOption("call");
     await page.getByLabel("Doorway").selectOption("common");
     await page.getByLabel("Who to contact").selectOption("mara");

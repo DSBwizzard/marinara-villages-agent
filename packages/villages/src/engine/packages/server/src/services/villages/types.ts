@@ -782,6 +782,13 @@ export type VillageVenueEvent = {
     traceText?: string;
     recipientId?: string;
     resolveTraceId?: string;
+    conditionBefore?: string;
+    conditionAfter?: string;
+    featureId?: string;
+    featureText?: string;
+    publicFactBefore?: string;
+    publicFactAfter?: string;
+    sceneNote?: string;
     witnessIds?: string[];
     transferTo?: string;
     itemTransfer?: { itemName: string; recipientId: string };

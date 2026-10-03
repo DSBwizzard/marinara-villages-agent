@@ -1,4 +1,5 @@
 import { pipelineSignal } from "./pipeline-metrics.js";
+import { physicalVenueEvents } from "./venue-scene-state.js";
 import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
 import { boundInterpretationEvidence, contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
 import type { VillageState } from "./types.js";
@@ -30,7 +31,7 @@ export function applyRecordedProjectPickup(
   revision: number,
   submissionId: string,
 ) {
-  const event = state.venueEvents.find((item) => item.id === eventId),
+  const event = physicalVenueEvents(state).find((item) => item.id === eventId),
     receipt = event?.actionReceipt;
   const project = state.projects.find((item) => item.id === projectId),
     flow = project?.lifecycle;
@@ -454,7 +455,7 @@ export async function finalizeProjectDiagnostics(
 /** Allocate an already completed, inventory-debited pickup; interpretation cannot authorize the transfer itself. */
 export async function applyProjectPickup(sceneId: string, submissionId: string) {
   const state = await readVillageState();
-  const event = state.venueEvents.find((item) => item.actionReceipt?.submissionId === submissionId);
+  const event = physicalVenueEvents(state).find((item) => item.actionReceipt?.submissionId === submissionId);
   const proof = event?.actionReceipt;
   if (
     !event ||

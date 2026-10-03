@@ -1,0 +1,79 @@
+{
+  "movement": [
+    { "label": "named-local", "text": "I walk to Common Space", "zoneId": "hall" },
+    { "label": "outside-alias", "text": "I go outside", "zoneId": "exterior" },
+    { "label": "named-imperative", "text": "Move to the Hall", "zoneId": "hall" },
+    {
+      "label": "prose-nomination",
+      "text": "I drift into Common Space",
+      "nomination": { "zoneId": "hall", "quote": "I drift into Common Space" },
+      "zoneId": "hall"
+    },
+    { "label": "missing-destination", "text": "I walk", "clarify": true },
+    { "label": "mixed-speech", "text": "I walk to Common Space and say hello", "clarify": true },
+    { "label": "speech-before-move", "text": "I say hello and walk to Common Space", "clarify": true },
+    { "label": "two-destinations", "text": "I walk to Common Space then Exterior", "clarify": true },
+    { "label": "invitation", "text": "Come into Common Space", "zoneId": null },
+    { "label": "permission-question", "text": "Can I go to Common Space?", "zoneId": null },
+    { "label": "future-plan", "text": "I will go to Common Space", "zoneId": null },
+    { "label": "quoted-action", "text": "I said \"I go to Common Space\"", "zoneId": null },
+    { "label": "furniture-action", "text": "I moved the tables", "zoneId": null },
+    { "label": "note-action", "text": "Leave a note for Tina", "zoneId": null },
+    {
+      "label": "invented-player-move",
+      "text": "Hello there",
+      "nomination": { "zoneId": "hall", "quote": "I drift into Common Space" },
+      "zoneId": null
+    },
+    {
+      "label": "wrong-destination-nomination",
+      "text": "I drift into Common Space",
+      "nomination": { "zoneId": "exterior", "quote": "I drift into Common Space" },
+      "zoneId": null
+    }
+  ],
+  "deferredComparison": [
+    {
+      "label": "current-repair",
+      "player": "I fixed the ceiling drip.",
+      "expected": "A feasible witnessed repair counts once; a statement about work elsewhere does not."
+    },
+    {
+      "label": "physical-handoff",
+      "player": "I hand Tina the recorded teapot.",
+      "expected": "Exact stock, recipient and local witnesses; doorway speech cannot deliver it."
+    },
+    {
+      "label": "substantial-commitment",
+      "resident": "I'll bring my seedlings on Saturday.",
+      "expected": "Faithful durable commitment if meaningful and witnessed; no completed physical work yet."
+    },
+    {
+      "label": "temporary-mood",
+      "resident": "I'm tired today.",
+      "expected": "No new enduring personality trait or automatic consequential relationship change."
+    },
+    {
+      "label": "dry-character-voice",
+      "resident": "Well, that went brilliantly.",
+      "context": "The resident's authored voice is sarcastic; the repair failed.",
+      "expected": "Keep the sarcasm and character cadence; do not infer gratitude or trust from words alone."
+    },
+    {
+      "label": "conditional-entry",
+      "resident": "You can come in if you leave the muddy boots outside.",
+      "expected": "Preserve the condition; entry is a player choice and grants no edit authority."
+    },
+    {
+      "label": "doorway-privacy",
+      "player": "I call Tina through her doorway.",
+      "expected": "Only actual audible witnesses know the exchange; response is voluntary; unseen attendance stays private."
+    }
+  ],
+  "decisionCriteria": [
+    "Fewer incorrect or missed consequences",
+    "Better fidelity to complete authored character identity and voice",
+    "Benefits justify additional tokens, context, latency and maintenance"
+  ],
+  "limits": "Labeled expectations for later paired live comparisons; mocked mechanics do not establish model quality or billing."
+}
