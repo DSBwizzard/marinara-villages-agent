@@ -113,10 +113,12 @@ try {
     const dock = page.locator(`.${tag}-chat-vn`);
     const tray = page.getByRole("button", { name: /village notice/ });
     await expect(reading).toBeVisible();
-    await expect(tray).toHaveAttribute("aria-expanded", "false");
-    await expect(page.getByLabel("Village events")).toHaveCount(0);
+    await expect(tray).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByLabel("Village events")).toBeVisible();
     events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
     await expect(tray).toHaveAccessibleName("2 village notices");
+    await expect(tray).toHaveAttribute("aria-expanded", "true");
+    await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
     if (mobile) {
       await expect(counter).toContainText("page 1/");
@@ -201,7 +203,7 @@ try {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Scene settings" }).click();
     await expect(page.getByRole("dialog", { name: "Scene settings" })).toContainText(
-      "Closing the Scene does not run a second review",
+      "Ending the Scene does not run another review",
     );
     assert.deepEqual(errors, []);
     await page.close();
