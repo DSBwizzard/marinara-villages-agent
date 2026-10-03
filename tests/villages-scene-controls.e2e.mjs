@@ -103,11 +103,11 @@ try {
       const dock = page.locator(`.${tag}-chat-vn`);
       const images = page.locator(`.${tag}-chat-cast-person > img`);
       await expect(composer).toBeVisible();
-      await expect(page.locator(".mari-home-browser-chrome")).toBeHidden();
+      await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
       await expect(page.locator(`.${tag}-chat-vn-portrait`)).toBeVisible();
-      await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
+      await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
       const buttonBox = await send.boundingBox();
-      assert.equal(buttonBox.width, mobile ? 36 : 32);
+      assert.equal(buttonBox.width, mobile ? 44 : 32);
       assert.equal((await send.locator("svg").boundingBox()).width, 15);
       assert.equal(await send.innerText(), "", "send control has no large text label");
       await composer.fill("Tea sounds perfect.");
@@ -185,6 +185,7 @@ try {
           }, height);
           if (resizesLayout) await page.setViewportSize({ width, height });
           await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
+          await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
           await expect(composer).toHaveValue("Keyboard draft");
         }
         // Viewport panning moves the dock, not the artwork.
@@ -208,6 +209,7 @@ try {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
         // iOS-style panning may offset the entire lost height, keeping the bottom unchanged.
         await page.evaluate(
           ({ visible, keyboardHeight }) => {
@@ -221,7 +223,7 @@ try {
           { visible, keyboardHeight },
         );
         await expect(host).toHaveAttribute("data-scene-keyboard", "");
-        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height);
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
         await expect
           .poll(async () => Math.round((await images.first().boundingBox()).y))
           .toBe(Math.round(baseline[0].y));
@@ -234,6 +236,7 @@ try {
           window.sceneViewport.dispatchEvent(new Event("resize"));
         }, height);
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
+        await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
       }
       if (process.env.VILLAGES_VISUAL_OUTPUT && count === 1)
         await page.screenshot({

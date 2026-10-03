@@ -61,6 +61,7 @@ jobs:
       - name: Verify scene staging and reading pages
         run: |
           npx tsx tests/villages-scene-staging.regression.ts
+          npx tsx tests/villages-mobile-scene.regression.ts
           npx tsx tests/villages-reading-pages.regression.ts
 
       - name: Verify complete character identity and writing context
@@ -141,6 +142,7 @@ jobs:
           node tests/villages-scene-staging.e2e.mjs
           node tests/villages-scene-controls.e2e.mjs
           node tests/villages-reading-pages.e2e.mjs
+          node tests/villages-mobile-scene.e2e.mjs
 
       - name: Verify greeting recovery without paid retries
         run: node tests/villages-greeting-recovery.e2e.mjs

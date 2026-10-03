@@ -124,17 +124,17 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: "Knock / Call", exact: true }).click();
     await page.getByLabel("Knock or call").selectOption("call");
-    await page.getByLabel("Doorway").selectOption("common");
+    await page.getByLabel("Doorway", { exact: true }).selectOption("common");
     await page.getByLabel("Who to contact").selectOption("mara");
     assert.equal(
       await page
-        .getByLabel("Doorway")
+        .getByLabel("Doorway", { exact: true })
         .getByRole("option", { name: /Secret bedroom/ })
         .count(),
       0,
     );
     for (const name of ["Knock or call", "Doorway", "Who to contact"]) {
-      const box = await page.getByLabel(name).boundingBox();
+      const box = await page.getByLabel(name, { exact: true }).boundingBox();
       assert.ok(box && box.x >= 0 && box.x + box.width <= width, name + " fits the viewport");
     }
     await page.getByRole("button", { name: "Send", exact: true }).click();

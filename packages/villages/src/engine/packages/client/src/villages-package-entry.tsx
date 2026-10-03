@@ -16,6 +16,7 @@ import { VillagesRelationships } from "./villages-relationships.js";
 import { DecisionsControl } from "./villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "./villages-saved-changes.js";
 import { useReadingPages } from "./villages-reading-viewport.js";
+import { mobileSceneLayout, mobileReadingCounter } from "./villages-mobile-scene.js";
 import { useSceneViewport } from "./villages-scene-viewport.js";
 import { VILLAGES_SCENE_STYLES } from "./villages-scene-styles.js";
 import { contactNeighborIds } from "../../shared/src/villages/zone-contact.js";
@@ -9709,10 +9710,16 @@ function AvatarFace({
    */
   glyph?: "initial" | "person";
 }) {
+  const [failedUrl, setFailedUrl] = useState("");
   return (
     <span aria-hidden="true" className={className}>
-      {portrait ? (
-        <img src={portrait.url} alt="" style={avatarCropStyle(portrait.crop)} />
+      {portrait && portrait.url !== failedUrl ? (
+        <img
+          src={portrait.url}
+          alt=""
+          style={avatarCropStyle(portrait.crop)}
+          onError={() => setFailedUrl(portrait.url)}
+        />
       ) : glyph === "person" ? (
         <svg className={`${ELEMENT_TAG}-person`} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path
@@ -9952,6 +9959,7 @@ function SceneControlIcon({
 /** The single Visit surface for an empty, solo, or group cast. */
 function RoomPanel({
   room,
+  mobile,
   nameColors,
   speechColors,
   picture,
@@ -10001,6 +10009,7 @@ function RoomPanel({
   movementZones,
 }: {
   room: SceneView;
+  mobile: boolean;
   nameColors: Record<string, string>;
   speechColors: Record<string, string>;
   /** The picture of the place, or `""` for one that has never been drawn. */
@@ -10069,6 +10078,7 @@ function RoomPanel({
   const actionsRef = useRef<HTMLSpanElement | null>(null);
   const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
   const [dialogueHidden, setDialogueHidden] = useState(false);
+  const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
 
   useEffect(() => {
@@ -10336,6 +10346,11 @@ function RoomPanel({
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
+  const mobileLayout = mobileSceneLayout(
+    displayed.map((person) => person.characterId),
+    stagingState,
+    steps.slice(0, at + 1).map((item) => item.stagingEvent ?? {}),
+  );
   const stageLayout = stagingLayout(
     displayed.map((person) => person.characterId),
     stagingState,
@@ -10773,6 +10788,7 @@ function RoomPanel({
           {displayed.map((villager, index) => {
             const sprite = sprites[villager.characterId];
             const isSpeaker = villager.characterId === speaker?.characterId;
+            const mobileSlot = mobileLayout[villager.characterId];
             const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
             const slot = room.stagingVersion === 1 ? stageLayout[villager.characterId] : undefined;
             const wanted = slot
@@ -10785,22 +10801,23 @@ function RoomPanel({
               : (aside?.gazeAt ?? (villager.characterId === step?.gazeAt ? speaker?.characterId : undefined));
             const targetIndex = displayed.findIndex((person) => person.characterId === gazeAt);
             const selected = selectSpriteImage(
-              sprite?.images ?? [],
+              (sprite?.images ?? []).filter((image) => !failedSpriteUrls.has(image.url)),
               wanted,
-              slot?.facing ?? spriteFacing(index, targetIndex),
+              (slot ? (mobile ? mobileSlot?.facing : slot.facing) : undefined) ?? spriteFacing(index, targetIndex),
             );
             return (
               <div
                 key={villager.characterId}
                 className={`${ELEMENT_TAG}-chat-cast-person`}
-                data-active={villager.characterId === speaker?.characterId ? "true" : "false"}
+                data-active={isSpeaker && (!mobile || register !== "narration") ? "true" : "false"}
                 data-sprite={selected ? "true" : "false"}
                 data-character-id={villager.characterId}
                 data-position={slot ? stagingState[villager.characterId].position : undefined}
                 data-attention={slot ? slot.facing : undefined}
                 style={
                   {
-                    "--cast-center": `${(slot?.x ?? (index + 0.5) / displayed.length) * 100}%`,
+                    "--cast-center": `${((mobile ? mobileSlot?.x : slot?.x) ?? (index + 0.5) / displayed.length) * 100}%`,
+                    "--cast-depth": `${mobileSlot?.depth ?? 0}px`,
                     ...(slot
                       ? { "--cast-left": `${(slot.x - slot.width / 2) * 100}%`, "--cast-width": `${slot.width * 100}%` }
                       : {}),
@@ -10810,6 +10827,7 @@ function RoomPanel({
                 {selected ? (
                   <img
                     src={selected.image.url}
+                    onError={() => setFailedSpriteUrls((previous) => new Set([...previous, selected.image.url]))}
                     alt=""
                     data-framing={sprite?.framing.mode ?? "full"}
                     data-facing={selected.image.view === "front" ? "front" : selected.mirrored ? "left" : "right"}
@@ -11041,9 +11059,11 @@ function RoomPanel({
             </div>
           </div>
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            <span
-              className={`${ELEMENT_TAG}-chat-vn-counter`}
-            >{`${at + 1} / ${Math.max(1, steps.length)}${readingPages.count > 1 ? ` · page ${readingPages.index + 1}/${readingPages.count}` : ""}`}</span>
+            <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
+              {mobile
+                ? mobileReadingCounter(at, steps.length, readingPages.index, readingPages.count)
+                : `${at + 1} / ${Math.max(1, steps.length)}`}
+            </span>
             <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
               <button
                 type="button"
@@ -11110,7 +11130,7 @@ function RoomPanel({
         ) : null}
         {canDraft ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {contactDoors.length > 0 && mode !== "conclude" ? (
+            {!mobile && contactDoors.length > 0 && mode !== "conclude" ? (
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
@@ -11238,6 +11258,19 @@ function RoomPanel({
                     </span>
                   ) : null}
                 </span>
+                {mobile && contactDoors.length > 0 && mode !== "conclude" ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-room-mode-toggle`}
+                    disabled={busy}
+                    aria-pressed={mode === "contact"}
+                    aria-label={mode === "contact" ? "Close doorway controls" : "Knock / Call"}
+                    title={mode === "contact" ? "Close doorway controls" : "Knock / Call"}
+                    onClick={() => onMode(mode === "contact" ? "chat" : "contact")}
+                  >
+                    <SceneControlIcon name="knock" />
+                  </button>
+                ) : null}
                 <textarea
                   ref={composerRef}
                   data-villages-scene-composer
@@ -16795,6 +16828,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         {room ? (
           <RoomPanel
             room={room}
+            mobile={mobile}
             nameColors={
               snapshot?.settings.characterSpeechColors
                 ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.nameColor]))

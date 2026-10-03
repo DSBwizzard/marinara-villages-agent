@@ -2,7 +2,6 @@ const tag = "marinara-capability-villages";
 
 /** Package-owned presentation; Engine source and ordinary Home tabs stay intact. */
 export const VILLAGES_SCENE_STYLES = `
-[data-component="HomeBrowserHub"]:has(${tag}[data-scene-play]) .mari-home-browser-chrome { display: none; }
 [data-component="HomeBrowserHub"]:has(${tag}[data-scene-play]) [data-component="HomeBrowserHub.Content"] { overflow: hidden; }
 ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !important; }
 .${tag}-root.${tag}-room-screen { position: relative; }
@@ -91,9 +90,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
   .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-send,
-.${tag}-room-screen[data-mobile="true"] .${tag}-room-mode-toggle { width: 2.25rem; height: 2.25rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-mode-toggle { width: 44px; height: 44px; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { padding: .75rem; gap: .75rem; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-input { padding: 0 .5rem; gap: .25rem; min-height: 44px; }
 /* 16px prevents mobile Safari zooming on focus; desktop uses Engine's 14px text. */
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-input > .${tag}-textarea { font-size: 1rem; }
 
@@ -106,13 +105,16 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
   height: auto !important; max-height: none !important; margin: 0; overflow: visible;
 }
 .${tag}-dialogue-hide, .${tag}-dialogue-restore { display: none; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem max(.375rem, env(safe-area-inset-bottom)); gap: .25rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem env(safe-area-inset-bottom, 0px); gap: .25rem; }
+${tag}[data-scene-keyboard] .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding-bottom: 0; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-tab { position: absolute; bottom: 100%; left: calc(50% - 22px); margin: 0; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-history-toggle { width: 44px; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr); align-items: center; padding: .5rem .625rem; gap: .375rem .5rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-portrait { width: 32px; height: 32px; box-sizing: border-box; border-radius: .375rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-column { display: contents; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-name,
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-label { grid-column: 2; align-self: center; }
-.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-reading { grid-column: 1 / -1; width: 100%; box-sizing: border-box; max-height: min(6.5625rem, max(1.3125rem, calc(var(--villages-scene-visible-height, 100cqh) - 14.375rem))); }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-reading { grid-column: 1 / -1; width: 100%; box-sizing: border-box; min-height: 0; max-height: min(var(--villages-reading-page-height, 3.9375rem), max(1.3125rem, calc(var(--villages-scene-visible-height, 100cqh) - 10.5rem))); }
 .${tag}-room-screen[data-mobile="true"] .${tag}-room-panel-tools { padding: 0 .375rem; gap: .125rem; align-items: center; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-room-panel-tools .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; padding: .25rem .375rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-room-place { max-width: calc(100% - 8rem); }
@@ -126,4 +128,21 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-dialogue-hide { position: absolute; left: .5rem; bottom: 100%; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-dialogue-restore { position: absolute; right: .5rem; bottom: max(.375rem, env(safe-area-inset-bottom)); z-index: 10; }
+
+/* Large artwork overlaps inside stable left/right groups, with a shared raised floor. */
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage { padding-left: 0; padding-right: 0; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-character-id] {
+  --cast-image-height: min(105cqw, 100cqh);
+  --cast-lift: min(max(0px, calc(var(--villages-scene-resting-dock-height, 13.25rem) - min(26.25cqw, 25cqh) + var(--cast-depth, 0px))), max(0px, calc(100cqh - var(--cast-image-height))));
+  left: calc(var(--cast-center) - var(--cast-display-width) / 2);
+  bottom: var(--cast-lift); height: var(--cast-image-height); opacity: .72; z-index: 1;
+}
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-active="true"] { opacity: 1; z-index: 3; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="true"] > span:not(.${tag}-avatar) { display: none; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-stage .${tag}-chat-cast > .${tag}-chat-cast-person[data-sprite="false"] {
+  width: 80px; height: auto; bottom: auto; top: max(0px, calc(100% - var(--cast-image-height) - var(--cast-lift) + min(10.5cqw, 10cqh)));
+  left: calc(var(--cast-center) - 40px); justify-content: flex-start; gap: .25rem;
+}
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="false"] > .${tag}-avatar { width: 80px; height: 80px; box-sizing: border-box; flex: none; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-cast-person[data-sprite="false"] > span:not(.${tag}-avatar) { position: static; max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; font-size: .75rem; }
 `;
