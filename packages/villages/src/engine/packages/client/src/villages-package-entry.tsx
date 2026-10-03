@@ -6198,6 +6198,16 @@ function VillagesRuntimeDebug() {
   const [error, setError] = useState("");
   useEffect(() => {
     const controller = new AbortController();
+    const visibility = (event: Event) =>
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              showUsageMeter: (event as CustomEvent<boolean>).detail,
+            }
+          : current,
+      );
+    window.addEventListener("villages-usage-visibility", visibility);
     void request<{ verbose: boolean; effective: boolean; engineEnabled: boolean }>("/debug/runtime", {
       signal: controller.signal,
     })
@@ -6205,7 +6215,10 @@ function VillagesRuntimeDebug() {
       .catch((cause) => {
         if (!controller.signal.aborted) setError(messageFrom(cause, "Runtime logging settings could not be read."));
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      window.removeEventListener("villages-usage-visibility", visibility);
+    };
   }, []);
   const save = async (verbose: boolean) => {
     const previous = settings;
@@ -22071,10 +22084,12 @@ function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
     return <SpinOffToolbar props={element.capabilityProps ?? {}} />;
   }
   return (
-    <>
-      <VillagesView element={element} />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <VillagesUsageMeter request={request} element={element} />
-    </>
+      <div style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0, overflow: "hidden" }}>
+        <VillagesView element={element} />
+      </div>
+    </div>
   );
 }
 

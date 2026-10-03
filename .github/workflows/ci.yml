@@ -90,6 +90,7 @@ jobs:
           npx tsx tests/villages-contact.regression.ts
           npx tsx tests/villages-runtime-debug.regression.ts
           npx tsx tests/villages-usage-meter.regression.ts
+          npx tsx tests/villages-linkapi-pricing.regression.ts
           npx tsx tests/villages-usage-preview.regression.ts
           npx tsx tests/villages-venue-model.regression.ts
           npx tsx tests/villages-venue-session.regression.ts

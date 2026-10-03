@@ -158,7 +158,25 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
     unknownCosts = 0;
   if (languageRequests) {
     const quote = system ? await quoteUsageRate(system.connectionId, system.model) : null;
-    const rate = quote?.rate;
+    const native = quote?.rate;
+    const divisor = native?.currency === "CNY" ? native.yuanPerDollar : 1;
+    const rate =
+      divisor && native
+        ? {
+            ...native,
+            ...(native.longContext ?? {}),
+            input: Math.max(native.input, native.longContext?.input ?? 0) / divisor,
+            output: Math.max(native.output, native.longContext?.output ?? 0) / divisor,
+            cacheWrite:
+              Math.max(
+                native.cacheWrite ?? 0,
+                native.cacheWriteOneHour ?? 0,
+                native.longContext?.cacheWrite ?? 0,
+                native.longContext?.cacheWriteOneHour ?? 0,
+              ) / divisor,
+            perRequest: native.perRequest !== undefined ? native.perRequest / divisor : undefined,
+          }
+        : null;
     if (rate?.perRequest !== undefined) {
       min += languageRequests * rate.perRequest;
       max += languageRequests * rate.perRequest;
@@ -176,8 +194,11 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
     const connectionId = typeof args.connectionId === "string" ? args.connectionId : choice.connectionId;
     const quote = connectionId ? await quoteUsageRate(connectionId, "") : null;
     if (quote?.rate?.perRequest !== undefined) {
-      min += imageRequests * quote.rate.perRequest;
-      max += imageRequests * quote.rate.perRequest;
+      const divisor = quote.rate.currency === "CNY" ? quote.rate.yuanPerDollar : 1;
+      if (divisor) {
+        min += (imageRequests * quote.rate.perRequest) / divisor;
+        max += (imageRequests * quote.rate.perRequest) / divisor;
+      } else unknownCosts += imageRequests;
     } else unknownCosts += imageRequests;
   }
   return {

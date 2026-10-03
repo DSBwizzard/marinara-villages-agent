@@ -21,6 +21,15 @@ const records = new Map<string, any>();
 const originalFetch = globalThis.fetch;
 let imageCalls = 0;
 globalThis.fetch = async (input) => {
+  if (String(input).includes("open.er-api.com"))
+    return new Response(
+      JSON.stringify({
+        result: "success",
+        base_code: "USD",
+        rates: { CNY: 7 },
+        time_last_update_unix: Math.floor(Date.now() / 1000),
+      }),
+    );
   if (String(input).includes("/api/connections"))
     return new Response(
       JSON.stringify([

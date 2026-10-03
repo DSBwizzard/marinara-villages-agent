@@ -6,17 +6,10 @@ import { villageEngineJson } from "./engine-loopback.js";
 import { venueDebugContext } from "./venue-coordinator.js";
 import { backgroundCalls } from "./background-context.js";
 import { badRequest } from "./errors.js";
+import { isLinkApi, linkApiQuote, readExchangeRate, type ProviderRate } from "./linkapi-pricing.js";
 
 export type UsagePurpose = "conversation" | "checks" | "background" | "images" | "other";
-export type UsageRate = {
-  input: number;
-  output: number;
-  cached?: number;
-  cacheWrite?: number;
-  perRequest?: number;
-  source: string;
-  checkedAt: string;
-};
+export type UsageRate = ProviderRate & { yuanPerDollar?: number };
 export type UsageRequest = {
   periodId?: string;
   id: string;
@@ -35,8 +28,10 @@ export type UsageRequest = {
   usage?: Record<string, number>;
   rate: UsageRate | null;
   dollars: number | null;
+  yuan?: number | null;
+  priceNote?: string;
 };
-type Totals = { requests: number; tokens: number; dollars: number; unknown: number };
+type Totals = { requests: number; tokens: number; dollars: number; usd: number; yuan: number; unknown: number };
 type Ledger = {
   requests: UsageRequest[];
   since: string;
@@ -46,6 +41,7 @@ type Ledger = {
   days: Record<string, Totals>;
   purposes: Partial<Record<UsagePurpose, Totals>>;
   overrides: Record<string, UsageRate>;
+  linkApiGroups: Record<string, string>;
 };
 const DOC = "villages-ai-usage";
 const owner = randomUUID();
@@ -53,18 +49,20 @@ const purposeContext = new AsyncLocalStorage<UsagePurpose>();
 let queue: Promise<unknown> = Promise.resolve();
 let connections: { at: number; rows: Record<string, unknown>[] } | undefined;
 let lastFailure = "";
-const empty = (): Totals => ({ requests: 0, tokens: 0, dollars: 0, unknown: 0 });
+const empty = (): Totals => ({ requests: 0, tokens: 0, dollars: 0, usd: 0, yuan: 0, unknown: 0 });
+const totals = (raw?: Partial<Totals>): Totals => ({ ...empty(), ...raw, usd: raw?.usd ?? raw?.dollars ?? 0 });
 function coerce(raw: unknown): Ledger {
   const data = raw && typeof raw === "object" ? (raw as Partial<Ledger>) : {};
   return {
     requests: data.requests ?? [],
     since: data.since ?? new Date().toISOString(),
     periodId: data.periodId ?? "initial",
-    all: data.all ?? empty(),
-    period: data.period ?? empty(),
-    days: data.days ?? {},
-    purposes: data.purposes ?? {},
+    all: totals(data.all),
+    period: totals(data.period),
+    days: Object.fromEntries(Object.entries(data.days ?? {}).map(([key, value]) => [key, totals(value)])),
+    purposes: Object.fromEntries(Object.entries(data.purposes ?? {}).map(([key, value]) => [key, totals(value)])),
     overrides: data.overrides ?? {},
+    linkApiGroups: data.linkApiGroups ?? {},
   };
 }
 function day(at: string): string {
@@ -131,7 +129,9 @@ function tally(ledger: Ledger, request: UsageRequest, start: boolean) {
       total.tokens +=
         request.usage?.totalTokens ?? (request.usage?.promptTokens ?? 0) + (request.usage?.completionTokens ?? 0);
       total.dollars += request.dollars ?? 0;
-      if (request.dollars === null) total.unknown++;
+      total.yuan += request.yuan ?? 0;
+      if (request.rate?.currency !== "CNY") total.usd += request.dollars ?? 0;
+      if (request.dollars === null && request.yuan == null) total.unknown++;
     }
   }
 }
@@ -241,7 +241,7 @@ async function identity(connectionId: string, model: string) {
     baseUrl: String(row?.baseUrl ?? ""),
   };
 }
-export function usageDollars(
+export function usageNativeCost(
   usage: Record<string, number> | undefined,
   rate: UsageRate | null,
   provider: string,
@@ -251,6 +251,9 @@ export function usageDollars(
   if (!usage || !Number.isFinite(usage.promptTokens) || !Number.isFinite(usage.completionTokens)) return null;
   const read = usage.cachedPromptTokens ?? 0,
     write = usage.cacheWritePromptTokens ?? 0;
+  if (rate.longContext && usage.promptTokens > rate.longContext.above) rate = { ...rate, ...rate.longContext };
+  // The Engine's cache-write total does not expose the provider's TTL split.
+  if (write && rate.cacheWriteOneHour !== undefined && rate.cacheWriteOneHour !== rate.cacheWrite) return null;
   if ((read && rate.cached === undefined) || (write && rate.cacheWrite === undefined)) return null;
   // Recorded Anthropic usage is normalized to include cache tokens; OpenAI output already includes reasoning.
   const output = usage.completionTokens + (provider === "google" ? (usage.completionReasoningTokens ?? 0) : 0);
@@ -262,6 +265,25 @@ export function usageDollars(
     1_000_000
   );
 }
+export function usageDollars(usage: Record<string, number> | undefined, rate: UsageRate | null, provider: string) {
+  const cost = usageNativeCost(usage, rate, provider);
+  if (cost === null) return null;
+  if (rate?.currency !== "CNY") return cost;
+  return rate.yuanPerDollar ? cost / rate.yuanPerDollar : null;
+}
+async function resolveRate(connectionId: string, info: Awaited<ReturnType<typeof identity>>, ledger: Ledger) {
+  const override = ledger.overrides[connectionId + ":" + info.model];
+  const link = isLinkApi(info.baseUrl) ? await linkApiQuote(info.model, ledger.linkApiGroups[connectionId]) : null;
+  const raw = override ?? link?.rate ?? catalogRate(info.provider, info.model, info.baseUrl);
+  const fx = raw?.currency === "CNY" ? await readExchangeRate() : null;
+  return {
+    rate: raw ? { ...raw, ...(fx ? { yuanPerDollar: fx.yuanPerDollar } : {}) } : null,
+    groups: link?.groups ?? [],
+    group: ledger.linkApiGroups[connectionId] ?? link?.rate?.group ?? "",
+    isLinkApi: isLinkApi(info.baseUrl),
+    note: override ? "Manual override" : (link?.note ?? (raw ? "Reviewed provider price" : "No recognized price")),
+  };
+}
 export async function trackUsage<T>(
   meta: { connectionId?: string; model?: string; purpose?: UsagePurpose; stage?: string },
   work: () => Promise<T>,
@@ -272,6 +294,7 @@ export async function trackUsage<T>(
   try {
     const info = await identity(connectionId, meta.model ?? "");
     const ledger = coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, DOC))?.data);
+    const pricing = await resolveRate(connectionId, info, ledger);
     request = {
       id,
       owner,
@@ -288,7 +311,8 @@ export async function trackUsage<T>(
       ).slice(0, 160),
       startedAt: new Date().toISOString(),
       status: "running",
-      rate: ledger.overrides[connectionId + ":" + info.model] ?? catalogRate(info.provider, info.model, info.baseUrl),
+      rate: pricing.rate,
+      priceNote: pricing.note,
       dollars: null,
     };
     await write((ledger) => {
@@ -336,6 +360,10 @@ async function finish(request: UsageRequest, status: UsageRequest["status"], usa
       usage,
       finishedAt: new Date().toISOString(),
       dollars: status === "complete" ? usageDollars(usage, saved.rate, saved.provider) : null,
+      yuan:
+        status === "complete" && saved.rate?.currency === "CNY"
+          ? usageNativeCost(usage, saved.rate, saved.provider)
+          : null,
     });
     tally(ledger, saved, false);
   });
@@ -364,7 +392,9 @@ export async function readUsageMeter(details = true) {
     today: ledger.days[day(new Date().toISOString())] ?? empty(),
     purposes: ledger.purposes,
     running: ledger.requests.filter((r) => r.status === "running").length,
-    requests: details ? ledger.requests.slice().reverse() : [],
+    requests: details ? ledger.requests.filter((r) => (r.periodId ?? "initial") === ledger.periodId).reverse() : [],
+    models: details ? await usageModels(ledger) : [],
+    exchangeRate: await readExchangeRate(),
     bursts: details
       ? (await previewBackgroundJobs())
           .filter((job) => !["completed", "obsolete"].includes(job.status))
@@ -391,6 +421,7 @@ export async function resetUsagePeriod() {
     ledger.period = empty();
     ledger.purposes = {};
   });
+  lastFailure = "";
   return readUsageMeter();
 }
 export async function saveUsageRate(connectionId: string, model: string, raw: unknown) {
@@ -406,16 +437,18 @@ export async function saveUsageRate(connectionId: string, model: string, raw: un
           cached: value?.cached,
           cacheWrite: value?.cacheWrite,
           perRequest: value?.perRequest,
+          currency: value?.currency ?? "USD",
           source: "Manual override",
           checkedAt: new Date().toISOString(),
         };
   if (
     rate &&
-    (typeof rate.input !== "number" ||
+    (!["USD", "CNY"].includes(rate.currency) ||
+      typeof rate.input !== "number" ||
       typeof rate.output !== "number" ||
       Object.values(rate).some((n) => typeof n === "number" && (!Number.isFinite(n) || n < 0 || n > 1_000_000)))
   )
-    throw badRequest("Rates must be nonnegative finite USD amounts.");
+    throw badRequest("Rates must be nonnegative finite USD or CNY amounts.");
   await write((ledger) => {
     const key = connectionId + ":" + model;
     if (rate) ledger.overrides[key] = rate as UsageRate;
@@ -430,6 +463,38 @@ export async function quoteUsageRate(connectionId: string, model: string) {
   const ledger = coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, DOC))?.data);
   return {
     ...info,
-    rate: ledger.overrides[connectionId + ":" + info.model] ?? catalogRate(info.provider, info.model, info.baseUrl),
+    ...(await resolveRate(connectionId, info, ledger)),
   };
+}
+
+async function usageModels(ledger: Ledger) {
+  await identity("", "");
+  const choices = new Map<string, { connectionId: string; model: string }>();
+  for (const row of connections?.rows ?? []) {
+    const connectionId = String(row.id ?? ""),
+      model = String(row.model ?? "");
+    if (connectionId && model) choices.set(connectionId + ":" + model, { connectionId, model });
+  }
+  for (const row of ledger.requests) {
+    if (row.connectionId && row.model)
+      choices.set(row.connectionId + ":" + row.model, { connectionId: row.connectionId, model: row.model });
+  }
+  return Promise.all(
+    [...choices.values()].map(async (row) => ({ ...row, ...(await quoteUsageRate(row.connectionId, row.model)) })),
+  );
+}
+
+export async function saveLinkApiGroup(connectionId: string, group: unknown, model = "") {
+  if (!connectionId || connectionId.length > 128 || typeof group !== "string" || group.length > 128)
+    throw badRequest("Choose a LinkAPI connection and token group.");
+  const info = await identity(connectionId, model);
+  if (!isLinkApi(info.baseUrl)) throw badRequest("This connection does not use LinkAPI.");
+  const quote = await linkApiQuote(info.model, group);
+  if (group && !quote.groups.some((choice) => choice.id === group))
+    throw badRequest("Group is not available for this model.");
+  await write((ledger) => {
+    if (group) ledger.linkApiGroups[connectionId] = group;
+    else delete ledger.linkApiGroups[connectionId];
+  });
+  return readUsageMeter();
 }
