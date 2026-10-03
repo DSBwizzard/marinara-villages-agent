@@ -13258,6 +13258,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupCompletedIds, setSetupCompletedIds] = useState<string[]>([]);
   const [setupNewVenueId, setSetupNewVenueId] = useState("");
   const setupEditorOriginal = useRef<SetupVenueDraft | null>(null);
+  const setupEditorAuthoredOriginal = useRef<string[]>([]);
+  const setupEditorZoneOriginal = useRef<AreaDraftCache["current"] | undefined>(undefined);
   const [sceneryStyle, setSceneryStyle] = useState(SCENERY_STYLES["Painted illustration"]);
   const [personalizeHomes, setPersonalizeHomes] = useState(true);
   const [visualLoreDefault, setVisualLoreDefault] = useState(true);
@@ -13444,6 +13446,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       movingVenueId: movingSetupVenueId,
       editorOpen: setupEditorOpen,
       editorOriginal: setupEditorOriginal.current,
+      editorAuthoredOriginal: setupEditorAuthoredOriginal.current,
+      editorZoneOriginal: setupEditorZoneOriginal.current,
       keyboardSpot: setupKeyboardSpot,
       interruptedGeneration: setupMapBusy || setupVenueBusy || setupSuggestionsBusy,
     }),
@@ -13567,6 +13571,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(data.editorOpen);
     setupEditorOriginal.current = data.editorOriginal;
+    setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
+    setupEditorZoneOriginal.current = data.editorZoneOriginal;
     setSetupKeyboardSpot(data.keyboardSpot);
     setSetupProblem(
       data.interruptedGeneration
@@ -16271,6 +16277,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     resumeSetupPlacement(setupVenues, [...setupCompletedIds, selectedSetupVenue.id]);
   };
   const cancelSetupVenue = () => {
+    if (selectedSetupVenueId) {
+      const id = selectedSetupVenueId;
+      setSetupAuthoredFields((fields) => ({ ...fields, [id]: setupEditorAuthoredOriginal.current }));
+      if (setupEditorZoneOriginal.current)
+        setupZoneDrafts.current[id] = structuredClone(setupEditorZoneOriginal.current);
+      else delete setupZoneDrafts.current[id];
+    }
     const rows =
       setupNewVenueId === selectedSetupVenueId
         ? setupVenues.filter((venue) => venue.id !== setupNewVenueId)
@@ -17025,6 +17038,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         selected: setupEditorOpen && selectedSetupVenueId === venue.id,
         onSelect: () => {
           setupEditorOriginal.current = structuredClone(venue);
+          setupEditorAuthoredOriginal.current = [...(setupAuthoredFields[venue.id] ?? [])];
+          setupEditorZoneOriginal.current = structuredClone(setupZoneDrafts.current[venue.id]);
           setSelectedSetupVenueId(venue.id);
           setSetupEditorOpen(true);
           setSetupProblem("");
@@ -20958,6 +20973,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null);
     const editVenue = (venue: SetupVenueDraft) => {
       setupEditorOriginal.current = structuredClone(venue);
+      setupEditorAuthoredOriginal.current = [...(setupAuthoredFields[venue.id] ?? [])];
+      setupEditorZoneOriginal.current = structuredClone(setupZoneDrafts.current[venue.id]);
       setSelectedSetupVenueId(venue.id);
       setSetupEditorOpen(true);
       setSetupProblem("");

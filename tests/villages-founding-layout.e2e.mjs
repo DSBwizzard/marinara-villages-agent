@@ -249,6 +249,16 @@ try {
     await expect(root.getByRole("button", { name: "Refresh suggestions", exact: true })).toBeVisible();
     const first = root.locator(".villages-forging-venue").first();
     await first.getByRole("button", { name: /^Edit / }).click();
+    await root.getByRole("dialog").getByLabel("Venue name", { exact: true }).fill("Cancelled name");
+    // An open editor and its cancellation checkpoint survive reload.
+    await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+    await expect(root.getByRole("dialog").getByLabel("Venue name", { exact: true })).toHaveValue("Cancelled name");
+    await root.getByRole("dialog").getByRole("button", { name: "Cancel edits", exact: true }).click();
+    await expect(first).not.toContainText("Cancelled name");
+    await first.getByRole("button", { name: /^Edit / }).click();
     const dialog = root.getByRole("dialog");
     await dialog.getByLabel("Venue name", { exact: true }).fill("My observatory quarters");
     await dialog.getByLabel("Venue form", { exact: true }).fill("Converted observatory room");
