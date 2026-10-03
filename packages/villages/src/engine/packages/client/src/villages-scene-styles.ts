@@ -96,4 +96,34 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: .5rem; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
 /* 16px prevents mobile Safari zooming on focus; desktop uses Engine's 14px text. */
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-input > .${tag}-textarea { font-size: 1rem; }
+
+/* A Scene modal temporarily covers the floating usage badge as well as the stage. */
+:is(body, :fullscreen):has(${tag}[data-scene-play] [aria-modal="true"]) > aside[aria-label="Villages AI usage"] { visibility: hidden; }
+
+/* Measure full formatted paragraphs off screen, without adding scrollable content. */
+.${tag}-room-screen .${tag}-reading-measure {
+  position: fixed !important; top: 0; left: -100000px; visibility: hidden; pointer-events: none;
+  height: auto !important; max-height: none !important; margin: 0; overflow: visible;
+}
+.${tag}-dialogue-hide, .${tag}-dialogue-restore { display: none; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn { padding: 0 .375rem max(.375rem, env(safe-area-inset-bottom)); gap: .25rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr); align-items: center; padding: .5rem .625rem; gap: .375rem .5rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-portrait { width: 32px; height: 32px; box-sizing: border-box; border-radius: .375rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-column { display: contents; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-name,
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-label { grid-column: 2; align-self: center; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-reading { grid-column: 1 / -1; width: 100%; box-sizing: border-box; max-height: min(6.5625rem, max(1.3125rem, calc(var(--villages-scene-visible-height, 100cqh) - 14.375rem))); }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-panel-tools { padding: 0 .375rem; gap: .125rem; align-items: center; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-panel-tools .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; padding: .25rem .375rem; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-place { max-width: calc(100% - 8rem); }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-notices { top: .65rem; left: auto; right: 3.25rem; z-index: 7; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-room-stars { left: auto; right: 0; width: min(20rem, calc(100vw - 4rem)); }
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn[data-dialogue-hidden="true"] { display: none; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-dialogue-hide,
+.${tag}-room-screen[data-mobile="true"] .${tag}-dialogue-restore {
+  display: block; min-height: 44px; padding: .25rem .625rem; border: 1px solid var(--border);
+  border-radius: .5rem; font: inherit; font-size: .75rem; color: var(--foreground); background: var(--popover); cursor: pointer;
+}
+.${tag}-room-screen[data-mobile="true"] .${tag}-dialogue-hide { position: absolute; left: .5rem; bottom: 100%; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-dialogue-restore { position: absolute; right: .5rem; bottom: max(.375rem, env(safe-area-inset-bottom)); z-index: 10; }
 `;

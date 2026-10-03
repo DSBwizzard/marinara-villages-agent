@@ -372,5 +372,5 @@ assert.equal(countIn('data-register="narration"'), 1, "venue narration has its o
 assert.equal(countIn("className={`${ELEMENT_TAG}-chat-vn-asides`}"), 1, "one aside band belongs to Visit");
 assert.ok(css.includes(`.${tagName}-chat-vn-aside[data-register="whisper"]`));
 assert.ok(entrySource.includes("renderVillagesMarkdown(aside.text"));
-assert.ok(entrySource.includes("renderVillagesMarkdown(step.text"));
+assert.ok(entrySource.includes("drawVillagesNodes(readingPages.nodes"));
 assert.equal(countIn("ChatPanel"), 0, "the private stage is gone");

@@ -326,7 +326,15 @@ try {
     releaseReview();
     releaseReview = null;
   };
+  const openNotices = async () => {
+    await expect(tray).toBeVisible();
+    if ((await tray.getAttribute("aria-expanded")) === "false") {
+      await expect(stack).toHaveCount(0);
+      await tray.click();
+    }
+  };
   const expectMemory = async (memory) => {
+    await openNotices();
     await expect(stack).toContainText(memory.text);
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     const memoryTrigger = page.getByRole("button", { name: `View memory: ${memory.text}` });
@@ -385,6 +393,7 @@ try {
   await page.getByRole("button", { name: "Venue actions" }).click();
   await page.getByRole("menuitem", { name: "End Scene now" }).click();
   await completeReview();
+  await openNotices();
   await expect(stack).toContainText(improvement.text);
   await expect(stack).toContainText(deterioration.text);
   await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(3);
@@ -436,7 +445,11 @@ try {
     page.getByRole("menuitem", { name: "End Scene now" }).click(),
   ]);
   await completeReview();
-  await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toBeVisible();
+  await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Venue actions" }).click();
+  await page.getByRole("menuitem", { name: "Scene settings" }).click();
+  await expect(page.getByText("Closing review complete. 0 durable memories saved by that review.")).toBeVisible();
+  await page.getByRole("button", { name: "Close Scene settings" }).click();
   await returnToMap();
 
   await mountVisit("visit-pending");
@@ -512,6 +525,8 @@ try {
     },
   ];
   await expect(page.getByRole("status", { name: "Saved change status" })).toContainText("still being checked");
+  await expect(tray).toHaveAttribute("aria-expanded", "false");
+  await openNotices();
   await expect(stack).toContainText(immediate.text);
   await expect(stack).toContainText("♥");
   assert.equal(session.status, "active", "memory and relationship notices appear before closing");
@@ -525,6 +540,8 @@ try {
   const turnsBeforeRefresh = turn;
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await expect(tray).toHaveAttribute("aria-expanded", "false");
+  await openNotices();
   await expect(stack).toContainText("Bob shared a wish.");
   await expect(stack).not.toContainText(immediate.text);
   assert.equal(turn, turnsBeforeRefresh, "refresh restores committed notices without generating a reply");
@@ -543,6 +560,8 @@ try {
   await second.goto("http://villages.test/");
   await second.addScriptTag({ path: resolve("packages/villages/client.js") });
   const secondStack = second.locator("[aria-label='Village events']");
+  await expect(second.getByRole("button", { name: /village notice/ })).toHaveAttribute("aria-expanded", "false");
+  await second.getByRole("button", { name: /village notice/ }).click();
   await expect(secondStack).toContainText("Bob shared a wish.");
   await page.getByRole("button", { name: "Dismiss Bob shared a wish." }).click();
   await expect(secondStack).not.toContainText("Bob shared a wish.");
