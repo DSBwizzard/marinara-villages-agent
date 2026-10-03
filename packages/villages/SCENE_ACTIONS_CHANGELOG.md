@@ -4,7 +4,7 @@
 
 - Planned inspection baseline: 0.6.138, `3df7d5f`. Nothing from this plan had been implemented there.
 - Actual freshly fetched starting staging: **0.6.139**, `a88f88b5dd616f91a2c7148ec4f44d78bb5a2298`.
-- Delivered package: **0.6.140**. Final implementation and generated-package commit: `36fa7d4265b5d27e23ec51af2b0ba32c2b2c4911`; this record and README follow in a documentation commit. The delivery report identifies the final staging merge revision.
+- Delivered package: **0.6.140**. Final implementation and generated-package commit: `268615786d651e88e7a4372668f046b1c548bf3f` (initial implementation: `36fa7d4265b5d27e23ec51af2b0ba32c2b2c4911`). The release record is maintained in separate documentation commits. The delivery report identifies the final staging merge revision.
 - Engine source, build and running process were not changed. Installation follows merged-staging checks/build through the existing Villages sideload helper.
 
 | Area | Delivered change | Explicitly deferred |
