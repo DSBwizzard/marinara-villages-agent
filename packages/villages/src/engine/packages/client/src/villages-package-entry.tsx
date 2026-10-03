@@ -16058,7 +16058,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupMapImageSource(null);
       setSetupMapGeneratedKey("");
       setSetupMapSize(null);
-      setSetupMapPrompt("");
+      setSetupMapPrompt(fresh ? "" : (village?.settings.townMapLayoutPrompt ?? ""));
       setSetupMapNegativePrompt(village?.settings.townMapNegativePrompt ?? "");
       setSetupMapBusy(false);
       // Coming back through the wizard over a village that already exists keeps
@@ -16329,7 +16329,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       !snapshot?.isFounded &&
       (occupants.length !== setupHomeCount || occupants.some((id) => !setupFoundingVillagerIds.includes(id)))
     )
-      return "Assign every villager chosen in Step 2 to one Residence.";
+      return "Assign every villager chosen on People to one Residence.";
     if (
       setupVenues.some((venue) =>
         venue.privateSpaces?.some(

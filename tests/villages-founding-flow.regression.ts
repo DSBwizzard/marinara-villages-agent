@@ -67,7 +67,7 @@ async function main() {
   for (const ids of [[], ["a", "a"], ["gone"], ["a", "b", "c", "outsider"], [42], null])
     assert.throws(() => validateFoundingRoster(ids, new Set(["a"]), available), /available founding villagers/);
   for (const homes of [new Set(["a"]), new Set(["a", "outsider"]), new Set(["a", "b", "c"])])
-    assert.throws(() => validateFoundingRoster(["a", "b"], homes, available), /chosen in Step 2/);
+    assert.throws(() => validateFoundingRoster(["a", "b"], homes, available), /chosen on People/);
   const persona = readPersona({
     id: "persona-a",
     data: {

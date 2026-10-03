@@ -3409,7 +3409,7 @@ export function validateFoundingRoster(
   )
     throw badRequest("Choose one to three available founding villagers.");
   if (assigned.size !== value.length || value.some((id) => !assigned.has(id)))
-    throw badRequest("Assign every villager chosen in Step 2 to one Residence.");
+    throw badRequest("Assign every villager chosen on People to one Residence.");
 }
 
 export async function runVillageSetup(input: {
