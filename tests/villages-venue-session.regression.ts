@@ -220,6 +220,7 @@ let venueReplyCalls = 0;
 let concurrencyStarted: (() => void) | null = null;
 let releaseConcurrent: (() => void) | null = null;
 let malformedTurnOnce = false;
+let blankTurnOnce = false;
 let acceptEcho = false,
   acceptRepeatedQuestion = false;
 let exhaustEcho = false;
@@ -822,6 +823,10 @@ const release = configureVillagesRuntime({
               }),
               finishReason: "stop",
             };
+          if (user === "Blank once" && blankTurnOnce) {
+            blankTurnOnce = false;
+            return { content: "", finishReason: "stop" };
+          }
           if (user === "Malformed once" && malformedTurnOnce) {
             malformedTurnOnce = false;
             return { content: "{not json", finishReason: "stop" };
@@ -1839,6 +1844,28 @@ async function main() {
       "That sounds unsettling. Do you want to tell us more?",
     );
     assert.doesNotMatch(lastVenueSystem, /previous draft failed validation/u);
+    blankTurnOnce = true;
+    const beforeBlankCalls = venueReplyCalls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Blank once",
+          mode: "chat",
+          targetId: "",
+          submissionId: "blank-turn-1",
+        }),
+      /failed validation/u,
+    );
+    assert.equal(venueReplyCalls - beforeBlankCalls, 1, "a blank provider response spends exactly one reply call");
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Blank once",
+      mode: "chat",
+      targetId: "",
+      submissionId: "blank-turn-1",
+    });
+    assert.equal(venueReplyCalls - beforeBlankCalls, 2, "only an explicit resend authorizes a second call");
     malformedTurnOnce = true;
     const beforeMalformedCalls = venueReplyCalls;
     await assert.rejects(
