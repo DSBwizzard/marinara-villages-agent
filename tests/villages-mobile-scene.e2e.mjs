@@ -275,10 +275,14 @@ try {
       await expect(reading).toBeHidden();
       assert.deepEqual(await boxes(), baseline, "hiding does not move the cast");
       await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
+      // Restore deliberately focuses the reading region on the next frame.
+      // Finish that transition before simulating a tap into the composer.
+      await expect(reading).toBeFocused();
       await expect(composer).toHaveValue("Preserve this draft.");
       assert.equal(await reading.innerText(), text);
       if (width === 390) {
         await composer.focus();
+        await expect(composer).toBeFocused();
         await page.evaluate(() => {
           window.sceneViewport.height -= 280;
           window.sceneViewport.dispatchEvent(new Event("resize"));
@@ -301,6 +305,7 @@ try {
         });
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
         await page.getByRole("button", { name: "Show dialogue", exact: true }).click();
+        await expect(reading).toBeFocused();
       }
       await screenshot();
       if (count === 4 && mode === "sprites") {
