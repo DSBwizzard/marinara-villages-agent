@@ -1264,6 +1264,12 @@ node --import tsx tests/villages-relationships.regression.ts
 node --import tsx tests/villages-venue-session.regression.ts
 ```
 
+## Owned Agenda validation
+
+Provider-counter regressions verify one routine request and zero requests for migration (including missing legacy Agendas), influence/category changes, source removal, date/status-only updates, rollover, repeated reads and retired translation actions. Tests cover deterministic save/reload, overnight preferences, nonhuman rest patterns, inaccessible/unfinished destinations, a six-resident capacity fixture, dated Wish intervals, deduplicated actions and explicit recovery. Existing Scene staging and Wish evidence regressions remain in the CI suite.
+
+The intentionally repetitive 24-block complete-day prompt fixture shrinks from an estimated 297 tokens to 4 using characters divided by four. This isolates repeated routine context, not the whole Scene or Events prompt, and is not a provider billing measurement. Mock responses report their own supplied usage separately. Desktop, 390px and 320px browser tests verify opt-in controls and no generation on preference changes.
+
 ## Background work and recovery
 
 Stories, routine-profile generation (including founding), wish replenishment, mailbox replies, and move-related private room adaptation share one server-owned coordinator. Dialogue, image generation, memory review, and initial private-space preparation retain their own paths. Translation work is obsolete.

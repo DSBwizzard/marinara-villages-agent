@@ -132,6 +132,15 @@ export function coerceWishLifecycle(value: unknown): WishLifecycle | undefined {
       activity: coerceWishActivities(job.activity ? [job.activity] : [])[0],
       ...(typeof job.accepted === "boolean" ? { accepted: job.accepted } : {}),
       matchedNeedId: shortWishText(job.matchedNeedId) || undefined,
+      routineIdea:
+        object(job.routineIdea).flexible === true
+          ? {
+              activity: shortWishText(object(job.routineIdea).activity, 160),
+              venueId: shortWishText(object(job.routineIdea).venueId, 160),
+              zoneId: shortWishText(object(job.routineIdea).zoneId, 160),
+              flexible: true,
+            }
+          : undefined,
       ...(object(job.needComparison).certain !== undefined
         ? {
             needComparison: {

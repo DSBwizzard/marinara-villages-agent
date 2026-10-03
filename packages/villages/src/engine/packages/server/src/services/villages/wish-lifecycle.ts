@@ -10,7 +10,7 @@ import {
 import { readVillageState, mutateVillageState } from "./village-store.js";
 import { venueCardProfile } from "./venue-writing.js";
 import { villagerCardFromSnapshot } from "./catalog.js";
-import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { flexibleAgendaInterval, agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { deriveVillageMoment, randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { coerceWish, villageCurrentSetting } from "./prompt-preset.js";
 import { extractJsonObject } from "./village-bootstrap.js";
@@ -250,15 +250,8 @@ export function canApplyWishActivity(
     minute = now.getHours() * 60 + now.getMinutes();
   if (activity.dateKey < today || (activity.dateKey === today && activity.startMinute <= minute)) return false;
   const date = new Date(`${activity.dateKey}T12:00:00`);
-  const block = agendaBlocksFor(resident.agenda, resident.ingestSchedule !== false, date).find(
-    (entry) =>
-      entry.startMinute <= activity.startMinute &&
-      entry.endMinute >= activity.endMinute &&
-      entry.flexible &&
-      entry.status !== "dnd" &&
-      entry.status !== "offline",
-  );
-  if (!block) return false;
+  if (!flexibleAgendaInterval(agendaBlocksFor(resident.agenda, false, date), activity.startMinute, activity.endMinute))
+    return false;
   if (activity.venueId) {
     const venue = state.venues.find((entry) => entry.id === activity.venueId),
       zone = venue && venueZones(venue).find((entry) => entry.id === activity.zoneId);

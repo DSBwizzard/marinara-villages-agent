@@ -111,7 +111,7 @@ import type {
   VillageWish,
 } from "./types.js";
 import { coercePlayerRole } from "./player-role.js";
-import { randomVillageSeed, VILLAGE_CLOCKS, villageClockIndex } from "./village-clock.js";
+import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "./village-clock.js";
 
 const VILLAGE_DOC_ID = "villages-village";
 const VILLAGE_DOC_KIND = "village";
@@ -549,7 +549,39 @@ function coerceAgenda(
   if (
     influence.version === 1 &&
     typeof influence.signature === "string" &&
-    ["rhythms", "busy", "interests", "entities", "adopted", "unresolved"].every((key) => Array.isArray(influence[key]))
+    ["rhythms", "busy", "interests", "entities", "adopted", "unresolved"].every((key) =>
+      Array.isArray(influence[key]),
+    ) &&
+    (influence.rhythms as unknown[]).every((value) => {
+      const row = asRecord(value);
+      return (
+        VILLAGE_WEEKDAYS.includes(row.weekday as (typeof VILLAGE_WEEKDAYS)[number]) &&
+        Number.isInteger(row.startMinute) &&
+        Number.isInteger(row.endMinute) &&
+        (row.startMinute as number) >= 0 &&
+        (row.startMinute as number) < 1440 &&
+        (row.endMinute as number) >= 0 &&
+        (row.endMinute as number) <= 1440 &&
+        row.startMinute !== row.endMinute
+      );
+    }) &&
+    (influence.busy as unknown[]).every((value) => {
+      const row = asRecord(value);
+      return (
+        VILLAGE_WEEKDAYS.includes(row.weekday as (typeof VILLAGE_WEEKDAYS)[number]) &&
+        Number.isInteger(row.part) &&
+        (row.part as number) >= 0 &&
+        (row.part as number) <= 3
+      );
+    }) &&
+    ["interests", "entities", "adopted", "unresolved"].every((key) =>
+      (influence[key] as unknown[]).every((value) => typeof value === "string"),
+    ) &&
+    (influence.patterns === undefined ||
+      (Array.isArray(influence.patterns) &&
+        influence.patterns.every(
+          (value) => typeof asRecord(value).weekend === "boolean" && typeof asRecord(value).busy === "boolean",
+        )))
   )
     agenda.scheduleInfluenceSnapshot = influence as unknown as NonNullable<VillageAgenda["scheduleInfluenceSnapshot"]>;
   agenda.personalizationFailure = boundText(raw.personalizationFailure, 300);
@@ -2568,7 +2600,12 @@ export function coerceVillageState(value: unknown): VillageState {
         return true;
       })
       .map((entry) =>
-        entry.agenda ? entry : { ...entry, agenda: unwrittenVillageAgenda(venues, entry.cardSnapshot.name) },
+        entry.agenda
+          ? entry
+          : {
+              ...entry,
+              agenda: { ...unwrittenVillageAgenda(venues, entry.cardSnapshot.name), personalizationPending: false },
+            },
       ),
     // A stored box keeps its internal formatting, so it is bounded but not
     // trimmed to nothing; an empty box means "this village wrote nothing", which

@@ -121,6 +121,7 @@ export function deriveInfluence(
       const interval = typeof entry.time === "string" ? range(entry.time) : null;
       if (!interval) continue;
       const phrase = text(entry.activity);
+      if (/\b(?:chat|conversation|talk(?:ing)?|message|call(?:ing)?|reply|respond)\b/iu.test(phrase)) continue;
       if (busy.test(phrase) || hobby.test(phrase) || /\b(?:free|leisure|relaxing)\b/iu.test(phrase))
         patternObservations.push({ weekend: weekday === "Saturday" || weekday === "Sunday", busy: busy.test(phrase) });
       if (rest.test(phrase))
@@ -393,7 +394,7 @@ export function routineDay(
         next.startMinute = boundary;
       }
     return retained.flatMap((block, index) => {
-      if (!block.flexible || block.status === "offline" || block.status === "dnd") return [block];
+      if (block.essential || !block.flexible || block.status === "offline" || block.status === "dnd") return [block];
       const result: VillageAgendaBlock[] = [];
       let minute = block.startMinute,
         step = 0;
@@ -514,7 +515,7 @@ export function addRoutineIdea(
   if (!profile || row.flexible !== true || !text(row.activity) || agenda.projectWork) return false;
   // Optional repertoire entries cannot create employment, assets or world effects.
   if (
-    /\b(?:buy|bought|acquir|purchas|own(?:s|ed|ing)?|new vehicle|employ|hired|promis|contract|paid|debt|injur|destroy|repair|build|deliver|ship|spaceship|aircraft|train|car)\b/iu.test(
+    /\b(?:buy|bought|acquir\w*|purchas\w*|own(?:s|ed|ing)?|new vehicle|employ\w*|hired|promis\w*|contract|paid|debt|injur\w*|destroy\w*|repair\w*|build\w*|deliver\w*|ship|spaceship|aircraft|train|car)\b/iu.test(
       text(row.activity),
     )
   )
@@ -542,7 +543,12 @@ export function addRoutineIdea(
     profile.activities[index] = candidate;
   } else profile.activities.push(candidate);
   // The seed routine remains intact; only optional alternatives evolve.
-  if (!profile.seedWeek) for (const day of profile.days) for (const part of candidate.parts) day[part * 2 + 1] = index;
+  if (!profile.seedWeek)
+    for (const day of profile.days)
+      for (const part of candidate.parts) {
+        const at = part * 2 + 1;
+        if (!profile.activities[day[at] ?? 0]?.essential) day[at] = index;
+      }
   return true;
 }
 

@@ -5,6 +5,8 @@ import {
   routineDay,
   compressAgendaBlocks,
   addRoutineIdea,
+  agendaPromptDay,
+  validateRoutineDay,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/owned-routine.js";
 import {
   coerceVillageState,
@@ -19,6 +21,7 @@ import {
   setVillagerScheduleIngestion,
   buildVillageAgendas,
   rollActiveAgendas,
+  reconcileVillage,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
 import {
   startBackgroundWork,
@@ -267,6 +270,25 @@ async function main() {
     endMinute: (hour + 1) * 60,
   }));
   const compressed = compressAgendaBlocks(pieces);
+  const oldPrompt = pieces
+    .map((row) => String(row.startMinute) + "-" + row.endMinute + " " + row.activity + " (" + row.reason + ")")
+    .join("; ");
+  const newPrompt = agendaPromptDay(
+    pieces.map((row) => ({ ...row, time: String(row.startMinute) + "-" + row.endMinute, here: row.activity })),
+  );
+  console.log(
+    "Repeated-day prompt fixture estimated tokens (characters / 4): " +
+      Math.ceil(oldPrompt.length / 4) +
+      " -> " +
+      Math.ceil(newPrompt.length / 4) +
+      ". Provider usage is mocked, not a billing measurement.",
+  );
+  const commitments = pieces.slice(0, 2).map((row, index) => ({ ...row, commitmentId: "c" + index }));
+  assert.equal(
+    compressAgendaBlocks(commitments).length,
+    2,
+    "equivalent activities with distinct commitments never merge",
+  );
   assert.equal(compressed.length, 1);
   assert.equal(compressed[0]!.endMinute, 1440);
   assert.ok(JSON.stringify(compressed).length < JSON.stringify(pieces).length / 10);
@@ -299,6 +321,10 @@ async function main() {
     assert.equal(calls, 0, "migration, influence, deprecated reset and repeated reads cost no requests");
     assert.equal((await previewVillageBurst({ action: "translation", characterId: "a" })).requests, 0);
     assert.equal((await previewVillageBurst({ action: "influence", characterId: "a" })).requests, 0);
+    assert.deepEqual((await previewVillageBurst({ action: "influence", characterId: "a" })).dollars, {
+      min: 0,
+      max: 0,
+    });
     assert.equal((await previewVillageBurst({ action: "agenda", characterId: "a" })).requests, 1);
     const persisted = await readVillageState();
     assert.ok(
@@ -351,6 +377,55 @@ async function main() {
     await buildVillageAgendas();
     assert.equal(calls, 1);
     assert.equal((await readVillageState()).villagers[0]!.agenda!.scheduleInfluenceSnapshot!.available, false);
+    const safeVenue = {
+      id: "library",
+      name: "Library",
+      classes: ["other"],
+      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+      state: { condition: "sound", publicFacts: [] },
+      presentation: { image: null, x: 0.2, y: 0.2 },
+    };
+    const access = coerceVillageState({ ...raw, venues: [safeVenue] });
+    resident.scheduleInfluence = influenceSettings({ enabled: true });
+    assert.ok(
+      deriveInfluence(
+        { days: { Monday: [{ time: "10:00-12:00", activity: "Reading at Library" }] } } as any,
+        resident,
+        access,
+      ).entities.includes("library"),
+    );
+    const destination = { ...block, venueId: "library", zoneId: "exterior" };
+    access.venues[0]!.constructionStatus = "worksite";
+    assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
+    const crowd = coerceVillageState({
+      ...raw,
+      venues: [safeVenue],
+      villagers: Array.from({ length: 6 }, (_, i) => ({
+        ...raw.villagers[0],
+        characterId: "crowd" + i,
+        cardSnapshot: { ...raw.villagers[0]!.cardSnapshot, id: "crowd" + i, name: "Crowd " + i },
+        agenda: {
+          ...raw.villagers[0]!.agenda,
+          scheduleWeek: null,
+          activeDay: undefined,
+          week: Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [destination]])),
+        },
+      })),
+    });
+    records.set("villages-village", { ...records.get("villages-village"), data: crowd });
+    await rollActiveAgendas(today);
+    const capacity = (await readVillageState()).villagers;
+    for (let minute = 0; minute < 1440; minute += 30)
+      assert.ok(
+        capacity.filter((person) =>
+          person.agenda!.activeDay!.blocks.some(
+            (row) => row.venueId === "library" && row.startMinute <= minute && row.endMinute > minute,
+          ),
+        ).length <= 4,
+        "capacity checked locally",
+      );
+    assert.equal(calls, 1);
+    records.set("villages-village", { ...records.get("villages-village"), data: state });
     fail = true;
     await clearVillagerAgenda("a", "bad-output");
     await settleBackgroundWork();
@@ -363,6 +438,15 @@ async function main() {
       value.villagers[0]!.scheduleInfluence = influenceSettings({ enabled: false });
     });
     assert.ok(agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, false, next).length);
+    await mutateVillageState((value) => {
+      value.villagers[0]!.agenda = null;
+      value.storyPace = "off";
+      value.setupAt = today.toISOString();
+    });
+    await reconcileVillage({ now: today });
+    await settleBackgroundWork();
+    assert.equal(calls, 2, "entire missing legacy agendas are repaired locally, never a paid migration");
+    assert.equal((await readVillageState()).villagers[0]!.agenda!.personalizationPending, false);
   } finally {
     stop();
     release();

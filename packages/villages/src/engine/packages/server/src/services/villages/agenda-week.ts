@@ -4,6 +4,26 @@ import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "./types.js";
 
+/** A dated opportunity remains valid across unrelated edits and equivalent splits. */
+export function flexibleAgendaInterval(blocks: readonly VillageAgendaBlock[], start: number, end: number): boolean {
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end > 1440 || start >= end) return false;
+  let covered = start;
+  for (const row of blocks
+    .filter((row) => row.endMinute > start && row.startMinute < end)
+    .sort((a, b) => a.startMinute - b.startMinute)) {
+    if (
+      row.startMinute > covered ||
+      !row.flexible ||
+      row.status === "dnd" ||
+      row.status === "offline" ||
+      row.commitmentId
+    )
+      return false;
+    covered = Math.max(covered, row.endMinute);
+  }
+  return covered >= end;
+}
+
 export const agendaDateKey = (at: Date): string =>
   `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 
@@ -247,14 +267,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
   for (const adjustment of [...(agenda.wishActivities ?? []), ...(agenda.socialActivities ?? [])]) {
     if (adjustment.dateKey !== key) continue;
     const started = agenda.activeDay?.dateKey === key && adjustment.startMinute <= at.getHours() * 60 + at.getMinutes();
-    if (
-      !started &&
-      !ordinary.some(
-        (entry) =>
-          entry.flexible && entry.startMinute <= adjustment.startMinute && entry.endMinute >= adjustment.endMinute,
-      )
-    )
-      continue;
+    if (!started && !flexibleAgendaInterval(ordinary, adjustment.startMinute, adjustment.endMinute)) continue;
     ordinary = ordinary.flatMap((entry) => {
       const start = Math.max(entry.startMinute, adjustment.startMinute),
         end = Math.min(entry.endMinute, adjustment.endMinute);

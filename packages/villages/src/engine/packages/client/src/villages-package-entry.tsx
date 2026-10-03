@@ -1815,21 +1815,7 @@ type VillagePromptMessage = {
   content: string;
 };
 
-/**
- * What one villager is after, how their week happens here, and the prompt that
- * translation is written from.
- *
- * One route answers for two debug tabs, which is deliberate: the wishes and the
- * week are two halves of one listing and splitting the fetch would let the two
- * panels disagree about the same villager. Villager Wishes draws `agenda`;
- * Villager Agendas draws `days`, `weekStart`, `stale`, `remap` and
- * `remapPrompt`.
- *
- * `remapPrompt` is rebuilt on the server on every read and is the reason the
- * agendas tab exists as a debug surface: the wording of that prompt is the part
- * of this feature that is a matter of taste, and the only way to argue with a
- * wording is to read it.
- */
+/** Owned resolved Agenda and optional influence controls. Legacy remap fields are inert compatibility data. */
 type VillagerAgendaView = {
   effectiveDays?: Record<string, AgendaBlock[]>;
   wishHistoryCount?: number;

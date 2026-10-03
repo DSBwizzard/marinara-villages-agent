@@ -60,7 +60,7 @@ import {
   type VillagerCard,
 } from "./catalog.js";
 import { asTrimmedString } from "./coerce.js";
-import { agendaAt, agendaDayPlan, villageAgendaDay, unwrittenVillageAgenda } from "./agenda-plan.js";
+import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "./agenda-plan.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { readVillageConnectionSettings, validateVillageSetupConnections } from "./connections.js";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -833,12 +833,13 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   if (!villager) return;
   const effectiveCard = await readEffectiveVillagerCard(villager);
   if (!effectiveCard) {
-    await storeAgenda(characterId, {
-      wishes: [],
-      routineSummary: "",
-      day: villageAgendaDay(null, remapVenues(village.venues), villager.cardSnapshot.name),
-      source: "village",
-      generatedAt: new Date().toISOString(),
+    await mutateVillageState((state) => {
+      const resident = state.villagers.find((entry) => entry.characterId === characterId);
+      if (!resident) return;
+      resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+      resident.agenda.personalizationPending = false;
+      resident.agenda.personalizationFailure =
+        "Character identity is unavailable. Keep the existing routine and retry deliberately after restoring the card.";
     });
     return;
   }
@@ -924,9 +925,6 @@ registerBackgroundHandler("agenda", {
  * is right in that case — the call was made for a villager who no longer
  * exists, and there is no error a player could act on.
  */
-async function storeAgenda(characterId: string, agenda: VillageAgenda, initialWishAttemptId?: string): Promise<void> {
-  await mutateVillageState((state) => applyAgenda(state, characterId, agenda, initialWishAttemptId));
-}
 function applyAgenda(
   state: VillageState,
   characterId: string,
@@ -1004,7 +1002,10 @@ function planRoutineDays(state: VillageState, now: Date): void {
         agenda.plannedDays[key] = agenda.activeDay.blocks;
         continue;
       }
-      if (agenda.plannedDays[key]) continue;
+      if (agenda.plannedDays[key]) {
+        if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state);
+        continue;
+      }
       let blocks = validateRoutineDay(
         routineDay(
           agenda.routineProfile,

@@ -144,7 +144,7 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
         languageRequests *
         ((rate.perRequest ?? 0) +
           (system.maxContext * Math.max(rate.input, rate.cacheWrite ?? 0)) / 1e6 +
-          (system.maxOutputTokens * rate.output) / 1e6);
+          (Math.min(system.maxOutputTokens, 4_000) * rate.output) / 1e6);
     } else unknownCosts += languageRequests;
   }
   if (imageRequests) {
@@ -162,7 +162,12 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
   return {
     requests: languageRequests + imageRequests,
     residents,
-    dollars: languageRequests + imageRequests > unknownCosts ? { min, max } : null,
+    dollars:
+      languageRequests + imageRequests === 0
+        ? { min: 0, max: 0 }
+        : languageRequests + imageRequests > unknownCosts
+          ? { min, max }
+          : null,
     unknownCosts,
     note:
       (bootstrap ? "Includes one public-Venue suggestion request. " : "") +

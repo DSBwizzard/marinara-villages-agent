@@ -115,7 +115,7 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
             continue;
           const startMinute = Math.max(left.startMinute, right.startMinute, minute + 15),
             endMinute = Math.min(left.endMinute, right.endMinute, startMinute + 60);
-          if (endMinute - startMinute < 20 || (!meeting && left.venueId !== right.venueId)) continue;
+          if (endMinute - startMinute < 30 || (!meeting && left.venueId !== right.venueId)) continue;
           const actorIds = meeting ? [a.characterId, b.characterId] : [avoiding!.characterId];
           const location = village.venues
             .flatMap((venue) => venueZones(venue).map((zone) => ({ venue, zone })))

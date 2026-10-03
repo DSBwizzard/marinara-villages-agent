@@ -8,7 +8,6 @@ import {
   parseCompactFounding,
   proposeCompactFounding,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.ts";
-import { scheduleInformedWeek } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.ts";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.ts";
 

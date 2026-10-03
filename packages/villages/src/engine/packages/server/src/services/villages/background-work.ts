@@ -478,7 +478,7 @@ async function runMeasuredJob(id: string): Promise<void> {
     cause: job.finite
       ? "Player-requested generation"
       : job.kind === "translation"
-        ? "Automatic: schedule or village context changed"
+        ? "Deprecated translation: no new requests"
         : "Automatic: village time or resident agenda update",
   };
   complete.setting = async <T>(key: string, create: () => T | Promise<T>): Promise<T> => {
@@ -707,7 +707,7 @@ export async function settleBackgroundWork(): Promise<void> {
 }
 
 /** Compact raw ledger inspection: no reconciliation, pruning, resume, or village read. */
-export async function previewBackgroundJobs(defaultBatchSize?: number) {
+export async function previewBackgroundJobs(_defaultBatchSize?: number) {
   const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
   return records.flatMap((record) => {
     const job = record.data as Job;
@@ -716,9 +716,8 @@ export async function previewBackgroundJobs(defaultBatchSize?: number) {
       job.completedCount || job.steps.filter((step, i) => step.status === "completed" && i !== job.failedStep).length;
     const context = asRecord(asRecord(job.input).context);
     const blocks = Array.isArray(context.blocks) ? context.blocks.length : 0;
-    const batch = Number(job.settings?.translationBatchSize) || defaultBatchSize;
     const planned =
-      job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "translation" && batch ? 0 : null;
+      job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "translation" ? 0 : null;
     return [
       {
         id: record.id,
@@ -739,7 +738,7 @@ export async function previewBackgroundJobs(defaultBatchSize?: number) {
         cause: job.finite
           ? "Player-requested generation"
           : job.kind === "translation"
-            ? "Automatic: schedule or village context changed"
+            ? "Deprecated translation: no new requests"
             : "Automatic: village time or resident agenda update",
         remainingBlocks: job.kind === "translation" ? blocks : null,
       },

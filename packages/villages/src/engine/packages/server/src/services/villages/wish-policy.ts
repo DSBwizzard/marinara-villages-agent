@@ -1,3 +1,4 @@
+import { agendaBlocksFor, flexibleAgendaInterval } from "./agenda-week.js";
 import { createHash } from "node:crypto";
 import { randomVillageSeed } from "./village-clock.js";
 import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
@@ -80,6 +81,14 @@ export function pruneWishActivities(state: VillageState, now: Date): void {
     agenda.wishActivities = agenda.wishActivities.filter((activity) => {
       if (activity.dateKey < today || (activity.dateKey === today && activity.startMinute <= minute)) return true;
       if (!agenda.wishes.some((wish) => wish.id === activity.wishId)) return false;
+      if (
+        !flexibleAgendaInterval(
+          agendaBlocksFor({ ...agenda, wishActivities: [] }, false, new Date(activity.dateKey + "T12:00:00")),
+          activity.startMinute,
+          activity.endMinute,
+        )
+      )
+        return false;
       if (!activity.venueId) return true;
       const venue = state.venues.find((entry) => entry.id === activity.venueId);
       const zone = venue && venueZones(venue).find((entry) => entry.id === activity.zoneId);
