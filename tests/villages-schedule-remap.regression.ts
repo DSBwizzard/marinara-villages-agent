@@ -1131,13 +1131,13 @@ async function main() {
     "utf8",
   );
   assert.ok(clientSource.includes("Villages agenda</h4>"), "the village agenda is named as the primary plan");
-  assert.ok(clientSource.includes("Marinara schedule</h4>"), "the optional source is available for comparison");
+  assert.ok(!clientSource.includes("Marinara schedule</h4>"), "the authoritative translation comparison is retired");
   assert.ok(clientSource.includes("villager.agenda?.activeDay?.blocks"), "today reads the frozen active agenda");
   assert.ok(clientSource.includes("villager.agenda?.week?.[day.weekday]"), "future days read the village week");
   assert.ok(clientSource.includes("part.reason"), "each agenda block explains why");
   assert.ok(clientSource.includes("setAgendaScheduleIngestion"), "schedule ingestion can be changed per villager");
   assert.ok(clientSource.includes("agendaUpdatePending(villager)"), "pending changes are labelled for tomorrow");
-  assert.ok(clientSource.includes("Schedule used today"), "schedule usage is visible beside the agenda");
+  assert.ok(clientSource.includes("Schedule influence enabled"), "optional influence is visible beside the agenda");
   assert.ok(clientSource.includes("Personalization needs retry"), "model failure is visible without hiding the agenda");
   assert.ok(
     clientSource.includes("<details") && clientSource.includes("<summary"),
@@ -1246,7 +1246,7 @@ async function main() {
   const villagerBlock = renderDoingBlock(pilotDoing);
   assert.ok(!villagerBlock.includes("Halcyon"), "native schedule prose never reaches the villager prompt");
   assert.ok(villagerBlock.includes("Right now you are at home until 08:00."));
-  assert.ok(villagerBlock.includes("To prepare for the day"), "the agenda's reason reaches the prompt");
+  assert.ok(!villagerBlock.includes("To prepare for the day"), "routine reasons stay out of recurring prompts");
   const narratorBlock = renderResidentsBlock([
     {
       characterId: "character-ives",
@@ -1263,7 +1263,7 @@ async function main() {
     },
   ]);
   assert.ok(!narratorBlock.includes("Halcyon"), "native schedule prose never reaches the narrator");
-  assert.ok(narratorBlock.includes("To prepare for the day"), "the narrator also receives the reason");
+  assert.ok(!narratorBlock.includes("To prepare for the day"), "routine reasons are omitted from recurring prompts");
   assert.ok(!renderResidentsBlock([]).includes("lives here"));
 
   // ── Block-level fidelity ──────────────────────────────────────────────────

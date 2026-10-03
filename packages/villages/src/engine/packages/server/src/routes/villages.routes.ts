@@ -123,6 +123,7 @@ import {
   clearVillagerAgenda,
   correctCompletedWish,
   setVillagerScheduleIngestion,
+  setVillagerScheduleInfluence,
   clearVillagerRemap,
   createVillageVenue,
   decideVillageVenueRequest,
@@ -1959,6 +1960,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
     },
   );
 
+  app.patch<{ Params: CharacterParams; Body: unknown }>("/agendas/:characterId/influence", async (request, reply) => {
+    try {
+      await setVillagerScheduleInfluence(readCharacterId(request.params.characterId), request.body);
+      return { villagers: await buildVillageAgendas() };
+    } catch (error) {
+      return fail(reply, error, "changing schedule influence");
+    }
+  });
   app.patch<{ Params: CharacterParams; Body: { ingestSchedule?: unknown } }>(
     "/agendas/:characterId/ingestion",
     async (request, reply) => {
@@ -1983,7 +1992,11 @@ export async function villagesRoutes(engine: FastifyInstance) {
   app.delete<{ Params: CharacterParams }>("/remaps/:characterId", async (request, reply) => {
     try {
       await clearVillagerRemap(readCharacterId(request.params.characterId));
-      return { villagers: await buildVillageAgendas() };
+      return {
+        deprecated: true,
+        message: "Schedule translation is retired. Use optional Agenda influence.",
+        villagers: await buildVillageAgendas(),
+      };
     } catch (error) {
       return fail(reply, error, "forgetting a villager's translation");
     }

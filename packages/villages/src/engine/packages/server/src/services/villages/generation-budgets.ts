@@ -8,6 +8,6 @@ export function translationRequestCount(blocks: number, batchSize: number): numb
 export function remainingRequests(planned: number, completed: number): number {
   return Math.max(0, planned - completed);
 }
-export function agendaRequestCount(days: readonly string[]): number {
-  return 1 + days.length;
+export function agendaRequestCount(_days: readonly string[]): number {
+  return 1;
 }

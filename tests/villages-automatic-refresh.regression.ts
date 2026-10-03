@@ -189,32 +189,23 @@ async function main() {
           async chatComplete(messages: any[]) {
             modelCalls += 1;
             if (agendaMode) {
-              const weekday = String(messages[0]?.content ?? "").match(
-                /Lina's (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/,
-              )?.[1];
-              const user = weekday ? "Write " + weekday + " only." : "Write routine.";
-              agendaRequests.push(user);
-              if (user === "Write Wednesday only." && failWednesday) throw new Error("Wednesday unavailable");
+              agendaRequests.push("Write routine profile.");
+              if (failWednesday) throw new Error("Profile unavailable");
               return {
-                content: JSON.stringify(
-                  Boolean(weekday)
-                    ? {
-                        blocks: [
-                          {
-                            startMinute: 0,
-                            endMinute: 1440,
-                            venue: 1,
-                            activity: "Studying the stars",
-                            reason: "To learn",
-                            status: "dnd",
-                          },
-                        ],
-                      }
-                    : {
-                        agenda: "Studying quietly.",
-                        wishes: [{ wish: "To own a telescope", intensity: 2, tell: "Watching the sky" }],
-                      },
-                ),
+                content: JSON.stringify({
+                  routine: "Studying quietly.",
+                  wishes: [],
+                  palette: Array.from({ length: 6 }, (_, i) => ({
+                    activity: "Studying the stars " + i,
+                    venue: 0,
+                    status: "idle",
+                    flexible: true,
+                    duration: 180,
+                    parts: [0, 1, 2, 3],
+                  })),
+                  days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
+                  rhythm: [],
+                }),
                 finishReason: "stop",
               };
             }
@@ -483,10 +474,10 @@ async function main() {
     assert.equal(await rollActiveAgendas(sunday), true);
     const activeSunday = (await readVillageState()).villagers[0]!.agenda!.activeDay!;
     assert.equal(activeSunday.dateKey, "2026-09-27");
-    assert.equal(activeSunday.scheduleInformed, true);
-    assert.equal(activeSunday.blocks[0]!.activity, "Keeping watch");
+    assert.equal(activeSunday.scheduleInformed, false);
+    assert.notEqual(activeSunday.blocks[0]!.activity, "Keeping watch", "Engine translation no longer owns Sunday");
 
-    // Real agenda stages: overlap while admitting, then resume only Wednesday onward.
+    // One compact request, deliberate recovery, and deduplicated action IDs.
     agendaMode = true;
     failWednesday = true;
     await Promise.all([
@@ -494,34 +485,23 @@ async function main() {
       clearVillagerAgenda("lina", "same-agenda-action"),
     ]);
     await settleBackgroundWork();
-    assert.deepEqual(agendaRequests, [
-      "Write routine.",
-      "Write Monday only.",
-      "Write Tuesday only.",
-      "Write Wednesday only.",
-    ]);
+    assert.deepEqual(agendaRequests, ["Write routine profile."]);
     const agendaFailure = (await backgroundWorkSummaries()).find((job) => job.kind === "agenda")!;
     assert.equal(agendaFailure.status, "failed");
-    assert.equal(agendaFailure.completedSteps, 3);
+    assert.equal(agendaFailure.completedSteps, 0);
     await reconcileVillage({ now: new Date(2026, 8, 28, 8) });
     await settleBackgroundWork();
-    assert.equal(agendaRequests.length, 4, "daily ticks cannot retry the unresolved Wednesday");
+    assert.equal(agendaRequests.length, 1, "daily ticks cannot retry an unresolved request");
     failWednesday = false;
     await Promise.all([
-      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-wednesday-retry"),
-      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-wednesday-retry"),
+      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry"),
+      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry"),
     ]);
     await settleBackgroundWork();
-    assert.deepEqual(agendaRequests.slice(4), [
-      "Write Wednesday only.",
-      "Write Thursday only.",
-      "Write Friday only.",
-      "Write Saturday only.",
-      "Write Sunday only.",
-    ]);
-    await retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-wednesday-retry");
+    assert.equal(agendaRequests.length, 2);
+    await retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry");
     await settleBackgroundWork();
-    assert.equal(agendaRequests.length, 9, "lost retry responses do not repeat a successful stage");
+    assert.equal(agendaRequests.length, 2, "lost retry responses do not repeat a successful request");
     assert.equal((await readVillageState()).villagers[0]!.agenda!.personalizationPending, false);
     agendaMode = false;
 

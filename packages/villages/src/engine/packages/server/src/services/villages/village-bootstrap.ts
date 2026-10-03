@@ -1,8 +1,9 @@
+import { agendaPromptDay, compressAgendaBlocks } from "./owned-routine.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 import type { VillagePlayerRole } from "./types.js";
-import { backgroundCalls, requireBackgroundSuccess } from "./background-context.js";
-import { venueZones, canOccupyZone } from "./venue-zones.js";
+import { backgroundCalls } from "./background-context.js";
+
 // Villages — the two model calls the package makes.
 //
 // The first turns a setting into places. The product move it makes is
@@ -69,7 +70,6 @@ import {
 } from "./prompt-preset.js";
 import type {
   VillageAgenda,
-  VillageAgendaBlock,
   VillageChronicleActor,
   VillageChronicleEntry,
   VillageCompletedWish,
@@ -500,6 +500,7 @@ export type VillageTickContext = {
 
 /** What one creative planning call produced. The caller decides what reaches the record. */
 export type VillageTickProposal = {
+  routineIdea?: { characterId?: unknown; activity?: unknown; venueId?: unknown; zoneId?: unknown; flexible?: unknown };
   social?: { planId?: unknown; encounter?: unknown };
   happenings: VillageHappening[];
   /**
@@ -675,18 +676,16 @@ export function renderResidentsBlock(residents: readonly VillageTickResident[]):
     // Today, terse, on one line per person. The plan is the whole day rather
     // than an hour, and the narrator is reading about everybody at once, so the
     // separator is a semicolon and there is no heading of its own.
-    const today = resident.today.filter((block) => block.here.trim().length > 0);
+    const today = compressAgendaBlocks(resident.today).filter((block) => block.here.trim().length > 0);
     if (today.length > 0) {
-      lines.push(
-        `  Today: ${today.map((block) => `${block.time} ${block.here.trim()}${block.reason ? ` (${block.reason})` : ""}`).join("; ")}`,
-      );
+      lines.push(`  Today: ${agendaPromptDay(today)}`);
     }
     // The rest of the week, short, and only the phrases today does not already
     // account for. Capped because it is colour beside a plan that is already
     // several lines long — see `MAX_RESIDENT_WEEK_NOTES`.
-    const week = resident.week
+    const week = [...new Set(resident.week)]
       .map((note) => note.trim())
-      .filter((note) => note.length > 0)
+      .filter((note) => note.length > 0 && !today.some((block) => block.here.trim() === note))
       .slice(0, MAX_RESIDENT_WEEK_NOTES);
     if (week.length > 0) lines.push(`  On other days: ${week.join("; ")}`);
     const wishes = resident.agenda?.wishes ?? [];
@@ -775,7 +774,7 @@ For a CURRENT encounter opportunity with at least two actors in the same zone, s
       housingOptions.length
         ? `Housing options for people in the offered opportunity: ${housingOptions.join(" | ")}.`
         : "No housing request options are available.",
-      `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move","venueId":"destination id"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move. Never treat a player request as their consent. ${context.social ? "Social may be included using the structured schema above." : "No other keys."}`,
+      `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move","venueId":"destination id"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. You may optionally include ONE routineIdea:{characterId:"resident id",activity:"ordinary future activity",venueId:"existing id or empty for home",zoneId:"existing id",flexible:true}. This is a separate optional future routine proposal, never an observed fact, new job, asset, physical effect or commitment. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move. Never treat a player request as their consent. ${context.social ? "Social may be included using the structured schema above." : "No additional keys beyond these."}`,
     ];
     return [
       { role: "system", content: sections.filter(Boolean).join("\n\n") },
@@ -1282,6 +1281,10 @@ export async function proposeHappenings(
         notices: [],
         venueRequests: [],
         featureEdits: [],
+        routineIdea:
+          payload.routineIdea && typeof payload.routineIdea === "object" && !Array.isArray(payload.routineIdea)
+            ? (payload.routineIdea as VillageTickProposal["routineIdea"])
+            : undefined,
         housingRequests: readHousingRequests(payload.housingRequests, context),
         social:
           context.social && payload.social && typeof payload.social === "object"
@@ -1446,15 +1449,6 @@ export async function proposeReaction(
 
 // Ordinary routine generation is independent of the finite wish lifecycle.
 // Explicit personalization writes a profile and seven days; completion never calls it.
-const AGENDA_MAX_TOKENS = 3_000;
-const AGENDA_DAY_MAX_TOKENS = 4_000;
-/** Cooler than either village call: this is one person's steady disposition, not an afternoon's weather. */
-const AGENDA_TEMPERATURE = 0.6;
-/** Bound card prose in routine requests without a separate summarization call. */
-const AGENDA_DESCRIPTION_MAX = 1_200;
-
-const AGENDA_SYSTEM_PROMPT =
-  'Describe a stable ordinary routine for this village resident. Return JSON only: {"agenda":"one sentence"}. Do not generate wishes or unresolved wish errands. Current village facts outrank older lore.';
 export type VillageAgendaContext = {
   characterId?: string;
   village: string;
@@ -1471,99 +1465,6 @@ export type VillageAgendaContext = {
   description: string;
   routineSummary: string;
 };
-
-function buildAgendaMessages(context: VillageAgendaContext): CapabilityLanguageModelMessage[] {
-  return [
-    { role: "system", content: AGENDA_SYSTEM_PROMPT },
-    {
-      role: "user",
-      content: JSON.stringify({
-        village: context.village,
-        setting: context.setting,
-        name: context.name,
-        summary: context.summary,
-        personality: context.personality,
-        description: context.description.slice(0, AGENDA_DESCRIPTION_MAX),
-        home: context.home,
-        lore: context.lore,
-      }),
-    },
-  ];
-}
-
-function buildAgendaDayMessages(
-  context: VillageAgendaContext,
-  weekday: string,
-  summary: string,
-): CapabilityLanguageModelMessage[] {
-  const places = context.venues.map((venue, index) => ({
-    venue: index + 1,
-    name: venue.name,
-    condition: venue.state.condition,
-    zones: venueZones(venue)
-      .filter((zone) => !context.characterId || canOccupyZone(venue, zone, context.characterId))
-      .map((zone) => ({ id: zone.id, kind: zone.kind })),
-  }));
-  return [
-    {
-      role: "system",
-      content: [
-        `Write ${context.name}'s ${weekday} in ${context.village} as a village agenda. Return JSON only: {"blocks":[{"startMinute":0,"endMinute":420,"venue":0,"zoneId":"exact zone id","activity":"Sleeping at home","reason":"To rest","status":"offline","flexible":false}]}`,
-        "Cover every minute from 0 to 1440 in ordered, non-overlapping blocks. Waking activities change every 30 to 60 minutes; sleep and sustained work can last longer.",
-        "Venue 0 is home; otherwise copy a numbered place. Status is online, idle, dnd, or offline. Mark flexible:true ONLY for optional free-time activities, never meals, sleep, work, or commitments.",
-        "Write a stable ordinary routine independent of wishes. Never add unresolved wish errands or assume that an object mentioned as desired in lore is already owned. Current village facts outrank older lore.",
-      ].join("\n"),
-    },
-    {
-      role: "user",
-      content: JSON.stringify({
-        setting: context.setting,
-        home: context.home,
-        person: {
-          summary: context.summary,
-          personality: context.personality,
-          description: context.description.slice(0, AGENDA_DESCRIPTION_MAX),
-        },
-        routine: summary,
-        places,
-        lore: context.lore,
-      }),
-    },
-  ];
-}
-
-function completeModelDay(
-  payload: Record<string, unknown>,
-  context: VillageAgendaContext,
-  weekday: string,
-): Record<string, VillageAgendaBlock[]> | null {
-  if (!Array.isArray(payload.blocks)) return null;
-  const rows = payload.blocks as Record<string, unknown>[];
-  let cursor = 0;
-  for (const row of rows) {
-    if (!row || row.startMinute !== cursor || !Number.isInteger(row.endMinute) || (row.endMinute as number) <= cursor)
-      return null;
-    if (typeof row.activity !== "string" || !row.activity.trim()) return null;
-    if (row.status !== "online" && row.status !== "idle" && row.status !== "dnd" && row.status !== "offline")
-      return null;
-    if (
-      cursor >= 0 &&
-      cursor < 1440 &&
-      row.status !== "offline" &&
-      row.status !== "dnd" &&
-      (row.endMinute as number) - cursor > 60
-    )
-      return null;
-    cursor = row.endMinute as number;
-  }
-  if (cursor !== 1440) return null;
-  const mapped = rows.map((row) => ({
-    ...row,
-    venueId: typeof row.venue === "number" ? (context.venues[row.venue - 1]?.id ?? "") : "",
-    zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
-  }));
-  return completeAgendaWeek({ [weekday]: mapped }, workingAgendaWeek(context.venues, context.name), context.venues);
-}
 
 /**
  * Bound an agenda reply to what the village will actually store.
@@ -1619,62 +1520,33 @@ export function coerceAgenda(
 }
 
 /** Ask the model what one villager is after. The caller decides where the answer is kept. */
+/** Compatibility entry point; shares the one-request routine profile generator. */
 export async function proposeAgenda(
   context: VillageAgendaContext,
-  options: { signal?: AbortSignal } = {},
+  _options: { signal?: AbortSignal } = {},
 ): Promise<VillageAgenda> {
-  const model = await villagesLanguageModels().resolveForRequest({
-    connectionId: await villagesConnectionIdFor("system"),
-  });
-  const requestedMaxTokens = Math.min(model.maxOutputTokens ?? AGENDA_MAX_TOKENS, AGENDA_MAX_TOKENS);
-  const fitted = model.fitContext(buildAgendaMessages(context), { maxTokens: requestedMaxTokens });
-  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
-  villagesLogger().debugOverride(debugEnabled, "[villages] agenda prompt: %s", JSON.stringify(fitted.messages));
-
-  const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
-    temperature: AGENDA_TEMPERATURE,
-    reasoningEffort: "low",
-    debugMode: debugEnabled,
-    signal: options.signal,
-  });
-
-  const payload = extractJsonObject(completion.content ?? "");
-  const agenda = payload ? coerceAgenda(payload, context, new Date().toISOString()) : null;
-  if (!agenda || (backgroundCalls.getStore() && !agenda.routineSummary))
-    throw new Error(completionFailure("Village routine", completion, fitted.maxTokens ?? requestedMaxTokens));
-  agenda.wishes = [...(context.activeWishes ?? [])];
-  const proposedWeek: Record<string, unknown> = {};
-  const failures: string[] = [];
-  for (const weekday of VILLAGE_WEEKDAYS) {
-    const requested = Math.min(model.maxOutputTokens ?? AGENDA_DAY_MAX_TOKENS, AGENDA_DAY_MAX_TOKENS);
-    const dayFit = model.fitContext(buildAgendaDayMessages(context, weekday, agenda.routineSummary), {
-      maxTokens: requested,
-    });
-    villagesLogger().debugOverride(
-      debugEnabled,
-      "[villages] %s agenda prompt: %s",
-      weekday,
-      JSON.stringify(dayFit.messages),
-    );
-    try {
-      const dayCompletion = await completeWithRoom(model, dayFit.messages, dayFit.maxTokens ?? requested, {
-        temperature: AGENDA_TEMPERATURE,
-        reasoningEffort: "low",
-        debugMode: debugEnabled,
-        signal: options.signal,
-      });
-      const dayPayload = extractJsonObject(dayCompletion.content ?? "");
-      const day = dayPayload && completeModelDay(dayPayload, context, weekday);
-      if (!day) throw new Error(completionFailure(`${weekday} agenda`, dayCompletion, dayFit.maxTokens ?? requested));
-      proposedWeek[weekday] = day[weekday];
-    } catch (error) {
-      requireBackgroundSuccess(error);
-      failures.push(String(error));
-      if (failures.length >= 2) break;
-    }
-  }
-  agenda.week = completeAgendaWeek(proposedWeek, workingAgendaWeek(context.venues, context.name), context.venues);
-  agenda.personalizationPending = VILLAGE_WEEKDAYS.some((weekday) => !proposedWeek[weekday]);
-  agenda.personalizationFailure = failures[0] ?? "";
-  return agenda;
+  const { proposeCompactFounding } = await import("./founding-compact.js");
+  const card = {
+    id: context.characterId || context.name,
+    name: context.name,
+    summary: context.summary,
+    tags: context.tags,
+    personality: context.personality,
+    description: context.description,
+  };
+  return (
+    await proposeCompactFounding(
+      {
+        ...context,
+        home: context.home ?? "",
+        lore: context.lore ?? [],
+        card,
+        schedule: null,
+        activeWishes: context.activeWishes ?? [],
+        completedWishes: context.completedWishes ?? [],
+        allowInitialWish: false,
+      },
+      async () => {},
+    )
+  ).agenda;
 }

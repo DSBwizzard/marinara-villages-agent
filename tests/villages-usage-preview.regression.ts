@@ -21,8 +21,7 @@ import { resetNativeScheduleCache } from "../packages/villages/src/engine/packag
 const records = new Map<string, any>();
 let calls = 0,
   writes = 0,
-  failCards = false,
-  translation = false;
+  failCards = false;
 const schedule: any = {
   characterId: "a",
   weekStart: "2026-09-28",
@@ -39,31 +38,25 @@ const model: any = {
   model: "gemini-2.5-flash-lite",
   name: "Mock",
   maxContext: 8192,
-  maxOutputTokens: 1400,
+  maxOutputTokens: 4000,
   fitContext(messages: any, options: any) {
     return { messages, ...options };
   },
-  async chatComplete(messages: any[]) {
+  async chatComplete(_messages: any[]) {
     calls++;
-    const ranges = [...String(messages[1]?.content).matchAll(/^- ([0-9:]+-[0-9:]+):/gm)].map((match) => match[1]);
     return {
-      content: JSON.stringify(
-        translation
-          ? { moves: ranges.map((time) => ({ day: "Monday", time, here: "Studying", place: 0 })) }
-          : {
-              agenda: "Studying quietly.",
-              blocks: [
-                {
-                  startMinute: 0,
-                  endMinute: 1440,
-                  venue: 1,
-                  activity: "Studying",
-                  reason: "Learning",
-                  status: "dnd",
-                },
-              ],
-            },
-      ),
+      content: JSON.stringify({
+        routine: "Studying quietly.",
+        wishes: [],
+        palette: Array.from({ length: 6 }, (_, index) => ({
+          activity: "Study " + index,
+          venue: 0,
+          status: "idle",
+          flexible: true,
+        })),
+        days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
+        rhythm: [],
+      }),
       usage: { promptTokens: 500, completionTokens: 100, totalTokens: 600 },
     };
   },
@@ -139,8 +132,8 @@ async function main() {
   try {
     storeState();
     const plan = await previewVillageBurst({ action: "agenda", characterId: "a" });
-    assert.equal(plan.requests, 10, "8 agenda requests plus 2 translation batches");
-    assert.equal(plan.residents[0]?.requests, 10);
+    assert.equal(plan.requests, 1, "one owned routine request, no translation");
+    assert.equal(plan.residents[0]?.requests, 1);
     assert.ok(plan.dollars);
     assert.equal(calls, 0);
     assert.equal(writes, 0, "previews do not reconcile or write village state");
@@ -152,21 +145,13 @@ async function main() {
       personality: "",
       description: "",
       tags: [],
+      lore: [],
+      home: "",
       routineSummary: "",
       venues: [],
     };
     await proposeAgenda(context);
-    translation = true;
-    await proposeRemap({
-      ...context,
-      card: {},
-      wishes: [],
-      weekStart: schedule.weekStart,
-      blocks: remapBlocks(schedule),
-      loreKey: "",
-      lore: [],
-      completedWishes: [],
-    } as any);
+    await assert.rejects(proposeRemap({} as any), /retired/);
     assert.equal(calls, plan.requests, "forecast matches actual mocked generator dispatches");
     const signature = remapSignatureFor(state, "a", schedule.weekStart, remapBlocks(schedule), []);
     state.villagers[0].remap = {
@@ -185,13 +170,13 @@ async function main() {
     storeState();
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
-      8,
+      1,
       "valid translation adds no follow-on requests",
     );
     assert.equal((await previewVillageBurst({ action: "change", settings: { setting: state.setting } })).requests, 0);
     assert.equal(
       (await previewVillageBurst({ action: "change", settings: { setting: "A different world" } })).requests,
-      2,
+      0,
     );
     state.villagers[0].agenda!.wishes = [{ wish: "Learn pottery", id: "wish", status: "active" }] as any;
     state.villagers[0].remap!.signature = remapSignatureFor(
@@ -204,7 +189,7 @@ async function main() {
     storeState();
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
-      8,
+      1,
       "existing wishes must share the actual dispatch signature",
     );
     const unchanged = structuredClone(records.get("villages-village"));
@@ -228,8 +213,8 @@ async function main() {
     });
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
-      5,
-      "retries subtract purchased steps",
+      0,
+      "retries reuse purchased routine responses",
     );
     records.get("job").data.status = "completed";
     assert.equal(
@@ -258,8 +243,8 @@ async function main() {
     resetNativeScheduleCache();
     assert.equal(
       (await previewVillageBurst({ action: "translation", characterId: "a" })).requests,
-      null,
-      "unreadable schedules are unknown, not zero",
+      0,
+      "retired translation stays zero even when cards are unreadable",
     );
     assert.equal(
       (await previewVillageBurst({ action: "retry", jobId: "job" })).requests,

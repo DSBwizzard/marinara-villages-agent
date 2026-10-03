@@ -1,4 +1,5 @@
 import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
+import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "./owned-routine.js";
 import { coerceSpriteManager, managerResidentSprite } from "./sprite-manager-model.js";
 import { venueResidentIds } from "./venue-model.js";
 import { assertVenueOwnership } from "./venue-coordinator.js";
@@ -289,10 +290,11 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // matters: null means "not written for yet", which is what makes the
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
-    agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name),
+    agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name, raw.ingestSchedule !== false),
     completedWishes: coerceCompletedWishes(raw.completedWishes),
     wishLifecycle: coerceWishLifecycle(raw.wishLifecycle),
-    ingestSchedule: raw.ingestSchedule !== false,
+    ingestSchedule: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false).enabled,
+    scheduleInfluence: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false),
     // Read on the same terms as the agenda, and for the same reason — but null
     // here is a settled state rather than a pending one. A translation carries
     // the week it was written for, and without that week it cannot be
@@ -438,7 +440,12 @@ function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
  * part of every day would be the village spending a model call to learn the same
  * nothing.
  */
-function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: string): VillageAgenda | null {
+function coerceAgenda(
+  value: unknown,
+  venues: readonly VillageVenue[],
+  name: string,
+  legacyEnabled = false,
+): VillageAgenda | null {
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
@@ -454,6 +461,7 @@ function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: str
   }
   const agenda: VillageAgenda = {
     wishActivities: coerceWishActivities(raw.wishActivities),
+    socialActivities: coerceWishActivities(raw.socialActivities),
     wishes,
     routineSummary: boundText(raw.routineSummary, MAX_ROUTINE_SUMMARY_LENGTH),
     day: Array.isArray(raw.day)
@@ -506,6 +514,12 @@ function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: str
   const fallback = workingAgendaWeek(venues, name);
   agenda.week = legacyAgendaWeek({ ...agenda, week: raw.week as VillageAgenda["week"] }, fallback);
   agenda.scheduleWeek = raw.scheduleWeek ? completeAgendaWeek(raw.scheduleWeek, agenda.week) : null;
+  agenda.plannedDays = Object.fromEntries(
+    Object.entries(asRecord(raw.plannedDays))
+      .filter(([key]) => /^\d{4}-\d{2}-\d{2}$/.test(key))
+      .slice(-14)
+      .map(([key, blocks]) => [key, completeAgendaWeek({ Monday: blocks }, agenda.week!).Monday!]),
+  );
   const active = asRecord(raw.activeDay);
   if (
     typeof active.dateKey === "string" &&
@@ -521,7 +535,23 @@ function coerceAgenda(value: unknown, venues: readonly VillageVenue[], name: str
         scheduleInformed: active.scheduleInformed === true,
       };
   }
-  agenda.personalizationPending = raw.personalizationPending === true || !agenda.generatedAt || !raw.week;
+  agenda.routineProfile = coerceRoutineProfile(raw.routineProfile);
+  if (agenda.routineProfile && asRecord(raw.routineProfile).seedWeek)
+    agenda.routineProfile.seedWeek = completeAgendaWeek(asRecord(raw.routineProfile).seedWeek, agenda.week!);
+  if (!agenda.routineProfile) {
+    if (legacyEnabled && agenda.scheduleWeek) agenda.week = agenda.scheduleWeek;
+    agenda.routineProfile = adoptedProfile(agenda.week!);
+    agenda.personalizationPending = false;
+  } else agenda.personalizationPending = raw.personalizationPending === true;
+  agenda.scheduleWeek = null;
+  agenda.source = "village";
+  const influence = asRecord(raw.scheduleInfluenceSnapshot);
+  if (
+    influence.version === 1 &&
+    typeof influence.signature === "string" &&
+    ["rhythms", "busy", "interests", "entities", "adopted", "unresolved"].every((key) => Array.isArray(influence[key]))
+  )
+    agenda.scheduleInfluenceSnapshot = influence as unknown as NonNullable<VillageAgenda["scheduleInfluenceSnapshot"]>;
   agenda.personalizationFailure = boundText(raw.personalizationFailure, 300);
   agenda.personalizationAttemptDate = /^\d{4}-\d{2}-\d{2}$/.test(asString(raw.personalizationAttemptDate))
     ? asString(raw.personalizationAttemptDate)

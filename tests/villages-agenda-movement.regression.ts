@@ -47,13 +47,12 @@ for (const blocks of Object.values(week)) {
     assert.equal(blocks[index]?.startMinute, blocks[index - 1]?.endMinute, "every minute belongs to one block");
     assert.ok(blocks[index]?.reason, "every block has a reason");
   }
-  assert.ok(blocks.length >= 15, "the provisional village day has active detail before any model responds");
+  assert.ok(blocks.length > 0, "a complete local fallback exists without model output");
   assert.ok(
-    blocks.filter((part) => part.status !== "offline").every((part) => part.endMinute - part.startMinute <= 60),
-    "waking fallback activities change at least hourly",
+    !blocks.some((block) => /sleep|meal|work|job/i.test(block.activity)),
+    "fallback does not impose human physiology or employment",
   );
 }
-assert.notDeepEqual(week.Monday, week.Tuesday, "the fallback is a week, not one repeated four-period day");
 const repairedWeek = completeAgendaWeek(
   {
     Monday: [

@@ -160,7 +160,7 @@ async function main() {
         wishes: [],
         palette,
         days: Array.from({ length: 7 }, () => [0, 1, 2, 3, 4, 5, 0, 1]),
-        native: [],
+        rhythm: [],
       };
       const previousCalls = calls;
       const result = await proposeCompactFounding(

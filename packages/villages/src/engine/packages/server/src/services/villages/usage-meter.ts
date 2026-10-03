@@ -31,7 +31,15 @@ export type UsageRequest = {
   yuan?: number | null;
   priceNote?: string;
 };
-type Totals = { requests: number; tokens: number; dollars: number; usd: number; yuan: number; unknown: number };
+type Totals = {
+  requests: number;
+  unknownTokens: number;
+  tokens: number;
+  dollars: number;
+  usd: number;
+  yuan: number;
+  unknown: number;
+};
 type Ledger = {
   requests: UsageRequest[];
   since: string;
@@ -49,7 +57,7 @@ const purposeContext = new AsyncLocalStorage<UsagePurpose>();
 let queue: Promise<unknown> = Promise.resolve();
 let connections: { at: number; rows: Record<string, unknown>[] } | undefined;
 let lastFailure = "";
-const empty = (): Totals => ({ requests: 0, tokens: 0, dollars: 0, usd: 0, yuan: 0, unknown: 0 });
+const empty = (): Totals => ({ requests: 0, unknownTokens: 0, tokens: 0, dollars: 0, usd: 0, yuan: 0, unknown: 0 });
 const totals = (raw?: Partial<Totals>): Totals => ({ ...empty(), ...raw, usd: raw?.usd ?? raw?.dollars ?? 0 });
 function coerce(raw: unknown): Ledger {
   const data = raw && typeof raw === "object" ? (raw as Partial<Ledger>) : {};
@@ -126,6 +134,11 @@ function tally(ledger: Ledger, request: UsageRequest, start: boolean) {
   for (const total of buckets) {
     if (start) total.requests++;
     else {
+      if (
+        request.usage?.totalTokens === undefined &&
+        (request.usage?.promptTokens === undefined || request.usage?.completionTokens === undefined)
+      )
+        total.unknownTokens++;
       total.tokens +=
         request.usage?.totalTokens ?? (request.usage?.promptTokens ?? 0) + (request.usage?.completionTokens ?? 0);
       total.dollars += request.dollars ?? 0;
@@ -306,7 +319,11 @@ export async function trackUsage<T>(
       cause: backgroundCalls.getStore()?.metadata?.cause,
       stage: (
         meta.stage ??
-        backgroundCalls.getStore()?.metadata?.kind ??
+        (backgroundCalls.getStore()?.metadata?.kind === "agenda"
+          ? "routine-profile"
+          : ["story", "wish"].includes(backgroundCalls.getStore()?.metadata?.kind ?? "")
+            ? backgroundCalls.getStore()!.metadata!.kind + " (optional routine idea included)"
+            : backgroundCalls.getStore()?.metadata?.kind) ??
         String(venueDebugContext().stage ?? "")
       ).slice(0, 160),
       startedAt: new Date().toISOString(),

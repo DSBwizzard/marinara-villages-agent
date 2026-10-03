@@ -75,6 +75,7 @@ jobs:
           npx tsx tests/villages-wish-lifecycle.regression.ts
           npx tsx tests/villages-wish-interpretation.regression.ts
           npx tsx tests/villages-compact-founding.regression.ts
+          npx tsx tests/villages-owned-agendas.regression.ts
           npx tsx tests/villages-generation-recovery.regression.ts
           npx tsx tests/villages-schedule-remap.regression.ts
 

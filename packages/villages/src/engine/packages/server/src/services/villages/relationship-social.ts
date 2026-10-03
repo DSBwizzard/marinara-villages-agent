@@ -72,12 +72,7 @@ export function socialPlanValid(
   return plan.actorIds.every((actorId) => {
     const actor = village.villagers.find((person) => person.characterId === actorId),
       agenda = actor?.agenda;
-    if (
-      !agenda ||
-      routineRevision(agenda) !== plan.revisions[actorId] ||
-      !canEnter(village, plan.venueId, plan.zoneId, actorId)
-    )
-      return false;
+    if (!agenda || !canEnter(village, plan.venueId, plan.zoneId, actorId)) return false;
     const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, actor!.ingestSchedule !== false, now);
     let covered = plan.startMinute;
     for (const block of blocks.filter(

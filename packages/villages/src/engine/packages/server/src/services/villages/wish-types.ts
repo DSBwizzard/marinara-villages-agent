@@ -31,6 +31,8 @@ export type WishOutcome = VillageCompletedWish & {
   correctedAt?: string;
 };
 export type WishAttempt = {
+  needComparison?: { matchedNeedId: string; certain: boolean; knownIds: string[] };
+  routineIdea?: unknown;
   id: string;
   dateKey: string;
   at: string;

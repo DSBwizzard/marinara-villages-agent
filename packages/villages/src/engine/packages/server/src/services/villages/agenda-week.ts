@@ -1,7 +1,7 @@
+import { routineDay } from "./owned-routine.js";
 import { parseBlockRange, type NativeWeekSchedule } from "./native-schedules.js";
 import { lookupRemap, remapBlockKey } from "./native-remap.js";
-import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { routineRevision } from "./wish-policy.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "./types.js";
 
 export const agendaDateKey = (at: Date): string =>
@@ -34,57 +34,25 @@ const block = (
 });
 
 /** A complete, varied week exists before any model or schedule is consulted. */
-export function workingAgendaWeek(venues: readonly VillageVenue[], name: string): Record<string, VillageAgendaBlock[]> {
-  const places = venues.filter((venue) => !venue.occupancy.playerHome && !venue.occupancy.residentCharacterId);
+export function workingAgendaWeek(
+  _venues: readonly VillageVenue[],
+  _name: string,
+): Record<string, VillageAgendaBlock[]> {
   return Object.fromEntries(
-    VILLAGE_WEEKDAYS.map((weekday, index) => {
-      const seed = hashString(`${name}:${weekday}`);
-      const wake = 360 + (seed % 5) * 30;
-      const sleep = 1260 + (seed % 3) * 30;
-      const place = places.length ? places[(seed + index) % places.length] : null;
-      const otherPlace = places.length ? places[(seed + index + 1) % places.length] : null;
-      const activities = [
-        ["Washing and getting dressed", "", "idle"],
-        ["Making breakfast", "", "idle"],
-        ["Eating breakfast", "", "idle"],
-        ["Tidying the house", "", "idle"],
-        ["Walking through the village", place?.id ?? "", "online"],
-        [place ? `Looking around ${place.name}` : "Taking a walk", place?.id ?? "", "online"],
-        [place ? `Helping with small tasks at ${place.name}` : "Taking care of small tasks", place?.id ?? "", "dnd"],
-        ["Stopping for a meal", "", "idle"],
-        [otherPlace ? `Visiting ${otherPlace.name}` : "Spending time outdoors", otherPlace?.id ?? "", "online"],
-        ["Talking with neighbors", otherPlace?.id ?? "", "online"],
-        ["Returning home", "", "idle"],
-        ["Preparing supper", "", "idle"],
-        ["Eating supper", "", "idle"],
-        ["Reading or enjoying a quiet hobby", "", "online"],
-        ["Putting things away for the night", "", "idle"],
-        ["Writing a letter or keeping a journal", "", "online"],
-        ["Stepping outside for fresh air", "", "online"],
-        ["Sharing the day's news", "", "online"],
-        ["Washing up after supper", "", "idle"],
-        ["Enjoying a quiet hour at home", "", "online"],
-        ["Preparing for bed", "", "idle"],
-        ["Settling in with a book", "", "online"],
-        ["Getting ready to sleep", "", "idle"],
-      ] as const;
-      const entries: VillageAgendaBlock[] = [block(0, wake, "", "Sleeping at home", "To get some rest", "offline")];
-      let minute = wake;
-      let slot = 0;
-      while (minute < sleep) {
-        const duration = (seed + slot + index) % 3 === 0 ? 30 : 60;
-        const end = Math.min(sleep, minute + duration);
-        const [activity, venueId, availability] = activities[slot % activities.length]!;
-        entries.push({
-          ...block(minute, end, venueId, activity, undefined, availability),
-          flexible: availability === "online",
-        });
-        minute = end;
-        slot += 1;
-      }
-      entries.push(block(sleep, 1440, "", "Sleeping at home", "To get some rest", "offline"));
-      return [weekday, entries];
-    }),
+    VILLAGE_WEEKDAYS.map((weekday) => [
+      weekday,
+      [
+        {
+          startMinute: 0,
+          endMinute: 1440,
+          venueId: "",
+          activity: "Taking care of their own affairs",
+          reason: "",
+          status: "idle",
+          flexible: true,
+        },
+      ],
+    ]),
   ) as Record<string, VillageAgendaBlock[]>;
 }
 
@@ -148,6 +116,8 @@ export function completeAgendaWeek(
                 row.status,
               ),
               zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
+              ...(row.essential === true ? { essential: true } : {}),
+              ...(typeof row.commitmentId === "string" ? { commitmentId: row.commitmentId } : {}),
               flexible: row.flexible === true && (row.status === "online" || row.status === "idle"),
               ...(typeof row.sourceTime === "string" ? { sourceTime: row.sourceTime } : {}),
             },
@@ -243,23 +213,48 @@ export function scheduleInformedWeek(
   ) as Record<string, VillageAgendaBlock[]>;
 }
 
-export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {
+export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
   let ordinary =
     agenda.activeDay?.dateKey === key
       ? agenda.activeDay.blocks
-      : ((ingestSchedule ? agenda.scheduleWeek?.[weekday] : undefined) ??
+      : (agenda.plannedDays?.[key] ??
+        (agenda.routineProfile
+          ? routineDay(
+              agenda.routineProfile,
+              agenda.generatedAt || agenda.routineSummary,
+              at,
+              agenda.scheduleInfluenceSnapshot,
+              {
+                version: 1,
+                enabled: agenda.scheduleInfluenceSnapshot?.enabled === true,
+                categories: {
+                  rhythm: true,
+                  busyFree: true,
+                  weekdayWeekend: true,
+                  interests: true,
+                  establishedEntities: true,
+                },
+              },
+            )
+          : undefined) ??
         agenda.week?.[weekday] ??
         agenda.day.map((entry) => ({
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
-  const revision = routineRevision(agenda);
   for (const adjustment of [...(agenda.wishActivities ?? []), ...(agenda.socialActivities ?? [])]) {
     if (adjustment.dateKey !== key) continue;
     const started = agenda.activeDay?.dateKey === key && adjustment.startMinute <= at.getHours() * 60 + at.getMinutes();
-    if (adjustment.baseRevision !== revision && !started) continue;
+    if (
+      !started &&
+      !ordinary.some(
+        (entry) =>
+          entry.flexible && entry.startMinute <= adjustment.startMinute && entry.endMinute >= adjustment.endMinute,
+      )
+    )
+      continue;
     ordinary = ordinary.flatMap((entry) => {
       const start = Math.max(entry.startMinute, adjustment.startMinute),
         end = Math.min(entry.endMinute, adjustment.endMinute);
@@ -274,6 +269,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
           zoneId: adjustment.zoneId,
           activity: adjustment.activity,
           reason: adjustment.reason,
+          commitmentId: adjustment.wishId,
         },
         ...(entry.endMinute > end ? [{ ...entry, startMinute: end }] : []),
       ];
@@ -296,12 +292,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
     ];
   });
   const essential = ordinary
-    .filter(
-      (entry) =>
-        /\b(?:sleep|rest|meal|breakfast|lunch|dinner|eat|wash|bathe)\b/iu.test(entry.activity) ||
-        entry.endMinute <= 360 ||
-        entry.startMinute >= 1320,
-    )
+    .filter((entry) => /\b(?:sleep|rest|meal|breakfast|lunch|dinner|eat|wash|bathe)\b/iu.test(entry.activity))
     .map((entry) => ({
       ...entry,
       startMinute: Math.max(from, entry.startMinute),
@@ -320,6 +311,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
         zoneId: work.zoneId ?? "exterior",
         activity: "Build the agreed venue",
         reason: "Committed project work order",
+        commitmentId: work.projectId,
         status: "online",
       });
     workBlocks.push(breakBlock);
@@ -333,6 +325,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, ingestSchedule: boolean, 
       zoneId: work.zoneId ?? "exterior",
       activity: "Build the agreed venue",
       reason: "Committed project work order",
+      commitmentId: work.projectId,
       status: "online",
     });
   return [...remaining, ...workBlocks].sort((left, right) => left.startMinute - right.startMinute);

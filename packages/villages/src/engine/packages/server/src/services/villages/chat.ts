@@ -201,53 +201,8 @@ export function memoryForVillager(
   return selectPromptMemories(chronicle, [characterId], query, 600);
 }
 
-/**
- * What the `{{doing}}` macro renders for one villager.
- *
- * Native wins for timing: the Engine's schedule was generated for this exact
- * character and is keyed to real weekdays, so it is the authority on when a
- * villager does things. `readNativeRoutines` has already resolved "right now"
- * against today's blocks, so the activity arrives as a plain string — when no
- * schedule exists the villager is doing nothing in particular, which renders
- * nothing rather than inventing an activity.
- *
- * Both halves are then translated into the terms of THIS village, and NEITHER of
- * them falls back to the Engine's words. That is the correction this file took,
- * and it is the whole point of the feature rather than a detail of it: a fallback
- * is read by exactly the prompt a translation is read by, so an hour the village
- * could not place used to put "in the cockpit of the Halcyon" into a village with
- * no spaceship — the leak the translation exists to close, arriving through the
- * one path nobody was watching. An hour with no translation now reads as the
- * village's own default, which is what the villagers who were never translated
- * at all are already doing.
- *
- * The summary is passed as empty rather than left off, and that is deliberate:
- * the only sentence available at this call site is the Engine's `routineSummary`,
- * which is prose about the character in the world the CARD describes and is the
- * same leak in a longer form. A villager with no translation has nothing written
- * about their ordinary day, which is a shorter prompt rather than a wrong one.
- * The village's OWN routine summary does reach this block — see the narrator's
- * briefing, which is allowed it because those are the village's words.
- *
- * `status` and `today` ride along with the same schedule and cost nothing to
- * produce: the status came out of the very block the activity came from, and the
- * day plan is the join of the stored translation onto the blocks that same read
- * already returned. They are the whole of what keeps `{{doing}}` from being one
- * clause, which matters because a single clause about the present leaves a wish
- * as the largest piece of writing in the prompt about what this person is
- * actually doing.
- *
- * `today` is the WHOLE of their day rather than the rest of their week, and the
- * moment is passed in so the plan can mark which block they are in and the
- * session list at the top of the block can say how long they have had it. A
- * villager told only what they are doing right now knows a state; a villager told
- * their own hours knows a day they are in the middle of, and can answer "not
- * until four" if somebody asks.
- *
- * Exported, and not because anything outside this file calls it: it is the
- * composition that decides what a villager is told they are doing, and the only
- * way to prove without a host that the Engine's own sentence cannot reach a
- * prompt through it is to build the block here and read it.
+/** Scene activity and complete day come only from the resolved Villages-owned Agenda.
+ * Legacy remap/native arguments remain accepted for callers but have no authority.
  */
 export function doingFor(
   _remap: VillageRemap | null,

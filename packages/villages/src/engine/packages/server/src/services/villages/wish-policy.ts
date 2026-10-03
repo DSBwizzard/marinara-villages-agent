@@ -77,11 +77,9 @@ export function pruneWishActivities(state: VillageState, now: Date): void {
   for (const resident of state.villagers) {
     const agenda = resident.agenda;
     if (!agenda?.wishActivities?.length) continue;
-    const revision = routineRevision(agenda);
     agenda.wishActivities = agenda.wishActivities.filter((activity) => {
       if (activity.dateKey < today || (activity.dateKey === today && activity.startMinute <= minute)) return true;
-      if (activity.baseRevision !== revision || !agenda.wishes.some((wish) => wish.id === activity.wishId))
-        return false;
+      if (!agenda.wishes.some((wish) => wish.id === activity.wishId)) return false;
       if (!activity.venueId) return true;
       const venue = state.venues.find((entry) => entry.id === activity.venueId);
       const zone = venue && venueZones(venue).find((entry) => entry.id === activity.zoneId);
