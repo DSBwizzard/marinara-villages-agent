@@ -1137,6 +1137,15 @@ type RoomRecollection = {
   lineIds: string[];
 };
 
+type RoomOperation = {
+  id: string;
+  kind: string;
+  attemptId: string;
+  status: "running" | "interrupted" | "complete";
+  stage?: string;
+  error?: string;
+  input?: { message?: string; mode?: string; targetId?: string; contact?: { kind?: string; boundaryZoneId?: string } };
+};
 type SceneView = {
   memoryMode?: "live";
   version: 1;
