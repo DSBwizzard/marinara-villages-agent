@@ -78,6 +78,10 @@ Doorway speech is marked and keeps its own witnesses without adding a distant sp
 
 Explicit contact uses one response stage, with one additional stage if someone relays the request. Natural language contact is extracted with citations from the normal reply before those stages. Travel does not make a generation call per door. Saved responses survive refresh and interrupted saves; retries use the existing **Retry saved request** flow.
 
+## Bounded checking evidence
+
+Room and Project checks share exact witnessed lines once per model request, with a separate allowed-ID list for each check. Ordinary history is limited to the latest 12 eligible lines within 8,000 serialized characters. Current speech/actions, the preceding player request, current-phase Project requirement citations and pending unresolved evidence remain essential. At most four checks and 24,000 payload characters enter a request; essential overflow or a smaller model context produces an unresolved result before dispatch, never a silently truncated permission or checklist. Pending context stores committed transcript references, not copied conversation text.
+
 ## Villages AI usage
 
 A compact **Villages AI** badge is enabled by default throughout setup, the map, menus and Scenes. Open **DEBUG Settings → Show AI usage meter** to hide it independently of terminal logging. Hiding it stops meter polling; request accounting continues. Click the badge for totals since reset, today, purpose breakdowns, recent requests and model price overrides. Reset changes the displayed period without deleting aggregate history. Tokens update after the Engine returns usage.

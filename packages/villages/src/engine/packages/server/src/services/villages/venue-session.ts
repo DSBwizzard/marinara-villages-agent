@@ -1,3 +1,4 @@
+import { saveInterpretationContext } from "./interpretation-evidence.js";
 import { buildVenueResponseContract } from "./venue-response-contract.js";
 import { runtimeDebug } from "./runtime-debug.js";
 import {
@@ -4332,7 +4333,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     await recordSpokenInvitation(updated, submission.invitationSignal);
   await markZoneSeen(updated, updated.zoneId === session.zoneId);
   if (projectInterpretation) {
-    await finalizeProjectDiagnostics(updated.id, projectInterpretation, submission.projectSpeech ?? []);
+    await finalizeProjectDiagnostics(updated.id, projectInterpretation, submission.projectSpeech ?? [], submission.id);
     scheduleSystemComparisons(updated.id, projectInterpretation);
   }
   if (reply.roomInterpretation) {
@@ -4362,6 +4363,7 @@ async function finalizeRoomInvitationDiagnostics(
   batch: InterpretationBatch,
   signal: VenueSubmission["invitationSignal"],
 ) {
+  await saveInterpretationContext(scene.id, batch, scene.submissions.at(-1)?.id).catch(() => {});
   const queued = batch.traces.filter((trace) => trace.applied.startsWith("Future invitation queued"));
   if (!queued.length) return;
   if (signal && (signal.timing === "later" || signal.venueId !== scene.placeId))

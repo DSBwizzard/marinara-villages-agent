@@ -224,7 +224,14 @@ async function main() {
       await new Promise((resolve) => setTimeout(resolve, 5));
     assert.ok(releaseComparison, "comparison dispatched independently");
     assert.equal(systemCalls, count + 1);
-    assert.deepEqual(frozenInputs.at(-1), enabled.checks, "same input without Decisions verdict");
+    assert.deepEqual(
+      (frozenInputs.at(-1) as any[]).map(({ evidenceIds: _evidenceIds, ...row }) => ({
+        ...row,
+        evidence: enabled.checks.find((check) => check.id === row.id)?.evidence,
+      })),
+      enabled.checks,
+      "same witnessed input without Decisions verdict",
+    );
     releaseComparison!();
     for (
       let index = 0;

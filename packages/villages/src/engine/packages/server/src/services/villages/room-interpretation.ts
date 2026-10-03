@@ -1,3 +1,4 @@
+import { contextualChecks } from "./interpretation-evidence.js";
 import type { VillageState, VillageVenue } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
 import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
@@ -148,7 +149,7 @@ export async function interpretRoomReply(
 ) {
   const checks = roomInterpretationChecks(scene, village, message, draft, key, heardPlayerBy);
   if (!checks.length) return null;
-  return interpretChecks(checks, `room-interpretation:${key}`, scene.id);
+  return interpretChecks(await contextualChecks(scene.id, checks), `room-interpretation:${key}`, scene.id);
 }
 /** Choose an adjacent admitted Zone, preferring the entry route, then a shortest path toward Exterior. */
 export function dismissalDestination(village: VillageState, venue: VillageVenue, scene: VenueScene): string | null {

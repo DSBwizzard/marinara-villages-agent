@@ -2,6 +2,7 @@ import {
   addBuildSource,
   acquireBuildSource,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.js";
+import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import {
@@ -291,7 +292,7 @@ const release = configureVillagesRuntime({
         },
         async chatComplete(messages: any[]) {
           if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
-            const { checks } = JSON.parse(messages[1].content);
+            const checks = fixtureInterpretationChecks(messages[1].content);
             return {
               content: JSON.stringify({
                 results: checks.map((check: any) => {

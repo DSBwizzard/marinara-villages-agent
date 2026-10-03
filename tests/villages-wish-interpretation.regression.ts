@@ -1,3 +1,4 @@
+import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
 import {
@@ -71,7 +72,7 @@ const release = configureVillagesRuntime({
             };
           }
           interpretations++;
-          const { checks } = JSON.parse(messages[1].content);
+          const checks = fixtureInterpretationChecks(messages[1].content);
           return {
             content: JSON.stringify({
               results: checks.map((check: any) => ({

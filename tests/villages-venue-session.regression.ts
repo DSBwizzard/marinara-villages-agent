@@ -1,4 +1,5 @@
 import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
 function fixtureJson(value: any) {
@@ -254,7 +255,7 @@ const release = configureVillagesRuntime({
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");
           if (system.startsWith("Interpret the meaning of witnessed Scene evidence")) {
-            const { checks } = JSON.parse(user);
+            const checks = fixtureInterpretationChecks(user);
             return {
               content: fixtureJson({
                 results: checks.map((check: any) => {

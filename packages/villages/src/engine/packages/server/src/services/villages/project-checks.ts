@@ -1,3 +1,4 @@
+import { contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
 import type { VillageState } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -343,14 +344,18 @@ export async function interpretProjectDraft(
   key: string,
 ) {
   const checks = projectInterpretationChecks(scene, village, message, draft, heardPlayerBy, key);
-  return checks.length ? interpretChecks(checks, `project-interpretation:${key}`, scene.id) : null;
+  return checks.length
+    ? interpretChecks(await contextualChecks(scene.id, checks), `project-interpretation:${key}`, scene.id)
+    : null;
 }
 
 export async function finalizeProjectDiagnostics(
   sceneId: string,
   batch: InterpretationBatch,
   proposals: ProjectSpeechProposal[],
+  submissionId?: string,
 ) {
+  await saveInterpretationContext(sceneId, batch, submissionId).catch(() => {});
   const state = await readVillageState();
   for (const trace of batch.traces) {
     const proposal = proposals.find((item) => item.contextual?.checkId === trace.id);
