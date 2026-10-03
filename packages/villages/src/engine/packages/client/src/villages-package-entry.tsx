@@ -7822,6 +7822,7 @@ function pictureAdvice(size: { width: number; height: number }): { tone: "ok" | 
 
 /** One pin drawn over the town map. */
 type MapPin = {
+  label?: string;
   id: string;
   /** 0..1 across and down the picture, so the pin lands on the same building at any size. */
   x: number;
@@ -8544,7 +8545,8 @@ function MapStage({
                   data-selected={pin.selected ? "true" : "false"}
                   aria-expanded={pin.doors ? true : undefined}
                   disabled={pin.onSelect === undefined}
-                  title={pin.text}
+                  title={pin.label ?? pin.text}
+                  aria-label={pin.label}
                   onClick={(event) => {
                     // Otherwise a click on a pin would also read as a click on the
                     // map underneath it while the wizard is placing homes.
@@ -17024,7 +17026,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     return pins;
   })();
 
-  const draftPins: MapPin[] = setupVenues.flatMap((venue) => {
+  const draftPins: MapPin[] = setupVenues.flatMap((venue, index) => {
     const spot = placeSpot(venue);
     if (!spot) return [];
     return [
@@ -17032,7 +17034,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         id: venue.id,
         x: spot.x,
         y: spot.y,
-        text: venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence"),
+        text: String(index + 1),
+        label: `${index + 1}. ${venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence")}`,
         image: venue.presentation.image?.url ?? null,
         tone: venue.category === "public-center" ? "venue" : venue.occupancy.playerHome ? "player" : "resident",
         selected: setupEditorOpen && selectedSetupVenueId === venue.id,
@@ -21024,11 +21027,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             alt={`Map of ${setupName || "your village"}`}
             pins={draftPins}
             placing={interactive && !!nextPin && mapReady && !setupEditorOpen && !snapshot?.isFounded}
-            view={setupMapSource === "existing" ? savedTownMapView : defaultView("cover")}
+            view={setupMapSource === "existing" ? savedTownMapView : defaultView("contain")}
             shape={setupMapShape}
             onPlace={interactive && !snapshot?.isFounded ? placeSetupPin : undefined}
             compact={false}
-            mobile={mobile}
+            mobile={false}
             placementCursor={interactive ? setupKeyboardSpot : undefined}
           />
         </div>

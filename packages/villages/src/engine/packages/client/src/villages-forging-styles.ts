@@ -24,7 +24,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-preview { display:block; width:100%; height:auto; max-height:25rem; object-fit:contain; border-radius:.6rem; margin:.75rem 0; }
 .villages-forging-placement,.villages-forging-notice { background:#29264f; border:1px solid #7d69c7; border-radius:.6rem; padding:.7rem; }
 .villages-forging-map .marinara-capability-villages-setup-map-viewport { min-height:14rem; border:1px solid #5268a0; border-radius:.6rem; overflow:hidden; }
-.villages-forging-map .marinara-capability-villages-map-stage { min-height:16rem; }
+.villages-forging-map .marinara-capability-villages-stage { min-height:14rem; }
 .villages-forging-venue { margin-top:.8rem; padding:.8rem; border:1px solid #43547d; border-radius:.6rem; background:#192441; }
 .villages-forging-footer { flex:none; padding:.75rem 1.25rem; border-top:1px solid #43547d; align-items:center; background:#141b39; flex-wrap:wrap; }
 .villages-forging-saved { color:#81e6cd; font-size:.85rem; }

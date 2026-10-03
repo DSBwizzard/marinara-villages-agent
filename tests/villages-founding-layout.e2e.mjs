@@ -275,6 +275,27 @@ try {
     await expect(first).toContainText("My observatory quarters");
     assert.equal(suggestionCalls, 2, "suggestions happen only on explicit request");
     await forward("Arrange automatically").click();
+    const placementMap = root.locator(".marinara-capability-villages-setup-map-viewport");
+    await expect
+      .poll(() =>
+        placementMap.evaluate((element) => {
+          const canvas = element.querySelector(".marinara-capability-villages-canvas").getBoundingClientRect();
+          const pins = [...element.querySelectorAll("button[data-pin-id]")];
+          return (
+            pins.length > 0 &&
+            pins.every((pin) => {
+              const box = pin.getBoundingClientRect();
+              return (
+                box.x >= canvas.x &&
+                box.y >= canvas.y &&
+                box.x + box.width <= canvas.x + canvas.width + 1 &&
+                box.y + box.height <= canvas.y + canvas.height + 1
+              );
+            })
+          );
+        }),
+      )
+      .toBe(true);
     await expect(root.locator(".villages-forging-placement")).toHaveText(
       `${homeCount + 2} of ${homeCount + 2} pins placed`,
     );
