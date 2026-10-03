@@ -71,6 +71,7 @@ export function PlayerRoleFields({
           Why villagers turn to you
           <textarea
             id={`${PREFIX}-role-explanation`}
+            aria-label="Why villagers turn to you"
             className={`${PREFIX}-textarea`}
             value={role.explanation}
             maxLength={1000}

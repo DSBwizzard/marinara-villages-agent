@@ -6,13 +6,129 @@ import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 import { uploadVillageGalleryImage } from "./global-gallery.js";
 import { decodeVillageImageDataUrl, generateVillageImage } from "./image-generation.js";
-import { readSelectedLorebookIds, readVillageLore, readVillageVisualLore } from "./lorebooks.js";
+import {
+  readSelectedLorebookIds,
+  readVillageLore,
+  readVillageVisualLore,
+  readLoreTokenBudget,
+  DEFAULT_LORE_TOKEN_BUDGET,
+} from "./lorebooks.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "./prompt-preset.js";
 import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VillageState, VillageVenueImage } from "./types.js";
+import { fitVenueWritingMessages, venueCardProfile } from "./venue-writing.js";
+
+export type FoundingVenueSuggestion = {
+  id: string;
+  name: string;
+  form: string;
+  description: string;
+  layout: "exterior" | "common" | "private" | "both";
+  commonName: string;
+  commonDescription: string;
+  privateName: string;
+  privatePurpose: string;
+};
+
+/** Suggestions never carry positions, assignments, private contents, or gameplay effects. */
+export function parseFoundingVenueSuggestions(value: unknown, ids: readonly string[]): FoundingVenueSuggestion[] {
+  const payload = record(value);
+  const rows = Array.isArray(payload.venues) ? payload.venues : [];
+  if (rows.length !== ids.length || new Set(rows.map((row) => record(row).id)).size !== ids.length)
+    throw badRequest("The suggestions must include every starting Venue exactly once.");
+  return ids.map((id) => {
+    const row = record(rows.find((candidate) => record(candidate).id === id));
+    const text = (key: string, max: number, required = false) => {
+      const result = asTrimmedString(row[key]);
+      if (result.length > max || (required && !result))
+        throw badRequest(`Complete the suggested ${key} for every Venue.`);
+      return result;
+    };
+    const layout = row.layout;
+    if (!["exterior", "common", "private", "both"].includes(String(layout)))
+      throw badRequest("Choose a valid suggested Zone layout.");
+    return {
+      id,
+      name: text("name", 100, true),
+      form: text("form", 240, true),
+      description: text("description", 1000, true),
+      layout: layout as FoundingVenueSuggestion["layout"],
+      commonName: text("commonName", 100, layout === "common" || layout === "both"),
+      commonDescription: text("commonDescription", 1000, layout === "common" || layout === "both"),
+      privateName: text("privateName", 100, layout === "private" || layout === "both"),
+      privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
+    };
+  });
+}
+
+export async function suggestStartingVenues(value: unknown): Promise<{ venues: FoundingVenueSuggestion[] }> {
+  const input = record(value);
+  const setting = asTrimmedString(input.setting);
+  const circumstances = asTrimmedString(input.foundingDetails);
+  if (!setting || setting.length > 1200 || !circumstances || circumstances.length > 2000)
+    throw badRequest("Describe the place and shared starting circumstances first.");
+  const rows = rowsOf(input.venues);
+  if (
+    rows.length < 3 ||
+    new Set(rows.map((row) => row.id)).size !== rows.length ||
+    rows.filter((row) => row.venueClass === "gathering").length !== 1 ||
+    rows.some((row) => row.venueClass === "gathering" && row.residentCharacterId) ||
+    rows.filter((row) => row.venueClass === "residence" && !row.residentCharacterId).length !== 1 ||
+    rows.some((row) => !["residence", "gathering"].includes(row.venueClass))
+  )
+    throw badRequest("Include one living space per person and one Gathering Place.");
+  const residents = rows.filter((row) => row.residentCharacterId).map((row) => row.residentCharacterId);
+  if (residents.length !== rows.length - 2 || new Set(residents).size !== residents.length)
+    throw badRequest("Assign a different villager to each starting living space.");
+  const cards = await Promise.all(residents.map(findVillagerCard));
+  if (cards.some((card) => !card)) throw badRequest("Choose villagers still available in the character library.");
+  const persona = await readLinkedPersona(input.playerPersonaId);
+  const loreBudget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
+  const lore = await readVillageLore(
+    readSelectedLorebookIds(input.selectedLorebookIds ?? []),
+    [setting, circumstances, ...cards.map((card) => card!.name)].join("\n"),
+    undefined,
+    loreBudget,
+  );
+  const model = await villagesLanguageModels().resolveForRequest({
+    connectionId: await villagesConnectionIdFor("system"),
+  });
+  const fitted = fitVenueWritingMessages(
+    model,
+    [
+      {
+        text: [
+          "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
+          "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
+          "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
+          "Exterior is each Venue's entrance and approach, including an indoor corridor if appropriate. Common and Private Space are independent optional areas; choose a fitting layout.",
+          "Only suggest Private Space names and structural purposes. Never return private descriptions, images, objects or resident secrets. A Gathering Place with a Private Space is controlled by the player.",
+          'Return JSON only: {"venues":[{"id":"...","name":"...","form":"...","description":"entrance and approach","layout":"exterior|common|private|both","commonName":"...","commonDescription":"...","privateName":"...","privatePurpose":"..."}]}.',
+          "Use short concrete descriptions, names at most 100 characters, form/purpose at most 240 and descriptions at most 1000. Supply every requested Venue exactly once.",
+        ].join("\n"),
+      },
+      { text: persona ? `Player Persona: ${persona.name}\n${persona.identity}` : "" },
+      ...cards.map((card) => ({ text: venueCardProfile(card!) })),
+      ...lore.map((text) => ({ text, optional: "lore" as const })),
+    ],
+    JSON.stringify({ setting, circumstances, venues: rows }),
+    Math.min(model.maxOutputTokens ?? 4000, 4000),
+    "System",
+  );
+  const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 4000, {
+    temperature: 0.7,
+    debugMode: false,
+  });
+  return {
+    venues: parseFoundingVenueSuggestions(
+      extractJsonObject(completion.content ?? ""),
+      rows.map((row) => row.id),
+    ),
+  };
+}
 
 type DraftRow = {
   id: string;

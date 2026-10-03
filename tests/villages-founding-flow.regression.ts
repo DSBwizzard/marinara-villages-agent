@@ -24,6 +24,44 @@ async function main() {
     pathToFileURL(join(serverRoot, "services/villages/scenario-imprint.ts")).href
   );
   const { readPersona } = await import(pathToFileURL(join(serverRoot, "services/villages/catalog.ts")).href);
+  const { parseFoundingVenueSuggestions } = await import(
+    pathToFileURL(join(serverRoot, "services/villages/founding-drafts.ts")).href
+  );
+  const { evenlySpacedFoundingPins } = await import(pathToFileURL(join(clientRoot, "villages-founding-draft.ts")).href);
+  const suggestion = {
+    id: "one",
+    name: "Observatory room",
+    form: "Converted bedroom",
+    description: "Blue corridor door",
+    layout: "both",
+    commonName: "Sitting room",
+    commonDescription: "Overlooks the sea",
+    privateName: "Sleeping nook",
+    privatePurpose: "Rest",
+    x: 0.5,
+    descriptionPrivate: "secret",
+    residentCharacterId: "changed",
+  };
+  const venueSuggestions = parseFoundingVenueSuggestions({ venues: [suggestion] }, ["one"]);
+  assert.equal(venueSuggestions[0].name, suggestion.name);
+  assert.equal("x" in venueSuggestions[0], false);
+  assert.equal("descriptionPrivate" in venueSuggestions[0], false);
+  assert.equal("residentCharacterId" in venueSuggestions[0], false);
+  for (const venues of [
+    [],
+    [suggestion, suggestion],
+    [{ ...suggestion, id: "wrong" }],
+    [{ ...suggestion, layout: "unknown" }],
+    [{ ...suggestion, privatePurpose: "" }],
+  ])
+    assert.throws(() => parseFoundingVenueSuggestions({ venues }, ["one"]));
+  for (const count of [3, 4, 5]) {
+    const pins = evenlySpacedFoundingPins(count);
+    assert.equal(pins.length, count);
+    assert.equal(new Set(pins.map((pin) => `${pin.x}:${pin.y}`)).size, count);
+    assert.ok(pins.every((pin) => pin.x > 0 && pin.x < 1 && pin.y > 0 && pin.y < 1));
+  }
+  assert.throws(() => evenlySpacedFoundingPins(6));
   const available = new Set(["a", "b", "c", "outsider"]);
   assert.doesNotThrow(() => validateFoundingRoster(["a", "b"], new Set(["a", "b"]), available));
   for (const ids of [[], ["a", "a"], ["gone"], ["a", "b", "c", "outsider"], [42], null])
@@ -243,13 +281,9 @@ async function main() {
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
-  assert.ok(client.includes("photoPins={setupStep >= 3}"));
-  assert.ok(client.includes('"Persona & Connections"'));
-  assert.ok(client.includes('"Your Role & Villagers"'));
-  assert.ok(client.includes('"Village & Map"'));
+  assert.ok(client.includes('["People", "Place", "Spaces", "Review"]'));
   assert.ok(client.includes("Where are we?"));
-  assert.ok(client.includes("What brings you and the others together here?"));
-  assert.ok(client.includes("No preset"));
+  assert.ok(client.includes("What brings you together?"));
   assert.ok(client.includes("Search lorebooks"));
   const editor = await readFile(join(clientRoot, "villages-founding-editor.tsx"), "utf8");
   assert.ok(client.includes("FoundingVenueEditor"));
@@ -262,12 +296,9 @@ async function main() {
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
-  assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
-  const review = client.split("{setupStep === 4 ? (")[1]?.split("{setupStep === 4 ? (")[0] ?? "";
-  assert.ok(review.includes("Review your village"));
-  assert.ok(review.includes("Starting circumstances:"));
-  assert.equal(review.includes("onChange="), false, "the review must not edit fields");
-  assert.equal(review.includes("Generate"), false, "the review must not draft content");
+  assert.ok(client.includes("Use this saved artwork"));
+  assert.ok(client.includes("Change starting spaces"));
+  assert.ok(routes.includes('"/setup/venues/suggest"'));
   assert.equal(routes.includes('"/setup/venues/draft"'), false);
   assert.ok(routes.includes("foundingCharacterIds: body.foundingCharacterIds"));
   assert.ok(routes.includes('"/setup/venue-image/generate"'));

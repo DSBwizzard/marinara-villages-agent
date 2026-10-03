@@ -169,6 +169,8 @@ const villagesOwnedSourcePaths = [
   "packages/client/src/villages-player-role.tsx",
   "packages/client/src/villages-relationships.tsx",
   "packages/client/src/villages-founding-editor.tsx",
+  "packages/client/src/villages-founding-draft.ts",
+  "packages/client/src/villages-forging-styles.ts",
   "packages/client/src/villages-room-reading.ts",
   "packages/client/src/villages-sprite-stage.ts",
   "packages/client/src/villages-sprite-manager.tsx",

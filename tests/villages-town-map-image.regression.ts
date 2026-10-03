@@ -203,20 +203,19 @@ async function main() {
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  for (const step of ["Persona & Connections", "Your Role & Villagers", "Village & Map", "Starting Spaces", "Review"]) {
+  for (const step of ["People", "Place", "Spaces", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/setup/town-map/generate"'));
-  assert.ok(client.includes("Restore default prompt"));
-  assert.ok(client.includes("className={`${ELEMENT_TAG}-debug-label`}>DEBUG"));
+  assert.ok(client.includes("Advanced artwork options"));
   assert.ok(client.includes("setupMapOptions"));
   assert.equal(client.includes("Fit entire map"), false);
-  assert.ok(client.includes("mobile={mobile && setupStep >= 2}"));
-  assert.ok(client.includes("setupMapGeneratedKey === setupMapGenerationKey"));
+  assert.ok(client.includes("mobile={mobile}"));
+  assert.ok(client.includes("setupMapGeneratedKey !== setupMapGenerationKey"));
   assert.ok(client.includes("lorebooks: setupLorebookDraft"));
   assert.ok(client.includes("setting: setupSetting.trim()"));
   assert.equal(client.includes('mobileStart="contain"'), false);
-  assert.ok(client.includes("No background image"));
+  assert.ok(client.includes("Simple map"));
   assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
   assert.equal(

@@ -117,10 +117,10 @@ try {
         await page.getByRole("button", { name: "Run setup again" }).click();
       } else {
         await page.locator(".marinara-capability-villages-identity-card").filter({ hasText: "Ada" }).click();
+        await page.locator("summary").filter({ hasText: "Connections · Ready" }).click();
         await expect(page.getByLabel("System", { exact: true })).toBeVisible();
       }
-      await page.getByRole("button", { name: "Next →", exact: true }).click();
-      await expect(page.getByText("Step 2 of 5 · Your Role & Villagers")).toBeVisible();
+      await expect(page.getByText("Step 1 of 4 · People")).toBeVisible();
       if (scenario.founded) {
         const summary = page.getByRole("region", { name: "Your place in the village" });
         await expect(summary).toContainText(
@@ -133,16 +133,14 @@ try {
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
       } else {
+        await page.getByText("Customize role title and explanation", { exact: true }).click();
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         const role = page.getByRole("group", { name: "Your place in the village" });
         await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("Project Coordinator");
         await role.scrollIntoViewIfNeeded();
         await screenshot(page, "founding-" + width);
-        assert.ok(
-          await role
-            .getByRole("textbox", { name: "Why villagers turn to you", exact: true })
-            .evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
-          "the complete default role explanation is readable without scrolling its field",
+        await expect(page.getByRole("region", { name: "Your place in the village" })).toContainText(
+          "People here recognize you as the coordinator for shared Projects.",
         );
         assert.ok(
           await role.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
