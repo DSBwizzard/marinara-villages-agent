@@ -14,7 +14,6 @@ import {
   coerceProjectSpeech,
   validateProjectSpeech,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/project-interpretation.js";
-import { legacyProjectRevision } from "../packages/villages/src/engine/packages/server/src/services/villages/project-interpretation.js";
 import {
   createProjectProgress,
   recordProjectProgress,
@@ -158,7 +157,7 @@ assert.equal(
   0,
   "Unseen or unrelated citations cannot complete requirements",
 );
-for (const version of [0, 1] as const) {
+for (const version of [1] as const) {
   const stock = defaultVillageState();
   stock.progressEngineVersion = version;
   const at = "2026-10-01T10:00:00.000Z";
@@ -236,7 +235,7 @@ for (const version of [0, 1] as const) {
       "recorded-item",
     );
   }
-  const revision = version === 1 ? stock.progressTasks[0].definition.revision : legacyProjectRevision(project);
+  const revision = stock.progressTasks[0].definition.revision;
   if (version === 1) {
     const absentSourceProof = structuredClone(stock);
     absentSourceProof.progressTasks[0].receipts = [];
@@ -268,5 +267,5 @@ for (const version of [0, 1] as const) {
     assert.ok(stock.progressTasks[0].receipts.some((receipt) => receipt.requirementId === "acquired:wood"));
 }
 console.log(
-  "Villages Project checks: contextual speech, legacy routing, exact evidence, ambiguity, and historical requirements ok",
+  "Villages Project checks: contextual speech, current routing, exact evidence, ambiguity, and historical requirements ok",
 );

@@ -4,7 +4,7 @@ import { readVenueImageContext } from "./village.js";
 import { preparePrivateSpaces } from "./private-space-preparation.js";
 import { venueZones, effectiveVenueClasses } from "./venue-zones.js";
 import { randomUUID } from "node:crypto";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import {
@@ -29,14 +29,8 @@ import type {
 } from "./types.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "./venue-model.js";
 import { mutateVillageState } from "./village-store.js";
-import {
-  completeWithRoom,
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-} from "./package-runtime.js";
-import { villagesConnectionIdFor } from "./connections.js";
-import { extractJsonObject } from "./village-bootstrap.js";
+import { villagesDebugAgentsEnabled } from "./package-runtime.js";
+
 import {
   createProjectProgress,
   progressProject,
@@ -48,7 +42,6 @@ import {
 
 const DAY_MS = 24 * 60 * 60_000;
 const categories = ["structure", "equipment", "finish"] as const;
-type Category = (typeof categories)[number];
 
 function active(state: VillageState, kind: "new-venue" | "renovation"): boolean {
   return state.projects.some(
@@ -61,7 +54,7 @@ function projectFor(state: VillageState, id: string): VillageProject & { lifecyc
     (entry) => entry.id === id && (entry.kind === "new-venue" || entry.kind === "renovation"),
   );
   if (!project?.lifecycle) throw notFound("That Project no longer exists.");
-  if (state.progressEngineVersion === 1 && projectProgressPhase(state, project) !== project.lifecycle.phase)
+  if (projectProgressPhase(state, project) !== project.lifecycle.phase)
     throw conflict("Project phase and verified progress disagree. Check DEBUG: Progress before continuing.");
   return project as VillageProject & { lifecycle: VillageProjectLifecycle };
 }
@@ -587,12 +580,7 @@ export function applyProjectMailboxDecisions(
   if (
     project.lifecycle.affectedIds.every((id) => project.lifecycle!.approvals.some((entry) => entry.residentId === id))
   )
-    project.lifecycle.phase =
-      state.progressEngineVersion === 1
-        ? (projectProgressPhase(state, project) as VillageProjectLifecycle["phase"])
-        : project.lifecycle.completedAt
-          ? "finishing"
-          : "builder";
+    project.lifecycle.phase = projectProgressPhase(state, project) as VillageProjectLifecycle["phase"];
   project.updatedAt = at;
 }
 
@@ -614,7 +602,7 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
     )
       throw conflict("This Villager has not agreed to build this Project.");
     const switched = flow.builderId !== residentId;
-    if (state.progressEngineVersion === 1 && switched && flow.phase !== "builder") {
+    if (switched && flow.phase !== "builder") {
       const candidate = flow.candidates.find((entry) => entry.residentId === residentId)!;
       const task = progressProject(state, project)!;
       const currentPhaseStartedAt = task.transitions.at(-1)?.at ?? task.definedAt;
@@ -641,7 +629,7 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
       };
       project.status = "building";
     } else if (switched) {
-      const revising = state.progressEngineVersion === 1 && projectProgressPhase(state, project) !== "builder";
+      const revising = projectProgressPhase(state, project) !== "builder";
       if (revising)
         for (const requirement of flow.requirements.filter((entry) => entry.carriedAt)) {
           const existing = flow.heldSupplies.find((entry) => entry.assignedRequirementId === requirement.id);
@@ -663,7 +651,7 @@ export async function lockProjectBuilder(id: string, value: unknown): Promise<vo
       project.status = "active";
       const candidate = flow.candidates.find((entry) => entry.residentId === residentId)!;
       const spoken = flow.spokenProofs.find((entry) => entry.lineId === candidate.evidenceId);
-      if (state.progressEngineVersion === 1 && (!spoken || spoken.speakerId !== residentId))
+      if (!spoken || spoken.speakerId !== residentId)
         throw conflict("The Builder's recorded agreement is missing its saved spoken proof.");
       recordProjectProgress(state, project, "builder-selected", {
         id: `project:${id}:builder:${candidate.evidenceId}`,
@@ -695,7 +683,7 @@ export async function acceptProjectRequirements(id: string): Promise<void> {
     )
       throw conflict("Ask the Builder for a complete requirements list first.");
     flow.requirementsAcceptedAt = new Date().toISOString();
-    if (state.progressEngineVersion === 1) {
+    {
       flow.recordedItems = state.venues.flatMap((venue) =>
         venueZones(venue).flatMap((zone) =>
           zone.state.items
@@ -717,7 +705,7 @@ export async function acceptProjectRequirements(id: string): Promise<void> {
     project.updatedAt = flow.requirementsAcceptedAt;
     reviseProjectProgress(state, project, "requirements");
     const spoken = flow.spokenProofs.find((entry) => entry.lineId === flow.requirementsEvidenceId);
-    if (state.progressEngineVersion === 1 && (!spoken || spoken.speakerId !== flow.builderId))
+    if (!spoken || spoken.speakerId !== flow.builderId)
       throw conflict("The Builder's checklist is missing its saved spoken proof.");
     recordProjectProgress(state, project, "plan-accepted", {
       id: `project:${id}:plan:${flow.requirementsEvidenceId}`,
@@ -797,7 +785,7 @@ export async function startProjectConstruction(id: string, now = new Date()): Pr
       speakerId: flow.builderId,
       venueId: project.venueId,
     });
-    if (state.progressEngineVersion === 1 && projectProgressPhase(state, project) !== "construction")
+    if (projectProgressPhase(state, project) !== "construction")
       throw conflict("Verified supplies are required before work starts.");
   });
 }
@@ -810,7 +798,7 @@ function finishConstruction(
   const flow = project.lifecycle;
   if (flow.phase !== "construction" || !flow.workOrder || flow.workOrder.pausedAt) return;
   const builder = state.villagers.find((entry) => entry.characterId === flow.builderId);
-  if (state.progressEngineVersion !== 1) flow.phase = "finishing";
+
   flow.completedAt = at;
   project.status = "finishing";
   project.progress = 95;
@@ -832,8 +820,7 @@ export async function debugCompleteProjectConstruction(id: string): Promise<void
     const project = projectFor(state, id);
     if (project.lifecycle.phase !== "construction" || project.status !== "building")
       throw conflict("Start construction before using the debug completion action.");
-    if (state.progressEngineVersion === 1 && project.lifecycle.workOrder)
-      project.lifecycle.workOrder.completesAt = new Date().toISOString();
+    if (project.lifecycle.workOrder) project.lifecycle.workOrder.completesAt = new Date().toISOString();
     finishConstruction(state, project, new Date().toISOString());
   });
 }
@@ -1059,8 +1046,7 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
       sourceId: project.venueId,
       venueId: project.venueId,
     };
-    if (state.progressEngineVersion === 1) recordProjectProgress(state, project, "opened", evidence, "", applyOpening);
-    else applyOpening();
+    recordProjectProgress(state, project, "opened", evidence, "", applyOpening);
   });
   outsideVenueOperation(() => {
     void preparePrivateSpaces().catch(() => {});
@@ -1085,224 +1071,6 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
     }
     if (flow.workOrder && !flow.workOrder.pausedAt && Date.parse(flow.workOrder.completesAt) <= now.getTime())
       finishConstruction(state, project, flow.workOrder.completesAt);
-  }
-}
-
-type SpokenProjectLine = { id: string; speakerId: string; content: string };
-
-const projectReferenceStopWords = new Set(["building", "project", "village", "resident", "people", "outside"]);
-
-function namesProjectInBuilderRequest(project: VillageProject, playerMessage: string): boolean {
-  const message = playerMessage.toLocaleLowerCase();
-  if (message.includes(project.title.toLocaleLowerCase())) return true;
-  // A player may call an Observation Post a lookout. A shared, distinctive
-  // phrase from the venue description still ties that request to the project.
-  const description = project.venueDraft?.description ?? "";
-  const words = description.toLocaleLowerCase().match(/\p{L}+/gu) ?? [];
-  return words.some((word, index) => {
-    const next = words[index + 1];
-    return (
-      next &&
-      word.length >= 4 &&
-      next.length >= 4 &&
-      (word.length >= 7 || next.length >= 7) &&
-      !projectReferenceStopWords.has(word) &&
-      !projectReferenceStopWords.has(next) &&
-      message.includes(`${word} ${next}`)
-    );
-  });
-}
-
-function contextualBuilderRequest(project: VillageProject, playerMessage: string): boolean {
-  return (
-    /\?|\b(?:want|need|please) you\b/iu.test(playerMessage) &&
-    /\b(?:build|construct|renovate|put up)\b/iu.test(playerMessage) &&
-    namesProjectInBuilderRequest(project, playerMessage)
-  );
-}
-
-function builderCommitment(content: string, contextualRequest: boolean): boolean {
-  return (
-    /\b(?:i will|i'll|i can|yes|agree|count me in)\b/iu.test(content) &&
-    (/\b(?:build|construct|renovat\w*|work on)\b/iu.test(content) ||
-      (contextualRequest && /\b(?:i will|i'll|i can) (?:do it|take it on|handle it)\b/iu.test(content)))
-  );
-}
-
-/** Read the ordinary visit's newly spoken lines once. Project progress is never inferred from narration alone. */
-export async function recordProjectConversation(input: {
-  submissionId: string;
-  projectId?: string;
-  venueId: string;
-  playerMessage: string;
-  lines: SpokenProjectLine[];
-  context: SpokenProjectLine[];
-  at: string;
-}): Promise<void> {
-  if (!input.lines.length || !input.playerMessage.trim()) return;
-  const state = await (await import("./village-store.js")).readVillageState();
-  if (state.progressEngineVersion === 1) return;
-  const relevant = state.projects.filter(
-    (project) =>
-      project.lifecycle &&
-      (!input.projectId || project.id === input.projectId) &&
-      ["approval", "builder", "requirements", "materials"].includes(project.lifecycle.phase),
-  );
-  if (!relevant.length) return;
-  const participants = new Set(state.villagers.map((entry) => entry.characterId));
-  const usable = input.lines.filter((line) => participants.has(line.speakerId));
-  if (!usable.length) return;
-  // Keep a narrow local path for direct answers such as "I'll do it". A model
-  // review can miss these when the player uses a nickname for the Project.
-  const contextualProjects = relevant.filter(
-    (project) => project.lifecycle?.phase === "builder" && contextualBuilderRequest(project, input.playerMessage),
-  );
-  if (contextualProjects.length === 1) {
-    const offer = usable.find(
-      (line) =>
-        !/\b(?:not|never|don't|can't|won't|refuse)\b/iu.test(line.content) && builderCommitment(line.content, true),
-    );
-    if (offer) {
-      await mutateVillageState((current) => {
-        const project = current.projects.find((entry) => entry.id === contextualProjects[0]!.id);
-        const flow = project?.lifecycle;
-        if (!flow || flow.phase !== "builder" || flow.evidenceIds.includes(offer.id)) return;
-        if (!current.villagers.some((resident) => resident.characterId === offer.speakerId)) return;
-        if (!flow.candidates.some((row) => row.residentId === offer.speakerId))
-          flow.candidates.push({ residentId: offer.speakerId, evidenceId: offer.id, at: input.at });
-        flow.evidenceIds.push(offer.id);
-        project.updatedAt = input.at;
-      });
-    }
-  }
-  try {
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const messages: CapabilityLanguageModelMessage[] = [
-      {
-        role: "system",
-        content: [
-          "Identify explicit Project events in the NEW spoken lines only. Do not infer an agreement, handoff, or requirement from narration or the player's words. Reply JSON only.",
-          'Shape: {"events":[{"projectId":"exact id","kind":"builder-agreement|approval|requirements|supply","residentId":"exact speaker id","lineId":"exact new line id","quote":"exact excerpt of that line","items":[{"category":"structure|equipment|finish","title":"specific item or not needed","needed":true}]}]}.',
-          "Use builder-agreement only for a clear, willing agreement to build the Project the player asked about. A short answer such as 'I'll do it' can be an agreement when the player's request unambiguously identifies the Project. Use approval only for clear consent to the named Renovation. Use requirements only when the assigned builder states a concrete plan covering all three categories; they may explicitly say a category is not needed. Use supply only for an explicit handoff of a named listed item to the player. Return an empty list when uncertain.",
-        ].join(" "),
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          projects: relevant.map((project) => ({
-            id: project.id,
-            title: project.title,
-            description: project.lifecycle?.change
-              ? renovationTerms(project.lifecycle.change)
-              : (project.venueDraft?.description ?? ""),
-            kind: project.kind,
-            phase: project.lifecycle!.phase,
-            venueName: state.venues.find((venue) => venue.id === project.venueId)?.name,
-            builderId: project.lifecycle!.builderId,
-            affectedIds: project.lifecycle!.affectedIds,
-            requirements: project
-              .lifecycle!.requirements.filter((entry) => entry.needed && !entry.carriedAt)
-              .map((entry) => ({ id: entry.id, title: entry.title })),
-          })),
-          currentVenueId: input.venueId,
-          playerMessage: input.playerMessage,
-          recentContext: input.context.slice(-8),
-          newSpokenLines: usable,
-        }),
-      },
-    ];
-    const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1400, 1400) });
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1400, {
-      temperature: 0,
-      debugMode: false,
-    });
-    const payload = extractJsonObject(completion.content ?? "");
-    const events = Array.isArray(payload?.events) ? payload.events.slice(0, 8) : [];
-    if (!events.length) return;
-    await mutateVillageState((current) => {
-      for (const raw of events) {
-        const event = asRecord(raw);
-        const project = current.projects.find((row) => row.id === event.projectId && row.lifecycle);
-        if (!project?.lifecycle) continue;
-        const flow = project.lifecycle;
-        const line = usable.find((row) => row.id === event.lineId && row.speakerId === event.residentId);
-        const quote = asTrimmedString(event.quote);
-        if (
-          !line ||
-          !quote ||
-          !line.content.toLocaleLowerCase().includes(quote.toLocaleLowerCase()) ||
-          flow.evidenceIds.includes(line.id)
-        )
-          continue;
-        const content = line.content.toLocaleLowerCase();
-        const refusing = /\b(?:not|never|don't|can't|won't|refuse)\b/iu.test(content);
-        const named = [project.title, current.venues.find((venue) => venue.id === project.venueId)?.name]
-          .filter((item): item is string => Boolean(item))
-          .some((item) =>
-            `${input.playerMessage} ${line.content}`.toLocaleLowerCase().includes(item.toLocaleLowerCase()),
-          );
-        const contextualRequest = contextualProjects.length === 1 && contextualProjects[0]!.id === project.id;
-        if (!named && !(event.kind === "builder-agreement" && contextualRequest)) continue;
-        const at = input.at;
-        if (
-          event.kind === "approval" &&
-          flow.phase === "approval" &&
-          project.kind === "renovation" &&
-          flow.affectedIds.includes(line.speakerId) &&
-          !refusing &&
-          /\b(?:yes|agree|approve|fine|okay|can|may)\b/iu.test(content)
-        ) {
-          if (!flow.approvals.some((row) => row.residentId === line.speakerId))
-            flow.approvals.push({ residentId: line.speakerId, source: "conversation", evidenceId: line.id, at });
-          if (flow.affectedIds.every((id) => flow.approvals.some((row) => row.residentId === id)))
-            flow.phase = flow.completedAt ? "finishing" : "builder";
-        } else if (
-          event.kind === "builder-agreement" &&
-          flow.phase === "builder" &&
-          !refusing &&
-          builderCommitment(content, contextualRequest)
-        ) {
-          if (!flow.candidates.some((row) => row.residentId === line.speakerId))
-            flow.candidates.push({ residentId: line.speakerId, evidenceId: line.id, at });
-        } else if (
-          event.kind === "requirements" &&
-          flow.phase === "requirements" &&
-          line.speakerId === flow.builderId &&
-          Array.isArray(event.items)
-        ) {
-          const items = event.items.slice(0, 12).flatMap((item) => {
-            const row = asRecord(item);
-            const category = row.category as Category;
-            const title = boundText(row.title, MAX_VENUE_NAME_LENGTH).trim();
-            return categories.includes(category) && title
-              ? [{ id: randomUUID(), category, title, needed: row.needed !== false, carriedAt: "", deliveredAt: "" }]
-              : [];
-          });
-          if (!categories.every((category) => items.some((row) => row.category === category))) continue;
-          if (items.some((item) => item.needed && !content.includes(item.title.toLocaleLowerCase()))) continue;
-          if (items.some((item) => !item.needed && !/\b(?:not needed|unnecessary|none|no need)\b/iu.test(content)))
-            continue;
-          flow.requirements = items;
-          flow.requirementsEvidenceId = line.id;
-        } else if (
-          event.kind === "supply" &&
-          flow.phase === "materials" &&
-          /\b(?:give|hand|bring|provide|deliver|take|here is|here are)\b/iu.test(content)
-        ) {
-          const item = flow.requirements.find(
-            (row) => row.needed && !row.carriedAt && content.includes(row.title.toLocaleLowerCase()),
-          );
-          if (!item) continue;
-          item.carriedAt = at;
-        } else continue;
-        flow.evidenceIds.push(line.id);
-        project.updatedAt = at;
-      }
-    });
-  } catch (error) {
-    villagesLogger().warn("[villages] Project conversation review will not block the visit: %s", String(error));
   }
 }
 

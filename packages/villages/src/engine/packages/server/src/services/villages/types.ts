@@ -1234,7 +1234,7 @@ export type VillageState = {
   wishRefillIntents: Record<string, { id: string; settled: string }>;
   version: 2;
   /** 0 keeps the established Project path; 1 enables the evidence-backed path at founding. */
-  progressEngineVersion: 0 | 1;
+  progressEngineVersion: 1;
   name: string;
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
@@ -1279,7 +1279,6 @@ export type VillageState = {
   /** Exact completed visit transcript retention. Missing older settings mean forever. */
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
   /** One-time archive migration marker, so a player-deleted memory stays deleted. */
-  visitMemoryBackfilled: boolean;
   /** A pending residence move is explicit and requires player approval. */
   residences: VillageResidence[];
   /**
@@ -1870,7 +1869,7 @@ export type VillageSnapshot = {
   relationshipStartingPending?: boolean;
   backgroundWork: import("./background-work.js").BackgroundSummary[];
   status: "ready";
-  progressEngineVersion: 0 | 1;
+  progressEngineVersion: 1;
   foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];

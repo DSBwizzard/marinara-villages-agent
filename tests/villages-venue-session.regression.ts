@@ -15,10 +15,6 @@ function fixtureJson(value: any) {
   );
 }
 import {
-  readRelationshipState,
-  relationshipFor,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
-import {
   DEFAULT_PLAYER_ROLE,
   renderPlayerRoleContext,
   renderPlayerRoleWritingContext,
@@ -27,8 +23,7 @@ import { requestProjectMailbox } from "../packages/villages/src/engine/packages/
 import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
 import { proposeHappenings } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
-import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
-import { proposeWishVerdict } from "../packages/villages/src/engine/packages/server/src/services/villages/wishes.js";
+import { _proposeWishVerdict } from "../packages/villages/src/engine/packages/server/src/services/villages/wishes.js";
 import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
 import {
   venueReplyIntegrity,
@@ -55,9 +50,7 @@ import {
   activeVenueSession,
   continueVenueWithoutGreeting,
   endVenueSession as endVenueSessionRaw,
-  endVenueSessionWithReceipts as endVenueSessionWithReceiptsRaw,
   closeVenueSessionWithReceipts,
-  leaveVenueMemoryPending,
   enterVenue,
   readSceneChanges,
   enterResidencePrivateSpace,
@@ -68,9 +61,6 @@ import {
   listVenueVisitSummaries,
   readVenueVisit,
   readProjectTurnEvidence,
-  pruneVenueVisits,
-  setVenueVisitRetention,
-  backfillVenueMemories,
   parseVenueReply,
   venueCardProfile,
   resetVenueSessions,
@@ -112,21 +102,12 @@ async function endVenueSession(id: string) {
   const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
   return endVenueSessionRaw(id, session.operation?.status === "interrupted" ? session.operation.attemptId : undefined);
 }
-async function endVenueSessionWithReceipts(id: string) {
-  const session = records.get(key("villages", `villages-venue-visit-${id}`))?.data ?? {};
-  return endVenueSessionWithReceiptsRaw(
-    id,
-    session.operation?.status === "interrupted" ? session.operation.attemptId : undefined,
-  );
-}
 
 const records = new Map<string, any>();
 const key = (packageId: string, id: string) => `${packageId}:${id}`;
-let legacyVisits = true;
-let liveScenes = false;
-let relationshipDecisions = false;
-let failRelationshipStorage = false;
-let failMemoryStorageForVisit = "";
+const relationshipDecisions = false;
+const failRelationshipStorage = false;
+const failMemoryStorageForVisit = "";
 const documents = {
   async getById(packageId: string, id: string) {
     return records.get(key(packageId, id)) ?? null;
@@ -141,16 +122,7 @@ const documents = {
     if (records.has(id)) throw new Error("already created");
     const row = {
       ...input,
-      data:
-        input.kind === "venue-visit" && legacyVisits
-          ? { ...input.data, memoryMode: "end", relationshipReview: undefined }
-          : input.kind === "venue-visit" && !liveScenes
-            ? {
-                ...input.data,
-                memoryMode: "tiered",
-                relationshipReview: { seed: input.data.villageSeed, applied: false, batches: [], receipts: [] },
-              }
-            : input.data,
+      data: input.data,
       revision: 1,
     };
     records.set(id, row);
@@ -184,21 +156,21 @@ let debugEnabled = false;
 let memoryCalls = 0;
 let reviewCalls = 0;
 let failReviewOnce = false;
-let failReviewAtCall = -1;
-let reviewFailureMessage = "review unavailable";
+const failReviewAtCall = -1;
+const reviewFailureMessage = "review unavailable";
 const reviewResponseModes: ("length" | "malformed")[] = [];
 const reviewBatches: { firstText: string; count: number; outputLimit: number }[] = [];
 let failMemoryOnce = false;
-let failMemoryAtCall = -1;
+const failMemoryAtCall = -1;
 let saturateMemoryOnce = false;
 let misattributeMemoryOnce = false;
 let holdMemoryOnce = false;
-let signalMemoryStarted: (() => void) | null = null;
-let fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
-let reviewContextRejects = 0;
-let memoryInputChars = 0;
-let memoryOutputChars = 0;
-let wishScanCalls = 0;
+const signalMemoryStarted: (() => void) | null = null;
+const fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
+let _reviewContextRejects = 0;
+let _memoryInputChars = 0;
+let _memoryOutputChars = 0;
+let _wishScanCalls = 0;
 let failWishScanOnce = false;
 let failGreetingOnce = false;
 let holdGreetingOnce = false;
@@ -216,7 +188,7 @@ let creativeActorIds = ["bob", "tina"];
 let lastVenueSystem = "";
 let lastEventsSystem = "";
 let lastMailboxSystem = "";
-let lastJudgeSystem = "";
+let _lastJudgeSystem = "";
 let venueReplyCalls = 0;
 let concurrencyStarted: (() => void) | null = null;
 let releaseConcurrent: (() => void) | null = null;
@@ -225,7 +197,7 @@ let blankTurnOnce = false;
 let acceptEcho = false,
   acceptRepeatedQuestion = false;
 let exhaustEcho = false;
-let wishJudgeCalls = 0;
+let _wishJudgeCalls = 0;
 let mailboxAccept = true;
 const memoryEvidence: any[] = [];
 const release = configureVillagesRuntime({
@@ -245,7 +217,7 @@ const release = configureVillagesRuntime({
         maxOutputTokens: 4096,
         fitContext(messages: any[], options: any) {
           const inputChars = messages.reduce((size, message) => size + String(message.content ?? "").length, 0);
-          if (inputChars > fitAnswerBudgetChars) reviewContextRejects += 1;
+          if (inputChars > fitAnswerBudgetChars) _reviewContextRejects += 1;
           return {
             messages,
             maxTokens: inputChars > fitAnswerBudgetChars ? options.maxTokens - 1 : options.maxTokens,
@@ -263,8 +235,8 @@ const release = configureVillagesRuntime({
               content: fixtureJson({
                 results: checks.map((check: any) => {
                   if (check.domain === "wish") {
-                    wishJudgeCalls++;
-                    lastJudgeSystem = system;
+                    _wishJudgeCalls++;
+                    _lastJudgeSystem = system;
                     return {
                       id: check.id,
                       outcome: check.facts.matchingReceiptIds.length ? "fulfilled" : "none",
@@ -462,7 +434,7 @@ const release = configureVillagesRuntime({
                 options.signal.addEventListener("abort", () => reject(new Error("memory aborted")), { once: true });
               });
             }
-            memoryInputChars += system.length + user.length;
+            _memoryInputChars += system.length + user.length;
             const evidence = JSON.parse(user);
             evidence.evidence = evidence.evidence.map(([lineId, part, role, speaker, text, heardBy]: any[]) => ({
               lineId,
@@ -476,7 +448,7 @@ const release = configureVillagesRuntime({
             if (saturateMemoryOnce) {
               saturateMemoryOnce = false;
               const content = JSON.stringify({ memories: [], more: true, complete: false });
-              memoryOutputChars += content.length;
+              _memoryOutputChars += content.length;
               return { content, finishReason: "length" };
             }
             if (memoryCalls === failMemoryAtCall) throw new Error("memory chunk unavailable");
@@ -511,7 +483,7 @@ const release = configureVillagesRuntime({
                 : [],
               complete: true,
             });
-            memoryOutputChars += content.length;
+            _memoryOutputChars += content.length;
             return { content, finishReason: "stop" };
           }
           if (system.includes("You adjudicate short-term conversational recollections")) {
@@ -572,7 +544,7 @@ const release = configureVillagesRuntime({
             };
           }
           if (system.includes("Find exact, short quotations")) {
-            wishScanCalls += 1;
+            _wishScanCalls += 1;
             if (failWishScanOnce) {
               failWishScanOnce = false;
               throw new Error("wish scan unavailable");
@@ -646,9 +618,9 @@ const release = configureVillagesRuntime({
             };
           }
           if (!system.includes("You write one shared scene")) {
-            lastJudgeSystem = system;
+            _lastJudgeSystem = system;
             assert.match(user, /Has .* really done that/u);
-            wishJudgeCalls += 1;
+            _wishJudgeCalls += 1;
             return {
               content: fixtureJson({
                 fulfilled: true,
@@ -2199,7 +2171,7 @@ async function main() {
     assert.doesNotMatch(lastVenueSystem, /a ceiling drip|water drips from the ceiling/u);
     assert.ok((await activeVenueSession())!.recap.length <= 600, "long visits keep a bounded recap");
     assert.ok(
-      lastVenueSystem.split("Recent scene history:\n")[1]!.split("\n\n")[0]!.split("\n").length <= 18,
+      JSON.parse(lastVenueSystem.split("Earlier evidence: ")[1]!.split("\nExisting memories:")[0]!).length <= 18,
       "long visits send only a bounded recent transcript",
     );
     const beforeReplay = calls;
@@ -2261,13 +2233,7 @@ async function main() {
     );
     await endVenueSession(group.id);
     assert.equal(await activeVenueSession(), null, "Visit ends only when the player leaves");
-    assert.equal(memoryCalls, 1, "one batched memory call closes a played visit");
-    assert.ok(
-      memoryEvidence[0].evidence.some(
-        (line: any) => line.text.includes("quiet question") && !line.heardBy.includes("tina"),
-      ),
-      "private evidence carries its exact audience",
-    );
+    assert.equal(memoryCalls, 0, "Scene close makes no memory generation request");
     assert.equal((await listVenueVisits({ characterId: "bob" })).length, 1);
     assert.equal((await listVenueVisits({ placeId: "park" })).length, 1);
     assert.equal((await listVenueVisits({ placeId: "empty" })).length, 1);
@@ -2295,53 +2261,6 @@ async function main() {
       /no longer in this conversation/u,
     );
 
-    const beforeFulfill = { venue: venueReplyCalls, wish: wishJudgeCalls };
-    await mutateVillageState((state) => {
-      state.venueEvents.unshift({
-        id: "parcel-transfer",
-        venueId: single.placeId,
-        venueName: single.placeName,
-        zoneId: single.zoneId,
-        text: "The player handed Tina the parcel.",
-        at: new Date().toISOString(),
-        actionReceipt: {
-          submissionId: "parcel-transfer",
-          happened: true,
-          narration: "The player handed Tina the parcel.",
-          removeItem: "parcel",
-          transferTo: "tina",
-          witnessIds: ["tina"],
-          itemTransfer: { itemName: "parcel", recipientId: "tina" },
-        },
-      });
-    });
-    const fulfilled = await sendVenueTurn({
-      sessionId: single.id,
-      message: "I delivered the parcel",
-      mode: "fulfill",
-      targetId: "tina",
-      submissionId: "wish-1",
-    });
-    assert.equal(wishJudgeCalls - beforeFulfill.wish, 1, "Fulfill spends one judgment call");
-    assert.equal(venueReplyCalls - beforeFulfill.venue, 1, "Fulfill spends one shared reply call");
-    assert.equal(fulfilled.verdict?.fulfilled, true);
-    assert.equal(fulfilled.recordEvents.filter((event) => event.kind === "wish").length, 1);
-    assert.doesNotMatch(lastJudgeSystem, /LEGACY_EVENT_POISON/u, "visual Events are not evidence for a wish verdict");
-    assert.equal(
-      (await readVillageState()).villagers.find((person) => person.characterId === "tina")?.agenda?.wishes.length,
-      0,
-    );
-    const replayFulfill = await sendVenueTurn({
-      sessionId: single.id,
-      message: "I delivered the parcel",
-      mode: "fulfill",
-      targetId: "tina",
-      submissionId: "wish-1",
-    });
-    assert.equal(replayFulfill.verdict?.reason, fulfilled.verdict?.reason);
-    assert.equal(wishJudgeCalls - beforeFulfill.wish, 1, "Fulfill retry spends no second judgment");
-    assert.equal(venueReplyCalls - beforeFulfill.venue, 1, "Fulfill retry spends no second shared reply");
-
     await sendVenueTurn({
       sessionId: single.id,
       message: "A natural goodbye",
@@ -2350,38 +2269,11 @@ async function main() {
       submissionId: "goodbye",
     });
     assert.equal((await activeVenueSession())?.id, single.id, "narrated endings do not close the visit");
-    failMemoryOnce = true;
-    await assert.rejects(() => endVenueSession(single.id), /memory unavailable/u);
-    assert.equal((await activeVenueSession())?.id, single.id, "failed closing keeps the scene retryable");
-    const beforeRetry = calls;
-    const closed = await endVenueSession(single.id);
-    assert.equal(closed.status, "closed");
-    assert.equal(calls - beforeRetry, 1, "retry repeats only the failed memory call");
-    assert.equal(closed.lines.filter((line) => line.content === "A natural goodbye").length, 1);
-    assert.equal(
-      (await listVenueVisits({ characterId: "bob" })).length,
-      1,
-      "Bob did not witness the Scene after his background agenda arrival",
-    );
-    assert.equal((await listVenueVisits({ characterId: "tina" })).length, 2);
-
-    const greetingOnly = await greetVenue((await enterVenue("park"))!.id);
-    const beforeEnd = calls;
-    await endVenueSession(greetingOnly.id);
-    assert.equal(calls, beforeEnd, "greeting-only visit skips memory generation");
-    assert.equal(await activeVenueSession(), null);
-    const manualGroup = await greetVenue((await enterVenue("park"))!.id);
-    assert.deepEqual(manualGroup.activeIds, ["bob", "tina"]);
-    await sendVenueTurn({
-      sessionId: manualGroup.id,
-      message: "An ordinary chat",
-      mode: "chat",
-      targetId: "",
-      submissionId: "manual-chat",
-    });
+    await endVenueSession(single.id);
+    const manualGroup = await greetVenue((await enterVenue("park")).id);
     const beforeManualEnd = memoryCalls;
     await endVenueSession(manualGroup.id);
-    assert.equal(memoryCalls - beforeManualEnd, 1, "the player can end a group chat with one batched memory call");
+    assert.equal(memoryCalls - beforeManualEnd, 0, "the player can end a group chat without a review call");
     assert.equal(await activeVenueSession(), null);
     openingSegmentsOnce = [{ kind: "narration", text: "Tina keeps sorting seeds while Bob repairs the latch." }];
     const quietOpening = await enterVenue("park");
@@ -2585,628 +2477,6 @@ async function main() {
     assert.deepEqual(visualProposal.memory, [], "visual Events cannot create memory");
     creativeActorIds = ["tina"];
     featureProposal = null;
-    const privateVisit = await enterVenue("park");
-    const privateRecord = records.get(key("villages", `villages-venue-visit-${privateVisit.id}`));
-    privateRecord.data.status = "active";
-    privateRecord.data.legacyCast = true;
-    privateRecord.data.participants = [
-      { characterId: "bob", name: "Bob", doing: "listening" },
-      { characterId: "tina", name: "Tina", doing: "listening" },
-    ];
-    privateRecord.data.activeIds = ["bob", "tina"];
-    delete privateRecord.data.sceneAttendance;
-    privateRecord.data.lines = [
-      {
-        id: "bob-secret",
-        speakerId: "",
-        name: "Player",
-        role: "user",
-        content: "A private secret for Bob.",
-        at: new Date().toISOString(),
-        heardBy: ["bob"],
-      },
-      {
-        id: "tina-public",
-        speakerId: "",
-        name: "Player",
-        role: "user",
-        content: "Hello Tina.",
-        at: new Date().toISOString(),
-        heardBy: ["tina"],
-      },
-    ];
-    privateRecord.data.heardHistory = [
-      { characterId: "bob", lineIds: ["bob-secret"] },
-      { characterId: "tina", lineIds: ["tina-public"] },
-    ];
-    misattributeMemoryOnce = true;
-    await assert.rejects(
-      () => endVenueSession(privateVisit.id),
-      /could not be remembered/u,
-      "a memory cannot cite a line its villager did not hear",
-    );
-    await endVenueSession(privateVisit.id);
-    const compactVisit = await enterVenue("park");
-    const compactRecord = records.get(key("villages", `villages-venue-visit-${compactVisit.id}`));
-    compactRecord.data.status = "active";
-    compactRecord.data.legacyCast = true;
-    compactRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
-    compactRecord.data.activeIds = ["tina"];
-    delete compactRecord.data.sceneAttendance;
-    compactRecord.data.lines = Array.from({ length: 105 }, (_, index) => ({
-      id: `compact-${index}`,
-      speakerId: "",
-      name: "Player",
-      role: "user",
-      content: `Short line ${index}.`,
-      at: new Date().toISOString(),
-      heardBy: ["tina"],
-    }));
-    compactRecord.data.heardHistory = [
-      { characterId: "tina", lineIds: compactRecord.data.lines.map((line: any) => line.id) },
-    ];
-    const beforeCompactCalls = memoryCalls;
-    await endVenueSession(compactVisit.id);
-    assert.equal(memoryCalls - beforeCompactCalls, 1, "105 short lines fit one memory call");
-    const fitVisit = await enterVenue("park");
-    const fitRecord = records.get(key("villages", `villages-venue-visit-${fitVisit.id}`));
-    fitRecord.data.status = "active";
-    fitRecord.data.legacyCast = true;
-    fitRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
-    fitRecord.data.activeIds = ["tina"];
-    delete fitRecord.data.sceneAttendance;
-    fitRecord.data.lines = Array.from({ length: 20 }, (_, index) => ({
-      id: `fit-${index}`,
-      speakerId: "",
-      name: "Player",
-      role: "user",
-      content: `Detail ${index}: ${"substantial context ".repeat(12)}`,
-      at: new Date().toISOString(),
-      heardBy: ["tina"],
-    }));
-    fitRecord.data.heardHistory = [{ characterId: "tina", lineIds: fitRecord.data.lines.map((line: any) => line.id) }];
-    fitAnswerBudgetChars = 3_000;
-    const beforeFitCalls = memoryCalls;
-    const beforeFitEvidence = memoryEvidence.length;
-    await endVenueSession(fitVisit.id);
-    fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
-    assert.ok(memoryCalls - beforeFitCalls > 1, "reduced answer room forces smaller chunks");
-    assert.ok(memoryCalls - beforeFitCalls < 20, "fitting still batches multiple lines per call");
-    assert.equal(
-      new Set(memoryEvidence.slice(beforeFitEvidence).flatMap((call) => call.evidence.map((line: any) => line.lineId)))
-        .size,
-      20,
-      "every line is scanned after fitting the answer budget",
-    );
-    const heldVisit = await enterVenue("park");
-    const heldRecord = records.get(key("villages", `villages-venue-visit-${heldVisit.id}`));
-    heldRecord.data.status = "active";
-    heldRecord.data.legacyCast = true;
-    heldRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
-    heldRecord.data.activeIds = ["tina"];
-    delete heldRecord.data.sceneAttendance;
-    heldRecord.data.lines = [
-      {
-        id: "held-line",
-        speakerId: "",
-        name: "Player",
-        role: "user",
-        content: "Remember the bridge plan.",
-        at: new Date().toISOString(),
-        heardBy: ["tina"],
-      },
-    ];
-    heldRecord.data.heardHistory = [{ characterId: "tina", lineIds: ["held-line"] }];
-    const memoryStarted = new Promise<void>((resolve) => {
-      signalMemoryStarted = resolve;
-    });
-    holdMemoryOnce = true;
-    const ending = endVenueSession(heldVisit.id);
-    await memoryStarted;
-    const leftWhileSaving = await leaveVenueMemoryPending(heldVisit.id);
-    assert.equal(leftWhileSaving.memoryPending, true);
-    assert.equal(await activeVenueSession(), null, "leaving pending releases the room during a model call");
-    await assert.rejects(ending, (error: any) => error.code === "OPERATION_INTERRUPTED");
-    assert.equal((await readVenueVisit(heldVisit.id)).lines.length, 1, "cancellation retains the exact transcript");
-    signalMemoryStarted = null;
-    const retried = await endVenueSession(heldVisit.id);
-    assert.equal(retried.memoryPending, false, "a canceled visit can be filed from the archive");
-    // A 100-plus-line archive with an exceptional line exercises chunk fitting,
-    // saturation, persisted progress, pending exit, retry and exact evidence coverage.
-    const longVisit = await enterVenue("park");
-    const longLine = `Early important detail: ${"details ".repeat(900)} late detail.`;
-    const longRecord = records.get(key("villages", `villages-venue-visit-${longVisit.id}`));
-    assert.ok(longRecord);
-    longRecord.data.status = "active";
-    longRecord.data.legacyCast = true;
-    longRecord.data.participants = [{ characterId: "tina", name: "Tina", doing: "listening" }];
-    longRecord.data.activeIds = ["tina"];
-    delete longRecord.data.sceneAttendance;
-    longRecord.data.lines = Array.from({ length: 112 }, (_, index) => ({
-      id: `long-${index}`,
-      speakerId: "",
-      name: "Player",
-      role: "user",
-      content:
-        index === 0
-          ? longLine
-          : index === 111
-            ? "Late important detail: the bridge was finished."
-            : `Conversation line ${index}: ${"ordinary talk ".repeat(8)}`,
-      at: new Date().toISOString(),
-      heardBy: ["tina"],
-    }));
-    longRecord.data.heardHistory = [
-      { characterId: "tina", lineIds: longRecord.data.lines.map((line: any) => line.id) },
-    ];
-    const beforeLongCalls = memoryCalls;
-    const beforeLongInput = memoryInputChars;
-    const beforeLongOutput = memoryOutputChars;
-    const beforeLongEvidence = memoryEvidence.length;
-    saturateMemoryOnce = true;
-    failMemoryAtCall = memoryCalls + 3;
-    await assert.rejects(() => endVenueSession(longVisit.id), /memory chunk unavailable/u);
-    const interrupted = await activeVenueSession();
-    assert.ok(interrupted?.memoryProgress?.nextUnit, "completed chunks are checkpointed");
-    const pending = await leaveVenueMemoryPending(longVisit.id);
-    assert.equal(pending.memoryPending, true);
-    assert.equal(await activeVenueSession(), null);
-    assert.equal((await readVenueVisit(longVisit.id)).lines.length, 112);
-    await setVenueVisitRetention({ mode: "count", value: 1 });
-    assert.equal((await readVenueVisit(longVisit.id)).memoryPending, true, "automatic cleanup skips pending visits");
-    failMemoryAtCall = -1;
-    const filed = await endVenueSession(longVisit.id);
-    assert.equal(filed.memoryPending, false);
-    assert.equal(
-      filed.memoryProgress?.nextUnit,
-      Math.ceil(longLine.length / 2_400) + 111,
-      "all split line pieces were scanned",
-    );
-    const scanned = memoryEvidence.slice(beforeLongEvidence).flatMap((call) => call.evidence);
-    assert.equal(
-      [
-        ...new Map(
-          scanned.filter((part: any) => part.lineId === "long-0").map((part: any) => [part.part, part.text]),
-        ).entries(),
-      ]
-        .sort((a, b) => Number(a[0]) - Number(b[0]))
-        .map((entry) => entry[1])
-        .join(""),
-      longLine,
-    );
-    assert.ok(
-      scanned.some((part: any) => part.lineId === "long-111"),
-      "the late important line was scanned",
-    );
-    assert.ok(memoryCalls - beforeLongCalls > 2, "long visits use bounded chunks and retry only unfinished work");
-    assert.ok(
-      memoryInputChars > beforeLongInput && memoryOutputChars > beforeLongOutput,
-      "fixture records input and output cost",
-    );
-    const archivePage = await listVenueVisitSummaries({ limit: 1 });
-    assert.equal(archivePage.visits[0]?.lineCount, 112);
-    assert.equal(archivePage.total, 1, "archive pagination reports the filtered total");
-    const selected = selectPromptMemories((await readVillageState()).chronicle, ["tina"], "bridge", 600);
-    assert.ok(selected.reduce((size, entry) => size + entry.text.length + 24, 0) <= 2_400);
-    assert.ok(
-      selected.every((entry) => entry.scope === "village" || entry.actors.some((actor) => actor.id === "tina")),
-    );
-    const beforeWishScan = wishScanCalls;
-    const wishContext = {
-      village: "Fixture village",
-      setting: "A village",
-      moment: deriveVillageMoment({
-        foundedAt: new Date(Date.now() - 86_400_000).toISOString(),
-        seed: "wish-fixture",
-        now: new Date(),
-      }),
-      card: { id: "tina", name: "Tina", description: "A resident", personality: "Careful" },
-      playerName: "Player",
-      playerDescription: "A visitor",
-      wishes: [{ id: "wish-tina", wish: "Finish the bridge", tell: "the bridge", intensity: 2 }],
-      claim: "I finished the bridge",
-      transcript: longRecord.data.lines.map((line: any) => ({ role: line.role, content: line.content, at: line.at })),
-      happenings: [{ text: "The bridge was finished." }],
-      memory: [],
-    } as any;
-    const longWish = await proposeWishVerdict(wishContext);
-    assert.equal(longWish.verdict.fulfilled, true);
-    assert.ok(wishScanCalls - beforeWishScan > 1, "long Fulfill scans the complete transcript in bounded batches");
-    assert.match(lastJudgeSystem, /\[L1\].*important detail/u);
-    assert.match(lastJudgeSystem, /\[L112\].*important detail/u);
-    failWishScanOnce = true;
-    await assert.rejects(
-      () => proposeWishVerdict(wishContext),
-      /wish scan unavailable/u,
-      "An interrupted required request preserves explicit retry protection instead of inventing a denial",
-    );
-    const longMemoryId = `${longVisit.id}:memory:0`;
-    await mutateVillageState((state) => {
-      state.chronicle = state.chronicle.filter((entry) => entry.id !== longMemoryId);
-      state.visitMemoryBackfilled = false; // Simulate an older archive awaiting its one-time migration.
-    });
-    await backfillVenueMemories();
-    await backfillVenueMemories();
-    assert.equal((await readVillageState()).chronicle.filter((entry) => entry.id === longMemoryId).length, 1);
-    console.log(
-      `long-visit cost: ${memoryCalls - beforeLongCalls} calls, ~${Math.ceil((memoryInputChars - beforeLongInput) / 4)} input tokens, ~${Math.ceil((memoryOutputChars - beforeLongOutput) / 4)} output tokens`,
-    );
-    records.get(key("villages", `villages-venue-visit-${longVisit.id}`)).data.endedAt = new Date(
-      Date.now() - 40 * 86_400_000,
-    ).toISOString();
-    await setVenueVisitRetention({ mode: "days", value: 30 });
-    await pruneVenueVisits();
-    await assert.rejects(() => readVenueVisit(longVisit.id), /no longer available/u);
-    assert.equal(
-      (await readVillageState()).chronicle.filter((entry) => entry.id === longMemoryId).length,
-      1,
-      "retiring a transcript never deletes its filed memory",
-    );
-    await mutateVillageState((state) => {
-      state.chronicle = state.chronicle.filter((entry) => entry.id !== longMemoryId);
-    });
-    await backfillVenueMemories();
-    assert.equal(
-      (await readVillageState()).chronicle.filter((entry) => entry.id === longMemoryId).length,
-      0,
-      "a player-deleted memory is not resurrected by archive migration",
-    );
-    await setVenueVisitRetention({ mode: "forever", value: 0 });
-    await resetVenueSessions();
-    assert.equal((await listVenueVisits()).length, 0, "starting a new village clears the previous Scene archive");
-    legacyVisits = false;
-    await mutateVillageState((state) => {
-      state.residences = [];
-      for (const resident of state.villagers.slice(0, 2))
-        if (resident.agenda?.activeDay?.blocks[0]) resident.agenda.activeDay.blocks[0].venueId = "park";
-    });
-    const current = await greetVenue((await enterVenue("park")).id);
-    assert.deepEqual(current.activeIds, ["bob", "tina"]);
-    const beforeTurnMemory = memoryCalls;
-    const remembered = await sendVenueTurn({
-      sessionId: current.id,
-      message: "Remember the bridge",
-      mode: "chat",
-      targetId: "bob",
-      submissionId: "turn-memory",
-    });
-    assert.equal(memoryCalls, beforeTurnMemory, "new visits form memories in the existing reply call");
-    assert.equal(
-      remembered.recordEvents.filter((event) => event.kind === "memory").length,
-      0,
-      "passing recollections stay quiet until end-of-Scene review",
-    );
-    const recollectionId = `${current.id}:recollection:turn-memory:0`;
-    assert.equal((await readVillageState()).recollections.filter((entry) => entry.id === recollectionId).length, 1);
-    assert.equal(
-      (await readVillageState()).chronicle.filter((entry) => entry.sourceRecollectionIds?.includes(recollectionId))
-        .length,
-      0,
-      "the narration call cannot promote its own recollection",
-    );
-    const requestedMove = await sendVenueTurn({
-      sessionId: current.id,
-      message: "Bob asks to move",
-      mode: "chat",
-      targetId: "",
-      submissionId: "bob-move",
-    });
-    assert.equal(
-      requestedMove.recordEvents.filter((event) => event.kind === "request").length,
-      1,
-      "verified villager requests have a notice receipt",
-    );
-    assert.equal(
-      requestedMove.recordEvents.find((event) => event.kind === "request")?.detail,
-      undefined,
-      "non-memory receipts do not expose memory detail",
-    );
-    assert.equal(
-      (await readVillageState()).recollections.filter((entry) => entry.knownByCharacterIds.includes("tina")).length,
-      0,
-      "unheard evidence cannot become Tina's recollection",
-    );
-    const replayRemembered = await sendVenueTurn({
-      sessionId: current.id,
-      message: "Remember the bridge",
-      mode: "chat",
-      targetId: "bob",
-      submissionId: "turn-memory",
-    });
-    assert.deepEqual(
-      replayRemembered.recordEvents,
-      remembered.recordEvents,
-      "retry does not duplicate passing recollections or create a premature notice",
-    );
-    assert.equal((await readVillageState()).recollections.filter((entry) => entry.id === recollectionId).length, 1);
-    await assert.rejects(
-      () => discardVenueVisitDebug(current.id),
-      /debug action is unavailable/u,
-      "DEBUG discard is gated on the server",
-    );
-    const departedBob = await sendVenueTurn({
-      sessionId: current.id,
-      message: "Bob says goodbye",
-      mode: "chat",
-      targetId: "",
-      submissionId: "departure-bob",
-    });
-    assert.deepEqual(departedBob.session.activeIds, ["tina"]);
-    assert.deepEqual(departedBob.session.submissions.at(-1)?.activeIdsAtTurn, ["bob", "tina"]);
-    assert.deepEqual(departedBob.session.submissions.at(-1)?.activeIdsAfterTurn, ["tina"]);
-    assert.deepEqual(
-      (await activeVenueSession())?.submissions.at(-1)?.activeIdsAfterTurn,
-      ["tina"],
-      "departure snapshots survive active-session reads",
-    );
-    const departedTina = await sendVenueTurn({
-      sessionId: current.id,
-      message: "Tina says goodbye",
-      mode: "chat",
-      targetId: "",
-      submissionId: "departure-tina",
-    });
-    assert.equal(departedTina.session.status, "closed");
-    assert.equal(departedTina.session.endReason, "scene");
-    assert.deepEqual(
-      (await readVenueVisit(current.id)).submissions.at(-1)?.activeIdsAfterTurn,
-      [],
-      "final cast survives archive reads",
-    );
-    assert.equal(await activeVenueSession(), null);
-    assert.equal(memoryCalls, beforeTurnMemory, "tiered visits do not run the retired transcript distiller");
-    assert.equal(reviewCalls, 0, "the completed farewell returns before durable review starts");
-    assert.equal(departedTina.session.memoryPending, true);
-    const reviewedDeparture = await endVenueSessionWithReceipts(current.id);
-    assert.equal(reviewCalls, 1, "one compact System review closes an ordinary played visit");
-    assert.equal(reviewedDeparture.recordEvents.filter((event) => event.kind === "memory").length, 1);
-    const durable = (await readVillageState()).chronicle.find((entry) =>
-      entry.sourceRecollectionIds?.includes(recollectionId),
-    );
-    assert.ok(durable, "the promise is promoted after the visit closes");
-    assert.equal(durable?.memoryCategory, "commitment");
-    assert.deepEqual(durable?.knownByCharacterIds, ["bob"]);
-    assert.deepEqual(durable?.sourceLineIds?.length, 2);
-
-    const groupDraft = await enterVenue("park");
-    const groupRecord = records.get(key("villages", `villages-venue-visit-${groupDraft.id}`));
-    groupRecord.data.legacyCast = true;
-    groupRecord.data.participants = [
-      { characterId: "bob", name: "Bob", doing: "listening" },
-      { characterId: "tina", name: "Tina", doing: "listening" },
-      { characterId: "cora", name: "Cora", doing: "listening" },
-      { characterId: "dan", name: "Dan", doing: "listening" },
-    ];
-    groupRecord.data.activeIds = ["bob", "tina", "cora", "dan"];
-    delete groupRecord.data.sceneAttendance;
-    groupRecord.data.heardHistory = groupRecord.data.participants.map((person: any) => ({
-      characterId: person.characterId,
-      lineIds: [],
-    }));
-    const groupVisit = await greetVenue(groupDraft.id);
-    const reviewsBeforeGroup = reviewCalls;
-    await sendVenueTurn({
-      sessionId: groupVisit.id,
-      message: "A promise and four kisses",
-      mode: "chat",
-      targetId: "",
-      submissionId: "group-memories",
-    });
-    const groupEnding = await endVenueSessionWithReceipts(groupVisit.id);
-    const groupClosed = groupEnding.session;
-    assert.equal(groupClosed.memoryReview.status, "complete");
-    assert.equal(reviewCalls - reviewsBeforeGroup, 1, "one ordinary group visit uses one compact review call");
-    assert.equal(groupEnding.recordEvents.length, 5, "direct ending returns every promoted durable-memory receipt");
-    const groupDurable = (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === groupVisit.id);
-    assert.equal(groupDurable.length, 5, "all five distinct qualifying events survive; there is no four-memory cap");
-    assert.equal(
-      new Set(groupDurable.map((entry) => entry.id)).size,
-      5,
-      "each source event set produces one stable deterministic durable ID",
-    );
-    assert.deepEqual(
-      groupDurable.find((entry) => entry.memoryCategory === "commitment")?.knownByCharacterIds,
-      ["bob", "tina", "cora", "dan"],
-      "the shared promise is one event known by all witnesses, not four copies",
-    );
-
-    const retryable = await greetVenue((await enterVenue("park")).id);
-    await sendVenueTurn({
-      sessionId: retryable.id,
-      message: "Review failure promise",
-      mode: "chat",
-      targetId: "bob",
-      submissionId: "review-failure",
-    });
-    failReviewOnce = true;
-    const pendingEnding = await endVenueSessionWithReceipts(retryable.id);
-    const pendingReview = pendingEnding.session;
-    assert.equal(pendingReview.status, "closed", "a failed reviewer never holds the room open");
-    assert.equal(pendingReview.memoryPending, true);
-    assert.equal(pendingReview.memoryReview.status, "pending");
-    assert.deepEqual(pendingEnding.recordEvents, [], "a pending review produces no false durable-memory receipt");
-    assert.match(pendingReview.memoryReview.error, /review unavailable/u);
-    assert.equal(await activeVenueSession(), null);
-    assert.equal((await readVenueVisit(retryable.id)).lines.length > 0, true, "the exact archive remains available");
-    const retriedEnding = await endVenueSessionWithReceipts(retryable.id);
-    const retriedReview = retriedEnding.session;
-    assert.equal(retriedReview.memoryPending, false);
-    assert.equal(retriedReview.memoryReview.status, "complete");
-    assert.equal(retriedEnding.recordEvents.length, 1, "a successful retry returns its durable-memory receipt");
-    const retryDurable = (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === retryable.id);
-    assert.equal(retryDurable.length, 1, "retry commits the durable memory exactly once");
-    await endVenueSession(retryable.id);
-    assert.equal(
-      (await readVillageState()).chronicle.filter((entry) => entry.id === retryDurable[0]!.id).length,
-      1,
-      "replaying a completed review preserves its deterministic memory ID",
-    );
-
-    relationshipDecisions = true;
-    for (const failure of ["relationship", "memory", "review", "discard"]) {
-      const visit = await greetVenue((await enterVenue("park")).id);
-      await sendVenueTurn({
-        sessionId: visit.id,
-        message: "Remember the bridge",
-        mode: "chat",
-        targetId: "bob",
-        submissionId: "combined-" + failure,
-      });
-      const seed = (await readVillageState()).seed;
-      const before = relationshipFor(await readRelationshipState(seed), "bob", "player");
-      const baseline = { warmth: before.warmth, trust: before.trust };
-      const calls = reviewCalls;
-      if (failure === "discard") {
-        debugEnabled = true;
-        await discardVenueVisitDebug(visit.id);
-        debugEnabled = false;
-        assert.equal(reviewCalls, calls);
-        assert.equal(relationshipFor(await readRelationshipState(seed), "bob", "player").trust, baseline.trust);
-        continue;
-      }
-      if (failure === "relationship") failRelationshipStorage = true;
-      if (failure === "memory") failMemoryStorageForVisit = visit.id;
-      if (failure === "review") failReviewOnce = true;
-      const pending = await endVenueSessionWithReceipts(visit.id);
-      assert.equal(pending.session.memoryPending, true);
-      assert.equal(await activeVenueSession(), null, "closing releases the visit before either domain settles");
-      if (failure === "relationship") {
-        assert.equal(
-          pending.session.memoryReview.applied,
-          true,
-          "memory can settle despite relationship storage failure",
-        );
-        assert.equal(pending.recordEvents.filter((event) => event.kind === "memory").length, 1);
-        assert.equal(relationshipFor(await readRelationshipState(seed), "bob", "player").trust, baseline.trust);
-      } else if (failure === "memory") {
-        assert.equal(
-          pending.session.relationshipReview?.applied,
-          true,
-          "relationship can settle despite memory storage failure",
-        );
-        assert.equal(pending.recordEvents.filter((event) => event.kind === "relationship-down").length, 1);
-      } else {
-        assert.deepEqual(pending.recordEvents, []);
-        assert.equal(
-          relationshipFor(await readRelationshipState(seed), "bob", "player").trust,
-          baseline.trust,
-          "failed review awards nothing",
-        );
-      }
-      failRelationshipStorage = false;
-      failMemoryStorageForVisit = "";
-      const paid = reviewCalls;
-      const recovered = await endVenueSessionWithReceipts(visit.id);
-      assert.equal(recovered.session.memoryPending, false);
-      assert.equal(
-        reviewCalls,
-        paid + (failure === "review" ? 1 : 0),
-        "saved decisions replay without another model request",
-      );
-      const settled = relationshipFor(await readRelationshipState(seed), "bob", "player");
-      assert.equal(settled.trust, baseline.trust - 2);
-      assert.equal(recovered.recordEvents.filter((event) => event.kind === "relationship-down").length, 1);
-      const repeat = await endVenueSessionWithReceipts(visit.id);
-      assert.deepEqual(repeat.recordEvents, recovered.recordEvents, "heart and star receipts retain stable IDs");
-      assert.equal(relationshipFor(await readRelationshipState(seed), "bob", "player").trust, settled.trust);
-      await mutateVillageState((state) => {
-        state.chronicle = state.chronicle.filter((entry) => entry.sourceVisitId !== visit.id);
-      });
-      assert.equal(
-        relationshipFor(await readRelationshipState(seed), "bob", "player").trust,
-        settled.trust,
-        "deleting memory cannot undo a relationship",
-      );
-    }
-    relationshipDecisions = false;
-
-    for (const paragraphCount of [10, 97, 125]) {
-      const synthetic = await enterVenue("park");
-      const record = records.get(key("villages", `villages-venue-visit-${synthetic.id}`));
-      record.data.status = "active";
-      record.data.legacyCast = true;
-      record.data.participants = [{ characterId: "bob", name: "Bob", doing: "listening" }];
-      record.data.activeIds = ["bob"];
-      delete record.data.sceneAttendance;
-      record.data.lines = Array.from({ length: paragraphCount }, (_, index) => ({
-        id: `synthetic-${paragraphCount}-line-${index}`,
-        speakerId: "",
-        name: "Player",
-        role: "user",
-        content:
-          paragraphCount === 125 && index === 0
-            ? `${"A long exchange about ordinary things. ".repeat(600)} The player promised to help with task 0 in visit 125.`
-            : `The player promised to help with task ${index} in visit ${paragraphCount}.`,
-        at: now.toISOString(),
-        heardBy: ["bob"],
-      }));
-      record.data.heardHistory = [{ characterId: "bob", lineIds: record.data.lines.map((line: any) => line.id) }];
-      record.data.submissions = [
-        {
-          id: `synthetic-${paragraphCount}`,
-          recollections: record.data.lines.map((line: any, index: number) => ({
-            id: `synthetic-${paragraphCount}-recollection-${index}`,
-            text: `Bob heard the player promised to help with task ${index} in visit ${paragraphCount}.`,
-            subjectCharacterIds: ["bob"],
-            knownByCharacterIds: ["bob"],
-            lineIds: [line.id],
-          })),
-        },
-      ];
-      const beforeCloseCalls = reviewCalls;
-      const closedFirst = await closeVenueSessionWithReceipts(synthetic.id);
-      assert.equal(closedFirst.session.status, "closed");
-      assert.equal(closedFirst.session.memoryPending, true);
-      assert.equal(reviewCalls, beforeCloseCalls, "farewell and archive are visible before review starts");
-      assert.deepEqual(closedFirst.recordEvents, []);
-      if (paragraphCount === 97) {
-        fitAnswerBudgetChars = 14_000;
-        reviewResponseModes.push("length", "malformed");
-      }
-      if (paragraphCount === 125) {
-        fitAnswerBudgetChars = 10_000;
-        failReviewAtCall = reviewCalls + 3;
-        reviewFailureMessage = "review timed out";
-      }
-      const startedReview = performance.now();
-      let reviewed = await endVenueSessionWithReceipts(synthetic.id);
-      if (paragraphCount === 125) {
-        assert.equal(reviewed.session.memoryPending, true, "a mid-review timeout keeps the archive pending");
-        const checkpoint = reviewed.session.memoryReview.nextRecollection;
-        assert.ok(checkpoint > 0 && checkpoint < paragraphCount, "successful batches are saved before failure");
-        assert.equal(reviewed.session.memoryReview.decisions.length, checkpoint);
-        assert.deepEqual(reviewed.recordEvents, [], "partial review produces no premature notices");
-        failReviewAtCall = -1;
-        const beforeRetryBatches = reviewBatches.length;
-        reviewed = await endVenueSessionWithReceipts(synthetic.id);
-        assert.match(reviewBatches[beforeRetryBatches]!.firstText, new RegExp(`task ${checkpoint} in visit 125`));
-      }
-      fitAnswerBudgetChars = Number.POSITIVE_INFINITY;
-      assert.equal(reviewed.session.memoryPending, false);
-      assert.equal(reviewed.session.memoryReview.nextRecollection, paragraphCount);
-      assert.equal(reviewed.session.memoryReview.decisions.length, paragraphCount);
-      assert.equal(reviewed.recordEvents.length, paragraphCount, "every qualifying recollection gets a notice");
-      assert.equal(
-        (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === synthetic.id).length,
-        paragraphCount,
-        "each qualifying recollection becomes one durable memory",
-      );
-      await endVenueSession(synthetic.id);
-      assert.equal(
-        (await readVillageState()).chronicle.filter((entry) => entry.sourceVisitId === synthetic.id).length,
-        paragraphCount,
-        "completed review retries never duplicate durable memories",
-      );
-      console.log(
-        `tiered review ${paragraphCount} paragraphs: ${reviewCalls - beforeCloseCalls} calls, ${Math.round(performance.now() - startedReview)}ms`,
-      );
-    }
-    assert.ok(
-      reviewBatches.some((batch) => batch.outputLimit > 3_600),
-      "large batches reserve more than 3,600 output tokens",
-    );
-    assert.ok(reviewContextRejects > 0, "review batches shrink when their input and reserved output cannot fit");
-
     const natural = await greetVenue((await enterVenue("park")).id);
     const naturalEnding = await sendVenueTurn({
       sessionId: natural.id,
@@ -3319,21 +2589,7 @@ async function main() {
       targetId: "bob",
       submissionId: "debug-memory",
     });
-    const reinforcedRecollection = (await readVillageState()).recollections.find((entry) =>
-      entry.sourceSubmissionIds.includes("debug-memory"),
-    );
-    const keptRecollectionId = reinforcedRecollection?.id;
-    assert.ok(keptRecollectionId, "an exact repeat reinforces the existing recollection with its evidence");
-    assert.ok((reinforcedRecollection?.reinforcementCount ?? 0) > 0);
-    assert.equal(
-      Date.parse(reinforcedRecollection?.expiresAt ?? "") - Date.parse(reinforcedRecollection?.lastReinforcedAt ?? ""),
-      24 * 60 * 60 * 1000,
-      "reinforcement refreshes the rolling 24-hour expiry",
-    );
-    assert.ok(
-      reinforcedRecollection?.evidence.some((source) => source.visitId === debugVisit.id),
-      "reinforcement preserves the new exact archive link",
-    );
+    const committedContinuity = (await readVillageState()).recollections;
     const reviewsBeforeDebugDiscard = reviewCalls;
     debugEnabled = true;
     await discardVenueVisitDebug(debugVisit.id);
@@ -3344,9 +2600,10 @@ async function main() {
       /no longer available/u,
       "DEBUG discard removes its transcript",
     );
-    assert.ok(
-      (await readVillageState()).recollections.some((entry) => entry.id === keptRecollectionId),
-      "DEBUG discard keeps already committed short-term continuity",
+    assert.deepEqual(
+      (await readVillageState()).recollections,
+      committedContinuity,
+      "DEBUG discard preserves committed continuity",
     );
     assert.equal(reviewCalls, reviewsBeforeDebugDiscard, "DEBUG discard intentionally performs no durable review");
     await proposeVenueChange("park", {
@@ -3793,8 +3050,6 @@ async function main() {
     const parkExterior = await enterVenue("park", "workplace", "", "outside");
     assert.equal(parkExterior.area, "outside", "a public Venue also supports an explicit exterior visit");
     await endVenueSession(parkExterior.id);
-    liveScenes = true;
-    legacyVisits = false;
     await mutateVillageState((state) => {
       for (const person of state.villagers)
         for (const block of person.agenda?.activeDay?.blocks ?? []) block.venueId = "park";

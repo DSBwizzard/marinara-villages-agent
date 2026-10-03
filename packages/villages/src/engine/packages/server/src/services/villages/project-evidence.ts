@@ -23,7 +23,7 @@ class ProjectEvidenceRejected extends VillagesRequestError {
 function projectFor(state: VillageState, projectId: string): VillageProject {
   const project = state.projects.find((entry) => entry.id === projectId && entry.lifecycle);
   if (!project?.lifecycle) throw notFound("That Project is unavailable.");
-  if (state.progressEngineVersion !== 1) throw conflict("This Village uses the earlier Project evidence path.");
+
   progressProject(state, project);
   if (projectProgressPhase(state, project) !== project.lifecycle.phase)
     throw conflict("Project phase and verified progress disagree. Check DEBUG: Progress before continuing.");
@@ -80,7 +80,6 @@ export async function recordProjectSpokenEvidence(projectId: string, value: unkn
     turn = await readProjectTurnEvidence(sessionId, submissionId);
   } catch (error) {
     await mutateVillageState((state) => {
-      if (state.progressEngineVersion !== 1) return;
       const project = state.projects.find((entry) => entry.id === projectId);
       const task = project && progressProject(state, project);
       const phase = task?.definition.phases[task.phaseIndex];
@@ -431,7 +430,7 @@ export async function processProjectSpeechTurn(sessionId: string, submissionId: 
       interpretationIndex,
     });
   const state = await readVillageState();
-  if (state.progressEngineVersion !== 1) return;
+
   const projects = state.projects.filter(
     (entry) => entry.lifecycle && entry.status !== "complete" && entry.status !== "abandoned",
   );

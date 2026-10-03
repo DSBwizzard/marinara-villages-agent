@@ -95,7 +95,7 @@ export function relationshipPrompt(village: VillageState, fromId: string): strin
   ].join("\n");
 }
 
-export function relationshipClosingNotices(
+export function relationshipChangeNotices(
   receipts: RelationshipReceipt[],
   state: RelationshipState,
   village: VillageState,

@@ -149,6 +149,9 @@ async function integration() {
     state.projects = [
       { id: "p", title: "Garden", status: "draft", lifecycle: { phase: "builder", affectedIds: [], requirements: [] } },
     ] as any;
+    state.progressTasks = [
+      { definition: { owner: { kind: "project", id: "p" }, revision: 1 }, transitions: [], resolvedAt: "" },
+    ] as any;
     const scene: any = {
       id: "scene",
       activeIds: ["a"],
@@ -164,7 +167,7 @@ async function integration() {
     );
     assert.equal(calls, 0, "explicit irrelevant routing makes zero verification requests");
     await interpretProjectDraft(scene, state, "Lovely weather today.", draft, ["a"], "two");
-    assert.equal(calls, 1, "old saved responses without routing keep the existing judge");
+    assert.equal(calls, 1, "supported saved responses without routing retain authoritative interpretation");
     assert.ok([...records.values()].some((r) => JSON.stringify(r.data).includes("Explicitly irrelevant")));
   } finally {
     release();

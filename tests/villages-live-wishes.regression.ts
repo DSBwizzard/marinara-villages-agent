@@ -208,7 +208,10 @@ async function main() {
     await processSavedExchange("s", "t");
     assert.equal(calls, 0, "disclosure adds no paid request");
     assert.ok((await readVillageState()).villagers[0].agenda?.wishes[0].learnedAt);
-    assert.equal((await readSceneChanges("s")).changes[0].notices[0]?.kind, "wish");
+    const sharedNotice = (await readSceneChanges("s")).notices.find((notice) => notice.kind === "wish")!;
+    assert.equal(sharedNotice.wishUpdate?.state, "revealed");
+    assert.equal(sharedNotice.detail, wish.wish);
+    assert.match(sharedNotice.text, /Wish shared/);
     const proposals = bindWishProposals(
       [{ actorId: "a", wishId: "company", intent: "check", evidence: ["player", 0] }],
       state,
@@ -225,6 +228,12 @@ async function main() {
     const current = await readVillageState();
     assert.equal(calls, 1, "one shared interpretation without condition preparation");
     assert.equal(current.villagers[0].agenda?.wishes.length, 0);
+    const fulfilledNotice = (await readSceneChanges("s")).notices.find(
+      (notice) => notice.wishUpdate?.state === "fulfilled",
+    )!;
+    assert.equal(fulfilledNotice.wishUpdate?.wishId, wish.id);
+    assert.equal(fulfilledNotice.detail, wish.wish);
+    assert.equal(records.get("villages-venue-visit-s").data.status, "active", "Wish chips arrive before Scene close");
     assert.equal(
       current.progressTasks.filter((task) => task.definition.owner.kind === "wish" && task.resolvedAt).length,
       1,

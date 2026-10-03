@@ -37,11 +37,9 @@ import {
   activeVenueSession,
   publicSceneResponse,
   continueVenueWithoutGreeting,
-  endVenueSessionWithReceipts,
   closeVenueSessionWithReceipts,
   leaveVenueSession,
   enterResidencePrivateSpace,
-  leaveVenueMemoryPending,
   enterVenue,
   greetVenue,
   listVenueVisitSummaries,
@@ -50,12 +48,10 @@ import {
   dismissSceneNotice,
   replaySceneChanges,
   retrySceneChangeInterpretation,
-  recheckRecentBuilderConversations,
   progressBacklog,
   deleteVenueVisit,
   deleteAllVenueVisits,
   setVenueVisitRetention,
-  backfillVenueMemories,
   resetVenueSessions,
   sendVenueTurn,
   touchVenueSession,
@@ -1021,18 +1017,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Body: { sessionId?: unknown } }>("/rooms/leave-pending", async (request, reply) => {
-    try {
-      return { session: await leaveVenueMemoryPending(readChatId(request.body?.sessionId)) };
-    } catch (error) {
-      return fail(reply, error, "leaving a venue with memory pending");
-    }
-  });
   app.get<{ Querystring: { venueId?: string; characterId?: string; offset?: string; limit?: string } }>(
     "/rooms/archive",
     async (request, reply) => {
       try {
-        await backfillVenueMemories();
         return await listVenueVisitSummaries({
           placeId: request.query?.venueId,
           characterId: request.query?.characterId,
@@ -1051,16 +1039,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading a Scene");
     }
   });
-  app.post<{ Params: { id: string }; Body: { retryOfAttemptId?: string } }>(
-    "/rooms/archive/:id/retry-memory",
-    async (request, reply) => {
-      try {
-        return await endVenueSessionWithReceipts(request.params.id, request.body?.retryOfAttemptId);
-      } catch (error) {
-        return fail(reply, error, "retrying venue memory");
-      }
-    },
-  );
   app.delete<{ Params: { id: string } }>("/rooms/archive/:id", async (request, reply) => {
     try {
       await deleteVenueVisit(request.params.id);
@@ -1558,7 +1536,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
   projectAction("place", placeNewVenueProject);
   projectAction("request-approval", (projectId) => requestProjectMailbox(projectId));
   projectAction("builder", lockProjectBuilder);
-  projectAction("recheck-builder", (projectId) => recheckRecentBuilderConversations(projectId));
   projectAction("requirements", (projectId) => acceptProjectRequirements(projectId));
   projectAction("deliver", deliverProjectMaterial);
   projectAction("start", (projectId) => startProjectConstruction(projectId));
@@ -1856,7 +1833,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // is one nobody turns on.
   app.get<{ Querystring: { offset?: string; limit?: string } }>("/story", async (request, reply) => {
     try {
-      await backfillVenueMemories();
       const entries = await buildVillageStory();
       const offset = Math.max(0, Number(request.query?.offset ?? 0) || 0);
       const limit = Math.min(100, Math.max(1, Number(request.query?.limit ?? 50) || 50));
@@ -1874,8 +1850,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
         ...(await buildVillageMemories()),
         archive: {
           total: archive.total,
-          pendingReviewCount: archive.visits.filter((visit) => visit.memoryPending).length,
-          pendingReviewId: archive.visits.find((visit) => visit.memoryPending)?.id ?? "",
           recent: archive.visits.slice(0, 6),
         },
       };

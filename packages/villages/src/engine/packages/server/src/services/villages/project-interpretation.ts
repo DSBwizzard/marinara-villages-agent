@@ -1,23 +1,6 @@
 import { renovationTerms } from "./project-lifecycle.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import type { VillageState } from "./types.js";
-import { createHash } from "node:crypto";
-export const legacyProjectRevision = (project: VillageState["projects"][number]) =>
-  Number.parseInt(
-    createHash("sha256")
-      .update(
-        JSON.stringify({
-          id: project.id,
-          title: project.title,
-          venueDraft: project.venueDraft,
-          change: project.lifecycle?.change,
-          builder: project.lifecycle?.builderId,
-        }),
-      )
-      .digest("hex")
-      .slice(0, 10),
-    16,
-  );
 
 /** Semantic proposals are weaker than physical evidence. Never interpret stock or construction. */
 export type ProjectSpeechContext = { projectId: string; revision: number; phase: string };
@@ -46,13 +29,7 @@ export function projectSpeechContexts(
     const task = state.progressTasks.find(
       (entry) => entry.definition.owner.kind === "project" && entry.definition.owner.id === project.id,
     );
-    if (
-      !flow ||
-      (state.progressEngineVersion === 1 && (!task || task.resolvedAt)) ||
-      project.status === "abandoned" ||
-      !activeIds.length
-    )
-      return [];
+    if (!flow || !task || task.resolvedAt || project.status === "abandoned" || !activeIds.length) return [];
     const relevant =
       flow.phase === "approval"
         ? flow.affectedIds.some((id) => activeIds.includes(id))
@@ -65,7 +42,7 @@ export function projectSpeechContexts(
       ? [
           {
             projectId: project.id,
-            revision: state.progressEngineVersion === 1 ? task!.definition.revision : legacyProjectRevision(project),
+            revision: task!.definition.revision,
             phase: flow.phase,
           },
         ]

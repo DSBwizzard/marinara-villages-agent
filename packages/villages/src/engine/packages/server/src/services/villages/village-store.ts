@@ -162,7 +162,7 @@ export function defaultVillageState(): VillageState {
     wishKnowledge: {},
     projectWishOutbox: [],
     wishRefillIntents: {},
-    progressEngineVersion: 0,
+    progressEngineVersion: 1,
     name: "Willowbrook",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
@@ -193,7 +193,6 @@ export function defaultVillageState(): VillageState {
     },
     venueEvents: [],
     visitRetention: { mode: "forever", value: 0 },
-    visitMemoryBackfilled: false,
     residences: [],
     // Empty means "not founded yet", which is what opens the setup wizard. It
     // is stamped only by the setup route, never by `mutateVillageState`, so a
@@ -2371,6 +2370,8 @@ function coerceVenueMail(value: unknown): VillageVenueMail[] {
 
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
+  if (raw.progressEngineVersion === 0)
+    throw new Error("This Village uses a retired Project engine format. No data was migrated or reset.");
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
@@ -2405,7 +2406,7 @@ export function coerceVillageState(value: unknown): VillageState {
           : [];
       }),
     ),
-    progressEngineVersion: raw.progressEngineVersion === 1 ? 1 : 0,
+    progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
@@ -2442,7 +2443,6 @@ export function coerceVillageState(value: unknown): VillageState {
         return { mode: "days" as const, value };
       return { mode: "forever" as const, value: 0 };
     })(),
-    visitMemoryBackfilled: raw.visitMemoryBackfilled === true,
     residences: coerceResidences(raw.residences),
     // Left empty rather than stamped with "now": a record that predates the
     // setup flow should open the wizard, not claim it has been set up.

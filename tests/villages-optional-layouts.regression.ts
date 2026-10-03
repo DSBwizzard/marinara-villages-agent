@@ -198,6 +198,8 @@ async function finish(id: string, body: unknown = {}) {
   await mutateVillageState((state) => {
     const project = state.projects.find((project) => project.id === id)!;
     project.lifecycle!.phase = "finishing";
+    const task = state.progressTasks.find((task) => task.definition.owner.id === id)!;
+    task.phaseIndex = task.definition.phases.findIndex((phase) => phase.id === "finishing");
     project.status = "finishing";
   });
   await openFinishedProject(id, body);

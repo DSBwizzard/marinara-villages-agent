@@ -383,6 +383,8 @@ async function finishProject(projectId: string) {
     const project = state.projects.find((entry) => entry.id === projectId)!;
     project.lifecycle!.phase = "finishing";
     project.status = "finishing";
+    const task = state.progressTasks.find((entry) => entry.definition.owner.id === projectId)!;
+    task.phaseIndex = task.definition.phases.findIndex((phase) => phase.id === "finishing");
   });
   await openFinishedProject(projectId, {});
 }
