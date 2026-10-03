@@ -395,6 +395,11 @@ async function main() {
       ).entities.includes("library"),
     );
     const destination = { ...block, venueId: "library", zoneId: "exterior" };
+    assert.notEqual(
+      validateRoutineDay([{ ...destination, zoneId: undefined }], resident, access)[0]!.zoneId,
+      "exterior",
+      "unspecified routine destinations resolve to an appropriate accessible Zone",
+    );
     access.venues[0]!.constructionStatus = "worksite";
     assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
     const crowd = coerceVillageState({

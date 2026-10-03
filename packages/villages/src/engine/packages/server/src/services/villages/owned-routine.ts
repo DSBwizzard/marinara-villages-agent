@@ -1,5 +1,5 @@
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canOccupyZone, venueZones, zoneClosed, chooseAgendaZone } from "./venue-zones.js";
 import type { NativeWeekSchedule } from "./native-schedules.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "./types.js";
 
@@ -483,7 +483,11 @@ export function validateRoutineDay(
   return blocks.map((block) => {
     if (!block.venueId) return block;
     const venue = state.venues.find((item) => item.id === block.venueId);
-    const zone = venue && venueZones(venue).find((item) => item.id === (block.zoneId || "exterior"));
+    const zone =
+      venue &&
+      (block.zoneId
+        ? venueZones(venue).find((item) => item.id === block.zoneId)
+        : chooseAgendaZone(venue, resident.characterId, block.activity, "", state));
     if (
       !venue ||
       !zone ||
