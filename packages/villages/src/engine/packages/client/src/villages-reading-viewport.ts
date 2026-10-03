@@ -85,8 +85,11 @@ export function useReadingPages(text: string, readingKey: string, readingRef: Re
         Number.parseFloat(host.style.getPropertyValue("--villages-scene-canvas-height")) || host.clientHeight;
       const lines = Math.max(
         1,
-        Math.min(5, Math.floor((canvasHeight * 0.2) / lineHeight), Math.floor((canvasHeight - 230) / lineHeight)),
+        // Leave room for the fixed controls and visible faces in short landscape Scenes.
+        Math.min(3, Math.floor((canvasHeight * 0.2) / lineHeight), Math.floor((canvasHeight - 300) / lineHeight)),
       );
+      if (mobile) host.style.setProperty("--villages-reading-page-height", `${lines * lineHeight}px`);
+      else host.style.removeProperty("--villages-reading-page-height");
       const nextSignature = [mobile, reading.clientWidth, style.font, style.letterSpacing, lines].join(":");
       if (nextSignature === signature) return;
       signature = nextSignature;
@@ -94,37 +97,22 @@ export function useReadingPages(text: string, readingKey: string, readingRef: Re
       measure.classList.add(tag + "-reading-measure");
       measure.setAttribute("aria-hidden", "true");
       measure.style.width = `${reading.clientWidth - parseFloat(getComputedStyle(reading).paddingRight || "0")}px`;
-      measure.append(measurementNodes(nodes));
       reading.append(measure);
-      const leafNodes: Text[] = [];
-      const walker = document.createTreeWalker(measure, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) leafNodes.push(walker.currentNode as Text);
-      const endpoint = (position: number): [Node, number] => {
-        for (const node of leafNodes) {
-          if (position <= node.length) return [node, position];
-          position -= node.length;
-        }
-        return [measure, measure.childNodes.length];
-      };
-      const probe = measure.cloneNode(false) as HTMLParagraphElement;
-      measure.parentElement!.append(probe);
       let measured: ReadingPage[];
       try {
         measured = mobile
           ? paginateReading(
               nodes,
               (start, end) => {
-                const range = document.createRange();
-                range.setStart(...endpoint(start));
-                range.setEnd(...endpoint(end));
-                probe.replaceChildren(range.cloneContents());
-                return probe.getBoundingClientRect().height <= lines * lineHeight + 1;
+                // Range.cloneContents drops a shared enclosing <strong>/<em>.
+                // Measure the same formatted slice that the page will render.
+                measure.replaceChildren(measurementNodes(sliceReadingNodes(nodes, start, end)));
+                return measure.getBoundingClientRect().height <= lines * lineHeight + 1;
               },
               /^ {0,3}(?:`{3,}|~{3,})/mu.test(text),
             )
           : [{ start: 0, end: length }];
       } finally {
-        probe.remove();
         measure.remove();
       }
       const previous = anchor.current;

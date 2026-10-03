@@ -113,6 +113,12 @@ try {
     const dock = page.locator(`.${tag}-chat-vn`);
     const tray = page.getByRole("button", { name: /village notice/ });
     await expect(reading).toBeVisible();
+    await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
+    if (mobile) {
+      const scene = await page.locator(`.${tag}-room-screen`).boundingBox();
+      const input = await page.locator(`.${tag}-chat-input`).boundingBox();
+      assert.ok(Math.abs(scene.y + scene.height - input.y - input.height) < 1, "actual composer touches Scene bottom");
+    }
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByLabel("Village events")).toBeVisible();
     events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
@@ -121,11 +127,12 @@ try {
     await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
     if (mobile) {
-      await expect(counter).toContainText("page 1/");
+      await expect(counter).toContainText("Page 1/");
       await previous.click();
       await expect(text).toHaveText("A quiet afternoon.");
+      await expect(counter).toHaveText("Paragraph 1/2");
       await next.click();
-      await expect(counter).toContainText("page 1/");
+      await expect(counter).toContainText("Page 1/");
       assert.equal((await page.locator(`.${tag}-chat-vn-portrait`).boundingBox()).width, 32);
       assert.ok((await reading.boundingBox()).width > width - 48, "text spans the card width");
       await draft.fill("Preserve this draft");
@@ -141,6 +148,15 @@ try {
       let combined = "",
         pageCount = 0;
       do {
+        await expect(counter).toContainText(`Page ${pageCount + 1}/`);
+        const rendered = await text.evaluate((el) => ({
+          height: el.getBoundingClientRect().height,
+          line: parseFloat(getComputedStyle(el).lineHeight),
+        }));
+        assert.ok(
+          rendered.height <= 3 * rendered.line + 1,
+          `at most three rendered dialogue lines (${width}x${height}, page ${pageCount + 1}, ${JSON.stringify(rendered)}, ${await text.textContent()})`,
+        );
         combined += await text.textContent();
         assert.ok(await text.locator("strong").count(), "bold survives each page boundary");
         assert.ok(
@@ -188,7 +204,7 @@ try {
       }
       await page.screenshot({ path: `artifacts/compact-scene-active-${width}x${height}.png` });
     } else {
-      await expect(counter).not.toContainText("page");
+      await expect(counter).not.toContainText("Page");
       assert.equal(await text.textContent(), expected);
       await expect(page.getByRole("button", { name: "Hide dialogue", exact: true })).toBeHidden();
     }

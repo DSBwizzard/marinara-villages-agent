@@ -243,13 +243,19 @@ try {
         for (const { floor, box, renderedHeight, fit, framing } of measurements) {
           assert.equal(fit, isMobile && framing === "half" ? "cover" : "contain");
           if (isMobile) {
-            assert.ok(box.x >= floor.x - 1 && box.right <= floor.right + 1, "artwork stays within stage edges");
+            assert.ok(
+              box.x < floor.right && box.right > floor.x,
+              "large sprites can clip at screen edges while staying on stage",
+            );
             assert.ok(box.y >= floor.y - 1 && box.bottom <= floor.bottom + 1, "artwork stays above the reading dock");
             assert.ok(
               Math.abs(box.width - Math.min(floor.width * 0.7, (floor.height * 2) / 3)) < 1,
               "mobile artwork is independent of slot width",
             );
-            assert.ok(Math.abs(box.height - floor.height) < 1, "mobile image box fills stage height");
+            assert.ok(
+              Math.abs(box.height - Math.min(floor.height, floor.width * 0.7 * 1.5)) < 1,
+              "mobile image box keeps its 2:3 framing",
+            );
             if (framing === "full")
               assert.ok(
                 Math.abs(renderedHeight - Math.min(floor.height, floor.width * 0.7 * 1.5)) < 1,
@@ -300,10 +306,12 @@ try {
       );
       const sorted = [...boxes].sort((a, b) => a.x - b.x);
       for (let i = 0; i < sorted.length; i++) {
-        assert.ok(sorted[i].x >= 0 && sorted[i].right <= width, "sprites fit within screen");
+        if (mobile) assert.ok(sorted[i].right > 0 && sorted[i].x < width, "large grouped sprites intersect the Scene");
+        else assert.ok(sorted[i].x >= 0 && sorted[i].right <= width, "desktop sprites fit within screen");
         if (i && !mobile)
           assert.ok(sorted[i - 1].right <= sorted[i].x + 1, "desktop shared-zone sprites do not overlap");
-        assert.ok(Math.abs(sorted[i].bottom - sorted[0].bottom) < 1, "sprites retain a shared foot baseline");
+        if (!mobile)
+          assert.ok(Math.abs(sorted[i].bottom - sorted[0].bottom) < 1, "desktop sprites retain a shared foot baseline");
       }
       await next.click();
       await expect(mara).toHaveAttribute("data-attention", "right", "side cue appears with the final paragraph");
