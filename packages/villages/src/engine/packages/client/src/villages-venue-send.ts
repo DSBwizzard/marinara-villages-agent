@@ -37,7 +37,8 @@ export function sceneResend(
   input: SceneSendInput,
   submissionId: string,
 ): { submissionId: string; retryOfAttemptId?: string; replaceOfOperationId?: string } {
-  if (!saved?.input || (saved.status === "complete" && !saved.error)) return { submissionId };
+  if (!saved?.input || (saved.status === "complete" && (!saved.error || saved.kind === "change-interpretation")))
+    return { submissionId };
   if (saved.status === "running") throw new Error("This Scene is still responding. Your draft is preserved.");
   const prior = saved.input;
   const same =

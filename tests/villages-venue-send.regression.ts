@@ -47,6 +47,16 @@ assert.deepEqual(sceneResend({ ...saved, status: "complete", error: "invalid-jso
   submissionId: "original",
   retryOfAttemptId: "attempt",
 });
+for (const mode of ["chat", "leave", "contact"])
+  assert.deepEqual(
+    sceneResend(
+      { ...saved, kind: "change-interpretation", status: "complete", error: "Invalid background retry.", input: {} },
+      { message: "My next reply", mode },
+      "next",
+    ),
+    { submissionId: "next" },
+    "A failed completed interpretation cannot block a new Scene operation",
+  );
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
 assert.throws(() => sceneResend(saved, { ...saved.input, mode: "contact" }, "new"), /edits are preserved/);
 assert.equal(shouldSubmitVenueKey("Enter", true, false), false, "Shift Enter inserts a line break");

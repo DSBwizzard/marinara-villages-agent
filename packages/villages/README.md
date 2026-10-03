@@ -1,5 +1,7 @@
 # Villages
 
+Completed failed Wish interpretations no longer block the next Scene reply. Explicit Wish retries use valid idempotency keys and remain visible in Scene diagnostics. Wish checks request compact output within the existing token allowance; truncated results report the output-limit failure and require deliberate retry. Saved dialogue and other committed exchange changes remain available.
+
 The [Scene actions release record](SCENE_ACTIONS_CHANGELOG.md) documents exactly what 0.6.140 changes, its before/after measurements, and the ownership changes still deferred.
 
 ## Villages-owned Agendas

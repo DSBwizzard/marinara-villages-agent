@@ -1096,7 +1096,12 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
       : (relationshipState?.noticeSequence ?? afterRelationship);
   const backgroundChecks = (await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-work"))
     .map((record) => asRecord(record.data))
-    .filter((job) => job.seed === village.seed && String(job.subjectId).startsWith(`wish-change:${id}:`))
+    .filter(
+      (job) =>
+        job.seed === village.seed &&
+        job.kind === "wish-check" &&
+        (asRecord(job.input).sceneId === id || String(job.subjectId).startsWith(`wish-change:${id}:`)),
+    )
     .slice(0, 50)
     .map((job) => ({
       id: job.id,
@@ -1274,7 +1279,13 @@ async function retrySceneChangeInterpretationOnce(
         for (const record of failed) {
           const job = asRecord(record.data);
           await outsideVenueOperation(() =>
-            retryBackgroundJob(record.id, Number(job.attempt), action + ":" + String(job.attempt)),
+            retryBackgroundJob(
+              record.id,
+              Number(job.attempt),
+              createHash("sha256")
+                .update(JSON.stringify([action, record.id, job.attempt]))
+                .digest("hex"),
+            ),
           );
         }
         return true;
