@@ -16,15 +16,18 @@ export function substantiveContact(lines: readonly RelationshipEvidenceLine[], f
   const meaningful = (line: RelationshipEvidenceLine) => {
     const text = line.content.trim().replace(/^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening))\b[,!.\s]*/iu, "");
     return (
-      text.split(/\s+/u).length >= 4 &&
-      !/^(?:(?:it['’]s |it is )?(?:good|nice|lovely) to (?:see|meet) you(?: again| today)?|how (?:are you(?: doing| feeling)?|is your day)(?: today)?|(?:I['’]m|I am) (?:doing |feeling )?(?:well|fine|good)(?:,? (?:thanks|thank you))?|bye|goodbye|thanks|thank you)[.!?\s]*$/iu.test(
+      /\p{L}|\p{N}/u.test(text) &&
+      !/^(?:(?:it['’]s |it is )?(?:good|nice|lovely) to (?:see|meet) you(?: again| today)?|how (?:are you(?: doing| feeling)?|is your day)(?: today)?|(?:I['’]m|I am) (?:doing |feeling )?(?:well|fine|good)(?:,? (?:thanks|thank you))?|bye|goodbye|thanks|thank you|yes|no|okay|ok|sure|right|hmm|uh|um)[.!?\s]*$/iu.test(
         text,
       )
     );
   };
   return (
     lines.some(
-      (line) => speaker(line) === fromId && meaningful(line) && (toId !== "player" || line.playerHeard !== false),
+      (line) =>
+        speaker(line) === fromId &&
+        meaningful(line) &&
+        (toId === "player" ? line.playerHeard !== false : line.heardBy.includes(toId)),
     ) && lines.some((line) => speaker(line) === toId && meaningful(line) && line.heardBy.includes(fromId))
   );
 }
@@ -180,4 +183,48 @@ export function parseRelationshipReview(
     });
   }
   return result;
+}
+
+export type RelationshipProposalRejection = {
+  kind: "changes" | "permissions" | "disclosures";
+  index: number;
+  reason: string;
+};
+/** Use the same authority validator per row so a bad citation cannot erase valid siblings. */
+export function parseRelationshipProposals(
+  value: unknown,
+  sourceId: string,
+  lines: readonly RelationshipEvidenceLine[],
+  village: VillageState,
+  bind: (row: Record<string, unknown>, kind: RelationshipProposalRejection["kind"]) => Record<string, unknown> = (
+    row,
+  ) => row,
+) {
+  const raw = asRecord(value),
+    review = emptyRelationshipReview(),
+    rejections: RelationshipProposalRejection[] = [],
+    seen = new Set<string>();
+  for (const kind of ["changes", "permissions", "disclosures"] as const) {
+    const rows = raw[kind];
+    if (!Array.isArray(rows) || rows.length > 16) throw new Error("Relationship proposals missing or incomplete");
+    rows.forEach((value, index) => {
+      try {
+        const parsed = parseRelationshipReview(
+          { ...emptyRelationshipReview(), [kind]: [bind(asRecord(value), kind)] },
+          sourceId,
+          lines,
+          village,
+        );
+        const row = parsed[kind][0];
+        if (!row || seen.has(row.id)) throw new Error("Repeated relationship evidence in this exchange");
+        seen.add(row.id);
+        if (kind === "changes") review.changes.push(...parsed.changes);
+        else if (kind === "permissions") review.permissions.push(...parsed.permissions);
+        else review.disclosures.push(...parsed.disclosures);
+      } catch (error) {
+        rejections.push({ kind, index, reason: String(error).replace(/^Error: /u, "") });
+      }
+    });
+  }
+  return { review, rejections };
 }

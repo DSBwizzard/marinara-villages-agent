@@ -1,3 +1,4 @@
+import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
 import type { VenueScene } from "./venue-session.js";
@@ -5,7 +6,11 @@ import type { VillageChronicleEntry, VillageMemoryCategory } from "./types.js";
 import type { DomainProcessing } from "./exchange-processing.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 import { mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
-import { parseRelationshipReview, substantiveContact, RELATIONSHIP_REVIEW_INSTRUCTION } from "./relationship-review.js";
+import {
+  parseRelationshipProposals,
+  substantiveContact,
+  RELATIONSHIP_REVIEW_INSTRUCTION,
+} from "./relationship-review.js";
 import { captureRelationshipKnowledge } from "./relationships.js";
 import type { RelationshipEvidenceLine } from "./relationship-types.js";
 import { deriveVillageMoment } from "./village-clock.js";
@@ -164,7 +169,8 @@ export async function processLiveMemories(scene: VenueScene, submissionId: strin
             kind = row.kind;
           if (!["passing", "durable", "reinforce", "supersede"].includes(String(kind)))
             throw new Error("Invalid memory kind");
-          const text = typeof row.text === "string" ? row.text.trim().slice(0, 600) : "";
+          const text = typeof row.text === "string" ? row.text.trim() : "";
+          if (text.length > MAX_MEMORY_LENGTH) throw new Error("Memory exceeds the saved text limit");
           const subjects = ids(row.subjectCharacterIds),
             knowers = ids(row.knownByCharacterIds);
           lineIds = refs(row.evidence, proposals);
@@ -329,17 +335,15 @@ export async function processLiveRelationships(
   if (!proposals) throw new Error("Relationship proposals missing; explicit interpretation retry required");
   const raw = asRecord(proposals.relationshipChanges),
     lines = liveEvidence(scene, proposals);
-  const mapped = Object.fromEntries(
-    ["changes", "permissions", "disclosures"].map((key) => {
-      const rows = raw[key];
-      if (!Array.isArray(rows) || rows.length > 16) throw new Error("Relationship proposals missing or incomplete");
-      return [key, rows.map((value) => ({ ...asRecord(value), lineIds: refs(asRecord(value).lineIds, proposals) }))];
-    }),
-  );
   const village = await readVillageState();
   if (village.seed !== scene.villageSeed) throw new Error("Village identity changed");
-  const review = parseRelationshipReview(mapped, scene.id + ":" + turn.id, lines, village);
-  const actors = ["player", ...village.villagers.map((person) => person.characterId)];
+  const { review, rejections } = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, village, (row) => ({
+    ...row,
+    lineIds: refs(row.lineIds, proposals),
+  }));
+  const actors = [...new Set(lines.map((line) => (line.role === "user" ? "player" : line.speakerId)))].filter(
+    (id) => id === "player" || village.villagers.some((person) => person.characterId === id),
+  );
   for (const fromId of actors.filter((id) => id !== "player"))
     for (const toId of actors) {
       if (fromId === toId || !substantiveContact(lines, fromId, toId)) continue;
@@ -358,7 +362,13 @@ export async function processLiveRelationships(
       });
     }
   const receiptIds = [...review.changes, ...review.permissions, ...review.disclosures].map((row) => row.id);
-  if (!receiptIds.length) return { reason: "No relationship changes or substantive contact", receiptIds };
+  if (!receiptIds.length)
+    return {
+      status: rejections.length ? "rejected" : "applied",
+      reason: rejections.length ? "Relationship proposals rejected" : "No relationship changes or substantive contact",
+      receiptIds,
+      rejectedProposals: rejections,
+    };
   await mutateRelationships(village.seed, (state) => {
     applyRelationshipReview(state, review, village, scene.id, turn.at);
     for (const id of receiptIds) {
@@ -371,5 +381,5 @@ export async function processLiveRelationships(
     }
     captureRelationshipKnowledge(state, village);
   });
-  return { reason: "Cited relationship proposals applied", receiptIds };
+  return { reason: "Cited relationship proposals applied", receiptIds, rejectedProposals: rejections };
 }

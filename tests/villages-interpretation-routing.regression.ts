@@ -167,8 +167,18 @@ async function integration() {
     );
     assert.equal(calls, 0, "explicit irrelevant routing makes zero verification requests");
     await interpretProjectDraft(scene, state, "Lovely weather today.", draft, ["a"], "two");
-    assert.equal(calls, 1, "supported saved responses without routing retain authoritative interpretation");
-    assert.ok([...records.values()].some((r) => JSON.stringify(r.data).includes("Explicitly irrelevant")));
+    assert.equal(calls, 0, "Unrelated exchanges without routing are locally irrelevant");
+    assert.equal(records.size, 0, "Local relevance skips create no interpretation records");
+    await interpretProjectDraft(
+      scene,
+      state,
+      "Will you build Garden?",
+      [{ ...draft[0], content: "Yes, I will build it." }],
+      ["a"],
+      "three",
+    );
+    assert.equal(calls, 1, "Relevant implicit commitments without routing retain authoritative interpretation");
+    assert.ok(records.size > 0, "Relevant checks retain bounded diagnostics");
   } finally {
     release();
     globalThis.fetch = fetchBefore;

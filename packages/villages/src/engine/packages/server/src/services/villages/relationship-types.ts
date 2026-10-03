@@ -113,6 +113,7 @@ export type SocialPlan = {
   status: "planned" | "completed" | "cancelled";
 };
 export type SocialEncounter = {
+  rejectedProposals?: import("./relationship-review.js").RelationshipProposalRejection[];
   id: string;
   at: string;
   venueId: string;

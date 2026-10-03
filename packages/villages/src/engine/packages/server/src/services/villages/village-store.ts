@@ -1,3 +1,4 @@
+import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
 import { coerceSpriteManager, managerResidentSprite } from "./sprite-manager-model.js";
 import { venueResidentIds } from "./venue-model.js";
 import { assertVenueOwnership } from "./venue-coordinator.js";
@@ -1486,7 +1487,7 @@ function coerceChronicleActor(value: unknown): VillageChronicleActor | null {
  */
 function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronicleEntry | null {
   const raw = asRecord(value);
-  const text = boundText(raw.text, MAX_CHRONICLE_LENGTH);
+  const text = boundText(raw.text, MAX_MEMORY_LENGTH);
   if (text.length === 0) return null;
   const scope = raw.scope === "private" ? "private" : "village";
   const actors = Array.isArray(raw.actors)
@@ -1565,7 +1566,7 @@ function coerceRecollections(value: unknown): VillageRecollection[] {
       const raw = asRecord(value);
       const id = asTrimmedString(raw.id);
       const visitId = asTrimmedString(raw.visitId);
-      const text = boundText(raw.text, MAX_CHRONICLE_LENGTH);
+      const text = boundText(raw.text, MAX_MEMORY_LENGTH);
       const occurredAt = asIsoString(raw.occurredAt) ?? "";
       const expiresAt = asIsoString(raw.expiresAt) ?? "";
       const subjectCharacterIds = [...new Set(asStringArray(raw.subjectCharacterIds).filter(Boolean))];

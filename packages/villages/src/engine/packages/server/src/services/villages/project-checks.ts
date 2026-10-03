@@ -101,6 +101,67 @@ export function applyRecordedProjectPickup(
   return true;
 }
 
+const projectReferenceWords = (text: string) =>
+  [
+    ...new Set(
+      text
+        .normalize("NFKC")
+        .toLocaleLowerCase()
+        .match(/[\p{L}\p{N}]+/gu) ?? [],
+    ),
+  ].filter(
+    (word) =>
+      word.length > 2 &&
+      !/^(?:the|and|for|with|new|venue|project|build|building|room|place|space|work|this|that|our|your|from|will|would|can|could|need|needs)$/u.test(
+        word,
+      ),
+  );
+/** A relevance gate admits interpretation, never an approval, commitment or physical effect. */
+export function projectExchangeRelevant(
+  scene: VenueScene,
+  project: VillageState["projects"][number],
+  revision: number,
+  actor: string,
+  message: string,
+  draft: readonly { speakerId: string; content: string }[],
+): boolean {
+  const speech = draft
+    .filter((line) => line.speakerId === actor)
+    .map((line) => line.content)
+    .join(" ");
+  const current = (message + " " + speech).normalize("NFKC").toLocaleLowerCase();
+  const words = new Set(current.match(/[\p{L}\p{N}]+/gu) ?? []);
+  const title = project.title.normalize("NFKC").toLocaleLowerCase();
+  if (
+    (title && current.includes(title)) ||
+    words.has(project.id.toLocaleLowerCase()) ||
+    projectReferenceWords(project.title).some((word) => words.has(word))
+  )
+    return true;
+  const detail = project.lifecycle?.change?.detail ?? project.venueDraft?.description ?? "";
+  if (projectReferenceWords(detail).filter((word) => words.has(word)).length >= 2) return true;
+  if (
+    project.lifecycle?.phase === "requirements" &&
+    project.lifecycle.builderId === actor &&
+    (/^what\b[^?]*\b(?:need|require|materials|requirements)\b/iu.test(message.trim()) ||
+      /\b(?:checklist|requirements|structure|equipment|finish)\b/iu.test(speech))
+  )
+    return true;
+  const prior = scene.submissions.at(-1);
+  const contexts = (prior?.projectContexts ?? []).filter(
+    (context) => context.revision === revision && context.phase === project.lifecycle?.phase,
+  );
+  const bound = contexts.some((context) => context.projectId === project.id);
+  const continuation =
+    !message.trim() ||
+    /^(?:and |what (?:else|about|materials|requirements)|anything else|go on|tell me more|continue|yes|no|okay|sure)|\b(?:build|construct|renovate|approve|checklist|requirements|structure|equipment|finish(?:ing)?)\b/iu.test(
+      message,
+    );
+  const question = /[?]|\b(?:can|could|would|will|what|which|do|shall)\b/iu.test(prior?.message ?? "");
+  const priorWords = new Set((prior?.message ?? "").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+  const identified = projectReferenceWords(project.title).some((word) => priorWords.has(word));
+  return bound && continuation && (contexts.length === 1 || (question && identified));
+}
 /** Discover from live task phases and actual speakers, never from a positive score or a keyword list. */
 export function projectInterpretationChecks(
   scene: VenueScene,
@@ -128,6 +189,12 @@ export function projectInterpretationChecks(
     const project = village.projects.find((entry) => entry.id === context.projectId)!;
     const flow = project.lifecycle!;
     return speakers.flatMap((actor) => {
+      if (
+        !["approval", "builder", "requirements"].includes(flow.phase) &&
+        !(flow.phase === "construction" && project.status === "blocked")
+      )
+        return [];
+      if (!projectExchangeRelevant(scene, project, context.revision, actor, message, draft)) return [];
       const kind =
         flow.phase === "approval"
           ? "approval"

@@ -197,6 +197,29 @@ async function main() {
       ).error,
       /unknown/,
     );
+    const naturalLines = structuredClone(lines);
+    naturalLines[1].content = "I would like to sit in the garden and agree on a planting day.";
+    assert.equal(
+      bindWishProposals(
+        [{ actorId: "a", wishId: "company", intent: "reveal", evidence: [0] }],
+        state,
+        naturalLines as any,
+        "p",
+        ["r"],
+      ).error,
+      "",
+      "Would like is a natural disclosure",
+    );
+    naturalLines[1].content = "If we had time, perhaps I would ask for a garden.";
+    assert.ok(
+      bindWishProposals(
+        [{ actorId: "a", wishId: "company", intent: "reveal", evidence: [0] }],
+        state,
+        naturalLines as any,
+        "p",
+        ["r"],
+      ).error,
+    );
     const reveal = bindWishProposals(
       [{ actorId: "a", wishId: "company", intent: "reveal", evidence: [0] }],
       state,

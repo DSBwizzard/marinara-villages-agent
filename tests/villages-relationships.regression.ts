@@ -781,12 +781,21 @@ async function main() {
       },
     },
   };
+  entry.proposal.encounter.relationshipReview.changes.push({
+    ...entry.proposal.encounter.relationshipReview.changes[0],
+    fromId: "absent",
+  } as any);
   await processSocialOutbox({ ...village, socialOutbox: [entry] });
   await processSocialOutbox({ ...village, socialOutbox: [entry] });
   const settledSocial = await readRelationshipState(village.seed);
   assert.equal(relationshipFor(settledSocial, "Rosa", "Ives").warmth, 2);
   assert.equal(relationshipFor(settledSocial, "Ives", "Rosa").familiarity, 1);
   assert.equal(settledSocial.socialEncounters.length, 1, "typed encounter replays once");
+  assert.equal(
+    settledSocial.socialEncounters[0].rejectedProposals?.length,
+    1,
+    "Invalid background row leaves valid siblings committed",
+  );
   await processSocialOutbox({ ...village, storyPace: "off", socialOutbox: [{ ...entry, id: "off" }] });
   assert.equal((await readRelationshipState(village.seed)).socialEncounters.length, 1);
   await processSocialOutbox({
