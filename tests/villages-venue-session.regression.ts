@@ -2171,7 +2171,7 @@ async function main() {
     assert.doesNotMatch(lastVenueSystem, /a ceiling drip|water drips from the ceiling/u);
     assert.ok((await activeVenueSession())!.recap.length <= 600, "long visits keep a bounded recap");
     assert.ok(
-      JSON.parse(lastVenueSystem.split("Earlier evidence: ")[1]!.split("\nExisting memories:")[0]!).length <= 18,
+      JSON.parse(lastVenueSystem.split("Earlier evidence: ")[1]!.split("\n\n##")[0]!).length <= 18,
       "long visits send only a bounded recent transcript",
     );
     const beforeReplay = calls;

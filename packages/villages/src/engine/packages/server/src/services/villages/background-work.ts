@@ -1,3 +1,4 @@
+import { measurePipeline } from "./pipeline-metrics.js";
 import { agendaRequestCount, translationRequestCount, remainingRequests } from "./generation-budgets.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { asRecord } from "./coerce.js";
@@ -330,6 +331,9 @@ export function queueBackgroundJob(work: BackgroundInput): Promise<void> {
   return task;
 }
 async function runJob(id: string): Promise<void> {
+  return measurePipeline("background work", { jobId: id }, () => runMeasuredJob(id));
+}
+async function runMeasuredJob(id: string): Promise<void> {
   let job = await readJob(id);
   if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
   const runOwner = owner;

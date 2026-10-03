@@ -4,7 +4,7 @@ import { asRecord } from "./coerce.js";
 import type { VenueScene } from "./venue-session.js";
 import type { VillageChronicleEntry, VillageMemoryCategory } from "./types.js";
 import type { DomainProcessing } from "./exchange-processing.js";
-import { mutateVillageState, readVillageState } from "./village-store.js";
+import { mutateVillageState, readVillageState, readVillageAuthority } from "./village-store.js";
 import { mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
 import {
   parseRelationshipProposals,
@@ -114,6 +114,16 @@ export function liveEvidence(scene: VenueScene, proposals: LiveExchangeProposals
       playerHeard: !line.contactHidden && (line.kind !== "whisper" || line.targetId === "player"),
     }));
 }
+export type LiveEvidenceContext = {
+  lines: readonly RelationshipEvidenceLine[];
+  byId: ReadonlyMap<string, RelationshipEvidenceLine>;
+};
+export function createLiveEvidenceContext(scene: VenueScene, proposals: LiveExchangeProposals): LiveEvidenceContext {
+  const lines = Object.freeze(
+    liveEvidence(scene, proposals).map((line) => Object.freeze({ ...line, heardBy: [...line.heardBy] })),
+  );
+  return Object.freeze({ lines, byId: new Map(lines.map((line) => [line.id, line])) });
+}
 function refs(value: unknown, proposals: LiveExchangeProposals): string[] {
   if (!Array.isArray(value) || !value.length) throw new Error("Required cited evidence absent");
   return [
@@ -137,15 +147,18 @@ const ids = (value: unknown): string[] =>
   Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && !!id))] : [];
 const sameIds = (a: string[], b: string[]) => [...a].sort().join("\n") === [...b].sort().join("\n");
 
-export async function processLiveMemories(scene: VenueScene, submissionId: string): Promise<Partial<DomainProcessing>> {
+export async function processLiveMemories(
+  scene: VenueScene,
+  submissionId: string,
+  context?: LiveEvidenceContext,
+): Promise<Partial<DomainProcessing>> {
   const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
   const proposals = turn.liveProposals;
   if (!proposals || !Array.isArray(proposals.memoryChanges))
     throw new Error("Memory proposals missing or incomplete; replay saved work or explicitly retry interpretation");
   if (proposals.memoryChanges.length > 16) throw new Error("Too many memory proposals");
   if (!proposals.memoryChanges.length) return { reason: "No memory changes proposed", receiptIds: [] };
-  const evidence = liveEvidence(scene, proposals);
-  const byId = new Map(evidence.map((line) => [line.id, line]));
+  const { byId } = context ?? createLiveEvidenceContext(scene, proposals);
   const at = turn.at!;
   const receiptIds: string[] = [],
     errors: string[] = [];
@@ -329,12 +342,13 @@ export async function processLiveMemories(scene: VenueScene, submissionId: strin
 export async function processLiveRelationships(
   scene: VenueScene,
   submissionId: string,
+  context?: LiveEvidenceContext,
 ): Promise<Partial<DomainProcessing>> {
   const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
   const proposals = turn.liveProposals;
   if (!proposals) throw new Error("Relationship proposals missing; explicit interpretation retry required");
   const raw = asRecord(proposals.relationshipChanges),
-    lines = liveEvidence(scene, proposals);
+    lines = (context ?? createLiveEvidenceContext(scene, proposals)).lines;
   const village = await readVillageState();
   if (village.seed !== scene.villageSeed) throw new Error("Village identity changed");
   const { review, rejections } = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, village, (row) => ({
@@ -369,8 +383,28 @@ export async function processLiveRelationships(
       receiptIds,
       rejectedProposals: rejections,
     };
-  await mutateRelationships(village.seed, (state) => {
-    applyRelationshipReview(state, review, village, scene.id, turn.at);
+  await mutateRelationships(village.seed, async (state) => {
+    const authority = await readVillageAuthority();
+    if (authority.seed !== village.seed) throw new Error("Village identity changed");
+    const fresh = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, authority, (row) => ({
+      ...row,
+      lineIds: refs(row.lineIds, proposals),
+    }));
+    fresh.review.changes.push(
+      ...review.changes.filter(
+        (change) =>
+          change.contactOnly &&
+          authority.villagers.some((person) => person.characterId === change.fromId) &&
+          (change.toId === "player" || authority.villagers.some((person) => person.characterId === change.toId)),
+      ),
+    );
+    rejections.splice(0, rejections.length, ...fresh.rejections);
+    receiptIds.splice(
+      0,
+      receiptIds.length,
+      ...[...fresh.review.changes, ...fresh.review.permissions, ...fresh.review.disclosures].map((row) => row.id),
+    );
+    applyRelationshipReview(state, fresh.review, authority, scene.id, turn.at);
     for (const id of receiptIds) {
       const receipt = state.receipts[id];
       if (!receipt || receipt.noticeSequence) continue;
@@ -379,7 +413,15 @@ export async function processLiveRelationships(
       receipt.committedAt = new Date().toISOString();
       receipt.noticeSequence = ++state.noticeSequence;
     }
-    captureRelationshipKnowledge(state, village);
+    captureRelationshipKnowledge(state, authority);
   });
-  return { reason: "Cited relationship proposals applied", receiptIds, rejectedProposals: rejections };
+  return {
+    status: !receiptIds.length && rejections.length ? "rejected" : "applied",
+    reason:
+      !receiptIds.length && rejections.length
+        ? "Relationship proposals rejected against current authority"
+        : "Cited relationship proposals applied",
+    receiptIds,
+    rejectedProposals: rejections,
+  };
 }

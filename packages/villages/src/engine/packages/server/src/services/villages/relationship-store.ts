@@ -135,12 +135,12 @@ export async function readRelationshipState(seed: string): Promise<RelationshipS
 }
 export async function mutateRelationships(
   seed: string,
-  update: (state: RelationshipState) => void,
+  update: (state: RelationshipState) => void | Promise<void>,
 ): Promise<RelationshipState> {
   if (!seed) throw new Error("Found a village before changing relationships.");
   let result = defaultRelationshipState(seed);
-  await mutateDocument(documentId(seed), slot(seed), (state) => {
-    update(state);
+  await mutateDocument(documentId(seed), slot(seed), async (state) => {
+    await update(state);
     result = state;
   });
   return result;

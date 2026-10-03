@@ -1,3 +1,4 @@
+import { pipelineSignal } from "./pipeline-metrics.js";
 import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
 import { boundInterpretationEvidence, contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
 import type { VillageState } from "./types.js";
@@ -194,7 +195,10 @@ export function projectInterpretationChecks(
         !(flow.phase === "construction" && project.status === "blocked")
       )
         return [];
-      if (!projectExchangeRelevant(scene, project, context.revision, actor, message, draft)) return [];
+      if (!projectExchangeRelevant(scene, project, context.revision, actor, message, draft)) {
+        pipelineSignal("projectRelevanceSkips");
+        return [];
+      }
       const kind =
         flow.phase === "approval"
           ? "approval"

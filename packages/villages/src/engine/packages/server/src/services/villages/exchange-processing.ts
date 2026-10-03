@@ -1,3 +1,4 @@
+import { pipelineSignal } from "./pipeline-metrics.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 
 export const EXCHANGE_PROCESSING_VERSION = 1;
@@ -96,7 +97,11 @@ export async function dispatchExchange(
   for (const domain of EXCHANGE_DOMAINS) {
     const handler = handlers[domain];
     const prior = processing.domains[domain];
-    if (!handler || prior.status === "applied" || prior.status === "rejected") continue;
+    if (!handler) continue;
+    if (prior.status === "applied" || prior.status === "rejected") {
+      pipelineSignal("replayDomainsSkipped");
+      continue;
+    }
     const started = performance.now();
     let result: DomainProcessing;
     try {
@@ -120,6 +125,7 @@ export async function dispatchExchange(
         elapsedMs: Math.round(performance.now() - started),
       };
     }
+    pipelineSignal("rejectedProposals", result.rejectedProposals?.length ?? (result.status === "rejected" ? 1 : 0));
     try {
       await save(domain, result);
       processing.domains[domain] = result;
