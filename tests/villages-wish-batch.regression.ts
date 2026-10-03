@@ -21,7 +21,8 @@ async function main() {
     outcome = "progress",
     proofKind = "conversation",
     wireCharacters = 0,
-    malformed = false;
+    malformed = false,
+    truncated = false;
   const contexts = ["a", "b", "c"].map((actorId) => ({
     actorId,
     village: "Village",
@@ -112,7 +113,7 @@ async function main() {
                     details: { proofKind },
                   })),
             });
-            return { content };
+            return { content, finishReason: truncated ? "length" : "stop" };
           },
         };
       },
@@ -152,6 +153,11 @@ async function main() {
     proofKind = "physical";
     const wrong = await interpretWishBatch([contexts[0]] as any, "wrong-positive", "physical-claim");
     assert.equal(wrong.results[0].outcome, "none", "physical proof kind never bypasses server receipts");
+    truncated = true;
+    const limited = await interpretWishBatch([contexts[0]] as any, "truncated-test", "limited");
+    assert.equal(limited.results[0].outcome, "unresolved");
+    assert.match(limited.results[0].reason, /output limit/);
+    truncated = false;
     const scene: any = {
       id: "batch-production",
       villageSeed: state.seed,

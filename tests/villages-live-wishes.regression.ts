@@ -13,14 +13,15 @@ import {
 import {
   settleBackgroundWork,
   backgroundWorkSummaries,
-  retryBackgroundJob,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import { wishFingerprint } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
+import { bindLiveProposals } from "../packages/villages/src/engine/packages/server/src/services/villages/live-memory.js";
 import { createExchangeProcessing } from "../packages/villages/src/engine/packages/server/src/services/villages/exchange-processing.js";
 import {
   readSceneChanges,
   processSavedExchange,
   publicSceneResponse,
+  retrySceneChangeInterpretation,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 
 async function main() {
@@ -353,6 +354,12 @@ async function main() {
     villageDocument.data.villagers[0].agenda.wishes = [pendingWish];
     const pendingScene = structuredClone(scene);
     pendingScene.id = "uncertain-scene";
+    pendingScene.startedAt = pendingScene.lastActivityAt = at;
+    pendingScene.submissions[0].liveProposals = bindLiveProposals(
+      { memoryChanges: [], relationshipChanges: { changes: [], permissions: [], disclosures: [] } },
+      "p",
+      ["r"],
+    );
     pendingScene.submissions[0].id = "uncertain-turn";
     pendingScene.submissions[0].wishProposals = [
       {
@@ -388,9 +395,16 @@ async function main() {
       (job) => job.status === "failed" || job.status === "interrupted",
     )!;
     assert.ok(failedJob);
+    assert.ok(
+      (await readSceneChanges("uncertain-scene")).backgroundChecks.some(
+        (job) => job.status === "failed" || job.status === "interrupted",
+      ),
+      "Scene diagnostics include failed Wish batches",
+    );
     fail = false;
     outcome = "fulfilled";
-    await retryBackgroundJob(failedJob.id, failedJob.attempt, "deliberate-retry");
+    await retrySceneChangeInterpretation("uncertain-scene", "uncertain-turn", "wishes");
+    await retrySceneChangeInterpretation("uncertain-scene", "uncertain-turn", "wishes");
     await settleBackgroundWork();
     assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
     assert.equal(calls, afterUnknown + 1, "explicit retry needs only one judgment");
@@ -426,9 +440,9 @@ async function main() {
       "failed",
       "Failed background judgment must not leave the Scene queued",
     );
-    const cachedJob = (await backgroundWorkSummaries()).find((job) => job.status === "failed")!;
+    assert.ok((await backgroundWorkSummaries()).some((job) => job.status === "failed"));
     failJudgment = false;
-    await retryBackgroundJob(cachedJob.id, cachedJob.attempt, "cached-deliberate-retry");
+    await retrySceneChangeInterpretation("cached-scene", "uncertain-turn", "wishes");
     await settleBackgroundWork();
     assert.equal(calls, cachedCalls + 1, "Cached preparation does not shift or repeat paid stages");
     assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
