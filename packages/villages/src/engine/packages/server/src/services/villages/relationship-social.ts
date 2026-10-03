@@ -8,7 +8,7 @@ import {
   mutateRelationships,
   applyRelationshipReview,
 } from "./relationship-store.js";
-import { parseRelationshipReview, substantiveContact } from "./relationship-review.js";
+import { parseRelationshipProposals, substantiveContact } from "./relationship-review.js";
 import { asRecord } from "./coerce.js";
 import { mutateVillageState } from "./village-store.js";
 import type { VillageState, VillageOpportunity } from "./types.js";
@@ -290,28 +290,23 @@ function readEncounter(value: unknown, entry: SocialOutboxEntry, village: Villag
   if (new Set(lines.map((line) => line.speakerId)).size < 2) return null;
   // The model cites local indexes; convert only within this saved encounter, never into an archive.
   const proposed = asRecord(raw.relationshipReview);
-  const translated = Object.fromEntries(
-    ["changes", "permissions", "disclosures"].map((key) => [
-      key,
-      Array.isArray(proposed[key])
-        ? (proposed[key] as unknown[]).map((value) => {
-            const row = asRecord(value);
-            const indices = Array.isArray(row.evidence) ? row.evidence : [];
-            if (indices.some((index) => !Number.isInteger(index) || Number(index) < 0 || Number(index) >= lines.length))
-              throw new Error("Invalid social encounter citation.");
-            return { ...row, lineIds: indices.map((index) => lines[Number(index)]!.id) };
-          })
-        : [],
-    ]),
-  );
-  if ((translated.disclosures as unknown[]).length)
-    throw new Error("Offscreen encounters cannot disclose information to the player.");
-  const review = parseRelationshipReview(translated, entry.id, lines, village);
-  if (
-    review.changes.some((change) => !actors.includes(change.fromId) || !actors.includes(change.toId)) ||
-    review.permissions.some((permission) => !actors.includes(permission.visitorId))
-  )
-    throw new Error("An offscreen encounter cannot involve an absent actor.");
+  const { review, rejections } = parseRelationshipProposals(proposed, entry.id, lines, village, (row, kind) => {
+    if (kind === "disclosures") throw new Error("Offscreen encounters cannot disclose information to the player.");
+    if (kind === "changes" && (!actors.includes(String(row.fromId)) || !actors.includes(String(row.toId))))
+      throw new Error("An offscreen encounter cannot involve an absent actor.");
+    if (
+      kind === "permissions" &&
+      (!actors.includes(String(row.controllerId)) || !actors.includes(String(row.visitorId)))
+    )
+      throw new Error("An offscreen encounter cannot involve an absent actor.");
+    const indices = Array.isArray(row.evidence) ? row.evidence : [];
+    if (
+      !indices.length ||
+      indices.some((index) => !Number.isInteger(index) || Number(index) < 0 || Number(index) >= lines.length)
+    )
+      throw new Error("Invalid social encounter citation.");
+    return { ...row, lineIds: indices.map((index) => lines[Number(index)]!.id) };
+  });
   for (const fromId of actors)
     for (const toId of actors)
       if (fromId !== toId && substantiveContact(lines, fromId, toId))
@@ -327,7 +322,16 @@ function readEncounter(value: unknown, entry: SocialOutboxEntry, village: Villag
           disclosed: false,
           contact: true,
         });
-  return { id: entry.id, at: entry.at, venueId: venue.id, zoneId, actorIds: actors, lines, review };
+  return {
+    id: entry.id,
+    at: entry.at,
+    venueId: venue.id,
+    zoneId,
+    actorIds: actors,
+    lines,
+    review,
+    rejectedProposals: rejections,
+  };
 }
 
 /** Background's Village transaction saves this outbox before any relationship document is changed. */

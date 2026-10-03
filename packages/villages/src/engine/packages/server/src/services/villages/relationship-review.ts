@@ -196,7 +196,9 @@ export function parseRelationshipProposals(
   sourceId: string,
   lines: readonly RelationshipEvidenceLine[],
   village: VillageState,
-  bind: (row: Record<string, unknown>) => Record<string, unknown> = (row) => row,
+  bind: (row: Record<string, unknown>, kind: RelationshipProposalRejection["kind"]) => Record<string, unknown> = (
+    row,
+  ) => row,
 ) {
   const raw = asRecord(value),
     review = emptyRelationshipReview(),
@@ -208,7 +210,7 @@ export function parseRelationshipProposals(
     rows.forEach((value, index) => {
       try {
         const parsed = parseRelationshipReview(
-          { ...emptyRelationshipReview(), [kind]: [bind(asRecord(value))] },
+          { ...emptyRelationshipReview(), [kind]: [bind(asRecord(value), kind)] },
           sourceId,
           lines,
           village,
