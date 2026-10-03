@@ -170,6 +170,11 @@ try {
       await page.screenshot({ path: process.env.VILLAGES_USAGE_SCREENSHOT.replace(".png", "-" + width + ".png") });
     await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
     const meterToggle = page.getByRole("checkbox", { name: "Show AI usage meter", exact: true });
+    await meter.getByRole("button", { name: "Hide usage", exact: true }).click();
+    await expect(meter).toHaveCount(0);
+    await expect(meterToggle).not.toBeChecked();
+    await meterToggle.click();
+    await expect(meter).toBeVisible();
     await expect(meterToggle).toBeChecked();
     await meterToggle.click();
     await expect(meter).toHaveCount(0);
