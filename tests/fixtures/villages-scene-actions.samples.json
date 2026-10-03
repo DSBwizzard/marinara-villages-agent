@@ -10,6 +10,12 @@
       "zoneId": "hall"
     },
     { "label": "missing-destination", "text": "I walk", "clarify": true },
+    {
+      "label": "nominated-mixed-speech",
+      "text": "I drift into Common Space and say hello",
+      "nomination": { "zoneId": "hall", "quote": "I drift into Common Space and say hello" },
+      "clarify": true
+    },
     { "label": "mixed-speech", "text": "I walk to Common Space and say hello", "clarify": true },
     { "label": "speech-before-move", "text": "I say hello and walk to Common Space", "clarify": true },
     { "label": "two-destinations", "text": "I walk to Common Space then Exterior", "clarify": true },

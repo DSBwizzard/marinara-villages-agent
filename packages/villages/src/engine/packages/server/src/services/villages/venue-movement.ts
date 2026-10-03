@@ -56,7 +56,6 @@ export function readPlayerMovement(message: string, venue: VillageVenue, nominat
     .replace(/\s+now$/iu, "");
   const matches = venueZones(venue).filter((zone) => namesMatch(zone, destination.replace(/^back\s+/u, "")));
   if (matches.length !== 1) {
-    if (raw && !direct) return null;
     throw badRequest("Choose one exact Zone name, and send movement separately from speech or other actions.");
   }
   if (raw && raw.zoneId !== matches[0]!.id) return null;
