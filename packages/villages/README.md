@@ -1295,7 +1295,9 @@ node tests/villages-background-work.e2e.mjs
 
 ### Conservative narration routing
 
-Scene replies may include interpretationRouting metadata without a second routing request. Only valid, explicitly irrelevant rows covering all eligible current segments skip room or Project checks. Missing, contradictory, uncertain or unknown-target rows retain verification, as do pending evidence, witnessed permission questions, contextual short answers, relevant gestures, Project requirements and proposed Project speech. Metadata cannot grant permission or completed work. DEBUG interpretation records show skipped checks and fallback reasons. Saved replies without routing retain the existing checks.
+Scene replies nominate sparse `roomEvents` with exact current segment citations. A missing or malformed routing array does not authorize a room survey. Local admission selects concrete permission speech, named gestures, pending answers and specific entry requests; ordinary conversation makes zero room model requests. Specific older invitation signals remain compatible. Unknown destinations need clarification without a paid scan. Only the existing cited interpretation and server authority checks can grant, refuse or dismiss access. Permission requests are capped at four targets, 6,000 serialized payload characters and 1,024 output tokens; overflow needs clarification and does not split into additional requests. Normal travel on existing grants remains local. DEBUG records include local skip reasons.
+
+Project routing retains its existing conservative fallback: only valid explicitly irrelevant rows covering eligible current segments skip Project checks. Pending requirements and proposed Project speech retain verification. These routing changes affect bookkeeping metadata, not character identities or Scene writing directions.
 
 ### AI usage and burst previews
 
