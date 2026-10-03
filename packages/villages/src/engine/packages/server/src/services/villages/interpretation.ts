@@ -116,7 +116,8 @@ export async function systemInterpretations(
       outcome: "unresolved",
       source: "system",
       evidenceIds: [],
-      reason: "Essential checking evidence exceeds the bounded request budget; clarification is needed",
+      reason:
+        "Essential checking evidence is unavailable or exceeds the bounded request budget; clarification is needed",
     }));
   const resolved = await villagesLanguageModels().resolveForRequest({
     connectionId: (await villagesConnectionIdFor("system")) ?? undefined,
@@ -209,7 +210,8 @@ export async function interpretChecks(
         )
           return { reason: "Invalid backend calibration" };
         const wire = interpretationPayload(eligible);
-        if (!wire.fits) return { reason: "Essential evidence exceeds the bounded checking allowance" };
+        if (!wire.fits)
+          return { reason: "Essential evidence is unavailable or exceeds the bounded checking allowance" };
         const state = {
           ...wire.payload,
           checks: wire.payload.checks.map(({ outcomes: _outcomes, ...check }) => check),
