@@ -219,7 +219,7 @@ assert.deepEqual(replayStaging(["mara", "eli"], transcriptEvents).at(-1), final,
 
 const art = [
   { view: "front" as const, expressionId: "e-thinking", label: "thinking", url: "/thinking" },
-  { view: "side" as const, label: "neutral", isDefault: true, url: "/side" },
+  { view: "side" as const, expressionId: "e-composed", label: "e-composed", isDefault: true, url: "/side" },
 ];
 assert.equal(
   selectSpriteImage(art, "e-thinking", "left")?.image.url,
@@ -227,5 +227,10 @@ assert.equal(
   "matching front expression retains existing fallback",
 );
 assert.equal(selectSpriteImage(art, "", "left")?.mirrored, true);
+assert.equal(selectSpriteImage(art, "unavailable", "front")?.image.url, "/side");
+assert.equal(
+  selectSpriteImage([{ view: "side", label: "composed", isDefault: true, url: "/side" }], "", "left")?.mirrored,
+  true,
+);
 assert.equal(selectSpriteImage([], "", "left"), null, "missing art keeps portrait fallback");
 console.log("Villages scene staging: validation, persistent state, gaze, spacing, cast boundaries, and replay passed");
