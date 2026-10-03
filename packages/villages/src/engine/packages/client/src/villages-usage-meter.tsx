@@ -105,6 +105,10 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
   const row = choices.find((row) => row.connectionId + ":" + row.model === selected);
   const save = async (clear = false) => {
     if (!row) return;
+    if (!clear && rates[4] === "" && (rates[0] === "" || rates[1] === "")) {
+      setError("Enter input and output prices, or an image price.");
+      return;
+    }
     try {
       const rate = clear
         ? null
