@@ -283,6 +283,7 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
           activity: adjustment.activity,
           reason: adjustment.reason,
           commitmentId: adjustment.wishId,
+          flexible: false,
         },
         ...(entry.endMinute > end ? [{ ...entry, startMinute: end }] : []),
       ];

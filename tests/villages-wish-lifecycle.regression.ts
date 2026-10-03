@@ -673,6 +673,11 @@ async function run() {
       agendaBlocksFor(person.agenda!, false, atSlot).find((block) => block.startMinute === slot.startMinute)!.activity,
       "Sketching a flower",
     );
+    assert.equal(
+      agendaBlocksFor(person.agenda!, false, atSlot).find((row) => row.commitmentId === "activity-wish")!.flexible,
+      false,
+      "accepted dated Wish intervals cannot be overwritten by social planning",
+    );
     fulfillResidentWish(person, "activity-wish", atSlot.toISOString(), "activity-receipt");
     assert.equal(
       agendaBlocksFor(person.agenda!, false, atSlot).find((block) => block.startMinute === slot.startMinute)!.activity,

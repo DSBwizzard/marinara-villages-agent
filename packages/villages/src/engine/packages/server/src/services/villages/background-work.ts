@@ -602,6 +602,15 @@ export async function recoverBackgroundWork(): Promise<void> {
   for (const record of records) {
     if (stopped || owner !== recoveryOwner) return;
     const job = record.data as Job;
+    if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
+      await changeJob(record.id, (current) => ({
+        ...current!,
+        status: "obsolete",
+        error: "Schedule translation is retired.",
+        replacement: undefined,
+      }));
+      continue;
+    }
     if (job.connectionPaused) pausedConnections.add(job.connectionId);
     if (
       job.owner !== owner &&
