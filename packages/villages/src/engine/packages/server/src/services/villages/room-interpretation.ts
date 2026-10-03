@@ -1,4 +1,5 @@
-import { contextualChecks } from "./interpretation-evidence.js";
+import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
+import { boundInterpretationEvidence, contextualChecks } from "./interpretation-evidence.js";
 import type { VillageState, VillageVenue } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
 import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
@@ -146,10 +147,19 @@ export async function interpretRoomReply(
   draft: Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy">[],
   key: string,
   heardPlayerBy: string[] = scene.activeIds,
+  routing?: unknown,
 ) {
   const checks = roomInterpretationChecks(scene, village, message, draft, key, heardPlayerBy);
   if (!checks.length) return null;
-  return interpretChecks(await contextualChecks(scene.id, checks), `room-interpretation:${key}`, scene.id);
+  const selection = routeInterpretationChecks(
+    (await contextualChecks(scene.id, checks)).map(boundInterpretationEvidence),
+    routing,
+    {
+      actorIds: [...scene.activeIds, ...draft.map((line) => line.speakerId)],
+    },
+  );
+  await recordInterpretationRouting(scene.id, selection).catch(() => {});
+  return selection.checks.length ? interpretChecks(selection.checks, `room-interpretation:${key}`, scene.id) : null;
 }
 /** Choose an adjacent admitted Zone, preferring the entry route, then a shortest path toward Exterior. */
 export function dismissalDestination(village: VillageState, venue: VillageVenue, scene: VenueScene): string | null {

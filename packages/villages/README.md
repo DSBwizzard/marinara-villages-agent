@@ -1296,3 +1296,7 @@ node --import tsx tests/villages-automatic-refresh.regression.ts
 # After building the package (mocked host, no Engine startup):
 node tests/villages-background-work.e2e.mjs
 ```
+
+### Conservative narration routing
+
+Scene replies may include interpretationRouting metadata without a second routing request. Only valid, explicitly irrelevant rows covering all eligible current segments skip room or Project checks. Missing, contradictory, uncertain or unknown-target rows retain verification, as do pending evidence, witnessed permission questions, contextual short answers, relevant gestures, Project requirements and proposed Project speech. Metadata cannot grant permission or completed work. DEBUG interpretation records show skipped checks and fallback reasons. Saved replies without routing retain the existing checks.
