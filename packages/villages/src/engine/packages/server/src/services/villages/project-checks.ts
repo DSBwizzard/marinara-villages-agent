@@ -1,4 +1,5 @@
-import { contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
+import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
+import { boundInterpretationEvidence, contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
 import type { VillageState } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -342,11 +343,20 @@ export async function interpretProjectDraft(
   draft: Pick<VenueLine, "speakerId" | "content" | "kind" | "heardBy" | "contactHidden" | "contactReport">[],
   heardPlayerBy: string[],
   key: string,
+  routing?: unknown,
+  projectActors: string[] = [],
 ) {
   const checks = projectInterpretationChecks(scene, village, message, draft, heardPlayerBy, key);
-  return checks.length
-    ? interpretChecks(await contextualChecks(scene.id, checks), `project-interpretation:${key}`, scene.id)
-    : null;
+  const selection = routeInterpretationChecks(
+    (await contextualChecks(scene.id, checks)).map(boundInterpretationEvidence),
+    routing,
+    {
+      actorIds: [...scene.activeIds, ...draft.map((line) => line.speakerId)],
+      projectActors: scene.pendingProjectQuestions?.length ? scene.activeIds : projectActors,
+    },
+  );
+  await recordInterpretationRouting(scene.id, selection).catch(() => {});
+  return selection.checks.length ? interpretChecks(selection.checks, `project-interpretation:${key}`, scene.id) : null;
 }
 
 export async function finalizeProjectDiagnostics(

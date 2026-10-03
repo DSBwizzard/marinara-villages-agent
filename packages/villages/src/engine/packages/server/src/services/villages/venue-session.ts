@@ -2197,6 +2197,7 @@ async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>
   }
   return {
     ...parsed,
+    interpretationRouting: raw?.interpretationRouting as unknown,
     projectContexts,
     contactIntent:
       !session.contactGeneration && (mode === "chat" || mode === "ask")
@@ -2349,12 +2350,13 @@ async function interpretRoomDraft(
         evidenceLines,
         `${venueOperationId()}:${createHash("sha256").update(JSON.stringify(reply.lines)).digest("hex").slice(0, 12)}`,
         reply.heardPlayerBy,
+        reply.invitationSignal ? undefined : reply.interpretationRouting,
       )
     : null;
+  const proposedInvitation = reply.invitationSignal;
+  reply.invitationSignal = null;
   if (roomInterpretation) {
-    const proposedInvitation = reply.invitationSignal;
     // Narrator metadata is a proposal, not permission. Contextual interpretation replaces its phrase gates.
-    reply.invitationSignal = null;
     const invitations = roomInterpretation.results.flatMap((result, index) =>
       ["invite-now", "invite-later"].includes(result.outcome)
         ? [{ result, check: roomInterpretation.checks[index] }]
@@ -3236,6 +3238,7 @@ function quietContactReply(text: string, localIds: string[]): SceneReply {
   return {
     lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }],
     heardPlayerBy: localIds,
+    interpretationRouting: undefined,
     projectContexts: [],
     projectSpeech: [],
     sceneChange: null,
@@ -4044,6 +4047,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           reply.lines,
           reply.heardPlayerBy,
           input.submissionId,
+          reply.interpretationRouting,
+          reply.projectSpeech.map((proposal) => proposal.speakerId),
         )
       : null;
   if (projectInterpretation || applicationVillage.projects.some((project) => project.lifecycle)) {
