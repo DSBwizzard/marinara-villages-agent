@@ -1,4 +1,5 @@
 import { measurePipeline } from "./pipeline-metrics.js";
+import { readPlayerMovement, movementTransition, type MovementIntent } from "./venue-movement.js";
 import { saveInterpretationContext } from "./interpretation-evidence.js";
 import { buildVenueResponseContract } from "./venue-response-contract.js";
 import { runtimeDebug } from "./runtime-debug.js";
@@ -146,7 +147,12 @@ import {
 import { extractJsonObject } from "./village-bootstrap.js";
 import { extractSceneReply } from "./scene-reply-json.js";
 import type { VenueActionResult } from "./venue-actions.js";
-import { applyVenueSceneChange, readVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
+import {
+  applyVenueSceneChange,
+  readVenueSceneChange,
+  physicalVenueEvents,
+  type VenueSceneChange,
+} from "./venue-scene-state.js";
 import { venueReplyIntegrity } from "./venue-turn-integrity.js";
 import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
 import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
@@ -298,6 +304,9 @@ type VenueSubmission = {
   wishMemory: string;
   action?: VenueActionResult;
   actionReplyDone?: boolean;
+  physicalOutcomeVersion?: 1;
+  requestMode?: "act" | "fulfill";
+  movement?: { operationId: string; originZoneId: string; destinationZoneId: string; transitionLineId: string };
   sceneChange?: VenueSceneChange;
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
   upgradeSignal?: { characterId: string; venueId: string; quote: string };
@@ -646,6 +655,11 @@ function coerceSession(value: unknown): VenueScene {
                 ? { processing: coerceExchangeProcessing(row.processing) }
                 : {}),
               message: asString(row.message),
+              ...(row.physicalOutcomeVersion === 1 ? { physicalOutcomeVersion: 1 as const } : {}),
+              ...(row.requestMode === "act" || row.requestMode === "fulfill"
+                ? { requestMode: row.requestMode as "act" | "fulfill" }
+                : {}),
+              ...(row.movement ? { movement: row.movement as VenueSubmission["movement"] } : {}),
               ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
               ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
               ...(row.contactEvidence
@@ -820,7 +834,7 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
     change(session);
     if (session.processingVersion === 1 && session.villageSeed)
       session.submissions.forEach((turn, order) => {
-        if (turn.processing || !turn.at || (turn.mode === "act" && !turn.actionReplyDone)) return;
+        if (turn.movement || turn.processing || !turn.at || (turn.mode === "act" && !turn.actionReplyDone)) return;
         turn.processing = createExchangeProcessing({
           seed: session.villageSeed!,
           sceneId: id,
@@ -829,7 +843,9 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
           lineIds: session.lines
             .filter((line) => turn.replyLineIds?.includes(line.id) || (line.role === "user" && line.at === turn.at))
             .map((line) => line.id),
-          actionReceiptIds: turn.action?.happened ? [`venue-action:${turn.id}`] : [],
+          actionReceiptIds: turn.action?.happened
+            ? [turn.physicalOutcomeVersion ? `venue-chat:${id}:${turn.id}` : `venue-action:${turn.id}`]
+            : [],
         });
       });
     for (const turn of session.submissions)
@@ -844,7 +860,11 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
 
 function pendingProgressTurns(session: VenueScene, foundedAt: string) {
   return session.submissions.filter(
-    (turn) => turn.at && !turn.progressProcessedAt && (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
+    (turn) =>
+      !turn.movement &&
+      turn.at &&
+      !turn.progressProcessedAt &&
+      (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
   );
 }
 
@@ -856,6 +876,7 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
   const submission = session.submissions.find((entry) => entry.id === submissionId);
   if (
     !submission ||
+    submission.movement ||
     submission.progressProcessedAt ||
     !submission.at ||
     (village.foundedAt && Date.parse(submission.at) < Date.parse(village.foundedAt))
@@ -934,6 +955,7 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
 async function applySavedExchange(sessionId: string, submissionId: string): Promise<void> {
   const scene = await readSession(sessionId);
   const turn = scene.submissions.find((entry) => entry.id === submissionId);
+  if (turn?.movement) return;
   if (!turn?.processing) return processSavedProgressSubmission(sessionId, submissionId);
   const village = await readVillageState();
   const processing = turn.processing;
@@ -947,6 +969,14 @@ async function applySavedExchange(sessionId: string, submissionId: string): Prom
   const applyProjects = async () => {
     if (!valid) return { status: "rejected" as const, reason: "Village identity changed; saved effects cannot apply" };
     await applyVenueTurnChange(scene, turn);
+    if (
+      turn.physicalOutcomeVersion &&
+      !physicalVenueEvents(await readVillageState()).some(
+        (event) => event.id === `venue-chat:${scene.id}:${turn.id}` && event.actionReceipt?.happened,
+      )
+    )
+      return { status: "rejected" as const, reason: "The physical outcome no longer meets current state restrictions" };
+    if (turn.physicalOutcomeVersion && turn.action?.happened) await applyProjectPickup(scene.id, turn.id);
     await processSavedProgressSubmission(scene.id, turn.id);
     const current = await readVillageState();
     const receiptIds = current.progressTasks.flatMap((task) =>
@@ -963,8 +993,19 @@ async function applySavedExchange(sessionId: string, submissionId: string): Prom
     processing,
     {
       projects: applyProjects,
-      wishes: async () =>
-        valid ? processWishExchange(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
+      wishes: async () => {
+        if (!valid) return { status: "rejected", reason: "Village identity changed" };
+        if (
+          turn.physicalOutcomeVersion &&
+          !physicalVenueEvents(await readVillageState()).some(
+            (event) => event.id === `venue-chat:${scene.id}:${turn.id}` && event.actionReceipt?.happened,
+          )
+        )
+          return updates.get("projects")?.status === "rejected"
+            ? { status: "rejected", reason: "Physical outcome rejected" }
+            : { status: "pending", reason: "Waiting for the physical effect and receipt to commit" };
+        return processWishExchange(scene, turn.id);
+      },
       memories: async () =>
         valid
           ? processLiveMemories(scene, turn.id, evidenceContext)
@@ -1088,6 +1129,7 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
       processing: turn.processing ?? null,
       receipts: {
         physical: turn.action ?? null,
+        movement: turn.movement ?? null,
         domainEffects: effectsBySubmission.get(turn.id) ?? [],
         relationships: (turn.processing?.domains.relationships.receiptIds ?? []).flatMap((id) =>
           relationshipState?.receipts[id] ? [relationshipState.receipts[id]] : [],
@@ -1110,7 +1152,9 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
         (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
       ),
       interpretations: {
-        source: turn.interpretationHistory?.at(-1)?.source ?? "saved narration reply",
+        source: turn.movement
+          ? "confirmed movement; code transition"
+          : (turn.interpretationHistory?.at(-1)?.source ?? "saved narration reply"),
         version: turn.processing?.interpretationVersion,
         memory: turn.liveProposals?.memoryChanges,
         relationship: turn.liveProposals?.relationshipChanges,
@@ -1518,7 +1562,14 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
 type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
 
 type VenueReplyFailureKind =
-  "invalid-json" | "invalid-segments" | "player-echo" | "repeated-question" | "residence-consent";
+  | "invalid-json"
+  | "invalid-segments"
+  | "player-echo"
+  | "repeated-question"
+  | "residence-consent"
+  | "construction-worksite"
+  | "unsupported-physical-claim"
+  | "reserved-project-item";
 
 class VenueReplyFailure extends Error {
   constructor(readonly kind: VenueReplyFailureKind) {
@@ -1951,6 +2002,10 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
       : undefined,
   });
   const raw = extractSceneReply(completion.content ?? "");
+  const movementIntent: MovementIntent | null =
+    !session.contactGeneration && (mode === "chat" || mode === "ask") && place
+      ? readPlayerMovement(message, place, raw?.movementIntent)
+      : null;
   const extractedContact =
     !session.contactGeneration && (mode === "chat" || mode === "ask")
       ? readContactIntent(raw?.contactIntent, message)
@@ -1958,6 +2013,8 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
   // Route a valid contact interpretation before validating its uncommitted local draft.
   if (extractedContact)
     return { ...quietContactReply("Routing the contact request.", session.activeIds), contactIntent: extractedContact };
+  if (movementIntent)
+    return { ...quietContactReply("Routing the movement request.", session.activeIds), movementIntent };
   let parsed: ReturnType<typeof parseVenueReply>;
   try {
     parsed = parseVenueReply(raw, audience, (characterId, requested) =>
@@ -2167,8 +2224,14 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
     ),
     sceneChange:
       !session.contactGeneration && (mode === "chat" || mode === "ask")
-        ? readVenueSceneChange(raw?.sceneChange, place)
+        ? readVenueSceneChange(
+            raw?.sceneChange,
+            place,
+            session.activeIds,
+            village.villagers.map((person) => person.characterId),
+          )
         : null,
+    movementIntent,
     residenceSignal:
       (mode === "chat" || mode === "ask") &&
       requestedVenueId &&
@@ -2362,13 +2425,39 @@ async function generate(
     const controlledVenue = currentVillage.venues.find((venue) => venue.id === session.placeId);
     const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, session.zoneId ?? "");
     if (
-      (session.area === "shared" ||
+      ((session.area === "shared" && controlledVenue && venueResidentIds(controlledVenue).length > 0) ||
         session.area === "private" ||
         controlledZone?.kind === "staff" ||
         controlledZone?.kind === "restricted") &&
       reply.sceneChange
     )
       throw new VenueReplyFailure("residence-consent");
+    if (reply.sceneChange) {
+      if (controlledVenue?.constructionStatus === "worksite") throw new VenueReplyFailure("construction-worksite");
+      if (
+        /^(?:i\s+)?(?:will|would|promise|plan|want|intend)\b|\b(?:yesterday|last week|earlier|elsewhere)\b/iu.test(
+          message.trim(),
+        )
+      )
+        throw new VenueReplyFailure("unsupported-physical-claim");
+      if (
+        reply.sceneChange.removeItem &&
+        currentVillage.projects.some(
+          (project) =>
+            project.kind === "build-venue" &&
+            project.status !== "complete" &&
+            project.plan?.sources.some(
+              (source) =>
+                source.kind === "existing-item" &&
+                source.venueId === session.placeId &&
+                (!source.zoneId || source.zoneId === session.zoneId) &&
+                source.itemName === reply.sceneChange!.removeItem &&
+                source.remaining > 0,
+            ),
+        )
+      )
+        throw new VenueReplyFailure("reserved-project-item");
+    }
     const currentSession = await refreshZoneParticipants(session, true);
     if (
       currentSession.zoneId !==
@@ -2389,7 +2478,13 @@ async function generate(
       )
         reply.invitationSignal = null;
     }
-    return interpretRoomDraft(session, currentVillage, message, reply, mode !== "leave" && !reply.contactIntent);
+    return interpretRoomDraft(
+      session,
+      currentVillage,
+      message,
+      reply,
+      mode !== "leave" && !reply.contactIntent && !reply.movementIntent,
+    );
   } catch (cause) {
     if (!(cause instanceof VenueReplyFailure)) throw cause;
     await rejectVenueCompletion();
@@ -2610,6 +2705,19 @@ async function clearActivePointer(id: string): Promise<void> {
   });
 }
 
+function sceneZoneOccupants(session: VenueScene, village: VillageState, venue: VillageVenue, zoneId: string) {
+  const positions = (session.accompanying ?? []).filter((entry) => {
+    const destination = resolveVenueZone(venue, entry.zoneId);
+    return !!destination && contactCanEnter(village, venue, destination.id, entry.characterId);
+  });
+  const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
+  return (session.sceneAttendance?.occupants ?? []).filter(
+    (person) =>
+      (person.zoneId === zoneId || accompanying.includes(person.characterId)) &&
+      !session.departedIds?.includes(person.characterId) &&
+      !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
+  );
+}
 async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
   if (!completing && hasVenueOperation(session.id)) return session;
   const village = await readVillageState(),
@@ -2702,17 +2810,7 @@ async function refreshZoneParticipants(session: VenueScene, completing = false):
       if (!state.sceneAttendance) state.sceneAttendance = captured;
     });
   }
-  const positions = (session.accompanying ?? []).filter((entry) => {
-    const destination = resolveVenueZone(venue, entry.zoneId);
-    return !!destination && contactCanEnter(village, venue, destination.id, entry.characterId);
-  });
-  const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
-  const people = session.sceneAttendance!.occupants.filter(
-    (person) =>
-      (person.zoneId === zoneId || accompanying.includes(person.characterId)) &&
-      !session.departedIds?.includes(person.characterId) &&
-      !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
-  );
+  const people = sceneZoneOccupants(session, village, venue, zoneId);
   if (people.length > 4) throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
   const activeIds = people.map((person) => person.characterId);
   if (session.zoneId === zoneId && JSON.stringify(activeIds) === JSON.stringify(session.activeIds)) return session;
@@ -2737,13 +2835,14 @@ function serializedNavigation<T>(operation: () => Promise<T>): Promise<T> {
   navigationQueue = task.catch(() => {});
   return task;
 }
-export function moveVenueZone(
+export async function moveVenueZone(
   sessionId: string,
   zoneId: string,
   expectedSceneRevision?: number,
   retryOfAttemptId?: string,
-  operationId = `move:${zoneId}:${expectedSceneRevision}`,
+  operationId?: string,
 ): Promise<VenueScene> {
+  operationId ??= `move:${zoneId}:${expectedSceneRevision ?? (await readSession(sessionId)).sceneRevision}`;
   return coordinateVenue(sessionId, operationId, "move", { zoneId }, expectedSceneRevision, retryOfAttemptId, () =>
     serializedNavigation(async () => {
       movingSessions.add(sessionId);
@@ -2755,9 +2854,20 @@ export function moveVenueZone(
     }),
   );
 }
-async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<VenueScene> {
+async function moveVenueZoneOnce(
+  sessionId: string,
+  zoneId: string,
+  written?: { message: string; targetId: string; requestMode?: "act" | "fulfill" },
+): Promise<VenueScene> {
   assertVenueOwnership();
-  const session = await requireLiveVenueSession(sessionId);
+  let session = await requireLiveVenueSession(sessionId);
+  if (!session.sceneAttendance) session = await refreshZoneParticipants(session, true);
+  const operationId = venueOperationId();
+  const recorded = session.submissions.find((turn) => turn.movement?.operationId === operationId);
+  if (recorded) {
+    await markZoneSeen(session);
+    return refreshZoneParticipants(session, true);
+  }
   if (session.status !== "active") throw conflict("Wait for the current scene to finish opening.");
   if (session.submissions.some((entry) => entry.mode === "act" && entry.action && !entry.actionReplyDone))
     throw conflict("Retry the pending action reply before moving to another zone.");
@@ -2765,7 +2875,18 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
     venue = village.venues.find((entry) => entry.id === session.placeId);
   const zone = venue && resolveVenueZone(venue, zoneId);
   if (!venue || !zone) throw notFound("That zone is not in this Venue.");
+  if (session.zoneId === zone.id) return session;
   if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
+  const offered = session.entryOffers?.find((entry) => entry.zoneId === zone.id);
+  const accompanying =
+    offered?.accompanies && canOccupyZone(venue, zone, offered.controllerId)
+      ? [
+          ...(session.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
+          { characterId: offered.controllerId, zoneId: zone.id },
+        ]
+      : session.accompanying;
+  const people = sceneZoneOccupants({ ...session, accompanying }, village, venue, zone.id);
+  if (people.length > 4) throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
   let controllerId = "";
   const priorGrant = session.zoneGrants?.find((grant) => grant.zoneId === zone.id);
   if (session.dismissedZoneIds?.includes(zone.id))
@@ -2810,16 +2931,56 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
     });
   }
   const moved = await changeSession(sessionId, (state) => {
+    if (state.submissions.some((turn) => turn.movement?.operationId === operationId)) return;
+    const originZoneId = state.zoneId ?? legacyZoneId(venue, state.area, state.spaceClass, state.privateOwnerId);
+    const origin = resolveVenueZone(venue, originZoneId);
+    const at = new Date().toISOString();
+    const transitionLineId = randomUUID();
+    appendLine(state, {
+      id: transitionLineId,
+      role: "assistant",
+      speakerId: "__venue_scene__",
+      name: "Narration",
+      kind: "narration",
+      content: movementTransition(
+        origin?.name ?? originZoneId,
+        zone.name,
+        village.narrationStyle,
+        readPlayerIdentity(village).name,
+      ),
+      at,
+      heardBy: [...session.activeIds],
+    });
+    state.submissions.push({
+      id: operationId,
+      message: written?.message ?? `Move to ${zone.name}`,
+      mode: "chat",
+      ...(written?.requestMode ? { requestMode: written.requestMode } : {}),
+      targetId: written?.targetId ?? "",
+      verdict: null,
+      wishId: "",
+      wishMemory: "",
+      areaAtTurn: state.area,
+      zoneIdAtTurn: originZoneId,
+      activeIdsAtTurn: [...session.activeIds],
+      activeIdsAfterTurn: people.map((person) => person.characterId),
+      replyLineIds: [transitionLineId],
+      movement: { operationId, originZoneId, destinationZoneId: zone.id, transitionLineId },
+      requestMetrics: venueRequestMetrics(),
+      at,
+    });
     state.enteredFromZoneId = state.zoneId;
     state.zoneId = zone.id;
     state.doorwayContacts = [];
-    const offer = state.entryOffers?.find((entry) => entry.zoneId === zone.id);
-    if (offer?.accompanies && canOccupyZone(venue, zone, offer.controllerId))
-      state.accompanying = [
-        ...(state.accompanying ?? []).filter((entry) => entry.characterId !== offer.controllerId),
-        { characterId: offer.controllerId, zoneId: zone.id },
-      ];
+    state.accompanying = accompanying ?? [];
     state.entryOffers = state.entryOffers?.filter((entry) => entry.zoneId !== zone.id);
+    for (const person of people) {
+      if (!state.participants.some((entry) => entry.characterId === person.characterId))
+        state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
+      if (!state.heardHistory.some((entry) => entry.characterId === person.characterId))
+        state.heardHistory.push({ characterId: person.characterId, lineIds: [] });
+    }
+    state.activeIds = people.map((person) => person.characterId);
     state.privateSpaceId = ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined;
     if (controllerId)
       state.zoneGrants = [
@@ -2831,7 +2992,7 @@ async function moveVenueZoneOnce(sessionId: string, zoneId: string): Promise<Ven
     state.area = zoneArea(zone);
     state.privateOwnerId = zone.ownerId ?? "";
     state.grantedZoneIds = [...new Set([...(state.grantedZoneIds ?? []), zone.id])];
-    state.lastActivityAt = new Date().toISOString();
+    state.lastActivityAt = at;
     state.recap = "";
   });
   await markZoneSeen(moved);
@@ -3174,6 +3335,7 @@ function quietContactReply(text: string, localIds: string[]): SceneReply {
     projectContexts: [],
     projectSpeech: [],
     sceneChange: null,
+    movementIntent: null as MovementIntent | null,
     residenceSignal: null,
     upgradeSignal: null,
     venueRequestSignal: null,
@@ -3468,6 +3630,10 @@ type VenueTurnInput = {
   replaceOfOperationId?: string;
 };
 
+function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"]) {
+  return (turn.requestMode ?? turn.mode) === mode || (!turn.requestMode && turn.mode === "chat" && mode === "fulfill");
+}
+
 export async function sendVenueTurn(input: VenueTurnInput) {
   const prior = (await readSession(input.sessionId)).submissions.find((entry) => entry.id === input.submissionId);
   if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
@@ -3480,7 +3646,10 @@ export async function sendVenueTurn(input: VenueTurnInput) {
   };
   if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
     throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
-  if (prior && (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId))
+  if (
+    prior &&
+    (prior.message !== input.message || !matchesSavedTurnMode(prior, input.mode) || prior.targetId !== input.targetId)
+  )
     throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
   return coordinateVenue(
     input.sessionId,
@@ -3622,15 +3791,20 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   if (movingSessions.has(input.sessionId)) throw conflict("Wait for zone navigation to finish before sending.");
   let session = await readSession(input.sessionId);
   const compatibilityWishCheck = input.mode === "fulfill";
-  // Retain the old request shape while using the same witnessed reply/checking path.
-  if (input.mode === "fulfill") input = { ...input, mode: "chat" };
+  const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
   const prior = session.submissions.find((entry) => entry.id === input.submissionId);
   if (prior) {
-    if (prior.message !== input.message || prior.mode !== input.mode || prior.targetId !== input.targetId)
+    if (
+      prior.message !== input.message ||
+      !matchesSavedTurnMode(prior, input.mode) ||
+      prior.targetId !== input.targetId
+    )
       throw conflict("That submission ID belongs to a different line.");
+    if (prior.movement) return { session, verdict: null, action: null, recordEvents: [] };
     if (prior.mode === "act" && prior.action && !prior.actionReplyDone) {
       session = await finishActReply(session, input.submissionId, input.message, prior.action);
       await applyProjectPickup(session.id, input.submissionId);
+      await processSavedExchange(session.id, input.submissionId);
       return {
         session,
         verdict: null,
@@ -3659,24 +3833,40 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       session: await readSession(session.id),
       verdict: prior.verdict,
       action: prior.action ?? null,
-      recordEvents: prior.action?.happened
-        ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
-        : recordEvents,
+      recordEvents:
+        prior.action?.happened && !prior.physicalOutcomeVersion
+          ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: prior.action.narration }]
+          : recordEvents,
     };
   }
   session = await requireLiveVenueSession(session.id);
+  // New legacy submissions share Chat interpretation; saved legacy outcomes above retain their recovery.
+  if (requestMode) input = { ...input, mode: "chat" };
   const admitted = venueOperationSnapshot<unknown>();
   if (admitted) session = coerceSession(admitted);
   if (session.status !== "active") throw conflict("That Scene is not active.");
+  let movementVenue: VillageVenue | undefined;
   if (input.mode !== "leave" && session.zoneId) {
     const village = await readVillageState(),
       venue = village.venues.find((entry) => entry.id === session.placeId),
       zone = venue && resolveVenueZone(venue, session.zoneId);
     if (!venue || !zone || zoneClosed(village, venue, zone))
       throw conflict("This zone is closed. Move to another zone or leave the Venue.");
+    movementVenue = venue;
   }
   if (input.mode !== "leave" && !input.message.trim()) throw badRequest("Write something before sending it.");
   if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
+  if (input.mode === "chat" || input.mode === "ask") {
+    const venue = movementVenue ?? (await readVillageState()).venues.find((entry) => entry.id === session.placeId);
+    const movement = venue && readPlayerMovement(input.message, venue);
+    if (movement)
+      return {
+        session: await moveVenueZoneOnce(session.id, movement.zoneId, { ...input, requestMode }),
+        verdict: null,
+        action: null,
+        recordEvents: [],
+      };
+  }
   if (input.mode === "fulfill" && session.activeIds.length === 0)
     throw badRequest("Nobody is here to fulfill a wish for.");
   if (
@@ -3690,43 +3880,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   )
     throw badRequest("That villager is no longer in this conversation.");
   if (input.mode === "fulfill" && !input.targetId) throw badRequest("Choose one villager for Fulfill.");
-  if (input.mode === "act") {
-    if (input.targetId) throw badRequest("Actions are about the place, not a villager.");
-    const { actAtVenue } = await import("./venue-actions.js");
-    let preparedReply: Awaited<ReturnType<typeof generate>> | undefined;
-    const action = await actAtVenue(session.placeId, input.message, input.submissionId, async (result) => {
-      if (session.activeIds.length)
-        preparedReply = await venueCheckpoint("action-reply", () =>
-          generate(
-            session,
-            input.message,
-            "act",
-            "",
-            null,
-            venueOperationSignal() ?? AbortSignal.timeout(90_000),
-            undefined,
-            result.narration,
-          ),
-        );
-    });
-    const completed = await finishActReply(
-      await readSession(session.id),
-      input.submissionId,
-      input.message,
-      action,
-      preparedReply,
-    );
-    await applyProjectPickup(session.id, input.submissionId);
-    await processSavedExchange(session.id, input.submissionId);
-    return {
-      session: completed,
-      verdict: null,
-      action,
-      recordEvents: action.happened
-        ? [{ id: `venue-action:${input.submissionId}`, kind: "venue" as const, text: action.narration }]
-        : [],
-    };
-  }
   await rollActiveAgendas(new Date());
   const village = await readVillageState();
   let verdict: { fulfilled: boolean; reason: string } | null = null;
@@ -3899,6 +4052,13 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     contactIntentUsed = reply.contactIntent;
     reply = await contactReply(session, contactIntentUsed);
   }
+  if (!contactIntentUsed && reply.movementIntent)
+    return {
+      session: await moveVenueZoneOnce(session.id, reply.movementIntent.zoneId, { ...input, requestMode }),
+      verdict: null,
+      action: null,
+      recordEvents: [],
+    };
   if (
     contactIntentUsed &&
     /^(?:goodbye|bye|see you(?: later)?|talk (?:to you )?later)\b/iu.test(input.message.trim().replace(/^["“‘']+/u, ""))
@@ -4124,6 +4284,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       id: input.submissionId,
       message: input.message,
       mode: input.mode,
+      ...(requestMode ? { requestMode } : {}),
       targetId: input.targetId,
       ...(input.contact ? { contact: input.contact } : {}),
       ...(contactIntentUsed
@@ -4164,7 +4325,14 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       wishContexts: reply.wishContexts,
       liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
       requestMetrics: venueRequestMetrics(),
-      ...(reply.sceneChange ? { sceneChange: reply.sceneChange } : {}),
+      ...(reply.sceneChange
+        ? {
+            sceneChange: reply.sceneChange,
+            physicalOutcomeVersion: 1 as const,
+            action: { happened: true, ...reply.sceneChange },
+            actionReplyDone: true,
+          }
+        : {}),
       ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
       ...(reply.upgradeSignal ? { upgradeSignal: reply.upgradeSignal } : {}),
       ...(reply.venueRequestSignal
@@ -4284,7 +4452,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   return {
     session: await refreshZoneParticipants(await readSession(finalSession.id), true),
     verdict,
-    action: null,
+    action: submission.action ?? null,
     recordEvents,
   };
 }
@@ -4583,7 +4751,7 @@ async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmis
     const controlledVenue = state.venues.find((venue) => venue.id === session.placeId);
     const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, zoneId ?? "");
     if (controlledZone?.kind === "staff" || controlledZone?.kind === "restricted") return;
-    if (state.venueEvents.some((event) => event.id === id)) return;
+    if (state.venueEvents.some((event) => event.id === id) || state.exchangeReceipts[id]?.physicalOutcome) return;
     const change = readVenueSceneChange(
       { happened: true, ...submission.sceneChange },
       (() => {
@@ -4594,6 +4762,8 @@ async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmis
             : venueInArea(place, area, session.spaceClass, privateOwnerId)
           : undefined;
       })(),
+      submission.activeIdsAtTurn ?? [],
+      state.villagers.map((person) => person.characterId),
     );
     if (!change) return;
     if (
@@ -4643,9 +4813,43 @@ async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmis
       },
     ]);
     state.venueEvents = [
-      { id, venueId: session.placeId, zoneId, venueName: venue.name, text: change.narration, at },
+      {
+        id,
+        venueId: session.placeId,
+        zoneId,
+        venueName: venue.name,
+        text: change.narration,
+        at,
+        // Only newly interpreted turns gain proof. Existing settled history is never backfilled.
+        ...(submission.physicalOutcomeVersion === 1
+          ? {
+              actionReceipt: {
+                happened: true,
+                ...change,
+                submissionId: submission.id,
+                witnessIds: [...(submission.activeIdsAtTurn ?? [])],
+                ...(change.removeItem && change.transferTo
+                  ? { itemTransfer: { itemName: change.removeItem, recipientId: change.transferTo } }
+                  : {}),
+              },
+            }
+          : {}),
+      },
       ...state.venueEvents,
     ].slice(0, 200);
+    if (submission.physicalOutcomeVersion === 1)
+      state.exchangeReceipts[id] = {
+        id,
+        sceneId: session.id,
+        submissionId: submission.id,
+        domain: "physical",
+        at,
+        committedAt: at,
+        status: "applied",
+        evidenceIds: submission.replyLineIds ?? [],
+        reason: "Confirmed physical outcome",
+        physicalOutcome: state.venueEvents[0]!,
+      };
   });
 }
 
@@ -4735,7 +4939,7 @@ async function receiptForTurn(
   if (submission.wishId && village.chronicle.some((entry) => entry.id === wishId))
     events.push({ id: wishId, kind: "wish", text: "A villager's wish was fulfilled." });
   const venueId = `venue-chat:${session.id}:${submission.id}`;
-  const change = village.venueEvents.find((entry) => entry.id === venueId);
+  const change = physicalVenueEvents(village).find((entry) => entry.id === venueId);
   if (change) events.push({ id: venueId, kind: "venue", text: change.text });
   for (const project of village.projects) {
     const flow = project.lifecycle;

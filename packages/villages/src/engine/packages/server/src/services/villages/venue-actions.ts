@@ -25,6 +25,13 @@ export type VenueActionResult = {
   recipientId?: string;
   transferTo?: string;
   resolveTraceId?: string;
+  conditionBefore?: string;
+  conditionAfter?: string;
+  featureId?: string;
+  featureText?: string;
+  publicFactBefore?: string;
+  publicFactAfter?: string;
+  sceneNote?: string;
 };
 
 /** A malformed or unsupported outcome cannot become evidence for a wish. */

@@ -89,6 +89,7 @@ jobs:
           npx tsx tests/villages-project-interpretation.regression.ts
           npx tsx tests/villages-project-checks.regression.ts
           npx tsx tests/villages-zones.regression.ts
+          npx tsx tests/villages-scene-actions.regression.ts
           npx tsx tests/villages-contact.regression.ts
           npx tsx tests/villages-runtime-debug.regression.ts
           npx tsx tests/villages-usage-meter.regression.ts
@@ -130,6 +131,8 @@ jobs:
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs
           node tests/villages-contact.e2e.mjs
+          node tests/villages-scene-actions.e2e.mjs
+          node --import tsx tests/villages-venue-coordination.e2e.mjs
           node tests/villages-runtime-debug.e2e.mjs
           node tests/villages-usage-meter.e2e.mjs
           node tests/villages-usage-preview.e2e.mjs

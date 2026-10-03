@@ -1,7 +1,21 @@
 import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { badGateway, conflict } from "./errors.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
-import type { VillageState, VillageVenue, VillageVenueClass } from "./types.js";
+import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent } from "./types.js";
+
+/** Recent feed entries remain compatible; confirmed new effects survive feed trimming in the existing receipt store. */
+export function physicalVenueEvents(state: VillageState): VillageVenueEvent[] {
+  return [
+    ...new Map(
+      [
+        ...state.venueEvents,
+        ...Object.values(state.exchangeReceipts).flatMap((receipt) =>
+          receipt.domain === "physical" && receipt.physicalOutcome ? [receipt.physicalOutcome] : [],
+        ),
+      ].map((event) => [event.id, event]),
+    ).values(),
+  ];
+}
 
 /** The small, present-tense consequence of a player action resolved by the scene reply. */
 export type VenueSceneChange = {
@@ -15,13 +29,22 @@ export type VenueSceneChange = {
   resolveTraceId?: string;
   addItem?: string;
   removeItem?: string;
+  transferTo?: string;
+  traceKind?: string;
+  traceText?: string;
+  recipientId?: string;
   sceneNote?: string;
 };
 
 const fail = () => badGateway("The scene described a change the room could not record. Try that turn again.");
 
 /** Refuse an unsupported or stale edit before any transcript line is committed. */
-export function readVenueSceneChange(value: unknown, venue: VillageVenue | undefined): VenueSceneChange | null {
+export function readVenueSceneChange(
+  value: unknown,
+  venue: VillageVenue | undefined,
+  presentIds: readonly string[] = [],
+  residentIds: readonly string[] = presentIds,
+): VenueSceneChange | null {
   if (value === undefined || value === null) return null;
   if (!venue || typeof value !== "object" || Array.isArray(value)) throw fail();
   const raw = value as Record<string, unknown>;
@@ -38,18 +61,28 @@ export function readVenueSceneChange(value: unknown, venue: VillageVenue | undef
   const addItem = read("addItem");
   const removeItem = read("removeItem");
   const sceneNote = read("sceneNote");
+  const transferTo = read("transferTo");
+  const traceKind = read("traceKind");
+  const traceText = read("traceText");
+  const recipientId = read("recipientId");
   if (
     !narration ||
-    [conditionAfter, featureText, publicFactAfter, addItem, sceneNote].some(
+    [conditionAfter, featureText, publicFactAfter, addItem, sceneNote, traceText].some(
       (text) => text.length > MAX_VENUE_NOTE_LENGTH,
     ) ||
     sceneNote.length > 180 ||
+    (sceneNote && traceKind) ||
     ((conditionBefore || conditionAfter) && conditionBefore !== venue.state.condition) ||
     (featureId && !venue.state.features?.some((feature) => feature.id === featureId)) ||
     (featureText && !featureId) ||
     ((publicFactBefore || publicFactAfter) && !venue.state.publicFacts.includes(publicFactBefore)) ||
     (resolveTraceId && !venue.state.traces?.some((trace) => trace.id === resolveTraceId)) ||
     (removeItem && !venue.state.furniture.includes(removeItem)) ||
+    (transferTo && (!removeItem || !["player", ...presentIds].includes(transferTo))) ||
+    ((traceKind || traceText) && (!/^[a-z][a-z0-9-]{0,39}$/u.test(traceKind) || !traceText)) ||
+    (recipientId && !residentIds.includes(recipientId)) ||
+    (traceKind === "note" && !recipientId) ||
+    (traceKind && (venue.state.traces ?? []).length >= 16 && !resolveTraceId) ||
     (addItem && !venue.state.furniture.includes(addItem) && venue.state.furniture.length >= 24 && !removeItem) ||
     (sceneNote && (venue.state.traces ?? []).filter((trace) => trace.kind !== "scene-note").length >= 13) ||
     ![
@@ -61,6 +94,7 @@ export function readVenueSceneChange(value: unknown, venue: VillageVenue | undef
       addItem,
       removeItem,
       sceneNote,
+      traceKind,
     ].some(Boolean)
   )
     throw fail();
@@ -72,6 +106,8 @@ export function readVenueSceneChange(value: unknown, venue: VillageVenue | undef
     ...(resolveTraceId ? { resolveTraceId } : {}),
     ...(addItem ? { addItem } : {}),
     ...(removeItem ? { removeItem } : {}),
+    ...(transferTo ? { transferTo } : {}),
+    ...(traceKind ? { traceKind, traceText, recipientId } : {}),
     ...(sceneNote ? { sceneNote } : {}),
   };
 }
@@ -157,6 +193,19 @@ export function applyVenueSceneChange(
         kind: "scene-note",
         text: change.sceneNote,
         recipientId: "",
+        createdAt: at,
+        expiresAt: new Date(Date.parse(at) + 3 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    ];
+  }
+  if (change.traceKind && change.traceText) {
+    venue.state.traces = [
+      ...(venue.state.traces ?? []),
+      {
+        id: `trace:${submissionId}`,
+        kind: change.traceKind,
+        text: change.traceText,
+        recipientId: change.recipientId ?? "",
         createdAt: at,
         expiresAt: new Date(Date.parse(at) + 3 * 24 * 60 * 60 * 1000).toISOString(),
       },

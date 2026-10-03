@@ -9998,6 +9998,7 @@ function RoomPanel({
   onContactBoundary,
   onContactKind,
   onAcceptEntry,
+  movementZones,
 }: {
   room: SceneView;
   nameColors: Record<string, string>;
@@ -10047,6 +10048,7 @@ function RoomPanel({
   onContactBoundary: (id: string) => void;
   onContactKind: (kind: "knock" | "call") => void;
   onAcceptEntry: (zoneId: string) => void;
+  movementZones: { id: string; label: string; closed?: boolean }[];
 }) {
   /** The current paragraph in this Scene's ordered reading. */
   const [readStep, setReadStep] = useState(0);
@@ -10434,6 +10436,26 @@ function RoomPanel({
               >
                 View Venue
               </button>
+              {!ended && room.status === "active" ? (
+                <label>
+                  Zone
+                  <select
+                    aria-label="Move to Zone"
+                    value={room.zoneId ?? ""}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setActionsOpen(false);
+                      onAcceptEntry(event.target.value);
+                    }}
+                  >
+                    {movementZones.map((zone) => (
+                      <option key={zone.id} value={zone.id} disabled={zone.closed}>
+                        {zone.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               {onUseMailbox ? (
                 <button
                   type="button"
@@ -11088,6 +11110,17 @@ function RoomPanel({
         ) : null}
         {canDraft ? (
           <div className={`${ELEMENT_TAG}-composer`}>
+            {contactDoors.length > 0 && mode !== "conclude" ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={busy}
+                aria-pressed={mode === "contact"}
+                onClick={() => onMode(mode === "contact" ? "chat" : "contact")}
+              >
+                {mode === "contact" ? "Close doorway controls" : "Knock / Call"}
+              </button>
+            ) : null}
             {(room.entryOffers ?? []).map((offer) => (
               <button
                 key={offer.zoneId}
@@ -11160,7 +11193,7 @@ function RoomPanel({
                     type="button"
                     className={`${ELEMENT_TAG}-room-mode-toggle`}
                     onClick={() => setModeMenuOpen((value) => !value)}
-                    aria-label={`Mode: ${mode === "chat" ? "Chat" : mode === "contact" ? "Knock / Call" : mode === "fulfill" ? "Fulfill" : "Conclude"}. Choose mode`}
+                    aria-label={`Mode: ${mode === "conclude" ? "Conclude" : "Chat"}. Choose mode`}
                     aria-haspopup="menu"
                     aria-expanded={modeMenuOpen}
                     title={
@@ -11187,25 +11220,19 @@ function RoomPanel({
                   </button>
                   {modeMenuOpen ? (
                     <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
-                      {(["chat", "contact", "conclude"] as const).map((option) => (
+                      {(["chat", "conclude"] as const).map((option) => (
                         <button
                           key={option}
                           type="button"
                           role="menuitemradio"
-                          aria-checked={mode === option}
-                          disabled={busy || (option === "fulfill" && activeParticipants.length === 0)}
+                          aria-checked={mode === option || (option === "chat" && mode === "contact")}
+                          disabled={busy}
                           onClick={() => {
                             onMode(option);
                             setModeMenuOpen(false);
                           }}
                         >
-                          {option === "chat"
-                            ? "Chat"
-                            : option === "contact"
-                              ? "Knock / Call"
-                              : option === "fulfill"
-                                ? "Fulfill"
-                                : "Conclude"}
+                          {option === "chat" ? "Chat" : "Conclude"}
                         </button>
                       ))}
                     </span>
@@ -16827,13 +16854,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
               })
                 .then((answer) => {
-                  setRoom(answer.session);
+                  setRoom(currentRoom(answer.session));
+                  setRoomMode("chat");
+                  setRoomTargetId("");
                   setRoomContactBoundary("");
                   void loadSnapshot();
                 })
-                .catch((cause) => setRoomError(messageFrom(cause, "The invitation could not be accepted.")))
+                .catch(async (cause) => {
+                  const latest = await refreshSceneAfterFailure(room.id);
+                  if (latest) setRoom(currentRoom(latest));
+                  setRoomError(messageFrom(cause, "That Zone could not be entered."));
+                })
                 .finally(() => setRoomBusy(false));
             }}
+            movementZones={(snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? []).map(
+              (zone) => ({ id: zone.id, label: zone.name, closed: zone.closed }),
+            )}
             busy={roomBusy || room.operation?.status === "running"}
             error={
               roomError ||

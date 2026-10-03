@@ -1,6 +1,9 @@
 import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
+import { wishReceiptRecords } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
+import { physicalVenueEvents } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
+import { measurePipeline } from "../packages/villages/src/engine/packages/server/src/services/villages/pipeline-metrics.js";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
 function fixtureJson(value: any) {
   return JSON.stringify(
@@ -129,6 +132,20 @@ const documents = {
     return row;
   },
   async update(input: any) {
+    if (
+      input.id === "villages-village" &&
+      failEffectWriteFor &&
+      input.data.venueEvents.some((event: any) => event.actionReceipt?.submissionId === failEffectWriteFor)
+    )
+      throw new Error("physical effect write interrupted");
+    if (
+      input.id.startsWith("villages-venue-visit-") &&
+      failReceiptBookkeepingFor &&
+      input.data.submissions?.some(
+        (turn: any) => turn.id === failReceiptBookkeepingFor && turn.processing?.domains.projects.status === "applied",
+      )
+    )
+      throw new Error("receipt bookkeeping interrupted");
     if (failRelationshipStorage && input.id.startsWith("villages-relationships-"))
       throw new Error("relationship storage unavailable");
     if (
@@ -180,6 +197,9 @@ let malformedGreetingOnce = false;
 let openingSegmentsOnce: Record<string, unknown>[] | null = null;
 let emptyOpeningFailures = 0;
 let failReplyOnce = false;
+let sceneActionFixture: Record<string, unknown> | null = null;
+let failEffectWriteFor = "";
+let failReceiptBookkeepingFor = "";
 let failActReplyOnce = false;
 let quietActReplyOnce = false;
 let narrationOnlyOnce = false;
@@ -200,8 +220,54 @@ let exhaustEcho = false;
 let _wishJudgeCalls = 0;
 let mailboxAccept = true;
 const memoryEvidence: any[] = [];
+const costMeasurements: any[] = [];
+const modelPayloadBytes: number[] = [];
+const measuringCosts = process.env.VILLAGES_SCENE_ACTION_COST === "1";
+async function measured<T>(label: string, run: () => Promise<T>): Promise<T> {
+  if (!measuringCosts) return run();
+  const start = modelPayloadBytes.length;
+  const metricStart = costMeasurements.length;
+  debugEnabled = true;
+  try {
+    const result = await measurePipeline(label, {}, run);
+    const detail = costMeasurements.findLast((row) => row.name === label);
+    const totals = Object.fromEntries(
+      [
+        "reads",
+        "writes",
+        "requests",
+        "reportedInputTokens",
+        "reportedOutputTokens",
+        "unknownUsageRequests",
+        "failedRequests",
+        "modelLatencyMs",
+      ].map((field) => [field, costMeasurements.slice(metricStart).reduce((sum, row) => sum + row[field], 0)]),
+    );
+    console.log(
+      JSON.stringify({
+        fixture: label,
+        ...detail,
+        ...totals,
+        providerUsage: totals.unknownUsageRequests ? "unknown" : totals.requests ? "reported" : "no requests",
+        payloadBytes: modelPayloadBytes.slice(start),
+      }),
+    );
+    return result;
+  } finally {
+    debugEnabled = false;
+  }
+}
 const release = configureVillagesRuntime({
-  logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
+  logger: {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    debugOverride(_enabled, _format, text) {
+      const row = JSON.parse(String(text));
+      if (row.event === "pipeline measurement") costMeasurements.push(row.detail);
+    },
+  },
   isDebugAgentsEnabled: () => debugEnabled,
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   persistence: { documents },
@@ -224,6 +290,7 @@ const release = configureVillagesRuntime({
           };
         },
         async chatComplete(messages: any[], options: any) {
+          modelPayloadBytes.push(Buffer.byteLength(JSON.stringify(messages), "utf8"));
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");
           if (
@@ -633,6 +700,15 @@ const release = configureVillagesRuntime({
           }
           lastVenueSystem = system;
           venueReplyCalls += 1;
+          if (sceneActionFixture)
+            return {
+              content: fixtureJson({
+                heardPlayerBy: ["bob", "tina"],
+                segments: [{ kind: "narration", text: "The physical outcome is confirmed.", heardBy: ["bob", "tina"] }],
+                sceneChange: sceneActionFixture,
+              }),
+              finishReason: "stop",
+            };
           if (user === "Hold concurrent scene") {
             concurrencyStarted?.();
             await new Promise<void>((resolve) => {
@@ -649,6 +725,70 @@ const release = configureVillagesRuntime({
                     heardBy: ["bob", "tina"],
                   },
                 ],
+              }),
+              finishReason: "stop",
+            };
+          }
+          if (
+            [
+              "Set down a cup",
+              "Set down a lantern",
+              "Fail to lift the wall",
+              "Leave a note for Tina",
+              "Spill tea",
+              "Open the window",
+              "Clean the spill",
+            ].includes(user)
+          ) {
+            if (user === "Set down a lantern" && failActReplyOnce) {
+              failActReplyOnce = false;
+              throw new Error("action reply unavailable");
+            }
+            const alone = system.includes("Nobody is present.");
+            const failed = user === "Fail to lift the wall";
+            const lantern = user === "Set down a lantern";
+            const note = user === "Leave a note for Tina";
+            const spill = user === "Spill tea";
+            const window = user === "Open the window";
+            const cleanup = user === "Clean the spill";
+            const narration = failed
+              ? "The wall is too heavy to lift."
+              : lantern
+                ? "The player sets down a lantern."
+                : note
+                  ? "The player leaves a note for Tina."
+                  : spill
+                    ? "The player spills tea on the floor."
+                    : window
+                      ? "The player opens the window."
+                      : cleanup
+                        ? "The player cleans the spill."
+                        : "The player sets down a cup.";
+            const text = quietActReplyOnce && lantern ? "Bob makes room for the lantern on the table." : narration;
+            quietActReplyOnce = false;
+            return {
+              content: fixtureJson({
+                heardPlayerBy: alone ? [] : ["bob", "tina"],
+                segments: [{ kind: "narration", text, heardBy: alone ? [] : ["bob", "tina"] }],
+                ...(!failed
+                  ? {
+                      sceneChange: {
+                        happened: true,
+                        narration,
+                        addItem: note || spill || window || cleanup ? "" : lantern ? "lantern" : "cup",
+                        traceKind: note ? "note" : spill ? "stain" : window ? "open-window" : "",
+                        traceText: note
+                          ? "Meet me by the bridge."
+                          : spill
+                            ? "a tea stain"
+                            : window
+                              ? "an open window"
+                              : "",
+                        recipientId: note ? "tina" : "",
+                        resolveTraceId: cleanup ? "trace:spill-action" : "",
+                      },
+                    }
+                  : {}),
               }),
               finishReason: "stop",
             };
@@ -1360,13 +1500,15 @@ async function main() {
     assert.equal(empty.status, "active", "an empty visit has a durable session");
     assert.deepEqual(empty.participants, []);
     assert.equal(calls, 0);
-    const emptyChat = await sendVenueTurn({
-      sessionId: empty.id,
-      message: "Hello",
-      mode: "chat",
-      targetId: "",
-      submissionId: "empty-chat",
-    });
+    const emptyChat = await measured("ordinary-chat", () =>
+      sendVenueTurn({
+        sessionId: empty.id,
+        message: "Hello",
+        mode: "chat",
+        targetId: "",
+        submissionId: "empty-chat",
+      }),
+    );
     assert.equal(emptyChat.session.lines.at(-1)?.content, "The empty room stays quiet.");
     assert.equal(calls, 1, "empty Chat uses one scene narration call");
     const emptyAction = await sendVenueTurn({
@@ -1952,18 +2094,21 @@ async function main() {
     });
     assert.equal((await activeVenueSession())?.lines.filter((line) => line.content === "Fail once").length, 1);
     const beforeAction = calls;
-    const action = await sendVenueTurn({
-      sessionId: group.id,
-      message: "Set down a cup",
-      mode: "act",
-      targetId: "",
-      submissionId: "group-action",
-    });
+    const action = await measured("legacy-act-with-witnesses", () =>
+      sendVenueTurn({
+        sessionId: group.id,
+        message: "Set down a cup",
+        mode: "act",
+        targetId: "",
+        submissionId: "group-action",
+      }),
+    );
+    if (measuringCosts) return;
     assert.equal(action.action?.happened, true);
     const projectActionEvidence = await readProjectTurnEvidence(group.id, "group-action");
     assert.ok(Number.isFinite(Date.parse(projectActionEvidence.at)), "live Act evidence keeps its timestamp");
     assert.equal(projectActionEvidence.action?.happened, true);
-    assert.equal(calls - beforeAction, 2, "an action with villagers uses a check and one shared reply");
+    assert.equal(calls - beforeAction, 1, "new legacy Act uses the shared Chat reply without a System action request");
     assert.ok(
       (await activeVenueSession())?.lines.some((line) => line.content === "The player sets down a cup."),
       "the checked action outcome appears in the visit",
@@ -1976,8 +2121,8 @@ async function main() {
       targetId: "",
       submissionId: "failed-action",
     });
-    assert.equal(failedAction.action?.happened, false);
-    assert.equal(calls - beforeFailedAction, 2, "a failed action still gets one shared villager reaction");
+    assert.equal(failedAction.action, null);
+    assert.equal(calls - beforeFailedAction, 1, "a failed action uses one shared reply with no physical receipt");
     assert.ok(
       !(await readVillageState()).venues.find((place) => place.id === "park")?.state.furniture.includes("wall"),
     );
@@ -2028,11 +2173,7 @@ async function main() {
       targetId: "",
       submissionId: "uncertain-action",
     });
-    assert.equal(
-      calls - beforeUncertainAction,
-      3,
-      "retry reuses the saved action judgement and regenerates only its reaction",
-    );
+    assert.equal(calls - beforeUncertainAction, 2, "explicit retry repeats only the uncommitted Narration request");
     assert.ok(
       completedQuietAction.session.lines.some(
         (line) => line.content === "Bob makes room for the lantern on the table.",
@@ -2135,6 +2276,328 @@ async function main() {
       submissionId: "chat-repair",
     });
     assert.equal(calls, beforeRepairReplay, "a repair retry neither regenerates nor reapplies the deed");
+    const repairProof = (await readVillageState()).venueEvents.find(
+      (event) => event.actionReceipt?.submissionId === "chat-repair",
+    )!;
+    assert.equal(repairProof.actionReceipt?.conditionAfter, "a dry ceiling");
+    assert.deepEqual(repairProof.actionReceipt?.witnessIds, ["bob", "tina"]);
+    assert.equal(repairProof.zoneId, chatRepair.session.zoneId);
+    assert.ok(
+      wishReceiptRecords(await readVillageState(), "bob", chatRepair.session).some(
+        (event) => event.id === repairProof.id,
+      ),
+      "Chat repair is usable witnessed physical evidence",
+    );
+
+    async function stock(item: string) {
+      await mutateVillageState((state) => {
+        const venue = state.venues.find((place) => place.id === "park")!;
+        if (!venue.state.furniture.includes(item)) venue.state.furniture.push(item);
+        const space = venue.spaces?.find((entry) => entry.venueClass === "workplace");
+        if (space && !space.state.items.includes(item)) space.state.items.push(item);
+        const zone = venue.zones?.find((zone) => zone.id === chatRepair.session.zoneId);
+        if (zone && !zone.state.items.includes(item)) zone.state.items.push(item);
+      });
+    }
+    const transferProofs = [];
+    for (const mode of ["chat", "act", "fulfill"] as const) {
+      await stock("teapot");
+      sceneActionFixture = {
+        happened: true,
+        narration: "The player hands the teapot to Tina.",
+        removeItem: "teapot",
+        transferTo: "tina",
+      };
+      const id = `shared-handoff-${mode}`;
+      const sent = await sendVenueTurn({
+        sessionId: group.id,
+        message: "I hand the teapot to Tina",
+        mode,
+        targetId: mode === "fulfill" ? "tina" : "",
+        submissionId: id,
+      });
+      const event = (await readVillageState()).venueEvents.find((event) => event.actionReceipt?.submissionId === id)!;
+      const { submissionId: _id, ...proof } = event.actionReceipt!;
+      transferProofs.push(proof);
+      assert.deepEqual(proof.itemTransfer, { itemName: "teapot", recipientId: "tina" });
+      const before = calls;
+      const replayed = await sendVenueTurn({
+        sessionId: group.id,
+        message: "I hand the teapot to Tina",
+        mode,
+        targetId: mode === "fulfill" ? "tina" : "",
+        submissionId: id,
+      });
+      assert.equal(calls, before);
+      assert.deepEqual(replayed.recordEvents, sent.recordEvents, "replay preserves notice identities");
+    }
+    assert.deepEqual(transferProofs[0], transferProofs[1], "Chat and new legacy Act write equivalent outcomes");
+    assert.deepEqual(transferProofs[0], transferProofs[2], "new legacy Fulfill preserves the shared physical path");
+    await stock("timber");
+    sceneActionFixture = {
+      happened: true,
+      narration: "The player picks up the timber.",
+      removeItem: "timber",
+      transferTo: "player",
+    };
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "I pick up the timber",
+      mode: "chat",
+      targetId: "",
+      submissionId: "shared-pickup",
+    });
+    assert.deepEqual(
+      (await readVillageState()).venueEvents.find((event) => event.actionReceipt?.submissionId === "shared-pickup")!
+        .actionReceipt?.itemTransfer,
+      { itemName: "timber", recipientId: "player" },
+    );
+    for (const [label, message, change] of [
+      ["promise", "I will repair the pipe", { conditionBefore: "a dry ceiling", conditionAfter: "repaired" }],
+      ["elsewhere", "I repaired the pipe elsewhere", { conditionBefore: "a dry ceiling", conditionAfter: "repaired" }],
+      ["absent-recipient", "I hand the cup to Buster", { removeItem: "cup", transferTo: "buster" }],
+      ["missing-stock", "I pick up the diamond", { removeItem: "diamond", transferTo: "player" }],
+    ] as const) {
+      sceneActionFixture = { happened: true, narration: "An unsupported effect.", ...change };
+      const before = (await activeVenueSession())!.lines.length;
+      await assert.rejects(() =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message,
+          mode: "chat",
+          targetId: "",
+          submissionId: `unsupported-${label}`,
+        }),
+      );
+      assert.equal((await activeVenueSession())!.lines.length, before);
+      assert.ok(
+        !(await readVillageState()).venueEvents.some(
+          (event) => event.actionReceipt?.submissionId === `unsupported-${label}`,
+        ),
+      );
+      // Explicitly cancel the rejected operation before the next independent fixture.
+      await continueVenueWithoutGreeting(group.id);
+    }
+    for (const stage of ["effect", "bookkeeping"]) {
+      if (stage === "effect") {
+        await stock("reserved plank");
+        await mutateVillageState((state) =>
+          state.projects.push({
+            id: "reserved-stock-fixture",
+            kind: "build-venue",
+            title: "Reserved stock",
+            venueId: "park",
+            participantIds: [],
+            progress: 0,
+            status: "active",
+            updatedAt: new Date().toISOString(),
+            plan: {
+              revision: 1,
+              sources: [
+                {
+                  id: "plank-source",
+                  requirementId: "plank",
+                  kind: "existing-item",
+                  venueId: "park",
+                  zoneId: chatRepair.session.zoneId,
+                  itemName: "reserved plank",
+                  remaining: 1,
+                },
+              ],
+            },
+          } as any),
+        );
+        sceneActionFixture = {
+          happened: true,
+          narration: "The reserved plank is taken.",
+          removeItem: "reserved plank",
+          transferTo: "player",
+        };
+        await assert.rejects(
+          () =>
+            sendVenueTurn({
+              sessionId: group.id,
+              message: "I pick up the reserved plank",
+              mode: "chat",
+              targetId: "",
+              submissionId: "reserved-stock",
+            }),
+          /reserved-project-item/,
+        );
+        assert.ok(
+          (await readVillageState()).venues
+            .find((venue) => venue.id === "park")!
+            .state.furniture.includes("reserved plank"),
+        );
+        await continueVenueWithoutGreeting(group.id);
+        await mutateVillageState((state) => {
+          state.projects = state.projects.filter((project) => project.id !== "reserved-stock-fixture");
+        });
+      }
+      const id = `physical-interruption-${stage}`;
+      await stock("spare cup");
+      sceneActionFixture = {
+        happened: true,
+        narration: "The player picks up the spare cup.",
+        removeItem: "spare cup",
+        transferTo: "player",
+      };
+      if (stage === "effect") failEffectWriteFor = id;
+      else failReceiptBookkeepingFor = id;
+      await sendVenueTurn({
+        sessionId: group.id,
+        message: "I pick up the spare cup",
+        mode: "chat",
+        targetId: "",
+        submissionId: id,
+      });
+      if (stage === "effect")
+        assert.equal(
+          (await activeVenueSession())!.submissions.find((turn) => turn.id === id)!.processing?.domains.wishes.status,
+          "pending",
+          "Wish checks wait for committed physical evidence",
+        );
+      if (stage === "bookkeeping")
+        await mutateVillageState((state) => {
+          state.venueEvents = state.venueEvents.filter((event) => event.actionReceipt?.submissionId !== id);
+        });
+      failEffectWriteFor = failReceiptBookkeepingFor = "";
+      const before = calls;
+      await sendVenueTurn({
+        sessionId: group.id,
+        message: "I pick up the spare cup",
+        mode: "chat",
+        targetId: "",
+        submissionId: id,
+      });
+      assert.equal(calls, before, "storage recovery reuses the saved reply");
+      assert.equal(
+        physicalVenueEvents(await readVillageState()).filter((event) => event.actionReceipt?.submissionId === id)
+          .length,
+        1,
+        "effect and receipt apply once",
+      );
+    }
+    sceneActionFixture = null;
+    const oldAt = new Date(Date.now() - 300).toISOString();
+    const oldAction = { happened: true, narration: "The player set down an old jug.", addItem: "old jug" };
+    await stock("old jug");
+    await mutateVillageState((state) => {
+      state.venueEvents.unshift({
+        id: "venue-action:legacy-pending",
+        venueId: "park",
+        venueName: "The Park",
+        zoneId: chatRepair.session.zoneId,
+        text: oldAction.narration,
+        at: oldAt,
+        actionReceipt: { ...oldAction, submissionId: "legacy-pending", witnessIds: ["bob", "tina"] },
+      });
+      state.venueEvents.unshift({
+        id: `venue-chat:${group.id}:legacy-settled-chat`,
+        venueId: "park",
+        venueName: "The Park",
+        zoneId: chatRepair.session.zoneId,
+        text: "Old saved result",
+        at: oldAt,
+      });
+    });
+    const legacyScene = records.get(key("villages", `villages-venue-visit-${group.id}`))!.data;
+    legacyScene.lines.push({
+      id: "legacy-player",
+      role: "user",
+      speakerId: "",
+      name: "",
+      content: "Saved legacy action",
+      at: oldAt,
+      heardBy: ["bob", "tina"],
+      zoneId: legacyScene.zoneId,
+    });
+    legacyScene.submissions.push({
+      id: "legacy-pending",
+      message: "Saved legacy action",
+      mode: "act",
+      targetId: "",
+      verdict: null,
+      wishId: "",
+      wishMemory: "",
+      action: oldAction,
+      actionReplyDone: false,
+      at: oldAt,
+      activeIdsAtTurn: ["bob", "tina"],
+      zoneIdAtTurn: legacyScene.zoneId,
+    });
+    legacyScene.submissions.push({
+      id: "legacy-settled-chat",
+      message: "Old saved chat",
+      mode: "chat",
+      targetId: "",
+      verdict: null,
+      wishId: "",
+      wishMemory: "",
+      at: oldAt,
+      sceneChange: { narration: "Old saved result", addItem: "old jug" },
+      zoneIdAtTurn: legacyScene.zoneId,
+    });
+    legacyScene.submissions.push({
+      ...structuredClone(legacyScene.submissions.at(-1)),
+      id: "legacy-settled-fulfill",
+      message: "Old saved Fulfill",
+      sceneChange: undefined,
+    });
+    legacyScene.operation = {
+      ...legacyScene.operation,
+      id: "legacy-pending",
+      kind: "turn",
+      status: "interrupted",
+      attemptId: "legacy-pending-attempt",
+      checkpoints: {},
+      attempts: {},
+      input: { message: "Saved legacy action", mode: "act", targetId: "" },
+      snapshot: structuredClone({ ...legacyScene, operation: undefined }),
+    };
+    const beforeLegacyRecovery = venueReplyCalls;
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Saved legacy action",
+      mode: "act",
+      targetId: "",
+      submissionId: "legacy-pending",
+    });
+    assert.equal(
+      venueReplyCalls - beforeLegacyRecovery,
+      1,
+      "unfinished legacy reaction uses its saved physical outcome",
+    );
+    assert.equal((await activeVenueSession())!.submissions.find((turn) => turn.id === "legacy-pending")!.mode, "act");
+    const beforeSettledReplay = calls;
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Saved legacy action",
+      mode: "act",
+      targetId: "",
+      submissionId: "legacy-pending",
+    });
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Old saved chat",
+      mode: "chat",
+      targetId: "",
+      submissionId: "legacy-settled-chat",
+    });
+    await sendVenueTurn({
+      sessionId: group.id,
+      message: "Old saved Fulfill",
+      mode: "fulfill",
+      targetId: "",
+      submissionId: "legacy-settled-fulfill",
+    });
+    assert.equal(calls, beforeSettledReplay);
+    assert.equal(
+      (await readVillageState()).venueEvents.find((event) => event.id === `venue-chat:${group.id}:legacy-settled-chat`)!
+        .actionReceipt,
+      undefined,
+      "settled Chat history is not converted to new physical proof",
+    );
     await sendVenueTurn({
       sessionId: group.id,
       message: "I moved the tables",

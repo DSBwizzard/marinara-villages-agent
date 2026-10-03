@@ -161,6 +161,21 @@ try {
   }
   const composer = (page) => page.getByRole("textbox", { name: "Message at The Mill" });
   const send = (page) => page.getByRole("button", { name: "Send", exact: true });
+  const readToComposer = async (page, hasDraft = true) => {
+    await expect
+      .poll(
+        async () => {
+          const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+          if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+          return hasDraft
+            ? send(page).isEnabled()
+            : !(await next.isEnabled()) &&
+                (await page.getByRole("button", { name: "Sending", exact: true }).count()) === 0;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+  };
   await expect(composer(one)).toBeVisible();
   await expect(composer(two)).toBeVisible();
   const admission = new Promise((done) => {
@@ -181,15 +196,14 @@ try {
   await two.bringToFront();
   const next = two.getByRole("button", { name: "Next paragraph", exact: true });
   await expect(next).toBeVisible({ timeout: 10000 });
-  await next.click();
   await expect(one.getByRole("button", { name: "Sending", exact: true })).toHaveCount(0);
-  await expect(send(two)).toBeEnabled({ timeout: 10_000 });
+  await readToComposer(two);
   await expect(composer(two)).toHaveValue("Second tab draft");
   assert.equal(calls, 1, "completion polling never resends the second draft");
   await send(two).click();
   await expect.poll(() => record.data.operation.status).toBe("complete");
-  if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
   await expect(composer(two)).toHaveValue("");
+  await readToComposer(two, false);
   assert.equal(calls, 2);
   assert.equal(record.data.lines.filter((line) => line.content === "Second tab draft").length, 1);
 
@@ -208,26 +222,26 @@ try {
   await expect(two.getByRole("alert")).toContainText("scene changed");
   assert.equal(calls, 2);
   await expect(next).toBeVisible();
-  await next.click();
+  await readToComposer(two);
   await expect(composer(two)).toHaveValue("Review the updated scene");
   await send(two).click();
   await expect.poll(() => record.data.submissions.length).toBe(3);
-  if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
   await expect(composer(two)).toHaveValue("");
+  await readToComposer(two, false);
   assert.equal(calls, 3);
 
   disconnectNext = true;
   await composer(two).fill("Preserve an interrupted request");
   await send(two).click();
-  await expect(two.getByRole("button", { name: "Retry saved request" })).toBeVisible();
+  await expect(two.getByRole("button", { name: "Recover saved request" })).toBeVisible();
   await expect(composer(two)).toHaveValue("Preserve an interrupted request");
   assert.equal(calls, 4);
   await two.reload();
   await two.addScriptTag({ path: resolve("packages/villages/client.js") });
-  await expect(two.getByRole("button", { name: "Retry saved request" })).toBeVisible();
+  await expect(two.getByRole("button", { name: "Recover saved request" })).toBeVisible();
   assert.equal(calls, 4, "reload never retries an uncertain paid request");
-  await two.getByRole("button", { name: "Retry saved request" }).click();
-  await expect(two.getByRole("button", { name: "Retry saved request" })).toHaveCount(0);
+  await two.getByRole("button", { name: "Recover saved request" }).click();
+  await expect(two.getByRole("button", { name: "Recover saved request" })).toHaveCount(0);
   assert.equal(calls, 5);
   assert.equal(record.data.submissions.length, 4);
   assert.deepEqual(errors, []);

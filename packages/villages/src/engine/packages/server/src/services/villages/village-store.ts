@@ -1330,6 +1330,19 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
             submissionId: asTrimmedString(receipt.submissionId),
             happened: receipt.happened === true,
             narration: boundText(receipt.narration, MAX_HAPPENING_LENGTH),
+            ...Object.fromEntries(
+              [
+                "conditionBefore",
+                "conditionAfter",
+                "featureId",
+                "featureText",
+                "publicFactBefore",
+                "publicFactAfter",
+                "sceneNote",
+              ].flatMap((key) =>
+                typeof receipt[key] === "string" ? [[key, boundText(receipt[key], MAX_VENUE_NOTE_LENGTH)]] : [],
+              ),
+            ),
             ...(Array.isArray(receipt.witnessIds)
               ? { witnessIds: receipt.witnessIds.filter((id): id is string => typeof id === "string").slice(0, 100) }
               : {}),
@@ -2454,7 +2467,7 @@ export function coerceVillageState(value: unknown): VillageState {
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(([, value]) => typeof value === "string"),
     ),
-    exchangeReceipts: asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"],
+    exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     wishKnowledge: asRecord(raw.wishKnowledge) as VillageState["wishKnowledge"],

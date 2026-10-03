@@ -241,6 +241,7 @@ records.set("villages-village", { id: "villages-village", kind: "village", data:
 let inviterId = "chef";
 let failMovementCommit = false;
 let paidCalls = 0;
+let nominatedMovement: { zoneId: string; quote: string } | null = null;
 let replyGate: Promise<void> | null = null,
   signalReplyStarted: (() => void) | null = null;
 let lastPrompt = "",
@@ -316,6 +317,16 @@ const release = configureVillagesRuntime({
             };
           }
           paidCalls++;
+          if (nominatedMovement)
+            return {
+              content: JSON.stringify({
+                movementIntent: nominatedMovement,
+                // Invented social effects on a movement candidate must never be applied.
+                memoryChanges: [{ kind: "durable", text: "Unwarranted movement memory" }],
+                relationshipChanges: { changes: [{ fromId: "chef", toId: "player", strength: "major" }] },
+              }),
+              finishReason: "stop",
+            };
           if (replyGate) {
             const gate = replyGate;
             replyGate = null;
@@ -840,7 +851,64 @@ async function main() {
     assert.equal(recoveredMove.zoneId, "stock", "saved invitation authorizes completing the interrupted scene commit");
     assert.equal(paidCalls, callsBeforeMoveRecovery, "movement recovery spends no model calls");
     assert.equal(recoveredMove.operation?.status, "complete");
-    await endVenueSession(recoveredMove.id);
+    assert.equal(recoveredMove.submissions.filter((turn) => turn.movement).length, 1);
+    const recoveredTransition = recoveredMove.submissions.at(-1)!.movement!;
+    assert.equal(recoveredMove.lines.filter((line) => line.id === recoveredTransition.transitionLineId).length, 1);
+    assert.deepEqual(recoveredMove.submissions.at(-1)!.activeIdsAfterTurn, recoveredMove.activeIds);
+    const capturedAttendance = structuredClone(recoveredMove.sceneAttendance);
+    const callsBeforeWrittenMove = paidCalls;
+    let written = await sendVenueTurn({
+      sessionId: recoveredMove.id,
+      message: "I walk to Exterior",
+      mode: "chat",
+      targetId: "",
+      submissionId: "written-exterior",
+      expectedSceneRevision: recoveredMove.sceneRevision,
+    });
+    assert.equal(paidCalls, callsBeforeWrittenMove, "named movement is local");
+    assert.equal(written.session.zoneId, "exterior");
+    assert.deepEqual(written.session.sceneAttendance, capturedAttendance);
+    assert.equal(written.session.id, recoveredMove.id);
+    assert.equal(written.session.submissions.at(-1)!.processing, undefined, "movement earns no judged consequences");
+    assert.match(written.session.lines.at(-1)!.content, /from stock to Exterior\./u);
+    const lineId = written.session.lines.at(-1)!.id;
+    await sendVenueTurn({
+      sessionId: written.session.id,
+      message: "I walk to Exterior",
+      mode: "chat",
+      targetId: "",
+      submissionId: "written-exterior",
+    });
+    assert.equal((await activeVenueSession())!.lines.filter((line) => line.id === lineId).length, 1);
+    assert.equal(paidCalls, callsBeforeWrittenMove, "written replay and refresh are free");
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: written.session.id,
+          message: "I walk to Common Space and say hello",
+          mode: "chat",
+          targetId: "",
+          submissionId: "mixed-movement",
+        }),
+      /separately/,
+    );
+    await discardVenueVisitDebug(written.session.id);
+    let candidate = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "exterior")).id);
+    nominatedMovement = { zoneId: "gathering", quote: "I drift into Common Space" };
+    const beforeNomination = paidCalls;
+    written = await sendVenueTurn({
+      sessionId: candidate.id,
+      message: nominatedMovement.quote,
+      mode: "chat",
+      targetId: "",
+      submissionId: "nominated-movement",
+    });
+    assert.equal(paidCalls - beforeNomination, 1, "less direct movement uses the existing Narration request only");
+    assert.equal(written.session.zoneId, "gathering");
+    assert.equal(written.session.submissions.at(-1)!.liveProposals, undefined);
+    nominatedMovement = null;
+    candidate = written.session;
+    await endVenueSession(candidate.id);
     await sendVenueTurn({
       sessionId: visit.id,
       message: "Can I visit later?",

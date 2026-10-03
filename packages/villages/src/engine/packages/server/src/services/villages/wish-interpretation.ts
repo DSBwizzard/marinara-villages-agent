@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { physicalVenueEvents } from "./venue-scene-state.js";
 import type { VillageWish, VillageVenueEvent, VillageState } from "./types.js";
 import type { VenueScene } from "./venue-session.js";
 import type { VillageWishClaimContext, VillageWishVerdictResult } from "./wishes.js";
@@ -50,7 +51,7 @@ export type WishInterpretationContext = VillageWishClaimContext & {
 /** Public completed Projects are physical facts; prose or an unfinished task cannot create this proof. */
 export function wishReceiptRecords(state: VillageState, actorId: string, scene?: VenueScene): WishReceipt[] {
   return [
-    ...state.venueEvents.flatMap((event) => {
+    ...physicalVenueEvents(state).flatMap((event) => {
       const proof = event.actionReceipt;
       if (!proof?.happened) return [];
       const saved = scene?.submissions.find(

@@ -36,7 +36,8 @@ export type ExchangeEffectReceipt = {
   id: string;
   sceneId: string;
   submissionId: string;
-  domain: "wishes" | "memories";
+  domain: "wishes" | "memories" | "physical";
+  physicalOutcome?: import("./types.js").VillageVenueEvent;
   at: string;
   evidenceIds: string[];
   reason: string;
