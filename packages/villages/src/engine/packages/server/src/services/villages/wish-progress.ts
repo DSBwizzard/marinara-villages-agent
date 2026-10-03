@@ -41,6 +41,25 @@ export type ExchangeEffectReceipt = {
   reason: string;
   notice?: VenueRecordEvent;
 };
+/** Format only saved, player-known outcomes; never request prose for a notice. */
+export function formatWishNotice(
+  id: string,
+  name: string,
+  wish: Pick<VillageWish, "id" | "wish">,
+  state: "revealed" | "progress" | "fulfilled",
+): VenueRecordEvent {
+  const labels = { revealed: "Wish shared", progress: "Wish progressed", fulfilled: "Wish fulfilled" };
+  return {
+    id,
+    kind: "wish",
+    text: labels[state] + " · " + name,
+    detail:
+      state === "progress"
+        ? wish.wish + "\n\nNew witnessed evidence was accepted. Other conditions may still remain."
+        : wish.wish,
+    wishUpdate: { wishId: wish.id, state },
+  };
+}
 export type WishProposal = {
   receiptIds?: string[];
   actorId: string;
@@ -301,7 +320,7 @@ export function applyPreparedWishVerdict(
       },
     );
     if (result.status === "accepted" && !state.correctedWishMemoryIds.includes(memoryId) && wish.learnedAt)
-      notice = { id, kind: "wish", text: `${input.context.card.name}'s wish was fulfilled.` };
+      notice = formatWishNotice(id, input.context.card.name, wish, "fulfilled");
     reason = result.status === "accepted" ? "All faithful Wish conditions confirmed" : result.reason;
   } else if (verdict.outcome === "progress" && wish.learnedAt) {
     const previous = Object.values(state.exchangeReceipts).some(
@@ -313,8 +332,7 @@ export function applyPreparedWishVerdict(
         receipt.evidenceIds.length === verdict.evidenceIds.length &&
         receipt.evidenceIds.every((id) => verdict.evidenceIds.includes(id)),
     );
-    if (!previous)
-      notice = { id, kind: "wish", text: `New progress on ${input.context.card.name}'s wish was confirmed.` };
+    if (!previous) notice = formatWishNotice(id, input.context.card.name, wish, "progress");
     reason = "New Wish evidence accepted";
   }
   state.exchangeReceipts[id] = {
@@ -597,12 +615,7 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
           reason: "Wish disclosed through witnessed speech",
           ...(fresh
             ? {
-                notice: {
-                  id,
-                  kind: "wish",
-                  text: `${resident.cardSnapshot.name} shared a wish.`,
-                  detail: current.wish,
-                },
+                notice: formatWishNotice(id, resident.cardSnapshot.name, current, "revealed"),
               }
             : {}),
         };

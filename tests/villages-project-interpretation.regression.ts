@@ -291,7 +291,7 @@ async function main() {
         placeName: "Old Mill",
         area: "public",
         status: "active",
-        memoryMode: "tiered",
+        memoryMode: "live",
         startedAt: at,
         lastActivityAt: at,
         activeIds: ["rosa"],
@@ -525,15 +525,6 @@ async function main() {
     doorway(approval);
     await processSavedProgressSubmission(approval.sessionId, approval.submissionId);
     assert.equal((await readVillageState()).projects.find((entry) => entry.id === roofId)!.lifecycle!.phase, "builder");
-    await mutateVillageState((current) => {
-      current.progressEngineVersion = 0;
-    });
-    const old = saveTurn("Repair Kiosk", "I will build Repair Kiosk.", "ivo");
-    await processSavedProgressSubmission(old.sessionId, old.submissionId);
-    assert.equal(
-      records.get(`villages-venue-visit-${old.sessionId}`).data.submissions[0].progressProcessedAt,
-      undefined,
-    );
     console.log(
       "Villages automatic Project interpretation: natural speech, citations, decisions, physical gates, replay and cost ok",
     );

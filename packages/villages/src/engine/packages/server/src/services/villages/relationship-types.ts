@@ -73,6 +73,10 @@ export type RelationshipGrant = {
   at: string;
 };
 export type RelationshipReceipt = {
+  sceneId?: string;
+  submissionId?: string;
+  noticeSequence?: number;
+  committedAt?: string;
   id: string;
   fromId: string;
   toId: string;
@@ -118,6 +122,7 @@ export type SocialEncounter = {
   review: RelationshipReview;
 };
 export type RelationshipState = {
+  noticeSequence: number;
   version: 1;
   seed: string;
   edges: Record<string, RelationshipEdge>;

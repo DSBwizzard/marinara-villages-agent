@@ -15,7 +15,6 @@ import type { VillageProject, VillageState } from "./types.js";
 type Context = { state: VillageState; project: VillageProject; resolveOpening?: () => void };
 
 export function progressProject(state: VillageState, project: VillageProject): ProgressTask | null {
-  if (state.progressEngineVersion !== 1) return null;
   const task = state.progressTasks.find(
     (entry) => entry.definition.owner.kind === "project" && entry.definition.owner.id === project.id,
   );
@@ -154,7 +153,6 @@ function definitionFor(project: VillageProject, revision: number): ProgressDefin
 }
 
 export function createProjectProgress(state: VillageState, project: VillageProject, at: string): void {
-  if (state.progressEngineVersion !== 1) return;
   if (
     state.progressTasks.some(
       (task) => task.definition.owner.kind === "project" && task.definition.owner.id === project.id,

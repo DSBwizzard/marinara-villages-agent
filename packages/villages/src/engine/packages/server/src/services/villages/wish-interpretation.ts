@@ -65,12 +65,7 @@ export function wishReceiptRecords(state: VillageState, actorId: string, scene?:
     ...state.projects.flatMap((project) => {
       const flow = project.lifecycle;
       const task = state.progressTasks.find((item) => item.definition.owner.id === project.id);
-      if (
-        project.status !== "complete" ||
-        flow?.phase !== "complete" ||
-        !flow.completedAt ||
-        (state.progressEngineVersion === 1 && !task?.resolvedAt)
-      )
+      if (project.status !== "complete" || flow?.phase !== "complete" || !flow.completedAt || !task?.resolvedAt)
         return [];
       const venue = state.venues.find((item) => item.id === project.venueId);
       if (!venue || venue.constructionStatus === "worksite") return [];

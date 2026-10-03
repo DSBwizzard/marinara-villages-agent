@@ -361,6 +361,14 @@ export async function processLiveRelationships(
   if (!receiptIds.length) return { reason: "No relationship changes or substantive contact", receiptIds };
   await mutateRelationships(village.seed, (state) => {
     applyRelationshipReview(state, review, village, scene.id, turn.at);
+    for (const id of receiptIds) {
+      const receipt = state.receipts[id];
+      if (!receipt || receipt.noticeSequence) continue;
+      receipt.sceneId = scene.id;
+      receipt.submissionId = turn.id;
+      receipt.committedAt = new Date().toISOString();
+      receipt.noticeSequence = ++state.noticeSequence;
+    }
     captureRelationshipKnowledge(state, village);
   });
   return { reason: "Cited relationship proposals applied", receiptIds };

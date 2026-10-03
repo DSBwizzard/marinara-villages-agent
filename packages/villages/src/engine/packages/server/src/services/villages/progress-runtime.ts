@@ -4,7 +4,6 @@ import { ingestProjectProgressEvent } from "./project-progress.js";
 
 /** Dispatch only durable, typed events. A transcript's prose is context, never a completion verdict. */
 export function ingestSavedProgressEvent(state: VillageState, evidence: ProgressEvidence): void {
-  if (state.progressEngineVersion !== 1) return;
   const registry: ProgressRegistry<VillageState> = {
     verifiers: {
       "core.saved-event": (route, event) => {

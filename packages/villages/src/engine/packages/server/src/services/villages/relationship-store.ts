@@ -26,6 +26,7 @@ const documentId = (seed: string) =>
 export function defaultRelationshipState(seed: string): RelationshipState {
   return {
     version: 1,
+    noticeSequence: 0,
     seed,
     edges: {},
     grants: {},
@@ -99,6 +100,10 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
   // Package-owned documents are not a model output boundary. Their writer validates each receipt.
   result.grants = asRecord(raw.grants) as RelationshipState["grants"];
   result.receipts = asRecord(raw.receipts) as RelationshipState["receipts"];
+  result.noticeSequence = Object.values(result.receipts).reduce(
+    (sequence, receipt) => Math.max(sequence, receipt.noticeSequence ?? 0),
+    Math.max(0, Number(raw.noticeSequence) || 0),
+  );
   result.applied = asRecord(raw.applied) as RelationshipState["applied"];
   result.disclosures = asRecord(raw.disclosures) as RelationshipState["disclosures"];
   result.knowledge = asRecord(raw.knowledge) as RelationshipState["knowledge"];

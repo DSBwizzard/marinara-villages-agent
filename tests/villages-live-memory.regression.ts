@@ -388,6 +388,28 @@ async function main() {
           1,
           "another domain's status failure must not block memory commitment",
         );
+        const independentFeed = await readSceneChanges("live", "", 50);
+        let remaining = independentFeed;
+        while (remaining.hasMore) {
+          remaining = await readSceneChanges("live", remaining.nextCursor, 50);
+          independentFeed.notices.push(...remaining.notices);
+        }
+        if (domain === "relationships") {
+          const ledger = (await readVillageState()).relationshipContext!;
+          const committed = Object.values(ledger.receipts).find(
+            (receipt) => receipt.submissionId === id && receipt.before !== receipt.after,
+          )!;
+          assert.ok(
+            independentFeed.notices.some((notice) => notice.id === committed.id),
+            "Committed heart survives failed Scene bookkeeping",
+          );
+          assert.ok(
+            !independentFeed.notices.find((notice) => notice.id === committed.id)?.detail,
+            "Private reasons stay hidden",
+          );
+          await dismissSceneNotice("live", committed.id);
+          assert.ok(!(await readSceneChanges("live")).notices.some((notice) => notice.id === committed.id));
+        }
         fault = "";
         await processSavedExchange("live", id);
         assert.ok(
@@ -409,7 +431,7 @@ async function main() {
       );
     }
     await closeVenueSession("live");
-    assert.equal((await readVenueVisit("live")).memoryPending, false);
+    assert.equal((await readVenueVisit("live")).status, "closed");
     assert.equal(requests, 0);
     await assert.rejects(deleteVenueVisit("live"), /unfinished saved changes/);
     const firstPage = await readSceneChanges("live", "", 1);

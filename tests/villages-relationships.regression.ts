@@ -29,7 +29,7 @@ import {
   captureRelationshipKnowledge,
   projectRelationshipProfiles,
   proposeStartingTies,
-  relationshipClosingNotices,
+  relationshipChangeNotices,
   filterRelationshipNotices,
   readRelationshipsView,
   changeRelationshipCreator,
@@ -200,7 +200,7 @@ assert.equal(
 const unchangedIds = ["b", "same-evidence"];
 assert.ok(unchangedIds.every((id) => state.receipts[id].before === state.receipts[id].after));
 assert.deepEqual(
-  relationshipClosingNotices(
+  relationshipChangeNotices(
     unchangedIds.map((id) => state.receipts[id]),
     state,
     village,
@@ -218,11 +218,7 @@ assert.deepEqual(
   ).map((event) => event.id),
   ["a", "memory"],
 );
-const notices = relationshipClosingNotices(
-  apply([change("up", 5), change("down", -5, "trust")], "two"),
-  state,
-  village,
-);
+const notices = relationshipChangeNotices(apply([change("up", 5), change("down", -5, "trust")], "two"), state, village);
 assert.deepEqual(
   notices.map((row) => row.kind),
   ["relationship-up", "relationship-down"],

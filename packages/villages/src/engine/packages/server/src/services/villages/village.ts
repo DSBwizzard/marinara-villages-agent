@@ -1,6 +1,6 @@
 import { relationshipZoneController } from "./relationship-store.js";
 import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
-import { relationshipWritingPrompt, relationshipClosingNotices } from "./relationships.js";
+import { relationshipWritingPrompt, relationshipChangeNotices } from "./relationships.js";
 import { readBaseVenueLayout, assertResidencePrivateDestination } from "./venue-layout.js";
 import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
@@ -602,8 +602,6 @@ export function projectHomeLines(
 export async function buildVillageSnapshot(now: Date = new Date()): Promise<VillageSnapshot> {
   let village = await readVillageState();
   if (!village.visitMemoryBackfilled && (village.setupAt || village.foundedAt)) {
-    const { backfillVenueMemories } = await import("./venue-session.js");
-    await backfillVenueMemories();
     village = await readVillageState();
   }
   if (await rollActiveAgendas(now, village)) village = await readVillageState();
@@ -730,7 +728,7 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
             ...entry,
             socialOutcome: {
               id: encounter.id,
-              changes: relationshipClosingNotices(
+              changes: relationshipChangeNotices(
                 Object.values(village.relationshipContext!.receipts).filter(
                   (receipt) => receipt.sourceId === encounter.id && receipt.before !== receipt.after,
                 ),

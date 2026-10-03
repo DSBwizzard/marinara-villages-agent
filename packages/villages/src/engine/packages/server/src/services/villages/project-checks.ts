@@ -9,23 +9,15 @@ import {
   type InterpretationCheck,
   type InterpretationEvidence,
 } from "./interpretation.js";
-import {
-  projectSpeechContexts,
-  legacyProjectRevision,
-  validateProjectSpeech,
-  type ProjectSpeechProposal,
-} from "./project-interpretation.js";
+import { projectSpeechContexts, type ProjectSpeechProposal } from "./project-interpretation.js";
 import { readVillageState, mutateVillageState } from "./village-store.js";
 import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
 import { recordProjectProgress } from "./project-progress.js";
 
 function pickupRevision(state: VillageState, projectId: string) {
-  const project = state.projects.find((item) => item.id === projectId);
-  return state.progressEngineVersion === 1
-    ? state.progressTasks.find(
-        (item) => item.definition.owner.kind === "project" && item.definition.owner.id === projectId,
-      )?.definition.revision
-    : project && legacyProjectRevision(project);
+  return state.progressTasks.find(
+    (item) => item.definition.owner.kind === "project" && item.definition.owner.id === projectId,
+  )?.definition.revision;
 }
 
 /** Apply a semantic allocation only against an existing inventory-debited receipt. */
@@ -60,7 +52,7 @@ export function applyRecordedProjectPickup(
     state.projectSourceClaims.some((claim) => claim.sourceId === event.id)
   )
     return false;
-  if (state.progressEngineVersion === 1) {
+  {
     const source = flow.sources.find((item) => item.requirementId === requirementId);
     const task = state.progressTasks.find(
       (item) => item.definition.owner.kind === "project" && item.definition.owner.id === project.id,
@@ -102,7 +94,7 @@ export function applyRecordedProjectPickup(
       zoneId: event.zoneId,
       excerpt: `Verified pickup of ${source.itemName}`,
     });
-  } else requirement.carriedAt = event.at;
+  }
   state.projectSourceClaims.push({ key: `acquired-transfer:${event.id}`, projectId, sourceId: event.id, submissionId });
   flow.evidenceIds = [...new Set([...flow.evidenceIds, event.id])];
   project.updatedAt = event.at;
@@ -388,75 +380,6 @@ export async function finalizeProjectDiagnostics(
   await writeInterpretationDiagnostics(sceneId, batch.traces).catch(() => {});
 }
 
-/** Older Villages retain their lifecycle, but use the same semantic interface without speech-as-stock. */
-export async function applyLegacyProjectInterpretation(sceneId: string, submissionId: string) {
-  if ((await readVillageState()).progressEngineVersion === 1) return;
-  const turn = await (await import("./venue-session.js")).readProjectTurnEvidence(sceneId, submissionId);
-  await mutateVillageState((state) => {
-    for (const proposal of turn.projectSpeech) {
-      const project = state.projects.find((item) => item.id === proposal.projectId),
-        flow = project?.lifecycle;
-      const line = turn.lines.find((item) => item.id === proposal.citations[0]?.lineId);
-      if (
-        !project ||
-        !flow ||
-        !line ||
-        line.speakerId !== proposal.speakerId ||
-        !turn.activeIdsAtTurn.includes(line.speakerId) ||
-        !state.villagers.some((person) => person.characterId === line.speakerId) ||
-        legacyProjectRevision(project) !== proposal.revision ||
-        flow.phase !== proposal.phase ||
-        flow.evidenceIds.includes(line.id) ||
-        validateProjectSpeech(proposal, [...turn.lines, ...turn.contextLines])
-      )
-        continue;
-      if (
-        proposal.kind === "approval" &&
-        flow.phase === "approval" &&
-        project.kind === "renovation" &&
-        flow.affectedIds.includes(line.speakerId)
-      ) {
-        if (!flow.approvals.some((item) => item.residentId === line.speakerId))
-          flow.approvals.push({ residentId: line.speakerId, source: "conversation", evidenceId: line.id, at: turn.at });
-        if (flow.affectedIds.every((id) => flow.approvals.some((item) => item.residentId === id)))
-          flow.phase = flow.completedAt ? "finishing" : "builder";
-      } else if (proposal.kind === "builder" && ["builder", "requirements", "materials"].includes(flow.phase)) {
-        if (!flow.candidates.some((item) => item.residentId === line.speakerId))
-          flow.candidates.push({ residentId: line.speakerId, evidenceId: line.id, at: turn.at });
-      } else if (
-        proposal.kind === "requirements" &&
-        flow.phase === "requirements" &&
-        flow.builderId === line.speakerId
-      ) {
-        flow.requirements = proposal.checklist.map((item, index) => ({
-          id: `${project.id}:${index}:${item.category}`,
-          category: item.category,
-          title: item.title,
-          needed: item.needed,
-          carriedAt: "",
-          deliveredAt: "",
-        }));
-        flow.requirementsEvidenceId = line.id;
-      } else continue;
-      flow.evidenceIds = [...new Set([...flow.evidenceIds, line.id])];
-      flow.spokenProofs.push({
-        lineId: line.id,
-        sessionId: sceneId,
-        submissionId,
-        speakerId: line.speakerId,
-        venueId: turn.venueId,
-        zoneId: turn.zoneId,
-        quote: line.content.slice(0, 300),
-        at: turn.at,
-        grade: "cited-interpretation",
-        interpretationVersion: 1,
-        citations: proposal.citations,
-      });
-      project.updatedAt = turn.at;
-    }
-  });
-}
-
 /** Allocate an already completed, inventory-debited pickup; interpretation cannot authorize the transfer itself. */
 export async function applyProjectPickup(sceneId: string, submissionId: string) {
   const state = await readVillageState();
@@ -478,16 +401,15 @@ export async function applyProjectPickup(sceneId: string, submissionId: string) 
             (item) =>
               item.needed &&
               !item.carriedAt &&
-              (state.progressEngineVersion !== 1 ||
-                project.lifecycle!.sources.some(
-                  (source) =>
-                    source.requirementId === item.id &&
-                    source.kind === "existing-item" &&
-                    !source.acquiredAt &&
-                    source.venueId === event.venueId &&
-                    (!source.zoneId || source.zoneId === event.zoneId) &&
-                    source.itemName === proof.removeItem,
-                )),
+              project.lifecycle!.sources.some(
+                (source) =>
+                  source.requirementId === item.id &&
+                  source.kind === "existing-item" &&
+                  !source.acquiredAt &&
+                  source.venueId === event.venueId &&
+                  (!source.zoneId || source.zoneId === event.zoneId) &&
+                  source.itemName === proof.removeItem,
+              ),
           )
           .map((item) => ({
             id: `${submissionId}:${project.id}:${item.id}`,
