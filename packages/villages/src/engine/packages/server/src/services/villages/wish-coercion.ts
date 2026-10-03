@@ -132,6 +132,26 @@ export function coerceWishLifecycle(value: unknown): WishLifecycle | undefined {
       activity: coerceWishActivities(job.activity ? [job.activity] : [])[0],
       ...(typeof job.accepted === "boolean" ? { accepted: job.accepted } : {}),
       matchedNeedId: shortWishText(job.matchedNeedId) || undefined,
+      routineIdea:
+        object(job.routineIdea).flexible === true
+          ? {
+              activity: shortWishText(object(job.routineIdea).activity, 160),
+              venueId: shortWishText(object(job.routineIdea).venueId, 160),
+              zoneId: shortWishText(object(job.routineIdea).zoneId, 160),
+              flexible: true,
+            }
+          : undefined,
+      ...(object(job.needComparison).certain !== undefined
+        ? {
+            needComparison: {
+              matchedNeedId: shortWishText(object(job.needComparison).matchedNeedId),
+              certain: object(job.needComparison).certain === true,
+              knownIds: Array.isArray(object(job.needComparison).knownIds)
+                ? (object(job.needComparison).knownIds as unknown[]).map((id) => shortWishText(id)).slice(0, 12)
+                : [],
+            },
+          }
+        : {}),
       reason: shortWishText(job.reason),
       calls: count(job.calls),
       elapsedMs: typeof job.elapsedMs === "number" ? Math.max(0, job.elapsedMs) : 0,

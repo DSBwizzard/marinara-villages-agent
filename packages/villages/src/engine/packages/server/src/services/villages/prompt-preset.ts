@@ -1,3 +1,4 @@
+import { agendaPromptDay } from "./owned-routine.js";
 // Villages — the village's own half of a villager's prompt.
 //
 // The village answers "what does this village know, and what has been happening
@@ -1146,48 +1147,9 @@ export function isCommittedStatus(status: string): boolean {
  */
 const INTERRUPTED_LINE = "Anybody talking to you now is interrupting you, and it shows in how you answer.";
 
-/**
- * What the villager is up to.
- *
- * Two sources, in the order the plan gives them: the Engine's native schedule
- * wins for TIMING because the player already generated it for this exact
- * character and it is keyed to real weekdays, and the village's own derived
- * routine (Phase B) is the fallback.
- *
- * `routineSummary` is NOT the Engine's prose any more, and that is a correction
- * rather than a preference. It used to be passed through on the grounds that the
- * Engine wrote it about this character — but the Engine wrote it about the
- * character in the WORLD THE CARD DESCRIBES, which is the same leak the activity
- * line was fixed for, arriving in a longer sentence. What reaches here is the
- * village's own one-liner, and a villager with no translation has nothing written
- * about their ordinary day rather than the Engine's paragraph about a life this
- * village has no room for.
- *
- * `status` and `today` are both read off the same schedule the activity came
- * from, and both exist to give the hour a life outside the conversation. Without
- * them the only thing in the prompt that is about what this person is doing is
- * one clause, and a wish is then the largest piece of motivational writing in
- * the whole prompt by default. `status` is the most authoritative competing
- * pressure available — an hour the Engine marked as not to be interrupted is a
- * reason to be short with somebody, and it was already paid for and thrown away.
- *
- * `today` is the whole of their actual day, block by block, and it is the block
- * that decides whether this villager has a life or a label. A single clause about
- * the present reads as a state the character is IN; a day with hours in it reads
- * as a thing they are in the MIDDLE of, which is what makes somebody answer the
- * door with flour on their hands. It replaced a line that listed a few of the
- * week's other activities: that gave the hour company but told the villager
- * nothing about their own afternoon, and the phrases had no times in them, so a
- * villager could not have said when anything happened even about the day they
- * were living.
- *
- * Every block is printed and nothing is grouped, merged or summarised. Hour
- * ranges are the Engine's own strings, kept exactly as written, because a
- * villager asked what time it is in their own day should be able to answer.
- *
- * An empty `status` is the ordinary case and renders nothing, which is what
- * keeps a villager with no Engine schedule producing exactly the prompt they
- * used to.
+/** Render the shared compressed complete day. Equivalent neighbors merge while
+ * distinct destinations, Zones and commitments retain their times. Identity and
+ * Scene-writing instructions are supplied separately and remain unchanged.
  */
 export function renderDoingBlock(input: {
   activity: string;
@@ -1206,21 +1168,15 @@ export function renderDoingBlock(input: {
   // be a second answer that could disagree.
   const current = input.today.find((block) => block.current) ?? null;
   const until = current ? blockEnd(current.time) : "";
-  // Every block, in the order the Engine wrote them. Deliberately uncapped, and
-  // deliberately not sliced to a summary length: the whole point of block-level
-  // fidelity is that a card with a distinct activity every hour gets a distinct
-  // hour every hour, and a cap here would be the village deciding that some of
-  // somebody's day does not count.
-  const plan = input.today
-    .map((block) => `${block.time} ${block.here}${block.reason ? ` (${block.reason})` : ""}`)
-    .join("; ");
+  // Full-day projection keeps meaningful boundaries and omits repetitive reasons.
+  const plan = agendaPromptDay(input.today);
   return [
     "## What you are doing",
     activity.length > 0 ? `Right now you are ${activity}${until.length > 0 ? ` until ${until}` : ""}.` : "",
     availability.length > 0 ? `You are ${availability}.` : "",
     committed ? INTERRUPTED_LINE : "",
     summary,
-    plan.length > 0 ? `Your day, hour by hour: ${plan}.` : "",
+    plan.length > 0 ? `Your day: ${plan}.` : "",
   ]
     .filter((line) => line.length > 0)
     .join("\n");

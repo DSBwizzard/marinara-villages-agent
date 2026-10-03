@@ -123,6 +123,7 @@ import {
   clearVillagerAgenda,
   correctCompletedWish,
   setVillagerScheduleIngestion,
+  setVillagerScheduleInfluence,
   clearVillagerRemap,
   createVillageVenue,
   decideVillageVenueRequest,
@@ -1959,6 +1960,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
     },
   );
 
+  app.patch<{ Params: CharacterParams; Body: unknown }>("/agendas/:characterId/influence", async (request, reply) => {
+    try {
+      await setVillagerScheduleInfluence(readCharacterId(request.params.characterId), request.body);
+      return { villagers: await buildVillageAgendas() };
+    } catch (error) {
+      return fail(reply, error, "changing schedule influence");
+    }
+  });
   app.patch<{ Params: CharacterParams; Body: { ingestSchedule?: unknown } }>(
     "/agendas/:characterId/ingestion",
     async (request, reply) => {
@@ -1966,24 +1975,22 @@ export async function villagesRoutes(engine: FastifyInstance) {
         if (typeof request.body?.ingestSchedule !== "boolean")
           throw badRequest("Choose whether to use the Marinara schedule.");
         await setVillagerScheduleIngestion(readCharacterId(request.params.characterId), request.body.ingestSchedule);
-        return { villagers: await buildVillageAgendas() };
+        return { deprecated: true, villagers: await buildVillageAgendas() };
       } catch (error) {
-        return fail(reply, error, "changing schedule ingestion");
+        return fail(reply, error, "changing schedule influence");
       }
     },
   );
 
-  // The translation on its own path, next to the wishes it belongs with, because
-  // the button that clears it sits in the same panel: it is the way to correct a
-  // prompt without waiting for Monday, which is the only other thing that
-  // invalidates a translation. The press only DELETES — the next part of the day
-  // writes the new translation — so the failure message names forgetting rather
-  // than retrying, and a model that refuses again is a refusal rather than a
-  // failure of this request.
+  // Deprecated compatibility endpoint: never clears owned routines or dispatches work.
   app.delete<{ Params: CharacterParams }>("/remaps/:characterId", async (request, reply) => {
     try {
       await clearVillagerRemap(readCharacterId(request.params.characterId));
-      return { villagers: await buildVillageAgendas() };
+      return {
+        deprecated: true,
+        message: "Schedule translation is retired. Use optional Agenda influence.",
+        villagers: await buildVillageAgendas(),
+      };
     } catch (error) {
       return fail(reply, error, "forgetting a villager's translation");
     }

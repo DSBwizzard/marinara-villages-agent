@@ -33,8 +33,8 @@ try {
       else if (path.endsWith("/usage/preview")) {
         previews++;
         value = {
-          requests: 3,
-          residents: [{ id: "a", name: "A", requests: 3 }],
+          requests: 0,
+          residents: [{ id: "a", name: "A", requests: 0 }],
           dollars: { min: 0.08, max: 0.11 },
           unknownCosts: 1,
           note: "Saved responses are reused.",
@@ -51,10 +51,10 @@ try {
           bursts: [
             {
               id: "j",
-              label: "A's schedule translation",
+              label: "A's routine profile",
               status: "queued",
-              cause: "Automatic: schedule or village context changed",
-              remainingRequests: 2,
+              cause: "Player: regenerate Agenda",
+              remainingRequests: 1,
               remainingBlocks: 12,
             },
           ],
@@ -68,7 +68,7 @@ try {
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
     await page.getByRole("button", { name: "Village Management", exact: true }).click();
     await page.getByRole("button", { name: "Village Settings", exact: true }).click();
-    await expect(page.getByText(/3 expected AI requests/).first()).toBeVisible();
+    await expect(page.getByText(/0 expected AI requests/).first()).toBeVisible();
     await expect(page.getByText(/1 with unknown cost/).first()).toBeVisible();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
     await expect(meter).toContainText("18 requests");
@@ -83,8 +83,8 @@ try {
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await expect.poll(() => meter.evaluate((element) => document.fullscreenElement?.contains(element))).toBe(true);
     await meter.getByRole("button", { name: /Villages AI usage/ }).click();
-    await expect(meter).toContainText("2 requests remaining");
-    await expect(meter).toContainText("Automatic: schedule or village context changed");
+    await expect(meter).toContainText("1 requests remaining");
+    await expect(meter).toContainText("Player: regenerate Agenda");
     const box = await meter.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1);
     await page.screenshot({ path: resolve("artifacts/usage-preview-" + width + ".png") });

@@ -117,6 +117,9 @@ export type VillageCompletedWish = {
  * is the village's own fallback for the ones who do not.
  */
 export type VillageAgenda = {
+  plannedDays?: Record<string, VillageAgendaBlock[]>;
+  routineProfile?: import("./owned-routine.js").RoutineProfile;
+  scheduleInfluenceSnapshot?: import("./owned-routine.js").InfluenceSnapshot;
   wishActivities?: import("./wish-types.js").WishActivity[];
   socialActivities?: import("./wish-types.js").WishActivity[];
   wishes: VillageWish[];
@@ -126,17 +129,17 @@ export type VillageAgenda = {
   day: { startMinute: number; endMinute: number; venueId: string; zoneId?: string; activity: string }[];
   /** Villages' own complete weekly plan, independent of Marinara schedules. */
   week?: Record<string, VillageAgendaBlock[]>;
-  /** A village-local interpretation of an optional Marinara schedule. */
+  /** @deprecated Legacy translation data is adopted locally and has no runtime authority. */
   scheduleWeek?: Record<string, VillageAgendaBlock[]> | null;
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
   /** A single agreed construction shift overrides the ordinary plan while it runs. */
   projectWork?: { projectId: string; venueId: string; zoneId?: string; startsAt: string; endsAt: string };
-  /** A failed model call leaves the working week in place and retries later. */
+  /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
   personalizationPending?: boolean;
   /** Latest actionable generation failure; empty while work is queued or successful. */
   personalizationFailure?: string;
-  /** Local date of the last model attempt, used to pace automatic retries. */
+  /** Display-only date of the latest personalization attempt. */
   personalizationAttemptDate?: string;
   source: "native" | "village";
   /** Display-only, exactly like `VillageChronicleEntry.at`. Read by nothing. */
@@ -144,6 +147,8 @@ export type VillageAgenda = {
 };
 
 export type VillageAgendaBlock = {
+  essential?: boolean;
+  commitmentId?: string;
   flexible?: boolean;
   startMinute: number;
   endMinute: number;
@@ -432,6 +437,7 @@ export type VillageVillager = {
   completedWishes: VillageCompletedWish[];
   /** Schedule changes influence tomorrow's agenda, never today's. */
   ingestSchedule?: boolean;
+  scheduleInfluence?: import("./owned-routine.js").ScheduleInfluence;
   /**
    * How the Engine's week happens here, or null when there is nothing to say.
    *
@@ -1948,6 +1954,7 @@ export type VillageAgendaView = {
   agenda: VillageAgenda | null;
   completedWishes: VillageCompletedWish[];
   ingestSchedule: boolean;
+  scheduleInfluence?: import("./owned-routine.js").ScheduleInfluence;
   nativeSchedule: {
     weekStart: string;
     days: Record<string, { time: string; activity: string; status: string }[]>;
@@ -2088,6 +2095,9 @@ export type VillageAgendaView = {
  * output has no way to tell a bad translation from a stale schedule.
  */
 export type VillageDayBlock = {
+  zoneId?: string;
+  flexible?: boolean;
+  commitmentId?: string;
   /** The block's hour range, exactly as the Engine wrote it: "06:00-08:00". */
   time: string;
   /** The Engine's own activity string, verbatim. Shown to nobody but the schedule tab. */

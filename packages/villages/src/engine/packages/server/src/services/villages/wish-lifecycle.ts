@@ -1,3 +1,4 @@
+import { addRoutineIdea } from "./owned-routine.js";
 import type { CapabilityLanguageModelCompletion, CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
 import {
@@ -9,7 +10,7 @@ import {
 import { readVillageState, mutateVillageState } from "./village-store.js";
 import { venueCardProfile } from "./venue-writing.js";
 import { villagerCardFromSnapshot } from "./catalog.js";
-import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { flexibleAgendaInterval, agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
 import { deriveVillageMoment, randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { coerceWish, villageCurrentSetting } from "./prompt-preset.js";
 import { extractJsonObject } from "./village-bootstrap.js";
@@ -162,29 +163,27 @@ export function wishSlots(resident: VillageVillager, state: VillageState, now: D
   for (let offset = 0; offset < 7 && slots.length < 8; offset++) {
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
     const key = agendaDateKey(date),
-      weekday = VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!;
+      _weekday = VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!;
     const minute = offset === 0 ? now.getHours() * 60 + now.getMinutes() : -1;
-    const blocks =
-      offset === 0
-        ? agendaBlocksFor(agenda, resident.ingestSchedule !== false, date)
-        : ((resident.ingestSchedule !== false ? agenda.scheduleWeek?.[weekday] : undefined) ??
-          agenda.week?.[weekday] ??
-          []);
-    for (const block of blocks) {
-      if (
-        !block.flexible ||
-        block.status === "dnd" ||
-        block.status === "offline" ||
-        block.startMinute <= minute ||
-        block.endMinute - block.startMinute > 60
-      )
-        continue;
+    const blocks = agendaBlocksFor(agenda, resident.ingestSchedule !== false, date);
+    const opportunities = blocks.flatMap((entry) => {
+      if (!entry.flexible || entry.status === "dnd" || entry.status === "offline") return [];
+      const result: typeof blocks = [];
+      let start = Math.max(entry.startMinute, Math.ceil((minute + 1) / 30) * 30);
+      while (start + 30 <= entry.endMinute) {
+        const end = Math.min(entry.endMinute, start + 60);
+        result.push({ ...entry, startMinute: start, endMinute: end });
+        start = end;
+      }
+      return result;
+    });
+    for (const block of opportunities) {
       const from = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.startMinute).getTime();
       const through = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.endMinute).getTime();
       const work = agenda.projectWork;
       if (work && Date.parse(work.startsAt) < through && Date.parse(work.endsAt) > from) continue;
       if (
-        (agenda.wishActivities ?? []).some(
+        [...(agenda.wishActivities ?? []), ...(agenda.socialActivities ?? [])].some(
           (entry) =>
             entry.dateKey === key && entry.startMinute < block.endMinute && entry.endMinute > block.startMinute,
         )
@@ -246,20 +245,13 @@ export function canApplyWishActivity(
   state: VillageState,
   now: Date,
 ): boolean {
-  if (!resident.agenda || activity.baseRevision !== routineRevision(resident.agenda)) return false;
+  if (!resident.agenda) return false;
   const today = agendaDateKey(now),
     minute = now.getHours() * 60 + now.getMinutes();
   if (activity.dateKey < today || (activity.dateKey === today && activity.startMinute <= minute)) return false;
   const date = new Date(`${activity.dateKey}T12:00:00`);
-  const block = agendaBlocksFor(resident.agenda, resident.ingestSchedule !== false, date).find(
-    (entry) =>
-      entry.startMinute === activity.startMinute &&
-      entry.endMinute === activity.endMinute &&
-      entry.flexible &&
-      entry.status !== "dnd" &&
-      entry.status !== "offline",
-  );
-  if (!block) return false;
+  if (!flexibleAgendaInterval(agendaBlocksFor(resident.agenda, false, date), activity.startMinute, activity.endMinute))
+    return false;
   if (activity.venueId) {
     const venue = state.venues.find((entry) => entry.id === activity.venueId),
       zone = venue && venueZones(venue).find((entry) => entry.id === activity.zoneId);
@@ -375,7 +367,7 @@ async function generateWish(input: { state: VillageState; characterId: string; n
       {
         role: "system",
         content:
-          'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}},"adjustment":{"slot":1,"activity":"ordinary activity","reason":"...","venueId":"existing id","zoneId":"existing id"}}. Adjustment is optional. Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. Use the supplied future free-time slots only. No suitable wish is a valid quiet day.',
+          'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}},"adjustment":{"slot":1,"activity":"ordinary activity","reason":"...","venueId":"existing id","zoneId":"existing id"}}. Adjustment is optional. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. Use the supplied future free-time slots only. No suitable wish is a valid quiet day.',
       },
       {
         role: "user",
@@ -398,6 +390,9 @@ async function generateWish(input: { state: VillageState; characterId: string; n
             state: need.state,
             latestAt: need.latestAt,
           })),
+          influenceHints: resident.scheduleInfluence?.enabled
+            ? resident.agenda.scheduleInfluenceSnapshot?.unresolved?.slice(0, 4)
+            : [],
           slots: slots.map((slot, index) => ({ slot: index + 1, ...slot })),
           places: state.venues.slice(0, 24).map((venue) => ({
             id: venue.id,
@@ -422,6 +417,7 @@ async function generateWish(input: { state: VillageState; characterId: string; n
     if (!candidate) {
       if (!payload || !("wish" in payload) || payload.wish !== null)
         throw new Error("Wish generation returned no usable answer.");
+      job.routineIdea = payload.routineIdea;
       job.stage = "done";
       job.reason = "No new wish today.";
       return job;
@@ -431,6 +427,12 @@ async function generateWish(input: { state: VillageState; characterId: string; n
       payload?.adjustment && typeof payload.adjustment === "object" && !Array.isArray(payload.adjustment)
         ? proposalActivity(payload.adjustment as Record<string, unknown>, candidate, slots, resident, state)
         : undefined;
+    job.needComparison = {
+      matchedNeedId: typeof payload.matchedNeedId === "string" ? payload.matchedNeedId : "",
+      certain: payload.certain === true || (!known.length && payload.certain !== false),
+      knownIds: known.map((need) => need.id),
+    };
+    job.routineIdea = payload.routineIdea;
     job.candidate = candidate;
     job.activity = adjustment;
     job.stage = "generated";
@@ -447,48 +449,17 @@ async function generateWish(input: { state: VillageState; characterId: string; n
       matchedNeedId = exact?.id,
       reason = "Local identity check";
     if (accepted && !exact) {
-      const known = selectWishNeeds(
-        [candidate.wish, candidate.need?.subject, candidate.need?.action].filter(Boolean).join(" "),
-        active,
-        needs,
-      );
-      if (known.length) {
-        job.calls++;
-        const result = await ask(
-          job,
-          [
-            {
-              role: "system",
-              content:
-                'Compare one wish with the listed needs. Return JSON only: {"matchedNeedId":"exact listed id or empty string","certain":true}. Match the same unmet need, not just the same object. Acquiring a boat, repairing it, sailing it, and improving it are different needs. Do not change recurrence policy. If uncertain use certain:false.',
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                candidate: { wish: candidate.wish, subject: candidate.need?.subject, action: candidate.need?.action },
-                known: known.map((need) => ({
-                  id: need.id,
-                  subject: need.subject,
-                  action: need.action,
-                  aliases: need.aliases.slice(-2),
-                })),
-              }),
-            },
-          ],
-          800,
-        );
-        if (!result || typeof result.matchedNeedId !== "string" || typeof result.certain !== "boolean")
-          throw new Error("Wish comparison returned no usable verdict.");
-        matchedNeedId = typeof result?.matchedNeedId === "string" ? result.matchedNeedId : undefined;
-        const matched = known.find((need) => need.id === matchedNeedId);
-        accepted =
-          result?.certain === true &&
-          typeof matchedNeedId === "string" &&
-          (!matchedNeedId || !!matched) &&
-          !active.some((wish) => wish.need?.id === matchedNeedId || `active:${wish.id}` === matchedNeedId) &&
-          !(matched && knownNeedBlocked(matched, now));
-        reason = accepted ? "Bounded semantic comparison accepted" : "Repeated need or uncertain comparison";
-      }
+      const verdict = job.needComparison;
+      matchedNeedId = verdict?.matchedNeedId;
+      const matched = needs.find((need) => need.id === matchedNeedId);
+      accepted =
+        !!verdict?.certain &&
+        typeof matchedNeedId === "string" &&
+        (!matchedNeedId || (!!matched && verdict.knownIds.includes(matchedNeedId))) &&
+        !active.some((wish) => wish.need?.id === matchedNeedId || "active:" + wish.id === matchedNeedId) &&
+        !(matched && knownNeedBlocked(matched, now)) &&
+        (!matched || candidate.need?.policy === matched.policy);
+      reason = accepted ? "Bounded semantic comparison accepted" : "Repeated need or uncertain comparison";
     } else if (!accepted) reason = "Active duplicate or settled need";
     job.accepted = accepted;
     job.matchedNeedId = matchedNeedId || undefined;
@@ -511,6 +482,7 @@ registerBackgroundHandler("wish", {
   },
   apply(state, input, result: WishAttempt, context) {
     const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
+    if (owner.agenda && result.routineIdea) addRoutineIdea(owner.agenda, result.routineIdea, owner, state);
     const committedAt = (clocks.get(input.id) ?? (() => new Date()))();
     const attempt = structuredClone(result);
     // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.

@@ -1,5 +1,3 @@
-import { translationBatchSize } from "./generation-budgets.js";
-import { backgroundCalls, backgroundSetting, requireBackgroundSuccess } from "./background-context.js";
 import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — translate the Engine's week into this village's own terms.
 //
@@ -61,15 +59,7 @@ import { venueZones, canOccupyZone } from "./venue-zones.js";
 // card they wrote.
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { asRecord, condense } from "./coerce.js";
-import { villagesConnectionIdFor } from "./connections.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import {
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-  completeWithRoom,
-  completionFailure,
-} from "./package-runtime.js";
+
 import {
   boundText,
   describeStatus,
@@ -124,7 +114,7 @@ export function remapAnswerBudget(blockCount: number): number {
  * answer needs is already in the prompt, and a warm model asked to keep the
  * shape of something will happily improve on it instead.
  */
-const REMAP_TEMPERATURE = 0.5;
+
 /**
  * The card's description again, cut at the same length the agenda call cuts it.
  * This call reads it for a narrower reason than that one does — the translation
@@ -910,57 +900,12 @@ export function remapNeedsWriting(
  * exists so the completeness check knows when to stop asking — see
  * `remapNeedsWriting`.
  */
+/** @deprecated Translation is retired. This compatibility entry point never dispatches a request. */
 export async function proposeRemap(
-  context: VillageRemapContext,
-  options: { signal?: AbortSignal; attempts?: number } = {},
+  _context: VillageRemapContext,
+  _options: { signal?: AbortSignal; attempts?: number } = {},
 ): Promise<{ remap: VillageRemap; failure: string | null }> {
-  const model = await villagesLanguageModels().resolveForRequest({
-    connectionId: await villagesConnectionIdFor("system"),
-  });
-  const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
-  const batchSize = await backgroundSetting("translationBatchSize", () => translationBatchSize(model.maxOutputTokens));
-  const moves: VillageRemapMove[] = [];
-  let routine = "";
-  let failure: string | null = null;
-  for (let offset = 0; offset < context.blocks.length; offset += batchSize) {
-    const batch = { ...context, blocks: context.blocks.slice(offset, offset + batchSize) };
-    const budget = remapAnswerBudget(batch.blocks.length);
-    const requestedMaxTokens = Math.min(model.maxOutputTokens ?? budget, budget);
-    const fitted = model.fitContext(buildRemapMessages(batch), { maxTokens: requestedMaxTokens });
-    villagesLogger().debugOverride(debugEnabled, "[villages] translation prompt: %s", JSON.stringify(fitted.messages));
-    try {
-      const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
-        temperature: REMAP_TEMPERATURE,
-        debugMode: debugEnabled,
-        signal: options.signal,
-      });
-      const payload = extractJsonObject(completion.content ?? "");
-      if (!payload)
-        throw new Error(completionFailure("Schedule translation", completion, fitted.maxTokens ?? requestedMaxTokens));
-      const part = coerceRemap(payload, batch, new Date().toISOString(), options.attempts);
-      if (backgroundCalls.getStore()) {
-        const answered = new Set(part.moves.map((move) => remapBlockKey(move.day, move.time)));
-        if (remapBlockKeys(batch.blocks).some((key) => !answered.has(key)))
-          throw new Error("Schedule translation omitted a requested block.");
-      }
-      moves.push(...part.moves);
-      routine ||= part.routine;
-    } catch (error) {
-      requireBackgroundSuccess(error);
-      failure ??= error instanceof Error ? error.message : String(error);
-    }
-  }
-  return {
-    remap: {
-      weekStart: context.weekStart,
-      moves,
-      routine,
-      signature: remapSignature(context),
-      attempts: options.attempts ?? 1,
-      generatedAt: new Date().toISOString(),
-    },
-    failure,
-  };
+  throw new Error("Schedule translation is retired. Use optional Villages Agenda influence.");
 }
 
 /** The translation as one line, for a log or a debug tab: the Engine's words on the left, the village's on the right. */

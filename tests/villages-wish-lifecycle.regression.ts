@@ -236,6 +236,8 @@ const release = configureVillagesRuntime({
               mode === "none"
                 ? { wish: null }
                 : {
+                    matchedNeedId: mode === "repeat" ? comparisonId : "",
+                    certain: mode !== "uncertain",
                     wish: {
                       wish:
                         mode === "repeat"
@@ -411,9 +413,12 @@ async function run() {
       attempt.revision = wishRevision(resident, live);
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
-    assert.equal(modelCalls.length, 1);
-    assert.match(modelCalls[0]!, /Compare one wish/);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes[0]!.id, "saved-candidate");
+    assert.equal(
+      modelCalls.length,
+      0,
+      "legacy generated proposals without a matching verdict never spend a repair request",
+    );
+    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0);
     seed();
     job = (await reserveWishAttempts(now))[0]!;
     await mutateVillageState((live) => {
@@ -471,35 +476,33 @@ async function run() {
     put(usageState);
     unavailableGenerationUsage = true;
     await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 2);
+    assert.equal(modelCalls.length, 1);
     assert.equal(
       (await readVillageState()).villagers[0]!.wishLifecycle!.attempt!.inputTokens,
       null,
       "partial usage remains explicitly unavailable",
     );
-    // A failed semantic comparison preserves the paid proposal, and dates cannot authorize another attempt.
+    // An invalid single proposal remains blocked; only deliberate retry spends again.
     const comparisonState = seed();
     rememberWishNeed(comparisonState.villagers[0]!, freshWish("known", "A watering can", "lasting"));
     put(comparisonState);
-    mode = "compare-throw";
+    mode = "blank";
     await reconcileWishLifecycle(now, false, () => now);
     const comparisonFailure = (await backgroundWorkSummaries()).find((entry) => entry.kind === "wish")!;
     assert.equal(comparisonFailure.status, "failed");
-    assert.equal(comparisonFailure.completedSteps, 1);
-    assert.equal(modelCalls.length, 2);
+    assert.equal(modelCalls.length, 1);
     await reconcileWishLifecycle(nextDay, false, () => nextDay);
-    assert.equal(modelCalls.length, 2, "daily ticks keep the failed comparison blocked");
+    assert.equal(modelCalls.length, 1);
     mode = "fresh";
     await Promise.all([
-      retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "comparison-retry"),
-      retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "comparison-retry"),
+      retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "single-proposal-retry"),
+      retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "single-proposal-retry"),
     ]);
     await settleBackgroundWork();
-    assert.equal(modelCalls.length, 3, "deliberate retry sends only the failed comparison");
-    assert.match(modelCalls[2]!, /Compare one wish/);
-    await retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "comparison-retry");
+    assert.equal(modelCalls.length, 2);
+    await retryBackgroundJob(comparisonFailure.id, comparisonFailure.attempt, "single-proposal-retry");
     await settleBackgroundWork();
-    assert.equal(modelCalls.length, 3, "lost retry responses do not repeat the comparison");
+    assert.equal(modelCalls.length, 2, "lost retry responses do not duplicate requests");
     for (const count of [10, 1000, 10000]) {
       const live = seed(),
         resident = live.villagers[0]!;
@@ -513,8 +516,8 @@ async function run() {
       }));
       put(live);
       await reconcileWishLifecycle(now, false, () => now);
-      assert.equal(modelCalls.length, 2, `${count} needs have the same request ceiling`);
-      const comparison = JSON.parse(modelCalls[1]!.split("\n").at(-1)!);
+      assert.equal(modelCalls.length, 1, `${count} needs have the same single-request ceiling`);
+      const comparison = JSON.parse(modelCalls[0]!.split("\n").at(-1)!);
       assert.equal(comparison.known.length, Math.min(12, count));
       assert.ok(
         modelCalls.every((prompt) => prompt.length < 18000),
@@ -582,13 +585,14 @@ async function run() {
       const repair = freshWish("boat-repair", "Repair the boat", "lasting");
       repair.need = { id: "", subject: "boat", action: "repair", policy: "lasting" };
       attempt.candidate = repair;
+      attempt.needComparison = { matchedNeedId: "", certain: true, knownIds: [acquisition.id] };
       attempt.calls = 1;
       attempt.stage = "generated";
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
     assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes[0]!.id, "boat-repair");
     assert.notEqual((await readVillageState()).villagers[0]!.agenda!.wishes[0]!.need!.id, acquisition.id);
-    assert.match(modelCalls[0]!, /Acquiring a boat, repairing it, sailing it, and improving it are different needs/);
+    assert.equal(modelCalls.length, 0, "a saved folded verdict needs no matching call");
 
     // Outcomes live outside the hot village; outbox writes and corrections are replayable.
     state = seed();
@@ -669,6 +673,11 @@ async function run() {
       agendaBlocksFor(person.agenda!, false, atSlot).find((block) => block.startMinute === slot.startMinute)!.activity,
       "Sketching a flower",
     );
+    assert.equal(
+      agendaBlocksFor(person.agenda!, false, atSlot).find((row) => row.commitmentId === "activity-wish")!.flexible,
+      false,
+      "accepted dated Wish intervals cannot be overwritten by social planning",
+    );
     fulfillResidentWish(person, "activity-wish", atSlot.toISOString(), "activity-receipt");
     assert.equal(
       agendaBlocksFor(person.agenda!, false, atSlot).find((block) => block.startMinute === slot.startMinute)!.activity,
@@ -712,8 +721,8 @@ async function run() {
     person.agenda!.week!.Monday![0]!.activity = "A revised ordinary routine";
     assert.equal(
       canApplyWishActivity(activity, person, state, now),
-      false,
-      "a revised base invalidates an old overlay",
+      true,
+      "an unrelated base change preserves a compatible dated interval",
     );
     const privateVenue = {
       id: "private",

@@ -75,6 +75,7 @@ jobs:
           npx tsx tests/villages-wish-lifecycle.regression.ts
           npx tsx tests/villages-wish-interpretation.regression.ts
           npx tsx tests/villages-compact-founding.regression.ts
+          npx tsx tests/villages-owned-agendas.regression.ts
           npx tsx tests/villages-generation-recovery.regression.ts
           npx tsx tests/villages-schedule-remap.regression.ts
 
@@ -132,6 +133,7 @@ jobs:
           node tests/villages-runtime-debug.e2e.mjs
           node tests/villages-usage-meter.e2e.mjs
           node tests/villages-usage-preview.e2e.mjs
+          node tests/villages-owned-agendas.e2e.mjs
           node tests/villages-sprite-manager.e2e.mjs
           node tests/villages-scene-staging.e2e.mjs
           node tests/villages-scene-controls.e2e.mjs

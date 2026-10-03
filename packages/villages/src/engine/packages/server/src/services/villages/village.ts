@@ -1,3 +1,17 @@
+import {
+  addRoutineIdea,
+  deriveInfluence,
+  influenceSettings,
+  INFLUENCE_CATEGORIES,
+  routineDay,
+  validateRoutineDay,
+} from "./owned-routine.js";
+import {
+  settleBackgroundWork,
+  backgroundStatus,
+  retryBackgroundJob,
+  backgroundWorkSummaries,
+} from "./background-work.js";
 import { relationshipZoneController } from "./relationship-store.js";
 import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
 import { relationshipWritingPrompt, relationshipChangeNotices } from "./relationships.js";
@@ -46,14 +60,8 @@ import {
   type VillagerCard,
 } from "./catalog.js";
 import { asTrimmedString } from "./coerce.js";
-import { agendaAt, agendaDayPlan, villageAgendaDay, unwrittenVillageAgenda } from "./agenda-plan.js";
-import {
-  agendaBlocksFor,
-  agendaDateKey,
-  replaceRemainingAgendaDay,
-  scheduleInformedWeek,
-  workingAgendaWeek,
-} from "./agenda-week.js";
+import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "./agenda-plan.js";
+import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { readVillageConnectionSettings, validateVillageSetupConnections } from "./connections.js";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, conflict, notFound } from "./errors.js";
@@ -70,27 +78,8 @@ import { selectPromptMemories } from "./memory-selection.js";
 import { readScenarioImprint, readWorldFacts } from "./scenario-imprint.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-image.js";
 import { inspectVillageImage } from "./image-generation.js";
-import {
-  buildRemapPrompt,
-  dayPlan,
-  lookupRemap,
-  MAX_REMAP_ATTEMPTS,
-  proposeRemap,
-  remapBlockKeys,
-  remapBlocks,
-  remapFailureText,
-  remapNeedsWriting,
-  remapDispatchDisposition,
-  remapSignature,
-  VILLAGE_UNTRANSLATED_ACTIVITY,
-  type VillageRemapContext,
-} from "./native-remap.js";
-import {
-  readNativeScheduleSnapshot,
-  readNativeWeekSchedules,
-  type NativeRoutine,
-  type NativeWeekSchedule,
-} from "./native-schedules.js";
+
+import { readNativeScheduleSnapshot, type NativeRoutine } from "./native-schedules.js";
 import { completeWithRoom, villagesLanguageModels, villagesLogger } from "./package-runtime.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import { seedFoundingVenueDetails } from "./founding-drafts.js";
@@ -106,7 +95,7 @@ import {
   validVenueClasses,
 } from "./venue-model.js";
 import { queueSharedMoveConsent, queueVenueCounteroffer, respondDueVenueMail } from "./venue-mailbox.js";
-import { assertVillagePresence } from "./venue-presence.js";
+
 import {
   boundText,
   DEFAULT_HOME_BUILDING,
@@ -157,13 +146,11 @@ import {
   type VillageHomeLine,
 } from "./prompt-preset.js";
 import type {
-  RemapBlock,
   VillageAgenda,
   VillageAgendaView,
   VillageCatalogEntry,
   VillageChronicleEntry,
   VillageChronicleEntryView,
-  VillageDayView,
   VillageMomentView,
   VillageOpportunity,
   VillagePersonaEntry,
@@ -171,7 +158,6 @@ import type {
   VillagePlaceView,
   VillagePlayerIdentity,
   VillageRecap,
-  VillageRemap,
   VillageResidence,
   VillageStoryPace,
   VillageSettingsView,
@@ -186,12 +172,10 @@ import type {
   VillageVillagerCardSnapshot,
   VillageVillagerRefreshPreview,
   VillageVillagerView,
-  VillageWish,
 } from "./types.js";
 import { readVenueRequestCore, venueRequestDraft, type VenueRequestCore } from "./venue-requests.js";
-import { proposeCompactFounding, rebaseFoundingRemap } from "./founding-compact.js";
+import { proposeCompactFounding } from "./founding-compact.js";
 import {
-  proposeAgenda,
   proposeHappenings,
   proposeReaction,
   proposeVillage,
@@ -849,12 +833,13 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   if (!villager) return;
   const effectiveCard = await readEffectiveVillagerCard(villager);
   if (!effectiveCard) {
-    await storeAgenda(characterId, {
-      wishes: [],
-      routineSummary: "",
-      day: villageAgendaDay(null, remapVenues(village.venues), villager.cardSnapshot.name),
-      source: "village",
-      generatedAt: new Date().toISOString(),
+    await mutateVillageState((state) => {
+      const resident = state.villagers.find((entry) => entry.characterId === characterId);
+      if (!resident) return;
+      resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+      resident.agenda.personalizationPending = false;
+      resident.agenda.personalizationFailure =
+        "Character identity is unavailable. Keep the existing routine and retry deliberately after restoring the card.";
     });
     return;
   }
@@ -862,14 +847,25 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
     village.foundingPreparation?.status === "pending"
       ? villageFoundingSetting(village)
       : villageCurrentSetting(village);
+  const initialWishAttemptId =
+    village.foundingPreparation?.status === "pending"
+      ? await reserveInitialWishAllowance(characterId, new Date())
+      : undefined;
   const context = {
+    card: effectiveCard,
+    characterId,
+    allowInitialWish: !!initialWishAttemptId,
+    playerRole: village.playerRole,
+    playerPersonaName: village.playerPersonaName,
+    schedule: null,
+    influenceHints: villager.scheduleInfluence?.enabled ? villager.agenda?.scheduleInfluenceSnapshot?.unresolved : [],
     village: village.name,
     setting: agendaSetting,
     home: (() => {
       const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
       return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
     })(),
-    completedWishes: [],
+    completedWishes: villager.completedWishes,
     activeWishes: villager.agenda?.wishes ?? [],
     lore: await readVillageLore(
       village.selectedLorebookIds,
@@ -906,18 +902,18 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
     legacyError: villager.agenda?.personalizationFailure,
     input: {
       characterId,
+      initialWishAttemptId,
       revision: agendaRevision(village, characterId),
       context,
     },
   });
 }
 registerBackgroundHandler("agenda", {
-  generate: (input) => proposeAgenda(input.context),
+  generate: async (input) => (await proposeCompactFounding(input.context, async () => {})).agenda,
   valid: (state, input) =>
     state.villagers.some((resident) => resident.characterId === input.characterId) &&
     agendaRevision(state, input.characterId) === input.revision,
-  apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda),
-  afterApply: (input, finite) => translateVillagerWeek(input.characterId, finite),
+  apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda, input.initialWishAttemptId),
 });
 
 /**
@@ -929,9 +925,6 @@ registerBackgroundHandler("agenda", {
  * is right in that case — the call was made for a villager who no longer
  * exists, and there is no error a player could act on.
  */
-async function storeAgenda(characterId: string, agenda: VillageAgenda, initialWishAttemptId?: string): Promise<void> {
-  await mutateVillageState((state) => applyAgenda(state, characterId, agenda, initialWishAttemptId));
-}
 function applyAgenda(
   state: VillageState,
   characterId: string,
@@ -957,14 +950,25 @@ function applyAgenda(
       .filter((wish) => !villager.completedWishes.some((entry) => entry.wish.id === wish.id))
       .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
       .slice(0, previous?.wishes.length ? Math.max(previous.wishes.length, 2) : acceptsInitialWish ? 1 : 0),
+    plannedDays: Object.fromEntries(
+      Object.entries(previous?.plannedDays ?? {}).filter(
+        ([key]) =>
+          [...(previous?.wishActivities ?? []), ...(previous?.socialActivities ?? [])].some(
+            (entry) => entry.dateKey === key,
+          ) ||
+          (previous?.projectWork &&
+            key >= previous.projectWork.startsAt.slice(0, 10) &&
+            key <= previous.projectWork.endsAt.slice(0, 10)),
+      ),
+    ),
     wishActivities: previous?.wishActivities ?? [],
+    socialActivities: previous?.socialActivities ?? [],
+    projectWork: previous?.projectWork,
+    scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
     activeDay: {
       dateKey: agendaDateKey(now),
       weekday,
-      blocks:
-        previous?.activeDay?.dateKey === agendaDateKey(now)
-          ? replaceRemainingAgendaDay(previous.activeDay.blocks, nextDay, now.getHours() * 60 + now.getMinutes())
-          : nextDay,
+      blocks: previous?.activeDay?.dateKey === agendaDateKey(now) ? previous.activeDay.blocks : nextDay,
       scheduleInformed: false,
     },
     personalizationAttemptDate: agendaDateKey(now),
@@ -976,19 +980,99 @@ function applyAgenda(
       ? "Initial wish granted during preparation."
       : "No initial wish today.";
   }
-  assertVillagePresence(state);
+  if (villager.agenda.week)
+    for (const weekday of VILLAGE_WEEKDAYS)
+      villager.agenda.week[weekday] = validateRoutineDay(villager.agenda.week[weekday]!, villager, state);
+  if (!previous?.activeDay || previous.activeDay.dateKey !== agendaDateKey(now)) {
+    villager.agenda.activeDay = undefined;
+    planRoutineDays(state, now);
+    activateVillagerDay(villager, now, state);
+  }
 }
 
-function activateVillagerDay(villager: VillageVillager, now: Date): void {
+function planRoutineDays(state: VillageState, now: Date): void {
+  for (const resident of [...state.villagers].sort((a, b) => a.characterId.localeCompare(b.characterId))) {
+    const agenda = resident.agenda;
+    if (!agenda?.routineProfile) continue;
+    agenda.plannedDays ??= {};
+    for (let offset = 0; offset < 7; offset++) {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
+        key = agendaDateKey(date);
+      if (agenda.activeDay?.dateKey === key) {
+        agenda.plannedDays[key] = agenda.activeDay.blocks;
+        continue;
+      }
+      if (agenda.plannedDays[key]) {
+        if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state);
+        continue;
+      }
+      let blocks = validateRoutineDay(
+        routineDay(
+          agenda.routineProfile,
+          agenda.generatedAt || agenda.routineSummary,
+          date,
+          agenda.scheduleInfluenceSnapshot,
+          influenceSettings(resident.scheduleInfluence),
+        ),
+        resident,
+        state,
+      );
+      blocks = blocks.map((block) => {
+        if (!block.venueId) return block;
+        const otherBlocks = state.villagers
+          .filter((other) => other.characterId !== resident.characterId)
+          .map((other) => {
+            const home = state.venues.find((venue) => venueResidentIds(venue).includes(other.characterId))?.id ?? "";
+            return {
+              blocks:
+                other.agenda?.plannedDays?.[key] ?? (other.agenda ? agendaBlocksFor(other.agenda, false, date) : []),
+              home,
+            };
+          });
+        const boundaries = new Set([
+          block.startMinute,
+          ...otherBlocks.flatMap((other) =>
+            other.blocks
+              .filter((row) => row.startMinute > block.startMinute && row.startMinute < block.endMinute)
+              .map((row) => row.startMinute),
+          ),
+        ]);
+        const full = [...boundaries].some(
+          (minute) =>
+            otherBlocks.filter(
+              (other) =>
+                (other.blocks.find((row) => row.startMinute <= minute && row.endMinute > minute)?.venueId ||
+                  other.home) === block.venueId,
+            ).length >= 4,
+        );
+        return full
+          ? {
+              ...block,
+              venueId: "",
+              zoneId: undefined,
+              activity: "Taking care of their own affairs",
+              status: "idle" as const,
+              flexible: true,
+            }
+          : block;
+      });
+      agenda.plannedDays[key] = blocks;
+    }
+    const today = agendaDateKey(now);
+    for (const key of Object.keys(agenda.plannedDays)) if (key < today) delete agenda.plannedDays[key];
+  }
+}
+function activateVillagerDay(villager: VillageVillager, now: Date, state: VillageState): void {
   const agenda = villager.agenda;
   if (!agenda) return;
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-  const informed = villager.ingestSchedule !== false && !!agenda.scheduleWeek?.[weekday];
   agenda.activeDay = {
     dateKey: agendaDateKey(now),
     weekday,
-    blocks: informed ? agenda.scheduleWeek![weekday]! : (agenda.week?.[weekday] ?? agendaBlocksFor(agenda, false, now)),
-    scheduleInformed: informed,
+    blocks:
+      agenda.plannedDays?.[agendaDateKey(now)] ??
+      validateRoutineDay(agendaBlocksFor(agenda, false, now), villager, state),
+    scheduleInformed: false,
   };
 }
 
@@ -996,447 +1080,63 @@ export async function rollActiveAgendas(now: Date, known?: VillageState): Promis
   const village = known ?? (await readVillageState());
   if (village.villagers.every((villager) => villager.agenda?.activeDay?.dateKey === agendaDateKey(now))) return false;
   await mutateVillageState((state) => {
+    planRoutineDays(state, now);
     for (const villager of state.villagers) {
-      if (villager.agenda?.activeDay?.dateKey !== agendaDateKey(now)) activateVillagerDay(villager, now);
+      if (villager.agenda?.activeDay?.dateKey !== agendaDateKey(now)) activateVillagerDay(villager, now, state);
     }
   });
   return true;
 }
 
 /** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */
-async function backfillAgendas(village: VillageState, now: Date): Promise<VillageState> {
-  const missing = village.villagers.filter(
-    (villager) =>
-      villager.agenda === null ||
-      ((villager.agenda.generatedAt === "" || villager.agenda.personalizationPending === true) &&
-        (!villager.agenda.personalizationFailure || villager.agenda.personalizationAttemptDate !== agendaDateKey(now))),
-  );
-  if (missing.length === 0) return village;
-  await mutateVillageState((state) => {
-    for (const villager of state.villagers) {
-      if (villager.agenda) continue;
-      villager.agenda = unwrittenVillageAgenda(state.venues, villager.cardSnapshot.name);
-    }
-  });
-  for (const villager of missing) {
-    await queueVillagerAgenda(villager.characterId, Boolean(villager.agendaGeneration));
-  }
+async function backfillAgendas(village: VillageState, _now: Date): Promise<VillageState> {
+  const pending = village.villagers.filter((resident) => resident.agenda?.personalizationPending === true);
+  if (village.villagers.some((resident) => resident.agenda === null))
+    await mutateVillageState((state) => {
+      for (const resident of state.villagers)
+        if (!resident.agenda) {
+          resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+          resident.agenda.personalizationPending = false;
+        }
+    });
+  // Only explicitly admitted new/regen profiles are eligible, never missing legacy data.
+  for (const resident of pending) await queueVillagerAgenda(resident.characterId, Boolean(resident.agendaGeneration));
   return readVillageState();
 }
 
-// ── Saying the Engine's week in this village's terms ────────────────────────
-//
-// The second derived record, and the one that makes autonomy mean something. The
-// Engine writes a character's week from the card alone, so a pilot's mornings say
-// "in the cockpit of the Halcyon" in a village with no spaceship; the village
-// cannot edit that, because it is a character-level fact shared across every chat
-// the character appears in and writing it would be a whole-blob replace with no
-// optimistic lock. So the village keeps its own reading of the same week.
-//
-// What supersedes that reading is the QUESTION rather than the calendar. The
-// Engine can regenerate the same Monday with different activities in it, and the
-// player can rewrite the places or the setting the week is read through, and a
-// translation that survived any of those would go on saying a week that no longer
-// happens through words the village no longer uses. `remapSignature` digests all
-// of it; `remapNeedsWriting` is the comparison. See `native-remap.ts` for the
-// rule, and for what an hour with no translation reads as — it is the village's
-// own default and NOT the Engine's sentence, which is the bug that clause used to
-// be on the wrong side of.
-
-/**
- * Everything one translation is written from.
- *
- * Pure and shared, because the debug tab has to rebuild this same context on
- * every read in order to show the prompt that WAS sent. A second assembly for
- * display would drift from the first and the tab would then be showing the user
- * a prompt they cannot actually reproduce.
- *
- * Wish state is deliberately absent from routine prompts and invalidation.
- */
-function remapLoreKey(village: VillageState, _characterId?: string): string {
-  return JSON.stringify([village.selectedLorebookIds, village.loreTokenBudget]);
+/** Deprecated compatibility helper; no timetable authority. */
+export function remapSignatureFor(..._args: unknown[]): string {
+  return "deprecated-owned-agenda";
 }
 
-async function remapContextFor(
-  village: VillageState,
-  card: VillagerCard,
-  schedule: NativeWeekSchedule,
-  _wishes: readonly VillageWish[],
-): Promise<VillageRemapContext> {
-  const blocks = remapBlocks(schedule);
-  const lore = await readVillageLore(
-    village.selectedLorebookIds,
-    [
-      villageCurrentSetting(village),
-      card.name,
-      card.summary,
-      card.description,
-      ...blocks.map((entry) => entry.activity),
-    ].join("\n"),
-    undefined,
-    Math.max(200, Math.min(village.loreTokenBudget, 2_400 - blocks.length * 25)),
-  );
-  return {
-    village: village.name,
-    setting: villageCurrentSetting(village),
-    lore,
-    completedWishes: [],
-    loreKey: remapLoreKey(village),
-    // The SENDABLE places, not every place — see `remapVenues`. The context is
-    // both the digest and the numbered list, so filtering here rather than in
-    // either of them is what keeps the question and its signature one thing.
-    venues: remapVenues(village.venues),
-    wishes: [],
-    name: card.name,
-    characterId: card.id,
-    summary: card.summary,
-    tags: card.tags,
-    description: card.description,
-    weekStart: schedule.weekStart,
-    blocks,
-  };
-}
-
-/**
- * What this villager wishes for, as the village holds it.
- *
- * The one read of a villager's wishes, and every caller that needs one goes
- * through it — the write, the walk that decides who owes a translation, the tab
- * that shows the decision, and the tick that keeps the list to its ceiling. It is
- * a function rather than a line repeated at each of them because all of them have
- * to be asking the same question. A translation written from one list and
- * measured against another is a villager re-translated on every part of every day
- * for ever, which is the most expensive way this package can fail and one of the
- * quietest.
- *
- * Empty is ordinary rather than a fault: a villager whose agenda has not been
- * written yet, one who genuinely wishes for nothing, and every villager in a
- * village whose save predates the feature all read as empty, and all of them
- * still translate.
- */
-function wishesFor(village: VillageState, characterId: string): readonly VillageWish[] {
-  return village.villagers.find((entry) => entry.characterId === characterId)?.agenda?.wishes ?? [];
-}
-
-/**
- * The digest of the question a translation of this week would answer, here.
- *
- * Assembled from the week and the village alone, and that is the point of it
- * being a function rather than a line inside `remapContextFor`: the one villager
- * this matters most for has no card left to build a context from. A character
- * deleted from the library gets an EMPTY translation — see `writeVillagerRemap`
- * — and an empty translation stored at NO signature would be owed again on every
- * part of every day for the rest of the village's life, which is the exact
- * failure the empty agenda exists to avoid on the other record.
- *
- * `blocks` is passed in rather than recomputed from the schedule because both
- * callers already need it: the gate needs the keys and this needs the digest, and
- * a week's worth of blocks is not worth walking twice per villager per part of
- * day.
- *
- * Nothing from the card reaches this digest. Editing a summary or a tag mid-week
- * must not re-translate a whole village over something that says nothing about
- * what anybody is doing. See `remapSignature` for the rest.
- *
- * The villager's own WISHES do reach it, and that is the one thing about a person
- * that gets to invalidate a translation. The difference from a card field is the
- * whole of the reason: a summary is what the player typed about who somebody is
- * and changes nothing about what they do, while a wish is a thing they are
- * carrying this week, it is quoted in the prompt, and an answer that mentions one
- * is not interchangeable with an answer that does not. The price is named where
- * the cost is paid — see `remapSignature` — and it is one model call for that
- * villager, not one for the village.
- */
-export function remapSignatureFor(
-  village: VillageState,
-  characterId: string,
-  weekStart: string,
-  blocks: readonly RemapBlock[],
-  wishes: readonly VillageWish[],
-): string {
-  return remapSignature({
-    setting: villageCurrentSetting(village),
-    loreKey: remapLoreKey(village, characterId),
-    venues: remapVenues(village.venues),
-    wishes,
-    weekStart,
-    blocks,
-  });
-}
-
-/**
- * Translate one villager's week into this village's own terms.
- *
- * The record is written LAST, for exactly the reason the agenda is: a model that
- * is unreachable costs the villager their translation and nothing else, and the
- * null it leaves is the state that asks for another try.
- *
- * A card that has gone from the library gets an EMPTY translation rather than a
- * failed one, and it is stored at the CURRENT signature with the retry budget
- * already spent. That pair is what makes it final rather than pending: there is
- * nothing left to ask about a card that no longer exists, so a record that could
- * still be recognised as incomplete would be asked about again on every part of
- * every day for the rest of the village's life. Moving the card back and pressing
- * "Forget this translation" is the way out — the press only deletes what is
- * stored, and the next part of the day asks again with the card back in place.
- */
-async function writeVillagerRemap(
-  characterId: string,
-  village: VillageState,
-  schedule: NativeWeekSchedule,
-  finite = false,
-): Promise<VillageRemap | null> {
-  const card = await readEffectiveVillagerCard(village.villagers.find((entry) => entry.characterId === characterId)!);
-  const wishes = wishesFor(village, characterId);
-  if (!card) {
-    const empty: VillageRemap = {
-      weekStart: schedule.weekStart,
-      moves: [],
-      routine: "",
-      signature: remapSignatureFor(village, characterId, schedule.weekStart, remapBlocks(schedule), wishes),
-      attempts: MAX_REMAP_ATTEMPTS,
-      generatedAt: new Date().toISOString(),
-    };
-    await storeRemap(characterId, empty, schedule);
-    return empty;
-  }
-  const context = await remapContextFor(village, card, schedule, wishes);
-  const signature = remapSignature(context);
-  const resident = village.villagers.find((entry) => entry.characterId === characterId)!;
-  await queueBackgroundJob({
-    kind: "translation",
-    subjectId: characterId,
-    seed: village.seed,
-    revision: remapSignature({ ...context, weekStart: "pattern" }) + (resident.translationGeneration ?? ""),
-    finite,
-    label: card.name + "'s schedule translation",
-    legacyError: resident.remapFailure?.message,
-    input: {
-      characterId,
-      context,
-      signature,
-      schedule,
-      capturedAt: resident.cardSnapshot.capturedAt,
-      generation: resident.translationGeneration ?? "",
-      foundingLens: remapSignatureFor(village, characterId, "founding", [], wishes),
-    },
-  });
-  return null;
-}
-registerBackgroundHandler("translation", {
-  async generate(input) {
-    const { remap, failure } = await proposeRemap(input.context, { attempts: 1 });
-    if (failure) throw new Error(failure);
-    remap.foundingLens = input.foundingLens;
-    return remap;
-  },
-  valid: (state, input) =>
-    state.villagers.some(
-      (resident) =>
-        resident.characterId === input.characterId &&
-        resident.cardSnapshot.capturedAt === input.capturedAt &&
-        (resident.translationGeneration ?? "") === input.generation &&
-        resident.ingestSchedule !== false &&
-        !resident.agenda?.personalizationPending,
-    ) &&
-    input.signature ===
-      remapSignatureFor(
-        state,
-        input.characterId,
-        input.schedule.weekStart,
-        remapBlocks(input.schedule),
-        wishesFor(state, input.characterId),
-      ),
-  apply: (state, input, remap) => applyRemap(state, input.characterId, remap, input.schedule),
-});
-
-/**
- * Put one translation on one villager's record.
- *
- * Re-checked inside the mutation like every other write here: a model call takes
- * time, and a villager who left while it was in flight must not be written back
- * onto a roster they are no longer on.
- *
- * The failure is cleared in the SAME mutation rather than in one of its own, and
- * that is the whole reason this is a single store call: a translation and the
- * record of the attempt that failed to produce it are one fact about one villager,
- * and two writes would leave a window where the roster holds both the new table
- * and the old refusal — a villager reading as translated and refused at once.
- */
-async function storeRemap(characterId: string, remap: VillageRemap, schedule: NativeWeekSchedule): Promise<void> {
-  await mutateVillageState((state) => applyRemap(state, characterId, remap, schedule));
-}
-function applyRemap(state: VillageState, characterId: string, remap: VillageRemap, schedule: NativeWeekSchedule): void {
-  const villager = state.villagers.find((entry) => entry.characterId === characterId);
-  if (!villager) return;
-  if (
-    remap.signature !==
-    remapSignatureFor(state, characterId, schedule.weekStart, remapBlocks(schedule), wishesFor(state, characterId))
-  )
-    return;
-  villager.remap = remap;
-  villager.remapFailure = null;
-  if (villager.agenda) {
-    const base = villager.agenda.week ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name);
-    villager.agenda.scheduleWeek = scheduleInformedWeek(base, schedule, remap);
-    assertVillagePresence(state);
-    if (villager.ingestSchedule !== false) updateTodayFromWeek(villager, new Date());
-  }
-}
-
-/**
- * Write down that this villager's translation was asked for and refused.
- *
- * The one place a failed translation leaves a mark, and the reason it exists at
- * all: a villager with no translation because the village has not got round to
- * them and a villager with no translation because the model refused them are the
- * same record and used to be the same screen. The schedules tab could say "no
- * translation yet" for a village whose model had been refusing every week for
- * days, which is a player looking at a broken feature and a working one and having
- * no way to tell.
- *
- * A refusal does NOT clear the stored translation. A stale table is what those
- * villagers are still living by, and replacing it with nothing because a rewrite
- * failed would be the model's outage changing somebody's day.
- *
- * Re-checked inside the mutation for the reason every write here is: the model call
- * that failed took time, and a villager who left while it was in flight must not
- * be written back onto a roster they are no longer on.
- */
-async function storeRemapFailure(characterId: string, message: string, schedule: NativeWeekSchedule): Promise<void> {
-  const at = new Date().toISOString();
-  await mutateVillageState((state) => {
-    const villager = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!villager) return;
-    villager.remapFailure = { at, message };
-    if (villager.agenda) {
-      villager.agenda.scheduleWeek = scheduleInformedWeek(
-        villager.agenda.week ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name),
-        schedule,
-        null,
-      );
-      assertVillagePresence(state);
-      if (villager.ingestSchedule !== false) updateTodayFromWeek(villager, new Date());
-    }
-  });
-}
-
-function updateTodayFromWeek(villager: VillageVillager, now: Date): void {
-  const agenda = villager.agenda;
-  if (!agenda) return;
-  const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-  const informed = villager.ingestSchedule !== false && !!agenda.scheduleWeek?.[weekday];
-  const next = (informed ? agenda.scheduleWeek?.[weekday] : agenda.week?.[weekday]) ?? [];
-  agenda.activeDay = {
-    dateKey: agendaDateKey(now),
-    weekday,
-    blocks:
-      agenda.activeDay?.dateKey === agendaDateKey(now)
-        ? replaceRemainingAgendaDay(agenda.activeDay.blocks, next, now.getHours() * 60 + now.getMinutes())
-        : next,
-    scheduleInformed: informed,
-  };
-}
-
-/** Bound discovery writes when storage is unavailable; no paid calls happen in this pass. */
-const REMAP_REFUSALS_PER_PASS = 2;
-
-/** Discover current translation inputs once per roster; provider failures are blocked by the coordinator. */
-async function refreshVillagerRemaps(village: VillageState, now: Date, only?: string, finite = false): Promise<void> {
-  const weeks = await readNativeWeekSchedules(
+/** Normalize preferences locally without altering today's persisted plan. */
+async function refreshVillagerRemaps(village: VillageState, now: Date, only?: string): Promise<void> {
+  const snapshot = await readNativeScheduleSnapshot(
     now,
-    village.villagers.map((villager) => villager.characterId),
+    village.villagers.map((resident) => resident.characterId),
   );
-  let refusals = 0;
-  for (const villager of village.villagers) {
-    if (only !== undefined && villager.characterId !== only) continue;
-    if (!villager.agenda?.generatedAt || villager.agenda.personalizationPending) continue;
-    const schedule = weeks.get(villager.characterId);
-    // No schedule is not a failure and not a thing to write: there is no week to
-    // translate, and the village's own routine stands.
-    if (!schedule) {
-      if (villager.agenda?.scheduleWeek)
-        await mutateVillageState((state) => {
-          const resident = state.villagers.find((entry) => entry.characterId === villager.characterId);
-          if (resident?.agenda) {
-            resident.agenda.scheduleWeek = null;
-            updateTodayFromWeek(resident, now);
-          }
-        });
-      continue;
-    }
-    if (villager.ingestSchedule === false) continue;
-    const blocks = remapBlocks(schedule);
-    const signature = remapSignatureFor(
-      village,
-      villager.characterId,
-      schedule.weekStart,
-      blocks,
-      wishesFor(village, villager.characterId),
-    );
-    const lens = remapSignatureFor(
-      village,
-      villager.characterId,
-      "founding",
-      [],
-      wishesFor(village, villager.characterId),
-    );
-    const disposition = remapDispatchDisposition(villager.remap, signature, remapBlockKeys(blocks), lens);
-    if (villager.remap?.signature !== signature && villager.agenda?.scheduleWeek)
-      await mutateVillageState((state) => {
-        const resident = state.villagers.find((entry) => entry.characterId === villager.characterId);
-        if (resident?.agenda) resident.agenda.scheduleWeek = null;
-      });
-    if (disposition === "current") {
-      if (villager.agenda && !villager.agenda.scheduleWeek) {
-        await mutateVillageState((state) => {
-          const resident = state.villagers.find((entry) => entry.characterId === villager.characterId);
-          if (resident?.agenda)
-            resident.agenda.scheduleWeek = scheduleInformedWeek(
-              resident.agenda.week ?? workingAgendaWeek(state.venues, resident.cardSnapshot.name),
-              schedule,
-              resident.remap,
-            );
-          assertVillagePresence(state);
-        });
+  if (!snapshot.cardsReadable) return;
+  const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
+  await mutateVillageState((state) => {
+    for (const resident of state.villagers) {
+      if ((only && resident.characterId !== only) || !resident.agenda) continue;
+      const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident, state);
+      if (next.signature !== resident.agenda.scheduleInfluenceSnapshot?.signature) {
+        for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
+          if (
+            key === resident.agenda.activeDay?.dateKey ||
+            [...(resident.agenda.wishActivities ?? []), ...(resident.agenda.socialActivities ?? [])].some(
+              (activity) => activity.dateKey === key,
+            )
+          )
+            continue;
+          delete resident.agenda.plannedDays![key];
+        }
+        resident.agenda.scheduleInfluenceSnapshot = next;
       }
-      continue;
     }
-    // A founding translation already chose village terms for each distinct native
-    // activity. New weekly slots can reuse those terms without another model walk.
-    if (disposition === "rebase" && villager.remap) {
-      await storeRemap(villager.characterId, rebaseFoundingRemap(villager.remap, schedule, signature), schedule);
-      continue;
-    }
-    try {
-      await writeVillagerRemap(
-        villager.characterId,
-        village,
-        schedule,
-        finite || Boolean(villager.translationGeneration && !villager.remap),
-      );
-    } catch (error) {
-      refusals += 1;
-      await storeRemapFailure(villager.characterId, remapFailureText(error), schedule);
-      villagesLogger().warn(
-        "[villages] could not translate %s's week for this village: %s",
-        villager.cardSnapshot.name,
-        String(error),
-      );
-      if (refusals >= REMAP_REFUSALS_PER_PASS) return;
-    }
-  }
-}
-
-/** Queue the translation after its agenda applies, preserving whether this was finite player work. */
-async function translateVillagerWeek(characterId: string, finite = true): Promise<void> {
-  try {
-    const village = await readVillageState();
-    if (!village.villagers.some((villager) => villager.characterId === characterId)) return;
-    await refreshVillagerRemaps(village, new Date(), characterId, finite);
-  } catch (error) {
-    villagesLogger().warn("[villages] could not translate %s's week for this village: %s", characterId, String(error));
-  }
+    planRoutineDays(state, now);
+  });
 }
 
 /**
@@ -1502,7 +1202,8 @@ export async function addVillager(characterId: string): Promise<void> {
         addedAt,
         agenda: unwrittenVillageAgenda(state.venues, card.name),
         completedWishes: [],
-        ingestSchedule: true,
+        ingestSchedule: false,
+        scheduleInfluence: influenceSettings(null),
         remap: null,
         remapFailure: null,
       });
@@ -3975,7 +3676,8 @@ export async function runVillageSetup(input: {
         addedAt: new Date().toISOString(),
         agenda: unwrittenVillageAgenda(state.venues, card.name),
         completedWishes: [],
-        ingestSchedule: true,
+        ingestSchedule: false,
+        scheduleInfluence: influenceSettings(null),
         remap: null,
         remapFailure: null,
       });
@@ -4006,18 +3708,6 @@ export async function runVillageSetup(input: {
 }
 
 let foundingWork: Promise<void> | null = null;
-
-function foundedVillagerPrepared(village: VillageState, id: string, schedule: NativeWeekSchedule | null): boolean {
-  const resident = village.villagers.find((entry) => entry.characterId === id);
-  return !!(
-    resident?.agenda?.generatedAt &&
-    !resident.agenda.personalizationPending &&
-    (!schedule ||
-      resident.ingestSchedule === false ||
-      resident.remap?.signature ===
-        remapSignatureFor(village, id, schedule.weekStart, remapBlocks(schedule), wishesFor(village, id)))
-  );
-}
 
 /** Durable, idempotent first-founding work. The read route restarts it after a process exit. */
 export function prepareFoundedVillage(): Promise<void> {
@@ -4084,170 +3774,42 @@ export function prepareFoundedVillage(): Promise<void> {
       });
       return;
     }
-    let weeks: Map<string, NativeWeekSchedule> | null = null;
     for (const villager of initial.villagers) {
-      const id = villager.characterId;
       const latest = await readVillageState();
       if (latest.foundingPreparation?.status !== "pending") return;
-      if (latest.foundingPreparation.completedIds.includes(id)) continue;
-      const stage = async (
-        next: NonNullable<VillageState["foundingPreparation"]>["stage"],
-        attempt: number,
-        loreEntryCount?: number,
-        modelName?: string,
-      ) =>
-        mutateVillageState((state) => {
-          const marker = state.foundingPreparation;
-          if (marker?.status !== "pending") return;
-          marker.currentId = id;
-          marker.stage = next;
-          marker.stageStartedAt = new Date().toISOString();
-          marker.attempt = attempt;
-          if (loreEntryCount !== undefined) marker.loreEntryCount = loreEntryCount;
-          marker.modelName = modelName ?? "";
-        });
-      const previousAttempt =
-        latest.foundingPreparation.currentId === id ? (latest.foundingPreparation.attempt ?? 0) : 0;
-      if (previousAttempt >= 3) {
-        const snapshot = await readNativeScheduleSnapshot(new Date());
-        if (
-          snapshot.cardsReadable &&
-          foundedVillagerPrepared(
-            latest,
-            id,
-            snapshot.schedules.find((schedule) => schedule.characterId === id) ?? null,
-          )
-        ) {
-          weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
-          await mutateVillageState((state) => {
-            const marker = state.foundingPreparation;
-            if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
-          });
-          continue;
-        }
-      }
-      let done = false;
-      for (let attempt = previousAttempt + 1; attempt <= 3; attempt += 1) {
-        try {
-          await stage("reading", attempt, 0);
-          if (!weeks) {
-            const snapshot = await readNativeScheduleSnapshot(new Date());
-            if (!snapshot.cardsReadable)
-              throw new Error(
-                "The character library could not be read, so the villagers' schedules could not be checked.",
-              );
-            weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
-          }
-          const currentState = await readVillageState();
-          const current = currentState.villagers.find((entry) => entry.characterId === id);
-          if (!current) throw new Error("This villager is no longer in the founding roster.");
-          const schedule = weeks.get(id) ?? null;
-          if (foundedVillagerPrepared(currentState, id, schedule)) {
-            await mutateVillageState((state) => {
-              const marker = state.foundingPreparation;
-              if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
-            });
-            done = true;
-            break;
-          }
-          const card = await readEffectiveVillagerCard(current);
-          if (!card) throw new Error(`The character card for ${current.cardSnapshot.name} could not be read.`);
-          const setting = villageFoundingSetting(currentState);
-          const venues = remapVenues(currentState.venues);
-          await stage("lore", attempt);
-          const lore = await readVillageLore(
-            currentState.selectedLorebookIds,
-            [
-              setting,
-              card.name,
-              card.summary,
-              card.personality,
-              card.description,
-              ...venues.map((venue) => venue.name),
-              ...(schedule ? remapBlocks(schedule).map((block) => block.activity) : []),
-            ].join("\n"),
-            undefined,
-            currentState.loreTokenBudget,
-            true,
-          );
-          await stage("resolving", attempt, lore.length);
-          const initialWishAttemptId = await reserveInitialWishAllowance(id, new Date());
-          const result = await proposeCompactFounding(
-            {
-              village: currentState.name,
-              playerRole: currentState.playerRole,
-              playerPersonaName: currentState.playerPersonaName,
-              setting,
-              card,
-              venues,
-              lore,
-              home: (() => {
-                const home = currentState.venues.find((venue) => venue.occupancy.residentCharacterId === id);
-                return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
-              })(),
-              completedWishes: current.completedWishes,
-              allowInitialWish: !!initialWishAttemptId,
-              activeWishes: current.agenda?.generatedAt ? current.agenda.wishes : [],
-              schedule,
-            },
-            async (modelName) => {
-              await stage("model", attempt, lore.length, modelName);
-            },
-            attempt === 1,
-          );
-          await stage("saving", attempt);
-          await storeAgenda(id, result.agenda, initialWishAttemptId);
-          if (schedule && current.ingestSchedule !== false) {
-            await stage("applying", attempt);
-            const withAgenda = await readVillageState();
-            const remap: VillageRemap = {
-              weekStart: schedule.weekStart,
-              moves: result.moves,
-              routine: result.agenda.routineSummary,
-              signature: remapSignatureFor(
-                withAgenda,
-                id,
-                schedule.weekStart,
-                remapBlocks(schedule),
-                wishesFor(withAgenda, id),
-              ),
-              foundingLens: remapSignatureFor(withAgenda, id, "founding", [], wishesFor(withAgenda, id)),
-              attempts: 1,
-              generatedAt: new Date().toISOString(),
-            };
-            await storeRemap(id, remap, schedule);
-            if (
-              (await readVillageState()).villagers.find((entry) => entry.characterId === id)?.remap?.signature !==
-              remap.signature
-            )
-              throw new Error("The native schedule changed while its village translation was being saved.");
-          }
-          await stage("saving", attempt);
-          await mutateVillageState((state) => {
-            const marker = state.foundingPreparation;
-            if (marker?.status === "pending" && !marker.completedIds.includes(id)) marker.completedIds.push(id);
-            if (marker) marker.error = "";
-          });
-          done = true;
-          break;
-        } catch (error) {
-          await mutateVillageState((state) => {
-            const marker = state.foundingPreparation;
-            if (marker?.status !== "pending") return;
-            marker.error = boundText(error instanceof Error ? error.message : String(error), 300);
-            if (attempt === 3) marker.status = "failed";
-          });
-        }
-      }
-      if (!done) {
+      if (latest.foundingPreparation.completedIds.includes(villager.characterId)) continue;
+      const adopted = latest.villagers.find((resident) => resident.characterId === villager.characterId)?.agenda;
+      if (adopted && !adopted.personalizationPending) {
         await mutateVillageState((state) => {
-          if (state.foundingPreparation?.status === "pending") {
+          const marker = state.foundingPreparation;
+          if (marker?.status === "pending" && !marker.completedIds.includes(villager.characterId))
+            marker.completedIds.push(villager.characterId);
+        });
+        continue;
+      }
+      await queueVillagerAgenda(villager.characterId, true);
+      await settleBackgroundWork();
+      const saved = await readVillageState();
+      const resident = saved.villagers.find((entry) => entry.characterId === villager.characterId);
+      if (
+        !resident?.agenda?.generatedAt ||
+        resident.agenda.personalizationPending ||
+        (await backgroundStatus("agenda", villager.characterId)) !== "completed"
+      ) {
+        await mutateVillageState((state) => {
+          if (state.foundingPreparation) {
             state.foundingPreparation.status = "failed";
-            state.foundingPreparation.error ||= "Preparation stopped after three attempts. Retry this villager.";
+            state.foundingPreparation.error =
+              "Routine preparation stopped. Saved responses are retained; retry deliberately.";
           }
         });
         return;
       }
+      await mutateVillageState((state) => {
+        const marker = state.foundingPreparation;
+        if (marker?.status === "pending" && !marker.completedIds.includes(villager.characterId))
+          marker.completedIds.push(villager.characterId);
+      });
     }
     await mutateVillageState((state) => {
       if (state.foundingPreparation?.status === "pending") {
@@ -4276,6 +3838,10 @@ export function prepareFoundedVillage(): Promise<void> {
 }
 
 export async function retryFoundedVillagePreparation(): Promise<VillageSnapshot> {
+  // Called only by POST /setup/preparation/retry after the player presses Retry.
+  // This explicit action is the authorization; discovery and clock reconciliation never call it.
+  const requested = await readVillageState();
+  if (requested.foundingPreparation?.status !== "failed") return buildVillageSnapshot();
   await mutateVillageState((state) => {
     const marker = state.foundingPreparation;
     if (!marker || marker.status !== "failed") return;
@@ -4287,6 +3853,17 @@ export async function retryFoundedVillagePreparation(): Promise<VillageSnapshot>
     marker.attempt = 0;
     marker.stage = undefined;
   });
+  const unfinished = requested.villagers
+    .filter((resident) => !requested.foundingPreparation!.completedIds.includes(resident.characterId))
+    .map((resident) => resident.characterId);
+  for (const job of await backgroundWorkSummaries()) {
+    if (
+      job.kind === "agenda" &&
+      unfinished.includes(job.subjectId) &&
+      ["failed", "interrupted", "paused"].includes(job.status)
+    )
+      await retryBackgroundJob(job.id, job.attempt, randomVillageSeed());
+  }
   queueMicrotask(() => {
     void prepareFoundedVillage();
   });
@@ -4962,6 +4539,10 @@ registerBackgroundHandler("story", {
           requiredPlanId: input.socialPlanId,
         });
     }
+    if (proposal.routineIdea) {
+      const resident = state.villagers.find((entry) => entry.characterId === proposal.routineIdea.characterId);
+      if (resident?.agenda) addRoutineIdea(resident.agenda, proposal.routineIdea, resident, state);
+    }
     for (const request of proposal.housingRequests) {
       if (!opportunity.actorIds.includes(request.characterId)) continue;
       const resident = state.villagers.find((entry) => entry.characterId === request.characterId);
@@ -5291,197 +4872,56 @@ export async function buildVillageMemories() {
   };
 }
 
-/**
- * What every villager is after, as the debug tab draws it.
- *
- * Read on its own route rather than folded into the snapshot, for the same
- * reason the story and the chat logs are: it is one model call's worth of text
- * per villager, the snapshot is re-sent on every keystroke of every chat, and
- * nothing a villager decides, says or is prompted with is read from here.
- *
- * `missing` is the card being gone from the library, resolved the same way and
- * for the same reason as everywhere else. It is worth showing on this tab in
- * particular, because it is the one case where an empty agenda is the end of the
- * story rather than a villager waiting to be written for.
- *
- * It also carries the translation of the Engine's week, and that is the one part
- * of this listing the village itself reads. Those fields are for a person: the
- * week the Engine is keeping, the moves the village made from it, and the prompt
- * the whole thing was written from, rebuilt here so the wording can be read and
- * argued with instead of guessed at from the output. They are on this view
- * rather than a route of their own because a translation means nothing on its
- * own — it is only readable against the week it came from, and the two belong
- * side by side.
- *
- * The week read is the same 30-second cached listing the tick takes, so opening
- * this tab repeatedly costs nothing and showing the prompt does not add a
- * database read per villager. It is taken as the whole SNAPSHOT rather than as
- * the week map, because this is the one caller that goes on to make a claim to
- * the player about what it found: a listing that cannot tell "the Engine is
- * keeping no week for this villager" from "this reader never saw the cards" can
- * only report the first, and it reported it for a village whose cards were all
- * scheduled.
- */
+/** Resolve owned days and refresh optional local preferences; no paid work is dispatched. */
 export async function buildVillageAgendas(): Promise<VillageAgendaView[]> {
-  const now = new Date();
-  const [initialVillage, read, cards] = await Promise.all([
-    readVillageState(),
-    readNativeScheduleSnapshot(now),
-    // A library that does not answer is answered with nothing here rather than
-    // with an error. This listing is a read-only question, and every claim it
-    // makes on the strength of a card is already covered by `weekUnreadable`
-    // below, so failing the whole request would only mean the player is shown a
-    // stack of nothing instead of the sentence that says nobody looked. Names
-    // fall back to the village's own cache of them.
-    listVillagerCards().catch((error: unknown) => {
-      villagesLogger().warn(
-        "[villages] the character library could not be read while listing weeks: %s",
-        String(error),
-      );
-      return [];
-    }),
-  ]);
-  let village = initialVillage;
-  if (await rollActiveAgendas(now, village)) village = await readVillageState();
-  const live = new Map(cards.map((card) => [card.id, card]));
-  const weeks = new Map(read.schedules.map((schedule) => [schedule.characterId, schedule]));
-  // The village's own clock, so the listing can say which day is today
-  // and put a date beside each weekday. Derived once for the whole listing, for
-  // the reason the tick derives it once: every row has to be about the same
-  // moment, and a clock read per villager would eventually straddle midnight.
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  return Promise.all(
-    village.villagers.map(async (villager) => {
-      const card = live.get(villager.characterId) ?? null;
-      const schedule = weeks.get(villager.characterId) ?? null;
-      const blocks = schedule ? remapBlocks(schedule) : [];
-      // The question the village is asking this villager's translation to answer
-      // for right now, built once and read twice: it is what `stale` compares the
-      // stored signature against, and it is what the tab shows a player so the
-      // badge can be argued with instead of trusted.
-      const signature = remapSignatureFor(
-        village,
-        villager.characterId,
-        schedule?.weekStart ?? "",
-        blocks,
-        wishesFor(village, villager.characterId),
-      );
-      return {
-        characterId: villager.characterId,
-        name: card?.name ?? villager.cardSnapshot.name,
-        // Gated on the read, so a villager is never called missing by a reader
-        // that could not open the library in the first place.
-        missing: !card && read.cardsReadable,
-        weekUnreadable: !read.cardsReadable,
-        addedAt: villager.addedAt,
-        agenda: villager.agenda,
-        completedWishes: [],
-        effectiveDays: villager.agenda
-          ? Object.fromEntries(
-              Array.from({ length: 7 }, (_, offset) => {
-                const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
-                return [
-                  VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
-                  agendaBlocksFor(villager.agenda!, villager.ingestSchedule !== false, date),
-                ];
-              }),
-            )
-          : undefined,
-        wishHistoryCount: villager.wishLifecycle?.outcomeCount ?? 0,
-        wishAttempt: villager.wishLifecycle?.attempt
-          ? {
-              stage: villager.wishLifecycle.attempt.stage,
-              reason: villager.wishLifecycle.attempt.reason,
-              calls: villager.wishLifecycle.attempt.calls,
-              inputTokens: villager.wishLifecycle.attempt.inputTokens,
-              outputTokens: villager.wishLifecycle.attempt.outputTokens,
-              elapsedMs: villager.wishLifecycle.attempt.elapsedMs,
-              at: villager.wishLifecycle.attempt.at,
-            }
-          : undefined,
-        ingestSchedule: villager.ingestSchedule !== false,
-        nativeSchedule: schedule ? { weekStart: schedule.weekStart, days: schedule.days } : null,
-        remap: villager.remap,
-        weekStart: schedule?.weekStart ?? "",
-        // The same comparison the tick's own gate makes, built from the same two
-        // helpers, so the badge on this tab and the village's decision to write
-        // again can never disagree about a villager.
-        stale: remapNeedsWriting(villager.remap, signature, remapBlockKeys(blocks)),
-        // How much of the week the stored translation cannot explain, counted over
-        // the SAME capped key list the prompt asked about and the gate above judged.
-        // A whole translation leaves this at zero; a week the model answered badly
-        // and the retry budget then settled for leaves it at however many hours went
-        // missing, which is the number that makes "the village gave up on this week"
-        // visible instead of inferred from rows of `at home`.
-        missingMoves: remapBlockKeys(blocks).filter((key) => lookupRemap(villager.remap, key).length === 0).length,
-        remapFailure: villager.remapFailure,
-        fallback: VILLAGE_UNTRANSLATED_ACTIVITY,
-        remapPrompt:
-          card && schedule
-            ? buildRemapPrompt(await remapContextFor(village, card, schedule, wishesFor(village, villager.characterId)))
-            : null,
-        signature,
-        // The whole week in order from today, Engine blocks on the left and the
-        // village's reading of them on the right. A villager with no week gets
-        // seven days of nothing, which the tab draws as an absence rather than as a
-        // busy day.
-        days: villageDayViews(village.foundedAt, now, moment.dayIndex, schedule, villager.remap),
-      };
-    }),
+  const now = new Date(),
+    initial = await readVillageState();
+  await refreshVillagerRemaps(initial, now);
+  await rollActiveAgendas(now);
+  const village = await readVillageState();
+  const snapshot = await readNativeScheduleSnapshot(
+    now,
+    village.villagers.map((resident) => resident.characterId),
   );
-}
-
-/**
- * The whole week, each block by block, in the village's own words.
- *
- * It is the WHOLE week rather than a window because the Engine's week is a weekly
- * PATTERN keyed by weekday NAME, holds no dates at all, and every day in it is
- * simultaneous — so there is no such thing as "the days that matter" inside it,
- * only the seven the card actually answered with. Showing three of them was this
- * function choosing which of somebody's days were worth the tab's height, and a
- * debug panel that shortens a week is one a reader has to trust rather than
- * check: a block on Saturday could not be seen at all when the clock said
- * Wednesday, and a card whose only hours are at the weekend read as an empty card.
- *
- * The week is still ROTATED to start at the weekday the given clock is on and
- * walked forward with a wrap, because the Engine's pattern has no first day and a
- * reader arriving on a Thursday wants their Thursday first. Each day is labelled
- * with the village's own date so the wrapping week and the calendar the player is
- * living in cannot be confused for each other.
- *
- * A day with no blocks is answered with an empty list rather than with an invented
- * day. A villager whose card carries no schedule at all has no hours on any of the
- * seven, and a caller that wants to draw that absence draws it; a placeholder row
- * minted here would be the village inventing a schedule, which is the leak this
- * package spends its time refusing.
- *
- * The plan join is `dayPlan`, once per day, on the SAME clock reading for all
- * seven: one hour and minute go in and one `current` flag comes out, and it is
- * cleared by hand on the days that are not today. A plan for Wednesday built at
- * eight on Monday would otherwise mark Wednesday's eight-o'clock block as
- * happening, which is a claim a reader would act on.
- */
-function villageDayViews(
-  foundedAt: string,
-  now: Date,
-  dayIndex: number,
-  schedule: NativeWeekSchedule | null,
-  remap: VillageRemap | null,
-): VillageDayView[] {
-  const at = { hour: now.getHours(), minute: now.getMinutes() };
-  const start = (now.getDay() + 6) % 7;
-  const days: VillageDayView[] = [];
-  for (let offset = 0; offset < VILLAGE_WEEKDAYS.length; offset += 1) {
-    const weekday = VILLAGE_WEEKDAYS[(start + offset) % VILLAGE_WEEKDAYS.length]!;
-    const blocks = dayPlan(weekday, schedule?.days[weekday] ?? [], remap, at);
-    days.push({
-      weekday,
-      dateLabel: villageDateLabel(foundedAt, dayIndex + offset),
+  const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
+  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
+  return village.villagers.map((resident) => ({
+    characterId: resident.characterId,
+    name: resident.cardSnapshot.name,
+    missing: false,
+    weekUnreadable: !snapshot.cardsReadable,
+    addedAt: resident.addedAt,
+    agenda: resident.agenda,
+    completedWishes: [],
+    ingestSchedule: resident.scheduleInfluence?.enabled === true,
+    scheduleInfluence: influenceSettings(resident.scheduleInfluence),
+    nativeSchedule: weeks.has(resident.characterId) ? { weekStart: "", days: {} } : null,
+    effectiveDays: Object.fromEntries(
+      Array.from({ length: 7 }, (_, offset) => {
+        const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
+        return [
+          VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
+          resident.agenda ? agendaBlocksFor(resident.agenda, false, date) : [],
+        ];
+      }),
+    ),
+    wishHistoryCount: resident.wishLifecycle?.outcomeCount ?? 0,
+    wishAttempt: resident.wishLifecycle?.attempt,
+    remap: null,
+    weekStart: "",
+    stale: false,
+    missingMoves: 0,
+    remapFailure: null,
+    fallback: "",
+    remapPrompt: null,
+    signature: "",
+    days: Array.from({ length: 7 }, (_, offset) => ({
+      weekday: VILLAGE_WEEKDAYS[(((now.getDay() + 6) % 7) + offset) % 7]!,
+      dateLabel: villageDateLabel(village.foundedAt, moment.dayIndex + offset),
       isToday: offset === 0,
-      blocks: offset === 0 ? blocks : blocks.map((block) => ({ ...block, current: false })),
-    });
-  }
-  return days;
+      blocks: [],
+    })),
+  }));
 }
 
 /** Record a deliberate agenda revision before queuing it; repeated action IDs reuse the intent. */
@@ -5507,49 +4947,42 @@ export async function correctCompletedWish(characterId: string, wishId: string):
   await correctResidentWish(characterId, wishId);
 }
 
+/** Deprecated ingestion alias; no generation side effects. */
 export async function setVillagerScheduleIngestion(characterId: string, enabled: boolean): Promise<void> {
-  await mutateVillageState((state) => {
-    const villager = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!villager) throw notFound("That villager does not live here.");
-    villager.ingestSchedule = enabled;
-    updateTodayFromWeek(villager, new Date());
-  });
-  if (enabled) await translateVillagerWeek(characterId);
+  await setVillagerScheduleInfluence(characterId, { enabled });
 }
-
-/**
- * Throw away one villager's translation of the Engine's week, and the record of
- * any attempt to write a new one that failed.
- *
- * The twin of `clearVillagerAgenda`, down to the reason it caches nothing: the
- * next pass writes a translation for any villager whose stored one does not match
- * the question the village is asking, and no translation at all is the most
- * obviously stale thing a record can be. So the press is instant and the model
- * call happens on the tick that was going to run anyway.
- *
- * It exists because a translation is invalidated by things a player cannot press
- * a button for — the week the Engine regenerates, the places and the setting the
- * week is read through — and a wording that can only be tested by waiting for one
- * of those is a wording nobody will test.
- *
- * The refusal goes with the translation, in the same mutation. This is a player
- * saying "I know, try again", and a villager left holding yesterday's complaint
- * about a translation that no longer exists would be the tab reporting a failure
- * for an attempt that has not been made yet.
- */
-export async function clearVillagerRemap(characterId: string): Promise<void> {
-  const village = await readVillageState();
-  if (!village.villagers.some((entry) => entry.characterId === characterId)) {
-    throw notFound("That villager does not live here.");
-  }
-  const generation = randomVillageSeed();
+export async function setVillagerScheduleInfluence(characterId: string, value: unknown): Promise<void> {
+  const raw = value as { enabled?: unknown; categories?: Record<string, unknown> };
+  if (
+    !raw ||
+    typeof raw !== "object" ||
+    (raw.enabled !== undefined && typeof raw.enabled !== "boolean") ||
+    (raw.categories !== undefined &&
+      (!raw.categories ||
+        typeof raw.categories !== "object" ||
+        Object.entries(raw.categories).some(
+          ([key, value]) =>
+            !INFLUENCE_CATEGORIES.includes(key as (typeof INFLUENCE_CATEGORIES)[number]) || typeof value !== "boolean",
+        )))
+  )
+    throw badRequest("Choose valid schedule influence settings.");
   await mutateVillageState((state) => {
-    const villager = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!villager) return;
-    villager.translationGeneration = generation;
-    villager.remap = null;
-    villager.remapFailure = null;
+    const resident = state.villagers.find((entry) => entry.characterId === characterId);
+    if (!resident) throw notFound("That villager does not live here.");
+    const previous = influenceSettings(resident.scheduleInfluence);
+    resident.scheduleInfluence = influenceSettings({
+      ...previous,
+      ...raw,
+      categories: { ...previous.categories, ...raw.categories },
+    });
+    resident.ingestSchedule = resident.scheduleInfluence.enabled;
   });
+  await refreshVillagerRemaps(await readVillageState(), new Date(), characterId);
+}
+/** Deprecated no-op for old clients. */
+export async function clearVillagerRemap(characterId: string): Promise<void> {
+  if (!(await readVillageState()).villagers.some((entry) => entry.characterId === characterId))
+    throw notFound("That villager does not live here.");
 }
 
 /**

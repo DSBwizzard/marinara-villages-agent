@@ -9,10 +9,7 @@ export function assertVillagePresence(state: VillageState, candidateId = "", can
     const rows = state.villagers.map((villager) => {
       const agenda = villager.characterId === candidateId ? (candidate ?? villager.agenda) : villager.agenda;
       const blocks: Array<Pick<VillageAgendaBlock, "startMinute" | "endMinute" | "venueId">> =
-        (villager.ingestSchedule !== false ? agenda?.scheduleWeek?.[weekday] : null) ??
-        agenda?.week?.[weekday] ??
-        agenda?.day ??
-        [];
+        agenda?.week?.[weekday] ?? agenda?.day ?? [];
       const homeId = state.venues.find((venue) => venueResidentIds(venue).includes(villager.characterId))?.id ?? "";
       return { villager, blocks, homeId };
     });

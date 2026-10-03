@@ -1,3 +1,4 @@
+import { adoptedProfile } from "./owned-routine.js";
 import { VILLAGE_CLOCKS, VILLAGE_CLOCK_WINDOWS } from "./village-clock.js";
 import { boundText, isHousePlace, MAX_REMAP_HERE_LENGTH } from "./prompt-preset.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageDayBlock, VillageVenue } from "./types.js";
@@ -68,6 +69,7 @@ export function unwrittenVillageAgenda(venues: readonly VillageVenue[], name: st
   const week = workingAgendaWeek(venues, name);
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
   return {
+    routineProfile: adoptedProfile(week),
     wishes: [],
     routineSummary: "An ordinary day around the village.",
     day: villageAgendaDay(null, venues, name),
@@ -108,7 +110,9 @@ export function agendaDayPlan(
       translated: true,
       venueId: entry.venueId,
       zoneId: entry.zoneId,
-      wishId: "",
+      wishId: entry.commitmentId ?? "",
+      commitmentId: entry.commitmentId,
+      flexible: entry.flexible,
       status: entry.status,
       current: minuteOfDay >= entry.startMinute && minuteOfDay < entry.endMinute,
     };

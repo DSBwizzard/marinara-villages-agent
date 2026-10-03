@@ -1,5 +1,6 @@
 import { measurePipeline } from "./pipeline-metrics.js";
-import { agendaRequestCount, translationRequestCount, remainingRequests } from "./generation-budgets.js";
+import { withUsagePurpose } from "./usage-meter.js";
+import { agendaRequestCount, remainingRequests } from "./generation-budgets.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { asRecord } from "./coerce.js";
 import { runtimeDebug } from "./runtime-debug.js";
@@ -86,6 +87,13 @@ class Obsolete extends Error {}
 export function registerBackgroundHandler(kind: BackgroundKind, handler: Handler): void {
   handlers.set(kind, handler);
 }
+registerBackgroundHandler("translation", {
+  generate: async () => {
+    throw new Error("Schedule translation is retired.");
+  },
+  valid: () => false,
+  apply: () => {},
+});
 let owner = randomUUID();
 let stopped = false;
 let recoveryReady: Promise<void> = Promise.resolve();
@@ -335,6 +343,21 @@ async function runJob(id: string): Promise<void> {
 }
 async function runMeasuredJob(id: string): Promise<void> {
   let job = await readJob(id);
+  if (
+    job &&
+    (job.kind === "translation" ||
+      (job.kind === "agenda" &&
+        typeof asRecord(asRecord(job.input).context).name === "string" &&
+        !asRecord(asRecord(job.input).context).card))
+  ) {
+    await changeJob(id, (current) => ({
+      ...current!,
+      status: "obsolete",
+      error: "Legacy schedule translation and detailed Agenda generation are retired.",
+      replacement: undefined,
+    }));
+    return;
+  }
   if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
   const runOwner = owner;
   const recorded = await readVillageState();
@@ -407,14 +430,18 @@ async function runMeasuredJob(id: string): Promise<void> {
       invoked = true;
       let response: Awaited<ReturnType<BackgroundCompletion>>;
       try {
-        response = await model.chatComplete(messages, {
-          ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
-          ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-          ...(options.verbosity ? { verbosity: options.verbosity } : {}),
-          maxTokens,
-          debugMode: false,
-          signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
-        });
+        response = await withUsagePurpose(
+          options.usagePurpose ?? (job.kind === "wish-check" ? "checks" : "background"),
+          () =>
+            model.chatComplete(messages, {
+              ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+              ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+              ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+              maxTokens,
+              debugMode: false,
+              signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
+            }),
+        );
       } catch (error) {
         if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
         pausedConnections.add(model.connectionId);
@@ -451,7 +478,7 @@ async function runMeasuredJob(id: string): Promise<void> {
     cause: job.finite
       ? "Player-requested generation"
       : job.kind === "translation"
-        ? "Automatic: schedule or village context changed"
+        ? "Deprecated translation: no new requests"
         : "Automatic: village time or resident agenda update",
   };
   complete.setting = async <T>(key: string, create: () => T | Promise<T>): Promise<T> => {
@@ -575,6 +602,15 @@ export async function recoverBackgroundWork(): Promise<void> {
   for (const record of records) {
     if (stopped || owner !== recoveryOwner) return;
     const job = record.data as Job;
+    if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
+      await changeJob(record.id, (current) => ({
+        ...current!,
+        status: "obsolete",
+        error: "Schedule translation is retired.",
+        replacement: undefined,
+      }));
+      continue;
+    }
     if (job.connectionPaused) pausedConnections.add(job.connectionId);
     if (
       job.owner !== owner &&
@@ -680,7 +716,7 @@ export async function settleBackgroundWork(): Promise<void> {
 }
 
 /** Compact raw ledger inspection: no reconciliation, pruning, resume, or village read. */
-export async function previewBackgroundJobs(defaultBatchSize?: number) {
+export async function previewBackgroundJobs(_defaultBatchSize?: number) {
   const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
   return records.flatMap((record) => {
     const job = record.data as Job;
@@ -689,13 +725,8 @@ export async function previewBackgroundJobs(defaultBatchSize?: number) {
       job.completedCount || job.steps.filter((step, i) => step.status === "completed" && i !== job.failedStep).length;
     const context = asRecord(asRecord(job.input).context);
     const blocks = Array.isArray(context.blocks) ? context.blocks.length : 0;
-    const batch = Number(job.settings?.translationBatchSize) || defaultBatchSize;
     const planned =
-      job.kind === "agenda"
-        ? agendaRequestCount(VILLAGE_WEEKDAYS)
-        : job.kind === "translation" && batch
-          ? translationRequestCount(blocks, batch)
-          : null;
+      job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "translation" ? 0 : null;
     return [
       {
         id: record.id,
@@ -716,7 +747,7 @@ export async function previewBackgroundJobs(defaultBatchSize?: number) {
         cause: job.finite
           ? "Player-requested generation"
           : job.kind === "translation"
-            ? "Automatic: schedule or village context changed"
+            ? "Deprecated translation: no new requests"
             : "Automatic: village time or resident agenda update",
         remainingBlocks: job.kind === "translation" ? blocks : null,
       },

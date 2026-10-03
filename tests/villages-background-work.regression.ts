@@ -452,24 +452,12 @@ async function main() {
     await queueBackgroundJob(translationWork);
     await settleBackgroundWork();
     const partialTranslation = await summary("rosa");
-    assert.equal(partialTranslation.status, "failed", "unusable translation blocks its job without repair");
-    assert.equal(
-      partialTranslation.completedSteps,
-      1,
-      "successful batches remain checkpointed before the failed stage",
-    );
-    assert.equal(partialTranslation.connectionPaused, false, "invalid output does not pause other jobs");
+    assert.equal(partialTranslation.status, "obsolete", "retired translation never dispatches");
+    assert.equal(partialTranslation.completedSteps, 0);
     await queueBackgroundJob(translationWork);
     await settleBackgroundWork();
-    assert.equal(translationCalls, 2);
-    translationFail = false;
-    model.maxOutputTokens = 800; // A smaller provider limit must not shift checkpoint boundaries.
-    await retryBackgroundJob(partialTranslation.id, partialTranslation.attempt, "translation-stage-retry");
-    await settleBackgroundWork();
-    assert.equal(translationCalls, 3, "only the failed translation batch is regenerated");
-    assert.deepEqual(calls, ["translation-10", "translation-3"], "batch layout remains frozen on retry");
-    assert.equal((await readVillageState()).setting, "translated-13");
-    model.maxOutputTokens = 4096;
+    assert.equal(translationCalls, 0);
+    assert.equal(model.maxOutputTokens, 4096);
     translationMode = false;
 
     await reset();

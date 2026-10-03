@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
-type Total = { requests: number; tokens: number; dollars: number; usd?: number; yuan?: number; unknown: number };
+type Total = {
+  requests: number;
+  unknownTokens?: number;
+  tokens: number;
+  dollars: number;
+  usd?: number;
+  yuan?: number;
+  unknown: number;
+};
 type Rate = {
   input: number;
   output: number;
@@ -28,6 +36,7 @@ type Row = Model & {
   stage: string;
   status: string;
   interrupted?: boolean;
+  usage?: { totalTokens?: number; promptTokens?: number; completionTokens?: number };
   dollars: number | null;
   yuan?: number | null;
   priceNote?: string;
@@ -204,12 +213,15 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
         >
           Villages AI usage ·{" "}
           {total
-            ? cost(total) +
-              " estimated · " +
+            ? (total.unknown === total.requests && total.requests > 0
+                ? "Cost unavailable"
+                : cost(total) + " estimated") +
+              " · " +
               total.requests +
               " requests · " +
               total.tokens.toLocaleString() +
-              " tokens" +
+              " known tokens" +
+              (total.unknownTokens ? " · " + total.unknownTokens + " with unavailable token totals" : "") +
               (view?.running ? " · " + view.running + " running" : "") +
               (total.unknown ? " · " + total.unknown + " unpriced/unknown" : "")
             : "Loading usage…"}
@@ -399,6 +411,12 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
             <p key={row.id}>
               {row.purpose} · {row.stage} · {row.model || "unknown model"} ·{" "}
               {row.interrupted ? "interrupted (usage unknown)" : row.status} ·{" "}
+              {row.usage?.totalTokens !== undefined
+                ? row.usage.totalTokens + " tokens"
+                : row.usage?.promptTokens !== undefined && row.usage?.completionTokens !== undefined
+                  ? row.usage.promptTokens + row.usage.completionTokens + " tokens"
+                  : "token count unavailable"}{" "}
+              ·{" "}
               {row.yuan != null
                 ? money(row.yuan, "CNY") + (fx ? " ≈ " + money(row.yuan / fx) : "")
                 : row.dollars === null

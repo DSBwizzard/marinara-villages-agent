@@ -197,6 +197,11 @@ async function main() {
     assert.equal(imageCalls, 1);
     assert.equal(images.purposes.images?.requests, 1);
     assert.equal(images.purposes.images?.dollars, 0.04);
+    assert.equal(
+      images.totals.unknownTokens,
+      1,
+      "fixed-price image requests have unavailable token totals, not zero tokens",
+    );
     assert.equal(images.requests[0].dollars, 0.04, "fixed image pricing does not require token usage");
 
     await trackUsage({ connectionId: "claude", purpose: "checks" }, async () => ({

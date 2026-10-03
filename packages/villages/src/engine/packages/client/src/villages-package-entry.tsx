@@ -1685,6 +1685,7 @@ type VillagerAgenda = {
   routineSummary: string;
   day: { startMinute: number; endMinute: number; venueId: string; activity: string }[];
   week?: Record<string, AgendaBlock[]>;
+  scheduleInfluenceSnapshot?: { adopted: string[]; unresolved: string[]; available: boolean };
   scheduleWeek?: Record<string, AgendaBlock[]> | null;
   activeDay?: { dateKey: string; weekday: string; blocks: AgendaBlock[]; scheduleInformed: boolean };
   personalizationPending?: boolean;
@@ -1814,21 +1815,7 @@ type VillagePromptMessage = {
   content: string;
 };
 
-/**
- * What one villager is after, how their week happens here, and the prompt that
- * translation is written from.
- *
- * One route answers for two debug tabs, which is deliberate: the wishes and the
- * week are two halves of one listing and splitting the fetch would let the two
- * panels disagree about the same villager. Villager Wishes draws `agenda`;
- * Villager Agendas draws `days`, `weekStart`, `stale`, `remap` and
- * `remapPrompt`.
- *
- * `remapPrompt` is rebuilt on the server on every read and is the reason the
- * agendas tab exists as a debug surface: the wording of that prompt is the part
- * of this feature that is a matter of taste, and the only way to argue with a
- * wording is to read it.
- */
+/** Owned resolved Agenda and optional influence controls. Legacy remap fields are inert compatibility data. */
 type VillagerAgendaView = {
   effectiveDays?: Record<string, AgendaBlock[]>;
   wishHistoryCount?: number;
@@ -1857,6 +1844,7 @@ type VillagerAgendaView = {
   addedAt: string;
   agenda: VillagerAgenda | null;
   completedWishes: CompletedVillagerWish[];
+  scheduleInfluence?: { version: 1; enabled: boolean; categories: Record<string, boolean> };
   ingestSchedule: boolean;
   nativeSchedule: {
     weekStart: string;
@@ -2014,9 +2002,7 @@ function agendaMinuteLabel(minute: number): string {
 function agendaUpdatePending(view: VillagerAgendaView): boolean {
   const active = view.agenda?.activeDay;
   if (!active) return false;
-  const future =
-    (view.ingestSchedule ? view.agenda?.scheduleWeek?.[active.weekday] : undefined) ??
-    view.agenda?.week?.[active.weekday];
+  const future = view.agenda?.week?.[active.weekday];
   return !!future && JSON.stringify(active.blocks) !== JSON.stringify(future);
 }
 
@@ -13908,21 +13894,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   }, []);
 
-  const setAgendaScheduleIngestion = useCallback(async (characterId: string, enabled: boolean) => {
-    setBusy(true);
-    try {
-      const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/ingestion`, {
-        method: "PATCH",
-        body: JSON.stringify({ ingestSchedule: enabled }),
-      });
-      setAgendas(response.villagers);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "Schedule use could not be changed."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const setAgendaScheduleIngestion = useCallback(
+    async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
+      setBusy(true);
+      try {
+        const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled, categories }),
+        });
+        setAgendas(response.villagers);
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "Schedule use could not be changed."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -20315,9 +20304,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>Card missing</span> : null}
                             {villager.nativeSchedule ? (
                               <span className={`${ELEMENT_TAG}-badge`}>
-                                {villager.agenda?.activeDay?.scheduleInformed
-                                  ? "Schedule used today"
-                                  : "Schedule available"}
+                                {villager.ingestSchedule ? "Schedule influence enabled" : "Schedule available"}
                               </span>
                             ) : null}
                             {agendaUpdatePending(villager) ? (
@@ -20344,7 +20331,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   void setAgendaScheduleIngestion(villager.characterId, event.target.checked)
                                 }
                               />
-                              Use Marinara schedule when available
+                              Let Marinara schedule influence this Agenda
                             </label>
                             <button
                               type="button"
@@ -20359,47 +20346,42 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                               action="agenda"
                               args={{ characterId: villager.characterId }}
                             />
-                            {villager.nativeSchedule && villager.ingestSchedule ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className={ELEMENT_TAG + "-button"}
-                                  disabled={busy}
-                                  onClick={() => {
-                                    setBusy(true);
-                                    void request("/remaps/" + encodeURIComponent(villager.characterId), {
-                                      method: "DELETE",
+                            {Object.entries({
+                              rhythm: "Preferred sleep/wake rhythm",
+                              busyFree: "Broad busy/free periods",
+                              weekdayWeekend: "Weekday/weekend patterns",
+                              interests: "Compatible hobbies and interests",
+                              establishedEntities: "Established workplaces, vehicles and institutions",
+                            }).map(([key, label]) => (
+                              <label key={key} className={ELEMENT_TAG + "-agenda-switch"}>
+                                <input
+                                  type="checkbox"
+                                  checked={villager.scheduleInfluence?.categories[key] !== false}
+                                  disabled={busy || !villager.ingestSchedule}
+                                  onChange={(event) =>
+                                    void setAgendaScheduleIngestion(villager.characterId, villager.ingestSchedule, {
+                                      [key]: event.target.checked,
                                     })
-                                      .then(() => loadAgendas())
-                                      .catch((cause) =>
-                                        setError(messageFrom(cause, "Schedule retranslation could not be queued.")),
-                                      )
-                                      .finally(() => setBusy(false));
-                                  }}
-                                >
-                                  Retranslate schedule
-                                </button>
-                                <VillagesBurstPreview
-                                  request={request}
-                                  action="translation"
-                                  args={{ characterId: villager.characterId }}
+                                  }
                                 />
-                              </>
-                            ) : null}
+                                {label}
+                              </label>
+                            ))}
                           </div>
-                          {villager.nativeSchedule ? (
-                            <p className={`${ELEMENT_TAG}-story-scope`}>
-                              {villager.ingestSchedule && villager.remapFailure
-                                ? `Schedule translation failed: ${villager.remapFailure.message}`
-                                : villager.ingestSchedule && villager.agenda?.scheduleWeek
-                                  ? "Schedule guides today and future days."
-                                  : villager.ingestSchedule
-                                    ? "Schedule translation is pending."
-                                    : "Schedule ingestion is off."}
-                              {agendaUpdatePending(villager) ? " Earlier hours retain the previous plan." : ""}
-                            </p>
-                          ) : agendaUpdatePending(villager) ? (
-                            <p className={`${ELEMENT_TAG}-story-scope`}>Earlier hours retain the previous plan.</p>
+                          <p className={ELEMENT_TAG + "-story-scope"}>
+                            Changes guide future days locally and make no AI requests. Today's plan and accepted
+                            commitments remain intact.
+                            {villager.ingestSchedule ? "" : " Schedule influence is off."}
+                          </p>
+                          {villager.ingestSchedule ? (
+                            <ul>
+                              {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
+                                <li key={line}>{line}</li>
+                              ))}
+                              {(villager.agenda?.scheduleInfluenceSnapshot?.unresolved ?? []).map((line) => (
+                                <li key={line}>{line}; waits for an existing generation request.</li>
+                              ))}
+                            </ul>
                           ) : null}
                           {villager.weekUnreadable ? (
                             <p className={`${ELEMENT_TAG}-empty`}>
@@ -20417,13 +20399,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   villager.agenda?.activeDay?.blocks ??
                                   villager.agenda?.week?.[day.weekday] ??
                                   [])
-                                : (villager.effectiveDays?.[day.weekday] ??
-                                  (villager.ingestSchedule
-                                    ? villager.agenda?.scheduleWeek?.[day.weekday]
-                                    : undefined) ??
-                                  villager.agenda?.week?.[day.weekday] ??
-                                  []);
-                              const nativeBlocks = villager.nativeSchedule?.days[day.weekday] ?? [];
+                                : (villager.effectiveDays?.[day.weekday] ?? villager.agenda?.week?.[day.weekday] ?? []);
                               return (
                                 <details
                                   key={`${day.weekday}-${day.dateLabel}`}
@@ -20434,10 +20410,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                     {day.weekday} · {day.dateLabel}
                                     {day.isToday ? " · Today" : ""}
                                   </summary>
-                                  <div
-                                    className={`${ELEMENT_TAG}-agenda-compare`}
-                                    data-comparison={villager.nativeSchedule ? "true" : undefined}
-                                  >
+                                  <div className={`${ELEMENT_TAG}-agenda-compare`}>
                                     <section aria-label={`${day.weekday} Villages agenda`}>
                                       <h4>Villages agenda</h4>
                                       <ol className={`${ELEMENT_TAG}-agenda-blocks`}>
@@ -20466,26 +20439,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                         ))}
                                       </ol>
                                     </section>
-                                    {villager.nativeSchedule ? (
-                                      <section aria-label={`${day.weekday} Marinara schedule`}>
-                                        <h4>Marinara schedule</h4>
-                                        {nativeBlocks.length ? (
-                                          <ol className={`${ELEMENT_TAG}-agenda-blocks`}>
-                                            {nativeBlocks.map((part, index) => (
-                                              <li key={`${part.time}-${index}`}>
-                                                <time>{part.time}</time>
-                                                <strong>{part.activity}</strong>
-                                                <span className={`${ELEMENT_TAG}-story-scope`}>
-                                                  {part.status || "No availability set"}
-                                                </span>
-                                              </li>
-                                            ))}
-                                          </ol>
-                                        ) : (
-                                          <p className={`${ELEMENT_TAG}-empty`}>No schedule blocks for this day.</p>
-                                        )}
-                                      </section>
-                                    ) : null}
                                   </div>
                                 </details>
                               );
@@ -20522,15 +20475,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const current = snapshot?.villagers.find((villager) => villager.characterId === preparation?.currentId)?.name;
     const stageText =
       preparation?.stage === "reading"
-        ? "Reading the character card and native schedule"
+        ? "Reading the character card"
         : preparation?.stage === "lore"
           ? "Selecting relevant entries from the founding lorebooks"
           : preparation?.stage === "resolving"
             ? "Connecting to the System model"
             : preparation?.stage === "model"
-              ? `Waiting for ${preparation.modelName || "the System model"} to write wishes, the week, and schedule mappings`
+              ? `Waiting for ${preparation.modelName || "the System model"} to write wishes and a routine profile`
               : preparation?.stage === "applying"
-                ? "Expanding the week and applying native schedule times"
+                ? "Building varied days locally"
                 : preparation?.stage === "saving"
                   ? "Saving this villager's agenda and translation"
                   : "Preparing the first villager";

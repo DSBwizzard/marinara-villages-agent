@@ -2,17 +2,11 @@ import { asRecord } from "./coerce.js";
 import { villagesDocuments, villagesLanguageModels, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
 import { villagesConnectionIdFor, villagesImageConnectionChoice } from "./connections.js";
 import { coerceVillageState } from "./village-store.js";
-import { readNativeScheduleSnapshot } from "./native-schedules.js";
-import { remapBlocks, remapBlockKeys, remapDispatchDisposition } from "./native-remap.js";
-import { remapSignatureFor, agendaRevision } from "./village.js";
+
+import { agendaRevision } from "./village.js";
 import { previewBackgroundJobs } from "./background-work.js";
 import { quoteUsageRate } from "./usage-meter.js";
-import {
-  translationBatchSize,
-  translationRequestCount,
-  remainingRequests,
-  agendaRequestCount,
-} from "./generation-budgets.js";
+import { translationBatchSize, remainingRequests, agendaRequestCount } from "./generation-budgets.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { remapVenues } from "./prompt-preset.js";
 import { badRequest } from "./errors.js";
@@ -29,7 +23,7 @@ export type BurstPreviewResult = {
 export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewResult> {
   const args = asRecord(raw),
     action = String(args.action);
-  if (!["agenda", "translation", "change", "images", "retry"].includes(action))
+  if (!["agenda", "translation", "influence", "change", "images", "retry"].includes(action))
     throw badRequest("Choose a supported generation preview.");
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, "villages-village");
   const original = coerceVillageState(record?.data);
@@ -73,47 +67,10 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
         j.subjectId === id &&
         !["completed", "obsolete"].includes(j.status),
     );
-  const snapshot =
-    action === "images" || action === "retry"
-      ? null
-      : await readNativeScheduleSnapshot(
-          new Date(),
-          proposed.villagers.map((r) => r.characterId),
-        );
-  if (snapshot && !snapshot.cardsReadable)
-    return {
-      requests: null,
-      residents: [],
-      dollars: null,
-      unknownCosts: null,
-      note: "The native schedules could not be read; request counts and costs are unknown.",
-    };
-  const schedules = new Map(snapshot?.schedules.map((schedule) => [schedule.characterId, schedule]) ?? []);
   for (const resident of proposed.villagers) {
     if (action === "images" || action === "retry" || (target && resident.characterId !== target)) continue;
     if (!target && action === "agenda") continue;
-    const schedule = schedules.get(resident.characterId);
     let requests = 0;
-    if (schedule && resident.ingestSchedule !== false && (action === "agenda" || resident.agenda?.generatedAt)) {
-      const blocks = remapBlocks(schedule);
-      const wishes = resident.agenda?.wishes ?? [];
-      const signature = remapSignatureFor(proposed, resident.characterId, schedule.weekStart, blocks, wishes);
-      const previous = remapSignatureFor(original, resident.characterId, schedule.weekStart, blocks, wishes);
-      const lens = remapSignatureFor(proposed, resident.characterId, "founding", [], wishes);
-      const forced = action === "translation";
-      const needs =
-        forced || remapDispatchDisposition(resident.remap, signature, remapBlockKeys(blocks), lens) === "generate";
-      if ((needs || bootstrap) && (action !== "change" || signature !== previous || bootstrap)) {
-        const saved = forced ? undefined : active("translation", resident.characterId);
-        const same =
-          saved &&
-          asRecord(saved.input).signature === signature &&
-          asRecord(saved.input).generation === (resident.translationGeneration ?? "");
-        const frozen = same && Number(saved.settings.translationBatchSize);
-        requests = translationRequestCount(blocks.length, frozen || batchSize);
-        if (same) requests = remainingRequests(requests, saved.completedSteps);
-      }
-    }
     if (
       action === "change" &&
       proposed.foundingPreparation?.status !== "pending" &&
@@ -133,7 +90,8 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
     const job = jobs.find((j) => j.id === args.jobId && j.seed === original.seed);
     if (job?.kind === "agenda" && !["completed", "obsolete"].includes(job.status))
       return previewVillageBurst({ action: "agenda", characterId: job.subjectId });
-    if (job && !["completed", "obsolete"].includes(job.status)) {
+    if (job?.kind === "translation") languageRequests = 0;
+    else if (job && !["completed", "obsolete"].includes(job.status)) {
       if (job.remainingRequests === null)
         return {
           requests: null,
@@ -186,7 +144,7 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
         languageRequests *
         ((rate.perRequest ?? 0) +
           (system.maxContext * Math.max(rate.input, rate.cacheWrite ?? 0)) / 1e6 +
-          (system.maxOutputTokens * rate.output) / 1e6);
+          (Math.min(system.maxOutputTokens, 4_000) * rate.output) / 1e6);
     } else unknownCosts += languageRequests;
   }
   if (imageRequests) {
@@ -204,10 +162,15 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
   return {
     requests: languageRequests + imageRequests,
     residents,
-    dollars: languageRequests + imageRequests > unknownCosts ? { min, max } : null,
+    dollars:
+      languageRequests + imageRequests === 0
+        ? { min: 0, max: 0 }
+        : languageRequests + imageRequests > unknownCosts
+          ? { min, max }
+          : null,
     unknownCosts,
     note:
-      (bootstrap ? "Includes one public-Venue suggestion request and translations after new venues arrive. " : "") +
-      "Read-only forecast for current state. Includes follow-on translation. Reused saved responses do not require new requests. Token prices use configured full-context/output budgets; actual replies usually use less. Unknown image/provider costs are excluded. No spending limit.",
+      (bootstrap ? "Includes one public-Venue suggestion request. " : "") +
+      "Read-only forecast for current state. Routine generation uses one request. Schedule influence and daily variation are local and spend no tokens. Reused saved responses do not require new requests. Token prices use configured full-context/output budgets; actual replies usually use less. Unknown image/provider costs are excluded. No spending limit.",
   };
 }

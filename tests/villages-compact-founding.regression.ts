@@ -7,9 +7,7 @@ import {
   foundingNativeActivities,
   parseCompactFounding,
   proposeCompactFounding,
-  rebaseFoundingRemap,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.ts";
-import { scheduleInformedWeek } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.ts";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.ts";
 
@@ -35,6 +33,7 @@ const payload = (count: number) => ({
   wishes: [{ wish: "A new watering can", intensity: 1, tell: "She checks the old one for leaks" }],
   palette,
   days,
+  rhythm: [],
   native: Array.from({ length: count }, () => 0),
 });
 const schedule = (count: number, unique: boolean) => ({
@@ -80,28 +79,7 @@ async function main() {
     const unique = foundingNativeActivities(native);
     assert.equal(unique.length, count === 111 ? 111 : 1);
     const result = parseCompactFounding(payload(unique.length), context(native) as any);
-    assert.equal(result.moves.length, count);
-    const remap = {
-      weekStart: native.weekStart,
-      moves: result.moves,
-      routine: result.agenda.routineSummary,
-      signature: "test",
-      attempts: 1,
-      generatedAt: "",
-    };
-    const informed = scheduleInformedWeek(result.agenda.week!, native, remap);
-    assert.equal(informed.Monday![0]!.startMinute, 0);
-    assert.equal(informed.Monday![0]!.status, "online");
-    assert.equal(informed.Monday![1]!.status, "dnd");
-    assert.equal(result.moves[0]!.time, "00:00-01:00");
-    assert.equal(result.moves[0]!.activity, native.days.Monday![0]!.activity);
-    const shifted = schedule(count, count === 111);
-    shifted.weekStart = "2026-10-05";
-    shifted.days.Monday![0]!.activity = "A newly scheduled errand";
-    const rebased = rebaseFoundingRemap(remap, shifted, "new-signature");
-    assert.equal(rebased.moves.length, count);
-    assert.equal(rebased.moves[0]!.here, "at home", "unknown native wording gets a village-safe fallback");
-    assert.equal(rebased.moves[1]!.here, "Tending the herb beds", "known wording reuses its village translation");
+    assert.equal(result.moves.length, 0, "native schedules are not translated");
   }
   assert.throws(() => parseCompactFounding({ ...payload(0), days: [] }, context(null) as any), /seven-day/);
   assert.equal(
@@ -114,10 +92,7 @@ async function main() {
     0,
     "an interrupted preparation retry cannot replenish its initial wish",
   );
-  assert.throws(
-    () => parseCompactFounding({ ...payload(1), native: [] }, context(schedule(1, true)) as any),
-    /mapped 0 of 1/,
-  );
+  assert.throws(() => parseCompactFounding({ ...payload(0), rhythm: undefined }, context(null) as any), /rest windows/);
 
   let calls = 0;
   let capturedPrompt = "";
@@ -146,15 +121,14 @@ async function main() {
     },
   } as any);
   try {
-    for (const [native, count] of [
+    for (const [native, _count] of [
       [null, 0],
       [schedule(50, false), 50],
       [schedule(111, true), 111],
     ] as const) {
       answer = payload(native ? foundingNativeActivities(native).length : 0);
       const before = calls;
-      const result = await proposeCompactFounding(context(native) as any, async () => {});
-      assert.equal(result.moves.length, count);
+      await proposeCompactFounding(context(native) as any, async () => {});
       assert.equal(calls, before + 1, "one package-level request handles this villager's full founding plan");
     }
     for (const playerRole of [
@@ -176,7 +150,7 @@ async function main() {
       );
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
-    assert.deepEqual(options.responseFormat, { type: "json_object" });
+    assert.equal(options.maxTokens, 4000);
     assert.equal(options.reasoningEffort, "none");
   } finally {
     release();

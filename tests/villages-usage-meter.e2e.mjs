@@ -160,10 +160,10 @@ try {
     holdNextPoll = true;
     await expect.poll(() => Boolean(heldPoll)).toBe(true);
     await meter.getByRole("button", { name: "Reset usage", exact: true }).click();
-    await expect(meter).toContainText("0 requests · 0 tokens");
+    await expect(meter).toContainText("0 requests · 0 known tokens");
     heldPoll();
     await page.waitForTimeout(100);
-    await expect(meter).toContainText("0 requests · 0 tokens");
+    await expect(meter).toContainText("0 requests · 0 known tokens");
     await expect(meter).toContainText("No requests in this period.");
     await expect(meter.getByLabel("LinkAPI token group")).toHaveValue("gemini");
     if (process.env.VILLAGES_USAGE_SCREENSHOT)

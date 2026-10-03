@@ -275,10 +275,10 @@ async function main() {
   assert.ok(routes.includes('"/setup/preparation/retry"'));
   assert.ok(village.includes("image: foundingImage(row.image)"));
   assert.ok(village.includes("seedFoundingVenueDetails(initial)"));
-  assert.ok(village.includes("marker.completedIds.includes(id)"));
+  assert.ok(village.includes("marker.completedIds.includes(villager.characterId)"));
   assert.ok(village.includes("await proposeCompactFounding("));
-  assert.ok(village.includes("await storeRemap(id, remap, schedule)"));
-  assert.ok(village.includes("readNativeScheduleSnapshot(new Date())"));
+  assert.equal(village.includes("await storeRemap(id, remap, schedule)"), false);
+  assert.ok(village.includes("await queueVillagerAgenda(villager.characterId, true)"));
   assert.ok(village.includes("snapshot.cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
   assert.ok(drafts.includes("foundingDetails"));
