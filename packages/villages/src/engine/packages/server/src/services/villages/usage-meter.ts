@@ -1,3 +1,4 @@
+import { previewBackgroundJobs } from "./background-work.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { villagesDocuments, VILLAGES_PACKAGE_ID, villagesLogger } from "./package-runtime.js";
@@ -25,6 +26,9 @@ export type UsageRequest = {
   provider: string;
   purpose: UsagePurpose;
   stage: string;
+  jobId?: string;
+  cause?: string;
+  interrupted?: boolean;
   startedAt: string;
   finishedAt?: string;
   status: "running" | "complete" | "unknown";
@@ -275,7 +279,13 @@ export async function trackUsage<T>(
       model: info.model,
       provider: info.provider,
       purpose: meta.purpose ?? inferredPurpose(),
-      stage: (meta.stage ?? String(venueDebugContext().stage ?? "")).slice(0, 160),
+      jobId: backgroundCalls.getStore()?.metadata?.id,
+      cause: backgroundCalls.getStore()?.metadata?.cause,
+      stage: (
+        meta.stage ??
+        backgroundCalls.getStore()?.metadata?.kind ??
+        String(venueDebugContext().stage ?? "")
+      ).slice(0, 160),
       startedAt: new Date().toISOString(),
       status: "running",
       rate: ledger.overrides[connectionId + ":" + info.model] ?? catalogRate(info.provider, info.model, info.baseUrl),
@@ -340,6 +350,7 @@ export async function readUsageMeter(details = true) {
         const saved = data.requests.find((r) => r.id === old.id && r.status === "running");
         if (saved) {
           saved.status = "unknown";
+          saved.interrupted = true;
           saved.finishedAt = new Date().toISOString();
           tally(data, saved, false);
         }
@@ -354,6 +365,19 @@ export async function readUsageMeter(details = true) {
     purposes: ledger.purposes,
     running: ledger.requests.filter((r) => r.status === "running").length,
     requests: details ? ledger.requests.slice().reverse() : [],
+    bursts: details
+      ? (await previewBackgroundJobs())
+          .filter((job) => !["completed", "obsolete"].includes(job.status))
+          .map(({ id, kind, label, status, cause, remainingRequests, remainingBlocks }) => ({
+            id,
+            kind,
+            label,
+            status,
+            cause,
+            remainingRequests,
+            remainingBlocks,
+          }))
+      : [],
     overrides: details ? ledger.overrides : {},
     catalog: details ? catalog : {},
     error: lastFailure,
@@ -398,4 +422,14 @@ export async function saveUsageRate(connectionId: string, model: string, raw: un
     else delete ledger.overrides[key];
   });
   return readUsageMeter();
+}
+
+/** Preview the same rate snapshot policy without recording or dispatching a request. */
+export async function quoteUsageRate(connectionId: string, model: string) {
+  const info = await identity(connectionId, model);
+  const ledger = coerce((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, DOC))?.data);
+  return {
+    ...info,
+    rate: ledger.overrides[connectionId + ":" + info.model] ?? catalogRate(info.provider, info.model, info.baseUrl),
+  };
 }

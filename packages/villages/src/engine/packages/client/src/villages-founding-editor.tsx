@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { VillageVenue, VillageVenueImage } from "./villages-package-entry";
 
@@ -594,6 +595,7 @@ export function FoundingVenueEditor({
   onCancel,
   onMove,
   onGenerate,
+  usagePreview,
   onUpload,
   onRemove,
 }: {
@@ -609,6 +611,7 @@ export function FoundingVenueEditor({
   onCancel(): void;
   onMove(): void;
   onGenerate(area: "exterior" | "interior" | "private"): void;
+  usagePreview?: ReactNode;
   onUpload(area: "exterior" | "interior" | "private", file: File): void;
   onRemove(): void;
 }) {
@@ -651,6 +654,7 @@ export function FoundingVenueEditor({
         <button type="button" disabled={busy} onClick={() => onGenerate(area)}>
           {image ? "Regenerate" : "Generate"} {area} image
         </button>
+        {usagePreview}
         <label>
           Upload {area} image
           <input

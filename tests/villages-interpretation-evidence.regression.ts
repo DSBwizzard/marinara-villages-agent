@@ -62,6 +62,11 @@ const privateCheck = {
 const shared = interpretationPayload([check(0), privateCheck]);
 assert.deepEqual(shared.payload.checks[0].evidenceIds, ["question", "draft:0"]);
 assert.deepEqual(shared.payload.checks[1].evidenceIds, ["b-only"]);
+assert.equal(
+  interpretationPayload([{ ...check(0), essentialEvidenceIds: ["unwitnessed"] }]).fits,
+  false,
+  "missing essential evidence requires clarification without leaking it",
+);
 const collision = { ...privateCheck, evidence: [{ ...privateCheck.evidence[0], id: "draft:0" }] };
 assert.equal(interpretationPayload([check(0), collision]).fits, false);
 console.log("Bounded deduplicated checking evidence passed");

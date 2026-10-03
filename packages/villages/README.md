@@ -1300,3 +1300,11 @@ node tests/villages-background-work.e2e.mjs
 ### Conservative narration routing
 
 Scene replies may include interpretationRouting metadata without a second routing request. Only valid, explicitly irrelevant rows covering all eligible current segments skip room or Project checks. Missing, contradictory, uncertain or unknown-target rows retain verification, as do pending evidence, witnessed permission questions, contextual short answers, relevant gestures, Project requirements and proposed Project speech. Metadata cannot grant permission or completed work. DEBUG interpretation records show skipped checks and fallback reasons. Saved replies without routing retain the existing checks.
+
+### AI usage and burst previews
+
+The **Villages AI usage** badge is enabled by default throughout the package. DEBUG's **Show AI usage meter** hides its polling independently of terminal logging; dispatch accounting continues. Click it for today's totals, purpose breakdowns, pricing overrides, unknown/interrupted costs and queued background work. Reset changes the displayed period without deleting accounting. Only the latest 200 finished details are retained alongside unfinished requests; totals persist through refreshes and ordinary server restarts.
+
+Agenda, schedule retranslation, settings/Venue changes and image/Studio controls show informational request previews beside their existing actions. Agenda forecasts include subsequent native schedule translation; retries subtract saved stages and image sources. Shared batch calculations and the actual remap disposition gate keep forecasts aligned with dispatch. Missing native cards, unknown batch progress or unknown rates remain explicitly unknown. Dollar ranges use configured model token ceilings and snapshotted catalog/manual rates, not a guaranteed invoice. Images can use per-connection/model fixed per-request overrides.
+
+POST /usage/preview reads existing documents and native card snapshots without AI dispatch, background reconciliation or Village writes. GET /usage reads accounting only; expanded details additionally read queued jobs. Previews add no spending limits or approval dialogs. Provider-internal retries/fallbacks and ordinary Engine chats remain outside complete Villages visibility. The host document store's buffered durability limitation described above also applies to accounting.

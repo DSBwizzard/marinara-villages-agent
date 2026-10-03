@@ -86,6 +86,16 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
   }
   return {
     ...languageModels,
+    async resolve(connectionId) {
+      const model = await languageModels.resolve(connectionId);
+      return {
+        ...model,
+        chatComplete: (messages, requestOptions) =>
+          trackUsage({ connectionId: model.connectionId, model: model.model }, () =>
+            model.chatComplete(messages, requestOptions),
+          ),
+      };
+    },
     async resolveForRequest(options) {
       const model = await languageModels.resolveForRequest(options);
       return {

@@ -1,3 +1,4 @@
+import { translationBatchSize } from "./generation-budgets.js";
 import { backgroundCalls, backgroundSetting, requireBackgroundSuccess } from "./background-context.js";
 import { venueZones, canOccupyZone } from "./venue-zones.js";
 // Villages — translate the Engine's week into this village's own terms.
@@ -917,9 +918,7 @@ export async function proposeRemap(
     connectionId: await villagesConnectionIdFor("system"),
   });
   const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
-  const batchSize = await backgroundSetting("translationBatchSize", () =>
-    Math.min(10, Math.max(2, Math.floor((model.maxOutputTokens ?? 5_000) / 350))),
-  );
+  const batchSize = await backgroundSetting("translationBatchSize", () => translationBatchSize(model.maxOutputTokens));
   const moves: VillageRemapMove[] = [];
   let routine = "";
   let failure: string | null = null;
@@ -1001,4 +1000,16 @@ export function remapFailureText(error: unknown): string {
   const trimmed = text.trim();
   if (trimmed.length === 0) return "The village was refused and the model gave no reason.";
   return trimmed.length > MAX_REMAP_FAILURE_LENGTH ? `${trimmed.slice(0, MAX_REMAP_FAILURE_LENGTH - 1)}…` : trimmed;
+}
+
+/** Shared with read-only forecasts, including incomplete founding translations. */
+export function remapDispatchDisposition(
+  remap: VillageRemap | null | undefined,
+  signature: string,
+  keys: readonly string[],
+  foundingLens: string,
+): "current" | "rebase" | "generate" {
+  if (!remapNeedsWriting(remap ?? null, signature, keys)) return "current";
+  if (remap?.foundingLens === foundingLens && remap.signature !== signature) return "rebase";
+  return "generate";
 }

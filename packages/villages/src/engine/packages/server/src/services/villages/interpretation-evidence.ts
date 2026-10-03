@@ -30,8 +30,12 @@ export function boundInterpretationEvidence(check: InterpretationCheck): Interpr
 export function interpretationPayload(checks: InterpretationCheck[]) {
   const pool = new Map<string, InterpretationEvidence>();
   let conflict = false;
+  let missingEssential = false;
   const rows = checks.map((check) => {
     const { evidence, essentialEvidenceIds: _pins, ...rest } = boundInterpretationEvidence(check);
+    const allowed = new Set(evidence.map((line) => line.id));
+    const citations = (check.facts as { requirementCitationIds?: string[] } | null)?.requirementCitationIds ?? [];
+    if ([...(check.essentialEvidenceIds ?? []), ...citations].some((id) => !allowed.has(id))) missingEssential = true;
     for (const line of evidence) {
       const prior = pool.get(line.id);
       if (
@@ -56,7 +60,8 @@ export function interpretationPayload(checks: InterpretationCheck[]) {
   return {
     payload,
     serialized,
-    fits: !conflict && serialized.length <= INTERPRETATION_PAYLOAD_CHARACTERS && checks.length <= 4,
+    fits:
+      !conflict && !missingEssential && serialized.length <= INTERPRETATION_PAYLOAD_CHARACTERS && checks.length <= 4,
   };
 }
 

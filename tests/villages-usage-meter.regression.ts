@@ -10,15 +10,28 @@ import {
   saveUsageRate,
   usageDollars,
   catalogRate,
+  trackUsage,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/usage-meter.js";
 import {
   readRuntimeDebug,
   saveRuntimeDebug,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/runtime-debug.js";
+import { villageEngineJson } from "../packages/villages/src/engine/packages/server/src/services/villages/engine-loopback.js";
 const records = new Map<string, any>();
 const originalFetch = globalThis.fetch;
-globalThis.fetch = async () =>
-  new Response(JSON.stringify([{ id: "paid", provider: "google", model: "gemini-2.5-flash-lite" }]));
+let imageCalls = 0;
+globalThis.fetch = async (input) => {
+  if (String(input).includes("/api/connections"))
+    return new Response(
+      JSON.stringify([
+        { id: "paid", provider: "google", model: "gemini-2.5-flash-lite" },
+        { id: "picture", provider: "custom", model: "image" },
+        { id: "claude", provider: "anthropic", model: "claude-sonnet-4-5" },
+      ]),
+    );
+  imageCalls++;
+  return new Response(JSON.stringify({ image: "mock" }));
+};
 let calls = 0,
   held: (() => void) | undefined,
   hold = false,
@@ -28,6 +41,9 @@ const release = configureVillagesRuntime({
   isDebugAgentsEnabled: () => false,
   persistence: {
     documents: {
+      async list(_p: string, kind: string) {
+        return [...records.values()].filter((r) => r.kind === kind);
+      },
       async getById(_p: string, id: string) {
         return structuredClone(records.get(id) ?? null);
       },
@@ -47,6 +63,9 @@ const release = configureVillagesRuntime({
     },
   },
   languageModels: {
+    async resolve() {
+      return this.resolveForRequest();
+    },
     async resolveForRequest() {
       return {
         connectionId: "paid",
@@ -144,6 +163,66 @@ async function main() {
     await assert.rejects(saveUsageRate("paid", "x", { input: -1, output: 2 }));
     for (let i = 0; i < 202; i++) await model.chatComplete([], {});
     assert.equal((await readUsageMeter()).requests.length, 200);
+
+    const directBefore = calls;
+    const direct = await villagesLanguageModels().resolve(null);
+    await direct.chatComplete([], {});
+    assert.equal(calls, directBefore + 1);
+    assert.equal((await readUsageMeter()).totals.requests, 203, "direct resolution shares the accounting boundary");
+
+    held = undefined;
+    hold = true;
+    const pending = model.chatComplete([], {});
+    while (!held) await new Promise((r) => setTimeout(r, 1));
+    await resetUsagePeriod();
+    hold = false;
+    held();
+    await pending;
+    assert.equal((await readUsageMeter()).totals.tokens, 0, "a pre-reset request cannot bill the new display period");
+    assert.equal((await readUsageMeter()).totals.requests, 0);
+    assert.ok(records.get("villages-ai-usage").data.all.requests > all);
+
+    await saveUsageRate("picture", "image", { input: 0, output: 0, perRequest: 0.04 });
+    await villageEngineJson("/api/characters/avatar-generation", { body: { connectionId: "picture" } });
+    const images = await readUsageMeter();
+    assert.equal(imageCalls, 1);
+    assert.equal(images.purposes.images?.requests, 1);
+    assert.equal(images.purposes.images?.dollars, 0.04);
+    assert.equal(images.requests[0].dollars, 0.04, "fixed image pricing does not require token usage");
+
+    await trackUsage({ connectionId: "claude", purpose: "checks" }, async () => ({
+      usage: {
+        promptTokens: 100,
+        completionTokens: 20,
+        totalTokens: 120,
+        cachedPromptTokens: 30,
+        cacheWritePromptTokens: 10,
+      },
+    }));
+    const cached = (await readUsageMeter()).requests[0];
+    assert.equal(cached.usage?.totalTokens, 160);
+    assert.equal(cached.dollars, (100 * 3 + 30 * 0.3 + 10 * 3.75 + 20 * 15) / 1e6);
+
+    const persisted = records.get("villages-ai-usage").data;
+    const interrupted = {
+      ...structuredClone(persisted.requests.at(-1)),
+      id: "restart-request",
+      owner: "previous-server",
+      status: "running",
+      finishedAt: undefined,
+      usage: undefined,
+      dollars: null,
+      periodId: persisted.periodId,
+    };
+    persisted.requests.push(interrupted);
+    persisted.all.requests++;
+    persisted.period.requests++;
+    const beforeRestartUnknown = persisted.period.unknown;
+    const recovered = await readUsageMeter();
+    assert.equal(recovered.running, 0);
+    assert.equal(recovered.requests[0].interrupted, true);
+    assert.equal(recovered.totals.unknown, beforeRestartUnknown + 1);
+    assert.equal((await readUsageMeter()).totals.unknown, recovered.totals.unknown, "restart recovery counts once");
     console.log("Villages usage meter regression passed");
   } finally {
     release();

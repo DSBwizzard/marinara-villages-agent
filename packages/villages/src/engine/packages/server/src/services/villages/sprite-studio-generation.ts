@@ -1,6 +1,7 @@
 // Villages owns the sheet and all derivatives. The Engine sprite endpoint performs
 // one Engine generation request, honoring Engine defaults and fallbacks. Cleanup
 // is applied separately so the unmodified original remains available.
+import { studioBatchSize } from "./generation-budgets.js";
 import { createHash } from "node:crypto";
 import { badRequest } from "./errors.js";
 import { studioConnection, studioEngineJson } from "./sprite-studio-engine.js";
@@ -127,7 +128,7 @@ export async function planVillageStudioSheets(
   const matteHex = selectStudioMatte(identity.name + " " + identity.appearance);
   const batches: StudioBatch[] = [];
   for (let offset = 0; offset < expressions.length;) {
-    const count = Math.min(individual ? 1 : 6, expressions.length - offset);
+    const count = Math.min(studioBatchSize(individual), expressions.length - offset);
     const [cols, rows] = layouts[count]!;
     const chosen = expressions.slice(offset, offset + count);
     let target: StudioBatch = { cols, rows, count, width: cols * 512, height: rows * 768 };
