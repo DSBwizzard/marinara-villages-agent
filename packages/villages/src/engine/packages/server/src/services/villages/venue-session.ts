@@ -1583,16 +1583,6 @@ class VenueReplyFailure extends Error {
   }
 }
 
-function venueRepairHint(kind: VenueReplyFailureKind): string {
-  if (kind === "player-echo")
-    return "A resident or narration repeated the player's words. The player has already spoken; react without quoting or restating that line.";
-  if (kind === "repeated-question")
-    return "A resident repeated their prior question after the player answered it. Continue from the answer instead of asking it again.";
-  if (kind === "residence-consent")
-    return "A lasting Residence edit needs the exact required approvals. Describe a pending request, refusal, or temporary attempt, and omit sceneChange.";
-  return "Return one valid JSON object with heardPlayerBy and a nonempty segments array using active resident IDs.";
-}
-
 /** Assemble and fit the exact live request without making a generation call. */
 export async function prepareVenueTurnMessages(
   session: VenueScene,
@@ -1603,7 +1593,6 @@ export async function prepareVenueTurnMessages(
   signal?: AbortSignal,
   trace?: GreetingTrace,
   actionOutcome?: string,
-  repairHint = "",
 ) {
   const preparationStarted = performance.now();
   const [village, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
@@ -1828,9 +1817,6 @@ export async function prepareVenueTurnMessages(
       mode === "leave"
         ? "The player has chosen to leave now. Write a brief, grounded closing exchange: let someone present answer or say goodbye aloud, or narrate only that chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
         : "",
-      repairHint
-        ? `The previous draft failed validation. ${repairHint} Rewrite this same turn from the latest player input.`
-        : "",
     ]),
     identity: blocksFor([...profiles]),
     circumstances: blocksFor([
@@ -1970,7 +1956,7 @@ export async function prepareVenueTurnMessages(
         ? "The player leaves without saying anything."
         : message;
   // Keep the opening brief, with enough room for reasoning models.
-  const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS * (repairHint ? 2 : 1);
+  const requestedMaxTokens = mode === "greet" ? 1_600 : VENUE_REPLY_MAX_TOKENS;
   const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
   const fitStarted = performance.now();
   const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
@@ -2345,7 +2331,7 @@ async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>
   };
 }
 
-/** One accepted scene, with no more than two language calls and no partial transcript write. */
+/** Interpret an accepted scene without writing a partial transcript. */
 async function interpretRoomDraft(
   session: VenueScene,
   currentVillage: VillageState,
@@ -2427,72 +2413,48 @@ async function generate(
   trace?: GreetingTrace,
   actionOutcome?: string,
 ) {
-  let repairHint = "";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      const reply = await generateOnce(
-        session,
-        message,
-        mode,
-        targetId,
-        settled,
-        signal,
-        trace,
-        actionOutcome,
-        repairHint,
-      );
-      const integrity = venueReplyIntegrity(message, session.lines, reply.lines);
-      if (integrity) throw new VenueReplyFailure(integrity);
-      const currentVillage = await readVillageState();
-      const controlledVenue = currentVillage.venues.find((venue) => venue.id === session.placeId);
-      const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, session.zoneId ?? "");
+  try {
+    const reply = await generateOnce(session, message, mode, targetId, settled, signal, trace, actionOutcome);
+    const integrity = venueReplyIntegrity(message, session.lines, reply.lines);
+    if (integrity) throw new VenueReplyFailure(integrity);
+    const currentVillage = await readVillageState();
+    const controlledVenue = currentVillage.venues.find((venue) => venue.id === session.placeId);
+    const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, session.zoneId ?? "");
+    if (
+      (session.area === "shared" ||
+        session.area === "private" ||
+        controlledZone?.kind === "staff" ||
+        controlledZone?.kind === "restricted") &&
+      reply.sceneChange
+    )
+      throw new VenueReplyFailure("residence-consent");
+    const currentSession = await refreshZoneParticipants(session, true);
+    if (
+      currentSession.zoneId !==
+      (session.zoneId ??
+        (controlledVenue
+          ? legacyZoneId(controlledVenue, session.area, session.spaceClass, session.privateOwnerId)
+          : undefined))
+    )
+      throw conflict("Room access changed while the reply was being prepared. You returned to the exterior.");
+    if (reply.invitationSignal) {
+      const invited = currentVillage.venues.find((venue) => venue.id === reply.invitationSignal!.venueId);
+      const target = invited && resolveVenueZone(invited, reply.invitationSignal.zoneId ?? "");
       if (
-        (session.area === "shared" ||
-          session.area === "private" ||
-          controlledZone?.kind === "staff" ||
-          controlledZone?.kind === "restricted") &&
-        reply.sceneChange
+        !invited ||
+        !target ||
+        zoneClosed(currentVillage, invited, target) ||
+        !canInviteToZone(invited, target, reply.invitationSignal.residentId)
       )
-        throw new VenueReplyFailure("residence-consent");
-      const currentSession = await refreshZoneParticipants(session, true);
-      if (
-        currentSession.zoneId !==
-        (session.zoneId ??
-          (controlledVenue
-            ? legacyZoneId(controlledVenue, session.area, session.spaceClass, session.privateOwnerId)
-            : undefined))
-      )
-        throw conflict("Room access changed while the reply was being prepared. You returned to the exterior.");
-      if (reply.invitationSignal) {
-        const invited = currentVillage.venues.find((venue) => venue.id === reply.invitationSignal!.venueId);
-        const target = invited && resolveVenueZone(invited, reply.invitationSignal.zoneId ?? "");
-        if (
-          !invited ||
-          !target ||
-          zoneClosed(currentVillage, invited, target) ||
-          !canInviteToZone(invited, target, reply.invitationSignal.residentId)
-        )
-          reply.invitationSignal = null;
-      }
-      return interpretRoomDraft(session, currentVillage, message, reply, mode !== "leave" && !reply.contactIntent);
-    } catch (cause) {
-      if (!(cause instanceof VenueReplyFailure)) throw cause;
-      await rejectVenueCompletion();
-      runtimeDebug("scene repair", {
-        sceneId: session.id,
-        reason: cause.kind,
-        attempt: attempt + 1,
-        repairHint: venueRepairHint(cause.kind),
-      });
-      villagesLogger().warn("[villages] venue scene draft rejected: %s (attempt %d)", cause.kind, attempt + 1);
-      if (attempt === 1)
-        throw badGateway(
-          "The scene reply could not be kept accurate after two attempts. Your draft is still here; retry.",
-        );
-      repairHint = venueRepairHint(cause.kind);
+        reply.invitationSignal = null;
     }
+    return interpretRoomDraft(session, currentVillage, message, reply, mode !== "leave" && !reply.contactIntent);
+  } catch (cause) {
+    if (!(cause instanceof VenueReplyFailure)) throw cause;
+    await rejectVenueCompletion();
+    villagesLogger().warn("[villages] scene=%s draft rejected: %s; no automatic retry", session.id, cause.kind);
+    throw badGateway(`The Scene reply failed validation (${cause.kind}). Your draft is preserved; resend when ready.`);
   }
-  throw badGateway("The scene reply could not be kept accurate. Your draft is still here; retry.");
 }
 
 type VenueReplyLine = {
@@ -3567,6 +3529,7 @@ type VenueTurnInput = {
   submissionId: string;
   expectedSceneRevision?: number;
   retryOfAttemptId?: string;
+  replaceOfOperationId?: string;
 };
 
 export async function sendVenueTurn(input: VenueTurnInput) {
@@ -3591,7 +3554,7 @@ export async function sendVenueTurn(input: VenueTurnInput) {
     input.expectedSceneRevision,
     input.retryOfAttemptId,
     () => sendVenueTurnOnce(input),
-    { replay: !!prior },
+    { replay: !!prior, replaceOfOperationId: input.replaceOfOperationId },
   );
 }
 

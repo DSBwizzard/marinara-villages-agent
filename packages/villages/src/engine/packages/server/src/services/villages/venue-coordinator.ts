@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { runtimeDebug } from "./runtime-debug.js";
-import { VillagesRequestError } from "./errors.js";
+import { safeFailureMessage, VillagesRequestError } from "./errors.js";
 import { villagesDocuments, villagesLogger, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
 import {
   coerceInterpretationSettings,
@@ -58,7 +58,7 @@ export function sceneRevision(data: Record<string, unknown>): number {
   return Number.isSafeInteger(data.sceneRevision) && Number(data.sceneRevision) >= 0 ? Number(data.sceneRevision) : 0;
 }
 export function operationSummary(operation?: VenueOperation) {
-  if (!operation || operation.status === "complete") return null;
+  if (!operation || (operation.status === "complete" && !operation.error)) return null;
   return {
     id: operation.id,
     kind: operation.kind,
@@ -94,6 +94,24 @@ export function venueRequestMetrics(operation = context.getStore()?.operation) {
 }
 export function venueInterpretationSettings(): InterpretationSettings {
   return coerceInterpretationSettings(context.getStore()?.operation.interpretationSettings);
+}
+
+/** Record uncertain billing before an explicit retry or replacement. */
+function acknowledgeUnknownAttempts(data: Record<string, unknown>, operation: VenueOperation) {
+  const uncertain = Object.entries(operation.attempts).filter(([, attempt]) => attempt.status === "dispatching");
+  const receipts = (data.generationReceipts ?? []) as { attemptId: string }[];
+  if (uncertain.length && !receipts.some((receipt) => receipt.attemptId === operation.attemptId))
+    data.generationReceipts = [
+      ...receipts,
+      {
+        operationId: operation.id,
+        attemptId: operation.attemptId,
+        stages: uncertain.map(([stage]) => stage),
+        outcome: "unknown",
+        acknowledgedAt: new Date().toISOString(),
+      },
+    ];
+  for (const [, attempt] of uncertain) attempt.status = "interrupted";
 }
 
 /** Optional calls cannot leave a required checkpoint blocked or repeat a possibly billed request. */
@@ -223,7 +241,7 @@ export async function venueCheckpoint<T>(stage: string, work: () => Promise<T>):
   return result;
 }
 
-/** Journal each provider attempt, including repair calls, before dispatch. */
+/** Journal each provider attempt before dispatch. */
 export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
@@ -292,7 +310,7 @@ export async function coordinateVenue<T>(
   expected: number | undefined,
   retryOfAttemptId: string | undefined,
   work: () => Promise<T>,
-  options: { replay?: boolean; recovery?: boolean } = {},
+  options: { replay?: boolean; recovery?: boolean; replaceOfOperationId?: string } = {},
 ): Promise<T> {
   const nested = context.getStore();
   if (nested?.sessionId === sessionId) {
@@ -333,7 +351,36 @@ export async function coordinateVenue<T>(
       const prior = data.operation as VenueOperation | undefined;
       if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
         throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
-      if (prior && prior.status !== "complete" && prior.id !== id)
+      if (options.replaceOfOperationId) {
+        const committed = (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === prior?.id);
+        if (
+          !prior ||
+          prior.id !== options.replaceOfOperationId ||
+          prior.id === id ||
+          prior.attemptId !== retryOfAttemptId ||
+          prior.status === "running"
+        )
+          throw venueRefusal(
+            "OPERATION_INTERRUPTED",
+            "The failed request changed. Review the updated Scene before resending.",
+          );
+        if (
+          kind !== "turn" ||
+          input.mode !== "chat" ||
+          prior.kind !== "turn" ||
+          prior.input.mode !== "chat" ||
+          (!prior.error && prior.status === "complete") ||
+          committed ||
+          Object.keys(prior.checkpoints).length ||
+          sceneRevision(data) !== prior.sceneRevision
+        )
+          throw venueRefusal(
+            "OPERATION_INTERRUPTED",
+            "Recover the saved request before sending an edited message. Your edits are preserved.",
+          );
+        acknowledgeUnknownAttempts(data, prior);
+      }
+      if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId)
         throw venueRefusal(
           "OPERATION_INTERRUPTED",
           "Recover or explicitly retry the interrupted scene before starting another operation.",
@@ -357,24 +404,7 @@ export async function coordinateVenue<T>(
             "OPERATION_INTERRUPTED",
             "The previous request may have been billed. Review your draft and explicitly retry to authorize another request.",
           );
-        if (authorizedRetry) {
-          const uncertain = Object.entries(prior.attempts).filter(([, attempt]) => attempt.status === "dispatching");
-          if (uncertain.length) {
-            const receipts = (data.generationReceipts ?? []) as { attemptId: string }[];
-            if (!receipts.some((receipt) => receipt.attemptId === prior.attemptId))
-              data.generationReceipts = [
-                ...receipts,
-                {
-                  operationId: prior.id,
-                  attemptId: prior.attemptId,
-                  stages: uncertain.map(([key]) => key),
-                  outcome: "unknown",
-                  acknowledgedAt: new Date().toISOString(),
-                },
-              ];
-            for (const [, attempt] of uncertain) attempt.status = "interrupted";
-          }
-        }
+        if (authorizedRetry) acknowledgeUnknownAttempts(data, prior);
         operation = {
           ...prior,
           token: randomUUID(),
@@ -441,6 +471,16 @@ export async function coordinateVenue<T>(
         }
         return result;
       } catch (error) {
+        try {
+          villagesLogger().warn(
+            "[villages] scene=%s stage=%s failed: %s",
+            sessionId,
+            operation.stage,
+            safeFailureMessage(error),
+          );
+        } catch {
+          /* Diagnostics cannot replace the request failure. */
+        }
         // Revoked owners cannot overwrite a successor or resurrect a discarded visit.
         await update(sessionId, (data) => {
           if ((data.operation as VenueOperation | undefined)?.token !== operation.token) return;
@@ -457,7 +497,7 @@ export async function coordinateVenue<T>(
             (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
               ? "interrupted"
               : "complete";
-          operation.error = "The previous request may have been billed. No automatic retry was made.";
+          operation.error = safeFailureMessage(error);
           data.operation = operation;
         }).catch(() => {});
         throw error;
@@ -535,6 +575,8 @@ export async function readVenueOperation(id: string, operationId?: string) {
         ...operationSummary(operation),
         id: operation.id,
         status: operation.status,
+        kind: operation.kind,
+        error: operation.error,
         input: operation.input,
         attemptId: operation.attemptId,
       }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { safeFailureMessage } from "../packages/villages/src/engine/packages/server/src/services/villages/errors.js";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
 import {
   coordinateVenue,
@@ -140,6 +141,120 @@ async function main() {
       1,
       "explicit retry retains the unknown original billing outcome",
     );
+    // A failed ordinary chat may be revised only with the current attempt token.
+    const oldInput = { message: "Original draft", mode: "chat", targetId: "" };
+    const editedInput = { ...oldInput, message: "Edited draft" };
+    const failChat = async (id: string) => {
+      seed(id);
+      await assert.rejects(
+        () =>
+          coordinateVenue(id, "original", "turn", oldInput, 0, undefined, () =>
+            coordinatedCompletion("failed-chat", async () => {
+              calls++;
+              throw new Error("Upstream rejected the request");
+            }),
+          ),
+        /Upstream rejected/,
+      );
+      return (await readVenueOperation(id))!;
+    };
+    const failedChat = await failChat("editable");
+    assert.equal(
+      failedChat.error,
+      "Upstream rejected the request",
+      "the actual failure survives without verbose logging",
+    );
+    const beforeEdit = calls;
+    await assert.rejects(
+      () =>
+        coordinateVenue("editable", "edited", "turn", editedInput, 0, undefined, () => paid(), {
+          replaceOfOperationId: "original",
+        }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    await assert.rejects(
+      () =>
+        coordinateVenue("editable", "edited", "turn", editedInput, 0, "obsolete-attempt", () => paid(), {
+          replaceOfOperationId: "original",
+        }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    row("editable").data.sceneRevision = 1;
+    await assert.rejects(
+      () =>
+        coordinateVenue("editable", "edited", "turn", editedInput, 1, failedChat.attemptId, () => paid(), {
+          replaceOfOperationId: "original",
+        }),
+      refused("OPERATION_INTERRUPTED"),
+    );
+    row("editable").data.sceneRevision = 0;
+    assert.equal(calls, beforeEdit, "refused replacements never dispatch");
+    const editStarted = deferred<void>(),
+      editDone = deferred<string>();
+    const editedWork = () =>
+      coordinatedCompletion("edited", async () => {
+        calls++;
+        editStarted.resolve();
+        return editDone.promise;
+      });
+    const replacement = coordinateVenue(
+      "editable",
+      "edited",
+      "turn",
+      editedInput,
+      0,
+      failedChat.attemptId,
+      editedWork,
+      {
+        replaceOfOperationId: "original",
+      },
+    );
+    await editStarted.promise;
+    const duplicateReplacement = coordinateVenue(
+      "editable",
+      "edited",
+      "turn",
+      editedInput,
+      0,
+      failedChat.attemptId,
+      editedWork,
+      {
+        replaceOfOperationId: "original",
+      },
+    );
+    editDone.resolve("Edited reply");
+    assert.deepEqual(await Promise.all([replacement, duplicateReplacement]), ["Edited reply", "Edited reply"]);
+    assert.equal(calls, beforeEdit + 1, "duplicate edited resends share one request");
+    assert.equal(
+      row("editable").data.generationReceipts.length,
+      1,
+      "replacement retains the uncertain original billing receipt",
+    );
+    assert.equal(row("editable").data.operation.input.message, "Edited draft");
+
+    for (const blockedCase of ["committed", "checkpoint", "contact"]) {
+      const blocked = await failChat("edit-" + blockedCase);
+      const data = row("edit-" + blockedCase).data;
+      if (blockedCase === "committed") data.submissions.push({ id: "original" });
+      if (blockedCase === "checkpoint") data.operation.checkpoints["turn-reply"] = { saved: true };
+      if (blockedCase === "contact") data.operation.input.mode = "contact";
+      const beforeBlockedEdit = calls;
+      await assert.rejects(
+        () =>
+          coordinateVenue("edit-" + blockedCase, "edited", "turn", editedInput, 0, blocked.attemptId, () => paid(), {
+            replaceOfOperationId: "original",
+          }),
+        refused("OPERATION_INTERRUPTED"),
+      );
+      assert.equal(calls, beforeBlockedEdit, "saved replies and effects must recover before edited replacement");
+      assert.equal(data.operation.id, "original");
+    }
+    assert.equal(
+      safeFailureMessage(new Error("Bearer secret-value api_key=hidden https://example.test/?token=private")),
+      "Bearer [redacted] api_key=[redacted] https://example.test/?token=[redacted]",
+    );
+    assert.equal(safeFailureMessage(new Error("x".repeat(900))).length, 800);
+
     seed("swallowed");
     const swallowed = () =>
       venueCheckpoint("wish-verdict", async () => {

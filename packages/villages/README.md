@@ -40,6 +40,14 @@ On phones, Map, Places, People, and More sit below the map. Places and People op
 
 Notices opens the Noticeboard and shows its current entry count, not an unread count. Events remains available under More. Pinch, drag, zoom buttons, and Reset control the map; its view stays in the current tab when returning from menus, Venues, and Scenes. A replaced map resets that browsing view. Unpositioned Venues remain available in Places, and residents with unavailable locations remain visible in People.
 
+## Scene sending and failures
+
+Scene replies make one narration attempt per deliberate send. Failed validation does not request an automatic rewrite. An uncommitted failure restores the Player's message to the composer; edit it and press Send when ready. Unchanged resends reuse saved work. Edited ordinary chat can replace a failed request before any reply or gameplay effects commit. Saved replies and partial effects must recover first, while the edited draft remains available. A request with an unknown outcome may already have been billed.
+
+**General settings → Send on Enter** defaults Off, including older villages. Enter inserts a new line on desktop and mobile. Turn it On to send with Enter; Shift+Enter always inserts a new line, and IME composition never sends.
+
+Scene errors display the server's detailed message when available. Failure diagnostics retain the sanitized cause and identify the failed stage, model, and connection without enabling verbose conversation logging. A generic “Bad Request” alone does not identify an upstream provider or request-format problem.
+
 ## UI direction
 
 Venue Scenes use Engine's Roleplay Visual Novel presentation: a portrait and one paragraph above a compact send-arrow composer, with paragraph navigation and a history chevron. The left composer icon selects Chat, Knock / Call, or Conclude. Wishes are checked from relevant witnessed conversation and verified actions. View Mailbox appears in the top-right Venue menu only where accessible; Projects, Proposals, and Scene settings also live there. Scene settings contains the Decisions switch, interpretation checks, and read-only saved change diagnostics. Home's browser navigation hides while the Scene screen is open and returns when leaving it.

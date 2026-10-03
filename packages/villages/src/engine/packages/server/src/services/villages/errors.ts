@@ -45,3 +45,15 @@ export function statusCodeOf(error: unknown): number {
   const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
   return typeof statusCode === "number" && statusCode >= 400 && statusCode < 600 ? statusCode : 500;
 }
+
+/** Bound diagnostic errors and remove credentials before storage or display. */
+export function safeFailureMessage(error: unknown): string {
+  return (error instanceof Error ? error.message : "The Scene request failed.")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+/giu, "$1[redacted]")
+    .replace(/([?&](?:api[_-]?key|access[_-]?token|token|key)=)[^&\s]+/giu, "$1[redacted]")
+    .replace(
+      /(["']?(?:api[_-]?key|authorization|access[_-]?token|secret)["']?\s*[:=]\s*["']?)[^\s"',;&}]+/giu,
+      "$1[redacted]",
+    )
+    .slice(0, 800);
+}

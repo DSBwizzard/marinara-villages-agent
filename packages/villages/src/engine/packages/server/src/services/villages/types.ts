@@ -1243,6 +1243,7 @@ export type VillageState = {
   /** Per-village writing choices for live Scenes. */
   narrationStyle: VillageNarrationStyle;
   characterSpeechColors: boolean;
+  sendOnEnter: boolean;
   /**
    * The one line of world the player wrote, e.g. "a rain-soaked harbour town".
    * Empty means the village has no place yet, and the setting and venue blocks
@@ -1722,6 +1723,7 @@ export type VillageVillagerView = {
  */
 export type VillageSettingsView = {
   characterSpeechColors: boolean;
+  sendOnEnter: boolean;
   visitRetention: VillageState["visitRetention"];
   promptKnowledge: string;
   defaultPromptKnowledge: string;

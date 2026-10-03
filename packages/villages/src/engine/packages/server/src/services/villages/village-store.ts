@@ -165,6 +165,7 @@ export function defaultVillageState(): VillageState {
     name: "Willowbrook",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
+    sendOnEnter: false,
     // An empty setting means "no place yet": the venue and routine blocks render
     // nothing, and the village behaves exactly as it did before they existed.
     setting: "",
@@ -2484,6 +2485,7 @@ export function coerceVillageState(value: unknown): VillageState {
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
+    sendOnEnter: raw.sendOnEnter === true,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     foundingReason: boundText(raw.foundingReason, 40),
     foundingDetails: boundText(raw.foundingDetails, 2_000),

@@ -181,6 +181,7 @@ import {
   setVillageLoreSettings,
   setVillageStoryPace,
   setVillageCharacterSpeechColors,
+  setVillageSendOnEnter,
   setVillageSetting,
   setVillageVenueImage,
   setVillageHomeBuildingNames,
@@ -288,6 +289,7 @@ type VenueTurnBody = {
   submissionId?: unknown;
   expectedSceneRevision?: unknown;
   retryOfAttemptId?: string;
+  replaceOfOperationId?: string;
 };
 
 /**
@@ -1057,6 +1059,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
         submissionId: readSubmissionId(request.body?.submissionId),
         expectedSceneRevision: readSceneRevision(request.body?.expectedSceneRevision),
         retryOfAttemptId: request.body?.retryOfAttemptId,
+        replaceOfOperationId:
+          request.body?.replaceOfOperationId === undefined
+            ? undefined
+            : readSubmissionId(request.body.replaceOfOperationId),
       });
     } catch (error) {
       return fail(reply, error, "sending a venue turn");
@@ -1222,6 +1228,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       homeBuildingNames?: unknown;
       storyPace?: unknown;
       characterSpeechColors?: unknown;
+      sendOnEnter?: unknown;
       visitRetention?: unknown;
     };
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
@@ -1250,6 +1257,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       }
       if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
       if (body.storyPace !== undefined) snapshot = await setVillageStoryPace(body.storyPace);
+      if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
       if (body.visitRetention !== undefined) {
