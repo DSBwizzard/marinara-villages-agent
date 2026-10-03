@@ -42,6 +42,15 @@ import {
 } from "./sprite-studio-pixels.js";
 import type { StudioDesign, StudioSheet } from "./sprite-studio-model.js";
 
+import {
+  studioGenerationMode,
+  studioDirectionKey,
+  studioLookFingerprint,
+  studioNeedsInspection,
+  normalizeStudioGenerationSettings,
+  studioReferencePolicy,
+} from "./sprite-studio-reliability.js";
+
 const active = new Set<string>();
 const cellWrites = new Map<string, Promise<unknown>>();
 function serializeCells<T>(characterId: string, action: () => Promise<T>): Promise<T> {
@@ -63,6 +72,7 @@ const slot = {
     if ((record.version !== 1 && record.version !== 2) || !Array.isArray(record.jobs) || !record.settings)
       return defaultStudioState();
     const state = { ...defaultStudioState(), ...structuredClone(record), version: 2 } as unknown as StudioState;
+    normalizeStudioGenerationSettings(state.settings);
     state.settings.styleSelection ??= { kind: "studio" };
     if ([LEGACY_STUDIO_PAPERCRAFT, PREVIOUS_STUDIO_PAPERCRAFT].includes(state.settings.prompts?.PAPERCRAFT))
       state.settings.prompts.PAPERCRAFT = SPRITE_STYLES.PAPERCRAFT;
@@ -121,6 +131,8 @@ const cellFingerprint = (cell: StudioCell) => {
   } = cell;
   return hash(JSON.stringify(drawing));
 };
+const lookArtworkFingerprint = (cell: StudioCell) =>
+  hash(JSON.stringify([cellFingerprint(cell), cell.rendered?.sha256, cell.rendered?.url]));
 function definition(label: string, pose = "", id = "e-" + hash(label).slice(0, 24)): StudioExpression {
   return {
     id,
@@ -350,6 +362,11 @@ export async function readSpriteStudio(characterId: string) {
       }
     });
   }
+  if (state.directionRequests?.some((row) => row.status === "submitted" && !active.has(id + ":directions:" + row.id)))
+    await mutate(id, (next) => {
+      for (const row of next.directionRequests ?? [])
+        if (row.status === "submitted" && !active.has(id + ":directions:" + row.id)) row.status = "unknown";
+    });
   state = await read(id);
   let connections: Array<{ id: string; name: string; model: string }> = [];
   try {
@@ -438,7 +455,8 @@ function readSettings(raw: unknown): StudioSettings {
     prompts: { PAPERCRAFT: prompts.PAPERCRAFT, BATTLEHIGHWAY: prompts.BATTLEHIGHWAY, Custom: prompts.Custom },
     facingPrompts,
     connectionId,
-    individual: body.individual === true,
+    generationMode: studioGenerationMode(body),
+    individual: studioGenerationMode(body) === "individual",
     cleanupEngine: ["builtin", "backgroundremover"].includes(asString(body.cleanupEngine))
       ? body.cleanupEngine
       : "studio",
@@ -463,15 +481,21 @@ export async function captureStudioReference(characterId: string, raw: unknown) 
 function selection(raw: unknown) {
   const body = asRecord(raw);
   const view = readSpriteView(body.view);
-  const expressions = (Array.isArray(body.expressions) ? body.expressions : []).map((item) => {
-    const entry = asRecord(item);
-    const pose = asString(entry.pose);
-    if (pose.length > STUDIO_POSE_MAX_LENGTH) throw badRequest("Pose instructions must be at most 1,000 characters.");
-    return { label: readSpriteExpression(entry.label), pose, expressionId: asString(entry.expressionId) || undefined };
-  });
+  const expressions: StudioRequestedExpression[] = (Array.isArray(body.expressions) ? body.expressions : []).map(
+    (item) => {
+      const entry = asRecord(item);
+      const pose = asString(entry.pose);
+      if (pose.length > STUDIO_POSE_MAX_LENGTH) throw badRequest("Pose instructions must be at most 1,000 characters.");
+      return {
+        label: readSpriteExpression(entry.label),
+        pose,
+        expressionId: asString(entry.expressionId) || undefined,
+      };
+    },
+  );
   if (!expressions.length || new Set(expressions.map((item) => item.label)).size !== expressions.length)
     throw badRequest("Choose at least one distinct expression.");
-  return { view, expressions, individual: body.individual === true };
+  return { view, expressions, individual: studioGenerationMode(body) === "individual" };
 }
 const referenceCaptures = new Map<string, Promise<void>>();
 async function automaticStudioReference(characterId: string, id: string) {
@@ -498,7 +522,7 @@ async function automaticStudioReference(characterId: string, id: string) {
   }
   await capture;
 }
-async function prepare(characterId: string, raw: unknown) {
+async function prepare(characterId: string, raw: unknown, previewImages = true) {
   const { id } = await scope(characterId);
   await ensureLibrary(characterId, id);
   if (asRecord(raw).useReference !== false) await automaticStudioReference(characterId, id);
@@ -525,40 +549,53 @@ async function prepare(characterId: string, raw: unknown) {
     await import("./sprite-studio-engine.js").then(({ studioConnection }) => studioConnection(connectionId)),
   );
   const design = state.settings.styleSelection?.kind === "studio" ? designFor(state, referenceUrl ?? "") : undefined;
-  const compatible = [...state.jobs]
-    .reverse()
-    .filter((job) =>
-      job.styleFingerprint
-        ? job.styleFingerprint === resolvedStyle.fingerprint
-        : state.settings.styleSelection?.kind === "studio" &&
-          compatibleStudioStyle(job.style, job.stylePrompt, state.settings),
-    );
-  const neutral = compatible
-    .flatMap((job) =>
-      job.sheets.map((sheet) => ({
-        sheet,
-        cell: sheet.cells.find(
+  const appearance = (
+    asString(asRecord(raw).appearance).trim() ||
+    resident.cardSnapshot.appearance ||
+    resident.cardSnapshot.description
+  ).slice(0, 2000);
+  const facingPrompt = state.settings.facingPrompts![state.settings.style][input.view];
+  const lookFingerprint = studioLookFingerprint(
+    { name: resident.cardSnapshot.name, appearance, view: input.view, facingPrompt, referenceUrl },
+    resolvedStyle.fingerprint,
+  );
+  const accepted = [...(state.looks ?? [])].reverse().find((look) => look.fingerprint === lookFingerprint);
+  const neutral = accepted
+    ? state.jobs
+        .flatMap((job) => job.sheets.flatMap((sheet) => sheet.cells))
+        .find(
           (cell) =>
-            cell.view === input.view &&
-            cell.label === "neutral" &&
-            cell.status === "approved" &&
+            cell.id === accepted.cellId &&
             cell.rendered &&
-            resident.sprite?.expressions.some((e) => e.cutoutId === cell.id),
-        ),
-      })),
-    )
-    .find((item) => item.cell);
-  const neutralUrl =
-    asRecord(raw).useReference === false ? undefined : (neutral?.cell?.rendered?.url ?? design?.[input.view]?.url);
+            cell.status !== "discarded" &&
+            cell.validation?.status !== "blocked" &&
+            (!accepted.artworkFingerprint || accepted.artworkFingerprint === lookArtworkFingerprint(cell)),
+        )
+    : undefined;
+  const neutralUrl = neutral?.rendered?.url;
   let expectedHeight: number | undefined;
   if (neutralUrl) {
-    try {
-      const bounds = foregroundBounds(await decodeStudioSource(await studioAsset(neutralUrl)));
-      if (bounds.count) expectedHeight = bounds.bottom - bounds.top + 1;
-    } catch {
-      /* An unavailable optional neutral cannot prevent generation. */
-    }
+    const bounds = foregroundBounds(await decodeStudioSource(await studioAsset(neutralUrl)));
+    if (bounds.count) expectedHeight = bounds.bottom - bounds.top + 1;
   }
+  const deferredExpressions = neutralUrl ? undefined : structuredClone(input.expressions);
+  if (!neutralUrl) {
+    input.expressions = [
+      input.expressions.find((entry) => entry.label === "neutral") ?? {
+        label: "neutral",
+        pose: "",
+        expressionId: state.expressions.find((entry) => entry.label === "neutral")?.id,
+      },
+    ];
+    input.individual = true;
+  }
+  const referencePolicy = studioReferencePolicy(
+    await import("./sprite-studio-engine.js").then(({ studioConnection }) => studioConnection(connectionId)),
+  );
+  if (previewImages && (neutralUrl || referenceUrl) && referencePolicy.unsupported)
+    throw badRequest(
+      "This Engine path ignores reference images. Choose a reference-capable connection or use saved artwork.",
+    );
   const capabilities = await studioCleanupCapabilities();
   state.settings.cleanupEngine = capabilities.builtin ? "builtin" : "studio";
   const identity = {
@@ -571,23 +608,61 @@ async function prepare(characterId: string, raw: unknown) {
         asString(resident.cardSnapshot[key as keyof typeof resident.cardSnapshot]),
       ]),
     ) as StudioCharacterContext,
-    appearance: (
-      asString(asRecord(raw).appearance).trim() ||
-      resident.cardSnapshot.appearance ||
-      resident.cardSnapshot.description
-    ).slice(0, 2000),
+    appearance,
     style: resolvedStyle.prompt,
     view: input.view,
     facingPrompt: state.settings.facingPrompts![state.settings.style][input.view],
     referenceUrl,
     references: [
-      ...(referenceUrl ? [{ url: referenceUrl, role: "original character identity" }] : []),
-      ...(neutralUrl && expectedHeight ? [{ url: neutralUrl, role: "styled neutral for the requested view" }] : []),
+      ...(neutralUrl
+        ? [{ url: neutralUrl, role: "accepted neutral: preserve its facing, identity, outfit, style and proportions" }]
+        : []),
+      ...(referenceUrl && (!neutralUrl || referencePolicy.multiple)
+        ? [{ url: referenceUrl, role: "original character identity; not a pose reference" }]
+        : []),
     ],
   };
+  const directionRows = input.expressions.map((entry) => {
+    const key = studioDirectionKey(identity, lookFingerprint + ":" + (neutral?.id ?? ""), entry);
+    const saved = state.directions?.find((row) => row.key === key);
+    const request = [...(state.directionRequests ?? [])].reverse().find((row) => row.keys.includes(key));
+    return {
+      key,
+      label: entry.label,
+      text: saved?.text ?? "",
+      revision: saved?.revision ?? 0,
+      suggestion: saved?.suggestion,
+      status: request?.status,
+    };
+  });
+  const preparedExpressions = input.expressions.map((entry, index) => ({
+    ...entry,
+    direction:
+      entry.label === "neutral"
+        ? entry.pose || "Natural resting posture, with head and attention in the chosen direction."
+        : directionRows[index]!.text,
+  }));
+  const preparation = preparedExpressions.every((entry) => entry.direction.trim())
+    ? {
+        status: "ready" as const,
+        attempts: [],
+        interpretation: "Character-specific directions reviewed before image generation.",
+        expressions: preparedExpressions,
+      }
+    : undefined;
   let plan: StudioPlan;
   try {
-    plan = await planVillageStudioSheets(connectionId, identity, input.expressions, input.individual);
+    plan = previewImages
+      ? await planVillageStudioSheets(connectionId, identity, preparation?.expressions ?? input.expressions, true)
+      : {
+          protocol: 7,
+          connection: await import("./sprite-studio-engine.js").then(({ studioConnection }) =>
+            studioConnection(connectionId),
+          ),
+          batches: [],
+          estimatedCost: null,
+          localWorkflow: false,
+        };
   } catch (error) {
     if (safeMessage(error).includes("(404)"))
       throw badRequest(
@@ -595,15 +670,213 @@ async function prepare(characterId: string, raw: unknown) {
       );
     throw error;
   }
-  plan.preparationRequests = 1;
+  plan.preparationRequests = 0;
+  plan.directions = directionRows;
+  plan.look = {
+    fingerprint: lookFingerprint,
+    needed: !neutralUrl,
+    cellId: neutral?.id,
+    url: neutralUrl,
+    remaining: deferredExpressions?.filter((e) => e.label !== "neutral").length ?? 0,
+    extraNeutral: !!deferredExpressions && !deferredExpressions.some((e) => e.label === "neutral"),
+  };
+  plan.referenceNotice = referencePolicy.notice;
   plan.designId = design?.id;
   plan.settingsToken = settingsToken;
   plan.reviewToken = hash(JSON.stringify({ input, settings: state.settings, identity, plan }));
-  return { id, state, input, identity, connectionId, plan, design, expectedHeight };
+  return {
+    id,
+    state,
+    input,
+    identity,
+    connectionId,
+    plan,
+    design,
+    expectedHeight,
+    lookFingerprint,
+    deferredExpressions,
+    preparation,
+  };
 }
 export async function planSpriteStudio(characterId: string, raw: unknown) {
   const prepared = await prepare(characterId, raw);
   return prepared.plan;
+}
+
+export const acceptStudioLook = (characterId: string, raw: unknown) =>
+  serializeCells(characterId, async () => {
+    const { id } = await scope(characterId);
+    const state = await read(id);
+    const { job, sheet, cell } = findCell(state, asString(asRecord(raw).cellId));
+    if (job.status === "running" || cell.label !== "neutral" || !cell.rendered || cell.status === "discarded")
+      throw badRequest("Choose a finished neutral from saved artwork.");
+    const planned = await prepare(
+      characterId,
+      { ...asRecord(raw), view: cell.view, expressions: [{ label: "neutral", pose: "" }] },
+      false,
+    );
+    const fingerprint = planned.lookFingerprint;
+    if (job.lookFingerprint && job.lookFingerprint !== fingerprint)
+      throw badRequest("This neutral belongs to a different appearance, style or facing. Choose compatible artwork.");
+    const result = await cachedStudioCell(sheet, cell);
+    if (result.validation.status === "blocked")
+      throw badRequest("Correct blocking findings before accepting this look.");
+    await mutate(id, (next) => {
+      const current = findCell(next, cell.id).cell;
+      if (current.rendered?.sha256 !== cell.rendered?.sha256 || current.status === "discarded")
+        throw badRequest("This neutral changed. Refresh the gallery.");
+      next.settings = planned.state.settings;
+      next.looks = [
+        ...(next.looks ?? []).filter((look) => look.fingerprint !== fingerprint),
+        { cellId: cell.id, fingerprint, view: cell.view, artworkFingerprint: lookArtworkFingerprint(current) },
+      ];
+      current.reviewAcknowledged = true;
+    });
+    return readSpriteStudio(characterId);
+  });
+
+/** Text preparation is a separate, explicitly journaled operation, never an image job. */
+export async function studioDirections(characterId: string, raw: unknown) {
+  const body = asRecord(raw);
+  const operation = asString(body.operation);
+  if (!["prepare", "save", "suggest", "use", "discard"].includes(operation))
+    throw badRequest("Choose a direction action.");
+  const context = await prepare(characterId, raw, false);
+  if (context.plan.look?.needed) throw badRequest("Accept a compatible look before preparing expressions.");
+  const { id, identity, input, plan } = context;
+  const rows = plan.directions!;
+  if (operation !== "prepare" && rows.length !== 1) throw badRequest("Choose one expression.");
+  if (["save", "use", "discard"].includes(operation)) {
+    await mutate(id, (state) => {
+      const row = rows[0]!;
+      const record = (state.directions ??= []).find((item) => item.key === row.key);
+      if ((record?.revision ?? 0) !== Number(body.revision))
+        throw badRequest("Directions changed. Refresh before editing.");
+      if (operation === "discard") {
+        if (record) delete record.suggestion;
+        return;
+      }
+      const text = operation === "use" ? record?.suggestion?.text : asString(body.text).trim();
+      if (!text || text.length > STUDIO_POSE_MAX_LENGTH)
+        throw badRequest("Enter directions of at most 1,000 characters.");
+      if (operation === "use" && record?.suggestion?.revision !== record?.revision)
+        throw badRequest("This suggestion is stale.");
+      if (record) {
+        record.text = text;
+        record.revision++;
+        delete record.suggestion;
+      } else state.directions.push({ key: row.key, label: row.label, text, revision: 1 });
+    });
+    return readSpriteStudio(characterId);
+  }
+  const requestId = asString(body.actionId);
+  if (!/^[a-f0-9-]{36}$/i.test(requestId)) throw badRequest("A text request needs an action id.");
+  const chosen = operation === "suggest" ? rows : rows.filter((row) => !row.text);
+  if (!chosen.length) return readSpriteStudio(characterId);
+  const fingerprint = hash(JSON.stringify([operation, chosen.map((row) => row.key)]));
+  let claimed = false;
+  const activeKey = id + ":directions:" + requestId;
+  await mutate(id, (state) => {
+    claimed = false; // The document store may replay this callback after a revision conflict.
+    const prior = (state.directionRequests ??= []).find((row) => row.id === requestId);
+    if (prior) {
+      if (prior.fingerprint !== fingerprint) throw badRequest("This action id belongs to another direction request.");
+      return;
+    }
+    for (const row of chosen) {
+      if (state.directionRequests.some((r) => r.status === "submitted" && r.keys.includes(row.key)))
+        throw badRequest("Directions are already being prepared. Wait or inspect the interrupted request.");
+      if (
+        operation === "prepare" &&
+        state.directionRequests.some((r) => r.keys.includes(row.key)) &&
+        body.retry !== true
+      )
+        throw badRequest("Preparation was already attempted. Retry explicitly or enter directions.");
+    }
+    state.directionRequests.push({
+      id: requestId,
+      fingerprint,
+      status: "submitted",
+      keys: chosen.map((r) => r.key),
+      revisions: chosen.map((r) => r.revision),
+      suggestion: operation === "suggest",
+    });
+    active.add(activeKey);
+    claimed = true;
+  });
+  if (!claimed) return readSpriteStudio(characterId);
+  try {
+    const expressions = input.expressions.filter((entry) => chosen.some((row) => row.label === entry.label));
+    const earlier = [...(context.state.directionRequests ?? [])]
+      .reverse()
+      .find(
+        (r) =>
+          r.content &&
+          r.suggestion === (operation === "suggest") &&
+          JSON.stringify(r.keys) === JSON.stringify(chosen.map((row) => row.key)) &&
+          JSON.stringify(r.revisions) === JSON.stringify(chosen.map((row) => row.revision)),
+      );
+    let cachedAnswer;
+    if (earlier?.content && body.retry === true) {
+      try {
+        cachedAnswer = parseStudioPreparation(earlier.content, expressions);
+      } catch {
+        /* Invalid output needs a deliberate fresh attempt. */
+      }
+    }
+    const answer =
+      cachedAnswer ??
+      (await prepareStudioExpressions(
+        identity,
+        expressions,
+        (attempt) =>
+          mutate(id, (state) => {
+            state.directionRequests!.find((r) => r.id === requestId)!.attempt = attempt;
+          }),
+        (content) =>
+          mutate(id, (state) => {
+            const r = state.directionRequests!.find((r) => r.id === requestId)!;
+            r.content = content;
+            r.status = "answered";
+          }),
+        operation === "suggest" ? chosen[0]!.text : undefined,
+      ));
+    if (cachedAnswer)
+      await mutate(id, (state) => {
+        const r = state.directionRequests!.find((row) => row.id === requestId)!;
+        r.status = "answered";
+        r.content = earlier!.content;
+      });
+    // Re-read character inputs after the model returns. Stale answers remain recorded but never replace edits.
+    const latest = await prepare(characterId, raw, false);
+    await mutate(id, (state) => {
+      for (const row of chosen) {
+        if (!latest.plan.directions?.some((r) => r.key === row.key) || latest.plan.look?.needed) continue;
+        let current = (state.directions ??= []).find((r) => r.key === row.key);
+        if ((current?.revision ?? 0) !== row.revision) continue;
+        const text = answer.expressions.find((e) => e.label === row.label)!.direction!;
+        if (!current) {
+          current = { key: row.key, label: row.label, text: "", revision: 0 };
+          state.directions.push(current);
+        }
+        if (operation === "suggest") current.suggestion = { text, revision: current.revision, requestId };
+        else if (!current.text) {
+          current.text = text;
+          current.revision++;
+        }
+      }
+    });
+  } catch (error) {
+    await mutate(id, (state) => {
+      const r = state.directionRequests!.find((row) => row.id === requestId)!;
+      r.status = r.content ? "failed" : "unknown";
+      r.error = safeMessage(error);
+    });
+    throw error;
+  } finally {
+    active.delete(activeKey);
+  }
+  return readSpriteStudio(characterId);
 }
 /** The historical single-sprite route uses the durable Studio pipeline too. */
 export async function generateLegacyStudioSprite(
@@ -687,6 +960,10 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
   }
   const prepared = await prepare(characterId, raw);
   const { plan, input, identity, connectionId, design } = prepared;
+  if (plan.look?.needed && selection(raw).expressions.some((entry) => entry.label !== "neutral"))
+    throw badRequest("Accept a neutral in Choose look before generating expressions.");
+  if (!prepared.preparation)
+    throw badRequest("Prepare or enter directions for each selected expression before generating.");
   // Confirm the exact displayed plan, including connection and request count.
   if (JSON.stringify(body.plan) !== JSON.stringify(plan))
     throw badRequest("The generation plan changed. Refresh the request summary before generating.");
@@ -711,8 +988,11 @@ export async function startSpriteStudioJob(characterId: string, raw: unknown) {
       }
       next.jobs.push({
         frozenIdentity: structuredClone(identity),
-        phase: "preparing",
-        preparation: { status: "pending", attempts: [] },
+        lookFingerprint: prepared.lookFingerprint,
+        anchorCellId: plan.look?.cellId,
+        deferredExpressions: prepared.deferredExpressions,
+        phase: prepared.preparation ? "drawing" : "preparing",
+        preparation: prepared.preparation ?? { status: "pending", attempts: [] },
         imageAttempts: [],
         resolvedStyle: identity.resolvedStyle,
         styleFingerprint: identity.resolvedStyle.fingerprint,
@@ -838,7 +1118,7 @@ async function runStudioJob(id: string, jobId: string) {
       const {
         image,
         source,
-        cells: engineCells,
+        cells: _engineCells,
       } = await generateVillageStudioSheet({
         connectionId,
         expectedModel: plan.connection.model,
@@ -881,7 +1161,7 @@ async function runStudioJob(id: string, jobId: string) {
             batch.rows,
             output.width,
             output.height,
-            true,
+            false,
           ).map((cell) => ({
             ...cell,
             scale: 1,
@@ -896,13 +1176,7 @@ async function runStudioJob(id: string, jobId: string) {
         delete job.pendingSource;
       });
       const currentJob = (await read(id)).jobs.find((job) => job.id === jobId)!;
-      await processSavedSheet(
-        id,
-        currentJob.sheets.at(-1)!,
-        job.frozenSettings?.cleanupEngine ?? "studio",
-        image,
-        engineCells,
-      );
+      await processSavedSheet(id, currentJob.sheets.at(-1)!, job.frozenSettings?.cleanupEngine ?? "studio", image);
     }
     await mutate(id, (next) => {
       const current = next.jobs.find((item) => item.id === jobId)!;
@@ -1127,6 +1401,8 @@ async function assignStudioCellsUnlocked(characterId: string, raw: unknown) {
     expressionId: asString(entry.expressionId) || findCell(state, asString(entry.id)).cell.expressionId!,
   }));
   if (batch && selected.some((item) => item.job.id !== batch.id)) throw badRequest("Choose artwork from this batch.");
+  if (selected.length > 1 && selected.some(({ sheet, cell }) => studioNeedsInspection(sheet, cell)))
+    throw badRequest("Inspect suspect cutouts individually with Use before accepting them together.");
   const unique = new Set<string>();
   for (const { cell, sheet, image, expected, expressionId } of selected) {
     if (expected !== undefined && cellFingerprint(expected as StudioCell) !== cellFingerprint(cell))
@@ -1188,6 +1464,7 @@ async function assignStudioCellsUnlocked(characterId: string, raw: unknown) {
       const current = findCell(next, cell.id);
       current.cell.pending = false;
       current.cell.status = "approved";
+      current.cell.reviewAcknowledged = true;
       const batch = next.jobs.find((item) => item.id === job.id)!;
       batch.assignments = [
         ...(batch.assignments ?? []).filter((item) => item.expressionId !== expressionId || item.view !== cell.view),
@@ -1330,6 +1607,15 @@ function retainedUrls(state: StudioState, resident: Awaited<ReturnType<typeof ow
   const reference = resident.cardSnapshot.spriteReference?.url;
   if (reference) keep.add(reference.split("?")[0]!);
   for (const entry of resident.sprite?.expressions ?? []) keep.add(imageUrl(resident.sprite!, entry));
+  for (const look of state.looks ?? []) {
+    try {
+      const { sheet, cell } = findCell(state, look.cellId);
+      keep.add(sheet.url.split("?")[0]!);
+      if (cell.rendered) keep.add(cell.rendered.url.split("?")[0]!);
+    } catch {
+      /* Removed look. */
+    }
+  }
   for (const d of state.designs ?? [])
     for (const url of [d.identityUrl, d.front?.url, d.side?.url, d.front?.sourceUrl, d.side?.sourceUrl, d.exemplar])
       if (url) keep.add(url.split("?")[0]);

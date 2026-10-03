@@ -1,6 +1,4 @@
-// Villages owns the sheet and all derivatives. The Engine sprite endpoint performs
-// one Engine generation request, honoring Engine defaults and fallbacks. Cleanup
-// is applied separately so the unmodified original remains available.
+// Engine generates individual sprites; preserve its returned image before local formatting.
 import { studioBatchSize } from "./generation-budgets.js";
 import { createHash } from "node:crypto";
 import { badRequest } from "./errors.js";
@@ -22,10 +20,9 @@ import {
 type Expression = StudioRequestedExpression;
 type Identity = StudioIdentity;
 type Connection = Awaited<ReturnType<typeof studioConnection>>;
-export const STUDIO_PIPELINE_VERSION = 5;
+export const STUDIO_PIPELINE_VERSION = 7;
 const PATH = "/api/sprites/generate-sheet";
 const digest = (value: string | Uint8Array) => createHash("sha256").update(value).digest("hex");
-const layouts: Record<number, [number, number]> = { 1: [1, 1], 2: [2, 1], 3: [2, 2], 4: [2, 2], 5: [3, 2], 6: [3, 2] };
 
 /** Engine owns the selected connection defaults and any configured fallback. */
 export async function studioImageConnection(connectionId: string): Promise<Connection> {
@@ -73,7 +70,7 @@ function requestBody(
   expressions: Expression[] = [],
 ) {
   const labels = expressions.map((entry) => entry.label);
-  const id = `sprite:full-body:sheet:${`${batch.cols}x${batch.rows}-${labels.join(",")}`.slice(0, 120)}`;
+  const id = `sprite:full-body:expression:${labels[0]}`;
   return {
     connectionId,
     appearance: `${identity.name}. ${identity.appearance}`.slice(0, 2000),
@@ -81,10 +78,11 @@ function requestBody(
     cols: batch.cols,
     rows: batch.rows,
     spriteType: "full-body",
-    fullBodyExpressionMode: false,
-    noBackground: false,
+    fullBodyExpressionMode: true,
+    noBackground: true,
     nativeTransparentPng: false,
-    referenceImages: reference,
+    neutralFullBodyReference: identity.references?.[0]?.role.startsWith("accepted neutral") ? reference[0] : undefined,
+    referenceImages: identity.references?.[0]?.role.startsWith("accepted neutral") ? reference.slice(1) : reference,
     styleProfileId: "off",
     promptOverrides: [{ id, prompt, negativePrompt }],
   };
@@ -95,7 +93,9 @@ async function preview(body: ReturnType<typeof requestBody>) {
   const items = Array.isArray(answer.items) ? answer.items.map(asRecord) : [];
   const item = items[0];
   if (items.length !== 1 || !item || item.id !== body.promptOverrides[0]!.id)
-    throw badRequest("This image model cannot preview one sheet request. Choose a different image connection.");
+    throw badRequest(
+      "This image model cannot preview one individual sprite request. Choose a different image connection.",
+    );
   const width = Number(item.width),
     height = Number(item.height);
   if (![width, height].every((v) => Number.isInteger(v) && v > 0 && v <= 4096) || width * height > 16_000_000)
@@ -112,7 +112,7 @@ export async function planVillageStudioSheets(
   connectionId: string,
   identity: Identity,
   expressions: Expression[],
-  individual: boolean,
+  _individual: boolean,
 ): Promise<StudioPlan> {
   const connection = await studioImageConnection(connectionId);
   const resolvedStyle = identity.settings
@@ -128,8 +128,9 @@ export async function planVillageStudioSheets(
   const matteHex = selectStudioMatte(identity.name + " " + identity.appearance);
   const batches: StudioBatch[] = [];
   for (let offset = 0; offset < expressions.length;) {
-    const count = Math.min(studioBatchSize(individual), expressions.length - offset);
-    const [cols, rows] = layouts[count]!;
+    const count = studioBatchSize(true);
+    const cols = 1,
+      rows = 1;
     const chosen = expressions.slice(offset, offset + count);
     let target: StudioBatch = { cols, rows, count, width: cols * 512, height: rows * 768 };
     // A provider may constrain the requested dimensions. Compile the layout at
@@ -185,7 +186,7 @@ export async function planVillageStudioSheets(
     offset += count;
   }
   return {
-    protocol: 5,
+    protocol: 7,
     connection,
     batches,
     estimatedCost: null,
@@ -271,7 +272,10 @@ export async function generateVillageStudioSheet(input: {
     throw badRequest("The generation plan changed. Refresh the request summary before generating.");
   await onSubmit();
   const answer = asRecord(await studioEngineJson<unknown>(PATH, { body }));
-  const bytes = Buffer.from(asString(answer.sheetBase64), "base64");
+  const returned = (Array.isArray(answer.cells) ? answer.cells : []).map(asRecord);
+  if (returned.length !== 1 || returned[0].expression !== expressions[0]?.label || !asString(returned[0].base64))
+    throw badRequest("Engine returned no usable individual sprite. Its outcome may be unknown; retry explicitly.");
+  const bytes = Buffer.from(asString(returned[0].base64), "base64");
   const image = `data:${generatedMime(bytes)};base64,${bytes.toString("base64")}`;
   const source = studioImageSource(image, "generated-raw", batch);
   // The caller saves the paid original before validating or processing crops.

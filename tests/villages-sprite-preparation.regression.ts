@@ -80,7 +80,7 @@ assert.match(STUDIO_PREPARATION_PROMPT, /view is only a saved slot label/);
 assert.match(reserved, /User pose constraint: Keep hands at her sides/);
 assert.match(reserved, /explicit written anatomy/);
 assert.match(reserved, /never omit clothing/);
-assert.match(reserved, /cannot override the original outfit/);
+assert.match(reserved, /accepted neutral, when supplied, establishes the chosen look/);
 assert.doesNotMatch(reserved, /fitting expressive body gesture/);
 console.log(
   "Sprite preparation checks passed: complete directions, stable IDs, custom meanings, authored constraints, personality range and outfit/anatomy precedence.",

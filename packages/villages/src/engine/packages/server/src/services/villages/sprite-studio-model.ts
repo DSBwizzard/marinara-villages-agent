@@ -21,7 +21,7 @@ export const STUDIO_POSE_MAX_LENGTH = 1000;
 export const STUDIO_FACING_PROMPTS: Record<StudioView, string> = {
   front:
     "Face the viewer squarely with head and torso forward. Keep both shoulders readable and the body front-facing. Express emotion through this character’s face, posture and gestures.",
-  side: "Focus on the conversation partner off-screen to the right. Turn the head and eyes toward them while opening the body toward the camera, like an actor cheating out on stage.",
+  side: "Right-facing conversation stance: turn the head, nose or muzzle, eyes, attention and conversational gestures toward a partner off-screen to the RIGHT. Keep the torso in a readable three-quarter stance, only slightly open toward the audience. The face and gaze remain directed right, never toward the viewer. Preserve this direction throughout the expression.",
 };
 export const defaultStudioFacingPrompts = (): Record<StudioStyle, Record<StudioView, string>> => ({
   PAPERCRAFT: { ...STUDIO_FACING_PROMPTS },
@@ -95,6 +95,7 @@ export type StudioRendered = { assetId: string; filename: string; url: string; f
 export type StudioAssignment = { expressionId: string; view: StudioView; cellId: string };
 export type StudioFile = { assetId: string; expression: string; url: string; error?: string };
 export type StudioSettings = {
+  generationMode?: "individual" | "sheet";
   styleSelection?: StudioStyleSelection;
   style: StudioStyle;
   prompts: Record<StudioStyle, string>;
@@ -217,6 +218,16 @@ export type StudioBatch = {
   request?: StudioGenerationRequest;
 };
 export type StudioPlan = {
+  look?: {
+    fingerprint?: string;
+    needed: boolean;
+    cellId?: string;
+    url?: string;
+    remaining: number;
+    extraNeutral: boolean;
+  };
+  referenceNotice?: string;
+  directions?: Array<StudioDirection & { status?: string }>;
   protocol: number;
   reviewToken?: string;
   providerToken?: string;
@@ -237,6 +248,9 @@ export type StudioPlan = {
   designId?: string;
 };
 export type StudioJob = {
+  lookFingerprint?: string;
+  anchorCellId?: string;
+  deferredExpressions?: StudioRequestedExpression[];
   styleFingerprint?: string;
   resolvedStyle?: StudioResolvedStyle;
   targetHeight?: number;
@@ -272,7 +286,28 @@ export type StudioJob = {
   reviewStatus?: "not-requested";
   strategy?: "original" | "anchored";
 };
+export type StudioDirection = {
+  key: string;
+  label: string;
+  text: string;
+  revision: number;
+  suggestion?: { text: string; revision: number; requestId: string };
+};
+export type StudioDirectionRequest = {
+  id: string;
+  fingerprint: string;
+  status: "submitted" | "answered" | "failed" | "unknown";
+  keys: string[];
+  revisions: number[];
+  suggestion: boolean;
+  content?: string;
+  error?: string;
+  attempt?: StudioPreparationAttempt;
+};
 export type StudioState = {
+  directions?: StudioDirection[];
+  directionRequests?: StudioDirectionRequest[];
+  looks?: Array<{ cellId: string; fingerprint: string; view: StudioView; artworkFingerprint?: string }>;
   publications?: StudioPublication[];
   adoptions?: Array<{ id: string; fingerprint: string; cellIds: string[]; status: "prepared" | "used" }>;
   version: 2;
@@ -300,12 +335,13 @@ export type StudioData = StudioState & {
 export const defaultStudioState = (): StudioState => ({
   version: 2,
   settings: {
-    styleSelection: { kind: "studio" },
+    styleSelection: { kind: "default" },
     style: "PAPERCRAFT",
     prompts: { ...SPRITE_STYLES },
     facingPrompts: defaultStudioFacingPrompts(),
     connectionId: "",
-    individual: false,
+    generationMode: "individual",
+    individual: true,
     cleanupEngine: "studio",
   },
   jobs: [],
@@ -390,33 +426,45 @@ export function studioPrompt(input: {
   referenceRoles?: string[];
 }): string {
   const gaze = input.facingPrompt ?? STUDIO_FACING_PROMPTS[input.view];
+  const single = input.batch.cols === 1 && input.batch.rows === 1;
   return [
     `Character: ${input.name}. ${input.appearance}`,
     "Explicit written anatomy is authoritative: preserve stated limb placement, flight structures, hands, feet, and absent features even if a reference or style suggests otherwise. Never add separate wings, limbs, or species features that contradict the description.",
     input.interpretation
       ? "Character interpretation: " + input.interpretation
       : "Expressions will be prepared from this character’s saved personality before drawing.",
-    "Show this character’s own interpretation of each emotion through facial tension, gaze, posture, and gestures. Choose intensity from their personality. Sadness does not automatically mean crying; surprise does not automatically mean a gasping mouth; anger does not automatically mean raised fists. Broad gestures are appropriate only when grounded in this character or explicitly requested.",
+    "Show this character’s own interpretation of the emotion through facial tension, gaze, posture, and gestures. Choose intensity from their personality. Sadness does not automatically mean crying; surprise does not automatically mean a gasping mouth; anger does not automatically mean raised fists. Broad gestures are appropriate only when grounded in this character or explicitly requested.",
     input.referenceRoles?.length
       ? "Identity reference: preserve the reference character’s species, anatomy, core outfit, colors, proportions, and identifying features. Reconstruct the requested poses instead of copying the source pose."
-      : "Preserve the character description’s species, anatomy, core outfit, colors, proportions, and identifying features consistently in every cell.",
+      : "Preserve the character description’s species, anatomy, core outfit, colors, proportions, and identifying features consistently.",
     ...(input.referenceRoles?.length
       ? [
           "Reference order and roles: " +
             input.referenceRoles.map((role, i) => `${i + 1}: ${role}`).join("; ") +
-            ". The original avatar controls the visible outfit, colors, and accessories in EVERY cell. Keep its tops, trousers, skirts, scarves, bags, and other visible garments; never omit clothing or replace it with bare skin, feathers, or fur. A styled neutral reference guides rendering and proportions only and cannot override the original outfit or explicit written anatomy. Simplify garment rendering for the style without removing garments. Do not redesign, add footwear, remove accessories, or change the outfit.",
+            ". The accepted neutral, when supplied, establishes the chosen look, outfit, colors and accessories. Keep its tops, trousers, skirts, scarves, bags, and other visible garments; never omit clothing or replace it with bare skin, feathers, or fur. The original identity image supplements identifying details; explicit written anatomy remains authoritative. Simplify garment rendering for the style without removing garments. Do not redesign, add footwear, remove accessories, or change the outfit.",
         ]
       : []),
     `Draw it in this style: ${input.style || "Preserve the visual style of the identity reference."}`,
     ...(gaze ? ["Facing guidance: " + gaze] : []),
-    `Create ONE image, ${input.batch.width} by ${input.batch.height}, with exactly ${input.batch.cols} columns and ${input.batch.rows} rows of equal cells. Read cells left-to-right, top-to-bottom. Leave unused cells empty. No labels, cell frames, scenery, text, or floor shadows.`,
-    `Each equal cell is ${input.batch.width / input.batch.cols} by ${input.batch.height / input.batch.rows} pixels. Vertical cuts: ${Array.from({ length: input.batch.cols - 1 }, (_, i) => ((i + 1) * input.batch.width) / input.batch.cols).join(", ") || "none"}; horizontal cuts: ${Array.from({ length: input.batch.rows - 1 }, (_, i) => ((i + 1) * input.batch.height) / input.batch.rows).join(", ") || "none"}. These are invisible crop boundaries, not drawn lines.`,
-    "Every occupied cell contains one complete full-body character, including the top of the head, both feet and all gestures. Keep the silhouette within the central 80% of cell width and 76% of cell height, with at least 10% clear space above the head and 12% below the feet. Keep the same character proportions, camera distance and body scale across every cell. Align feet at 88% of each cell’s height. No body part may cross a crop boundary. Allow distinct character-grounded poses while preserving this character’s usual bearing and anatomy.",
+    ...(single
+      ? [
+          "Draw ONE complete full-body character in ONE portrait image. Include the entire head, feet and gestures, with clear space on every side. Keep the same character proportions, camera distance and body scale as the accepted neutral reference. Place the feet near 88% of image height. No duplicate figures, labels, scenery, text or floor shadows.",
+        ]
+      : [
+          `Create ONE image, ${input.batch.width} by ${input.batch.height}, with exactly ${input.batch.cols} columns and ${input.batch.rows} rows of equal cells. Read cells left-to-right, top-to-bottom. Leave unused cells empty. No labels, cell frames, scenery, text, or floor shadows.`,
+          `Each equal cell is ${input.batch.width / input.batch.cols} by ${input.batch.height / input.batch.rows} pixels. Vertical cuts: ${Array.from({ length: input.batch.cols - 1 }, (_, i) => ((i + 1) * input.batch.width) / input.batch.cols).join(", ") || "none"}; horizontal cuts: ${Array.from({ length: input.batch.rows - 1 }, (_, i) => ((i + 1) * input.batch.height) / input.batch.rows).join(", ") || "none"}. These are invisible crop boundaries, not drawn lines.`,
+          "Every occupied cell contains one complete full-body character, including the top of the head, both feet and all gestures. Keep the silhouette within the central 80% of cell width and 76% of cell height, with at least 10% clear space above the head and 12% below the feet. Keep the same character proportions, camera distance and body scale across every cell. Align feet at 88% of each cell’s height. No body part may cross a crop boundary. Allow distinct character-grounded poses while preserving this character’s usual bearing and anatomy.",
+        ]),
     ...input.expressions.map(
       (item, i) =>
-        `Cell ${i + 1}: ${item.label.replace(/_/g, " ")}. ${item.name && item.name !== item.label ? "Expression name: " + item.name + ". " : ""}${item.useWhen ? "Meaning: " + item.useWhen + " " : ""}${item.direction || item.pose || (item.label === "neutral" ? "Use the character’s natural resting posture." : "Interpret this emotion through the character’s personality and usual bearing.")}${item.direction && item.pose ? " User pose constraint: " + item.pose : ""}`,
+        `${single ? "Expression" : "Cell " + (i + 1)}: ${item.label.replace(/_/g, " ")}. ${item.name && item.name !== item.label ? "Expression name: " + item.name + ". " : ""}${item.useWhen ? "Meaning: " + item.useWhen + " " : ""}${item.direction || item.pose || (item.label === "neutral" ? "Use the character’s natural resting posture." : "Interpret this emotion through the character’s personality and usual bearing.")}${item.direction && item.pose ? " User pose constraint: " + item.pose : ""}`,
     ),
-    `Use one perfectly flat, uniform solid background ${input.matteHex ?? "#FF00FF"} across the entire canvas, including gutters and unused cells. Do not generate transparency, checkerboards, gradients, grid lines, background texture, or color spill. Keep character colors fully opaque, including internal highlights and shadows. Preserve intentional character outlines in the chosen style. Background removal happens after generation.`,
+    `Use one perfectly flat, uniform solid background ${input.matteHex ?? "#FF00FF"} across the entire canvas. Do not generate transparency, checkerboards, gradients, background texture, or color spill. Keep character colors fully opaque, including internal highlights and shadows. Preserve intentional character outlines in the chosen style. Background removal happens after generation.`,
+    ...(gaze
+      ? [
+          "Maintain the facing guidance above while expressing the emotion; emotion and pose directions do not change the requested facing.",
+        ]
+      : []),
   ].join("\n\n");
 }
 

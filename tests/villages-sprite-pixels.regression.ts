@@ -119,6 +119,21 @@ rect(grid, 98, 50, 5, 50);
 const findings = analyzeStudioSheet(grid, layout).findings;
 assert.ok(findings.some((f) => f.code === "unused-cell"));
 assert.ok(findings.some((f) => f.code === "sheet-gutter"));
+assert.equal(analyzeStudioSheet(grid, { ...layout, layout: { cols: 0, rows: 2, count: 3 } }).status, "needs-review");
+const padded = fixture(100, 150);
+rect(padded, 0, 48, 100, 56, [255, 71, 252, 255]);
+rect(padded, 40, 55, 20, 42, [80, 60, 40, 255]);
+const paddedSheet = { ...sheet, source: { kind: "generated-raw" as const, matteHex: "#FF00FF" } };
+const paddedResult = processStudioCell(padded, paddedSheet, cell);
+assert.equal(paddedResult.validation.status, "passed", "softened magenta inside transparent Engine padding is removed");
+assert.equal(paddedResult.validation.foreground!.left, 40);
+const opaque = fixture();
+rect(opaque, 0, 0, 100, 150, [80, 60, 40, 255]);
+assert.equal(
+  processStudioCell(opaque, sheet, { ...cell, cleanup: true }).validation.status,
+  "blocked",
+  "unremoved opaque backdrop cannot be accepted",
+);
 assert.throws(() => decodeStudioPng("data:image/png;base64,aW52YWxpZA=="));
 const batchSource = fixture(200, 150);
 rect(batchSource, 25, 15, 50, 120);

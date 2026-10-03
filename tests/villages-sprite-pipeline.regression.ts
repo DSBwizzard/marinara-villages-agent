@@ -97,10 +97,10 @@ async function main() {
     const expressions = Array.from({ length: 13 }, (_, i) => ({ label: "e_" + i, pose: "Pose " + i }));
     constrained = true;
     const plan = await planVillageStudioSheets("image", identity, expressions, false);
-    assert.equal(plan.protocol, 5);
+    assert.equal(plan.protocol, 7);
     assert.deepEqual(
       plan.batches.map((b) => b.count),
-      [6, 6, 1],
+      Array(13).fill(1),
     );
     assert.equal(generated, 0, "planning never submits images");
     assert.ok(plan.batches.every((b) => b.width === 1024 && b.height === 1024));
@@ -123,23 +123,21 @@ async function main() {
       const body = requests[i];
       assert.deepEqual(body.referenceImages, [png]);
       assert.equal(body.spriteType, "full-body");
-      assert.equal(body.fullBodyExpressionMode, false);
+      assert.equal(body.fullBodyExpressionMode, true);
       assert.equal(body.promptOverrides[0].prompt, batch.request!.prompt);
       assert.equal(body.promptOverrides[0].negativePrompt, batch.request!.negativePrompt);
       assert.equal(body.promptOverrides[0].negativePrompt, STUDIO_NEGATIVE_PROMPT);
       assert.match(body.promptOverrides[0].prompt, /Custom art with no outline/);
       assert.match(body.promptOverrides[0].prompt, /Face the viewer squarely/);
-      assert.match(body.promptOverrides[0].prompt, /1024 by 1024/);
-      assert.ok(
-        body.promptOverrides[0].prompt.includes("exactly " + batch.cols + " columns and " + batch.rows + " rows"),
-      );
+      assert.match(body.promptOverrides[0].prompt, /ONE complete full-body character/);
+      assert.doesNotMatch(body.promptOverrides[0].prompt, /columns|rows|crop boundaries/);
       assert.match(body.promptOverrides[0].prompt, /same character proportions, camera distance and body scale/);
-      assert.match(body.promptOverrides[0].prompt, /clear space above the head/);
+      assert.match(body.promptOverrides[0].prompt, /clear space on every side/);
       for (let cell = 0; cell < batch.count; cell++) {
         const expression = expressions[offset - batch.count + cell]!;
         assert.ok(
           body.promptOverrides[0].prompt.includes(
-            "Cell " + (cell + 1) + ": " + expression.label.replace(/_/g, " ") + ". " + expression.pose,
+            "Expression: " + expression.label.replace(/_/g, " ") + ". " + expression.pose,
           ),
         );
       }
@@ -148,17 +146,17 @@ async function main() {
       assert.doesNotMatch(body.promptOverrides[0].prompt, /transparent background/i);
       assert.equal(body.cols, batch.cols);
       assert.equal(body.rows, batch.rows);
-      assert.equal(body.noBackground, false);
+      assert.equal(body.noBackground, true);
       assert.equal(body.nativeTransparentPng, false);
     }
-    assert.equal(generated, 3);
-    assert.equal(submissions, 3);
+    assert.equal(generated, 13);
+    assert.equal(submissions, 13);
     const run = () =>
       generateVillageStudioSheet({
         connectionId: "image",
         expectedModel: "test-image",
         identity,
-        expressions: expressions.slice(0, 6),
+        expressions: expressions.slice(0, 1),
         batch: plan.batches[0]!,
         onSubmit: async () => {
           submissions++;
@@ -181,7 +179,7 @@ async function main() {
     reference = png;
     plan.batches[0]!.request!.pipelineVersion = 1;
     await assert.rejects(run, /plan changed/);
-    plan.batches[0]!.request!.pipelineVersion = 5;
+    plan.batches[0]!.request!.pipelineVersion = 7;
     const frozen = plan.batches[0]!.request!;
     const originalPrompt = frozen.prompt;
     frozen.prompt = "Generic character reference sheet";
@@ -199,12 +197,12 @@ async function main() {
     expressions[0]!.pose = "Different pose";
     await assert.rejects(run, /plan changed/);
     expressions[0]!.pose = originalPose;
-    assert.equal(generated, 3);
-    assert.equal(submissions, 3, "stale plans never increment attempted requests");
+    assert.equal(generated, 13);
+    assert.equal(submissions, 13, "stale plans never increment attempted requests");
     fail = true;
     await assert.rejects(run, /504/);
-    assert.equal(generated, 4);
-    assert.equal(submissions, 4, "a timeout gets no automatic paid retry");
+    assert.equal(generated, 14);
+    assert.equal(submissions, 14, "a timeout gets no automatic paid retry");
     await assert.rejects(
       () =>
         planVillageStudioSheets(
@@ -230,7 +228,7 @@ async function main() {
         connectionId: "image",
         expectedModel: model,
         identity: styled,
-        expressions: chosen,
+        expressions: chosen.slice(0, 1),
         batch: styledPlan.batches[0]!,
         onSubmit: async () => {
           submissions++;
@@ -238,18 +236,18 @@ async function main() {
       });
       const submitted = requests.at(-1).promptOverrides[0];
       assert.ok(submitted.prompt.includes(style));
-      assert.match(submitted.prompt, /off-screen to the right/);
-      assert.match(submitted.prompt, /Cell 1: happy\. Running with arms raised/);
-      assert.match(submitted.prompt, /Cell 2: thinking\. Hand on chin/);
+      assert.match(submitted.prompt, /off-screen to the right/i);
+      assert.match(submitted.prompt, /Expression: happy\. Running with arms raised/);
+      assert.doesNotMatch(submitted.prompt, /thinking/);
       assert.equal(submitted.prompt, styledPlan.batches[0]!.request!.prompt);
       assert.equal(submitted.negativePrompt, STUDIO_NEGATIVE_PROMPT);
       assert.doesNotMatch(submitted.prompt, /hero view|turnarounds|palette|Host/);
     }
     for (let count = 1; count <= 6; count++) {
       const sized = await planVillageStudioSheets("image", identity, expressions.slice(0, count), false);
-      assert.equal(sized.batches[0]!.count, count);
-      assert.equal(sized.batches.length, 1);
-      assert.equal(sized.batches[0]!.request!.pipelineVersion, 5);
+      assert.equal(sized.batches[0]!.count, 1);
+      assert.equal(sized.batches.length, count);
+      assert.equal(sized.batches[0]!.request!.pipelineVersion, 7);
     }
   } finally {
     globalThis.fetch = originalFetch;

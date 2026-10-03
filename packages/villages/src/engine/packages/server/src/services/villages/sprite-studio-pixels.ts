@@ -1,7 +1,7 @@
 import { removeStudioMatte } from "./sprite-studio-matte.js";
 import type { StudioCell, StudioSheet, StudioValidation } from "./sprite-studio-model.js";
 
-export const STUDIO_PROCESSING_VERSION = 4;
+export const STUDIO_PROCESSING_VERSION = 5;
 export const STUDIO_CANVAS = { width: 512, height: 768, left: 16, top: 16, right: 496, bottom: 752 };
 export type StudioPixels = { width: number; height: number; data: Uint8ClampedArray };
 
@@ -51,6 +51,33 @@ export function processStudioCell(source: StudioPixels, sheet: StudioSheet, cell
   const cleaned = cell.cleanup ? removeStudioMatte(crop.data, crop.width, crop.height, sheet.source?.matteHex) : false;
   const b = foregroundBounds(crop);
   const findings: StudioValidation["findings"] = [...(sheet.validation?.findings ?? [])];
+  const expected = /^#[a-f0-9]{6}$/i.test(sheet.source?.matteHex ?? "")
+    ? [1, 3, 5].map((start) => parseInt(sheet.source!.matteHex!.slice(start, start + 2), 16))
+    : undefined;
+  const backdropCorners =
+    expected && b.count
+      ? [
+          [b.left, b.top],
+          [b.right, b.top],
+          [b.left, b.bottom],
+          [b.right, b.bottom],
+        ].filter(([x, y]) => {
+          const i = (y! * crop.width + x!) * 4;
+          return Math.hypot(...expected.map((channel, c) => crop.data[i + c]! - channel)) < 120;
+        }).length
+      : 0;
+  if (cell.cleanup && backdropCorners >= 3 && b.count > (b.right - b.left + 1) * (b.bottom - b.top + 1) * 0.9)
+    findings.push({
+      code: "matte-remains",
+      severity: "blocking",
+      message: "The requested background remains around the character. Repair this saved image before use.",
+    });
+  if (cell.cleanup !== false && b.count > crop.width * crop.height * 0.98)
+    findings.push({
+      code: "background",
+      severity: "blocking",
+      message: "Background cleanup did not produce a transparent cutout. Adjust or repair this saved image.",
+    });
   if (!b.count) findings.push({ code: "empty", severity: "blocking", message: "No visible character remains." });
   if (b.edge)
     findings.push({
@@ -157,6 +184,22 @@ export function analyzeStudioSheet(source: StudioPixels, sheet: StudioSheet): St
   const findings: StudioValidation["findings"] = [];
   const layout = sheet.layout;
   if (!layout) return { version: STUDIO_PROCESSING_VERSION, status: "passed", findings };
+  if (
+    ![layout.cols, layout.rows, layout.count].every((value) => Number.isInteger(value) && value > 0) ||
+    layout.count > layout.cols * layout.rows
+  ) {
+    return {
+      version: STUDIO_PROCESSING_VERSION,
+      status: "needs-review",
+      findings: [
+        {
+          code: "invalid-layout",
+          severity: "review",
+          message: "The saved sheet layout is invalid. Inspect and adjust its cells before use.",
+        },
+      ],
+    };
+  }
   const clean = source.data.slice();
   removeStudioMatte(clean, source.width, source.height, sheet.source?.matteHex);
   const cw = source.width / layout.cols,

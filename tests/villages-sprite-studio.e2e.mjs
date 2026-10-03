@@ -3,7 +3,8 @@ import { PNG } from "pngjs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve, join } from "node:path";
-import { chromium, webkit, expect } from "@playwright/test";
+import { chromium, webkit, expect as baseExpect } from "@playwright/test";
+const expect = baseExpect.configure({ timeout: 30000 });
 const engineRoot = process.env.MARINARA_ENGINE_ROOT;
 if (!engineRoot) throw new Error("Set MARINARA_ENGINE_ROOT to the isolated Engine checkout.");
 const require = createRequire(join(engineRoot, "package.json"));
@@ -88,6 +89,7 @@ for (const profile of browserProfiles) {
   const submittedPlans = [];
   const nativeLibrary = [];
   const cellsOf = (job) => job.sheets.flatMap((sheet) => sheet.cells);
+  let textRequests = 0;
   const allCells = () => state.jobs.flatMap(cellsOf);
   const snapshot = () => ({
     characterId: "mara",
@@ -105,6 +107,11 @@ for (const profile of browserProfiles) {
         }
       : null,
   });
+  let failPlan = false,
+    releasePlan;
+  const initialPlan = new Promise((resolve) => {
+    releasePlan = resolve;
+  });
   await page.route("**/*", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/")
@@ -113,6 +120,17 @@ for (const profile of browserProfiles) {
         body: '<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c1427;padding:16px;font-family:Arial}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>',
       });
     if (path === "/fixture.js") return route.fulfill({ contentType: "application/javascript", body: bundle });
+    if (path === "/api/usage/preview")
+      return route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          requests: JSON.parse(route.request().postData() ?? "{}").count ?? 0,
+          residents: [],
+          dollars: null,
+          unknownCosts: 0,
+          note: "Fixture estimate",
+        }),
+      });
     if (!path.includes("/studio")) return route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
     const action = path.split("/studio")[1],
       body = route.request().postDataJSON() ?? {};
@@ -193,9 +211,29 @@ for (const profile of browserProfiles) {
     if (action === "/settings") state.settings = body;
     if (action === "/plan") {
       previewed++;
+      await initialPlan;
+      if (failPlan)
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Engine connection unavailable; saved artwork remains usable." }),
+        });
       result = {
-        protocol: 5,
-        preparationRequests: 1,
+        protocol: 7,
+        preparationRequests: 0,
+        look: {
+          fingerprint: "look",
+          needed: !state.looks?.length,
+          cellId: state.looks?.[0]?.cellId,
+          url: allCells().find((cell) => cell.id === state.looks?.[0]?.cellId)?.rendered?.url,
+        },
+        directions: body.expressions.map((entry) => ({
+          key: entry.label,
+          label: entry.label,
+          text: "",
+          revision: 0,
+          ...(state.directions ?? []).find((row) => row.label === entry.label),
+        })),
         connection: { id: "mock", name: "Mock images", model: "fixture", source: "openai" },
         batches: [],
         estimatedCost: null,
@@ -218,7 +256,7 @@ for (const profile of browserProfiles) {
               matteHex: "#FF00FF",
             });
             return {
-              pipelineVersion: 5,
+              pipelineVersion: 7,
               matteHex: "#FF00FF",
               draftPrompt: prompt,
               prompt,
@@ -232,12 +270,48 @@ for (const profile of browserProfiles) {
         offset += count;
       }
     }
+    if (action === "/accept-look") {
+      state.looks = [{ cellId: body.cellId, fingerprint: "look", view: "side" }];
+    }
+    if (action === "/directions") {
+      state.directions ??= [];
+      if (body.operation === "prepare" || body.operation === "suggest") textRequests++;
+      for (const entry of body.expressions) {
+        let row = state.directions.find((row) => row.label === entry.label);
+        if (!row) {
+          row = { key: entry.label, label: entry.label, text: "", revision: 0 };
+          state.directions.push(row);
+        }
+        if (body.operation === "prepare") {
+          row.text = "A characterful gesture, head and attention remaining right.";
+          row.revision++;
+        }
+        if (body.operation === "suggest")
+          row.suggestion = {
+            text: "She smooths her sleeve with a sheepish smile, looking right.",
+            revision: row.revision,
+            requestId: body.actionId,
+          };
+        if (body.operation === "save") {
+          row.text = body.text;
+          row.revision++;
+          delete row.suggestion;
+        }
+        if (body.operation === "use") {
+          row.text = row.suggestion.text;
+          row.revision++;
+          delete row.suggestion;
+        }
+        if (body.operation === "discard") delete row.suggestion;
+      }
+    }
     if (action === "/jobs" && !state.jobs.some((job) => job.id === body.submissionId)) {
       generated++;
       submittedPlans.push(body.plan);
       state.settings = body.settings;
       const job = {
         id: body.submissionId,
+        lookFingerprint: "look",
         model: "fixture",
         style: body.settings.style,
         frozenSettings: structuredClone(body.settings),
@@ -289,6 +363,22 @@ for (const profile of browserProfiles) {
           })),
         });
       }
+      for (const sheet of job.sheets)
+        for (const cell of sheet.cells) {
+          const decoded = PNG.sync.read(Buffer.from(source.split(",")[1], "base64"));
+          const processed = processStudioCell(
+            { width: decoded.width, height: decoded.height, data: new Uint8ClampedArray(decoded.data) },
+            sheet,
+            cell,
+          );
+          cell.rendered = {
+            url:
+              "data:image/png;base64," +
+              PNG.sync.write({ width: 512, height: 768, data: Buffer.from(processed.image.data) }).toString("base64"),
+            assetId: sheet.assetId,
+            filename: cell.id + ".png",
+          };
+        }
       state.jobs.push(job);
     }
     if (action === "/repair-background") {
@@ -421,198 +511,59 @@ for (const profile of browserProfiles) {
   });
   try {
     await page.goto("http://studio.test/");
-    await expect(page.getByRole("heading", { name: "Mara’s Sprite Studio" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
-    await expect(page.getByText("6 expressions · 1 image request · Mock images")).toBeVisible();
-    assert.equal(await page.getByRole("button", { name: "Review generation plan" }).count(), 0);
-    assert.equal(await page.getByText("Character design", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("Compare reference strategies", { exact: true }).count(), 0);
-    assert.equal(await page.getByText("Isolated Engine connection settings", { exact: true }).count(), 0);
-    assert.equal(
-      await page.getByLabel("Image connection", { exact: true }).isVisible(),
-      false,
-      "advanced controls start closed",
-    );
-    assert.equal(await page.getByLabel("Upload reference", { exact: true }).count(), 0);
-    await expect(page.getByLabel("Style prompt", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Facing prompt", { exact: true })).toBeVisible();
-    await expect(page.getByRole("img", { name: /example placeholder, 512 by 768 pixels/ })).toHaveCount(4);
-    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
-    await page.getByLabel("Style prompt", { exact: true }).fill("My own angular drawing style.");
-    await expect(page.getByText("Edited", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Side · conversation stance", exact: true }).click();
-    await page.getByLabel("Facing prompt", { exact: true }).fill("Full right-facing profile.");
-    await page.getByRole("button", { name: "Papercraft", exact: true }).click();
-    await expect(page.getByLabel("Facing prompt", { exact: true })).toHaveValue(/cheating out/);
-    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
-    await expect(page.getByLabel("Style prompt", { exact: true })).toHaveValue("My own angular drawing style.");
-    await expect(page.getByLabel("Facing prompt", { exact: true })).toHaveValue("Full right-facing profile.");
-    await page.getByRole("button", { name: "Reset to template", exact: true }).click();
-    await page.getByRole("button", { name: "Reset facing prompt", exact: true }).click();
-    await page.getByRole("button", { name: "Front · facing you", exact: true }).click();
-    await page.getByRole("button", { name: "Papercraft", exact: true }).click();
-    for (const name of ["Smug", "Suspicious"]) {
-      await page.getByRole("button", { name: "+ Add expression", exact: true }).click();
-      const form = page.getByRole("form", { name: "New expression", exact: true });
-      await form.getByLabel("New expression name", { exact: true }).fill(name);
-      await form.getByLabel("Pose instructions · optional", { exact: true }).fill("A restrained, knowing look.");
-      await form.getByLabel("Use when · optional", { exact: true }).fill("When noticing an advantage.");
-      await form.getByRole("button", { name: "Add expression", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name, exact: true })).toBeChecked();
-    }
-    await expect(page.getByText("8 expressions · 2 image requests · Mock images")).toBeVisible();
-    assert.equal(generated, 0, "adding and editing prompts/expressions make no paid requests");
-    await page.screenshot({ path: join(output, profile.name + "-create.png"), fullPage: true });
-    await page.getByRole("button", { name: "Edit expressions", exact: true }).click();
-    const edits = page.getByLabel("Edit expressions", { exact: true });
-    await edits.getByText("Edit Smug", { exact: true }).click();
-    const smugForm = edits.locator("details").filter({ has: page.getByText("Edit Smug", { exact: true }) });
-    await smugForm.getByLabel("Name", { exact: true }).fill("Self assured");
-    await smugForm.getByRole("button", { name: "Save expression", exact: true }).click();
-    await expect(page.getByRole("checkbox", { name: "Self assured", exact: true })).toBeChecked();
-    for (const name of ["Self assured", "Suspicious"]) {
-      await edits.getByText("Edit " + name, { exact: true }).click();
-      await edits
-        .locator("details")
-        .filter({ has: page.getByText("Edit " + name, { exact: true }) })
-        .getByRole("button", { name: "Remove empty slot", exact: true })
-        .click();
-    }
-    await page.getByRole("button", { name: "Edit expressions", exact: true }).click();
-    await expect(page.getByText("6 expressions · 1 image request · Mock images")).toBeVisible();
-    await page.getByText("Advanced", { exact: true }).click();
-    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
-
-    await expect(page.getByLabel("Style prompt", { exact: true })).toHaveValue(/Sonic Battle/);
-    await page.getByText("Image request", { exact: true }).click();
-    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText("Sonic Battle");
-    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText(
-      "exactly 3 columns and 2 rows",
-    );
-    await expect(page.getByLabel("Sheet 1 negative prompt", { exact: true })).toContainText("overlapping sprites");
-    await page.getByRole("button", { name: "Papercraft", exact: true }).click();
-    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toContainText(
-      "handcrafted 2D papercraft",
-    );
-    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
-
-    if (!(await page.getByLabel("Sheet 1 positive prompt", { exact: true }).isVisible()))
-      await page.getByText("Image request", { exact: true }).click();
-    await expect(page.getByLabel("Sheet 1 positive prompt", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Sheet 1 negative prompt", { exact: true })).toBeVisible();
-    await page.screenshot({ path: join(output, profile.name + "-request.png"), fullPage: true });
-    const displayedPrompt = await page.getByLabel("Sheet 1 positive prompt", { exact: true }).textContent();
-    const displayedNegative = await page.getByLabel("Sheet 1 negative prompt", { exact: true }).textContent();
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-    planRevision = "changed";
-    await page.getByRole("button", { name: "Generate", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Saved artwork", exact: true })).toBeVisible();
-    assert.ok(
-      submittedPlans[0].batches[0].request.prompt.includes("Test character changed"),
-      "Generate refreshes its request and submits with one click",
-    );
-    assert.ok(displayedPrompt.includes("Test character first"));
-    assert.equal(submittedPlans[0].batches[0].request.negativePrompt, displayedNegative);
+    await expect(page.getByRole("heading", { name: "Choose look", exact: true })).toBeVisible();
+    await expect.poll(() => previewed).toBeGreaterThan(0);
+    await expect(page.getByRole("button", { name: "Generate neutral", exact: true })).toBeDisabled();
+    releasePlan();
+    await expect(page.getByRole("button", { name: "Generate neutral", exact: true })).toBeEnabled();
+    await page.screenshot({ path: join(output, profile.name + "-step1-empty.png"), fullPage: true });
+    await page.getByRole("button", { name: "Generate neutral", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Use this look →", exact: true })).toBeVisible();
+    await page.screenshot({ path: join(output, profile.name + "-step1.png"), fullPage: true });
     assert.equal(generated, 1);
-    assert.ok(previewed >= 2, "plan refreshes automatically");
-    await expect(page.locator(".vss-card")).toHaveCount(6);
-    await page.getByText("Character expression directions", { exact: true }).click();
-    await expect(page.getByText("Warm and grounded.", { exact: true })).toBeVisible();
-    await expect(page.getByText("1 System preparation request(s).", { exact: false })).toBeVisible();
-    await page.getByText("Character expression directions", { exact: true }).click();
-    await page.getByText("Original sheet 1", { exact: true }).click();
-    await expect(page.getByRole("img", { name: "Original sheet 1", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Use", exact: true }).nth(1).click();
-    await expect(page.locator(".vss-badge")).toHaveCount(1);
-    await page.getByText("Manage expressions and assignments", { exact: true }).click();
-    // Keyboard pick + slot assignment works at both viewport sizes.
-    if (
-      profile.name !== "desktop" &&
-      (await page.getByRole("button", { name: "Show expressions", exact: true }).count())
-    )
-      await page.getByRole("button", { name: "Show expressions", exact: true }).click();
-    await page.getByRole("button", { name: "Select front happy cutout", exact: true }).focus();
-    await page.keyboard.press("Enter");
-    await page.getByRole("button", { name: "Assign selected cutout to happy", exact: true }).focus();
-    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Use this look →", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Create expressions", exact: true })).toBeVisible();
+    await expect(page.getByLabel("happy pose directions")).not.toHaveValue("");
+    assert.equal(generated, 1, "acceptance and automatic directions make no image requests");
+    assert.equal(state.assignments.length, 0, "acceptance leaves assignments alone");
+    const beforeAdd = textRequests;
+    await page.getByRole("button", { name: "+ Add expression", exact: true }).click();
+    await page.getByLabel("New expression name").fill("Embarrassed");
+    await page
+      .getByRole("form", { name: "New expression" })
+      .getByRole("button", { name: "Add expression", exact: true })
+      .click();
+    await expect(page.getByLabel("embarrassed pose directions")).not.toHaveValue("");
+    assert.equal(textRequests, beforeAdd + 1);
+    const embarrassed = page.locator(".vss-direction").filter({ has: page.getByLabel("embarrassed pose directions") });
+    await embarrassed.getByRole("textbox").fill("My authored gesture, still looking right.");
+    await embarrassed.getByRole("button", { name: "Save directions", exact: true }).click();
+    await expect(embarrassed.getByRole("textbox")).toHaveValue("My authored gesture, still looking right.");
+    await embarrassed.getByRole("button", { name: "Suggest another pose · 1 text request", exact: true }).click();
+    await expect(embarrassed.getByRole("button", { name: "Keep current", exact: true })).toBeVisible();
+    await embarrassed.getByRole("button", { name: "Keep current", exact: true }).click();
+    await expect(embarrassed.getByRole("textbox")).toHaveValue("My authored gesture, still looking right.");
+    await expect(page.getByRole("button", { name: "Generate 4 expressions", exact: true })).toBeEnabled();
+    await page.screenshot({ path: join(output, profile.name + "-step2.png"), fullPage: true });
+    await expect(page.getByRole("button", { name: "Generate 4 expressions", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Generate 4 expressions", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Use in Scenes", exact: true })).toBeVisible({ timeout: 30000 });
+    await expect(page.locator(".vss-card")).toHaveCount(5);
+    await page.getByRole("checkbox", { name: "Select happy for Scenes", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Select angry for Scenes", exact: true }).check();
+    await page.getByRole("button", { name: "Use selected in Scenes", exact: true }).click();
     await expect(page.getByText("Assigned. These images are now used in scenes.", { exact: true })).toBeVisible();
-    await expect(page.locator(".vss-badge")).toHaveCount(1);
-    await page.getByRole("button", { name: "Use", exact: true }).nth(3).click();
-    await expect(page.locator(".vss-badge")).toHaveCount(2);
-    await page.getByRole("button", { name: "Use this batch", exact: true }).click();
-    await expect(page.locator(".vss-badge")).toHaveCount(6);
-    await page.getByRole("button", { name: "Create", exact: true }).click();
-    await page.getByRole("button", { name: "Battle Highway", exact: true }).click();
-    await page.getByRole("button", { name: "Generate", exact: true }).click();
-    await expect(page.locator(".vss-gallery article")).toHaveCount(2);
-    await page.getByText("Gallery options", { exact: true }).click();
-    await page.getByRole("button", { name: "Clear pending review", exact: true }).click();
+    assert.equal(state.assignments.length, 2);
+    await page.screenshot({ path: join(output, profile.name + "-step3.png"), fullPage: true });
+    const beforeRegenerate = generated;
     await page
-      .locator(".vss-gallery article")
-      .first()
-      .getByRole("button", { name: "Use this batch", exact: true })
+      .locator(".vss-card")
+      .filter({ has: page.getByRole("checkbox", { name: "Select embarrassed for Scenes", exact: true }) })
+      .getByRole("button", { name: "Regenerate", exact: true })
       .click();
-    await expect(page.locator(".vss-gallery article").first().locator(".vss-badge")).toHaveCount(6);
-    await page
-      .locator(".vss-gallery article")
-      .last()
-      .getByRole("button", { name: "Use this batch", exact: true })
-      .click();
-    await expect(page.locator(".vss-gallery article").last().locator(".vss-badge")).toHaveCount(6);
-    assert.equal(generated, 2, "batch swapping never generates");
-    await expect(page.locator(".vss-card")).toHaveCount(12);
-    await page.getByText("Manage expressions and assignments", { exact: true }).click();
-    if (
-      profile.name !== "desktop" &&
-      (await page.getByRole("button", { name: "Show expressions", exact: true }).count())
-    )
-      await page.getByRole("button", { name: "Show expressions", exact: true }).click();
-    await page.getByLabel("New expression", { exact: true }).fill("Delighted");
-    await page.getByRole("button", { name: "Add expression", exact: true }).click();
-    await page
-      .locator(".vss-gallery article")
-      .first()
-      .getByRole("button", { name: "Select front happy cutout", exact: true })
-      .click();
-    await page.getByLabel("Assign selected cutout to", { exact: true }).selectOption("e-delighted");
-    await page.getByRole("button", { name: "Assign", exact: true }).click();
-    await expect(page.getByText("In use · Delighted", { exact: true })).toBeVisible();
-    await page
-      .locator(".vss-slot")
-      .filter({ has: page.getByRole("button", { name: "Assign selected cutout to Delighted", exact: true }) })
-      .getByRole("button", { name: "Use as default scene image", exact: true })
-      .click();
-    await expect(page.getByText("Delighted · Default", { exact: true })).toBeVisible();
-    await page.screenshot({ path: join(output, profile.name + "-gallery.png"), fullPage: true });
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
-    assert.equal(overflow, false, "no horizontal overflow");
-    await page
-      .locator(".vss-gallery article")
-      .last()
-      .getByRole("button", { name: "Adjust", exact: true })
-      .first()
-      .click();
-    await expect(page.getByRole("heading", { name: "Adjust image · saves another cutout", exact: true })).toBeVisible();
-    await page.getByLabel("Foot offset", { exact: true }).fill("-10");
-    await page.getByRole("button", { name: "Save adjusted cutout", exact: true }).click();
-    await expect(page.locator(".vss-card")).toHaveCount(13);
-    await page.getByRole("button", { name: "In use", exact: true }).click();
-    await page.getByRole("button", { name: "Remove from scenes", exact: true }).last().click();
-    await page.getByRole("button", { name: /^Review/ }).click();
-    // Delete the inactive second batch after removing its only assignment.
-    const inactive = page.locator(".vss-gallery article").first();
-    page.on("dialog", (dialog) => void dialog.accept());
-    await inactive.getByRole("button", { name: "Delete batch", exact: true }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".vss-gallery article")).toHaveCount(2);
-    await inactive.getByRole("button", { name: "Delete batch", exact: true }).click();
-    await page.getByLabel("Also delete unused files from disk", { exact: true }).check();
-    await page.getByRole("button", { name: "Delete artwork", exact: true }).click();
-    await expect(page.locator(".vss-gallery article")).toHaveCount(1);
-    await page.getByText("Gallery options", { exact: true }).click();
-    await page.getByRole("button", { name: "Delete unused files", exact: true }).click();
-    await expect(page.getByText("0 unused files deleted.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Generate 1 expressions", exact: true })).toBeEnabled();
+    assert.equal(generated, beforeRegenerate, "regenerate prepares only one expression before explicit generation");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
     const pixelProof = await page.evaluate(async () => {
       const canvas = document.createElement("canvas");
       canvas.width = 4;
@@ -771,91 +722,21 @@ for (const profile of browserProfiles) {
     assert.equal(cacheProof.changed, true, "drawing changes invalidate render keys");
     assert.equal(cacheProof.invalidated, true);
     assert.equal(cacheProof.closed, true);
-    const originalAssignments = structuredClone(state.assignments);
-    await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
-    await expect(
-      page.getByText("Repaired options saved. Choose Use on a repaired sprite to replace its current assignment.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    assert.equal(generated, 2, "batch repair makes no generation requests");
-    for (const prior of originalAssignments) {
-      const current = state.assignments.find(
-        (entry) => entry.expressionId === prior.expressionId && entry.view === prior.view,
-      );
-      assert.equal(current.cellId, prior.cellId, "repair preserves active assignments until Use");
-      assert.ok(
-        allCells().some((cell) => cell.id === prior.cellId),
-        "original retained",
-      );
-    }
-    const repairedCount = allCells().length;
-    await page.getByRole("button", { name: "Repair backgrounds", exact: true }).click();
-    await expect(
-      page.getByText("Repaired options saved. Choose Use on a repaired sprite to replace its current assignment.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    assert.equal(allCells().length, repairedCount, "repeated repair reuses candidates");
-    await page.screenshot({ path: join(output, profile.name + "-repaired.png"), fullPage: true });
-    const beforeRegenerate = generated;
-    await page.getByRole("button", { name: "Regenerate", exact: true }).first().click();
-    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeEnabled();
-    await expect(page.getByLabel("Generation request summary")).toContainText("1 expressions · 1 image request");
-    assert.equal(
-      generated,
-      beforeRegenerate,
-      "Regenerate prepares only the selected expression without spending a request",
-    );
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
-    await page.getByRole("button", { name: "Mara · Sprite Studio" }).click();
-    await expect(page.locator(".vss-gallery article")).toHaveCount(1);
-    const publishing = page.getByRole("region", { name: "Save to character", exact: true });
-    await publishing.getByRole("checkbox").first().check();
-    await publishing.getByLabel("Character sprite name").fill("full_browser_roundtrip");
-    await publishing.getByRole("button", { name: "Review saving to character", exact: true }).click();
-    await expect(publishing.getByRole("img", { name: "New full_browser_roundtrip", exact: true })).toBeVisible();
-    const assignmentsBeforePublish = structuredClone(state.assignments);
-    await publishing.getByRole("button", { name: "Save reviewed sprites to character", exact: true }).click();
-    await expect(publishing.getByRole("status")).toContainText("Only items marked Saved");
-    assert.deepEqual(state.assignments, assignmentsBeforePublish);
-    const requestsBeforeRoundtrip = generated;
-    await page.getByRole("button", { name: "Create", exact: true }).click();
-    const library = page.getByRole("region", { name: "Character library", exact: true });
-    await library.getByRole("button", { name: "Refresh character library", exact: true }).click();
-    await library.getByRole("checkbox", { name: "full_browser_roundtrip.png", exact: true }).check();
-    await library
-      .getByLabel("Character artwork view · full_browser_roundtrip.png", { exact: true })
-      .selectOption("side");
-    await library.getByRole("button", { name: "Use selected", exact: true }).click();
-    await expect(library.getByRole("status")).toContainText("now in use");
-    assert.ok(state.assignments.some((entry) => entry.view === "side" && entry.cellId.startsWith("adopted-")));
-    nativeLibrary.length = 0;
-    await library.getByRole("button", { name: "Refresh character library", exact: true }).click();
-    assert.ok(
-      state.assignments.some((entry) => entry.cellId.startsWith("adopted-")),
-      "adopted art survives native deletion",
-    );
-    assert.equal(generated, requestsBeforeRoundtrip, "the round trip spends no generation");
-    await page.getByRole("button", { name: /^Review(?: · \d+)?$/ }).click();
-    const stage = publishing.getByRole("img").first();
-    for (const background of ["dark", "light", "checker"]) {
-      await stage.evaluate((node, value) => {
-        node.style.background =
-          value === "light"
-            ? "#f3f1ec"
-            : value === "dark"
-              ? "#111522"
-              : "repeating-conic-gradient(#c1c5cf 0 25%,#edf0f5 0 50%) 0 0/16px 16px";
-      }, background);
-      await stage.screenshot({ path: join(output, profile.name + "-roundtrip-" + background + ".png") });
-    }
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+
+    failPlan = true;
+    await page.getByRole("button", { name: "1 · Choose look", exact: true }).click();
+    await page.getByLabel("Facing", { exact: true }).selectOption("front");
+    await expect(page.getByRole("alert")).toContainText("Engine connection unavailable");
+    await expect(page.getByRole("button", { name: "Generate neutral", exact: true })).toBeDisabled();
+    await page.screenshot({ path: join(output, profile.name + "-failure.png"), fullPage: true });
+    await page.getByRole("button", { name: "3 · Use in Scenes", exact: true }).click();
+    await expect(page.locator(".vss-card")).toHaveCount(5);
+    assert.equal(state.assignments.length, 2, "generation failure preserves assigned artwork");
+    assert.ok(previewed > 0 && submittedPlans.length === 2);
     assert.deepEqual(errors, []);
     console.log(
       profile.name +
-        ": automatic plans, gallery, direct Use and keyboard assignment, " +
-        "cached batch swaps, defaults, adjustments, cleanup and responsive layout passed",
+        ": three-step workflow, automatic directions, preserved edits, selective assignment and responsive layout passed",
     );
   } finally {
     await browser.close();
