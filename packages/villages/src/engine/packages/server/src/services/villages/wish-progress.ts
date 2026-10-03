@@ -28,6 +28,7 @@ import type { VenueLine, VenueScene, VenueRecordEvent } from "./venue-session.js
 import type { DomainProcessing } from "./exchange-processing.js";
 
 export type ExchangeEffectReceipt = {
+  committedAt?: string;
   noticeSequence?: number;
   status?: "applied" | "rejected";
   actorId?: string;
@@ -518,6 +519,7 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
   if (turn.mode === "act" && !turn.actionReplyDone)
     return { status: "pending", reason: "Waiting for saved action narration" };
   if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
+  const lineIndex = new Map(scene.lines.map((line) => [line.id, line]));
   const proposals = [
     ...new Map(
       (turn.wishProposals ?? []).map((proposal) => [
@@ -577,7 +579,7 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
     }
     const wish = currentWish(state, proposal);
     if (!wish) continue;
-    const cited = scene.lines.filter((line) => proposal.lineIds.includes(line.id));
+    const cited = proposal.lineIds.flatMap((id) => (lineIndex.has(id) ? [lineIndex.get(id)!] : []));
     if (
       (!cited.length && !proposal.receiptIds?.length) ||
       cited.length !== proposal.lineIds.length ||

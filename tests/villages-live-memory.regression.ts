@@ -10,6 +10,7 @@ import { createExchangeProcessing } from "../packages/villages/src/engine/packag
 import {
   bindLiveProposals,
   memoryVersion,
+  processLiveRelationships,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/live-memory.js";
 import {
   processSavedExchange,
@@ -71,6 +72,7 @@ async function main() {
     writes = 0,
     fault = "",
     faultAfter = false;
+  let authorityReadCountdown = 0;
   let allowInterpretation = false,
     unknownInterpretation = false;
   const readVenueVisit = async (_id: string) => structuredClone(records.get("villages-venue-visit-live").data);
@@ -78,6 +80,11 @@ async function main() {
     persistence: {
       documents: {
         async getById(_pkg: string, id: string) {
+          if (id === "villages-village" && authorityReadCountdown > 0 && --authorityReadCountdown === 0) {
+            const row = records.get(id);
+            row.data.villagers = row.data.villagers.filter((person: any) => person.characterId !== "a");
+            row.revision++;
+          }
           return structuredClone(records.get(id) ?? null);
         },
         async list(_pkg: string, kind: string) {
@@ -577,6 +584,39 @@ async function main() {
       !(await endVenueSessionWithReceipts("legacy-cached")).recordEvents.some((event) => event.id === unchangedId),
       "legacy closing receipts are filtered against the same ledger",
     );
+    const beforeAuthorityRace = structuredClone(records.get("villages-village"));
+    saveExchange("authority-race", [], { ...emptyRelations, changes: [{ ...positiveRelationship.changes[0] }] });
+    const raceScene = await readVenueVisit("live");
+    authorityReadCountdown = 2;
+    const race = await processLiveRelationships(raceScene, "authority-race");
+    assert.ok(race.rejectedProposals?.length, "Resident removal between validation and commit rejects stale authority");
+    assert.ok(
+      !Object.values((await readVillageState()).relationshipContext!.receipts).some(
+        (receipt) => receipt.submissionId === "authority-race",
+      ),
+      "Stale resident authority produces no success receipt",
+    );
+    records.set("villages-village", beforeAuthorityRace);
+    records.get("villages-village").data.socialOutbox = [
+      {
+        id: "feed-read-only",
+        seed: state.seed,
+        at,
+        opportunity: { id: "feed-opportunity", kind: "encounter", actorIds: ["a", "b"], venueId: "missing" },
+        proposal: { encounter: null },
+        candidates: [],
+      },
+    ];
+    const writesBeforeFeed = writes;
+    await readSceneChanges("live");
+    assert.equal(writes, writesBeforeFeed, "Notification and diagnostic reads create no storage writes");
+    assert.equal(
+      records.get("villages-village").data.socialOutbox.length,
+      1,
+      "Feed reads leave pending outbox work untouched",
+    );
+    records.get("villages-village").data.socialOutbox = [];
+
     console.log("villages-live-memory: ok (saved proposal fixtures; not live model accuracy)");
   } finally {
     release();

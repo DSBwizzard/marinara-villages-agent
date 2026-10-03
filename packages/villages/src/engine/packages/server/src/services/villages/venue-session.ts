@@ -1,3 +1,4 @@
+import { measurePipeline } from "./pipeline-metrics.js";
 import { saveInterpretationContext } from "./interpretation-evidence.js";
 import { buildVenueResponseContract } from "./venue-response-contract.js";
 import { runtimeDebug } from "./runtime-debug.js";
@@ -7,6 +8,7 @@ import {
   mergeLiveReplyProposals,
   memoryVersion,
   processLiveMemories,
+  createLiveEvidenceContext,
   processLiveRelationships,
   liveEvidence,
   type LiveExchangeProposals,
@@ -111,7 +113,13 @@ import {
 import { MAX_CHRONICLE_LENGTH, prependHappenings, villageCurrentSetting } from "./prompt-preset.js";
 import type { VillageState } from "./types.js";
 import { deriveVillageMoment } from "./village-clock.js";
-import { type DocumentSlot, mutateDocument, mutateVillageState, readVillageState } from "./village-store.js";
+import {
+  type DocumentSlot,
+  mutateDocument,
+  mutateVillageState,
+  readVillageState,
+  readVillageSnapshot,
+} from "./village-store.js";
 import {
   decideVillageResidence,
   applyResidenceEditApproval,
@@ -801,6 +809,7 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
   let result: VenueScene | null = null;
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
     if (session.id !== id) throw notFound("That Scene is no longer available.");
+    const snapshot = JSON.stringify(session);
     const before = sceneFingerprint(session);
     const priorChanges = new Map(
       session.submissions.map((turn) => [
@@ -828,6 +837,7 @@ async function changeSession(id: string, change: (session: VenueScene) => void):
         turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
     if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
     result = session;
+    if (snapshot === JSON.stringify(session)) return false;
   });
   return result!;
 }
@@ -917,11 +927,18 @@ export async function processSavedProgressSubmission(sessionId: string, submissi
 
 /** Replay only saved interpretations. Effects and duplicate receipts remain in their owning documents. */
 export async function processSavedExchange(sessionId: string, submissionId: string): Promise<void> {
+  return measurePipeline("saved exchange", { sceneId: sessionId, submissionId }, () =>
+    applySavedExchange(sessionId, submissionId),
+  );
+}
+async function applySavedExchange(sessionId: string, submissionId: string): Promise<void> {
   const scene = await readSession(sessionId);
   const turn = scene.submissions.find((entry) => entry.id === submissionId);
   if (!turn?.processing) return processSavedProgressSubmission(sessionId, submissionId);
   const village = await readVillageState();
   const processing = turn.processing;
+  const evidenceContext = turn.liveProposals ? createLiveEvidenceContext(scene, turn.liveProposals) : undefined;
+  const exchangeLineIds = new Set(processing.lineIds);
   const valid =
     village.seed === processing.seed &&
     scene.villageSeed === village.seed &&
@@ -935,13 +952,13 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
     const receiptIds = current.progressTasks.flatMap((task) =>
       task.receipts
         .filter(
-          (receipt) =>
-            receipt.evidence.sourceId === turn.id || processing.lineIds.includes(receipt.evidence.lineId ?? ""),
+          (receipt) => receipt.evidence.sourceId === turn.id || exchangeLineIds.has(receipt.evidence.lineId ?? ""),
         )
         .map((receipt) => receipt.id),
     );
     return { reason: "Physical effects and saved Project interpretations checked", receiptIds };
   };
+  const updates = new Map<keyof typeof processing.domains, typeof processing.domains.projects>();
   await dispatchExchange(
     processing,
     {
@@ -949,23 +966,16 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
       wishes: async () =>
         valid ? processWishExchange(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
       memories: async () =>
-        valid ? processLiveMemories(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
+        valid
+          ? processLiveMemories(scene, turn.id, evidenceContext)
+          : { status: "rejected", reason: "Village identity changed" },
       relationships: async () =>
-        valid ? processLiveRelationships(scene, turn.id) : { status: "rejected", reason: "Village identity changed" },
+        valid
+          ? processLiveRelationships(scene, turn.id, evidenceContext)
+          : { status: "rejected", reason: "Village identity changed" },
     },
     async (domain, result) => {
-      await changeSession(scene.id, (saved) => {
-        const entry = saved.submissions.find((entry) => entry.id === turn.id);
-        if (entry?.processing?.seed === processing.seed) {
-          const prior = entry.processing.domains[domain];
-          if (
-            (prior.status === "applied" || prior.status === "rejected") &&
-            (result.status === "pending" || result.status === "failed")
-          )
-            return;
-          entry.processing.domains[domain] = result;
-        }
-      });
+      updates.set(domain, result);
       runtimeDebug("exchange processing", {
         sceneId: sessionId,
         submissionId,
@@ -975,13 +985,28 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
       });
     },
   );
-  await receiptForTurn(scene, turn);
+  const recordEvents = await receiptForTurn(scene, turn, false);
+  if (updates.size)
+    await changeSession(scene.id, (saved) => {
+      const entry = saved.submissions.find((entry) => entry.id === turn.id);
+      if (entry?.processing?.seed !== processing.seed) return;
+      entry.recordEvents = recordEvents;
+      for (const [domain, result] of updates) {
+        const prior = entry.processing.domains[domain];
+        if (
+          (prior.status === "applied" || prior.status === "rejected") &&
+          (result.status === "pending" || result.status === "failed")
+        )
+          continue;
+        entry.processing.domains[domain] = result;
+      }
+    });
 }
 
 /** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
 export async function readSceneChanges(id: string, cursor = "", limit = 20) {
   const scene = await readSession(id);
-  const village = await readVillageState();
+  const village = await readVillageSnapshot();
   if (scene.villageSeed && scene.villageSeed !== village.seed)
     throw conflict("This Scene belongs to a previous village.");
   const parts = (cursor || "0:0").split(":").map(Number);
@@ -994,7 +1019,18 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
     .filter((entry) => entry.sequence > afterScene)
     .sort((a, b) => a.sequence - b.sequence);
   const turns = changed.slice(0, size);
-  const notices = Object.values(village.exchangeReceipts)
+  const effects = Object.values(village.exchangeReceipts);
+  const effectsBySubmission = new Map<string, typeof effects>();
+  for (const receipt of effects)
+    if (receipt.sceneId === id) {
+      const rows = effectsBySubmission.get(receipt.submissionId) ?? [];
+      rows.push(receipt);
+      effectsBySubmission.set(receipt.submissionId, rows);
+    }
+  const projectReceiptIndex = new Map(
+    village.progressTasks.flatMap((task) => task.receipts.map((receipt) => [receipt.id, receipt] as const)),
+  );
+  const notices = effects
     .filter(
       (receipt) =>
         receipt.notice &&
@@ -1034,6 +1070,13 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
   return {
     sceneId: id,
     backgroundChecks,
+    notificationDelivery: [...page, ...relationshipPage]
+      .filter((receipt) => receipt.committedAt)
+      .map((receipt) => ({
+        receiptId: receipt.id,
+        committedAt: receipt.committedAt,
+        commitToFeedMs: Math.max(0, Date.now() - Date.parse(receipt.committedAt!)),
+      })),
     activeRequest: {
       status: scene.operation?.status,
       error: scene.operation?.error,
@@ -1045,14 +1088,12 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
       processing: turn.processing ?? null,
       receipts: {
         physical: turn.action ?? null,
-        domainEffects: Object.values(village.exchangeReceipts).filter(
-          (receipt) => receipt.sceneId === id && receipt.submissionId === turn.id,
+        domainEffects: effectsBySubmission.get(turn.id) ?? [],
+        relationships: (turn.processing?.domains.relationships.receiptIds ?? []).flatMap((id) =>
+          relationshipState?.receipts[id] ? [relationshipState.receipts[id]] : [],
         ),
-        relationships: Object.values(village.relationshipContext?.receipts ?? {}).filter((receipt) =>
-          turn.processing?.domains.relationships.receiptIds.includes(receipt.id),
-        ),
-        projects: village.progressTasks.flatMap((task) =>
-          task.receipts.filter((receipt) => turn.processing?.domains.projects.receiptIds.includes(receipt.id)),
+        projects: (turn.processing?.domains.projects.receiptIds ?? []).flatMap((id) =>
+          projectReceiptIndex.has(id) ? [projectReceiptIndex.get(id)!] : [],
         ),
         memories: village.chronicle.filter(
           (memory) =>
@@ -1525,12 +1566,33 @@ export async function prepareVenueTurnMessages(
     400,
     now.getTime(),
   );
-  const sharedMemories = promptMemories.filter((entry) => entry.scope === "village");
+
   // Only these exact witnessed lines and memory versions can support a saved proposal.
   const earlierEvidence = session.lines
     .filter((line) => !line.contactReport && line.heardBy.some((id) => audibleIds.includes(id)))
     .slice(-18);
-  const optionalKnowledge: VenueWritingBlock[] = [];
+  const memoryContext =
+    "Selected witnessed memories (each listed once; only the named audience knows private entries; shared entries are village knowledge): " +
+    JSON.stringify([
+      ...promptMemories.map((memory) => ({
+        kind: "durable",
+        id: memory.id,
+        text: memory.text,
+        audience:
+          memory.scope === "village"
+            ? "village"
+            : (memory.knownByCharacterIds ?? memory.actors.map((actor) => actor.id)),
+        version: memoryVersion(memory),
+      })),
+      ...promptRecollections.map((memory) => ({
+        kind: "passing",
+        id: memory.id,
+        text: memory.text,
+        audience: memory.knownByCharacterIds,
+        version: memory.lastReinforcedAt ?? memory.id,
+      })),
+    ]);
+  const optionalKnowledge: VenueWritingBlock[] = [{ text: memoryContext, optional: "memory" }];
   const residentContexts: string[] = [];
   const expressionContexts: string[] = [];
   const profiles = active.map((person) => {
@@ -1538,21 +1600,7 @@ export async function prepareVenueTurnMessages(
     if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
     const card = readEffectiveVillagerCard(resident);
     const sceneOccupant = session.sceneAttendance?.occupants.find((entry) => entry.characterId === person.characterId);
-    const memories = promptMemories
-      .filter(
-        (entry) =>
-          entry.scope === "private" &&
-          (entry.knownByCharacterIds ?? entry.actors.map((actor) => actor.id)).includes(person.characterId),
-      )
-      .map((entry) => `[${entry.id}] ${entry.text}`);
-    const recent = promptRecollections
-      .filter((entry) => entry.knownByCharacterIds.includes(person.characterId))
-      .map((entry) => entry.text);
     const spriteLabels = describeSpriteExpressions(resident.sprite);
-    optionalKnowledge.push({
-      text: `Only ${card.name} knows: ${memories.join("; ") || "nothing recorded"}\nRecent conversational context ${card.name} may still recall: ${recent.join("; ") || "none"}`,
-      optional: "memory",
-    });
 
     residentContexts.push(
       [
@@ -1663,14 +1711,6 @@ export async function prepareVenueTurnMessages(
         heardBy: line.heardBy,
         text: line.content.slice(0, 500),
       })),
-    ) +
-    "\nExisting memories: " +
-    JSON.stringify(
-      promptMemories.map((memory) => ({
-        id: memory.id,
-        text: memory.text,
-        knownByCharacterIds: memory.knownByCharacterIds ?? memory.actors.map((actor) => actor.id),
-      })),
     );
   const blocksFor = (parts: string[]): VenueWritingBlock[] =>
     parts.map((text) => ({
@@ -1767,7 +1807,6 @@ export async function prepareVenueTurnMessages(
       `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
     ]),
     conversation: blocksFor([
-      `Shared village memories: ${sharedMemories.map((entry) => entry.text).join("; ") || "none"}`,
       `Relevant world lore: ${lore.join("\n") || "none"}`,
       ...optionalKnowledge.map((block) => block.text),
       `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
@@ -1843,6 +1882,16 @@ export async function prepareVenueTurnMessages(
   const fitStarted = performance.now();
   const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
   trace?.("context fit", performance.now() - fitStarted);
+  const memoryIncluded = fitted.messages.some((message) => message.content.includes(memoryContext));
+  runtimeDebug("memory retrieval", {
+    sceneId: session.id,
+    selectedDurableIds: memoryIncluded ? promptMemories.map((memory) => memory.id) : [],
+    selectedPassingIds: memoryIncluded ? promptRecollections.map((memory) => memory.id) : [],
+    durableBudget: 600,
+    passingBudget: 400,
+    participantIds: audibleIds,
+    allocation: "half equal, half shared",
+  });
   return {
     fitted,
     maxTokens,
@@ -1855,11 +1904,16 @@ export async function prepareVenueTurnMessages(
     place,
     projectContexts,
     earlierEvidence,
-    promptMemories,
+    promptMemories: memoryIncluded ? promptMemories : [],
   };
 }
 
 async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
+  return measurePipeline("Scene interpretation", { sceneId: args[0].id, mode: args[2] }, () =>
+    generateMeasured(...args),
+  );
+}
+async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessages>) {
   const [session, message, mode] = args;
   const signal = args[5];
   const trace = args[6];
@@ -2941,7 +2995,9 @@ async function enterVenueOnce(
     memories: null,
     recap: "",
   };
-  await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => Object.assign(value, session));
+  await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (value) => {
+    Object.assign(value, session);
+  });
   await mutateDocument(ACTIVE_ID, activeSlot, (active) => {
     if (active.sessionId) throw conflict("Finish the active Scene first.");
     active.sessionId = id;
@@ -4638,10 +4694,14 @@ async function applyFulfilledWish(session: VenueScene, submission: VenueSubmissi
   return applied;
 }
 
-async function receiptForTurn(session: VenueScene, submission: VenueSubmission): Promise<VenueRecordEvent[]> {
+async function receiptForTurn(
+  session: VenueScene,
+  submission: VenueSubmission,
+  persist = true,
+): Promise<VenueRecordEvent[]> {
   // Domain bookkeeping can finish after the reply's original Scene object was read.
   submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
-  const village = await readVillageState();
+  const village = await readVillageSnapshot();
   const cached = filterRelationshipNotices(submission.recordEvents ?? [], village.relationshipContext).map((event) => {
     if (event.kind !== "memory" || event.detail) return event;
     const memory = village.chronicle.find((entry) => entry.id === event.id);
@@ -4715,7 +4775,7 @@ async function receiptForTurn(session: VenueScene, submission: VenueSubmission):
     });
   }
   const combined = [...new Map([...events, ...cached].map((event) => [event.id, event])).values()];
-  if (JSON.stringify(combined) !== JSON.stringify(submission.recordEvents))
+  if (persist && JSON.stringify(combined) !== JSON.stringify(submission.recordEvents ?? []))
     await changeSession(session.id, (state) => {
       const saved = state.submissions.find((entry) => entry.id === submission.id);
       if (saved) saved.recordEvents = combined;
@@ -4724,7 +4784,7 @@ async function receiptForTurn(session: VenueScene, submission: VenueSubmission):
 }
 
 async function sceneReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
-  const current = await readVillageState();
+  const current = await readVillageSnapshot();
   return filterRelationshipNotices(
     [
       ...new Map(

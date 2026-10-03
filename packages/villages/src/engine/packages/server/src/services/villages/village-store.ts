@@ -2644,13 +2644,12 @@ export type DocumentSlot<T> = {
 /**
  * Read-modify-write one document. `mutate` receives the coerced value and
  * returns whatever the caller wants back; returning normally means "the
- * mutation should be committed", so an updater that decides nothing changed
- * still writes — callers that care exit before the call.
+ * mutation should be committed". An explicit false skips an unchanged write.
  */
 export async function mutateDocument<T>(
   documentId: string,
   slot: DocumentSlot<T>,
-  mutate: (state: T) => void,
+  mutate: (state: T) => void | false | Promise<void | false>,
 ): Promise<void> {
   const documents = villagesDocuments();
   for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
@@ -2659,8 +2658,9 @@ export async function mutateDocument<T>(
       documentId.startsWith("villages-venue-visit-") ? (record?.data as Record<string, unknown>) : undefined,
     );
     const state = slot.coerce(record?.data);
-    mutate(state);
+    const changed = await mutate(state);
     assertVenueOwnership();
+    if (changed === false) return;
     const stamp = new Date().toISOString();
     try {
       if (!record) {
@@ -2705,13 +2705,24 @@ const villageSlot: DocumentSlot<VillageState> = {
 
 // ── Village record ───────────────────────────────────────────────────────────
 
-export async function readVillageState(): Promise<VillageState> {
+export async function readVillageAuthority(): Promise<VillageState> {
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID);
-  const state = coerceVillageState(record?.data);
+  return coerceVillageState(record?.data);
+}
+/** Read-only ledger snapshot for feeds and diagnostics; never applies an outbox. */
+export async function readVillageSnapshot(): Promise<VillageState> {
+  const state = await readVillageAuthority();
   if (state.seed) {
     const { readRelationshipState, reconcileRelationships } = await import("./relationship-store.js");
     state.relationshipContext = await readRelationshipState(state.seed);
     reconcileRelationships(state.relationshipContext, state);
+  }
+  return state;
+}
+export async function readVillageState(): Promise<VillageState> {
+  const state = await readVillageSnapshot();
+  if (state.seed) {
+    const { readRelationshipState, reconcileRelationships } = await import("./relationship-store.js");
     const { projectSocialActivities, processSocialOutbox, reconcileSocialPlans } =
       await import("./relationship-social.js");
     if (await processSocialOutbox(state)) {
@@ -2742,7 +2753,10 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
     mutate(state);
     // Assign notice order in the same document write as its committed effect.
     for (const receipt of Object.values(state.exchangeReceipts))
-      if (receipt.notice && !receipt.noticeSequence) receipt.noticeSequence = ++state.noticeSequence;
+      if (receipt.notice && !receipt.noticeSequence) {
+        receipt.noticeSequence = ++state.noticeSequence;
+        receipt.committedAt = new Date().toISOString();
+      }
     for (const venue of state.venues) synchronizeVenueZones(venue, previousVenues.get(venue.id));
     pruneWishActivities(state, new Date());
     if (state.foundedAt.length === 0) state.foundedAt = new Date().toISOString();

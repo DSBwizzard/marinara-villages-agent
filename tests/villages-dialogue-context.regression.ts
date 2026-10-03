@@ -16,7 +16,7 @@ import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/engine
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
 state.foundedAt = state.setupAt = stamp;
-state.visitMemoryBackfilled = true;
+
 state.narrationStyle.writingGuidance = "Make all residents agreeable and reluctant to act.";
 state.villagers = ["outgoing", "reserved"].map((id) => ({
   characterId: id,
@@ -68,6 +68,52 @@ state.venues = [
     editProposals: [],
   },
 ] as any;
+state.chronicle = [
+  {
+    id: "private-memory",
+    text: "Reserved promised to repair Alex’s violin on Sunday.",
+    kind: "favour",
+    scope: "private",
+    knownByCharacterIds: ["reserved"],
+    actors: [{ id: "reserved", name: "Reserved" }],
+    occurredAt: stamp,
+    at: stamp,
+    dayIndex: 0,
+    clock: "morning",
+    timePrecision: "exact",
+    weight: 2,
+  },
+  {
+    id: "absent-memory",
+    text: "ABSENT PERSON SECRET",
+    kind: "favour",
+    scope: "private",
+    knownByCharacterIds: ["absent"],
+    actors: [{ id: "absent", name: "Absent" }],
+    occurredAt: stamp,
+    at: stamp,
+    dayIndex: 0,
+    clock: "morning",
+    timePrecision: "exact",
+    weight: 2,
+  },
+] as any;
+state.recollections = [
+  {
+    id: "passing-memory",
+    visitId: "old",
+    occurredAt: stamp,
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    text: "Reserved is preparing the concert.",
+    subjectCharacterIds: ["reserved"],
+    knownByCharacterIds: ["reserved"],
+    sourceLineIds: ["earlier-spoken"],
+    sourceSubmissionIds: [],
+    evidence: [],
+    reinforcementCount: 0,
+    lastReinforcedAt: stamp,
+  },
+];
 state.relationshipContext = defaultRelationshipState(state.seed);
 const original = structuredClone(state.relationshipContext);
 for (const id of ["outgoing", "reserved"]) {
@@ -191,6 +237,11 @@ async function run() {
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("Their card determines") || prompt.includes("their card determines"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));
+    assert.equal(prompt.split(state.chronicle[0].text).length - 1, 1, "Memory text appears once");
+    assert.equal(prompt.split(state.recollections[0].text).length - 1, 1, "Passing memory appears once");
+    assert.ok(prompt.includes('"audience":["reserved"]'));
+    assert.ok(prompt.includes('"version":'));
+    assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));
     for (const field of [

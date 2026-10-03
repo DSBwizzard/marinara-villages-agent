@@ -1,3 +1,4 @@
+import { pipelineStorage, measureModel } from "./pipeline-metrics.js";
 import { createHash } from "node:crypto";
 import { trackUsage, withUsagePurpose, inferredPurpose } from "./usage-meter.js";
 import { safeFailureMessage } from "./errors.js";
@@ -27,6 +28,7 @@ export const VILLAGES_PACKAGE_ID = "villages";
 
 let host: CapabilityRuntimeHost | null = null;
 let registration = 0;
+const measuredDocuments = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 
 /** Called from `activate`; the returned function releases the slot on deactivate. */
 export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => void {
@@ -55,7 +57,22 @@ export function villagesDocuments(): CapabilityDocumentStore {
       "This Engine version did not provide the package document store, so Villages cannot remember anything.",
     );
   }
-  return documents;
+  let measured = measuredDocuments.get(documents);
+  if (!measured) {
+    measured = new Proxy(documents, {
+      get(target, key) {
+        const value = Reflect.get(target, key);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          if (key === "getById" || key === "list") pipelineStorage("reads");
+          if (key === "create" || key === "update") pipelineStorage("writes");
+          return value.apply(target, args);
+        };
+      },
+    });
+    measuredDocuments.set(documents, measured);
+  }
+  return measured;
 }
 
 /** Read-only access to the character library — the pool the picker draws from. */
@@ -92,7 +109,7 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
         ...model,
         chatComplete: (messages, requestOptions) =>
           trackUsage({ connectionId: model.connectionId, model: model.model }, () =>
-            model.chatComplete(messages, requestOptions),
+            measureModel(() => model.chatComplete(messages, requestOptions)),
           ),
       };
     },
@@ -102,7 +119,7 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
         ...model,
         chatComplete: (messages, requestOptions) =>
           trackUsage({ connectionId: model.connectionId, model: model.model }, () =>
-            model.chatComplete(messages, requestOptions),
+            measureModel(() => model.chatComplete(messages, requestOptions)),
           ),
       };
     },
