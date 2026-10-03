@@ -6,14 +6,14 @@ const tag = "marinara-capability-villages";
 export const SCENE_ASIDE_STYLES = `
 /* Override the retired fixed phone offset; asides never size the dialogue dock. */
 .${tag}-room-screen .${tag}-chat-vn-asides[data-mobile] {
-  bottom: calc(100% + .375rem); z-index: 1; padding: 0;
+  bottom: calc(100% + .375rem); z-index: 1; padding: 0; pointer-events: none;
   max-height: min(14rem, var(--villages-aside-available-height, 20cqh));
 }
-.${tag}-scene-aside-stack { display: flex; flex-direction: column; align-items: flex-end; gap: .375rem; min-height: 0; max-height: inherit; overflow-y: auto; overscroll-behavior: contain; }
+.${tag}-scene-aside-stack { display: flex; flex-direction: column; align-items: flex-end; gap: .375rem; min-height: 0; max-height: inherit; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-asides[data-mobile="true"][data-side] {
   position: absolute; bottom: calc(100% + .375rem); left: .375rem; right: .375rem; width: auto; margin: 0;
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
-  gap: clamp(.75rem, 4vw, 2rem); overflow: hidden;
+  gap: 6.5rem; overflow: hidden;
   max-height: min(14rem, var(--villages-aside-available-height, 20cqh));
 }
 .${tag}-room-screen[data-mobile="true"] .${tag}-scene-aside-stack { max-width: 13rem; width: 100%; }
@@ -29,6 +29,10 @@ export const SCENE_ASIDE_STYLES = `
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-aside-head { flex: 0 0 auto; }
 .${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn-aside-text {
   font-size: .75rem; line-height: 1.4; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+}
+/* Keep the existing hide control and history chevron usable in the central gap. */
+.${tag}-room-screen[data-mobile="true"] .${tag}-chat-vn:has(.${tag}-chat-vn-asides) .${tag}-dialogue-hide {
+  left: 50%; transform: translateX(-50%); bottom: calc(100% + 1.5rem); width: 6.25rem; padding-inline: .25rem;
 }
 `;
 
