@@ -1,3 +1,6 @@
+import { agendaRequestCount, translationRequestCount, remainingRequests } from "./generation-budgets.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { asRecord } from "./coerce.js";
 import { runtimeDebug } from "./runtime-debug.js";
 // Package-owned work ledger. Only this module dispatches coordinated background requests.
 import { createHash, randomUUID } from "node:crypto";
@@ -428,6 +431,15 @@ async function runJob(id: string): Promise<void> {
       return response;
     });
   };
+  complete.metadata = {
+    id: job.id,
+    kind: job.kind,
+    cause: job.finite
+      ? "Player-requested generation"
+      : job.kind === "translation"
+        ? "Automatic: schedule or village context changed"
+        : "Automatic: village time or resident agenda update",
+  };
   complete.setting = async <T>(key: string, create: () => T | Promise<T>): Promise<T> => {
     const value = key in (job!.settings ?? {}) ? job!.settings[key] : await create();
     job = await changeJob(id, (current) => {
@@ -645,4 +657,49 @@ export function startBackgroundWork(options: { now?: () => number } = {}): () =>
 /** Tests await jobs without altering production request latency. */
 export async function settleBackgroundWork(): Promise<void> {
   while (reserving.size || running.size) await Promise.all([...reserving.values(), ...running.values()]);
+}
+
+/** Compact raw ledger inspection: no reconciliation, pruning, resume, or village read. */
+export async function previewBackgroundJobs(defaultBatchSize?: number) {
+  const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
+  return records.flatMap((record) => {
+    const job = record.data as Job;
+    if (!job || !Array.isArray(job.steps)) return [];
+    const completedSteps =
+      job.completedCount || job.steps.filter((step, i) => step.status === "completed" && i !== job.failedStep).length;
+    const context = asRecord(asRecord(job.input).context);
+    const blocks = Array.isArray(context.blocks) ? context.blocks.length : 0;
+    const batch = Number(job.settings?.translationBatchSize) || defaultBatchSize;
+    const planned =
+      job.kind === "agenda"
+        ? agendaRequestCount(VILLAGE_WEEKDAYS)
+        : job.kind === "translation" && batch
+          ? translationRequestCount(blocks, batch)
+          : null;
+    return [
+      {
+        id: record.id,
+        seed: job.seed,
+        kind: job.kind,
+        subjectId: job.subjectId,
+        status: job.status,
+        label: job.label,
+        input: job.input,
+        settings: job.settings ?? {},
+        completedSteps,
+        remainingRequests:
+          ["completed", "obsolete"].includes(job.status) || job.hasResult
+            ? 0
+            : planned === null
+              ? null
+              : remainingRequests(planned, completedSteps),
+        cause: job.finite
+          ? "Player-requested generation"
+          : job.kind === "translation"
+            ? "Automatic: schedule or village context changed"
+            : "Automatic: village time or resident agenda update",
+        remainingBlocks: job.kind === "translation" ? blocks : null,
+      },
+    ];
+  });
 }

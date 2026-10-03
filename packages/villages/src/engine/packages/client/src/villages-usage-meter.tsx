@@ -18,6 +18,7 @@ type Row = {
   connectionId: string;
   model: string;
   status: string;
+  interrupted?: boolean;
   dollars: number | null;
   rate: Rate | null;
 };
@@ -28,6 +29,14 @@ type View = {
   running: number;
   purposes: Record<string, Total>;
   requests: Row[];
+  bursts?: {
+    id: string;
+    label: string;
+    status: string;
+    cause: string;
+    remainingRequests: number | null;
+    remainingBlocks: number | null;
+  }[];
   error: string;
   scope: string;
 };
@@ -161,7 +170,7 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
           whiteSpace: "normal",
         }}
       >
-        Villages AI ·{" "}
+        Villages AI usage ·{" "}
         {total
           ? money(total.dollars) +
             " estimated · " +
@@ -256,9 +265,19 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
             </div>
           )}
           <h4>Recent requests</h4>
+          {view.bursts?.map((job) => (
+            <p key={job.id}>
+              {job.label} · {job.status} · {job.cause} ·{" "}
+              {job.remainingRequests === null
+                ? "Request count pending" +
+                  (job.remainingBlocks !== null ? " (" + job.remainingBlocks + " schedule blocks)" : "")
+                : job.remainingRequests + " requests remaining"}
+            </p>
+          ))}
           {view.requests.slice(0, 20).map((row) => (
             <p key={row.id}>
-              {row.purpose} · {row.stage} · {row.model || "unknown model"} · {row.status} ·{" "}
+              {row.purpose} · {row.stage} · {row.model || "unknown model"} ·{" "}
+              {row.interrupted ? "interrupted (usage unknown)" : row.status} ·{" "}
               {row.dollars === null ? "cost unknown" : money(row.dollars) + " estimated"}
             </p>
           ))}

@@ -194,6 +194,7 @@ import {
   decideVillagerVenueImprovement,
 } from "../services/villages/venue-mailbox.js";
 
+import { previewVillageBurst } from "../services/villages/usage-preview.js";
 import { readUsageMeter, resetUsagePeriod, saveUsageRate } from "../services/villages/usage-meter.js";
 
 /** Read one id off a route parameter without trusting its type. */
@@ -1165,6 +1166,13 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return await readUsageMeter(request.query.details === "1");
     } catch (error) {
       return fail(reply, error, "reading usage");
+    }
+  });
+  app.post<{ Body: unknown }>("/usage/preview", async (request, reply) => {
+    try {
+      return await previewVillageBurst(request.body);
+    } catch (error) {
+      return fail(reply, error, "previewing generation requests");
     }
   });
   app.post("/usage/reset", async (_request, reply) => {

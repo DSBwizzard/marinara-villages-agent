@@ -297,8 +297,11 @@ async function readSnapshot(now: Date, characterIds?: readonly string[]): Promis
  * caller that is going to TELL the player something about those weeks needs the
  * emptiness to be explained, and that is this function.
  */
-export async function readNativeScheduleSnapshot(now: Date): Promise<NativeScheduleSnapshot> {
-  return readSnapshot(now);
+export async function readNativeScheduleSnapshot(
+  now: Date,
+  characterIds?: readonly string[],
+): Promise<NativeScheduleSnapshot> {
+  return readSnapshot(now, characterIds);
 }
 
 /**

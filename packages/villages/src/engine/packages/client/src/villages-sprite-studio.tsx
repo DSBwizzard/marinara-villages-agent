@@ -1,3 +1,4 @@
+import { VillagesBurstPreview } from "./villages-burst-preview.js";
 import { processStudioCell } from "../../server/src/services/villages/sprite-studio-pixels.js";
 import { STUDIO_CLEANUP_VERSION } from "../../server/src/services/villages/sprite-studio-matte.js";
 import { createStudioRenderCache, type StudioRenderCache } from "./villages-sprite-render-cache.js";
@@ -1055,6 +1056,17 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
               >
                 {busy ? "Working…" : "Generate"}
               </button>
+              {plan ? (
+                <VillagesBurstPreview
+                  request={request}
+                  action="images"
+                  args={{
+                    count: plan.batches.length,
+                    systemRequests: plan.preparationRequests ?? 0,
+                    connectionId: plan.connection.id,
+                  }}
+                />
+              ) : null}
               <details>
                 <summary>Advanced</summary>
                 <label>
@@ -1316,6 +1328,13 @@ export function SpriteStudio({ villager, request, onSaved, onBack, onExport }: P
                           · {job.sheets.reduce((count, sheet) => count + sheet.cells.length, 0)} sprites
                         </small>
                         {job.error ? <p className="vss-hint">{job.error}</p> : null}
+                        {job.status === "interrupted" && job.preparation ? (
+                          <VillagesBurstPreview
+                            request={request}
+                            action="images"
+                            args={{ characterId: villager.characterId, jobId: job.id }}
+                          />
+                        ) : null}
                         {job.status === "interrupted" && job.preparation ? (
                           <p className="vss-hint">
                             Retry reuses saved work. An uncertain request may already have been billed and may be

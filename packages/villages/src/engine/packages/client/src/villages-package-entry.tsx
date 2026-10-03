@@ -37,6 +37,7 @@ import {
   SceneryStyleFields,
   SCENERY_STYLES,
 } from "./villages-founding-editor";
+import { VillagesBurstPreview } from "./villages-burst-preview.js";
 import { SpriteStudio } from "./villages-sprite-studio.js";
 // Villages — client entry for the Home → Villages browser tab.
 //
@@ -335,20 +336,23 @@ function BackgroundWorkPanel({
               </p>
             ) : null}
             {["failed", "interrupted", "paused"].includes(job.status) ? (
-              <button
-                type="button"
-                className={ELEMENT_TAG + "-button"}
-                disabled={!!pending}
-                onClick={() => {
-                  setPending(job.id);
-                  setProblem("");
-                  void onRetry(job)
-                    .catch((cause) => setProblem(messageFrom(cause, "Could not retry background work.")))
-                    .finally(() => setPending(""));
-                }}
-              >
-                {pending === job.id ? "Queuing..." : job.status === "paused" ? "Run now" : "Retry unfinished work"}
-              </button>
+              <>
+                <VillagesBurstPreview request={request} action="retry" args={{ jobId: job.id }} />
+                <button
+                  type="button"
+                  className={ELEMENT_TAG + "-button"}
+                  disabled={!!pending}
+                  onClick={() => {
+                    setPending(job.id);
+                    setProblem("");
+                    void onRetry(job)
+                      .catch((cause) => setProblem(messageFrom(cause, "Could not retry background work.")))
+                      .finally(() => setPending(""));
+                  }}
+                >
+                  {pending === job.id ? "Queuing..." : job.status === "paused" ? "Run now" : "Retry unfinished work"}
+                </button>
+              </>
             ) : null}
           </div>
         </div>
@@ -12159,6 +12163,7 @@ function ProjectsPanelV2({
               >
                 Generate image
               </button>
+              <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
               <input
                 type="file"
                 accept="image/*"
@@ -18996,6 +19001,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         >
                           {mapGenerating ? "Generating map…" : "Generate replacement"}
                         </button>
+                        <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
                         <input
                           className={ELEMENT_TAG + "-file"}
                           type="file"
@@ -19369,6 +19375,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         >
                           Save Venue
                         </button>
+                        <VillagesBurstPreview request={request} action="change" args={{ venue: venueEditDraft }} />
                         <button
                           type="button"
                           className={`${ELEMENT_TAG}-button`}
@@ -19469,6 +19476,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   >
                     Save settings
                   </button>
+                  <VillagesBurstPreview
+                    request={request}
+                    action="change"
+                    args={{
+                      settings: {
+                        setting: settingDraft,
+                        selectedLorebookIds: lorebookDraft,
+                        loreTokenBudget: loreTokenBudgetDraft,
+                      },
+                    }}
+                  />
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-button`}
@@ -20612,6 +20630,38 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             >
                               Regenerate agenda
                             </button>
+                            <VillagesBurstPreview
+                              request={request}
+                              action="agenda"
+                              args={{ characterId: villager.characterId }}
+                            />
+                            {villager.nativeSchedule && villager.ingestSchedule ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className={ELEMENT_TAG + "-button"}
+                                  disabled={busy}
+                                  onClick={() => {
+                                    setBusy(true);
+                                    void request("/remaps/" + encodeURIComponent(villager.characterId), {
+                                      method: "DELETE",
+                                    })
+                                      .then(() => loadAgendas())
+                                      .catch((cause) =>
+                                        setError(messageFrom(cause, "Schedule retranslation could not be queued.")),
+                                      )
+                                      .finally(() => setBusy(false));
+                                  }}
+                                >
+                                  Retranslate schedule
+                                </button>
+                                <VillagesBurstPreview
+                                  request={request}
+                                  action="translation"
+                                  args={{ characterId: villager.characterId }}
+                                />
+                              </>
+                            ) : null}
                           </div>
                           {villager.nativeSchedule ? (
                             <p className={`${ELEMENT_TAG}-story-scope`}>
@@ -21293,6 +21343,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                   ? "Generate again"
                                   : "Generate map"}
                             </button>
+                            <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
                           </div>
                         </>
                       ) : null}
@@ -21537,6 +21588,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         setSetupCompletedIds((ids) => ids.filter((id) => id !== selectedSetupVenue.id));
                         resumeSetupPlacement(rows);
                       }}
+                      usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
                       onGenerate={(area) => void generateSetupImage(selectedSetupVenue, area)}
                       onUpload={(area, file) => void uploadSetupImage(selectedSetupVenue, area, file)}
                     />

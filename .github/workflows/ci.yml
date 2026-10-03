@@ -93,6 +93,7 @@ jobs:
           npx tsx tests/villages-contact.regression.ts
           npx tsx tests/villages-runtime-debug.regression.ts
           npx tsx tests/villages-usage-meter.regression.ts
+          npx tsx tests/villages-usage-preview.regression.ts
           npx tsx tests/villages-venue-model.regression.ts
           npx tsx tests/villages-venue-session.regression.ts
           npx tsx tests/villages-relationships.regression.ts
@@ -128,6 +129,7 @@ jobs:
           node tests/villages-contact.e2e.mjs
           node tests/villages-runtime-debug.e2e.mjs
           node tests/villages-usage-meter.e2e.mjs
+          node tests/villages-usage-preview.e2e.mjs
           node tests/villages-scene-staging.e2e.mjs
           node tests/villages-scene-controls.e2e.mjs
 

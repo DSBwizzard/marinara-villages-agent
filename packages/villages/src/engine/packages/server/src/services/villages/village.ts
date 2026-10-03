@@ -81,6 +81,7 @@ import {
   remapBlocks,
   remapFailureText,
   remapNeedsWriting,
+  remapDispatchDisposition,
   remapSignature,
   VILLAGE_UNTRANSLATED_ACTIVITY,
   type VillageRemapContext,
@@ -819,7 +820,7 @@ export async function readVillagePersonaPreview(personaId: string): Promise<Vill
  * the village's life. An empty agenda is the honest answer and it terminates;
  * moving the card back and pressing "write it again" is the way out.
  */
-function agendaRevision(village: VillageState, characterId: string): string {
+export function agendaRevision(village: VillageState, characterId: string): string {
   const resident = village.villagers.find((entry) => entry.characterId === characterId);
   return backgroundRevision([
     villageCurrentSetting(village),
@@ -1152,7 +1153,7 @@ function wishesFor(village: VillageState, characterId: string): readonly Village
  * the cost is paid — see `remapSignature` — and it is one model call for that
  * villager, not one for the village.
  */
-function remapSignatureFor(
+export function remapSignatureFor(
   village: VillageState,
   characterId: string,
   weekStart: string,
@@ -1379,12 +1380,20 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
       blocks,
       wishesFor(village, villager.characterId),
     );
+    const lens = remapSignatureFor(
+      village,
+      villager.characterId,
+      "founding",
+      [],
+      wishesFor(village, villager.characterId),
+    );
+    const disposition = remapDispatchDisposition(villager.remap, signature, remapBlockKeys(blocks), lens);
     if (villager.remap?.signature !== signature && villager.agenda?.scheduleWeek)
       await mutateVillageState((state) => {
         const resident = state.villagers.find((entry) => entry.characterId === villager.characterId);
         if (resident?.agenda) resident.agenda.scheduleWeek = null;
       });
-    if (!remapNeedsWriting(villager.remap, signature, remapBlockKeys(blocks))) {
+    if (disposition === "current") {
       if (villager.agenda && !villager.agenda.scheduleWeek) {
         await mutateVillageState((state) => {
           const resident = state.villagers.find((entry) => entry.characterId === villager.characterId);
@@ -1401,14 +1410,7 @@ async function refreshVillagerRemaps(village: VillageState, now: Date, only?: st
     }
     // A founding translation already chose village terms for each distinct native
     // activity. New weekly slots can reuse those terms without another model walk.
-    const lens = remapSignatureFor(
-      village,
-      villager.characterId,
-      "founding",
-      [],
-      wishesFor(village, villager.characterId),
-    );
-    if (villager.remap?.foundingLens === lens && villager.remap.signature !== signature) {
+    if (disposition === "rebase" && villager.remap) {
       await storeRemap(villager.characterId, rebaseFoundingRemap(villager.remap, schedule, signature), schedule);
       continue;
     }
