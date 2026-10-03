@@ -1,5 +1,5 @@
 /** Shared, local chroma cleanup. No provider call or style-specific segmentation. */
-export const STUDIO_CLEANUP_VERSION = 5;
+export const STUDIO_CLEANUP_VERSION = 6;
 
 export function removeStudioMatte(
   rgba: Uint8ClampedArray,
@@ -26,7 +26,7 @@ export function removeStudioMatte(
       opaque++;
       const rgb = [rgba[p]!, rgba[p + 1]!, rgba[p + 2]!];
       // Known generated mattes cannot turn a different bright costume color into background.
-      if (expected && Math.hypot(...rgb.map((value, channel) => value - expected[channel]!)) > 64) continue;
+      if (expected && Math.hypot(...rgb.map((value, channel) => value - expected[channel]!)) > 96) continue;
       if (Math.max(...rgb) < 180 || Math.max(...rgb) - Math.min(...rgb) < 140) continue;
       const key = rgb.map((value) => Math.floor(value / 32)).join(":");
       const bucket = buckets.get(key) ?? { rgb: [0, 0, 0], count: 0 };

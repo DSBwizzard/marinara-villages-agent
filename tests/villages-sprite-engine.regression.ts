@@ -113,13 +113,13 @@ async function main() {
     const body = transport.find((t) => t.path === "/api/sprites/generate-sheet").body;
     assert.equal(body.connectionId, "source");
     assert.deepEqual(body.referenceImages, [png]);
-    assert.equal(body.fullBodyExpressionMode, false);
-    assert.equal(body.noBackground, false);
+    assert.equal(body.fullBodyExpressionMode, true);
+    assert.equal(body.noBackground, true);
     assert.equal(body.nativeTransparentPng, false);
     assert.equal(body.promptOverrides[0].prompt + composition, plan.batches[0]!.request!.prompt);
     assert.equal(plan.batches[0]!.width, 1024);
     assert.equal(plan.batches[0]!.height, 1536);
-    assert.match(body.promptOverrides[0].prompt, /1024/);
+    assert.match(body.promptOverrides[0].prompt, /ONE complete full-body character/);
     assert.equal(body.promptOverrides[0].prompt.includes(composition), false, "Engine adds its contract once");
     assert.deepEqual(
       rows,
@@ -130,7 +130,7 @@ async function main() {
     assert.ok(!JSON.stringify(plan).includes("SECRET"));
     const editableIdentity = {
       ...identity,
-      settings: defaultStudioState().settings,
+      settings: { ...defaultStudioState().settings, styleSelection: { kind: "studio" as const } },
       facingPrompt: "Full right-facing profile.",
       view: "side" as const,
     };
@@ -138,7 +138,7 @@ async function main() {
     assert.match(editablePlan.batches[0]!.request!.prompt, /Full right-facing profile/);
     assert.doesNotMatch(editablePlan.batches[0]!.request!.prompt, /cheating out/);
     assert.equal(
-      editablePlan.batches[0]!.request!.prompt.startsWith("VILLAGES SHEET REQUIREMENTS:"),
+      editablePlan.batches[0]!.request!.prompt.startsWith("VILLAGES SPRITE INSTRUCTIONS:"),
       true,
       "Off profile adds no inferred subject tags from instructions",
     );

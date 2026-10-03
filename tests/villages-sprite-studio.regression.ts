@@ -21,6 +21,8 @@ import {
   saveSpriteStudioSettings,
   planSpriteStudio,
   startSpriteStudioJob,
+  acceptStudioLook,
+  studioDirections,
   importStudioSheet,
   editStudioCell,
   repairStudioBackgrounds,
@@ -38,7 +40,9 @@ import {
 const records = new Map<string, any>();
 let failVillageWrite = false;
 let failSourceWrite = false;
-let failPreparationReadyWrite = false;
+let failDirectionSave = false;
+let holdPreparation = false;
+let preparationRelease: (() => void) | undefined;
 const documents = {
   async getById(_package: string, id: string) {
     return structuredClone(records.get(id) ?? null);
@@ -57,11 +61,10 @@ const documents = {
     if (failSourceWrite && input.data?.jobs?.some((job: any) => job.pendingSource)) {
       throw new Error("Source metadata disk unavailable");
     }
-    if (
-      failPreparationReadyWrite &&
-      input.data?.jobs?.some((job: any) => job.preparation?.status === "ready" && job.phase === "preparing")
-    )
-      throw new Error("Prepared direction write failed");
+    if (failDirectionSave && input.data?.directions?.some((row: any) => row.label === "cached_direction" && row.text)) {
+      failDirectionSave = false;
+      throw new Error("Direction write failed after response was saved");
+    }
     const prior = records.get(input.id);
     if (!prior || prior.revision !== input.expectedRevision) return null;
     const row = { ...prior, ...structuredClone(input), revision: prior.revision + 1 };
@@ -159,6 +162,10 @@ const release = configureVillagesRuntime({
           preparationCalls++;
           const input = JSON.parse(messages[1].content);
           preparationInputs.push(input);
+          if (holdPreparation)
+            await new Promise<void>((resolve) => {
+              preparationRelease = resolve;
+            });
           if (failPreparation) throw new Error("System outcome unknown");
           return {
             content: invalidPreparation
@@ -290,7 +297,9 @@ globalThis.fetch = async (url, init) => {
     const legacy = Buffer.from(String(body.image ?? "").split(",")[1] ?? "", "base64")
       .toString()
       .endsWith("legacy-large");
-    return Response.json(legacy ? { width: 1024, height: 1536 } : { width: 512, height: 768 });
+    if (legacy) return Response.json({ width: 1024, height: 1536 });
+    const decoded = PNG.sync.read(Buffer.from(String(body.image).split(",")[1], "base64"));
+    return Response.json(legacy ? { width: 1024, height: 1536 } : { width: decoded.width, height: decoded.height });
   }
   if (path.endsWith("/file/neutral.png"))
     return new Response(Buffer.concat([Buffer.from(png.split(",")[1]!, "base64"), Buffer.from("legacy-large")]), {
@@ -333,6 +342,24 @@ async function waitForCall() {
   for (let i = 0; i < 100 && !generationRelease; i++) await new Promise((resolve) => setTimeout(resolve, 2));
   assert.ok(generationRelease);
 }
+async function ensureLook(view = "side") {
+  const input = { view, expressions: [{ label: "neutral", pose: "" }] };
+  const plan = await planSpriteStudio("mara", input);
+  if (!plan.look?.needed) return;
+  const before = calls,
+    assignments = activeSprite();
+  const imported = await importStudioSheet("mara", {
+    image: png,
+    cells: [{ view, label: "neutral", x: 0, y: 0, width: 512, height: 768 }],
+  });
+  await acceptStudioLook("mara", { cellId: imported.jobs.at(-1)!.sheets[0]!.cells[0]!.id });
+  assert.equal(calls, before, "accepting a saved look makes no image request");
+  assert.deepEqual(activeSprite(), assignments, "accepting a look never assigns it");
+}
+async function prepareInput(input: any) {
+  await ensureLook(input.view ?? "front");
+  await studioDirections("mara", { ...input, operation: "prepare", actionId: randomUUID() });
+}
 async function generateBatch(count: number, prefix = "expression", view = "side", individual = false) {
   const input = {
     view,
@@ -342,6 +369,7 @@ async function generateBatch(count: number, prefix = "expression", view = "side"
       pose: i === 0 ? "Running with arms raised" : "",
     })),
   };
+  await prepareInput(input);
   const plan = await planSpriteStudio("mara", input),
     submissionId = randomUUID();
   generationRelease = undefined;
@@ -454,6 +482,8 @@ async function main() {
     await planSpriteStudio("mara", { expressions: [{ label: "happy" }] });
     assert.equal((await readSpriteStudio("mara")).designs!.length, 0, "no design approval is needed");
     await assert.rejects(() => saveSpriteStudioSettings("mara", { ...settings, style: "__proto__" }));
+    await ensureLook("side");
+    await ensureLook("front");
     for (const count of [1, 5, 6, 11]) {
       const input = {
         view: "side",
@@ -462,7 +492,7 @@ async function main() {
       const plan = await planSpriteStudio("mara", input);
       assert.deepEqual(
         plan.batches.map((batch) => batch.count),
-        count > 6 ? [6, 5] : [count],
+        Array(count).fill(1),
       );
     }
     constrainedCanvas = true;
@@ -471,7 +501,7 @@ async function main() {
     });
     assert.deepEqual(
       lowSource.batches.map((batch) => batch.count),
-      [6],
+      Array(6).fill(1),
       "source-cell resolution does not add requests",
     );
     constrainedCanvas = false;
@@ -485,7 +515,7 @@ async function main() {
     fallbackConfigured = false;
 
     const a = await generateBatch(6, "a");
-    assert.equal(a.job.sheets.length, 1);
+    assert.equal(a.job.sheets.length, 6);
     assert.equal(a.job.style, "PAPERCRAFT");
     const callsAfterA = calls;
     await startSpriteStudioJob("mara", { ...a.input, plan: a.plan, submissionId: a.submissionId });
@@ -510,28 +540,28 @@ async function main() {
         }),
       /different selection/,
     );
-    assert.deepEqual(requests[0].referenceImages, [png]);
+    assert.deepEqual(requests[0].neutralFullBodyReference?.startsWith("data:image/png;"), true);
     assert.equal(requests[0].spriteType, "full-body");
-    assert.equal(requests[0].noBackground, false);
+    assert.equal(requests[0].noBackground, true);
     assert.equal(requests[0].nativeTransparentPng, false);
-    assert.equal(requests[0].fullBodyExpressionMode, false);
+    assert.equal(requests[0].fullBodyExpressionMode, true);
     assert.equal(requests[0].promptOverrides[0].prompt, a.job.receipts![0].request!.prompt);
     assert.equal(requests[0].promptOverrides[0].negativePrompt, a.job.receipts![0].request!.negativePrompt);
     assert.equal(a.job.preparation!.status, "ready");
-    assert.equal(a.job.preparation!.attempts.length, 1, "duplicate submissions share one preparation");
+    assert.equal(a.job.preparation!.attempts.length, 0, "duplicate submissions share one preparation");
     const source = a.job.sheets[0].source!;
     assert.equal(source.kind, "generated-raw");
     assert.equal(source.matteHex, "#FF00FF");
-    assert.equal(source.pipelineVersion, 5);
+    assert.equal(source.pipelineVersion, 7);
     assert.equal(
       source.sha256,
       createHash("sha256")
-        .update(Buffer.from(sixPng.split(",")[1]!, "base64"))
+        .update(Buffer.from(png.split(",")[1]!, "base64"))
         .digest("hex"),
     );
     assert.equal(
       storedFiles.get("/api/sprites/" + a.job.sheets[0].assetId + "/original"),
-      sixPng,
+      png,
       "source bytes are saved without cleanup",
     );
     assert.match(requests[0].promptOverrides[0].prompt, /Running with arms raised/);
@@ -623,12 +653,23 @@ async function main() {
       activeSprite().expressions.length,
     );
     assert.ok(
-      requests.every((request) => request.referenceImages[0] === png),
-      "all views/styles keep the original identity reference",
+      requests.every((request) => request.neutralFullBodyReference?.startsWith("data:image/png;")),
+      "every expression uses its accepted neutral",
     );
     const standalone = await generateBatch(1, "single");
     assert.equal(standalone.job.sheets[0]?.cells.length, 1);
-    const five = await generateBatch(5, "five");
+    const fiveImported = await importStudioSheet("mara", {
+      image: sixPng,
+      cells: Array.from({ length: 5 }, (_, i) => ({
+        view: "side",
+        label: "five_" + i,
+        x: Math.floor(((i % 3) * 512) / 3),
+        y: Math.floor(i / 3) * 384,
+        width: Math.floor(512 / 3),
+        height: 384,
+      })),
+    });
+    const five = { job: fiveImported.jobs.at(-1)! };
     assert.equal(five.job.sheets[0]?.cells.length, 5);
 
     // Active assignments and the reference survive both gallery and disk cleanup.
@@ -685,7 +726,7 @@ async function main() {
     for (const mapping of repaired.repairedCells) {
       const cell = cellsOf(repairedJob).find((item) => item.id === mapping.cellId)!;
       assert.equal(cell.cleanup, true);
-      assert.equal(cell.cleanupVersion, 5);
+      assert.equal(cell.cleanupVersion, 6);
       assert.ok(cell.rendered?.sha256, "repair saves a newly validated derivative");
       assert.ok(cellsOf(repairedJob).some((item) => item.id === mapping.originalId));
     }
@@ -726,7 +767,7 @@ async function main() {
     const upgraded = await repairStudioBackgrounds("mara", { batchId: a.job.id });
     assert.deepEqual(activeSprite(), priorVersionSprite, "preparing an upgrade leaves old assignments intact");
     const upgradedJob = upgraded.jobs.find((job) => job.id === a.job.id)!;
-    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 5);
+    const upgradedCells = cellsOf(upgradedJob).filter((cell: any) => cell.repairedFrom && cell.cleanupVersion === 6);
     assert.equal(upgradedCells.length, originalCount, "each root artwork gets one current-version repair");
     for (const entry of repairedAssignments) {
       const replacement = upgraded.repairedCells.find((item) => item.originalId === entry.id);
@@ -741,10 +782,18 @@ async function main() {
     // Adjustments retain both the prior cutout and its current scene assignment.
     const beforeAdjust = activeSprite(),
       originalCell = cellsOf((await readSpriteStudio("mara")).jobs.find((job) => job.id === a.job.id)!)[0];
-    await editStudioCell("mara", { id: originalCell.id, cell: { ...originalCell, offsetX: 15 } });
+    const adjustedResult = await editStudioCell("mara", {
+      id: originalCell.id,
+      cell: { ...originalCell, offsetX: 15 },
+    });
     assert.deepEqual(activeSprite(), beforeAdjust);
     data = await readSpriteStudio("mara");
-    assert.equal(cellsOf(data.jobs.find((job) => job.id === a.job.id)!).at(-1).offsetX, 15);
+    assert.equal(
+      cellsOf(data.jobs.find((job) => job.id === a.job.id)!).find(
+        (cell: any) => cell.id === adjustedResult.adjustedCellId,
+      ).offsetX,
+      15,
+    );
     assert.throws(() => validateStudioCell({ ...originalCell, width: 99999 }, a.job.sheets[0]!), /crop/);
     await discardStudioCell("mara", { id: originalCell.id });
     assert.deepEqual(activeSprite(), beforeAdjust, "clearing one review flag does not remove an active image");
@@ -788,8 +837,9 @@ async function main() {
 
     generationRelease = undefined;
     failGeneration = true;
-    const failedInput = { expressions: [{ label: "happy", pose: "" }] },
-      failedPlan = await planSpriteStudio("mara", failedInput),
+    const failedInput = { expressions: [{ label: "happy", pose: "" }] };
+    await prepareInput(failedInput);
+    const failedPlan = await planSpriteStudio("mara", failedInput),
       failedId = randomUUID();
     await startSpriteStudioJob("mara", { ...failedInput, plan: failedPlan, submissionId: failedId });
     await waitForCall();
@@ -844,7 +894,7 @@ async function main() {
     for (const view of ["front", "side"])
       for (const individual of [false, true]) {
         const workflow = await generateBatch(6, "workflow_" + view + "_" + individual, view, individual);
-        assert.equal(workflow.job.attempted, individual ? 6 : 1);
+        assert.equal(workflow.job.attempted, 6);
         assert.equal(cellsOf(workflow.job).length, 6);
         assert.ok(cellsOf(workflow.job).every((cell: any) => cell.validation.status === "passed"));
         await assignBatch(workflow.job.id);
@@ -871,7 +921,7 @@ async function main() {
     const textInput = {
       settings: { ...defaultStudioState().settings, connectionId: "image" },
       view: "side",
-      expressions: [{ label: "happy" }],
+      expressions: [{ label: "neutral" }],
     };
     const textPlan = await planSpriteStudio("no-avatar", textInput);
     assert.deepEqual(textPlan.batches[0]!.request!.referenceRoles, [], "a missing avatar uses appearance text");
@@ -895,16 +945,10 @@ async function main() {
     await settle();
     await assignBatch(neutralId);
     const anchored = await planSpriteStudio("mara", { view: "front", expressions: [{ label: "happy" }] });
-    assert.deepEqual(anchored.batches[0]!.request!.referenceRoles, [
-      "original character identity",
-      "styled neutral for the requested view",
-    ]);
-    const noOtherView = await planSpriteStudio("mara", { view: "side", expressions: [{ label: "happy" }] });
-    assert.deepEqual(
-      noOtherView.batches[0]!.request!.referenceRoles,
-      ["original character identity"],
-      "front-only neutral is optional and not used for the side view",
-    );
+    await acceptStudioLook("mara", {
+      cellId: (await readSpriteStudio("mara")).jobs.find((job) => job.id === neutralId)!.sheets[0]!.cells[0]!.id,
+    });
+    assert.ok(anchored.batches[0]!.request!.referenceRoles![0]!.startsWith("accepted neutral"));
     const beforeDesignMigration = activeSprite();
     const legacyDesign = {
       id: "uploaded-design",
@@ -926,14 +970,14 @@ async function main() {
     const designReference = await planSpriteStudio("mara", { view: "side", expressions: [{ label: "happy" }] });
     assert.equal(
       designReference.batches[0]!.request!.referenceRoles!.length,
-      2,
-      "a previously approved single view remains a usable optional reference",
+      1,
+      "unknown connection support sends the accepted neutral first",
     );
     await saveSpriteStudioSettings("mara", { ...settings, styleSelection: { kind: "default" } });
     const engineStyleReference = await planSpriteStudio("mara", { view: "side", expressions: [{ label: "happy" }] });
     assert.deepEqual(
       engineStyleReference.batches[0]!.request!.referenceRoles,
-      ["original character identity"],
+      ["original character identity; not a pose reference"],
       "a legacy preset design does not silently become an Engine style reference",
     );
     await saveSpriteStudioSettings("mara", settings);
@@ -950,8 +994,9 @@ async function main() {
       activeSprite().expressions.some((entry: any) => entry.label === "clipped_usable"),
       "framing notices require no acknowledgment checkbox",
     );
+    await prepareInput({ expressions: [{ label: "happy" }] });
     const stale = await planSpriteStudio("mara", { expressions: [{ label: "happy" }] });
-    await saveSpriteStudioSettings("mara", { ...settings, individual: true });
+    await saveSpriteStudioSettings("mara", { ...settings, cleanupEngine: "backgroundremover" });
     await assert.rejects(
       () =>
         startSpriteStudioJob("mara", { expressions: [{ label: "happy" }], plan: stale, submissionId: randomUUID() }),
@@ -965,175 +1010,170 @@ async function main() {
       expressions: [{ label: "happy", pose: "" }],
       batch: a.plan.batches[0]!,
     });
-    assert.match(side, /off-screen to the right/);
+    assert.match(side, /off-screen to the right/i);
     assert.match(side, /intentional character outlines/);
     assert.doesNotMatch(side, /paper-cut|off-white/);
-    const beforeLegacyJobs = (await readSpriteStudio("mara")).jobs.length;
-    const beforeLegacyCalls = calls;
-    const legacyPromise = generateResidentSprite("mara", {
-      view: "side",
-      expression: "legacy_joy",
-      appearance: "A bird in a coat",
-      useReference: false,
-    });
-    while (calls === beforeLegacyCalls || !generationRelease) await new Promise((resolve) => setTimeout(resolve, 10));
-    generationRelease();
-    generationRelease = undefined;
-    const legacySprite = await legacyPromise;
-    assert.equal(legacySprite.width, 512);
-    assert.equal(legacySprite.height, 768);
-    const legacyJob = (await readSpriteStudio("mara")).jobs.at(-1)!;
-    assert.equal((await readSpriteStudio("mara")).jobs.length, beforeLegacyJobs + 1);
-    assert.equal(legacyJob.sheets[0]!.source?.pipelineVersion, 5);
-    assert.deepEqual(legacyJob.receipts?.[0]?.request?.referenceRoles ?? [], []);
-
-    const beforePreviewPreparation = preparationCalls;
-    const groundedSlot = (
-      await saveStudioExpression("mara", {
-        name: "Quiet disappointment",
-        useWhen: "Sad after a modest setback",
-        pose: "Keep arms relaxed.",
-      })
-    ).studio.expressions.find((slot) => slot.name === "Quiet disappointment")!;
-    const groundedInput = {
-      view: "front",
-      expressions: [{ expressionId: groundedSlot.id, label: groundedSlot.label, pose: "Keep arms relaxed." }],
-    };
-    const savedCard = records.get("villages-village").data.villagers[0].cardSnapshot;
-    Object.assign(savedCard, {
-      personality: "Sociable, street-wise, cheerful, protective of friends.",
-      summary: "An adventurous day-bar owner.",
-      description: "Outgoing but grounded.",
-      backstory: "Travel taught her to stay composed.",
-      exampleDialogue: "Well, that could have gone better.",
-      appearance: "Bird with feathers along her arms. No wings on her back. Sleeveless top and trousers.",
-    });
-    const groundedPlan = await planSpriteStudio("mara", groundedInput);
-    await planSpriteStudio("mara", groundedInput);
-    assert.equal(preparationCalls, beforePreviewPreparation, "previews never prepare expressions");
-    const personality = savedCard.personality;
-    savedCard.personality = "Reserved and wary.";
     await assert.rejects(
       () =>
-        startSpriteStudioJob("mara", {
-          ...groundedInput,
-          plan: groundedPlan,
-          submissionId: randomUUID(),
+        generateResidentSprite("mara", {
+          view: "side",
+          expression: "legacy_joy",
+          appearance: "A different bird",
+          useReference: false,
         }),
-      /plan changed/,
+      /Accept a neutral/,
     );
-    assert.equal(preparationCalls, beforePreviewPreparation, "stale character context is refused before spending");
-    savedCard.personality = personality;
-    const groundedId = randomUUID();
-    failPreparation = true;
-    const beforeFailureImages = calls;
-    await startSpriteStudioJob("mara", { ...groundedInput, plan: groundedPlan, submissionId: groundedId });
-    const failedPreparation = (await settle()).jobs.find((job) => job.id === groundedId)!;
-    assert.equal(failedPreparation.phase, "preparing");
-    assert.equal(failedPreparation.preparation!.status, "unknown");
-    assert.equal(failedPreparation.preparation!.attempts.length, 1);
-    assert.equal(calls, beforeFailureImages, "failed preparation submits no images");
-    await startSpriteStudioJob("mara", { ...groundedInput, plan: groundedPlan, submissionId: groundedId });
-    assert.equal(preparationCalls, beforePreviewPreparation + 1, "duplicate failed submissions never retry");
-    assert.equal(preparationInputs.at(-1).character.personality, savedCard.personality);
-    assert.equal(preparationInputs.at(-1).character.backstory, savedCard.backstory);
-    assert.equal(preparationInputs.at(-1).character.exampleDialogue, savedCard.exampleDialogue);
-    assert.equal(preparationInputs.at(-1).expressions[0].name, groundedSlot.name);
-    assert.equal(preparationInputs.at(-1).expressions[0].useWhen, groundedSlot.useWhen);
-    assert.equal(preparationInputs.at(-1).expressions[0].userPose, "Keep arms relaxed.");
-    assert.equal(preparationInputs.at(-1).facingPrompt, STUDIO_FACING_PROMPTS.front);
-    failPreparation = false;
-    generationRelease = undefined;
-    await recoverStudioJob("mara", { id: groundedId, retryGeneration: true });
-    await waitForCall();
-    generationRelease!();
-    generationRelease = undefined;
-    const groundedJob = (await settle()).jobs.find((job) => job.id === groundedId)!;
-    assert.equal(groundedJob.preparation!.attempts.length, 2);
-    assert.equal(groundedJob.preparation!.attempts[0].status, "unknown");
-    assert.match(groundedJob.receipts![0].request!.prompt, /street-wise/);
-    assert.match(groundedJob.receipts![0].request!.prompt, /Quiet disappointment/);
-    assert.match(groundedJob.receipts![0].request!.prompt, /Sad after a modest setback/);
-    assert.match(groundedJob.receipts![0].request!.prompt, /User pose constraint: Keep arms relaxed/);
-    assert.match(groundedJob.receipts![0].request!.prompt, /No wings on her back/);
-    assert.match(groundedJob.receipts![0].request!.prompt, /original avatar controls the visible outfit/);
-    assert.match(
-      groundedJob.receipts![0].request!.prompt,
-      /cannot override the original outfit or explicit written anatomy/,
-    );
-    assert.doesNotMatch(groundedJob.receipts![0].request!.prompt, /fitting expressive body gesture/);
-    assert.equal(groundedJob.phase, "review");
+    await saveSpriteStudioSettings("mara", settings);
 
-    // A durably saved answer can be parsed again after a metadata write fails.
-    const replayPlan = await planSpriteStudio("mara", groundedInput);
-    const replayId = randomUUID(),
-      beforeReplayCalls = preparationCalls;
-    failPreparationReadyWrite = true;
-    preparedDirection = "A controlled, thoughtful stance. ".padEnd(516, "x");
-    await startSpriteStudioJob("mara", { ...groundedInput, plan: replayPlan, submissionId: replayId });
-    const replayInterrupted = (await settle()).jobs.find((job) => job.id === replayId)!;
-    assert.equal(replayInterrupted.preparation!.attempts.at(-1)!.status, "answered");
-    failPreparationReadyWrite = false;
+    await ensureLook("side");
+    const slot = (
+      await saveStudioExpression("mara", {
+        name: "Embarrassed",
+        useWhen: "Self-conscious after a compliment",
+        pose: "Keep attention right.",
+      })
+    ).studio.expressions.find((e) => e.name === "Embarrassed")!;
+    const input = { view: "side", expressions: [{ label: slot.label, expressionId: slot.id, pose: slot.pose }] };
+    const beforeText = preparationCalls,
+      beforeImages = calls;
+    await planSpriteStudio("mara", input);
+    assert.equal(preparationCalls, beforeText, "preview makes no text request");
+    const actionId = randomUUID();
+    await Promise.all([
+      studioDirections("mara", { ...input, operation: "prepare", actionId }),
+      studioDirections("mara", { ...input, operation: "prepare", actionId }),
+    ]);
+    assert.equal(preparationCalls, beforeText + 1, "duplicate preparations share one request");
+    assert.equal(calls, beforeImages, "directions never generate artwork");
+    let row = (await planSpriteStudio("mara", input)).directions![0]!;
+    assert.ok(row.text);
+    await studioDirections("mara", {
+      ...input,
+      operation: "save",
+      revision: row.revision,
+      text: "Fidgets with her sleeve; head and attention right.",
+    });
+    row = (await planSpriteStudio("mara", input)).directions![0]!;
+    const edited = row.text;
+    preparedDirection = "One shoulder rises with a sheepish smile, still looking right.";
+    await studioDirections("mara", { ...input, operation: "suggest", actionId: randomUUID() });
+    row = (await planSpriteStudio("mara", input)).directions![0]!;
+    assert.equal(row.text, edited, "suggestion does not replace edits");
+    assert.equal(row.suggestion!.text, preparedDirection);
+    await studioDirections("mara", { ...input, operation: "discard", revision: row.revision });
+    assert.equal((await planSpriteStudio("mara", input)).directions![0]!.text, edited);
+    const beforeSecondSuggestion = preparationCalls;
+    await studioDirections("mara", { ...input, operation: "suggest", actionId: randomUUID() });
+    assert.equal(preparationCalls, beforeSecondSuggestion + 1, "another suggestion makes one fresh text request");
+    await studioDirections("mara", { ...input, operation: "use", revision: row.revision });
+    assert.equal((await planSpriteStudio("mara", input)).directions![0]!.text, preparedDirection);
+    await assert.rejects(
+      () => studioDirections("mara", { ...input, operation: "save", revision: row.revision, text: "Stale edit" }),
+      /Directions changed/,
+    );
     preparedDirection = "";
-    generationRelease = undefined;
-    await recoverStudioJob("mara", { id: replayId, retryGeneration: true });
-    await waitForCall();
-    generationRelease!();
-    generationRelease = undefined;
-    await settle();
-    assert.equal(preparationCalls, beforeReplayCalls + 1, "saved answer recovery makes no new System call");
-    const recoveredDirections = (await readSpriteStudio("mara")).jobs.find((job) => job.id === replayId)!.preparation!
-      .expressions!;
-    assert.equal(
-      recoveredDirections[0]!.direction!.length,
-      516,
-      "saved over-500-character preparation is reused intact",
+
+    row = (await planSpriteStudio("mara", input)).directions![0]!;
+    holdPreparation = true;
+    const late = studioDirections("mara", { ...input, operation: "suggest", actionId: randomUUID() });
+    while (!preparationRelease) await new Promise((resolve) => setTimeout(resolve, 2));
+    await studioDirections("mara", {
+      ...input,
+      operation: "save",
+      revision: row.revision,
+      text: "Newer authored pose facing right.",
+    });
+    preparationRelease!();
+    preparationRelease = undefined;
+    holdPreparation = false;
+    await late;
+    row = (await planSpriteStudio("mara", input)).directions![0]!;
+    assert.equal(row.text, "Newer authored pose facing right.");
+    assert.equal(row.suggestion, undefined, "late suggestion cannot replace a newer edit");
+    await studioDirections("mara", {
+      ...input,
+      operation: "save",
+      revision: row.revision,
+      text: "One shoulder rises with a sheepish smile, still looking right.",
+    });
+    const cachedInput = { view: "side", expressions: [{ label: "cached_direction", pose: "" }] };
+    const beforeCached = preparationCalls;
+    failDirectionSave = true;
+    await assert.rejects(
+      () => studioDirections("mara", { ...cachedInput, operation: "prepare", actionId: randomUUID() }),
+      /Direction write failed/,
     );
+    await studioDirections("mara", { ...cachedInput, operation: "prepare", actionId: randomUUID(), retry: true });
+    assert.equal(preparationCalls, beforeCached + 1, "saved text response is reused after a metadata write failure");
+    assert.ok((await planSpriteStudio("mara", cachedInput)).directions![0]!.text);
+    const card = records.get("villages-village").data.villagers[0].cardSnapshot;
+    const personality = card.personality;
+    card.personality = "New personality";
+    const changed = await planSpriteStudio("mara", input);
+    assert.equal(changed.look!.needed, false, "personality does not invalidate visual reference");
+    assert.equal(changed.directions![0]!.text, "", "personality changes direction context");
+    await assert.rejects(
+      () => startSpriteStudioJob("mara", { ...input, plan: changed, submissionId: randomUUID() }),
+      /directions/,
+    );
+    failPreparation = true;
+    const failedAction = randomUUID(),
+      beforeFailure = preparationCalls;
+    await assert.rejects(
+      () => studioDirections("mara", { ...input, operation: "prepare", actionId: failedAction }),
+      /outcome may be unknown/,
+    );
+    await studioDirections("mara", { ...input, operation: "prepare", actionId: failedAction });
+    assert.equal(preparationCalls, beforeFailure + 1, "uncertain requests are not replayed");
+    failPreparation = false;
+    await studioDirections("mara", { ...input, operation: "prepare", actionId: randomUUID(), retry: true });
+    card.personality = personality;
+    assert.equal(
+      (await planSpriteStudio("mara", input)).directions![0]!.text,
+      "One shoulder rises with a sheepish smile, still looking right.",
+      "prior edited context remains reusable",
+    );
+    const appearance = card.appearance;
+    card.appearance = "Different appearance";
+    assert.equal((await planSpriteStudio("mara", input)).look!.needed, true);
+    await assert.rejects(
+      () => studioDirections("mara", { ...input, operation: "prepare", actionId: randomUUID() }),
+      /Accept a compatible look/,
+    );
+    card.appearance = appearance;
 
-    // Empty output is invalid and must not trigger completeWithRoom's usual empty retry.
+    const invalidInput = { view: "side", expressions: [{ label: "invalid_direction", pose: "" }] };
     invalidPreparation = true;
-    const invalidId = randomUUID(),
-      beforeInvalidCalls = preparationCalls,
-      beforeInvalidImages = calls;
-    const invalidPlan = await planSpriteStudio("mara", groundedInput);
-    await startSpriteStudioJob("mara", { ...groundedInput, plan: invalidPlan, submissionId: invalidId });
-    const invalidJob = (await settle()).jobs.find((job) => job.id === invalidId)!;
-    assert.equal(invalidJob.preparation!.status, "failed");
-    assert.equal(preparationCalls, beforeInvalidCalls + 1);
-    assert.equal(calls, beforeInvalidImages);
+    const beforeInvalid = preparationCalls;
+    await assert.rejects(
+      () => studioDirections("mara", { ...invalidInput, operation: "prepare", actionId: randomUUID() }),
+      /preparation|JSON/i,
+    );
+    assert.equal(preparationCalls, beforeInvalid + 1, "invalid output does not trigger an automatic empty retry");
     invalidPreparation = false;
-    generationRelease = undefined;
-    await recoverStudioJob("mara", { id: invalidId, retryGeneration: true });
-    await waitForCall();
-    generationRelease!();
-    generationRelease = undefined;
-    await settle();
-
-    // Retry an uncertain image using the same frozen, completed directions.
-    const retryImagePlan = await planSpriteStudio("mara", groundedInput);
+    await studioDirections("mara", { ...invalidInput, operation: "prepare", actionId: randomUUID(), retry: true });
+    const retryImagePlan = await planSpriteStudio("mara", input);
     const retryImageId = randomUUID(),
-      beforeImagePreparation = preparationCalls;
+      beforeRetryText = preparationCalls;
     failGeneration = true;
     generationRelease = undefined;
-    await startSpriteStudioJob("mara", { ...groundedInput, plan: retryImagePlan, submissionId: retryImageId });
+    await startSpriteStudioJob("mara", { ...input, plan: retryImagePlan, submissionId: retryImageId });
     await waitForCall();
     generationRelease!();
     generationRelease = undefined;
     const imageInterrupted = (await settle()).jobs.find((job) => job.id === retryImageId)!;
-    assert.equal(imageInterrupted.preparation!.status, "ready");
-    assert.ok(imageInterrupted.pendingAssetId);
+    assert.equal(imageInterrupted.status, "interrupted");
     failGeneration = false;
     await recoverStudioJob("mara", { id: retryImageId, retryGeneration: true });
     await waitForCall();
     generationRelease!();
     generationRelease = undefined;
-    const imageRetried = (await settle()).jobs.find((job) => job.id === retryImageId)!;
-    assert.equal(preparationCalls, beforeImagePreparation + 1);
-    assert.equal(imageRetried.imageAttempts![0].status, "unknown");
-    assert.equal(imageRetried.imageAttempts![1].status, "saved");
-    assert.deepEqual(imageRetried.preparation, imageInterrupted.preparation);
+    const retried = (await settle()).jobs.find((job) => job.id === retryImageId)!;
+    assert.equal(retried.imageAttempts![0].status, "unknown");
+    assert.equal(retried.imageAttempts![1].status, "saved");
+    assert.equal(preparationCalls, beforeRetryText, "selective retry reuses saved directions");
     console.log(
-      "Sprite Studio regression passed: generation counts, optional neutral, migration, stable meanings, mixed batches, cached swaps, atomic failures, shared-file protection and cleanup retries.",
+      "Sprite Studio regression passed: generation counts, accepted neutral, migration, stable meanings, mixed batches, cached swaps, atomic failures, shared-file protection and cleanup retries.",
     );
   } finally {
     globalThis.fetch = previousFetch;

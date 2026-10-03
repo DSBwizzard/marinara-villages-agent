@@ -1,0 +1,79 @@
+{
+  "date": "2026-10-02",
+  "scope": "Bounded manual review through existing Engine connections; no Engine source changes.",
+  "plannedImageRequests": 6,
+  "submittedStudioImageRequests": 4,
+  "automaticRetries": 0,
+  "providerInternalRequests": "Unknown; Engine fallback behavior is separate from Studio request count.",
+  "character": "Adult anthropomorphic kestrel traveler: feathered forearms, dexterous hands, talon feet, no separate back wings.",
+  "providers": [
+    {
+      "model": "gemini-3-pro-image",
+      "requests": 3,
+      "results": [
+        {
+          "expression": "neutral",
+          "returnedGeometry": [
+            1024,
+            1536
+          ],
+          "exportGeometry": [
+            512,
+            768
+          ],
+          "facing": "Head and beak right; readable three-quarter stance.",
+          "completeness": "Full head, feathered arms, hands and talon feet; no separate back wings.",
+          "identity": "Chosen green vest, trousers and satchel established.",
+          "alignment": "Locally repaired from preserved Engine response after softened magenta survived the original cleanup.",
+          "acceptedAsReference": true
+        },
+        {
+          "expression": "embarrassed",
+          "returnedGeometry": [
+            1024,
+            1536
+          ],
+          "exportGeometry": [
+            512,
+            768
+          ],
+          "facing": "Head and beak right.",
+          "completeness": "Full body, hands and talon feet visible.",
+          "identity": "Outfit and bird design broadly consistent; cream shirt is not clearly retained.",
+          "alignment": "Automatic source-edge and clear-margin flags; manual inspection and possible local adjustment required.",
+          "expressionQuality": "Hand moves toward vest/belt; facial change modest.",
+          "acceptedForScenes": false
+        },
+        {
+          "expression": "angry",
+          "returnedGeometry": [
+            1024,
+            1536
+          ],
+          "exportGeometry": [
+            512,
+            768
+          ],
+          "facing": "Head and beak right.",
+          "completeness": "Full body, hands and talon feet visible.",
+          "identity": "Outfit and bird design broadly consistent; cream shirt is not clearly retained.",
+          "alignment": "Automatic source-edge and clear-margin flags; manual inspection and possible local adjustment required.",
+          "expressionQuality": "Furrowed brow and restrained hand gesture; change modest.",
+          "acceptedForScenes": false
+        }
+      ]
+    },
+    {
+      "model": "gpt-image-2",
+      "requests": 1,
+      "result": "Engine returned HTTP 500 for neutral. No image saved, no retry, remaining two expressions not requested."
+    }
+  ],
+  "limitations": [
+    "Neutral was generated before enabling Engine cleanup on generation; the saved response was repaired locally without another image request. Expression requests used the final cleanup setting.",
+    "Three Gemini images are structurally reviewable, not a guarantee of facing, anatomy, style, expression quality or cross-provider reliability.",
+    "This is not a successful two-provider comparison; the second connection failed.",
+    "Directions in this bounded image comparison were deliberately fixed for comparison. Personality text preparation is covered by automated workflow tests, not a paid text-model quality comparison.",
+    "The standalone harness did not change existing Scene assignments."
+  ]
+}
