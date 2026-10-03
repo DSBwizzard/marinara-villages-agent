@@ -13,11 +13,9 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
 import { remapSignatureFor } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
 import { proposeAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { studioRetryRequests } from "../packages/villages/src/engine/packages/server/src/services/villages/studio-preview.js";
 import {
   translationBatchSize,
   translationRequestCount,
-  studioBatchSize,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/generation-budgets.js";
 import { resetNativeScheduleCache } from "../packages/villages/src/engine/packages/server/src/services/villages/native-schedules.js";
 const records = new Map<string, any>();
@@ -243,10 +241,9 @@ async function main() {
     const images = await previewVillageBurst({
       action: "images",
       count: 3,
-      systemRequests: 1,
       connectionId: "picture",
     });
-    assert.equal(images.requests, 4);
+    assert.equal(images.requests, 3);
     assert.ok((images.dollars?.min ?? 0) >= 0.12);
     const unknown = await previewVillageBurst({ action: "images", count: 2, connectionId: "unpriced" });
     assert.equal(unknown.unknownCosts, 2);
@@ -257,18 +254,6 @@ async function main() {
           translationRequestCount(blocks, translationBatchSize(limit)),
           Math.ceil(blocks / Math.min(10, Math.max(2, Math.floor(limit / 350)))),
         );
-    assert.equal(studioBatchSize(false), 6);
-    assert.equal(studioBatchSize(true), 1);
-    const job: any = {
-      planned: 3,
-      sheets: [{}],
-      status: "interrupted",
-      connectionId: "picture",
-      preparation: { status: "ready" },
-    };
-    assert.deepEqual(studioRetryRequests(job), { imageRequests: 2, systemRequests: 0, connectionId: "picture" });
-    job.pendingSource = {};
-    assert.equal(studioRetryRequests(job).imageRequests, 1, "saved original is not generated again");
     failCards = true;
     resetNativeScheduleCache();
     assert.equal(

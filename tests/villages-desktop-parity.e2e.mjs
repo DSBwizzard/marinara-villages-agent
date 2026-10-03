@@ -179,17 +179,14 @@ try {
         return;
       }
       let value = fixtureSnapshot;
-      if (path.endsWith("/sprites/studio") || path.endsWith("/sprites/studio/settings"))
+      if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
+      else if (path.endsWith("/sprites/manager"))
         value = {
           version: 1,
-          settings: {
-            style: "PAPERCRAFT",
-            prompts: { PAPERCRAFT: "Paper", BATTLEHIGHWAY: "Angular", Custom: "" },
-            connectionId: "",
-          },
-          jobs: [],
-          connections: [],
-          reference: null,
+          artwork: [],
+          expressions: [],
+          assignments: [],
+          framing: { mode: "full", cropPercent: 58 },
         };
       else if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
@@ -315,11 +312,11 @@ try {
     await page.getByRole("button", { name: "Back to menu" }).click();
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /^Villagers \(/u }).click();
-    const studioButton = page.getByRole("button", { name: /Sprite Studio ·/u }).first();
+    const studioButton = page.getByRole("button", { name: /Sprite Manager ·/u }).first();
     await studioButton.focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("heading", { name: "Mara’s Sprite Studio" })).toBeFocused();
-    await expect(page.getByRole("button", { name: "Generate", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Mara’s Sprite Manager" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Upload images", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await expect(studioButton).toBeFocused();
     await page.getByRole("button", { name: "Back to menu" }).click();

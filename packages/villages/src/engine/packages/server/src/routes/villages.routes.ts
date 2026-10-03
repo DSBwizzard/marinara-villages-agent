@@ -1,10 +1,14 @@
-import { readRuntimeDebug, saveRuntimeDebug, runtimeDebug } from "../services/villages/runtime-debug.js";
 import {
-  listStudioCharacterLibrary,
-  adoptStudioCharacterSprites,
-  planStudioPublication,
-  executeStudioPublication,
-} from "../services/villages/sprite-studio-library.js";
+  readSpriteManager,
+  importSpriteArtwork,
+  listSpriteLibrary,
+  adoptSpriteArtwork,
+  saveSpriteArtwork,
+  setSpriteDefault,
+  setSpriteFraming,
+  removeSpriteArtwork,
+} from "../services/villages/sprite-manager.js";
+import { readRuntimeDebug, saveRuntimeDebug, runtimeDebug } from "../services/villages/runtime-debug.js";
 import { readRelationshipsView, changeRelationshipCreator } from "../services/villages/relationships.js";
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
 import { setScenerySettings } from "../services/villages/village.js";
@@ -19,27 +23,6 @@ import {
 import { moveVenueZone } from "../services/villages/venue-session.js";
 import { readWishHistoryPage } from "../services/villages/wish-archive.js";
 import { updateVillageZone } from "../services/villages/village.js";
-import {
-  readSpriteStudio,
-  assignStudioCells,
-  saveStudioExpression,
-  clearStudioReview,
-  deleteStudioArtwork,
-  deleteUnusedStudioFiles,
-  saveSpriteStudioSettings,
-  captureStudioReference,
-  planSpriteStudio,
-  acceptStudioLook,
-  studioDirections,
-  startSpriteStudioJob,
-  importStudioSheet,
-  editStudioCell,
-  repairStudioBackgrounds,
-  approveStudioCells,
-  discardStudioCell,
-  removeStudioApprovedSprite,
-  recoverStudioJob,
-} from "../services/villages/sprite-studio.js";
 // Villages — the package's privileged route surface, mounted at `/api/villages`.
 //
 // Everything behind this plugin is the Engine owner (the host authenticates
@@ -119,13 +102,6 @@ import {
 import { generateVillageTownMap } from "../services/villages/town-map-image.js";
 import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
 import { generateFoundingVenueImage, uploadFoundingVenueImage } from "../services/villages/founding-drafts.js";
-import {
-  approveResidentSprite,
-  generateResidentSprite,
-  importSourceResidentSprite,
-  listSourceResidentSprites,
-  setResidentSpriteFraming,
-} from "../services/villages/resident-sprites.js";
 import { villagesLogger, villagesDebugAgentsEnabled } from "../services/villages/package-runtime.js";
 import { MAX_SUBMISSION_ID_LENGTH, MAX_TOWN_MAP_IMAGE_LENGTH } from "../services/villages/prompt-preset.js";
 import {
@@ -592,47 +568,37 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // instance does. See `sceneLockedRoutes` above.
   const app = engine;
 
-  app.get<{ Params: CharacterParams }>("/villagers/:characterId/sprites/studio", async (request, reply) => {
+  const retiredSprites = async (_request: FastifyRequest, reply: FastifyReply) =>
+    reply.code(410).send({ error: "Sprite Studio is retired. Use Sprite Manager to upload finished artwork." });
+  app.get("/villagers/:characterId/sprites/studio", retiredSprites);
+  app.get("/villagers/:characterId/sprites/studio/*", retiredSprites);
+  app.post("/villagers/:characterId/sprites/studio", retiredSprites);
+  app.post("/villagers/:characterId/sprites/studio/*", retiredSprites);
+  app.get<{ Params: CharacterParams }>("/villagers/:characterId/sprites/manager", async (request, reply) => {
     try {
-      return await readSpriteStudio(readCharacterId(request.params.characterId));
+      return await readSpriteManager(readCharacterId(request.params.characterId));
     } catch (error) {
-      return fail(reply, error, "reading the sprite studio");
+      return fail(reply, error, "reading Sprite Manager");
     }
   });
-  const studioActions: Record<string, (id: string, body: unknown) => Promise<unknown>> = {
-    "character-library": listStudioCharacterLibrary,
-    "adopt-character": adoptStudioCharacterSprites,
-    "publish-plan": planStudioPublication,
-    publish: executeStudioPublication,
-    "restore-plan": planStudioPublication,
-    settings: saveSpriteStudioSettings,
-    reference: captureStudioReference,
-    plan: planSpriteStudio,
-    "accept-look": acceptStudioLook,
-    directions: studioDirections,
-    jobs: startSpriteStudioJob,
-    import: importStudioSheet,
-    cell: editStudioCell,
-    "repair-background": repairStudioBackgrounds,
-    approve: approveStudioCells,
-    discard: discardStudioCell,
-    remove: removeStudioApprovedSprite,
-    assign: assignStudioCells,
-    expression: saveStudioExpression,
-    "clear-review": clearStudioReview,
-    delete: deleteStudioArtwork,
-    "delete-unused": deleteUnusedStudioFiles,
-    recover: recoverStudioJob,
+  const managerActions: Record<string, (id: string, body: unknown) => Promise<unknown>> = {
+    import: importSpriteArtwork,
+    library: listSpriteLibrary,
+    adopt: adoptSpriteArtwork,
+    save: saveSpriteArtwork,
+    default: setSpriteDefault,
+    framing: setSpriteFraming,
+    remove: removeSpriteArtwork,
   };
-  for (const [action, handler] of Object.entries(studioActions)) {
+  for (const [action, handler] of Object.entries(managerActions)) {
     app.post<{ Params: CharacterParams; Body: unknown }>(
-      "/villagers/:characterId/sprites/studio/" + action,
+      "/villagers/:characterId/sprites/manager/" + action,
       { bodyLimit: 32_000_000 },
       async (request, reply) => {
         try {
           return await handler(readCharacterId(request.params.characterId), request.body);
         } catch (error) {
-          return fail(reply, error, "updating the sprite studio");
+          return fail(reply, error, "updating Sprite Manager");
         }
       },
     );
@@ -747,64 +713,11 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
-  app.get<{ Params: CharacterParams }>("/villagers/:characterId/sprites/source", async (request, reply) => {
-    try {
-      return { sprites: await listSourceResidentSprites(readCharacterId(request.params.characterId)) };
-    } catch (error) {
-      return fail(reply, error, "listing source sprites");
-    }
-  });
+  for (const action of ["generate", "approve", "import", "framing"]) {
+    app.post("/villagers/:characterId/sprites/" + action, retiredSprites);
+  }
+  app.get("/villagers/:characterId/sprites/source", retiredSprites);
 
-  app.post<{
-    Params: CharacterParams;
-    Body: { view?: unknown; expression?: unknown; appearance?: unknown; useReference?: unknown };
-  }>("/villagers/:characterId/sprites/generate", async (request, reply) => {
-    try {
-      return await generateResidentSprite(readCharacterId(request.params.characterId), request.body ?? {});
-    } catch (error) {
-      return fail(reply, error, "drawing a resident sprite");
-    }
-  });
-
-  app.post<{ Params: CharacterParams; Body: { view?: unknown; expression?: unknown; image?: unknown } }>(
-    "/villagers/:characterId/sprites/approve",
-    { bodyLimit: SETTINGS_BODY_LIMIT },
-    async (request, reply) => {
-      try {
-        return await approveResidentSprite(readCharacterId(request.params.characterId), request.body ?? {});
-      } catch (error) {
-        return fail(reply, error, "approving a resident sprite");
-      }
-    },
-  );
-
-  app.post<{ Params: CharacterParams; Body: { view?: unknown; expression?: unknown } }>(
-    "/villagers/:characterId/sprites/import",
-    async (request, reply) => {
-      try {
-        return await importSourceResidentSprite(
-          readCharacterId(request.params.characterId),
-          request.body?.expression,
-          request.body?.view,
-        );
-      } catch (error) {
-        return fail(reply, error, "copying a source sprite");
-      }
-    },
-  );
-
-  app.patch<{ Params: CharacterParams; Body: { mode?: unknown; cropPercent?: unknown } }>(
-    "/villagers/:characterId/sprites/framing",
-    async (request, reply) => {
-      try {
-        return await setResidentSpriteFraming(readCharacterId(request.params.characterId), request.body ?? {});
-      } catch (error) {
-        return fail(reply, error, "framing a resident sprite");
-      }
-    },
-  );
-
-  // One active Scene, restored across reloads and archived when it ends.
   app.get("/rooms/active", async (_request, reply) => {
     try {
       const session = await activeVenueSession();

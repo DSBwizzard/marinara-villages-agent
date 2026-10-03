@@ -1,3 +1,4 @@
+import type { SpriteManagerState } from "./sprite-manager-model.js";
 // Villages — the shapes the server half of the package trades in.
 //
 // Everything the village remembers lives in Engine-owned `capability_documents`
@@ -411,6 +412,7 @@ export type VillageVillager = {
   cardSnapshot: VillageVillagerCardSnapshot;
   /** Approved village-owned art, independent of the source character's sprites. */
   sprite?: VillageResidentSprite | null;
+  spriteManager?: SpriteManagerState | null;
   addedAt: string;
   /**
    * What they wish for, or null for a villager who has not been written for yet.
@@ -462,26 +464,20 @@ export type VillageVillager = {
 
 export type VillageResidentSprite = {
   assetId: string;
-  sideAssetId?: string;
   defaultExpressionId?: string;
   expressions: Array<{
     view: "front" | "side";
     label: string;
     filename: string;
-    revision?: number;
-    assetId?: string;
-    expressionId?: string;
-    cutoutId?: string;
-    name?: string;
-    pose?: string;
-    useWhen?: string;
-    aliases?: string[];
+    assetId: string;
+    expressionId: string;
+    name: string;
+    useWhen: string;
   }>;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
 
 export type VillageVillagerCardSnapshot = {
-  spriteReference?: { url: string; capturedAt: string; origin: "snapshot" | "current-card" | "upload" };
   id: string;
   revision: number;
   sourceStatus: "available" | "missing";
@@ -1682,7 +1678,6 @@ export type VillageVillagerView = {
           url: string;
           expressionId?: string;
           isDefault?: boolean;
-          aliases?: string[];
         }>;
       })
     | null;

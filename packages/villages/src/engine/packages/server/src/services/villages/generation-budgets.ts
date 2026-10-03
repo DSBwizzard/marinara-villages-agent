@@ -5,9 +5,6 @@ export function translationBatchSize(maxOutputTokens: number | null | undefined)
 export function translationRequestCount(blocks: number, batchSize: number): number {
   return Math.ceil(Math.max(0, blocks) / batchSize);
 }
-export function studioBatchSize(individual: boolean): number {
-  return individual ? 1 : 6;
-}
 export function remainingRequests(planned: number, completed: number): number {
   return Math.max(0, planned - completed);
 }

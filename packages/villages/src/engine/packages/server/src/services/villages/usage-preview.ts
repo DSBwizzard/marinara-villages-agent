@@ -1,4 +1,3 @@
-import { previewStudioRetry } from "./studio-preview.js";
 import { asRecord } from "./coerce.js";
 import { villagesDocuments, villagesLanguageModels, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
 import { villagesConnectionIdFor, villagesImageConnectionChoice } from "./connections.js";
@@ -147,17 +146,12 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
     }
   }
   if (action === "images") {
-    const resident = proposed.villagers.find((r) => r.characterId === args.characterId);
-    if (typeof args.jobId === "string" && !resident)
-      throw badRequest("The resident for this saved sprite batch is unavailable.");
-    const retry = typeof args.jobId === "string" && resident ? await previewStudioRetry(resident, args.jobId) : null;
-    const count = retry?.imageRequests ?? Number(args.count ?? 1),
-      preparation = retry?.systemRequests ?? Number(args.systemRequests ?? 0);
-    if (![count, preparation].every((n) => Number.isInteger(n) && n >= 0 && n <= 200))
-      throw badRequest("Choose a bounded image batch size.");
+    if (args.jobId !== undefined || args.systemRequests !== undefined)
+      throw badRequest("Sprite generation is retired. Image previews are for scenery only.");
+    const count = Number(args.count ?? 1);
+    if (!Number.isInteger(count) || count < 0 || count > 200) throw badRequest("Choose a bounded image batch size.");
     imageRequests = count;
-    languageRequests = preparation;
-    if (retry) args.connectionId = retry.connectionId;
+    languageRequests = 0;
   }
   let min = 0,
     max = 0,

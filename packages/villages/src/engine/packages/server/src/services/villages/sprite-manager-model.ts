@@ -1,0 +1,174 @@
+export type SpriteView = "front" | "side";
+export const SPRITE_CANVAS = { width: 1024, height: 1536, margin: 32, baseline: 1504, bodyHeight: 1280 };
+export const SPRITE_UPLOAD_GUIDANCE =
+  "Recommended: transparent PNG, 1024 × 1536 pixels. Include one complete character with space around the silhouette. Use consistent body proportions across expressions. Smaller images also work; adjust size and foot position in the preview.";
+export type SpriteExpression = { id: string; name: string; useWhen: string };
+export type SpriteFrame = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+  headY?: number;
+  footY?: number;
+};
+export type SpriteArtwork = {
+  id: string;
+  name: string;
+  assetId: string;
+  source: { filename: string; url: string; width: number; height: number; sha256: string };
+  rendered: { filename: string; url: string };
+  frame: SpriteFrame;
+  warnings: string[];
+};
+export type SpriteAssignment = { expressionId: string; view: SpriteView; artworkId: string };
+export type SpriteManagerState = {
+  version: 1;
+  artwork: SpriteArtwork[];
+  expressions: SpriteExpression[];
+  assignments: SpriteAssignment[];
+  defaultExpressionId?: string;
+  framing: { mode: "full" | "half"; cropPercent: number };
+};
+export type SpriteLibraryItem = { filename: string; url: string };
+export const emptySpriteManager = (): SpriteManagerState => ({
+  version: 1,
+  artwork: [],
+  expressions: [],
+  assignments: [],
+  framing: { mode: "full", cropPercent: 58 },
+});
+export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
+  if (!value || typeof value !== "object") return null;
+  const state = value as SpriteManagerState;
+  if (
+    state.version !== 1 ||
+    !Array.isArray(state.artwork) ||
+    !Array.isArray(state.expressions) ||
+    !Array.isArray(state.assignments)
+  )
+    return null;
+  const validId = (id: unknown) => typeof id === "string" && /^[ae]-[a-f0-9-]{36}$/i.test(id);
+  const seenArtwork = new Set<string>();
+  const artwork = state.artwork
+    .filter((art) => {
+      if (
+        !art ||
+        !validId(art.id) ||
+        seenArtwork.has(art.id) ||
+        typeof art.name !== "string" ||
+        !/^villages-[a-f0-9-]{36}$/i.test(art.assetId) ||
+        !art.source ||
+        !art.rendered ||
+        !art.frame
+      )
+        return false;
+      if (
+        !/^[a-z0-9_-]{1,40}\.(png|jpeg|jpg|webp)$/.test(art.source.filename) ||
+        !/^[a-z0-9_-]{1,40}\.png$/.test(art.rendered.filename) ||
+        art.source.url !== `/api/sprites/${art.assetId}/file/${art.source.filename}` ||
+        art.rendered.url !== `/api/sprites/${art.assetId}/file/${art.rendered.filename}` ||
+        !/^[a-f0-9]{64}$/.test(art.source.sha256)
+      )
+        return false;
+      if (
+        ![art.source.width, art.source.height].every((n) => Number.isInteger(n) && n > 0 && n <= 8192) ||
+        art.source.width * art.source.height > 16_000_000
+      )
+        return false;
+      const f = art.frame;
+      if (
+        ![f.x, f.y, f.width, f.height].every(Number.isInteger) ||
+        f.x < 0 ||
+        f.y < 0 ||
+        f.width < 1 ||
+        f.height < 1 ||
+        f.x + f.width > art.source.width ||
+        f.y + f.height > art.source.height ||
+        ![f.scale, f.offsetX, f.offsetY].every(Number.isFinite)
+      )
+        return false;
+      seenArtwork.add(art.id);
+      return true;
+    })
+    .map((art) => ({
+      ...structuredClone(art),
+      warnings: Array.isArray(art.warnings) ? art.warnings.filter((warning) => typeof warning === "string") : [],
+    }));
+  const seenExpressions = new Set<string>();
+  const expressions = state.expressions
+    .filter((entry) => {
+      if (
+        !entry ||
+        !validId(entry.id) ||
+        seenExpressions.has(entry.id) ||
+        typeof entry.name !== "string" ||
+        !entry.name.trim() ||
+        entry.name.length > 100 ||
+        typeof entry.useWhen !== "string" ||
+        entry.useWhen.length > 1000
+      )
+        return false;
+      seenExpressions.add(entry.id);
+      return true;
+    })
+    .map((entry) => ({ id: entry.id, name: entry.name, useWhen: entry.useWhen }));
+  const seenAssignments = new Set<string>();
+  const assignments = state.assignments
+    .filter((entry) => {
+      if (
+        !entry ||
+        !seenArtwork.has(entry.artworkId) ||
+        !seenExpressions.has(entry.expressionId) ||
+        !["front", "side"].includes(entry.view) ||
+        seenAssignments.has(entry.expressionId + ":" + entry.view)
+      )
+        return false;
+      seenAssignments.add(entry.expressionId + ":" + entry.view);
+      return true;
+    })
+    .map((entry) => ({ expressionId: entry.expressionId, view: entry.view, artworkId: entry.artworkId }));
+  const framing = state.framing;
+  return {
+    version: 1,
+    artwork,
+    expressions,
+    assignments,
+    defaultExpressionId: assignments.some((entry) => entry.expressionId === state.defaultExpressionId)
+      ? state.defaultExpressionId
+      : assignments[0]?.expressionId,
+    framing: {
+      mode: framing?.mode === "half" ? "half" : "full",
+      cropPercent: Number.isFinite(framing?.cropPercent) ? Math.min(85, Math.max(40, framing.cropPercent)) : 58,
+    },
+  };
+}
+export function managerResidentSprite(state: SpriteManagerState | null | undefined) {
+  if (!state) return null;
+  const expressions = state.assignments.flatMap((assignment) => {
+    const art = state.artwork.find((item) => item.id === assignment.artworkId);
+    const expression = state.expressions.find((item) => item.id === assignment.expressionId);
+    if (!art || !expression) return [];
+    return [
+      {
+        view: assignment.view,
+        label: expression.id,
+        expressionId: expression.id,
+        name: expression.name,
+        useWhen: expression.useWhen,
+        filename: art.rendered.filename,
+        assetId: art.assetId,
+      },
+    ];
+  });
+  return expressions.length
+    ? {
+        assetId: expressions[0]!.assetId,
+        expressions,
+        defaultExpressionId: state.defaultExpressionId,
+        framing: state.framing,
+      }
+    : null;
+}

@@ -870,10 +870,10 @@ const release = configureVillagesRuntime({
                       {
                         characterId: "bob",
                         position: "right",
-                        expression: "e-scene-test",
+                        expression: "e-123e4567-e89b-42d3-a456-426614174000",
                         look: { target: "direction", direction: "left" },
                       },
-                      { characterId: "tina", position: "center", expression: "e-scene-test" },
+                      { characterId: "tina", position: "center", expression: "e-123e4567-e89b-42d3-a456-426614174000" },
                     ],
                   },
                   {
@@ -1638,20 +1638,38 @@ async function main() {
     );
     await saveVillageWriting({ person: "first" });
     await mutateVillageState((state) => {
-      state.villagers.find((person) => person.characterId === "bob")!.sprite = {
-        assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
-        expressions: [
+      state.villagers.find((person) => person.characterId === "bob")!.spriteManager = {
+        version: 1,
+        artwork: [
           {
-            view: "front",
-            label: "quiet",
-            filename: "quiet.png",
-            expressionId: "e-scene-test",
-            name: "Quiet",
-            useWhen: "Quietly reacting.",
+            id: "a-123e4567-e89b-42d3-a456-426614174000",
+            assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
+            name: "Quiet.png",
+            source: {
+              filename: "original.png",
+              url: "/api/sprites/villages-123e4567-e89b-42d3-a456-426614174000/file/original.png",
+              width: 1024,
+              height: 1536,
+              sha256: "a".repeat(64),
+            },
+            rendered: {
+              filename: "quiet.png",
+              url: "/api/sprites/villages-123e4567-e89b-42d3-a456-426614174000/file/quiet.png",
+            },
+            frame: { x: 0, y: 0, width: 1024, height: 1536, scale: 1, offsetX: 0, offsetY: 0 },
+            warnings: [],
           },
         ],
-        defaultExpressionId: "e-scene-test",
-        framing: { mode: "full", cropPercent: 0 },
+        expressions: [{ id: "e-123e4567-e89b-42d3-a456-426614174000", name: "Quiet", useWhen: "Quietly reacting." }],
+        assignments: [
+          {
+            expressionId: "e-123e4567-e89b-42d3-a456-426614174000",
+            view: "front",
+            artworkId: "a-123e4567-e89b-42d3-a456-426614174000",
+          },
+        ],
+        defaultExpressionId: "e-123e4567-e89b-42d3-a456-426614174000",
+        framing: { mode: "full", cropPercent: 58 },
       };
     });
     const lively = await sendVenueTurn({
@@ -1674,7 +1692,11 @@ async function main() {
     assert.equal(aside.speakerId, "bob", "the aside keeps its own speaker");
     assert.equal(lively.session.stagingVersion, 1);
     const stagedLine = lively.session.lines.find((line) => line.content === "The room quiets.")!;
-    assert.equal(stagedLine.staging?.[0].expression, "e-scene-test", "a filled silent listener expression is accepted");
+    assert.equal(
+      stagedLine.staging?.[0].expression,
+      "e-123e4567-e89b-42d3-a456-426614174000",
+      "a filled silent listener expression is accepted",
+    );
     assert.deepEqual(
       stagedLine.staging?.[1],
       { characterId: "tina", position: "center" },
@@ -1713,7 +1735,7 @@ async function main() {
     assert.equal(answered.session.lines.at(-1)?.content, "Tina glanced over.");
     assert.match(
       lastVenueSystem,
-      /"characterId":"bob","position":"right","expression":"e-scene-test"/u,
+      /"characterId":"bob","position":"right","expression":"e-123e4567-e89b-42d3-a456-426614174000"/u,
       "the next reply receives saved visual continuity",
     );
     const beforeQuietAsk = calls;

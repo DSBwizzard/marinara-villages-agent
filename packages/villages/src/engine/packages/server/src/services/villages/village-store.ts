@@ -1,3 +1,4 @@
+import { coerceSpriteManager, managerResidentSprite } from "./sprite-manager-model.js";
 import { venueResidentIds } from "./venue-model.js";
 import { assertVenueOwnership } from "./venue-coordinator.js";
 import { coerceWishLifecycle, coerceWishActivities } from "./wish-coercion.js";
@@ -281,7 +282,8 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     agendaGeneration: asString(raw.agendaGeneration),
     translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
-    sprite: coerceResidentSprite(raw.sprite),
+    spriteManager: coerceSpriteManager(raw.spriteManager),
+    sprite: managerResidentSprite(coerceSpriteManager(raw.spriteManager)),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
     // Absent reads as null rather than as an empty agenda, and the difference
     // matters: null means "not written for yet", which is what makes the
@@ -299,71 +301,6 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // words until the Engine hands it a week to key on.
     remap: coerceRemap(raw.remap),
     remapFailure: coerceRemapFailure(raw.remapFailure),
-  };
-}
-
-function coerceResidentSprite(value: unknown): VillageVillager["sprite"] {
-  const raw = asRecord(value);
-  const assetId = asString(raw.assetId);
-  if (!/^villages-[a-f0-9-]{36}$/i.test(assetId)) return null;
-  const sideAssetId =
-    /^villages-[a-f0-9-]{36}$/i.test(asString(raw.sideAssetId)) && asString(raw.sideAssetId) !== assetId
-      ? asString(raw.sideAssetId)
-      : undefined;
-  const seen = new Set<string>();
-  const expressions = (Array.isArray(raw.expressions) ? raw.expressions : [])
-    .map((value) => {
-      const entry = asRecord(value);
-      const view = entry.view === "side" ? "side" : "front";
-      const label = asString(entry.label);
-      const filename = asString(entry.filename);
-      if (
-        !/^[a-z0-9_-]{1,40}$/.test(label) ||
-        !/^[a-z0-9_-]{1,40}\.(?:png|jpg|jpeg|webp|avif)$/.test(filename) ||
-        seen.has(`${view}:${label}`)
-      )
-        return null;
-      seen.add(`${view}:${label}`);
-      const revision =
-        typeof entry.revision === "number" && Number.isSafeInteger(entry.revision) && entry.revision > 0
-          ? entry.revision
-          : undefined;
-      return {
-        view,
-        label,
-        filename,
-        ...(revision ? { revision } : {}),
-        ...(/^villages-[a-f0-9-]{36}$/i.test(asString(entry.assetId)) ? { assetId: asString(entry.assetId) } : {}),
-        ...(/^[a-z0-9_-]{1,80}$/.test(asString(entry.expressionId))
-          ? { expressionId: asString(entry.expressionId) }
-          : {}),
-        ...(/^[a-z0-9_-]{1,100}$/.test(asString(entry.cutoutId)) ? { cutoutId: asString(entry.cutoutId) } : {}),
-        name: asString(entry.name).slice(0, 100),
-        pose: asString(entry.pose).slice(0, 500),
-        useWhen: asString(entry.useWhen).slice(0, 1000),
-        aliases: (Array.isArray(entry.aliases) ? entry.aliases : []).filter(
-          (item): item is string => typeof item === "string" && /^[a-z0-9_-]{1,40}$/.test(item),
-        ),
-      };
-    })
-    .filter((entry) => entry !== null)
-    .filter((entry) => entry.view === "front" || entry.assetId !== undefined || sideAssetId !== undefined);
-  if (expressions.length === 0) return null;
-  const framing = asRecord(raw.framing);
-  const cropPercent =
-    typeof framing.cropPercent === "number" && Number.isFinite(framing.cropPercent)
-      ? Math.min(85, Math.max(40, framing.cropPercent))
-      : 58;
-  return {
-    assetId,
-    ...(sideAssetId ? { sideAssetId } : {}),
-    expressions,
-    ...(typeof raw.defaultExpressionId === "string" &&
-    raw.defaultExpressionId &&
-    expressions.some((entry) => entry.expressionId === raw.defaultExpressionId)
-      ? { defaultExpressionId: asString(raw.defaultExpressionId) }
-      : {}),
-    framing: { mode: framing.mode === "half" ? "half" : "full", cropPercent },
   };
 }
 
@@ -392,19 +329,6 @@ function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot
     backstory: asString(raw.backstory),
     appearance: asString(raw.appearance),
     exampleDialogue: asString(raw.exampleDialogue),
-    ...(/^\/api\/sprites\/villages-[a-f0-9-]{36}\/file\/[a-z0-9_-]+\.(png|jpg|jpeg|webp)$/i.test(
-      asString(asRecord(raw.spriteReference).url),
-    )
-      ? {
-          spriteReference: {
-            url: asString(asRecord(raw.spriteReference).url),
-            capturedAt: asString(asRecord(raw.spriteReference).capturedAt),
-            origin: (["snapshot", "current-card", "upload"].includes(asString(asRecord(raw.spriteReference).origin))
-              ? asString(asRecord(raw.spriteReference).origin)
-              : "snapshot") as "snapshot" | "current-card" | "upload",
-          },
-        }
-      : {}),
     ...(typeof raw.nameColor === "string" ? { nameColor: asTrimmedString(raw.nameColor) } : {}),
     ...(typeof raw.dialogueColor === "string" ? { dialogueColor: asTrimmedString(raw.dialogueColor) } : {}),
     capturedAt,
