@@ -11130,7 +11130,7 @@ function RoomPanel({
         ) : null}
         {canDraft ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {contactDoors.length > 0 && mode !== "conclude" ? (
+            {!mobile && contactDoors.length > 0 && mode !== "conclude" ? (
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
@@ -11258,6 +11258,19 @@ function RoomPanel({
                     </span>
                   ) : null}
                 </span>
+                {mobile && contactDoors.length > 0 && mode !== "conclude" ? (
+                  <button
+                    type="button"
+                    className={`${ELEMENT_TAG}-room-mode-toggle`}
+                    disabled={busy}
+                    aria-pressed={mode === "contact"}
+                    aria-label={mode === "contact" ? "Close doorway controls" : "Knock / Call"}
+                    title={mode === "contact" ? "Close doorway controls" : "Knock / Call"}
+                    onClick={() => onMode(mode === "contact" ? "chat" : "contact")}
+                  >
+                    <SceneControlIcon name="knock" />
+                  </button>
+                ) : null}
                 <textarea
                   ref={composerRef}
                   data-villages-scene-composer

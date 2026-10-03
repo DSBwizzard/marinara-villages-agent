@@ -318,11 +318,15 @@ try {
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "End Scene now" }).click();
     await expect(composer).toHaveCount(0);
-    const ended = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
-    assert.ok(
-      Math.abs(ended.y + ended.height - height) <= (mobile ? 1 : 13),
-      "ended dialogue reaches its normal bottom position",
-    );
+    await expect
+      .poll(
+        async () => {
+          const ended = await page.locator(`.${tag}-chat-vn-card`).boundingBox();
+          return Math.abs(ended.y + ended.height - height);
+        },
+        { message: `ended dialogue reaches its normal bottom position (${count}, ${mode}, ${width}x${height})` },
+      )
+      .toBeLessThanOrEqual(mobile ? 1 : 13);
     await screenshot("ended");
     assert.deepEqual(errors, []);
     await page.close();
