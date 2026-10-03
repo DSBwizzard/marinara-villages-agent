@@ -152,7 +152,8 @@ async function main() {
     }
     const failed = await operation(() => interpretWishClaim(context, "scene", "physical-claim"));
     assert.equal(failed.verdict.fulfilled, false, "Even a positive native answer without a transfer is rejected");
-    assert.equal(failed.interpretationStatus, "unresolved");
+    assert.equal(interpretations, 0, "Missing physical proof avoids judgment altogether");
+    assert.equal(failed.interpretationStatus, undefined, "Absent proof is a settled negative, not a retryable failure");
     context.receipts = [
       {
         id: "transfer",
@@ -295,7 +296,7 @@ async function main() {
       wishFingerprint(context.wishes[0]),
       wishFingerprint({ ...context.wishes[0], wish: "A changed wish" }),
     );
-    assert.ok(interpretations >= 6);
+    assert.equal(interpretations, 5);
     console.log(
       "Villages wish interpretation: native fallback, cached conditions, actual interaction, transfer evidence, wrong positives and storage ok",
     );

@@ -202,6 +202,8 @@ function answered(completion: CapabilityLanguageModelCompletion): boolean {
  * to be loadable first.
  */
 export type VillageCompletionOptions = {
+  /** Stable background request identity; optional for legacy sequential generators. */
+  checkpointId?: string;
   temperature: number | null;
   reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
   verbosity?: "low" | "medium" | "high" | null;
