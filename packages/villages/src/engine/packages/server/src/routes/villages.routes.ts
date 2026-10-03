@@ -97,7 +97,11 @@ import {
 } from "../services/villages/location-image.js";
 import { generateVillageTownMap } from "../services/villages/town-map-image.js";
 import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
-import { generateFoundingVenueImage, uploadFoundingVenueImage } from "../services/villages/founding-drafts.js";
+import {
+  generateFoundingVenueImage,
+  uploadFoundingVenueImage,
+  suggestStartingVenues,
+} from "../services/villages/founding-drafts.js";
 import { villagesLogger, villagesDebugAgentsEnabled } from "../services/villages/package-runtime.js";
 import { MAX_SUBMISSION_ID_LENGTH, MAX_TOWN_MAP_IMAGE_LENGTH } from "../services/villages/prompt-preset.js";
 import {
@@ -1290,6 +1294,14 @@ export async function villagesRoutes(engine: FastifyInstance) {
       });
     } catch (error) {
       return fail(reply, error, "setting the village up");
+    }
+  });
+
+  app.post<{ Body: unknown }>("/setup/venues/suggest", async (request, reply) => {
+    try {
+      return await suggestStartingVenues(request.body);
+    } catch (error) {
+      return fail(reply, error, "suggesting starting spaces");
     }
   });
 

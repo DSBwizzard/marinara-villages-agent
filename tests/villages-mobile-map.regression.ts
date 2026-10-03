@@ -90,7 +90,6 @@ const source = readFileSync(
   "utf8",
 );
 assert.ok(source.includes("touch-action: none;"));
-assert.ok(source.includes("mobile={mobile && setupStep >= 2}"));
 assert.ok(source.includes("mobile={mobile}"));
 assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo`}"));
 assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo-card`}"));

@@ -51,7 +51,7 @@ export function venueHasCommon(venue: VillageVenue): boolean {
 export function venueHasPrivate(venue: VillageVenue): boolean {
   return venue.layout === "private" || venue.layout === "both" || (!venue.layout && !!venue.privateSpaces?.length);
 }
-type AreaDraftCache = {
+export type AreaDraftCache = {
   current: {
     common?: NonNullable<VillageVenue["spaces"]>[number];
     personal?: NonNullable<VillageVenue["privateSpaces"]>[number];
@@ -582,23 +582,7 @@ export function PrivateSpaceFields({
     </section>
   );
 }
-export function FoundingVenueEditor({
-  existing = false,
-  venue,
-  tag,
-  people,
-  assignedIds,
-  busy,
-  problem,
-  onPatch,
-  onDone,
-  onCancel,
-  onMove,
-  onGenerate,
-  usagePreview,
-  onUpload,
-  onRemove,
-}: {
+type FoundingVenueEditorProps = {
   venue: VillageVenue;
   existing?: boolean;
   tag: string;
@@ -607,6 +591,7 @@ export function FoundingVenueEditor({
   busy: boolean;
   problem: string;
   onPatch(venue: VillageVenue): void;
+  zoneDrafts?: AreaDraftCache;
   onDone(): void;
   onCancel(): void;
   onMove(): void;
@@ -614,50 +599,50 @@ export function FoundingVenueEditor({
   usagePreview?: ReactNode;
   onUpload(area: "exterior" | "interior" | "private", file: File): void;
   onRemove(): void;
-}) {
-  const residence = venue.classes?.includes("residence") ?? false;
-  const needsResident = residence && !venue.occupancy.playerHome;
-  const steps = [
-    "Details",
-    "Exterior",
-    ...(venueHasCommon(venue) ? ["Common Space"] : []),
-    ...(venueHasPrivate(venue) ? ["Private Space"] : []),
-  ];
-  const [stage, setStage] = useState("Details"),
-    [error, setError] = useState("");
+};
+
+export function FoundingVenueEditor({
+  venue,
+  existing = false,
+  tag,
+  people,
+  assignedIds,
+  busy,
+  problem,
+  onPatch,
+  zoneDrafts,
+  onDone,
+  onCancel,
+  onMove,
+  onGenerate,
+  usagePreview,
+  onUpload,
+  onRemove,
+}: FoundingVenueEditorProps) {
   const dialog = useRef<HTMLDivElement>(null);
-  const [focusRequest, requestFocus] = useState(0);
-  const step = steps.includes(stage) ? stage : "Details";
-  const modal = window.innerWidth <= 704;
-  const space = venue.spaces?.[0];
-  const personal = venue.privateSpaces?.find((room) => room.ownerId === "player") ?? personalSpaceDraft();
-  const areaDrafts = useRef<AreaDraftCache["current"]>({});
-  if (venue.spaces?.[0]) areaDrafts.current.common = venue.spaces[0];
-  if (venue.privateSpaces?.[0]) areaDrafts.current.personal = venue.privateSpaces[0];
+  const [validation, setValidation] = useState("");
+  const residence = venue.classes?.includes("residence") ?? false;
+  const owner = venue.occupancy.playerHome ? "player" : (venue.occupancy.residentCharacterId ?? "");
+  const role = residence ? "residence" : "gathering";
   useLayoutEffect(() => {
-    dialog.current
-      ?.querySelector<HTMLElement>(
-        ".villages-founding-editor-body input, .villages-founding-editor-body textarea, .villages-founding-editor-body select",
-      )
-      ?.focus();
-  }, [focusRequest]);
-  useEffect(() => setError(""), [venue]);
+    const previous = document.activeElement;
+    dialog.current?.querySelector<HTMLInputElement>("input")?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+    };
+  }, []);
   const imageFields = (area: "exterior" | "interior" | "private", image: VillageVenueImage | null | undefined) => (
-    <section>
-      <p>{area === "interior" ? "Common Space" : area === "private" ? "Private Space" : "Exterior"} image · optional</p>
-      {image ? (
-        <img className={tag + "-setup-image-preview"} src={image.url} alt={area + " of " + venue.name} />
-      ) : (
-        <p>No image yet.</p>
-      )}
-      <div className={tag + "-row"}>
+    <div>
+      {image ? <img src={image.url} alt={`${area} of ${venue.name}`} /> : <p>No image added · optional</p>}
+      <div className="villages-forging-actions">
         <button type="button" disabled={busy} onClick={() => onGenerate(area)}>
-          {image ? "Regenerate" : "Generate"} {area} image
+          {image ? "Generate again" : "Generate image"}
         </button>
         {usagePreview}
         <label>
-          Upload {area} image
+          Upload image
           <input
+            aria-label={`Upload ${area} image`}
             type="file"
             accept="image/*"
             disabled={busy}
@@ -676,16 +661,16 @@ export function FoundingVenueEditor({
               onPatch(
                 area === "exterior"
                   ? { ...venue, presentation: { ...venue.presentation, image: null } }
-                  : area === "private"
+                  : area === "interior"
                     ? {
                         ...venue,
-                        privateSpaces: (venue.privateSpaces ?? [personal]).map((room) =>
-                          room.ownerId === "player" ? { ...room, image: null } : room,
-                        ),
+                        spaces: venue.spaces?.map((room, index) => (index === 0 ? { ...room, image: null } : room)),
                       }
                     : {
                         ...venue,
-                        spaces: venue.spaces?.map((room, index) => (index === 0 ? { ...room, image: null } : room)),
+                        privateSpaces: venue.privateSpaces?.map((room) =>
+                          room.ownerId === "player" ? { ...room, image: null } : room,
+                        ),
                       },
               )
             }
@@ -694,79 +679,43 @@ export function FoundingVenueEditor({
           </button>
         ) : null}
       </div>
-    </section>
+    </div>
   );
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    const resize = () => {
-      const node = dialog.current;
-      if (!node) return;
-      if (window.innerWidth > 704) {
-        const footer = node.closest("." + tag + "-setup-root")?.querySelector("." + tag + "-setup-footer");
-        if (footer)
-          node.style.maxHeight =
-            Math.max(200, footer.getBoundingClientRect().top - node.getBoundingClientRect().top - 6) + "px";
-        return;
-      }
-      if (!viewport) return;
-      node.style.height = viewport.height + "px";
-      node.parentElement!.style.top = viewport.offsetTop + "px";
-      node.parentElement!.style.bottom = "auto";
-    };
-    resize();
-    const root = dialog.current?.closest("." + tag + "-setup-root");
-    const observer = new ResizeObserver(resize);
-    if (root) observer.observe(root);
-    viewport?.addEventListener("resize", resize);
-    viewport?.addEventListener("scroll", resize);
-    return () => {
-      observer.disconnect();
-      viewport?.removeEventListener("resize", resize);
-      viewport?.removeEventListener("scroll", resize);
-    };
-  }, [tag]);
-  const next = () => {
-    const target =
-      needsResident && !venue.occupancy.residentCharacterId
-        ? { tab: "Details", problem: "Choose a villager." }
-        : !venue.name.trim() || !venue.form?.trim()
-          ? { tab: "Details", problem: "Add a name and describe the form." }
-          : !existing && !venue.layout
-            ? { tab: "Details", problem: "Choose a venue layout." }
-            : !venue.description.trim()
-              ? { tab: "Exterior", problem: "Describe the exterior." }
-              : venueHasCommon(venue) && !space?.description.trim()
-                ? { tab: "Common Space", problem: "Describe the Common Space." }
-                : venue.privateSpaces?.some(
-                      (room) =>
-                        !room.name?.trim() ||
-                        !room.purpose?.trim() ||
-                        (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
-                    )
-                  ? { tab: "Private Space", problem: "Give each Private Space a name, purpose, and controller." }
-                  : null;
-    setError(target?.problem ?? "");
-    if (target) {
-      setStage(target.tab);
-      requestFocus((request) => request + 1);
-      return;
-    }
-    onDone();
+  const complete = () => {
+    const error =
+      !venue.name.trim() || !venue.form?.trim()
+        ? "Add a Venue name and form."
+        : !venue.description.trim()
+          ? "Describe the Exterior entrance and approach."
+          : venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()
+            ? "Describe the Common Space."
+            : !venue.occupancy.playerHome && residence && !owner
+              ? "Assign a resident."
+              : venue.privateSpaces?.some(
+                    (room) =>
+                      !room.name?.trim() ||
+                      !room.purpose?.trim() ||
+                      (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
+                  )
+                ? "Give each Private Space a name, purpose, and controller."
+                : "";
+    setValidation(error);
+    if (!error) onDone();
   };
   return (
     <div className="villages-founding-backdrop">
       <div
         ref={dialog}
-        className="villages-founding-dialog"
+        className="villages-founding-dialog villages-forging-editor"
         role="dialog"
-        aria-modal={modal || undefined}
-        aria-label={"Define " + venue.name}
+        aria-modal="true"
+        aria-label={`Edit ${venue.name}`}
         onKeyDown={(event) => {
           if (event.key === "Escape" && !busy) onCancel();
-          if (event.key === "Tab" && modal) {
+          if (event.key === "Tab") {
             const controls = Array.from(
               dialog.current?.querySelectorAll<HTMLElement>(
-                "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)",
+                "button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary",
               ) ?? [],
             );
             if (event.shiftKey && event.target === controls[0]) {
@@ -780,255 +729,282 @@ export function FoundingVenueEditor({
         }}
       >
         <header>
-          <div className="villages-founding-editor-heading">
-            <h3>{venue.name || "New venue"}</h3>
-            <button type="button" aria-label="Close venue editor" disabled={busy} onClick={onCancel}>
-              ×
-            </button>
-          </div>
-          <p>{step === "Details" ? "Venue details" : step}</p>
+          <h3>Edit {venue.name}</h3>
+          <p>Location stays where you placed its pin. Artwork is optional.</p>
         </header>
-        <nav className="villages-founding-tabs" role="tablist" aria-label="Venue editor pages">
-          {steps.map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              role="tab"
-              id={"venue-tab:" + tab}
-              aria-selected={step === tab}
-              aria-controls="venue-editor-page"
-              tabIndex={step === tab ? 0 : -1}
-              disabled={busy}
-              onClick={() => {
-                setStage(tab);
-                setError("");
-              }}
-              onKeyDown={(event) => {
-                const index = steps.indexOf(tab);
-                const nextIndex =
-                  event.key === "ArrowRight"
-                    ? (index + 1) % steps.length
-                    : event.key === "ArrowLeft"
-                      ? (index + steps.length - 1) % steps.length
-                      : event.key === "Home"
-                        ? 0
-                        : event.key === "End"
-                          ? steps.length - 1
-                          : -1;
-                if (nextIndex >= 0) {
-                  event.preventDefault();
-                  setStage(steps[nextIndex]);
-                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[nextIndex]?.focus();
-                }
-              }}
-            >
-              {tab}
-            </button>
-          ))}
-        </nav>
-        <div
-          className="villages-founding-editor-body"
-          role="tabpanel"
-          id="venue-editor-page"
-          aria-labelledby={"venue-tab:" + step}
-        >
-          {step === "Details" && needsResident ? (
+        <div className="villages-founding-editor-body">
+          <div className="villages-forging-editor-top">
             <label>
-              Assigned villager
-              <select
-                aria-label="Assigned villager"
-                value={venue.occupancy.residentCharacterId ?? ""}
-                onChange={(event) =>
-                  onPatch({
-                    ...venue,
-                    residentIds: event.target.value ? [event.target.value] : [],
-                    privateSpaces: venue.privateSpaces?.map((room) =>
-                      room.venueClass === "residence" ? { ...room, ownerId: event.target.value } : room,
-                    ),
-                    occupancy: { ...venue.occupancy, residentCharacterId: event.target.value || null },
-                  })
-                }
-              >
-                <option value="">Choose a villager</option>
-                {people.map((person) => (
-                  <option key={person.id} value={person.id} disabled={assignedIds.includes(person.id)}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
+              Venue name
+              <input
+                aria-label="Venue name"
+                maxLength={100}
+                value={venue.name}
+                disabled={busy}
+                onChange={(event) => onPatch({ ...venue, name: event.target.value })}
+              />
             </label>
-          ) : null}
-          {step === "Details" ? (
-            <>
+            <label>
+              Form
+              <input
+                aria-label="Venue form"
+                maxLength={240}
+                value={venue.form ?? ""}
+                disabled={busy}
+                placeholder="A room, cottage, tent, bunk, or shared hall…"
+                onChange={(event) => onPatch({ ...venue, form: event.target.value })}
+              />
+            </label>
+            {residence && !venue.occupancy.playerHome ? (
               <label>
-                Name
-                <input
-                  aria-label="Venue name"
-                  maxLength={100}
-                  value={venue.name}
-                  onChange={(event) => onPatch({ ...venue, name: event.target.value })}
-                />
-              </label>
-              <label>
-                Form
-                <textarea
-                  aria-label="Venue form"
-                  maxLength={240}
-                  value={venue.form ?? ""}
-                  placeholder={
-                    residence
-                      ? "A stone house, a tent, or a converted vehicle…"
-                      : "A park, communal fire pit, or gathering hall…"
-                  }
-                  onChange={(event) => onPatch({ ...venue, form: event.target.value })}
-                />
-              </label>
-            </>
-          ) : null}
-          {step === "Details" && !existing ? (
-            <VenueLayoutFields compact venue={venue} drafts={areaDrafts} onChange={onPatch} />
-          ) : null}
-          {step === "Exterior" || step === "Common Space" ? (
-            <>
-              {step === "Common Space" ? <AreaClassField venue={venue} onChange={onPatch} /> : null}
-              <label>
-                {step} description
-                <textarea
-                  aria-label={step + " description"}
-                  maxLength={1000}
-                  value={step === "Exterior" ? venue.description : (space?.description ?? "")}
+                Assigned villager
+                <select
+                  aria-label="Assigned villager"
+                  disabled={busy}
+                  value={owner}
                   onChange={(event) =>
-                    onPatch(
-                      step === "Exterior"
-                        ? { ...venue, description: event.target.value }
-                        : {
-                            ...venue,
-                            spaces: venue.spaces?.map((room, index) =>
-                              index === 0 ? { ...room, description: event.target.value } : room,
-                            ),
-                          },
-                    )
+                    onPatch({
+                      ...venue,
+                      residentIds: [event.target.value],
+                      occupancy: { ...venue.occupancy, residentCharacterId: event.target.value },
+                      privateSpaces: venue.privateSpaces?.map((room) => ({ ...room, ownerId: event.target.value })),
+                    })
                   }
+                >
+                  <option value="">Choose a villager</option>
+                  {people.map((person) => (
+                    <option key={person.id} value={person.id} disabled={assignedIds.includes(person.id)}>
+                      {person.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <p>{venue.occupancy.playerHome ? "Assigned to you" : "Community Gathering Place"}</p>
+            )}
+          </div>
+          {!existing ? <VenueLayoutFields compact venue={venue} drafts={zoneDrafts} onChange={onPatch} /> : null}
+          <div className="villages-forging-zone-grid">
+            <section>
+              <h4>Exterior · required</h4>
+              <p>The entrance and approach, including corridors for indoor Venues.</p>
+              <label>
+                Exterior description
+                <textarea
+                  aria-label="Exterior description"
+                  maxLength={1000}
+                  value={venue.description}
+                  disabled={busy}
+                  onChange={(event) => onPatch({ ...venue, description: event.target.value })}
                 />
               </label>
-              <fieldset>
-                <legend>Image context</legend>
-                {needsResident ? (
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={venue.imageContext?.useAssignedVillagerContext ?? true}
-                      onChange={(event) =>
-                        onPatch({
-                          ...venue,
-                          imageContext: {
-                            useVisualLore: venue.imageContext?.useVisualLore ?? true,
-                            useAssignedVillagerContext: event.target.checked,
-                          },
-                        })
-                      }
-                    />
-                    Use assigned villager’s personality
-                  </label>
-                ) : null}
+              {imageFields("exterior", venue.presentation.image)}
+            </section>
+            {venueHasCommon(venue) ? (
+              <section>
+                <h4>Common Space</h4>
                 <label>
+                  Common Space name
                   <input
-                    type="checkbox"
-                    checked={venue.imageContext?.useVisualLore ?? true}
+                    aria-label="Common Space name"
+                    value={venue.spaces?.[0]?.name ?? "Common Space"}
+                    maxLength={100}
+                    disabled={busy}
                     onChange={(event) =>
                       onPatch({
                         ...venue,
-                        imageContext: {
-                          useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? true,
-                          useVisualLore: event.target.checked,
-                        },
+                        spaces: venue.spaces?.map((room, index) =>
+                          index === 0 ? { ...room, name: event.target.value } : room,
+                        ),
                       })
                     }
                   />
-                  Use Village lorebooks
                 </label>
-              </fieldset>
-              <p>Uses matching entries from selected Village Lorebooks.</p>
-              {imageFields(
-                step === "Exterior" ? "exterior" : "interior",
-                step === "Exterior" ? venue.presentation.image : space?.image,
-              )}
-            </>
-          ) : null}
-          {step === "Private Space" ? (
-            <>
-              <AreaClassField venue={venue} privateArea onChange={onPatch} />
-              {needsResident ? (
-                <p>
-                  This villager’s personal space will be prepared from their personality, relevant lore, and this home’s
-                  form. Its details stay hidden until you’re invited.
-                </p>
-              ) : null}
-              {venue.occupancy.playerHome && venue.privateSpaces?.[0]?.venueClass === "residence" ? (
-                <>
-                  <label>
-                    Your personal-space description
-                    <textarea
-                      aria-label="Your personal-space description"
-                      maxLength={1000}
-                      value={personal.description}
-                      onChange={(event) =>
-                        onPatch({
-                          ...venue,
-                          privateSpaces: [
-                            ...(venue.privateSpaces ?? []).filter((room) => room.ownerId !== "player"),
-                            { ...personal, description: event.target.value },
-                          ],
-                        })
-                      }
-                    />
-                  </label>
-                  {imageFields("private", personal.image)}
-                </>
-              ) : null}
-              <PrivateSpaceFields
-                rooms={venue.privateSpaces ?? []}
-                allowAdd={false}
-                onChange={(privateSpaces) =>
+                <label>
+                  Common Space description
+                  <textarea
+                    aria-label="Common Space description"
+                    maxLength={1000}
+                    value={venue.spaces?.[0]?.description ?? ""}
+                    disabled={busy}
+                    onChange={(event) =>
+                      onPatch({
+                        ...venue,
+                        spaces: venue.spaces?.map((room, index) =>
+                          index === 0 ? { ...room, description: event.target.value } : room,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                {imageFields("interior", venue.spaces?.[0]?.image)}
+              </section>
+            ) : null}
+            {venueHasPrivate(venue) ? (
+              <section>
+                <h4>Private Space</h4>
+                {venue.privateSpaces?.map((room) => (
+                  <fieldset key={room.id}>
+                    <label>
+                      Private Space name
+                      <input
+                        aria-label="Private Space name"
+                        value={room.name}
+                        maxLength={100}
+                        disabled={busy}
+                        onChange={(event) =>
+                          onPatch({
+                            ...venue,
+                            privateSpaces: venue.privateSpaces?.map((item) =>
+                              item.id === room.id ? { ...item, name: event.target.value } : item,
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                    <label>
+                      Purpose
+                      <input
+                        aria-label="Private Space purpose"
+                        value={room.purpose ?? ""}
+                        maxLength={240}
+                        disabled={busy}
+                        onChange={(event) =>
+                          onPatch({
+                            ...venue,
+                            privateSpaces: venue.privateSpaces?.map((item) =>
+                              item.id === room.id ? { ...item, purpose: event.target.value } : item,
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                    <p>
+                      Controller:{" "}
+                      {room.ownerId === "player" || room.controllerIds?.includes("player")
+                        ? "You"
+                        : (people.find((person) => person.id === room.ownerId)?.name ?? "Selected controllers")}
+                    </p>
+                    {role === "gathering" ? (
+                      <fieldset>
+                        <legend>Room controllers</legend>
+                        {[{ id: "player", name: "You" }, ...people].map((person) => (
+                          <label key={person.id}>
+                            <input
+                              type="checkbox"
+                              disabled={busy}
+                              checked={room.controllerIds?.includes(person.id) ?? false}
+                              onChange={(event) =>
+                                onPatch({
+                                  ...venue,
+                                  privateSpaces: venue.privateSpaces?.map((item) =>
+                                    item.id === room.id
+                                      ? {
+                                          ...item,
+                                          controllerIds: event.target.checked
+                                            ? [...(item.controllerIds ?? []), person.id]
+                                            : item.controllerIds?.filter((id) => id !== person.id),
+                                        }
+                                      : item,
+                                  ),
+                                })
+                              }
+                            />
+                            {person.name}
+                          </label>
+                        ))}
+                      </fieldset>
+                    ) : null}
+                    {venue.occupancy.playerHome ? (
+                      <>
+                        <label>
+                          Your personal-space description
+                          <textarea
+                            aria-label="Your personal-space description"
+                            maxLength={1000}
+                            value={room.description}
+                            disabled={busy}
+                            onChange={(event) =>
+                              onPatch({
+                                ...venue,
+                                privateSpaces: venue.privateSpaces?.map((item) =>
+                                  item.id === room.id ? { ...item, description: event.target.value } : item,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        {imageFields("private", room.image)}
+                      </>
+                    ) : (
+                      <p>
+                        Private descriptions are prepared after founding and stay hidden until invited. Private images
+                        are drawn only on first invited entry.
+                      </p>
+                    )}
+                  </fieldset>
+                ))}
+              </section>
+            ) : null}
+          </div>
+          <details>
+            <summary>Artwork context</summary>
+            <label>
+              <input
+                type="checkbox"
+                checked={venue.imageContext?.useAssignedVillagerContext ?? true}
+                onChange={(event) =>
                   onPatch({
                     ...venue,
-                    privateSpaces,
-                    layout: privateSpaces.length
-                      ? venueHasCommon(venue)
-                        ? "both"
-                        : "private"
-                      : venueHasCommon(venue)
-                        ? "common"
-                        : "exterior",
+                    imageContext: {
+                      useVisualLore: venue.imageContext?.useVisualLore ?? true,
+                      useAssignedVillagerContext: event.target.checked,
+                    },
                   })
                 }
-                people={[{ id: "player", name: "You" }, ...people]}
-                playerHome={venue.occupancy.playerHome}
-                workplace={venue.privateSpaces?.[0]?.venueClass === "workplace"}
               />
-            </>
-          ) : null}
-          <div className={tag + "-row"}>
+              Use assigned resident’s personality
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={venue.imageContext?.useVisualLore ?? true}
+                onChange={(event) =>
+                  onPatch({
+                    ...venue,
+                    imageContext: {
+                      useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? true,
+                      useVisualLore: event.target.checked,
+                    },
+                  })
+                }
+              />
+              Use selected Village lorebooks
+            </label>
+          </details>
+          <div className="villages-forging-actions">
             <button type="button" disabled={busy} onClick={onMove}>
               Move on map
             </button>
-            <button type="button" disabled={busy} onClick={onRemove}>
-              Remove venue
-            </button>
+            {existing ? (
+              <button type="button" disabled={busy} onClick={onRemove}>
+                Remove Venue
+              </button>
+            ) : null}
           </div>
-          {error || problem ? (
+          {validation || problem ? (
             <p role="alert" className={tag + "-error"}>
-              {error || problem}
+              {validation || problem}
             </p>
           ) : null}
           {busy ? <p role="status">Preparing image…</p> : null}
         </div>
         <footer>
           <button type="button" disabled={busy} onClick={onCancel}>
-            Cancel
+            Cancel edits
           </button>
-          <button type="button" disabled={busy} onClick={next}>
-            Done
+          <button type="button" disabled={busy} onClick={complete}>
+            Use these details
           </button>
         </footer>
       </div>
