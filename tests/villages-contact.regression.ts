@@ -770,9 +770,9 @@ async function main() {
           targetId: "",
           submissionId: "invalid-parser",
         }),
-      /could not be kept accurate/,
+      /failed validation \(invalid-segments\)/,
     );
-    assert.equal(calls - invalidCalls, 2);
+    assert.equal(calls - invalidCalls, 1, "invalid Scene replies are not automatically retried");
     behavior = "answer";
     const beforeExplicitRetry = calls;
     await sendVenueTurn({
@@ -788,7 +788,7 @@ async function main() {
       "known invalid completions can be explicitly retried without replaying the same rejected draft",
     );
     assert.ok(debugLogs.some((line) => line.includes("scene parser rejection") && line.includes("unreadable speaker")));
-    assert.ok(debugLogs.some((line) => line.includes("scene repair") && line.includes("invalid-segments")));
+    assert.ok(!debugLogs.some((line) => line.includes("scene repair")), "rejected replies have no automatic repair");
     assert.ok(
       debugLogs.some(
         (line) =>

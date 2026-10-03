@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   createVillagesClientId,
   shouldSubmitVenueKey,
+  sceneResend,
 } from "../packages/villages/src/engine/packages/client/src/villages-venue-send.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -24,7 +25,30 @@ assert.match(
   "room sends use the LAN-safe ID helper",
 );
 assert.doesNotMatch(ui, /crypto\.randomUUID\(\)/u, "other Villages controls also work over an HTTP LAN address");
-assert.equal(shouldSubmitVenueKey("Enter", false, false), true, "Enter submits");
+assert.equal(shouldSubmitVenueKey("Enter", false, false), false, "Enter does not submit by default");
+assert.equal(shouldSubmitVenueKey("Enter", false, false, true), true, "Enter submits when enabled");
+assert.equal(shouldSubmitVenueKey("Enter", true, false, true), false, "Shift+Enter remains a newline when enabled");
+assert.equal(shouldSubmitVenueKey("Enter", false, true, true), false, "IME composition remains safe when enabled");
+const saved = {
+  id: "original",
+  kind: "turn",
+  status: "interrupted",
+  attemptId: "attempt",
+  input: { message: "Hello", mode: "chat", targetId: "" },
+};
+assert.deepEqual(sceneResend(saved, saved.input, "new"), { submissionId: "original", retryOfAttemptId: "attempt" });
+assert.deepEqual(sceneResend(saved, { ...saved.input, message: "Hello again" }, "new"), {
+  submissionId: "new",
+  retryOfAttemptId: "attempt",
+  replaceOfOperationId: "original",
+});
+assert.deepEqual(sceneResend({ ...saved, status: "complete" }, saved.input, "new"), { submissionId: "new" });
+assert.deepEqual(sceneResend({ ...saved, status: "complete", error: "invalid-json" }, saved.input, "new"), {
+  submissionId: "original",
+  retryOfAttemptId: "attempt",
+});
+assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
+assert.throws(() => sceneResend(saved, { ...saved.input, mode: "contact" }, "new"), /edits are preserved/);
 assert.equal(shouldSubmitVenueKey("Enter", true, false), false, "Shift Enter inserts a line break");
 assert.equal(shouldSubmitVenueKey("Enter", false, true), false, "IME composition does not submit");
 

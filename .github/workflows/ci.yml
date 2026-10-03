@@ -131,3 +131,10 @@ jobs:
 
       - name: Verify greeting recovery without paid retries
         run: node tests/villages-greeting-recovery.e2e.mjs
+
+      - name: Verify Scene sending and failure recovery
+        run: |
+          npx tsx tests/villages-venue-send.regression.ts
+          npx tsx tests/villages-remote-access.regression.ts
+          npx tsx tests/villages-settings-drift.regression.ts
+          node tests/villages-scene-send-recovery.e2e.mjs

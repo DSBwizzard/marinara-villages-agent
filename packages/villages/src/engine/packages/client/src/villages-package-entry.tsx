@@ -82,7 +82,7 @@ import {
 } from "./villages-chat-paragraphs";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
-import { createVillagesClientId, shouldSubmitVenueKey } from "./villages-venue-send";
+import { createVillagesClientId, sceneResend, shouldSubmitVenueKey } from "./villages-venue-send";
 import { hasCompletedRoomSubmission, isLocalRoomCompletion, nextRoomReadIndex } from "./villages-room-reading";
 import {
   initialStaging,
@@ -841,6 +841,7 @@ type TownMapView = {
  */
 type VillageSettings = {
   characterSpeechColors: boolean;
+  sendOnEnter: boolean;
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
   promptKnowledge: string;
   defaultPromptKnowledge: string;
@@ -1154,7 +1155,7 @@ type RoomOperation = {
   status: "running" | "interrupted" | "complete";
   stage?: string;
   error?: string;
-  input?: { message?: string; mode?: string; targetId?: string };
+  input?: { message?: string; mode?: string; targetId?: string; contact?: { kind?: string; boundaryZoneId?: string } };
 };
 type SceneView = {
   memoryMode?: "live" | "tiered" | "turn" | "end";
@@ -6305,8 +6306,9 @@ function VillagesRuntimeDebug() {
 }
 
 function requestRefusal(payload: unknown, status: number, fallback: string): Error {
-  const detail = (payload as { error?: unknown } | null)?.error;
-  const message = typeof detail === "string" && detail ? detail : fallback;
+  const response = payload as { message?: unknown; error?: unknown } | null;
+  const detail = [response?.message, response?.error].find((value) => typeof value === "string" && value.trim());
+  const message = typeof detail === "string" ? detail : fallback;
   if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
     return new Error(`${PRIVILEGED_ACCESS_HINT} (${message})`);
   }
@@ -10098,6 +10100,7 @@ function RoomPanel({
   onMode,
   onTarget,
   onSend,
+  sendOnEnter,
   onViewVenue,
   onEnterPrivate,
   privateSpaceOwnerName,
@@ -10149,6 +10152,7 @@ function RoomPanel({
   onMode: (value: "chat" | "fulfill" | "conclude" | "contact") => void;
   onTarget: (value: string) => void;
   onSend: () => void;
+  sendOnEnter: boolean;
   onViewVenue: () => void;
   onEnterPrivate?: () => void;
   privateSpaceOwnerName?: string;
@@ -11333,7 +11337,7 @@ function RoomPanel({
                   value={draft}
                   onChange={(event) => onDraft(event.target.value)}
                   onKeyDown={(event) => {
-                    if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing)) {
+                    if (shouldSubmitVenueKey(event.key, event.shiftKey, event.nativeEvent.isComposing, sendOnEnter)) {
                       event.preventDefault();
                       submitComposer();
                     }
@@ -13530,6 +13534,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     if (fresh.length > 0) setRoomNotices((current) => [...current, ...fresh]);
   }, []);
   const roomSendInFlightRef = useRef(false);
+  const composerEditVersionRef = useRef(0);
+  const restoredSceneDraftRef = useRef("");
   /** What the room's last attempt had to say, and empty when it has nothing to. */
   const [roomError, setRoomError] = useState("");
   useEffect(() => {
@@ -14201,23 +14207,45 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   useEffect(() => {
     if (
       !room?.id ||
-      room.operation?.status !== "interrupted" ||
+      (room.operation?.status !== "interrupted" && !room.operation?.error) ||
       room.submissions?.some((entry) => entry.id === room.operation?.id)
     )
       return;
+    const restoreKey = `${room.id}:${room.operation?.id}:${room.operation?.attemptId}`;
+    if (restoredSceneDraftRef.current === restoreKey) return;
     let disposed = false;
+    const editVersion = composerEditVersionRef.current;
     void request<{ operation: RoomOperation | null }>(
       `/rooms/${encodeURIComponent(room.id)}/operations/${encodeURIComponent(room.operation.id)}`,
     )
       .then(({ operation }) => {
         if (disposed || !operation?.input?.message) return;
+        restoredSceneDraftRef.current = restoreKey;
+        if (composerEditVersionRef.current !== editVersion) return;
         setRoomDraft((current) => current || operation.input?.message || "");
+        if (editVersion !== 0) return;
+        if (operation.input.mode === "leave") setRoomMode("conclude");
+        else if (["chat", "fulfill", "contact"].includes(operation.input.mode ?? "")) {
+          setRoomMode(operation.input.mode as "chat" | "fulfill" | "contact");
+          setRoomTargetId(operation.input.targetId ?? "");
+          if (operation.input.contact) {
+            setRoomContactKind(operation.input.contact.kind === "call" ? "call" : "knock");
+            setRoomContactBoundary(operation.input.contact.boundaryZoneId ?? "");
+          }
+        }
       })
       .catch(() => {});
     return () => {
       disposed = true;
     };
-  }, [room?.id, room?.operation?.id, room?.operation?.status, room?.submissions]);
+  }, [
+    room?.id,
+    room?.operation?.id,
+    room?.operation?.attemptId,
+    room?.operation?.status,
+    room?.operation?.error,
+    room?.submissions,
+  ]);
 
   // An app reload does not end a Scene. The server owns the one active
   // session; the client restores it instead of opening another conversation.
@@ -14620,18 +14648,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
 
   const leaveRoom = useCallback(async () => {
     if (!room?.id || room.status !== "active" || roomBusy || roomSendInFlightRef.current) return;
-    const submissionId = roomLeaveSubmissionIdRef.current ?? createVillagesClientId();
+    let submissionId = roomLeaveSubmissionIdRef.current ?? createVillagesClientId();
     roomLeaveSubmissionIdRef.current = submissionId;
     roomCompletionRef.current = { roomId: room.id, submissionId };
     setRoomBusy(true);
     setRoomError("");
     setEndFailed(false);
     try {
+      const { operation } = await request<{ operation: RoomOperation | null }>(
+        `/rooms/${encodeURIComponent(room.id)}/operation`,
+      );
+      const resend = sceneResend(operation, { message: roomDraft, mode: "leave", targetId: "" }, submissionId);
+      submissionId = resend.submissionId;
+      roomLeaveSubmissionIdRef.current = submissionId;
+      roomCompletionRef.current = { roomId: room.id, submissionId };
       const answer = await request<{ session: SceneView; recordEvents: RoomRecordEvent[] }>("/rooms/leave", {
         method: "POST",
         body: JSON.stringify({
           sessionId: room.id,
-          submissionId,
+          ...resend,
           message: roomDraft,
           expectedSceneRevision: room.sceneRevision ?? 0,
         }),
@@ -14748,11 +14783,28 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       (roomMode === "contact" ? `I ${roomContactKind}${contactName ? ` for ${contactName}` : " at the doorway"}.` : "");
     if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.length === 0) return;
     roomSendInFlightRef.current = true;
-    const submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
-    roomSubmissionIdRef.current = submissionId;
+    let submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
+    let resend: ReturnType<typeof sceneResend>;
     const before = room;
     try {
       await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
+      const { operation } = await request<{ operation: RoomOperation | null }>(
+        `/rooms/${encodeURIComponent(room.id)}/operation`,
+      );
+      resend = sceneResend(
+        operation,
+        {
+          message: text,
+          mode: roomMode,
+          targetId: roomMode === "fulfill" || roomMode === "contact" ? roomTargetId : "",
+          ...(roomMode === "contact"
+            ? { contact: { kind: roomContactKind, boundaryZoneId: roomContactBoundary } }
+            : {}),
+        },
+        submissionId,
+      );
+      submissionId = resend.submissionId;
+      roomSubmissionIdRef.current = submissionId;
     } catch (cause) {
       roomSendInFlightRef.current = false;
       const staleReason = staleVenueReason(cause);
@@ -14799,7 +14851,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           ...(roomMode === "contact"
             ? { contact: { kind: roomContactKind, boundaryZoneId: roomContactBoundary } }
             : {}),
-          submissionId,
+          ...resend,
           expectedSceneRevision: room.sceneRevision ?? 0,
         }),
         signal: AbortSignal.timeout(300_000),
@@ -14850,10 +14902,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       }
       const authoritative = await refreshSceneAfterFailure(room.id, submissionId);
       if (authoritative) setRoom(currentRoom(authoritative));
-      else if (!(cause instanceof VillageApiError)) setRoom(before);
+      else setRoom(before);
       if (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
         roomSubmissionIdRef.current = null;
-      setRoomDraft(text);
+      setRoomDraft((current) => current || text);
       setRoomError(messageFrom(cause, "That line could not be sent."));
     } finally {
       roomSendInFlightRef.current = false;
@@ -15188,6 +15240,31 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setBusy(false);
     }
   }, []);
+
+  const saveSendOnEnter = useCallback(
+    async (sendOnEnter: boolean) => {
+      const previous = snapshot?.settings.sendOnEnter === true;
+      setSnapshot((current) => (current ? { ...current, settings: { ...current.settings, sendOnEnter } } : current));
+      setBusy(true);
+      setSettingsError("");
+      try {
+        setSnapshot(
+          await request<VillageSnapshot>("/settings", {
+            method: "PATCH",
+            body: JSON.stringify({ sendOnEnter }),
+          }),
+        );
+      } catch (cause) {
+        setSnapshot((current) =>
+          current ? { ...current, settings: { ...current.settings, sendOnEnter: previous } } : current,
+        );
+        setSettingsError(messageFrom(cause, "Send on Enter could not be saved."));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [snapshot?.settings.sendOnEnter],
+  );
 
   const saveCharacterSpeechColors = useCallback(
     async (characterSpeechColors: boolean) => {
@@ -16914,11 +16991,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         {room?.operation?.status === "interrupted" ? (
           <div role="alert" className={`${ELEMENT_TAG}-room-error`}>
             <p>
-              The previous request may have been billed. Retry the saved request only when you are ready to authorize
-              further work.
+              {room.operation.kind === "turn"
+                ? "The previous request may have been billed. Review your draft and press Send to resend when ready."
+                : "The previous request may have been billed. Retry the saved request when ready."}
             </p>
             <button className={`${ELEMENT_TAG}-button`} disabled={roomBusy} onClick={() => void retrySavedScene()}>
-              Retry saved request
+              {room.operation.kind === "turn" ? "Recover saved request" : "Retry saved request"}
             </button>
           </div>
         ) : null}
@@ -16966,10 +17044,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             contactBoundary={roomContactBoundary}
             contactKind={roomContactKind}
             onContactBoundary={(id) => {
+              composerEditVersionRef.current++;
               roomSubmissionIdRef.current = null;
               setRoomContactBoundary(id);
             }}
             onContactKind={(kind) => {
+              composerEditVersionRef.current++;
               roomSubmissionIdRef.current = null;
               setRoomContactKind(kind);
             }}
@@ -16992,6 +17072,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             busy={roomBusy || room.operation?.status === "running"}
             error={
               roomError ||
+              room.operation?.error ||
               (room.status === "opening" && roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "")
             }
             greetingNotice={roomGreetingNotice}
@@ -17005,18 +17086,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
             )}
             onDraft={(value) => {
+              composerEditVersionRef.current++;
               roomSubmissionIdRef.current = null;
               roomLeaveSubmissionIdRef.current = null;
               setRoomDraft(value);
             }}
             onMode={(value) => {
+              composerEditVersionRef.current++;
               roomSubmissionIdRef.current = null;
               setRoomMode(value);
             }}
             onTarget={(value) => {
+              composerEditVersionRef.current++;
               roomSubmissionIdRef.current = null;
               setRoomTargetId(value);
             }}
+            sendOnEnter={snapshot?.settings.sendOnEnter === true}
             onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
             onViewVenue={() => {
               setVenueId(room.placeId);
@@ -18636,6 +18721,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {/* Drawn before the village is founded as well as after, because
                 these belong to the agent rather than to the village. */}
             <AgentConnections />
+
+            {snapshot ? (
+              <div className={`${ELEMENT_TAG}-field`}>
+                <label className={`${ELEMENT_TAG}-row`} htmlFor={`${ELEMENT_TAG}-send-on-enter`}>
+                  <input
+                    id={`${ELEMENT_TAG}-send-on-enter`}
+                    type="checkbox"
+                    checked={snapshot.settings.sendOnEnter === true}
+                    disabled={busy}
+                    onChange={(event) => void saveSendOnEnter(event.target.checked)}
+                  />
+                  <span>Send on Enter</span>
+                </label>
+                <span className={`${ELEMENT_TAG}-hint`}>
+                  Send Scene messages with Enter. Off inserts a new line. Shift+Enter always inserts a new line.
+                </span>
+              </div>
+            ) : null}
 
             {snapshot ? (
               <div className={`${ELEMENT_TAG}-field`}>

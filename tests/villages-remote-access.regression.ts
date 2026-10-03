@@ -214,6 +214,18 @@ assert.equal(
   "a body that was not JSON falls back to the tab's own sentence",
 );
 
+assert.equal(
+  buildRefusal({ error: "Bad Request", message: "Invalid Scene revision", code: "SCENE_STALE" }, 400, "x").message,
+  "Invalid Scene revision",
+);
+assert.equal(
+  (buildRefusal({ error: "Bad Request", message: "Invalid Scene revision", code: "SCENE_STALE" }, 400, "x") as any)
+    .code,
+  "SCENE_STALE",
+);
+assert.equal(buildRefusal({ error: "Package failure", message: " " }, 400, "x").message, "Package failure");
+assert.equal(buildRefusal({ error: { message: "Unreadable" } }, 400, "HTTP 400").message, "HTTP 400");
+
 /* ── Both call sites, and the third one that must not appear ─────────────── */
 
 assert.equal(

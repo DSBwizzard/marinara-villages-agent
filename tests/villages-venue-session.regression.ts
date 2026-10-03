@@ -91,6 +91,7 @@ import {
   buildVillageSnapshot,
   proposeResidenceSpaceEdit,
   setVillageVenueImage,
+  setVillageSendOnEnter,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
@@ -219,6 +220,8 @@ let venueReplyCalls = 0;
 let concurrencyStarted: (() => void) | null = null;
 let releaseConcurrent: (() => void) | null = null;
 let malformedTurnOnce = false;
+let acceptEcho = false,
+  acceptRepeatedQuestion = false;
 let exhaustEcho = false;
 let wishJudgeCalls = 0;
 let mailboxAccept = true;
@@ -776,7 +779,7 @@ const release = configureVillagesRuntime({
             return {
               content: fixtureJson({
                 heardPlayerBy: ["bob", "tina"],
-                segments: system.includes("previous draft failed validation")
+                segments: acceptEcho
                   ? [
                       {
                         kind: "dialogue",
@@ -810,7 +813,7 @@ const release = configureVillagesRuntime({
                   {
                     kind: "dialogue",
                     speakerId: "tina",
-                    text: system.includes("previous draft failed validation")
+                    text: acceptRepeatedQuestion
                       ? "That sounds unsettling. Do you want to tell us more?"
                       : "Yeah — what about you? We've both done our bit.",
                     heardBy: ["bob", "tina"],
@@ -1469,6 +1472,13 @@ async function main() {
       lastVenueSystem,
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
+    assert.equal(defaultVillageState().sendOnEnter, false);
+    assert.equal(coerceVillageState({}).sendOnEnter, false);
+    assert.equal(coerceVillageState({ sendOnEnter: "true" }).sendOnEnter, false);
+    assert.equal((await setVillageSendOnEnter(true)).settings.sendOnEnter, true);
+    assert.equal((await readVillageState()).sendOnEnter, true);
+    assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
+    await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
     assert.deepEqual(coerceVillageState({}).narrationStyle, defaultVillageState().narrationStyle);
     assert.deepEqual(
       coerceVillageState({
@@ -1721,10 +1731,33 @@ async function main() {
           targetId: "tina",
           submissionId: "empty-reply",
         }),
-      /could not be kept accurate/u,
+      /failed validation/u,
     );
-    assert.equal(venueReplyCalls - beforeEmptyCalls, 2, "empty scene repairs share the two-call limit");
+    assert.equal(venueReplyCalls - beforeEmptyCalls, 1, "empty scenes make no automatic repair call");
     assert.equal((await activeVenueSession())?.lines.length, beforeEmptyReply, "an empty reply is not archived");
+    const failedOrdinary = (await activeVenueSession())!;
+    const beforeEditedReply = venueReplyCalls;
+    const editedOrdinary = await sendVenueTurnRaw({
+      sessionId: group.id,
+      message: "An edited ordinary message",
+      mode: "chat",
+      targetId: "",
+      submissionId: "edited-empty-reply",
+      replaceOfOperationId: "empty-reply",
+      retryOfAttemptId: failedOrdinary.operation!.attemptId,
+      expectedSceneRevision: failedOrdinary.sceneRevision,
+    });
+    assert.equal(venueReplyCalls, beforeEditedReply + 1, "edited ordinary chat is dispatched once");
+    assert.equal(
+      editedOrdinary.session.lines.filter((line) => line.role === "user" && line.content === "No scene moment").length,
+      0,
+    );
+    assert.equal(
+      editedOrdinary.session.lines.filter(
+        (line) => line.role === "user" && line.content === "An edited ordinary message",
+      ).length,
+      1,
+    );
     await sendVenueTurn({
       sessionId: group.id,
       message: "Ask me about myself",
@@ -1733,6 +1766,19 @@ async function main() {
       submissionId: "ask-about-player-1",
     });
     const beforeEchoCalls = venueReplyCalls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "I actually don't remember anything. Funny, huh?",
+          mode: "chat",
+          targetId: "",
+          submissionId: "player-answer-1",
+        }),
+      /player-echo/u,
+    );
+    assert.equal(venueReplyCalls - beforeEchoCalls, 1, "failed output makes one call");
+    acceptEcho = true;
     const correctedEcho = await sendVenueTurn({
       sessionId: group.id,
       message: "I actually don't remember anything. Funny, huh?",
@@ -1740,7 +1786,7 @@ async function main() {
       targetId: "",
       submissionId: "player-answer-1",
     });
-    assert.equal(venueReplyCalls - beforeEchoCalls, 2, "a copied player answer gets one targeted repair");
+    assert.equal(venueReplyCalls - beforeEchoCalls, 2, "the explicit resend makes one additional call");
     assert.equal(
       correctedEcho.session.lines.filter(
         (line) => line.role === "user" && line.content === "I actually don't remember anything. Funny, huh?",
@@ -1748,7 +1794,7 @@ async function main() {
       1,
     );
     assert.equal(correctedEcho.session.lines.at(-1)?.content, "That sounds disorienting. I can listen.");
-    assert.match(lastVenueSystem, /previous draft failed validation.*repeated the player's words/u);
+    assert.doesNotMatch(lastVenueSystem, /previous draft failed validation/u);
     const beforeEchoReplayCalls = venueReplyCalls;
     const echoedReplay = await sendVenueTurn({
       sessionId: group.id,
@@ -1767,6 +1813,19 @@ async function main() {
       submissionId: "ask-about-player-2",
     });
     const beforeQuestionCalls = venueReplyCalls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "I don't remember where I came from.",
+          mode: "chat",
+          targetId: "",
+          submissionId: "player-answer-2",
+        }),
+      /repeated-question/u,
+    );
+    assert.equal(venueReplyCalls - beforeQuestionCalls, 1, "failed output makes one call");
+    acceptRepeatedQuestion = true;
     const correctedQuestion = await sendVenueTurn({
       sessionId: group.id,
       message: "I don't remember where I came from.",
@@ -1774,14 +1833,26 @@ async function main() {
       targetId: "",
       submissionId: "player-answer-2",
     });
-    assert.equal(venueReplyCalls - beforeQuestionCalls, 2, "a repeated resident question gets one targeted repair");
+    assert.equal(venueReplyCalls - beforeQuestionCalls, 2, "the explicit resend makes one additional call");
     assert.equal(
       correctedQuestion.session.lines.at(-1)?.content,
       "That sounds unsettling. Do you want to tell us more?",
     );
-    assert.match(lastVenueSystem, /previous draft failed validation.*repeated their prior question/u);
+    assert.doesNotMatch(lastVenueSystem, /previous draft failed validation/u);
     malformedTurnOnce = true;
     const beforeMalformedCalls = venueReplyCalls;
+    await assert.rejects(
+      () =>
+        sendVenueTurn({
+          sessionId: group.id,
+          message: "Malformed once",
+          mode: "chat",
+          targetId: "",
+          submissionId: "malformed-turn-1",
+        }),
+      /invalid-json/u,
+    );
+    assert.equal(venueReplyCalls - beforeMalformedCalls, 1, "failed output makes one call");
     const correctedMalformed = await sendVenueTurn({
       sessionId: group.id,
       message: "Malformed once",
@@ -1810,9 +1881,9 @@ async function main() {
           targetId: "",
           submissionId: "echo-exhausted",
         }),
-      /draft is still here; retry/u,
+      /draft is preserved/u,
     );
-    assert.equal(venueReplyCalls - beforeExhaustedCalls, 2);
+    assert.equal(venueReplyCalls - beforeExhaustedCalls, 1);
     assert.equal((await activeVenueSession())?.lines.length, beforeExhausted?.lines.length);
     assert.equal(
       JSON.stringify((await readVillageState()).venues.find((place) => place.id === "park")?.state),
@@ -1896,9 +1967,9 @@ async function main() {
           targetId: "",
           submissionId: "act-echo-exhausted",
         }),
-      /draft is still here; retry/u,
+      /draft is preserved/u,
     );
-    assert.equal(venueReplyCalls - beforeRejectedActCalls, 2);
+    assert.equal(venueReplyCalls - beforeRejectedActCalls, 1);
     assert.equal((await activeVenueSession())?.lines.length, beforeRejectedAct?.lines.length);
     assert.equal((await readVillageState()).venueEvents.length, beforeRejectedActEvents);
     failActReplyOnce = true;
@@ -2287,9 +2358,9 @@ async function main() {
     const speechScene = await greetVenue(speechOpening.id);
     assert.equal(speechScene.lines[0]?.speakerId, "tina", "a direct greeting can lead without narration");
     await endVenueSession(speechScene.id);
-    emptyOpeningFailures = 2;
+    emptyOpeningFailures = 1;
     const emptyOpening = await enterVenue("park");
-    await assert.rejects(() => greetVenue(emptyOpening.id), /could not be kept accurate/u);
+    await assert.rejects(() => greetVenue(emptyOpening.id), /failed validation/u);
     assert.equal((await activeVenueSession())?.status, "opening", "an empty opening remains retryable");
     await endVenueSession((await greetVenue(emptyOpening.id)).id);
     assert.deepEqual(

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { trackUsage, withUsagePurpose, inferredPurpose } from "./usage-meter.js";
+import { safeFailureMessage } from "./errors.js";
 import { resetRuntimeDebug, readRuntimeDebug, runtimeDebug } from "./runtime-debug.js";
 // Villages — the handle on the Engine services this package is allowed to use.
 //
@@ -197,7 +198,7 @@ export type VillageCompletionOptions = {
   debugMode: boolean;
   signal?: AbortSignal;
   onAttempt?: (completion: CapabilityLanguageModelCompletion, elapsedMs: number, maxTokens: number) => void;
-  /** Scene turns own their two-attempt repair budget; other callers keep the blank retry. */
+  /** Scene turns disable blank retries; other callers retain their existing policy. */
   retryEmpty?: boolean;
   usagePurpose?: import("./usage-meter.js").UsagePurpose;
 };
@@ -291,6 +292,16 @@ export async function completeWithRoom(
           }),
         ),
     ).catch((error) => {
+      try {
+        villagesLogger().warn(
+          "[villages] model=%s connection=%s completion failed: %s",
+          model.model,
+          model.connectionId,
+          safeFailureMessage(error),
+        );
+      } catch {
+        /* Diagnostics cannot replace the request failure. */
+      }
       runtimeDebug("completion exception", {
         message: String(error),
         stack: error instanceof Error ? error.stack : undefined,

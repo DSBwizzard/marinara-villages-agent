@@ -69,7 +69,7 @@ assert.doesNotMatch(
   "natural endings do not erase their durable-memory receipts",
 );
 assert.match(ui, /className=\{`\$\{ELEMENT_TAG\}-room-mode-menu`\}/u, "visit modes have a visible menu");
-assert.match(ui, /Use… Mailbox/u, "the player can open Mailbox while visiting home");
+assert.match(ui, /View Mailbox/u, "the player can open Mailbox while visiting home");
 assert.match(ui, /<VenueDraftFields/u, "Venues use the shared editor");
 assert.match(ui, /Search Venues/u, "the Venue index is searchable");
 assert.match(ui, /Retry opening/u);

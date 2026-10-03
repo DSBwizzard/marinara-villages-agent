@@ -386,6 +386,7 @@ export function villageSettings(
     storyPace: village.storyPace,
     storyPaces: ["off", "quiet", "balanced", "lively"],
     characterSpeechColors: village.characterSpeechColors,
+    sendOnEnter: village.sendOnEnter,
     villageNameMaxLength: MAX_VILLAGE_NAME_LENGTH,
     playerPersonaId: village.playerPersonaId,
     // The cached name travels even when the link is broken, so the panel can
@@ -1839,6 +1840,14 @@ export async function setVillageStoryPace(value: unknown): Promise<VillageSnapsh
   }
   await mutateVillageState((state) => {
     state.storyPace = value as VillageStoryPace;
+  });
+  return buildVillageSnapshot();
+}
+
+export async function setVillageSendOnEnter(value: unknown): Promise<VillageSnapshot> {
+  if (typeof value !== "boolean") throw badRequest("Send on Enter must be on or off.");
+  await mutateVillageState((state) => {
+    state.sendOnEnter = value;
   });
   return buildVillageSnapshot();
 }
