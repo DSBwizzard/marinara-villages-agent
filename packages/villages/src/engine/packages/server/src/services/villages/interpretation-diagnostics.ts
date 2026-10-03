@@ -69,6 +69,8 @@ export async function removeInterpretationDiagnostics(sceneId: string) {
   stopInterpretationComparisons(sceneId);
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, documentId(sceneId));
   if (record) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision);
+  const pending = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, "villages-interpretation-context-" + sceneId);
+  if (pending) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, pending.id, pending.revision);
 }
 export function stopInterpretationComparisons(sceneId?: string) {
   for (const [key, controller] of controllers) if (!sceneId || key.startsWith(`${sceneId}:`)) controller.abort();
