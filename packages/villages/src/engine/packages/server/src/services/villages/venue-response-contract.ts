@@ -47,7 +47,7 @@ export const VENUE_WISH_CONTRACT =
 
 export function buildVenueResponseContract(context: VenueResponseContext): string[] {
   return [
-    'Return one JSON object only: heardPlayerBy and segments FIRST, bookkeeping afterward. At least one main segment, narration or dialogue. Segments: {kind:"narration|dialogue|side|whisper",text,heardBy:[],speakerId?,expression?,gazeAt?,targetId?,staging?}. Speakers/targets are active IDs; expression is a filled expression ID. Narration has no speakerId and is visible to the active cast. Dialogue/side/whisper require speakerId. Side/whisper attach to the preceding main segment, with their own witnesses; whisper requires targetId. Legacy gazeAt names an active resident or player.' +
+    'Return one JSON object only: heardPlayerBy and segments FIRST, bookkeeping afterward. At least one main segment, narration or dialogue. Segments: {kind:"narration|dialogue|side|whisper",text,heardBy:[],speakerId?,expression?,gazeAt?,targetId?,staging?}. Speakers are active resident IDs; whisper targetId is an active resident ID or "player". heardBy and heardPlayerBy contain resident IDs only. Expression is a filled expression ID. Narration has no speakerId and is visible to the active cast. Dialogue/side/whisper require speakerId. Side/whisper attach to the preceding main segment, with their own witnesses; whisper requires targetId. Legacy gazeAt names an active resident or player.' +
       (context.opening ? " Opening heardPlayerBy is empty." : ""),
     buildVenueTextContract(context.exampleSpeakerId, context.exampleWitnessIds, context.opening),
     VENUE_RESPONSE_EVIDENCE,

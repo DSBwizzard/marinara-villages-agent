@@ -2547,7 +2547,8 @@ export function parseVenueReply(
     if ((kind !== "narration" && !allowed.has(speakerId)) || !content || content.length > 2000)
       throw new Error("The venue response had an unreadable speaker or line.");
     const expression = asTrimmedString(row.expression).toLowerCase().slice(0, 40);
-    const targetId = allowed.has(asTrimmedString(row.targetId)) ? asTrimmedString(row.targetId) : "";
+    const requestedTarget = asTrimmedString(row.targetId);
+    const targetId = allowed.has(requestedTarget) || requestedTarget === "player" ? requestedTarget : "";
     // An invalid whisper target must never make the whole greeting or turn fail.
     // Treat it as an ordinary spoken line, without claiming anyone heard a whisper.
     if (kind === "whisper" && !targetId) kind = "dialogue";
@@ -2567,7 +2568,13 @@ export function parseVenueReply(
       heardBy:
         kind === "narration"
           ? [...audience]
-          : [...new Set([speakerId, ...ids(row.heardBy), ...(kind === "whisper" ? [targetId] : [])])],
+          : [
+              ...new Set([
+                speakerId,
+                ...ids(row.heardBy),
+                ...(kind === "whisper" && allowed.has(targetId) ? [targetId] : []),
+              ]),
+            ],
       ...(expression ? { expression } : {}),
       ...(gazeAt ? { gazeAt } : {}),
       ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, audience, expressionId) } : {}),
