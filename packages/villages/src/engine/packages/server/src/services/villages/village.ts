@@ -6,12 +6,7 @@ import {
   routineDay,
   validateRoutineDay,
 } from "./owned-routine.js";
-import {
-  settleBackgroundWork,
-  backgroundStatus,
-  retryBackgroundJob,
-  backgroundWorkSummaries,
-} from "./background-work.js";
+import { settleBackgroundWork, backgroundStatus, retryBackgroundJob } from "./background-work.js";
 import { relationshipZoneController } from "./relationship-store.js";
 import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
 import { relationshipWritingPrompt, relationshipChangeNotices } from "./relationships.js";
@@ -19,7 +14,8 @@ import { readBaseVenueLayout, assertResidencePrivateDestination } from "./venue-
 import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import { DEFAULT_SCENERY_STYLE, sceneryImageKey, readSceneryStyle } from "./scenery-context.js";
-import { preparePrivateSpaces } from "./private-space-preparation.js";
+import { preparePrivateSpaces, privatePreparationRooms } from "./private-space-preparation.js";
+import { reportFoundingProgress } from "./founding-progress.js";
 import { zoneControllerIds } from "./venue-zones.js";
 import { venueCardProfile } from "./venue-writing.js";
 import {
@@ -64,7 +60,7 @@ import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "./agenda-plan.j
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { readVillageConnectionSettings, validateVillageSetupConnections } from "./connections.js";
 import { villagesConnectionIdFor } from "./connections.js";
-import { badRequest, conflict, notFound } from "./errors.js";
+import { badRequest, conflict, notFound, safeFailureMessage } from "./errors.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
   MAX_LORE_TOKEN_BUDGET,
@@ -649,7 +645,15 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
   return {
     status: "ready",
     progressEngineVersion: village.progressEngineVersion,
-    foundingPreparation: village.foundingPreparation ?? null,
+    foundingPreparation: village.foundingPreparation
+      ? {
+          ...village.foundingPreparation,
+          privateSpacesTotal: privatePreparationRooms(village).length,
+          privateSpacesReady: privatePreparationRooms(village).filter(
+            ({ zone }) => zone.preparation?.status === "ready",
+          ).length,
+        }
+      : null,
     village: villageMomentView(village, now, exactSnapshotTransition(village, now)),
     venueRequests: village.pendingDecisions.filter(
       (decision) =>
@@ -831,6 +835,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   const village = await readVillageState();
   const villager = village.villagers.find((entry) => entry.characterId === characterId);
   if (!villager) return;
+  await reportFoundingProgress(village.seed, { stage: "reading" }, characterId);
   const effectiveCard = await readEffectiveVillagerCard(villager);
   if (!effectiveCard) {
     await mutateVillageState((state) => {
@@ -851,6 +856,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
     village.foundingPreparation?.status === "pending"
       ? await reserveInitialWishAllowance(characterId, new Date())
       : undefined;
+  await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
   const context = {
     card: effectiveCard,
     characterId,
@@ -892,6 +898,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
     description: effectiveCard.description,
     routineSummary: "",
   };
+  await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
   await queueBackgroundJob({
     kind: "agenda",
     subjectId: characterId,
@@ -901,6 +908,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
     label: villager.cardSnapshot.name + "'s agenda",
     legacyError: villager.agenda?.personalizationFailure,
     input: {
+      seed: village.seed,
       characterId,
       initialWishAttemptId,
       revision: agendaRevision(village, characterId),
@@ -909,7 +917,17 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   });
 }
 registerBackgroundHandler("agenda", {
-  generate: async (input) => (await proposeCompactFounding(input.context, async () => {})).agenda,
+  generate: async (input) => {
+    const job = (await backgroundWorkSummaries()).find(
+      (entry) => entry.kind === "agenda" && entry.subjectId === input.characterId,
+    );
+    await reportFoundingProgress(input.seed, { stage: "resolving", attempt: job?.attempt }, input.characterId);
+    const result = await proposeCompactFounding(input.context, async (modelName) => {
+      await reportFoundingProgress(input.seed, { stage: "model", modelName }, input.characterId);
+    });
+    await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
+    return result.agenda;
+  },
   valid: (state, input) =>
     state.villagers.some((resident) => resident.characterId === input.characterId) &&
     agendaRevision(state, input.characterId) === input.revision,
@@ -933,6 +951,10 @@ function applyAgenda(
 ): void {
   const villager = state.villagers.find((entry) => entry.characterId === characterId);
   if (!villager) return;
+  if (state.foundingPreparation?.status === "pending" && state.foundingPreparation.currentId === characterId) {
+    state.foundingPreparation.stage = "saving";
+    state.foundingPreparation.stageStartedAt = new Date().toISOString();
+  }
   const previous = villager.agenda;
   const now = new Date();
   const initialAttempt = villager.wishLifecycle?.attempt;
@@ -3662,6 +3684,9 @@ export async function runVillageSetup(input: {
         venueDetailsSeeded: false,
         currentId: "",
         error: "",
+        phase: "venues",
+        stage: "lore",
+        stageStartedAt: new Date().toISOString(),
       };
     // Only a village with nowhere to send anybody needs places invented; a
     // second run must not throw away places the player has since renamed or
@@ -3712,14 +3737,31 @@ let foundingWork: Promise<void> | null = null;
 /** Durable, idempotent first-founding work. The read route restarts it after a process exit. */
 export function prepareFoundedVillage(): Promise<void> {
   if (foundingWork) return foundingWork;
+  let seed: string | undefined;
   foundingWork = (async () => {
     const initial = await readVillageState();
+    seed = initial.seed;
     if (initial.foundingPreparation?.status !== "pending") return;
     if (!initial.foundingPreparation.venueDetailsSeeded) {
       try {
-        const details = await seedFoundingVenueDetails(initial);
+        await reportFoundingProgress(initial.seed, {
+          phase: "venues",
+          stage: "lore",
+          currentId: "",
+          currentVenueId: "",
+          currentZoneId: "",
+        });
+        const details = await seedFoundingVenueDetails(initial, (progress) =>
+          reportFoundingProgress(initial.seed, progress),
+        );
+        await reportFoundingProgress(initial.seed, { stage: "saving" });
         await mutateVillageState((state) => {
-          if (state.foundingPreparation?.status !== "pending" || state.foundingPreparation.venueDetailsSeeded) return;
+          if (
+            state.seed !== initial.seed ||
+            state.foundingPreparation?.status !== "pending" ||
+            state.foundingPreparation.venueDetailsSeeded
+          )
+            return;
           for (const venue of state.venues) {
             const seed = details[venue.id];
             if (!seed) continue;
@@ -3752,67 +3794,98 @@ export function prepareFoundedVillage(): Promise<void> {
       } catch (error) {
         villagesLogger().warn("[villages] initial venue details unavailable: %s", String(error));
         await mutateVillageState((state) => {
-          if (state.foundingPreparation?.status === "pending") state.foundingPreparation.venueDetailsSeeded = true;
+          if (state.seed === initial.seed && state.foundingPreparation?.status === "pending")
+            state.foundingPreparation.venueDetailsSeeded = true;
         });
       }
     }
     try {
+      if ((await readVillageState()).seed !== initial.seed) return;
+      await reportFoundingProgress(initial.seed, {
+        phase: "private-spaces",
+        stage: "queued",
+        currentId: "",
+        attempt: undefined,
+      });
       await preparePrivateSpaces();
       const prepared = await readVillageState();
-      if (
-        prepared.venues.some((venue) =>
-          venue.zones?.some((zone) => zone.preparation && zone.preparation.status !== "ready"),
-        )
-      )
-        throw new Error("Private spaces need preparation. Retry to continue.");
-    } catch {
+      if (prepared.seed !== initial.seed) return;
+      const blocked = privatePreparationRooms(prepared).find(({ zone }) => zone.preparation?.status !== "ready");
+      if (blocked)
+        throw new Error(
+          blocked.zone.preparation?.error || `${blocked.zone.name} needs preparation. Retry to continue.`,
+        );
+    } catch (error) {
       await mutateVillageState((state) => {
-        if (state.foundingPreparation) {
+        if (state.seed === initial.seed && state.foundingPreparation?.status === "pending") {
           state.foundingPreparation.status = "failed";
-          state.foundingPreparation.error = "Private spaces need preparation. Retry to continue.";
+          state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
         }
       });
       return;
     }
     for (const villager of initial.villagers) {
       const latest = await readVillageState();
-      if (latest.foundingPreparation?.status !== "pending") return;
+      if (latest.seed !== initial.seed || latest.foundingPreparation?.status !== "pending") return;
       if (latest.foundingPreparation.completedIds.includes(villager.characterId)) continue;
       const adopted = latest.villagers.find((resident) => resident.characterId === villager.characterId)?.agenda;
       if (adopted && !adopted.personalizationPending) {
         await mutateVillageState((state) => {
           const marker = state.foundingPreparation;
-          if (marker?.status === "pending" && !marker.completedIds.includes(villager.characterId))
+          if (
+            state.seed === initial.seed &&
+            marker?.status === "pending" &&
+            !marker.completedIds.includes(villager.characterId)
+          )
             marker.completedIds.push(villager.characterId);
         });
         continue;
       }
+      await reportFoundingProgress(initial.seed, {
+        phase: "residents",
+        currentId: villager.characterId,
+        currentVenueId: "",
+        currentZoneId: "",
+        stage: "reading",
+        attempt: undefined,
+        modelName: undefined,
+        loreEntryCount: undefined,
+      });
       await queueVillagerAgenda(villager.characterId, true);
       await settleBackgroundWork();
       const saved = await readVillageState();
+      if (saved.seed !== initial.seed) return;
       const resident = saved.villagers.find((entry) => entry.characterId === villager.characterId);
       if (
         !resident?.agenda?.generatedAt ||
         resident.agenda.personalizationPending ||
         (await backgroundStatus("agenda", villager.characterId)) !== "completed"
       ) {
+        const failure = (await backgroundWorkSummaries()).find(
+          (job) => job.kind === "agenda" && job.subjectId === villager.characterId,
+        )?.error;
         await mutateVillageState((state) => {
-          if (state.foundingPreparation) {
+          if (state.seed === initial.seed && state.foundingPreparation?.status === "pending") {
             state.foundingPreparation.status = "failed";
-            state.foundingPreparation.error =
-              "Routine preparation stopped. Saved responses are retained; retry deliberately.";
+            state.foundingPreparation.error = failure
+              ? safeFailureMessage(new Error(failure)).slice(0, 300)
+              : "Routine preparation stopped. Saved responses are retained; retry deliberately.";
           }
         });
         return;
       }
       await mutateVillageState((state) => {
         const marker = state.foundingPreparation;
-        if (marker?.status === "pending" && !marker.completedIds.includes(villager.characterId))
+        if (
+          state.seed === initial.seed &&
+          marker?.status === "pending" &&
+          !marker.completedIds.includes(villager.characterId)
+        )
           marker.completedIds.push(villager.characterId);
       });
     }
     await mutateVillageState((state) => {
-      if (state.foundingPreparation?.status === "pending") {
+      if (state.seed === initial.seed && state.foundingPreparation?.status === "pending") {
         state.foundingPreparation.status = "ready";
         state.foundingPreparation.currentId = "";
         state.foundingPreparation.stage = undefined;
@@ -3823,9 +3896,9 @@ export function prepareFoundedVillage(): Promise<void> {
       villagesLogger().warn("[villages] founding preparation stopped: %s", String(error));
       try {
         await mutateVillageState((state) => {
-          if (state.foundingPreparation?.status !== "pending") return;
+          if (state.seed !== seed || state.foundingPreparation?.status !== "pending") return;
           state.foundingPreparation.status = "failed";
-          state.foundingPreparation.error = boundText(error instanceof Error ? error.message : String(error), 300);
+          state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
         });
       } catch (writeError) {
         villagesLogger().warn("[villages] founding preparation failure could not be recorded: %s", String(writeError));
@@ -3842,17 +3915,22 @@ export async function retryFoundedVillagePreparation(): Promise<VillageSnapshot>
   // This explicit action is the authorization; discovery and clock reconciliation never call it.
   const requested = await readVillageState();
   if (requested.foundingPreparation?.status !== "failed") return buildVillageSnapshot();
+  let admitted = false;
   await mutateVillageState((state) => {
+    admitted = false;
     const marker = state.foundingPreparation;
-    if (!marker || marker.status !== "failed") return;
-    for (const venue of state.venues)
-      for (const zone of venue.zones ?? [])
-        if (zone.preparation?.status === "failed") zone.preparation = { status: "pending" };
+    if (state.seed !== requested.seed || !marker || marker.status !== "failed") return;
+    admitted = true;
+    for (const { zone } of privatePreparationRooms(state))
+      if (zone.preparation?.status === "failed")
+        zone.preparation = { status: "pending", attempt: zone.preparation.attempt };
     marker.status = "pending";
     marker.error = "";
-    marker.attempt = 0;
-    marker.stage = undefined;
+    marker.attempt = undefined;
+    marker.stage = "queued";
+    marker.stageStartedAt = new Date().toISOString();
   });
+  if (!admitted) return buildVillageSnapshot();
   const unfinished = requested.villagers
     .filter((resident) => !requested.foundingPreparation!.completedIds.includes(resident.characterId))
     .map((resident) => resident.characterId);

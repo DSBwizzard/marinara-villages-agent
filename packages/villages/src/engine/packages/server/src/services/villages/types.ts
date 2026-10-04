@@ -600,11 +600,19 @@ export type VillageVenueSpace = {
 };
 
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
+export type PrivateSpacePreparation = {
+  status: "pending" | "ready" | "failed";
+  error?: string;
+  /** Persisted before dispatch. A surviving claim requires deliberate retry. */
+  claimId?: string;
+  startedAt?: string;
+  attempt?: number;
+};
 export type VillageVenueZone = VillageVenueSpace & {
   relationshipAccess?: boolean;
   purpose?: string;
   controllerIds?: string[];
-  preparation?: { status: "pending" | "ready" | "failed"; error?: string };
+  preparation?: PrivateSpacePreparation;
   closed?: boolean;
   name: string;
   kind: VillageZoneKind;
@@ -621,7 +629,7 @@ export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
 >;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
-  preparation?: { status: "pending" | "ready" | "failed"; error?: string };
+  preparation?: PrivateSpacePreparation;
   ownerId: string;
   /** A first-entry picture is attempted once; later drawing is player controlled. */
   initialImageAttemptedAt?: string;
@@ -1312,7 +1320,12 @@ export type VillageState = {
     venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;
-    stage?: "reading" | "lore" | "resolving" | "model" | "applying" | "saving";
+    phase?: "venues" | "private-spaces" | "residents";
+    currentVenueId?: string;
+    currentZoneId?: string;
+    privateSpacesReady?: number;
+    privateSpacesTotal?: number;
+    stage?: "reading" | "lore" | "resolving" | "queued" | "model" | "validating" | "applying" | "saving";
     stageStartedAt?: string;
     attempt?: number;
     loreEntryCount?: number;

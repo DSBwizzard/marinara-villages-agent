@@ -1087,6 +1087,16 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? {
             status: asRecord(row.preparation).status as "pending" | "ready" | "failed",
             error: boundText(asRecord(row.preparation).error, 300),
+            ...(asTrimmedString(asRecord(row.preparation).claimId)
+              ? { claimId: asTrimmedString(asRecord(row.preparation).claimId).slice(0, 100) }
+              : {}),
+            ...(asIsoString(asRecord(row.preparation).startedAt)
+              ? { startedAt: asIsoString(asRecord(row.preparation).startedAt)! }
+              : {}),
+            ...(typeof asRecord(row.preparation).attempt === "number" &&
+            Number.isFinite(asRecord(row.preparation).attempt)
+              ? { attempt: Math.max(0, Math.floor(asRecord(row.preparation).attempt as number)) }
+              : {}),
           }
         : undefined,
       upgradeId: upgradeId || undefined,
@@ -2533,10 +2543,21 @@ export function coerceVillageState(value: unknown): VillageState {
         venueDetailsSeeded: preparation.venueDetailsSeeded === true,
         currentId: asTrimmedString(preparation.currentId),
         error: boundText(preparation.error, 300),
+        ...(["venues", "private-spaces", "residents"].includes(String(preparation.phase))
+          ? { phase: preparation.phase as "venues" | "private-spaces" | "residents" }
+          : {}),
+        ...(typeof preparation.currentVenueId === "string"
+          ? { currentVenueId: preparation.currentVenueId.slice(0, 100) }
+          : {}),
+        ...(typeof preparation.currentZoneId === "string"
+          ? { currentZoneId: preparation.currentZoneId.slice(0, 100) }
+          : {}),
         ...(preparation.stage === "reading" ||
         preparation.stage === "lore" ||
         preparation.stage === "resolving" ||
+        preparation.stage === "queued" ||
         preparation.stage === "model" ||
+        preparation.stage === "validating" ||
         preparation.stage === "applying" ||
         preparation.stage === "saving"
           ? { stage: preparation.stage }
@@ -2544,8 +2565,8 @@ export function coerceVillageState(value: unknown): VillageState {
         ...(asIsoString(preparation.stageStartedAt)
           ? { stageStartedAt: asIsoString(preparation.stageStartedAt)! }
           : {}),
-        ...(typeof preparation.attempt === "number"
-          ? { attempt: Math.max(0, Math.min(3, Math.floor(preparation.attempt))) }
+        ...(typeof preparation.attempt === "number" && Number.isFinite(preparation.attempt)
+          ? { attempt: Math.max(0, Math.floor(preparation.attempt)) }
           : {}),
         ...(typeof preparation.loreEntryCount === "number"
           ? { loreEntryCount: Math.max(0, Math.floor(preparation.loreEntryCount)) }

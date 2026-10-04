@@ -229,7 +229,8 @@ async function main() {
     );
     assert.equal((await readVillageState()).venues[1]!.privateSpaces![0]!.image!.id, "art");
     await Promise.all([preparePrivateSpaces(), preparePrivateSpaces()]);
-    assert.equal(calls, 2, "concurrent preparation coalesces");
+    assert.equal(calls, 5, "concurrent preparation coalesces; one request per private space");
+    assert.ok(inputs.every((input) => input.rooms.length === 1));
     let saved = await readVillageState();
     assert.ok(saved.venues.every((v) => v.zones!.every((z) => !z.preparation || z.preparation.status === "ready")));
     assert.equal(resolveVenueZone(saved.venues[2]!, "staff")!.name, "Bank vault");

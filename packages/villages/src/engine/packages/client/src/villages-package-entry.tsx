@@ -482,9 +482,15 @@ type VillageSnapshot = {
   foundingPreparation: {
     status: "pending" | "failed" | "ready";
     completedIds: string[];
+    venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;
-    stage?: "reading" | "lore" | "resolving" | "model" | "applying" | "saving";
+    phase?: "venues" | "private-spaces" | "residents";
+    currentVenueId?: string;
+    currentZoneId?: string;
+    privateSpacesReady?: number;
+    privateSpacesTotal?: number;
+    stage?: "reading" | "lore" | "resolving" | "queued" | "model" | "validating" | "applying" | "saving";
     stageStartedAt?: string;
     attempt?: number;
     loreEntryCount?: number;
@@ -20984,6 +20990,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const total = snapshot?.villagers.length ?? 0;
     const done = preparation?.completedIds.length ?? 0;
     const current = snapshot?.villagers.find((villager) => villager.characterId === preparation?.currentId)?.name;
+    const currentVenue = snapshot?.settings.venues.find((venue) => venue.id === preparation?.currentVenueId);
+    const currentSpace = currentVenue?.zones?.find((zone) => zone.id === preparation?.currentZoneId)?.name;
+    const phase =
+      preparation?.phase ?? (current ? "residents" : preparation?.venueDetailsSeeded ? "private-spaces" : "venues");
+    const subject =
+      phase === "private-spaces" ? [currentSpace, currentVenue?.name].filter(Boolean).join(" · ") : current;
+    const task =
+      phase === "venues"
+        ? "starting venue details"
+        : phase === "private-spaces"
+          ? "this private space"
+          : "wishes and a routine profile";
     const stageText =
       preparation?.stage === "reading"
         ? "Reading the character card"
@@ -20992,12 +21010,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           : preparation?.stage === "resolving"
             ? "Connecting to the System model"
             : preparation?.stage === "model"
-              ? `Waiting for ${preparation.modelName || "the System model"} to write wishes and a routine profile`
-              : preparation?.stage === "applying"
-                ? "Building varied days locally"
-                : preparation?.stage === "saving"
-                  ? "Saving this villager's agenda and translation"
-                  : "Preparing the first villager";
+              ? `Waiting for ${preparation.modelName || "the System model"} to write ${task}`
+              : preparation?.stage === "queued"
+                ? "Waiting for preparation to start"
+                : preparation?.stage === "validating"
+                  ? "Checking the generated result"
+                  : preparation?.stage === "applying"
+                    ? "Building varied days locally"
+                    : preparation?.stage === "saving"
+                      ? phase === "residents"
+                        ? "Saving this villager's wishes and routine"
+                        : "Saving prepared details"
+                      : phase === "venues"
+                        ? "Preparing starting venue details"
+                        : phase === "private-spaces"
+                          ? "Preparing private spaces"
+                          : "Preparing residents";
     const started = preparation?.stageStartedAt ? Date.parse(preparation.stageStartedAt) : NaN;
     const stageSeconds =
       preparation?.status === "pending" && Number.isFinite(started)
@@ -21023,6 +21051,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </p>
           <p>{`${done} of ${total} villagers ready`}</p>
           <progress aria-label="Villagers ready" max={Math.max(1, total)} value={done} />
+          {preparation?.privateSpacesTotal !== undefined ? (
+            <>
+              <p>{`${preparation.privateSpacesReady ?? 0} of ${preparation.privateSpacesTotal} private spaces ready`}</p>
+              <progress
+                aria-label="Private spaces ready"
+                max={Math.max(1, preparation.privateSpacesTotal)}
+                value={preparation.privateSpacesReady ?? 0}
+              />
+            </>
+          ) : null}
           <ul className="villages-forging-preparation-list">
             {(snapshot?.villagers ?? []).map((villager) => (
               <li key={villager.characterId}>
@@ -21045,20 +21083,31 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </p>
           <details>
             <summary>Preparation details</summary>
-            {preparation?.status === "pending" && preparation.stage ? (
+            <p>
+              {phase === "venues"
+                ? "Starting venue details"
+                : phase === "private-spaces"
+                  ? "Private-space preparation"
+                  : "Resident preparation"}
+            </p>
+            {subject ? <p>{subject}</p> : null}
+            {preparation?.status === "failed" ? (
+              <p>Preparation stopped. Completed work is saved; retry to continue.</p>
+            ) : (
               <p>
                 {stageText}
-                {current ? ` for ${current}` : ""}.
+                {subject ? ` for ${subject}` : ""}.
               </p>
-            ) : null}
-            {preparation?.attempt ? (
-              <p>{`Attempt ${preparation.attempt} of 3${stageSeconds !== null ? ` · ${stageSeconds}s in this stage` : ""}`}</p>
-            ) : null}
+            )}
+            {preparation?.attempt ? <p>{`Attempt ${preparation.attempt}`}</p> : null}
+            {stageSeconds !== null ? <p>{`${stageSeconds}s in this stage`}</p> : null}
             {preparation?.stage === "resolving" ||
             preparation?.stage === "model" ||
             preparation?.stage === "applying" ||
             preparation?.stage === "saving" ? (
-              <p>{`${preparation.loreEntryCount ?? 0} relevant lorebook entries included`}</p>
+              preparation.loreEntryCount !== undefined ? (
+                <p>{`${preparation.loreEntryCount} relevant lorebook entries included`}</p>
+              ) : null
             ) : null}
             {preparation?.status === "pending" && preparation.error ? (
               <p className={`${ELEMENT_TAG}-hint`}>{`Previous attempt: ${preparation.error}`}</p>
@@ -21069,8 +21118,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               <p className={`${ELEMENT_TAG}-error`} role="alert">
                 {preparation.error}
               </p>
+              <VillagesBurstPreview request={request} action="founding" />
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void retryPreparation()}>
-                Retry this villager
+                Retry preparation
               </button>
               <details>
                 <summary>Change connections</summary>
