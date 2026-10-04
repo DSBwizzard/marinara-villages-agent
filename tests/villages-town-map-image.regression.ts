@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { PNG } from "pngjs";
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -12,6 +13,7 @@ async function main() {
     MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH,
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+    generateVillageTownMap,
   } = await import(pathToFileURL(join(services, "town-map-image.ts")).href);
   const {
     TOWN_MAP_EXPECTED_HEIGHT,
@@ -198,6 +200,84 @@ async function main() {
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+  // Exercise the actual generation boundary, with a realistic PNG and no network.
+  const { configureVillagesRuntime } = await import(pathToFileURL(join(services, "package-runtime.ts")).href);
+  const { VILLAGE_SHARED_SETTING_RULE } = await import(pathToFileURL(join(services, "narrative-grounding.ts")).href);
+  const documents = new Map<string, any>();
+  const releaseRuntime = configureVillagesRuntime({
+    persistence: {
+      documents: {
+        async getById(_packageId: string, id: string) {
+          return documents.get(id) ?? null;
+        },
+        async create(input: any) {
+          const row = { ...input, revision: 1 };
+          documents.set(input.id, row);
+          return row;
+        },
+        async update(input: any) {
+          const row = { ...input, revision: documents.get(input.id).revision + 1 };
+          documents.set(input.id, row);
+          return row;
+        },
+      },
+    },
+    logger: { warn() {}, error() {}, info() {}, debug() {}, debugOverride() {} },
+  } as any);
+  const fullMap = new PNG({ width: 1536, height: 1024 });
+  let random = 123456;
+  for (let index = 0; index < fullMap.data.length; index++) {
+    random ^= random << 13;
+    random ^= random >>> 17;
+    random ^= random << 5;
+    fullMap.data[index] = index % 4 === 3 ? 255 : random & 255;
+  }
+  const generatedImage = `data:image/png;base64,${PNG.sync.write(fullMap).toString("base64")}`;
+  assert.ok(generatedImage.length > 4_000_000 && generatedImage.length < MAX_TOWN_MAP_IMAGE_LENGTH);
+  const imageRequests: any[] = [];
+  let resultImage = generatedImage;
+  try {
+    globalThis.fetch = async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      if (path === "/api/connections")
+        return Response.json([{ id: "fixture-image", provider: "image_generation", model: "fixture" }]);
+      if (path === "/api/characters/avatar-generation") {
+        imageRequests.push(JSON.parse(String(init?.body)));
+        return Response.json({ image: resultImage });
+      }
+      assert.equal(path, "/api/image-metadata/inspect");
+      return Response.json({ error: "Not Found" }, { status: 404 });
+    };
+    const input = {
+      structure: "A corridor and shared hall. ".repeat(29),
+      setting: "An indoor observatory. ".repeat(70),
+      sceneryArtStyle: "Painted scenery. ".repeat(35),
+      options: { roads: "include", structures: "include", water: "include" },
+      useVisualLore: false,
+      connectionId: "fixture-image",
+    };
+    const expectedPrompt = buildTownMapPrompt(
+      input.structure,
+      input.setting.slice(0, 1500),
+      input.options,
+      "",
+      null,
+      input.sceneryArtStyle.trim(),
+    );
+    assert.ok(expectedPrompt.length > 3500 && expectedPrompt.length <= 4000);
+    const generated = await generateVillageTownMap(input);
+    assert.deepEqual(generated, { image: generatedImage, width: 1536, height: 1024 });
+    assert.equal(imageRequests.length, 1);
+    assert.equal(imageRequests[0].appearance, expectedPrompt);
+    assert.equal(expectedPrompt.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
+    assert.equal(imageRequests[0].promptOverrides[0].prompt, expectedPrompt);
+    resultImage = "data:image/png;base64," + "A".repeat(8_000_004);
+    await assert.rejects(generateVillageTownMap(input), /too large to store/);
+    assert.equal(imageRequests.length, 2, "an oversized result must not trigger another paid request");
+  } finally {
+    globalThis.fetch = originalFetch;
+    releaseRuntime();
   }
   const client = await readFile(
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),

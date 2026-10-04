@@ -152,6 +152,12 @@ try {
         await new Promise((resolve) => {
           releaseMap = resolve;
         });
+        if (mapCalls === 1)
+          return route.fulfill({
+            status: 502,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "The generated map is too large to store." }),
+          });
         return route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -387,6 +393,23 @@ try {
       await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(0);
       releaseMap();
       await expect(
+        root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
+      ).toBeVisible();
+      await expect(root.locator(".villages-forging-placement")).toContainText("Map artwork failed");
+      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await expect(
+        root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
+      ).toBeVisible();
+      releaseMap = undefined;
+      await root.getByRole("button", { name: "Generate map", exact: true }).click();
+      await expect.poll(() => !!releaseMap).toBe(true);
+      await expect(root.getByRole("alert").filter({ hasText: "The generated map is too large to store." })).toHaveCount(
+        0,
+      );
+      await forward("Continue to spaces").click();
+      await expect(root.locator(".villages-forging-placement")).toContainText("Generating map artwork");
+      releaseMap();
+      await expect(
         root.getByRole("button", { name: "I checked all pins against this map", exact: true }),
       ).toBeVisible();
       await forward("Review village").click();
@@ -409,7 +432,7 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await expect(root.getByRole("button", { name: "Resume pin placement", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
-      assert.equal(mapCalls, 1, "finished artwork is saved and not regenerated on reload");
+      assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await root.getByRole("button", { name: "2 Place", exact: true }).click();
       await root.getByLabel("Map layout", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
