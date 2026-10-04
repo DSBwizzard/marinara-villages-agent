@@ -10,6 +10,7 @@ import { translationBatchSize, remainingRequests, agendaRequestCount } from "./g
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import { remapVenues } from "./prompt-preset.js";
 import { badRequest } from "./errors.js";
+import { privatePreparationRooms } from "./private-space-preparation.js";
 
 type Resident = { id: string; name: string; requests: number };
 export type BurstPreviewResult = {
@@ -23,7 +24,7 @@ export type BurstPreviewResult = {
 export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewResult> {
   const args = asRecord(raw),
     action = String(args.action);
-  if (!["agenda", "translation", "influence", "change", "images", "retry"].includes(action))
+  if (!["agenda", "translation", "influence", "change", "images", "retry", "founding"].includes(action))
     throw badRequest("Choose a supported generation preview.");
   const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, "villages-village");
   const original = coerceVillageState(record?.data);
@@ -59,6 +60,10 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
   const target = typeof args.characterId === "string" ? args.characterId : "";
   let languageRequests = bootstrap ? 1 : 0,
     imageRequests = 0;
+  if (action === "founding" && original.foundingPreparation && original.foundingPreparation.status !== "ready")
+    languageRequests =
+      (original.foundingPreparation.venueDetailsSeeded ? 0 : 1) +
+      privatePreparationRooms(original).filter(({ zone }) => zone.preparation?.status !== "ready").length;
   const active = (kind: string, id: string) =>
     jobs.find(
       (j) =>
@@ -71,6 +76,16 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
     if (action === "images" || action === "retry" || (target && resident.characterId !== target)) continue;
     if (!target && action === "agenda") continue;
     let requests = 0;
+    if (
+      action === "founding" &&
+      proposed.foundingPreparation?.status !== "ready" &&
+      proposed.foundingPreparation &&
+      !proposed.foundingPreparation.completedIds.includes(resident.characterId) &&
+      resident.agenda?.personalizationPending
+    ) {
+      const saved = active("agenda", resident.characterId);
+      requests = remainingRequests(1, saved?.completedSteps ?? 0);
+    }
     if (
       action === "change" &&
       proposed.foundingPreparation?.status !== "pending" &&
@@ -170,6 +185,9 @@ export async function previewVillageBurst(raw: unknown): Promise<BurstPreviewRes
           : null,
     unknownCosts,
     note:
+      (action === "founding"
+        ? "One request per unfinished private space, plus unfinished resident routines and initial venue details. "
+        : "") +
       (bootstrap ? "Includes one public-Venue suggestion request. " : "") +
       "Read-only forecast for current state. Routine generation uses one request. Schedule influence and daily variation are local and spend no tokens. Reused saved responses do not require new requests. Token prices use configured full-context/output budgets; actual replies usually use less. Unknown image/provider costs are excluded. No spending limit.",
   };

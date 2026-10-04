@@ -1,5 +1,18 @@
 # Villages
 
+## Founding preparation recovery
+
+Private spaces prepare one at a time, with one concise System request per unfinished space. Each completed space is saved before the next request; a failed or truncated reply stops preparation and retains earlier successes. **Retry preparation** resumes the saved village, map and finished work. Blank replies have no automatic retry. A recorded request interrupted by shutdown requires deliberate retry and may already have incurred provider costs. The Engine document store still has the buffered durability limitation described below.
+
+**Preparation details** reports starting venue details, the current private space, and resident wishes/routines through the existing poll. Space readiness is separate from resident readiness. Failures identify the space, model, effective output limit and finish reason without revealing generated private contents. Older preparation markers retain readable fallback status. Vacant residential spaces and worksites wait for their later owning flow and cannot block founding.
+
+Mocked recovery and browser regressions:
+
+```powershell
+node --import tsx tests/villages-founding-preparation.regression.ts
+node tests/villages-founding-preparation.e2e.mjs
+```
+
 New Wish checks use short request-local IDs, bounded JSON and an output allowance sized with a reasoning reserve (up to 4,096 tokens, subject to the connection ceiling). Valid batch rows commit independently; deliberate retries request only unfinished rows and preserve effect receipts. Recovery can apply already saved results locally and retire obsolete checks without paid repairs. Empty, truncated and malformed daily proposals have explicit diagnostics; a valid `wish:null` still completes a quiet day.
 
 Background work separates running/queued jobs, paused jobs and failures needing attention. Completed history starts collapsed; failures show cause and age. The [prevention release record](WISH_CHECK_PREVENTION.md) includes fault-injection coverage and the bounded live comparison, which did **not** establish that production failures are rare.

@@ -305,7 +305,7 @@ async function main() {
   assert.ok(routes.includes('"/setup/venue-image"'));
   assert.ok(routes.includes('"/setup/preparation/retry"'));
   assert.ok(village.includes("image: foundingImage(row.image)"));
-  assert.ok(village.includes("seedFoundingVenueDetails(initial)"));
+  assert.ok(village.includes("seedFoundingVenueDetails(initial,"));
   assert.ok(village.includes("marker.completedIds.includes(villager.characterId)"));
   assert.ok(village.includes("await proposeCompactFounding("));
   assert.equal(village.includes("await storeRemap(id, remap, schedule)"), false);

@@ -19,6 +19,7 @@ import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "./prompt-preset.j
 import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
 import { extractJsonObject } from "./village-bootstrap.js";
 import type { VillageState, VillageVenueImage } from "./types.js";
+import type { FoundingProgress } from "./founding-progress.js";
 import { fitVenueWritingMessages, venueCardProfile } from "./venue-writing.js";
 
 export type FoundingVenueSuggestion = {
@@ -198,6 +199,7 @@ export type SeededFoundingVenueDetails = {
 /** Initial physical details are drafted after founding, never as editable setup answers. */
 export async function seedFoundingVenueDetails(
   village: VillageState,
+  onProgress?: (progress: Partial<FoundingProgress>) => Promise<void>,
 ): Promise<Record<string, SeededFoundingVenueDetails>> {
   const rows = await Promise.all(
     rowsOf(
@@ -226,6 +228,7 @@ export async function seedFoundingVenueDetails(
     undefined,
     village.loreTokenBudget,
   );
+  await onProgress?.({ stage: "resolving", loreEntryCount: lore.length });
   const model = await villagesLanguageModels().resolveForRequest({
     connectionId: await villagesConnectionIdFor("system"),
   });
@@ -245,10 +248,15 @@ export async function seedFoundingVenueDetails(
     { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
   ];
   const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2000, 2000) });
+  await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
     temperature: 0.7,
+    reasoningEffort: "none",
+    retryEmpty: false,
+    usagePurpose: "background",
     debugMode: false,
   });
+  await onProgress?.({ stage: "validating" });
   const payload = extractJsonObject(completion.content ?? "");
   const generated = Array.isArray(payload?.venues) ? payload.venues : [];
   const details: Record<string, SeededFoundingVenueDetails> = {};
