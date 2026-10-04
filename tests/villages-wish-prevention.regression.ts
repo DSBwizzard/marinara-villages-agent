@@ -6,6 +6,7 @@ import {
   readSystemInterpretations,
   systemInterpretations,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
+import { interpretationPayload } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-evidence.js";
 import { completionFailure } from "../packages/villages/src/engine/packages/server/src/services/villages/work-failure.js";
 import { wishFingerprint } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
@@ -38,7 +39,14 @@ async function main() {
     id: "second",
     evidence: [{ id: "private-b", speakerId: "b", name: "B", content: "Friday.", current: true }],
   };
+  check.essentialEvidenceIds = ["private-player"];
   const compact = compactWishChecks([check, second]);
+  assert.equal(interpretationPayload(compact.wireChecks).fits, true, "essential references use aliases too");
+  assert.equal(
+    interpretationPayload(compactWishChecks([{ ...check, essentialEvidenceIds: ["e0"] }]).wireChecks).fits,
+    false,
+    "a missing canonical pin cannot accidentally match a wire alias",
+  );
   assert.ok(compact.outputTokens >= 1024 && compact.outputTokens <= 4096);
   const alias = (id: string) =>
     compact.wireChecks

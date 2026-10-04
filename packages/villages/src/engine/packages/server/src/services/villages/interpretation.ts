@@ -139,6 +139,7 @@ export function compactWishChecks(checks: InterpretationCheck[]) {
   const wireChecks = checks.map((check, index) => ({
     ...check,
     id: "c" + index,
+    essentialEvidenceIds: check.essentialEvidenceIds?.map((id) => evidenceAliases.get(id) ?? "missing:" + id),
     evidence: check.evidence.map((line) => ({ ...line, id: evidenceAliases.get(line.id)! })),
     facts: {
       ...asRecord(check.facts),

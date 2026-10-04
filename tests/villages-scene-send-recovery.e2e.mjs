@@ -153,6 +153,7 @@ try {
     await composer.fill("Revised draft");
     await send.click();
     await expect(composer).toHaveValue("");
+    await expect(composer).toBeEnabled();
     assert.equal(turns.length, 2);
     assert.equal(turns[1].replaceOfOperationId, turns[0].submissionId);
     assert.equal(turns[1].retryOfAttemptId, "failed-attempt");
@@ -167,6 +168,7 @@ try {
     assert.equal(turns.length, 3, "recovery waits do not send");
     await send.click();
     await expect(composer).toHaveValue("");
+    await expect(composer).toBeEnabled();
     assert.equal(turns[3].submissionId, turns[2].submissionId);
     assert.equal(turns[3].retryOfAttemptId, "failed-attempt");
 
@@ -186,24 +188,32 @@ try {
     await expect(composer).toHaveValue("Edited after reload");
     await send.click();
     await expect(composer).toHaveValue("");
+    await expect(composer).toBeEnabled();
 
     failure = "reads";
     await composer.fill("Unreadable recovery draft");
+    const beforeUnreadable = turns.length;
     await send.click();
+    // The preflight is async while the composer still looks enabled. Wait for
+    // the failed POST and its recovery UI before testing an explicit resend.
+    await expect.poll(() => turns.length).toBe(beforeUnreadable + 1);
+    await expect(page.locator("." + tag + "-room-error")).toContainText("Invalid request details");
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Unreadable recovery draft");
     await expect(
       page.getByText("Unreadable recovery draft", { exact: true }).and(page.locator(":not(textarea)")),
     ).toHaveCount(0);
-    await page.waitForTimeout(1100);
+    await expect.poll(() => hideReads).toBe(false);
     await send.click();
     await expect(composer).toHaveValue("");
+    await expect(composer).toBeEnabled();
     assert.equal(turns.at(-1).retryOfAttemptId, "failed-attempt");
 
     loseSuccessResponse = true;
     await composer.fill("Successful lost response");
     await send.click();
     await expect(composer).toHaveValue("");
+    await expect(composer).toBeEnabled();
     assert.equal(session.submissions.filter((entry) => entry.id === turns.at(-1).submissionId).length, 1);
 
     // Reach General settings with no active Scene, then verify persistence.
@@ -234,6 +244,7 @@ try {
     assert.equal(turns.length, beforeEnter, "IME composition does not send");
     await composer.press("Enter");
     await expect(composer).toHaveValue("");
+    await expect(composer).toBeEnabled();
     assert.equal(turns.length, beforeEnter + 1);
     assert.deepEqual(errors, []);
     await page.close();
