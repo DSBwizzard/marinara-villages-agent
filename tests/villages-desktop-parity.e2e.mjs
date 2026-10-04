@@ -506,7 +506,7 @@ try {
     assert.equal(lastLeave, null, "selecting Conclude does not leave the scene");
     await expect(composer).toHaveValue("My response.");
     await modeButton().click();
-    await page.getByRole("menuitemradio", { name: "Chat" }).click();
+    await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
     await expect(modeButton()).toHaveText("💬");
     await modeButton().click();
     await page.getByRole("menuitemradio", { name: "Fulfill" }).click();

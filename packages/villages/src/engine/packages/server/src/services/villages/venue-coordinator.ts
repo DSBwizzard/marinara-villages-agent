@@ -181,6 +181,11 @@ export function venueOperationSnapshot<T>(): T | undefined {
   return context.getStore()?.operation.snapshot as T | undefined;
 }
 
+/** Keep admitted interaction rules stable across package upgrades and retries. */
+export function venueOperationInput(): Record<string, unknown> | undefined {
+  return context.getStore()?.operation.input;
+}
+
 async function update(id: string, mutate: (data: Record<string, unknown>) => void) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const store = villagesDocuments();

@@ -17,6 +17,7 @@ export function createVillagesClientId(): string {
 }
 
 type SceneSendInput = {
+  zoneId?: string;
   message?: string;
   mode?: string;
   targetId?: string;
@@ -42,6 +43,7 @@ export function sceneResend(
   if (saved.status === "running") throw new Error("This Scene is still responding. Your draft is preserved.");
   const prior = saved.input;
   const same =
+    prior.zoneId === input.zoneId &&
     prior.message === input.message &&
     prior.mode === input.mode &&
     (prior.targetId || "") === (input.targetId || "") &&

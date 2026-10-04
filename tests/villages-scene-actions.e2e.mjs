@@ -10,7 +10,7 @@ const browser = await chromium.launch({
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 try {
-  for (const width of [1366, 390]) {
+  for (const width of [1366, 390, 320]) {
     const snapshot = structuredClone(fixture);
     snapshot.villagers = residents.slice(0, 1);
     snapshot.settings.venues[0].zones = [
@@ -124,17 +124,14 @@ try {
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     await expect(composer).toBeVisible();
     await composer.fill("Keep this draft");
-    await page.getByRole("button", { name: "Mode: Chat. Choose mode" }).click();
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
     assert.deepEqual(
       await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),
-      ["Chat", "Conclude"],
+      ["Say / Do", "Move", "Contact", "Conclude"],
     );
-    await page.getByRole("menuitemradio", { name: "Chat", exact: true }).click();
-    await page.getByRole("button", { name: "Knock / Call", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
     await expect(composer).toHaveValue("Keep this draft");
-    await page.getByLabel("Doorway", { exact: true }).selectOption("exterior");
-    await page.getByLabel("Knock or call").selectOption("call");
-    await page.getByLabel("Who to contact").selectOption("mara");
+    await page.getByLabel("Contact Zone", { exact: true }).selectOption("exterior");
     let finishContact;
     heldContact = new Promise((done) => {
       finishContact = done;
@@ -144,24 +141,30 @@ try {
     });
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await expect(page.getByLabel("Move to Zone")).toBeDisabled();
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
     assert.equal(lastContact.mode, "contact");
     assert.equal(lastContact.contact.kind, "call");
     assert.equal(lastContact.contact.boundaryZoneId, "exterior");
     finishContact();
     await expect(composer).toBeEnabled();
-    await expect(page.getByLabel("Doorway", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Contact Zone", { exact: true })).toHaveValue("exterior");
+    const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await next.isEnabled()) await next.click();
     await composer.fill("Draft survives Zone changes");
     scene.sceneRevision++;
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
     await page.getByLabel("Move to Zone").selectOption("exterior");
+    assert.equal(moves, 0, "selection alone never moves");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("alert").last()).toContainText("Scene changed");
     assert.equal(moves, 0);
-    await expect(composer).toHaveValue("Draft survives Zone changes");
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByLabel("Move to Zone").selectOption("exterior");
+    await expect(composer).toHaveCount(0);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
       "You move from Common Space to Exterior.",
     );
@@ -174,6 +177,11 @@ try {
     );
     assert.equal(moves, 1);
     assert.equal(scene.lines.filter((line) => line.id === "transition").length, 1);
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
+    await expect(page.getByLabel("Contact Zone")).toHaveValue("");
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     assert.deepEqual(errors, []);
     await context.close();
   }

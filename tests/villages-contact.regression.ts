@@ -10,7 +10,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/engine/packag
 import {
   enterVenue,
   continueVenueWithoutGreeting,
-  sendVenueTurn,
+  sendVenueTurn as submitTurn,
   moveVenueZone,
   activeVenueSession,
   publicSceneResponse,
@@ -31,6 +31,8 @@ import type {
   VillageVenue,
   VillageVillager,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+import { coordinateVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
+
 const now = new Date(),
   stamp = now.toISOString(),
   dateKey = agendaDateKey(now),
@@ -339,6 +341,45 @@ const release = configureVillagesRuntime({
   },
 } as Parameters<typeof configureVillagesRuntime>[0]);
 
+/** Exercise recovery of pre-upgrade admissions separately from new explicit actions. */
+async function sendVenueTurn(input: Parameters<typeof submitTurn>[0]) {
+  const data =
+    records.get("villages-venue-visit:" + input.sessionId)?.data ??
+    [...records.values()].find((record) => record.data?.id === input.sessionId)?.data;
+  if (
+    !data?.submissions?.some((entry: any) => entry.id === input.submissionId) &&
+    data?.operation?.id !== input.submissionId
+  ) {
+    const payload = {
+      message: input.message,
+      mode: input.mode,
+      targetId: input.targetId,
+      ...(input.contact ? { contact: input.contact } : {}),
+    };
+    await assert.rejects(
+      coordinateVenue(
+        input.sessionId,
+        input.submissionId,
+        "turn",
+        payload,
+        input.expectedSceneRevision,
+        undefined,
+        async () => {
+          throw new Error("Pre-upgrade admission interrupted");
+        },
+      ),
+      /Pre-upgrade admission interrupted/,
+    );
+  }
+  const operation = (await activeVenueSession())?.operation;
+  return submitTurn({
+    ...input,
+    ...(operation?.id === input.submissionId && operation.status === "interrupted"
+      ? { retryOfAttemptId: input.retryOfAttemptId ?? operation.attemptId }
+      : {}),
+  });
+}
+
 async function open() {
   const entered = await enterVenue("house", undefined, "", "outside");
   return continueVenueWithoutGreeting(entered.id);
@@ -355,8 +396,127 @@ async function attempt(id: string, submissionId: string, targetId = "messenger",
     contact: { kind: "call", targetId, boundaryZoneId: "common", quote: message },
   });
 }
+async function explicitActionChecks() {
+  behavior = "answer";
+  let scene = await open();
+  const contact = { kind: "call" as const, targetId: "", boundaryZoneId: "common", quote: "Hello, Alex!" };
+  const before = calls;
+  const answered = await submitTurn({
+    sessionId: scene.id,
+    message: contact.quote,
+    mode: "contact",
+    targetId: "",
+    submissionId: "scoped-contact",
+    contact,
+  });
+  assert.equal(calls - before, 1);
+  assert.equal(answered.session.zoneId, "exterior");
+  assert.deepEqual(answered.session.activeIds, []);
+  assert.match(prompts.at(-1)!, /Possible remote listeners: messenger/);
+  assert.doesNotMatch(prompts.at(-1)!, /Possible remote listeners:.*alex/);
+  const local = await submitTurn({
+    sessionId: scene.id,
+    message: "I shout loudly: HEY ALEX!",
+    mode: "chat",
+    targetId: "",
+    submissionId: "scoped-local",
+  });
+  assert.deepEqual(local.session.lines.at(-1)!.heardBy, []);
+  assert.equal(local.session.lines.at(-1)!.viaDoorway, undefined);
+  assert.ok(prompts.at(-1)!.includes("Say / Do affects only the current Zone"));
+  assert.doesNotMatch(prompts.at(-1)!, /CONTACT RESPONSE/);
+  const movedWords = await submitTurn({
+    sessionId: scene.id,
+    message: "I walk to Common Space",
+    mode: "chat",
+    targetId: "",
+    submissionId: "scoped-written-move",
+  });
+  assert.equal(movedWords.session.zoneId, "exterior", "only Move changes the player's Zone");
+  assert.equal(movedWords.session.submissions.at(-1)!.movement, undefined);
+  behavior = "relay";
+  const relayBefore = calls;
+  const offered = await submitTurn({
+    sessionId: scene.id,
+    message: contact.quote,
+    mode: "contact",
+    targetId: "",
+    submissionId: "scoped-relay-offer",
+    contact,
+  });
+  assert.equal(calls - relayBefore, 1, "fetch offers never launch an extra response stage");
+  assert.equal(offered.session.submissions.at(-1)!.contactEvidence!.relay, null);
+  assert.equal(contactPosition(offered.session, "alex"), "office");
+  assert.ok(!offered.session.lines.some((line) => line.contactReport));
+  behavior = "answer";
+  const loud = { ...contact, quote: "I shout as loudly as I can: HEY ALEX!" };
+  await submitTurn({
+    sessionId: scene.id,
+    message: loud.quote,
+    mode: "contact",
+    targetId: "",
+    submissionId: "scoped-loud",
+    contact: loud,
+  });
+  assert.match(prompts.at(-1)!, /Possible remote listeners: messenger/);
+  assert.doesNotMatch(prompts.at(-1)!, /Possible remote listeners:.*alex/);
+  const untouched = calls;
+  const quiet = { ...contact, boundaryZoneId: "public" };
+  const empty = await submitTurn({
+    sessionId: scene.id,
+    message: quiet.quote,
+    mode: "contact",
+    targetId: "",
+    submissionId: "scoped-empty",
+    contact: quiet,
+  });
+  assert.equal(calls, untouched, "no eligible listener needs no response request");
+  assert.equal(empty.session.lines.at(-1)!.content, "No answer.");
+  const publicReply = publicSceneResponse(offered);
+  assert.doesNotMatch(
+    JSON.stringify(publicReply),
+    /SECRET OFFICE DETAILS|SECRET BEDROOM|sceneAttendance|contactEvidence/,
+  );
+  await discardVenueVisitDebug(scene.id);
+  for (const boundaryZoneId of ["", "office"]) {
+    scene = await open();
+    await assert.rejects(
+      submitTurn({
+        sessionId: scene.id,
+        message: contact.quote,
+        mode: "contact",
+        targetId: "",
+        submissionId: "scoped-invalid-" + boundaryZoneId,
+        contact: { ...contact, boundaryZoneId },
+      }),
+      /adjacent/,
+    );
+    await discardVenueVisitDebug(scene.id);
+  }
+  assert.deepEqual(contactReach(saved, house, "exterior", "loud", "common", true), ["common"]);
+  assert.deepEqual(contactReach(saved, house, "exterior", "device", "common", true), ["common"]);
+  scene = await open();
+  failSave = true;
+  const recoveryCalls = calls;
+  const crashInput = {
+    sessionId: scene.id,
+    message: contact.quote,
+    mode: "contact" as const,
+    targetId: "",
+    submissionId: "crash",
+    contact,
+  };
+  await assert.rejects(submitTurn(crashInput), /save interrupted/);
+  const interrupted = (await activeVenueSession())!;
+  const recovered = await submitTurn({ ...crashInput, retryOfAttemptId: interrupted.operation!.attemptId });
+  assert.equal(calls - recoveryCalls, 1, "new Contact retry reuses its saved response");
+  assert.equal(recovered.session.submissions.filter((entry) => entry.id === "crash").length, 1);
+  await discardVenueVisitDebug(scene.id);
+}
+
 async function main() {
   try {
+    await explicitActionChecks();
     assert.deepEqual(contactNeighbors(house, "exterior").sort(), ["common", "public"]);
     assert.deepEqual(
       contactPath(saved, house, "common", "public", "messenger"),
@@ -800,7 +960,9 @@ async function main() {
       "replayed completions are identifiable in logs",
     );
     assert.ok(debugLogs.some((line) => line.includes("contact routing") && line.includes("possibleListeners")));
-    console.log("Contact routing, witnessed speech, relay travel, explicit entry, refresh, and replay passed.");
+    console.log(
+      "Explicit local/contact scope and legacy admitted routing, witnesses, relay recovery, entry and replay passed.",
+    );
   } finally {
     release();
   }

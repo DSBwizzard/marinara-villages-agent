@@ -7,6 +7,8 @@ export type VenueResponseContext = {
   recapNeeded: boolean;
   staging: boolean;
   contactFacts: string;
+  explicitActions?: boolean;
+  contactAction?: boolean;
   invitationZones: string;
   presentation: string;
   expressions: string[];
@@ -60,9 +62,13 @@ export function buildVenueResponseContract(context: VenueResponseContext): strin
         context.contactFacts
       : "",
     "Zones that may be invited into: " + context.invitationZones,
-    context.conversational
-      ? "Optional movementIntent:{zoneId,quote} nominates only a CURRENT standalone player move to one listed named Zone, quoting their entire input. Invitations, quoted/hypothetical movement and AI-invented choices never move the player. Code validates access and writes the transition. Combined cross-Zone speech or deeds require separate turns; never guess witnesses or generate an arrival exchange. Movement alone earns no memories, relationships or Wish progress."
-      : "",
+    context.conversational && context.explicitActions
+      ? context.contactAction
+        ? "This explicit Contact attempt uses only the audience supplied by CONTACT RESPONSE below. Player movement requires Move. Do not return contactIntent, movementIntent or contactRelay, expand the remote audience, or narrate the player entering another Zone."
+        : "Say / Do affects only the current Zone and its listed physical occupants, including shouts and device mentions. Contact is a separate explicit action. Player movement requires Move; written movement does not move the player. If requested here, explain the available control briefly instead of narrating an unperformed move. Do not return contactIntent or movementIntent, invent remote witnesses or answers, or perform automatic doorway follow-ups."
+      : context.conversational
+        ? "Optional movementIntent:{zoneId,quote} nominates only a CURRENT standalone player move to one listed named Zone, quoting their entire input. Invitations, quoted/hypothetical movement and AI-invented choices never move the player. Code validates access and writes the transition. Combined cross-Zone speech or deeds require separate turns; never guess witnesses or generate an arrival exchange. Movement alone earns no memories, relationships or Wish progress."
+        : "",
     'Only an authorized controller can invite or dismiss through natural dialogue or an unambiguous named gesture; preserve contextual cautions. One-visit permission and unconditional standing invitations are distinct. Silence, an open door alone, quotations and third-party permission establish nothing. Entry grants no edit/inviting authority or automatic movement. Optional invitation:{speakerId,venueId,zoneId,scope:"shared|private",ownerId,timing:"now|later",accompanies,quote}; accompanies=true requires an explicit offer to accompany. Server separately interprets and validates permission.',
     context.residentControlled && context.conversational
       ? "This resident-controlled Residence requires every required resident's explicit approval of the exact Zone edit proposal before sceneChange or any lasting change. Entry is not edit consent."

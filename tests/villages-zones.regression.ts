@@ -320,6 +320,8 @@ const release = configureVillagesRuntime({
           if (nominatedMovement)
             return {
               content: JSON.stringify({
+                heardPlayerBy: [],
+                segments: [{ kind: "narration", text: "Use Move to change Zones.", heardBy: [] }],
                 movementIntent: nominatedMovement,
                 // Invented social effects on a movement candidate must never be applied.
                 memoryChanges: [{ kind: "durable", text: "Unwarranted movement memory" }],
@@ -865,12 +867,11 @@ async function main() {
       submissionId: "written-exterior",
       expectedSceneRevision: recoveredMove.sceneRevision,
     });
-    assert.equal(paidCalls, callsBeforeWrittenMove, "named movement is local");
-    assert.equal(written.session.zoneId, "exterior");
+    assert.equal(paidCalls, callsBeforeWrittenMove + 1, "Say / Do uses one local reply, not a movement operation");
+    assert.equal(written.session.zoneId, "stock", "written movement cannot change Zone");
     assert.deepEqual(written.session.sceneAttendance, capturedAttendance);
     assert.equal(written.session.id, recoveredMove.id);
-    assert.equal(written.session.submissions.at(-1)!.processing, undefined, "movement earns no judged consequences");
-    assert.match(written.session.lines.at(-1)!.content, /from stock to Exterior\./u);
+    assert.equal(written.session.submissions.at(-1)!.movement, undefined);
     const lineId = written.session.lines.at(-1)!.id;
     await sendVenueTurn({
       sessionId: written.session.id,
@@ -880,18 +881,15 @@ async function main() {
       submissionId: "written-exterior",
     });
     assert.equal((await activeVenueSession())!.lines.filter((line) => line.id === lineId).length, 1);
-    assert.equal(paidCalls, callsBeforeWrittenMove, "written replay and refresh are free");
-    await assert.rejects(
-      () =>
-        sendVenueTurn({
-          sessionId: written.session.id,
-          message: "I walk to Common Space and say hello",
-          mode: "chat",
-          targetId: "",
-          submissionId: "mixed-movement",
-        }),
-      /separately/,
-    );
+    assert.equal(paidCalls, callsBeforeWrittenMove + 1, "written replay and refresh are free");
+    const mixed = await sendVenueTurn({
+      sessionId: written.session.id,
+      message: "I walk to Common Space and say hello",
+      mode: "chat",
+      targetId: "",
+      submissionId: "mixed-movement",
+    });
+    assert.equal(mixed.session.zoneId, "stock", "mixed prose also stays local");
     await discardVenueVisitDebug(written.session.id);
     let candidate = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "exterior")).id);
     nominatedMovement = { zoneId: "gathering", quote: "I drift into Common Space" };
@@ -904,8 +902,8 @@ async function main() {
       submissionId: "nominated-movement",
     });
     assert.equal(paidCalls - beforeNomination, 1, "less direct movement uses the existing Narration request only");
-    assert.equal(written.session.zoneId, "gathering");
-    assert.equal(written.session.submissions.at(-1)!.liveProposals, undefined);
+    assert.equal(written.session.zoneId, "exterior", "model movement nominations cannot move the player");
+    assert.equal(written.session.submissions.at(-1)!.movement, undefined);
     nominatedMovement = null;
     candidate = written.session;
     await endVenueSession(candidate.id);

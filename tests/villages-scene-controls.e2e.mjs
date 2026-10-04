@@ -123,12 +123,12 @@ try {
       await page.getByRole("button", { name: "Hide history" }).click();
       await page.getByRole("button", { name: "Next paragraph" }).click();
       await expect(send).toBeEnabled();
-      await page.getByRole("button", { name: "Mode: Chat. Choose mode" }).click();
-      for (const mode of ["Chat", "Conclude"])
+      await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
+      for (const mode of ["Say / Do", "Move", "Contact", "Conclude"])
         await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
       await expect(page.getByRole("menuitemradio", { name: "Fulfill", exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitemradio", { name: "Knock / Call", exact: true })).toHaveCount(0);
-      await page.getByRole("menuitemradio", { name: "Chat", exact: true }).click();
+      await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
       await page.getByRole("button", { name: "Venue actions" }).click();
       await expect(page.getByRole("menuitem", { name: "Projects", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();
