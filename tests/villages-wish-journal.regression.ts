@@ -379,6 +379,50 @@ async function main() {
       "A later condition does not discard the result of an already pending action",
     );
     const secondAt = new Date(Date.parse(at) + 60_000).toISOString();
+    const lesson = {
+      id: "started-lessons",
+      venueId: "pond",
+      venueName: "Pond",
+      at,
+      text: "Feddy started a dry introductory swimming lesson with Player; he has not yet swum.",
+      actionReceipt: {
+        happened: true,
+        submissionId: "lesson",
+        witnessIds: ["f"],
+        narration: "They practiced beside the water.",
+      },
+    };
+    live.venueEvents.push(lesson as any);
+    applyPreparedWishVerdict(
+      live,
+      {
+        sceneId: "first",
+        submissionId: "lesson",
+        seed: live.seed,
+        proposal: { ...oldProposal, intent: "progress", conditionRevision: 1 },
+        wish: current,
+        at,
+        context: { evidence: [], card: { name: "Feddy" } },
+      } as any,
+      {
+        criteria: { kind: "complex", goal: swim.wish, requiresPhysical: true, conditionRevision: 1 },
+        outcome: "progress",
+        evidenceIds: ["receipt:" + lesson.id],
+        receiptIds: [lesson.id],
+        reason: "A witnessed lesson started, without establishing swimming",
+        memory: "",
+      },
+    );
+    assert.equal(live.villagers[0].agenda!.wishes.length, 1, "Starting lessons does not fulfill swimming");
+    assert.ok(
+      knownWish(live, "f", "swim")!.facts!.some((fact) => fact.lineIds.includes("receipt:" + lesson.id)),
+      "Abandoned preparations remain sourced history",
+    );
+    assert.equal(
+      live.progressTasks.find((task) => task.definition.owner.kind === "wish")!.definition.phases.length,
+      1,
+      "Starting an approach creates no additional required phases",
+    );
     const result = {
       id: "actual-swim",
       venueId: "beach",
