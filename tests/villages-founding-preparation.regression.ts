@@ -18,7 +18,11 @@ import {
   retryFoundedVillagePreparation,
   foundingPreparationSnapshot,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { startBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+import {
+  startBackgroundWork,
+  retryBackgroundJob,
+  settleBackgroundWork,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import { previewVillageBurst } from "../packages/villages/src/engine/packages/server/src/services/villages/usage-preview.js";
 
 const rows = new Map<string, any>();
@@ -194,13 +198,14 @@ const release = configureVillagesRuntime({
           };
         }
         calls.push("routine");
+        assert.ok(messages[0].content.includes('"venue":0'), "prompt supplies an exact JSON palette schema");
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",
             wishes: [],
             palette: ["resting", "reading", "walking", "writing", "thinking", "tidying"].map((activity) => ({
               activity,
-              venue: 0,
+              venue: mode === "routine-invalid" ? "0" : 0,
               status: "idle",
               flexible: true,
               duration: 90,
@@ -235,6 +240,57 @@ async function main() {
         ({ zone }) => zone.state.items.length <= 4 && zone.state.publicFacts.length <= 4,
       ),
     );
+
+    // Simulate the old validator rejecting a purchased venueNumber reply.
+    // Retry must validate it locally before discarding its failed checkpoint.
+    for (const recovery of ["alias", "malformed", "truncated", "stale"]) {
+      install();
+      mode = "routine-invalid";
+      await prepareFoundedVillage();
+      assert.equal((await readVillageState()).foundingPreparation?.status, "failed");
+      const checkpoint = [...rows.values()].find(
+        (row) => row.kind === "background-work" && row.data.kind === "agenda",
+      )!;
+      const saved = checkpoint.data.steps[0].response;
+      const response = JSON.parse(saved.content);
+      response.palette = response.palette.map(({ venue: _venue, ...row }: any) => ({ ...row, venueNumber: 0 }));
+      response.rhythm = [{ startMinute: 1320, endMinute: 360, activityPaletteIndex: 0 }];
+      saved.content = recovery === "malformed" ? "{}" : JSON.stringify(response);
+      if (recovery === "truncated") saved.finishReason = "length";
+      mode = "valid";
+      calls.length = 0;
+      if (recovery === "stale") {
+        await mutateVillageState((current) => {
+          current.seed = "replacement-village";
+        });
+        await retryBackgroundJob(checkpoint.id, checkpoint.data.attempt, "stale-routine-retry");
+        await settleBackgroundWork();
+        assert.equal(rows.get(checkpoint.id).data.status, "obsolete");
+        assert.equal(calls.length, 0);
+        assert.equal((await readVillageState()).villagers[0].agenda?.generatedAt, "");
+        continue;
+      }
+      const previewWrites = writes;
+      assert.equal((await previewVillageBurst({ action: "founding" })).requests, recovery === "alias" ? 2 : 3);
+      assert.equal(writes, previewWrites, "recovery forecasts do not write");
+      assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
+      conflicts = 2;
+      await Promise.all([retryFoundedVillagePreparation(), retryFoundedVillagePreparation()]);
+      await prepareFoundedVillage();
+      state = await readVillageState();
+      assert.equal(state.foundingPreparation?.status, "ready");
+      assert.equal(state.foundingPreparation?.completedIds.length, 3);
+      assert.equal(calls.length, recovery === "alias" ? 2 : 3, "only invalid saved replies need replacement requests");
+      assert.ok(
+        calls.every((call) => call === "routine"),
+        "completed private spaces are preserved",
+      );
+      assert.equal(state.townMapImage, fixture().townMapImage);
+      const before = calls.length;
+      await retryFoundedVillagePreparation();
+      await prepareFoundedVillage();
+      assert.equal(calls.length, before, "repeated actions after recovery generate nothing");
+    }
 
     for (const failure of [
       "truncated",
