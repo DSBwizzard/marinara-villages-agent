@@ -99,7 +99,9 @@ const api = async (route) => {
       hasMore: false,
     };
   else if (path.endsWith("/dismiss")) {
-    dismissed.add(decodeURIComponent(path.split("/").at(-2)));
+    assert.equal(path, "/api/villages/rooms/live/notices/dismiss");
+    assert.equal(route.request().method(), "POST");
+    dismissed.add(route.request().postDataJSON().noticeId);
     value = { dismissed: true };
   } else if (path.endsWith("/interpret")) {
     interpretations++;
@@ -135,7 +137,7 @@ try {
   await composer.focus();
   await expect(page.getByRole("status", { name: "Saved change status" })).toContainText("still being checked");
   const shared = {
-    id: "wish-shared",
+    id: "3260cf01-1771-43b8-b72c-c050c713029d:989be974-b9ad-4ed3-9256-8e732575d6fa:relationship:077092eca1d088f3dd4a0440",
     kind: "wish",
     text: "Wish shared · Bob",
     detail: "Plant a garden together.",

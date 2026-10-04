@@ -1,5 +1,9 @@
 # Villages
 
+## Scene notice dismissal (0.6.155)
+
+Scene notice dismissals send the complete saved receipt ID in a bounded JSON body. Relationship and memory receipts can exceed the host router's path-parameter limit; they now dismiss and stay dismissed after refresh without changing their IDs or requesting a model. The previous endpoint remains available for clients with short IDs.
+
 ## Warm exploration on desktop and mobile
 
 Map, Places, People and More share labels, icons, searches and Venue actions across layouts. Notices stays directly available with its count; Events is in More on both. Desktop uses a compact toolbar and an overlay side panel. Mobile keeps touch-sized bottom navigation and overlay sheets, with drag and pinch navigation and no zoom/reset buttons. Searching or opening a panel does not resize the map. Search and selection survive layout changes; the mobile map view survives browsing and menu round trips.

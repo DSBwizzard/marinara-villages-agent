@@ -13969,8 +13969,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       if (!room?.id) return;
       dismissedRoomEventIdsRef.current.add(id);
       setRoomNotices((current) => current.filter((event) => event.id !== id));
-      void request(`/rooms/${encodeURIComponent(room.id)}/notices/${encodeURIComponent(id)}/dismiss`, {
+      void request(`/rooms/${encodeURIComponent(room.id)}/notices/dismiss`, {
         method: "POST",
+        body: JSON.stringify({ noticeId: id }),
       }).catch((cause) => {
         dismissedRoomEventIdsRef.current.delete(id);
         seenRoomEventIdsRef.current.delete(id);
