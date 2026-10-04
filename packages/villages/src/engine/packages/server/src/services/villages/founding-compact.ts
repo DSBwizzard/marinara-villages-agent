@@ -111,14 +111,15 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
       throw new Error(`Village activity ${index + 1} is invalid.`);
     const row = raw as Record<string, unknown>;
     const activity = typeof row.activity === "string" ? row.activity.trim() : "";
-    if (
-      !activity ||
-      activity.length > 160 ||
-      !Number.isInteger(row.venue) ||
-      (row.venue as number) < 0 ||
-      (row.venue as number) > venues.length
-    )
-      throw new Error(`Village activity ${index + 1} is incomplete.`);
+    if (row.venue !== undefined && row.venueNumber !== undefined && row.venue !== row.venueNumber)
+      throw new Error(`Village activity ${index + 1} has conflicting venue fields.`);
+    // Older prompts said "venue number", and some saved replies use that spelling.
+    // Preserve exact numeric indexes and reject ambiguous or invented destinations.
+    const venue = row.venue ?? row.venueNumber;
+    if (!activity || activity.length > 160)
+      throw new Error(`Village activity ${index + 1} needs activity text of 1–160 characters.`);
+    if (!Number.isInteger(venue) || (venue as number) < 0 || (venue as number) > venues.length)
+      throw new Error(`Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`);
     if (row.status !== "online" && row.status !== "idle" && row.status !== "dnd" && row.status !== "offline")
       throw new Error(`Village activity ${index + 1} has no valid availability.`);
     return {
@@ -134,7 +135,7 @@ function checkedPalette(value: unknown, venues: readonly VillageVenue[]): Palett
       zoneId: typeof row.zoneId === "string" ? row.zoneId : undefined,
       reason: "",
       flexible: row.flexible === true && (row.status === "online" || row.status === "idle"),
-      venueId: (row.venue as number) === 0 ? "" : venues[(row.venue as number) - 1]!.id,
+      venueId: (venue as number) === 0 ? "" : venues[(venue as number) - 1]!.id,
       status: row.status,
     };
   });
@@ -170,9 +171,16 @@ export function parseCompactFounding(
   if (!Array.isArray(payload.rhythm))
     throw new Error("The routine must explicitly describe rest windows, or use an empty list.");
   const rhythm = payload.rhythm.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid resident rest pattern.");
     const row = value as Record<string, unknown>;
     if (
-      !row ||
+      row.activity !== undefined &&
+      row.activityPaletteIndex !== undefined &&
+      row.activity !== row.activityPaletteIndex
+    )
+      throw new Error("Resident rest pattern has conflicting activity fields.");
+    const activity = row.activity ?? row.activityPaletteIndex;
+    if (
       !Number.isInteger(row.startMinute) ||
       !Number.isInteger(row.endMinute) ||
       (row.startMinute as number) < 0 ||
@@ -180,10 +188,10 @@ export function parseCompactFounding(
       (row.endMinute as number) < 0 ||
       (row.endMinute as number) > 1440 ||
       row.startMinute === row.endMinute ||
-      !validIndex(row.activity, palette.length)
+      !validIndex(activity, palette.length)
     )
       throw new Error("Invalid resident rest pattern.");
-    return row as RoutineProfile["rhythm"][number];
+    return { startMinute: row.startMinute as number, endMinute: row.endMinute as number, activity: activity as number };
   });
   if (!validRoutineRhythm(rhythm)) throw new Error("Resident rest windows overlap.");
   const profile: RoutineProfile = { version: 1, activities: palette, days: days as number[][], rhythm };
@@ -223,8 +231,10 @@ export async function proposeCompactFounding(
   const prompt = [
     VILLAGE_SHARED_SETTING_RULE,
     `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,
-    "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue number, zoneId, status, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",
+    "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue, zoneId, status, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",
+    'Palette schema example (syntax only): {"activity":"reading","venue":0,"status":"idle","flexible":true,"essential":false,"duration":90,"parts":[1,2]}. The key is exactly "venue", with an integer value; optional zoneId must be a saved Zone identifier, never a label.',
     "Palette: 6–16 specific, ordinary activities in this village, independent of wishes. Include flexible:true only on optional free-time activities; never on sleep, meals, work, or commitments. Venue 0 is the assigned living space; otherwise use only a numbered supplied public place. Never invent venue numbers, unlisted destinations, assets, vehicles, employers, institutions or obligations. Authored identity is not proof that its original-world possessions or job exist here. Status is online, idle, dnd, or offline. Activity should read after 'Right now you are'.",
+    'Rhythm schema example (syntax only): {"startMinute":1320,"endMinute":360,"activity":0}. The key is exactly "activity", an integer palette index. Omit all rest windows with rhythm:[] when appropriate.',
     "Days: exactly seven arrays in Monday–Sunday order. Each has eight palette indexes: two alternatives for 00–06, 06–12, 12–18, 18–24. Code builds varied days locally. Describe rest explicitly in rhythm, including overnight windows if appropriate. Do not assume human sleep, eating, employment or physiology.",
     context.allowInitialWish === false || context.activeWishes.length
       ? "Do not add wishes; return wishes:[] and preserve the existing wishes."
@@ -283,6 +293,14 @@ export async function proposeCompactFounding(
     completion.usage?.promptTokens ?? "unavailable",
     completion.usage?.completionTokens ?? "unavailable",
   );
+  return parseCompactFoundingCompletion(completion, context);
+}
+
+/** Pure validation for live replies and already purchased checkpoints; never dispatches. */
+export function parseCompactFoundingCompletion(
+  completion: { content?: string | null; finishReason?: string | null },
+  context: CompactFoundingContext,
+): CompactFoundingResult {
   const payload = extractJsonObject(completion.content ?? "");
   if (completion.finishReason === "length")
     throw new Error("Routine output was truncated. Retry deliberately with enough output room.");

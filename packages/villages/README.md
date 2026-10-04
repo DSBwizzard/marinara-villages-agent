@@ -6,6 +6,8 @@ Private spaces prepare one at a time, with one concise System request per unfini
 
 **Preparation details** reports starting venue details, the current private space, and resident wishes/routines through the existing poll. Space readiness is separate from resident readiness. Failures identify the space, model, effective output limit and finish reason without revealing generated private contents. Older preparation markers retain readable fallback status. Vacant residential spaces and worksites wait for their later owning flow and cannot block founding.
 
+Routine replies use exact numeric `venue` and `activity` fields. Recovery also validates older `venueNumber` and `activityPaletteIndex` replies locally. Deliberate **Retry preparation** reuses a complete valid saved routine before requesting a replacement; conflicting, invalid, or truncated saved replies still require replacement. Completed spaces and routines remain saved.
+
 Mocked recovery and browser regressions:
 
 ```powershell

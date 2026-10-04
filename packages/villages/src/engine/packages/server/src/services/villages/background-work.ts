@@ -80,6 +80,8 @@ type Handler = {
   generate(input: any): Promise<unknown>;
   valid(state: VillageState, input: any): boolean;
   apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void | WorkFailure;
+  /** Pure local validation of saved replies on deliberate retry, before discarding failed steps. */
+  recoverSavedResult?(input: any, steps: readonly Step[]): unknown;
   afterApply?(input: any, finite: boolean): Promise<void>;
   afterFailure?(input: any): Promise<void>;
 };
@@ -614,6 +616,16 @@ async function runMeasuredJob(id: string): Promise<void> {
     relaunch.add(id);
   }
 }
+function recoverSavedResult(job: Job): { result: unknown } | undefined {
+  if (job.hasResult || !["failed", "interrupted", "paused"].includes(job.status)) return undefined;
+  try {
+    const result = handlers.get(job.kind)?.recoverSavedResult?.(job.input, job.steps);
+    return result === undefined ? undefined : { result };
+  } catch {
+    // Keep private contents out of diagnostics; invalid replies use deliberate replacement.
+    return undefined;
+  }
+}
 export async function retryBackgroundJob(id: string, expectedAttempt: number, actionId: string): Promise<void> {
   if (stopped) throw new Error("Background work is stopped.");
   if (recoveryError) {
@@ -622,6 +634,20 @@ export async function retryBackgroundJob(id: string, expectedAttempt: number, ac
   }
   if (!/^villages-background-[a-f0-9]{64}$/.test(id) || !/^[a-zA-Z0-9-]{1,100}$/.test(actionId))
     throw badRequest("Invalid background retry.");
+  // A newer validator may understand a previously rejected, purchased reply.
+  // Recovery is pure and deliberate; an invalid reply still uses the normal retry path.
+  const savedPrior = await readJob(id);
+  let recovered: { result: unknown } | undefined;
+  if (
+    savedPrior &&
+    !savedPrior.hasResult &&
+    !running.has(id) &&
+    savedPrior.attempt === expectedAttempt &&
+    !savedPrior.retryActions.includes(actionId) &&
+    ["failed", "interrupted", "paused"].includes(savedPrior.status)
+  ) {
+    recovered = recoverSavedResult(savedPrior);
+  }
   // Apply a saved partial response before discarding its bad rows. A lost effect
   // acknowledgement must not cause valid, purchased answers to be regenerated.
   const prior = await readJob(id);
@@ -653,7 +679,10 @@ export async function retryBackgroundJob(id: string, expectedAttempt: number, ac
     if (job.attempt !== expectedAttempt || !["failed", "interrupted", "paused"].includes(job.status))
       throw conflict("That job changed. Refresh its status before retrying.");
     if (running.has(id)) throw conflict("That job is still finishing.");
-    if (job.failedStep !== null) job.steps.splice(job.failedStep);
+    if (recovered && job.id === savedPrior?.id) {
+      job.result = recovered.result;
+      job.hasResult = true;
+    } else if (job.failedStep !== null) job.steps.splice(job.failedStep);
     else if (job.steps.at(-1)?.status === "running") job.steps.pop();
     job.failedStep = null;
     if (job.partialResult) {
@@ -893,8 +922,10 @@ export async function previewBackgroundJobs(_defaultBatchSize?: number) {
   return records.flatMap((record) => {
     const job = record.data as Job;
     if (!job || !Array.isArray(job.steps)) return [];
+    const recovered = recoverSavedResult(job);
     const completedSteps =
-      job.completedCount || job.steps.filter((step, i) => step.status === "completed" && i !== job.failedStep).length;
+      job.completedCount ||
+      job.steps.filter((step, i) => step.status === "completed" && (i !== job.failedStep || recovered)).length;
     const context = asRecord(asRecord(job.input).context);
     const blocks = Array.isArray(context.blocks) ? context.blocks.length : 0;
     const planned =
@@ -911,7 +942,7 @@ export async function previewBackgroundJobs(_defaultBatchSize?: number) {
         settings: job.settings ?? {},
         completedSteps,
         remainingRequests:
-          ["completed", "obsolete"].includes(job.status) || job.hasResult
+          ["completed", "obsolete"].includes(job.status) || job.hasResult || recovered
             ? 0
             : planned === null
               ? null

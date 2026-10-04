@@ -199,6 +199,63 @@ async function main() {
   assert.equal(influenceSettings(null).enabled, false, "new residents opt in");
   const owned = parseCompactFounding(payload, context as any).agenda;
   assert.equal(owned.routineProfile!.rhythm.length, 0, "nonhuman residents need no imposed sleep");
+  const aliases = { ...payload, palette: palette.map(({ venue, ...row }) => ({ ...row, venueNumber: venue })) };
+  assert.deepEqual(
+    parseCompactFounding(aliases, context as any).agenda.routineProfile,
+    owned.routineProfile,
+    "saved venueNumber replies retain exact destinations",
+  );
+  const rest = { ...payload, rhythm: [{ startMinute: 1320, endMinute: 360, activity: 0 }] };
+  assert.deepEqual(
+    parseCompactFounding(
+      { ...aliases, rhythm: [{ startMinute: 1320, endMinute: 360, activityPaletteIndex: 0 }] },
+      context as any,
+    ).agenda.routineProfile,
+    parseCompactFounding(rest, context as any).agenda.routineProfile,
+    "saved rest aliases normalize without changing timing or activity",
+  );
+  for (const invalid of [
+    { activity: 0, activityPaletteIndex: 1 },
+    { activityPaletteIndex: "0" },
+    { activityPaletteIndex: 6 },
+    { activityPaletteIndex: -1 },
+    { activityPaletteIndex: 0.5 },
+    {},
+  ])
+    assert.throws(
+      () =>
+        parseCompactFounding(
+          { ...payload, rhythm: [{ startMinute: 1320, endMinute: 360, ...invalid }] },
+          context as any,
+        ),
+      /rest pattern/,
+    );
+  for (const invalid of [
+    { venue: 0, venueNumber: 1 },
+    { venue: "0" },
+    { venueNumber: "0" },
+    { venue: 1 },
+    { venueNumber: -1 },
+    { venueNumber: 0.5 },
+    { venue: null },
+    {},
+  ]) {
+    const { venue: _venue, ...row } = palette[0]!;
+    assert.throws(
+      () =>
+        parseCompactFounding({ ...payload, palette: [{ ...row, ...invalid }, ...palette.slice(1)] }, context as any),
+      /venue/,
+    );
+  }
+  for (const activity of ["", " ", "private detail".repeat(20)])
+    assert.throws(
+      () =>
+        parseCompactFounding(
+          { ...payload, palette: [{ ...palette[0], activity }, ...palette.slice(1)] },
+          context as any,
+        ),
+      /1–160/,
+    );
   resident.agenda = owned;
   resident.scheduleInfluence = influenceSettings({ enabled: true });
   const first = deriveInfluence(source, resident, migration);

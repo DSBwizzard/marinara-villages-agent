@@ -170,7 +170,7 @@ import type {
   VillageVillagerView,
 } from "./types.js";
 import { readVenueRequestCore, venueRequestDraft, type VenueRequestCore } from "./venue-requests.js";
-import { proposeCompactFounding } from "./founding-compact.js";
+import { proposeCompactFounding, parseCompactFoundingCompletion } from "./founding-compact.js";
 import {
   proposeHappenings,
   proposeReaction,
@@ -917,6 +917,11 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   });
 }
 registerBackgroundHandler("agenda", {
+  recoverSavedResult: (input, steps) => {
+    const saved = steps.find((step) => step.key === "owned-routine-profile" && step.status === "completed");
+    if (!saved?.response) return undefined;
+    return parseCompactFoundingCompletion(saved.response, input.context).agenda;
+  },
   generate: async (input) => {
     const job = (await backgroundWorkSummaries()).find(
       (entry) => entry.kind === "agenda" && entry.subjectId === input.characterId,
