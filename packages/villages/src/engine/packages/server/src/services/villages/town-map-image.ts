@@ -19,10 +19,10 @@ import {
 export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 
 export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
-  "Create a landscape game navigation map on a three-to-two canvas, wider than tall but not panoramic. Use a top-down or three-quarter view. " +
-  "Use cutaways or floor layouts indoors, and terrain and landmarks outdoors. " +
-  "Distribute visually distinct usable areas for venue pins, including rooms within larger structures. " +
-  "Pins need not represent detached buildings. Never add outlined lots or a zoning grid. Keep usable areas uncluttered and clear of edges.";
+  "Create a three-to-two canvas navigation map, landscape not panoramic, viewed top-down or at three quarters. " +
+  "Show cutaways or floor plans indoors, terrain and landmarks outdoors. " +
+  "Provide visually distinct usable areas for venue pins, including rooms within larger structures. " +
+  "Pins need not be detached buildings. Never add outlined lots or a zoning grid. Keep usable areas uncluttered and clear of edges.";
 
 export type TownMapChoice = "auto" | "include" | "exclude";
 export type TownMapOptions = { roads: TownMapChoice; structures: TownMapChoice; water: TownMapChoice };

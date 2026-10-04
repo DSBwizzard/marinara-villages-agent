@@ -7846,7 +7846,8 @@ type SetupMapReceipt = {
 };
 async function requestSetupMapReceipt(path: string, init?: RequestInit): Promise<SetupMapReceipt> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 30_000);
+  // Admission is small; a completed receipt can carry several MB over a phone connection.
+  const timer = window.setTimeout(() => controller.abort(), init?.method === "POST" ? 30_000 : 120_000);
   try {
     return await request<SetupMapReceipt>(path, { ...init, signal: controller.signal });
   } finally {
