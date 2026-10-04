@@ -316,6 +316,144 @@ async function run() {
       0,
     );
     const handlers = new Map<string, any>();
+    files.set("mara/full_existing.png", original);
+    const adoptedArt = (await readSpriteManager("mara")).artwork.find(
+      (item) => item.id === adopted.addedArtworkIds[0],
+    )!;
+    assert.deepEqual(adoptedArt.engineSource, { characterId: "mara", filename: "full_existing.png" });
+    assert.equal(adoptedArt.origin, "engine");
+    await save(adoptedArt, "", "Existing Engine artwork");
+    const beforeRepeat = await readSpriteManager("mara");
+    const fileCount = files.size,
+      revision = records.get("villages-village").revision;
+    for (const repeated of [
+      await adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] }),
+      ...(await Promise.all([
+        adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] }),
+        adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] }),
+      ])),
+    ]) {
+      assert.deepEqual(
+        repeated.manager,
+        beforeRepeat,
+        "retries preserve assignments, expressions, framing and artwork",
+      );
+      assert.deepEqual(repeated.addedArtworkIds, []);
+      assert.deepEqual(repeated.selectedArtworkIds, [adoptedArt.id]);
+    }
+    assert.equal(files.size, fileCount, "repeat adoption writes no sprite files");
+    assert.equal(records.get("villages-village").revision, revision, "known repeats do not rewrite the document");
+    assert.equal(
+      (await listSpriteLibrary("mara")).items.find((item) => item.filename === "full_existing.png")!.adoptedArtworkId,
+      adoptedArt.id,
+    );
+    await assert.rejects(adoptSpriteArtwork("mara", { filenames: ["happy.png", "happy.png"] }), /different/);
+    assert.equal(files.size, fileCount);
+    const concurrent = await Promise.all([
+      adoptSpriteArtwork("mara", { filenames: ["happy.png"] }),
+      adoptSpriteArtwork("mara", { filenames: ["happy.png"] }),
+    ]);
+    assert.deepEqual(concurrent[0]!.selectedArtworkIds, concurrent[1]!.selectedArtworkIds);
+    assert.equal(concurrent[0]!.addedArtworkIds.length, 1);
+    assert.equal(concurrent[1]!.addedArtworkIds.length, 0);
+    assert.equal(files.size, fileCount + 2);
+    const happy = concurrent[0]!.manager.artwork.at(-1)!;
+    assert.equal(
+      happy.source.sha256,
+      adoptedArt.source.sha256,
+      "different filenames with identical bytes stay independent",
+    );
+    assert.notEqual(happy.id, adoptedArt.id);
+    files.set("mara/new.png", original);
+    const mixed = await adoptSpriteArtwork("mara", { filenames: ["happy.png", "new.png"] });
+    assert.equal(mixed.addedArtworkIds.length, 1);
+    assert.deepEqual(mixed.selectedArtworkIds, [happy.id, mixed.addedArtworkIds[0]]);
+
+    // Pre-fix documents have neither origin nor Engine provenance.
+    const persisted = records.get("villages-village").data.villagers[0].spriteManager;
+    const legacy = persisted.artwork.find((item: any) => item.id === adoptedArt.id);
+    delete legacy.engineSource;
+    delete legacy.origin;
+    const beforeLegacy = files.size;
+    assert.equal(
+      (await listSpriteLibrary("mara")).items.find((item) => item.filename === "full_existing.png")!.adoptedArtworkId,
+      adoptedArt.id,
+    );
+    const upgraded = await adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] });
+    assert.deepEqual(upgraded.addedArtworkIds, []);
+    assert.deepEqual(upgraded.selectedArtworkIds, [adoptedArt.id]);
+    assert.equal(files.size, beforeLegacy, "legacy adoption backfills provenance without rewriting files");
+    assert.deepEqual(upgraded.manager.assignments, beforeRepeat.assignments);
+    assert.deepEqual(
+      (await readSpriteManager("mara")).artwork.find((item) => item.id === adoptedArt.id)!.engineSource,
+      adoptedArt.engineSource,
+    );
+
+    const duplicateLegacy = await importSpriteArtwork("mara", {
+      images: [{ name: "full_existing.png", image: original }],
+    });
+    const duplicateArt = duplicateLegacy.manager.artwork.at(-1)!;
+    delete records
+      .get("villages-village")
+      .data.villagers[0].spriteManager.artwork.find((item: any) => item.id === duplicateArt.id).origin;
+    await save(duplicateArt, "", "Authored duplicate expression");
+    const beforeDuplicate = await readSpriteManager("mara");
+    assert.deepEqual(
+      (await adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] })).manager,
+      beforeDuplicate,
+      "existing duplicate copies and authored assignments are preserved",
+    );
+    const duplicateToRemove = beforeDuplicate.artwork.find((item) => item.id === duplicateArt.id)!;
+    await removeSpriteArtwork("mara", { artworkId: duplicateToRemove.id, expectedUrl: duplicateToRemove.rendered.url });
+    const explicit = await importSpriteArtwork("mara", { images: [{ name: "full_existing.png", image: original }] });
+    const explicitArt = explicit.manager.artwork.at(-1)!;
+    assert.equal(explicitArt.origin, "upload");
+    const old = explicit.manager.artwork.find((item) => item.id === adoptedArt.id)!;
+    await removeSpriteArtwork("mara", { artworkId: old.id, expectedUrl: old.rendered.url });
+    assert.equal(
+      (await listSpriteLibrary("mara")).items.find((item) => item.filename === "full_existing.png")!.adoptedArtworkId,
+      undefined,
+    );
+    const readded = await adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] });
+    assert.equal(readded.addedArtworkIds.length, 1, "removal allows re-adoption without claiming deliberate uploads");
+    assert.notEqual(readded.addedArtworkIds[0], explicitArt.id);
+    assert.ok(files.has("mara/full_existing.png"), "removal never deletes the Engine character original");
+    files.set("mara/full_existing.png", sourceImage(true));
+    const unchanged = await adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] });
+    assert.equal(unchanged.addedArtworkIds.length, 0, "source replacement does not silently replace managed artwork");
+    const replacing = unchanged.manager.artwork.find((item) => item.id === readded.addedArtworkIds[0])!;
+    await removeSpriteArtwork("mara", { artworkId: replacing.id, expectedUrl: replacing.rendered.url });
+    const replacement = await adoptSpriteArtwork("mara", { filenames: ["full_existing.png"] });
+    assert.notEqual(replacement.manager.artwork.at(-1)!.source.sha256, adoptedArt.source.sha256);
+
+    files.set("mara/legacy.png", original);
+    const older = await importSpriteArtwork("mara", { images: [{ name: "legacy.png", image: sourceImage(true) }] });
+    const olderArt = older.manager.artwork.at(-1)!;
+    delete records
+      .get("villages-village")
+      .data.villagers[0].spriteManager.artwork.find((item: any) => item.id === olderArt.id).origin;
+    files.set("mara/legacy.png", "data:image/png;base64,AAAA");
+    const partiallyUnreadable = await listSpriteLibrary("mara");
+    assert.equal(partiallyUnreadable.error, "");
+    assert.ok(
+      partiallyUnreadable.items.some((item) => item.filename === "happy.png"),
+      "one unreadable legacy source does not hide usable library files",
+    );
+    const beforeUnreadable = await readSpriteManager("mara"),
+      filesBeforeUnreadable = files.size;
+    await assert.rejects(adoptSpriteArtwork("mara", { filenames: ["legacy.png"] }), /PNG|sprite/);
+    assert.deepEqual(await readSpriteManager("mara"), beforeUnreadable);
+    assert.equal(files.size, filesBeforeUnreadable);
+    files.set("mara/legacy.png", original);
+    assert.equal(
+      (await listSpriteLibrary("mara")).items.find((item) => item.filename === "legacy.png")!.adoptedArtworkId,
+      undefined,
+      "legacy names alone do not establish identity",
+    );
+    assert.equal((await adoptSpriteArtwork("mara", { filenames: ["legacy.png"] })).addedArtworkIds.length, 1);
+    const invalidProvenance = structuredClone(await readSpriteManager("mara"));
+    invalidProvenance.artwork[0]!.engineSource = { characterId: "../mara", filename: "../bad.png" };
+    assert.equal(coerceSpriteManager(invalidProvenance)!.artwork[0]!.engineSource, undefined);
     const app = Object.fromEntries(
       ["get", "post", "patch", "delete", "put"].map((method) => [
         method,
@@ -345,7 +483,7 @@ async function run() {
     }
     assert.equal(forbidden, 0, "manager operations never resolve models or call generation/cleanup services");
     console.log(
-      "Sprite Manager: artwork, framing, independent adoption, atomic assignments, failures, retirement and zero AI requests passed.",
+      "Sprite Manager: artwork, framing, repeat/concurrent/legacy adoption, atomic assignments, failures, retirement and zero AI requests passed.",
     );
   } finally {
     release();

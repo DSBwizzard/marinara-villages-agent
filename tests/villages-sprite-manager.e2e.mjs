@@ -77,7 +77,7 @@ try {
             },
       ),
     });
-    function addArtwork(name, bytes) {
+    function addArtwork(name, bytes, engineSource) {
       const png = PNG.sync.read(bytes),
         pixels = { width: png.width, height: png.height, data: new Uint8ClampedArray(png.data) },
         id = "a-" + randomUUID();
@@ -91,6 +91,7 @@ try {
         id,
         name,
         assetId: "villages-" + randomUUID(),
+        engineSource,
         source: { url: sourceUrl, width: png.width, height: png.height },
         rendered: { url: renderedUrl },
         frame,
@@ -119,18 +120,34 @@ try {
         if (path.endsWith("/manager")) value = manager;
         else if (path.endsWith("/library"))
           value = {
-            items: [{ filename: "full_native.png", url: "data:image/png;base64," + pngImage().toString("base64") }],
+            items: [
+              {
+                filename: "full_native.png",
+                url: "data:image/png;base64," + pngImage().toString("base64"),
+                adoptedArtworkId: manager.artwork.find((item) => item.engineSource?.filename === "full_native.png")?.id,
+              },
+            ],
             error: "",
           };
         else {
-          let addedArtworkIds;
+          let addedArtworkIds, selectedArtworkIds;
           if (path.endsWith("/import"))
             addedArtworkIds = body.images.map((item) =>
               addArtwork(item.name, Buffer.from(item.image.split(",")[1], "base64")),
             );
-          else if (path.endsWith("/adopt"))
-            addedArtworkIds = body.filenames.map((name) => addArtwork(name, pngImage()));
-          else if (path.endsWith("/save")) {
+          else if (path.endsWith("/adopt")) {
+            addedArtworkIds = [];
+            selectedArtworkIds = body.filenames.map((name) => {
+              const existing = manager.artwork.find((item) => item.engineSource?.filename === name);
+              if (existing) return existing.id;
+              const id = addArtwork(name, pngImage(), {
+                characterId: snapshot.villagers[0].characterId,
+                filename: name,
+              });
+              addedArtworkIds.push(id);
+              return id;
+            });
+          } else if (path.endsWith("/save")) {
             if (failSave) {
               failSave = false;
               await route.fulfill({
@@ -166,7 +183,7 @@ try {
             manager.assignments = manager.assignments.filter((item) => item.artworkId !== body.artworkId);
             manager.defaultExpressionId = manager.assignments[0]?.expressionId;
           }
-          value = { manager, snapshot: currentSnapshot(), addedArtworkIds };
+          value = { manager, snapshot: currentSnapshot(), addedArtworkIds, selectedArtworkIds };
         }
       } else if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
@@ -251,6 +268,12 @@ try {
     await page.getByRole("checkbox", { name: "full_native.png" }).check();
     await page.getByRole("button", { name: "Add selected artwork" }).click();
     await expect(page.getByLabel("Expression name")).toHaveValue("native");
+    const artworkAfterAdoption = manager.artwork.length;
+    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Add selected artwork" })).toBeDisabled();
+    assert.equal(manager.artwork.length, artworkAfterAdoption);
+    await page.getByRole("button", { name: "Close library" }).click();
     await page.getByRole("heading", { name: "Framing", exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({
       path: resolve(`.build-tmp/sprite-manager/${viewport.width}x${viewport.height}.png`),
@@ -265,8 +288,23 @@ try {
       .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toBeVisible();
     await page.getByRole("button", { name: /full_native.png/ }).click();
+    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
+    await page.getByRole("button", { name: "Close library" }).click();
     await page.getByRole("button", { name: "Remove artwork" }).click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await expect(page.getByRole("checkbox", { name: "full_native.png", exact: true })).toBeEnabled();
+    await page.getByRole("checkbox", { name: "full_native.png", exact: true }).check();
+    // Another tab adopts after this picker loads; reuse the returned artwork ID.
+    addArtwork("full_native.png", pngImage(), {
+      characterId: snapshot.villagers[0].characterId,
+      filename: "full_native.png",
+    });
+    await page.getByRole("button", { name: "Add selected artwork" }).click();
+    await expect(page.getByLabel("Expression name")).toHaveValue("native");
+    await expect(page.getByRole("status")).toHaveText("Selected artwork is already in Sprite Manager.");
+    assert.equal(manager.artwork.length, artworkAfterAdoption, "removal permits one new adoption");
     assert.equal(
       requests.some((path) => /generate|cleanup|studio|directions|review/.test(path)),
       false,

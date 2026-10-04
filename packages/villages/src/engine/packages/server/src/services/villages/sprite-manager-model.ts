@@ -18,6 +18,8 @@ export type SpriteArtwork = {
   id: string;
   name: string;
   assetId: string;
+  engineSource?: { characterId: string; filename: string };
+  origin?: "upload" | "engine";
   source: { filename: string; url: string; width: number; height: number; sha256: string };
   rendered: { filename: string; url: string };
   frame: SpriteFrame;
@@ -32,7 +34,9 @@ export type SpriteManagerState = {
   defaultExpressionId?: string;
   framing: { mode: "full" | "half"; cropPercent: number };
 };
-export type SpriteLibraryItem = { filename: string; url: string };
+export type SpriteLibraryItem = { filename: string; url: string; adoptedArtworkId?: string };
+export const isEngineSpriteFilename = (value: unknown): value is string =>
+  typeof value === "string" && /^[\p{L}\p{N}._-]+\.(png|jpe?g|webp)$/iu.test(value) && !value.includes("..");
 export const emptySpriteManager = (): SpriteManagerState => ({
   version: 1,
   artwork: [],
@@ -93,8 +97,17 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       seenArtwork.add(art.id);
       return true;
     })
-    .map((art) => ({
+    .map<SpriteArtwork>((art) => ({
       ...structuredClone(art),
+      origin: art.origin === "upload" || art.origin === "engine" ? art.origin : undefined,
+      engineSource:
+        typeof art.engineSource?.characterId === "string" &&
+        art.engineSource.characterId.length > 0 &&
+        !/[\\/]/.test(art.engineSource.characterId) &&
+        !art.engineSource.characterId.includes("..") &&
+        isEngineSpriteFilename(art.engineSource.filename)
+          ? { characterId: art.engineSource.characterId, filename: art.engineSource.filename }
+          : undefined,
       warnings: Array.isArray(art.warnings) ? art.warnings.filter((warning) => typeof warning === "string") : [],
     }));
   const seenExpressions = new Set<string>();

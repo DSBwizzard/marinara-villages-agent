@@ -9,6 +9,7 @@ import { buildVillageSnapshot } from "./village.js";
 import { villagesLogger } from "./package-runtime.js";
 import {
   emptySpriteManager,
+  isEngineSpriteFilename,
   type SpriteArtwork,
   type SpriteFrame,
   type SpriteManagerState,
@@ -96,7 +97,11 @@ async function readImage(url: string) {
   if (!mime) throw badRequest("Choose a PNG, WebP, or JPEG sprite.");
   return `data:${mime};base64,${bytes.toString("base64")}`;
 }
-async function prepareArtwork(name: string, image: string): Promise<SpriteArtwork> {
+async function prepareArtwork(
+  name: string,
+  image: string,
+  engineSource?: SpriteArtwork["engineSource"],
+): Promise<SpriteArtwork> {
   const source = await decodeSpriteImage(image);
   const frame = initialSpriteFrame(source.width, source.height);
   const processed = renderSpritePixels(source, frame);
@@ -109,6 +114,8 @@ async function prepareArtwork(name: string, image: string): Promise<SpriteArtwor
     id: "a-" + randomUUID(),
     name: name.slice(0, 100) || "Artwork",
     assetId,
+    origin: engineSource ? "engine" : "upload",
+    engineSource,
     source: {
       ...savedSource,
       width: source.width,
@@ -137,15 +144,37 @@ export function importSpriteArtwork(id: string, raw: unknown) {
   });
 }
 export async function listSpriteLibrary(id: string): Promise<{ items: SpriteLibraryItem[]; error: string }> {
-  await owner(id);
+  const manager = (await owner(id)).spriteManager ?? emptySpriteManager();
   try {
     await villageEngineJson(`/api/characters/${encodeURIComponent(id)}`);
     const files = await villageEngineJson<unknown>(`/api/sprites/${encodeURIComponent(id)}`);
-    const items = (Array.isArray(files) ? files : []).map(asRecord).flatMap((file) => {
+    const available = (Array.isArray(files) ? files : []).map(asRecord).flatMap((file) => {
       const filename = asString(file.filename);
-      if (!/^[\p{L}\p{N}._-]+\.(png|jpe?g|webp)$/iu.test(filename) || filename.includes("..")) return [];
+      if (!isEngineSpriteFilename(filename)) return [];
       return [{ filename, url: `/api/sprites/${encodeURIComponent(id)}/file/${encodeURIComponent(filename)}` }];
     });
+    const items = await Promise.all(
+      available.map(async (file) => {
+        let adopted = manager.artwork.find(
+          (art) => art.engineSource?.characterId === id && art.engineSource.filename === file.filename,
+        );
+        // Older adoptions retained only the filename as their name. Match bytes too,
+        // so a different upload with the same name remains independent.
+        const legacy = manager.artwork.filter(
+          (art) => !art.engineSource && art.origin !== "upload" && art.name === file.filename.slice(0, 100),
+        );
+        if (!adopted && legacy.length) {
+          try {
+            const image = await readImage(file.url);
+            const hash = digest(Buffer.from(image.split(",")[1]!, "base64"));
+            adopted = legacy.find((art) => art.source.sha256 === hash);
+          } catch {
+            // An unreadable legacy source must not hide the other library files.
+          }
+        }
+        return { ...file, ...(adopted ? { adoptedArtworkId: adopted.id } : {}) };
+      }),
+    );
     return { items, error: "" };
   } catch {
     return {
@@ -163,15 +192,31 @@ export function adoptSpriteArtwork(id: string, raw: unknown) {
       throw badRequest("Choose between one and forty different character sprites.");
     const library = await listSpriteLibrary(id);
     const artwork: SpriteArtwork[] = [];
+    const selectedArtworkIds: string[] = [];
+    const reused: { artworkId: string; filename: string }[] = [];
     for (const filename of selected) {
       const file = library.items.find((item) => item.filename === filename);
       if (!file) throw badRequest("The character library changed. Refresh it before choosing sprites.");
-      artwork.push(await prepareArtwork(filename, await readImage(file.url)));
+      if (file.adoptedArtworkId) {
+        selectedArtworkIds.push(file.adoptedArtworkId);
+        if (!findArtwork(resident.spriteManager!, file.adoptedArtworkId).engineSource)
+          reused.push({ artworkId: file.adoptedArtworkId, filename });
+      } else {
+        const art = await prepareArtwork(filename, await readImage(file.url), { characterId: id, filename });
+        artwork.push(art);
+        selectedArtworkIds.push(art.id);
+      }
     }
-    await commit(id, resident.addedAt, (manager) => {
-      manager.artwork.push(...artwork);
-    });
-    return { ...(await result(id)), addedArtworkIds: artwork.map((item) => item.id) };
+    if (artwork.length || reused.length)
+      await commit(id, resident.addedAt, (manager) => {
+        manager.artwork.push(...artwork);
+        for (const entry of reused) {
+          const art = findArtwork(manager, entry.artworkId);
+          art.engineSource = { characterId: id, filename: entry.filename };
+          art.origin = "engine";
+        }
+      });
+    return { ...(await result(id)), addedArtworkIds: artwork.map((item) => item.id), selectedArtworkIds };
   });
 }
 function findArtwork(manager: SpriteManagerState, id: string) {
