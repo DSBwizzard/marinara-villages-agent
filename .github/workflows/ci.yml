@@ -77,6 +77,7 @@ jobs:
           npx tsx tests/villages-live-wishes.regression.ts
           npx tsx tests/villages-wish-lifecycle.regression.ts
           npx tsx tests/villages-wish-interpretation.regression.ts
+          npx tsx tests/villages-wish-journal.regression.ts
           npx tsx tests/villages-compact-founding.regression.ts
           npx tsx tests/villages-owned-agendas.regression.ts
           npx tsx tests/villages-generation-recovery.regression.ts
@@ -135,6 +136,7 @@ jobs:
           node tests/villages-venue-layout.e2e.mjs
           npx tsx tests/villages-mobile-map.regression.ts
           node tests/villages-mobile-exploration.e2e.mjs
+          node tests/villages-wish-journal.e2e.mjs
           node tests/villages-menu-map.e2e.mjs
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs

@@ -1,3 +1,4 @@
+import { wishCheckKnowledge } from "./wish-journal.js";
 import { createHash } from "node:crypto";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import type { VillageWish, VillageVenueEvent, VillageState } from "./types.js";
@@ -16,6 +17,8 @@ import {
   type InterpretationResult,
 } from "./interpretation.js";
 export type WishCriteria = {
+  conditionRevision?: number;
+  conditionAt?: string;
   kind: "conversation" | "transfer" | "action" | "complex";
   goal: string;
   requiresPhysical: boolean;
@@ -43,6 +46,8 @@ export function coerceWishApplicationProof(value: unknown): {
 }
 type WishReceipt = VillageVenueEvent & { completedProject?: boolean };
 export type WishInterpretationContext = VillageWishClaimContext & {
+  knowledge?: ReturnType<typeof wishCheckKnowledge>;
+  knowledgeByWish?: Record<string, ReturnType<typeof wishCheckKnowledge>>;
   currentReceiptIds?: string[];
   actorId: string;
   evidence: InterpretationEvidence[];
@@ -137,6 +142,8 @@ export function readWishCriteria(value: unknown, wish: VillageWish): WishCriteri
     return null;
   return {
     kind,
+    conditionRevision: Number.isSafeInteger(row.conditionRevision) ? Number(row.conditionRevision) : 0,
+    conditionAt: asTrimmedString(row.conditionAt) || undefined,
     goal: asTrimmedString(row.goal) || wish.wish,
     requiresPhysical: row.requiresPhysical,
     itemName: asTrimmedString(row.itemName).slice(0, 200),
@@ -206,7 +213,13 @@ export function wishInterpretationCheck(
       wishId: wish.id,
       wishFingerprint: wishFingerprint(wish),
       wishText: wish.wish,
-      criteria,
+      criteria: {
+        ...criteria,
+        conditionRevision: context.knowledge?.conditionRevision ?? wish.conditionRevision ?? 0,
+        conditionAt: context.knowledge?.asOf,
+      },
+      conditions: context.knowledge?.conditions ?? [],
+      discoveries: context.knowledge?.discoveries ?? [],
       claim: context.claim,
       playerName: context.playerName,
       matchingReceiptIds: receipts.map((event) => event.id),
@@ -224,6 +237,8 @@ export function wishInterpretationCheck(
         name: "Verified action",
         kind: "receipt",
         content: event.text,
+        at: event.at,
+        submissionId: event.actionReceipt?.submissionId,
         current: context.currentReceiptIds ? context.currentReceiptIds.includes(event.id) : true,
       })),
       { id: "wish-claim", speakerId: "player", name: context.playerName, kind: "claim", content: context.claim },
@@ -247,7 +262,7 @@ export function wishInterpretationCheck(
           ? "No matching authoritative physical receipt; using System"
           : "No witnessed player interaction; using System",
     systemInstruction:
-      "The original facts.wishText is the authoritative goal; never invent conditions such as physical takeover for spoken recognition. Fulfilled must establish EVERY original condition. Progress may establish a real conversational part of a mixed goal without completing physical work. Promises, plans, repetition, gratitude and claims are not physical results. Positive answers must include details:{proofKind:conversation|physical}; explain the conditions actually established briefly in reason, not extra details fields or a future intention. For any physical result cite an authoritative matching receipt. For conversational results cite actual player/resident interaction. Earlier exact relevant evidence can establish earlier conditions, but a new event needs a current citation. Unknown meaning is unresolved, not refusal.",
+      "Judge the desired outcome, not completion of a particular approach. Discoveries and preparations are context, never mandatory steps. Only facts.conditions are explicitly expressed essential conditions; each applies to results after its at time, never retroactively; a condition spoken in an action's reply cannot constrain physical results from that same submissionId. Concerns do not imply requirements. A different route may fulfill the same wish directly. Never invent secret preferences, tools, instructors, places or step counts. The original facts.wishText is the authoritative goal; never invent conditions such as physical takeover for spoken recognition. Fulfilled must establish EVERY original condition. Progress may establish a real conversational part of a mixed goal without completing physical work. Promises, plans, repetition, gratitude and claims are not physical results. Positive answers must include details:{proofKind:conversation|physical}; explain the conditions actually established briefly in reason, not extra details fields or a future intention. For any physical result cite an authoritative matching receipt. For conversational results cite actual player/resident interaction. Earlier exact relevant evidence can establish earlier conditions, but a new event needs a current citation. Unknown meaning is unresolved, not refusal.",
   };
 }
 /** One bounded semantic request shares evidence across residents; criteria preparation makes no API call. */
@@ -260,8 +275,17 @@ export async function interpretWishBatch(
 ): Promise<InterpretationBatch> {
   const checks = contexts.flatMap((context) =>
     context.wishes.map((wish) => {
+      const knowledge = context.knowledgeByWish?.[wish.id] ?? context.knowledge;
+      const joined = {
+        ...context,
+        knowledge,
+        evidence: [
+          ...(knowledge?.evidence ?? []).filter((old) => !context.evidence.some((line) => line.id === old.id)),
+          ...context.evidence,
+        ],
+      };
       const { criteria, physicalOnly } = localWishRequirements(wish);
-      const check = wishInterpretationCheck(context, wish, criteria, `${key}:${context.actorId}`, allowProgress);
+      const check = wishInterpretationCheck(joined, wish, criteria, `${key}:${context.actorId}`, allowProgress);
       const admission = wishEvidenceAdmission(
         wish,
         check.evidence,

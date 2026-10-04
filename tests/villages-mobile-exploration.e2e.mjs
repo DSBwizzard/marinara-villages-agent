@@ -290,10 +290,13 @@ try {
     await page.keyboard.press("Escape");
     await nav.getByRole("button", { name: "People", exact: true }).click();
     const sharedPeople = page.getByRole("dialog", { name: "People", exact: true });
-    await expect(sharedPeople.getByRole("button", { name: /Taro Current location unavailable/ })).toBeDisabled();
+    await expect(sharedPeople.getByRole("button", { name: /Taro Current location unavailable/ })).toBeEnabled();
     await sharedPeople.getByRole("searchbox").fill("Mara");
     await expect(sharedPeople.locator("." + P + "-explore-row")).toHaveCount(1);
     await sharedPeople.getByRole("button", { name: /Mara Village Market/ }).click();
+    await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
+    await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "View Venue", exact: true }).click();
     const sharedPreview = page.getByRole("dialog", { name: "Village Market", exact: true });
     await expect(sharedPreview.getByRole("button").nth(1)).toHaveText("Visit");
     await page.keyboard.press("Escape");
@@ -490,7 +493,7 @@ try {
     await expect(nav.getByRole("button", { name: "Places", exact: true })).toBeFocused();
     await nav.getByRole("button", { name: "People", exact: true }).click();
     sheet = page.getByRole("dialog", { name: "People", exact: true });
-    await expect(sheet.getByRole("button", { name: /Taro Current location unavailable/ })).toBeDisabled();
+    await expect(sheet.getByRole("button", { name: /Taro Current location unavailable/ })).toBeEnabled();
     await expect(sheet.locator("." + P + "-explore-face img")).toHaveCount(4);
     for (const row of await sheet.locator("." + P + "-explore-row").all()) {
       const face = row.locator("." + P + "-explore-face");
@@ -523,6 +526,8 @@ try {
     await expect(sheet.getByRole("button", { name: /Noor Village Market/ }).locator("img")).toHaveCount(0);
     await screenshot("people");
     await sheet.getByRole("button", { name: /Mara Village Market/ }).click();
+    await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "View Venue", exact: true }).click();
     sheet = page.getByRole("dialog", { name: "Village Market", exact: true });
     await expect(sheet.getByRole("button", { name: "Visit", exact: true })).toBeVisible();
     assert.equal(sceneRequests.length, 0);

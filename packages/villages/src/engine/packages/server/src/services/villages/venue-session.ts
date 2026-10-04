@@ -1,3 +1,4 @@
+import { knownWish, setWishJournalStatus, wishCheckKnowledge, wishConditionRevision } from "./wish-journal.js";
 import { measurePipeline } from "./pipeline-metrics.js";
 import { readPlayerMovement, movementTransition, type MovementIntent } from "./venue-movement.js";
 import { saveInterpretationContext } from "./interpretation-evidence.js";
@@ -364,7 +365,7 @@ export type VenueRecordEvent = {
   id: string;
   kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
   text: string;
-  wishUpdate?: { wishId: string; state: "revealed" | "progress" | "fulfilled" };
+  wishUpdate?: { actorId?: string; wishId: string; state: "revealed" | "progress" | "fulfilled" };
   /** Player-visible saved details; formatting never makes a model request. */
   detail?: string;
 };
@@ -1150,9 +1151,14 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
       },
       requests: turn.requestMetrics ?? null,
       interpretationHistory: turn.interpretationHistory ?? [],
-      notices: filterRelationshipNotices(turn.recordEvents ?? [], village.relationshipContext).filter(
-        (event) => !village.dismissedNoticeIds.includes(event.id),
-      ),
+      notices: filterRelationshipNotices(turn.recordEvents ?? [], village.relationshipContext)
+        .filter(
+          (event) =>
+            event.kind !== "wish" ||
+            (!!event.wishUpdate &&
+              village.villagers.some((person) => knownWish(village, person.characterId, event.wishUpdate!.wishId))),
+        )
+        .filter((event) => !village.dismissedNoticeIds.includes(event.id)),
       evidence: scene.lines.filter(
         (line) => turn.processing?.lineIds.includes(line.id) || turn.liveProposals?.earlierLineIds.includes(line.id),
       ),
@@ -1871,6 +1877,19 @@ export async function prepareVenueTurnMessages(
     conversation: blocksFor([
       `Relevant world lore: ${lore.join("\n") || "none"}`,
       ...optionalKnowledge.map((block) => block.text),
+      ...active.flatMap((person) =>
+        (village.wishKnowledge[person.characterId] ?? [])
+          .filter((entry) => entry.status === "active")
+          .map(
+            (entry) =>
+              `Player-known wish discoveries for ${person.characterId}/${entry.wishId}: ${JSON.stringify(
+                (entry.facts ?? [])
+                  .filter((fact) => !fact.supersededBy)
+                  .slice(-8)
+                  .map(({ id, kind, quote }) => ({ id, kind, quote })),
+              )}`,
+          ),
+      ),
       `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
       "",
       earlierContext,
@@ -3918,6 +3937,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       interpretWishClaim(
         {
           actorId: input.targetId,
+          knowledgeByWish: Object.fromEntries(
+            wishes.map((wish) => [wish.id, wishCheckKnowledge(village, input.targetId, wish.id, moment.instant)]),
+          ),
           evidence: [
             ...heardLines(session, input.targetId)
               .filter(
@@ -4886,6 +4908,8 @@ async function applyFulfilledWish(session: VenueScene, submission: VenueSubmissi
     if (
       proof &&
       (proof.fingerprint !== wishFingerprint(wish) ||
+        (proof.criteria.conditionRevision ?? 0) !==
+          wishConditionRevision(state, submission.targetId, wish, proof.criteria.conditionAt) ||
         (proof.criteria.requiresPhysical &&
           !matchingWishReceipts(
             proof.criteria,
@@ -4897,6 +4921,7 @@ async function applyFulfilledWish(session: VenueScene, submission: VenueSubmissi
     applied = true;
     const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() });
     fulfillResidentWish(resident, wish.id, moment.instant, memoryId);
+    setWishJournalStatus(state, submission.targetId, wish.id, "fulfilled");
     state.chronicle = [
       {
         id: memoryId,
@@ -4924,11 +4949,18 @@ async function receiptForTurn(
   // Domain bookkeeping can finish after the reply's original Scene object was read.
   submission = (await readSession(session.id)).submissions.find((turn) => turn.id === submission.id) ?? submission;
   const village = await readVillageSnapshot();
-  const cached = filterRelationshipNotices(submission.recordEvents ?? [], village.relationshipContext).map((event) => {
-    if (event.kind !== "memory" || event.detail) return event;
-    const memory = village.chronicle.find((entry) => entry.id === event.id);
-    return memory ? { ...event, detail: memory.text } : event;
-  });
+  const cached = filterRelationshipNotices(submission.recordEvents ?? [], village.relationshipContext)
+    .filter(
+      (event) =>
+        event.kind !== "wish" ||
+        (!!event.wishUpdate &&
+          village.villagers.some((person) => knownWish(village, person.characterId, event.wishUpdate!.wishId))),
+    )
+    .map((event) => {
+      if (event.kind !== "memory" || event.detail) return event;
+      const memory = village.chronicle.find((entry) => entry.id === event.id);
+      return memory ? { ...event, detail: memory.text } : event;
+    });
   const events: VenueRecordEvent[] = [];
   if (village.relationshipContext && submission.liveProposals) {
     const receiptIds = new Set(submission.processing?.domains.relationships.receiptIds ?? []);
@@ -5014,7 +5046,13 @@ async function sceneReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
       ).values(),
     ],
     current.relationshipContext,
-  ).filter((event) => !current.dismissedNoticeIds.includes(event.id));
+  ).filter(
+    (event) =>
+      !current.dismissedNoticeIds.includes(event.id) &&
+      (event.kind !== "wish" ||
+        (!!event.wishUpdate &&
+          current.villagers.some((person) => knownWish(current, person.characterId, event.wishUpdate!.wishId)))),
+  );
 }
 
 export async function endVenueSession(id: string, retryOfAttemptId?: string): Promise<VenueScene> {

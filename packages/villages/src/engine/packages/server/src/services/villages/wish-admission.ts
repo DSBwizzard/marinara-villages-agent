@@ -8,10 +8,16 @@ export function localWishRequirements(wish: VillageWish): { criteria: WishCriter
   const social =
     /\b(?:talk|chat|discuss|conversation|agree|recogniz\w*|acknowledg\w*|respect|authority|claim|trust|blessing|forgiv\w*|friend\w*|company|comfort|listen|reassur\w*)\b/iu.test(
       text,
-    );
+    ) || /\b(?:identify|remember|name|remind)\b[^.!?]{0,100}\b(?:tune|song|melody|name)\b/iu.test(text);
   const transfer = text.match(/\b(?:bring|give|hand|deliver)\s+(?:\p{L}+\s+){0,3}?me\s+(?:a|an|the)\s+(.+?)[.!]?$/iu);
   const physical =
     (!!transfer && !social) ||
+    /\b(?:move|moved|moving|remove|removed|clear)\b[^.!?]{0,100}\b(?:rock|stone|boulder|flowerpot)\b/iu.test(text) ||
+    /\b(?:rock|stone|boulder|flowerpot)\b[^.!?]{0,100}\b(?:moved|removed|cleared)\b/iu.test(text) ||
+    /\b(?:swim|swimming)\b/iu.test(text) ||
+    /\b(?:have|get|receive|eat|taste|bring|give)\b[^.!?]{0,100}\b(?:chocolate|cupcake|cake|bread|meal|food)\b/iu.test(
+      text,
+    ) ||
     /\b(?:find|discover|scout|locate)\b[^.!?]{0,200}\b(?:vantage|perch|balcony|ledge|overlook|safe route)\b/iu.test(
       text,
     ) ||

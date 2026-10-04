@@ -1,3 +1,4 @@
+import { selectWishSize, wishGenerationDirection } from "./wish-definition.js";
 import { validRoutineRhythm } from "./owned-routine.js";
 import { routineDay, type RoutineProfile } from "./owned-routine.js";
 import { renderPlayerRoleContext } from "./player-role.js";
@@ -40,6 +41,7 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  wishAttemptId?: string;
   playerRole?: VillagePlayerRole | null;
   playerPersonaName?: string;
   allowInitialWish?: boolean;
@@ -161,7 +163,11 @@ export function parseCompactFounding(
   const seen = new Set<string>();
   if (Array.isArray(payload.wishes) && !context.activeWishes.length && context.allowInitialWish !== false) {
     for (const raw of payload.wishes) {
-      const wish = coerceWish(raw, randomVillageSeed(), at);
+      const wish = coerceWish(
+        { ...raw, size: selectWishSize(context.wishAttemptId ?? context.characterId ?? context.card.name) },
+        randomVillageSeed(),
+        at,
+      );
       if (!wish || seen.has(compactKey(wish.wish))) continue;
       seen.add(compactKey(wish.wish));
       wishes.push(wish);
@@ -229,6 +235,9 @@ export async function proposeCompactFounding(
       `${index + 1}. ${venue.name}: ${[venue.classes?.join(" / "), venue.form, venue.state.condition, ...venue.state.publicFacts.slice(0, 2)].filter(Boolean).join("; ").slice(0, 240)}`,
   );
   const prompt = [
+    context.allowInitialWish === false || context.activeWishes.length
+      ? ""
+      : wishGenerationDirection(selectWishSize(context.wishAttemptId ?? context.characterId ?? context.card.name)),
     VILLAGE_SHARED_SETTING_RULE,
     `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,
     "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue, zoneId, status, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",

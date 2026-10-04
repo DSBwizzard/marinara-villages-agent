@@ -149,6 +149,7 @@ export type RelationshipProfile = {
   routine: string[];
   interests: string;
   wishes: string[];
+  knownWishes: import("./wish-journal.js").KnownWish[];
   ties: { toId: string; name: string; warmth: number; trust: number; reasons: string[] }[];
   learned: { text: string; kind: string; at: string }[];
   access: { venueId: string; zoneId: string; active: boolean; name: string }[];
@@ -184,7 +185,7 @@ export function captureRelationshipKnowledge(state: RelationshipState, village: 
         .join("; ");
     }
     if (edge.close) {
-      knowledge.wishes = resident.agenda?.wishes.map((wish) => wish.wish) ?? [];
+      knowledge.wishes = []; // Wishes require witnessed disclosure, even between close friends.
       knowledge.ties = village.villagers
         .filter((person) => person.characterId !== resident.characterId)
         .map((person) => {
@@ -225,12 +226,25 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       closeKnownAt: known?.closeAt ?? "",
       routine: known?.routine ?? [],
       interests: known?.interests ?? "",
-      wishes: [
-        ...new Set([
-          ...(known?.wishes ?? []),
-          ...(village.wishKnowledge[resident.characterId] ?? []).map((wish) => wish.text),
-        ]),
-      ],
+      wishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => entry.text),
+      knownWishes: (village.wishKnowledge[resident.characterId] ?? []).map((entry) => {
+        const active = resident.agenda?.wishes.some((wish) => wish.id === entry.wishId);
+        const fulfilled = resident.wishLifecycle?.needs.some(
+          (need) => need.aliases.includes(entry.text) && need.state === "fulfilled",
+        );
+        return {
+          ...entry,
+          evidence: undefined,
+          status:
+            entry.status && entry.status !== "active"
+              ? entry.status
+              : active
+                ? "active"
+                : fulfilled
+                  ? "fulfilled"
+                  : "expired",
+        };
+      }),
       ties: (known?.ties ?? []).map((tie) => ({
         ...tie,
         name:

@@ -860,6 +860,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   const context = {
     card: effectiveCard,
     characterId,
+    wishAttemptId: initialWishAttemptId,
     allowInitialWish: !!initialWishAttemptId,
     playerRole: village.playerRole,
     playerPersonaName: village.playerPersonaName,
@@ -964,10 +965,11 @@ function applyAgenda(
   const now = new Date();
   const initialAttempt = villager.wishLifecycle?.attempt;
   const acceptsInitialWish =
-    !initialAttempt ||
-    (initialAttempt.id === initialWishAttemptId &&
-      initialAttempt.dateKey === agendaDateKey(now) &&
-      !initialAttempt.candidate);
+    !!initialWishAttemptId &&
+    !!initialAttempt &&
+    initialAttempt.id === initialWishAttemptId &&
+    initialAttempt.dateKey === agendaDateKey(now) &&
+    !initialAttempt.candidate;
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
   const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
   villager.agenda = {

@@ -71,7 +71,8 @@ function draft(layout: string, role = "residence", owner = "a") {
   };
 }
 function place(layout: string, role = "residence", owner = "a"): VillageVenue {
-  return coerceVillageState({ venues: [parsePlace(draft(layout, role, owner), true)] }).venues[0]!;
+  return coerceVillageState({ wishSystemVersion: 2, venues: [parsePlace(draft(layout, role, owner), true)] })
+    .venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "gathering", "other"]) {
@@ -79,7 +80,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ venues: [venue] });
+    let saved = coerceVillageState({ wishSystemVersion: 2, venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -130,6 +131,7 @@ initial.venues[0]!.zones![1]!.description = "A secret journal and old furnishing
 initial.venues[0]!.zones![1]!.state.items = ["Fixed hammock"];
 initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
 initial.villagers = coerceVillageState({
+  wishSystemVersion: 2,
   villagers: [
     {
       characterId: "a",
@@ -158,7 +160,7 @@ assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
-const preserved = coerceVillageState({ venues: [legacy] }).venues[0]!;
+const preserved = coerceVillageState({ wishSystemVersion: 2, venues: [legacy] }).venues[0]!;
 assert.equal(preserved.zones!.find((zone) => zone.id === "personal")!.description, privateOnly.zones![1]!.description);
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });

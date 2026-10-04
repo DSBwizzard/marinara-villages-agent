@@ -23,29 +23,12 @@ import type { VillageNarrationStyle } from "./narration-style.js";
 import type { ProgressTask } from "./progress-engine.js";
 import type { VillagesTurnBeat } from "./turn-beats.js";
 
-/**
- * One thing a villager privately wishes for, and the small way it shows.
- *
- * `wish` is the motivation and `tell` is the surface — the ordinary thing
- * somebody standing nearby would actually notice. Both are needed and they are
- * deliberately different fields: a wish with no tell is invisible and produces
- * nothing the village can write about, and a wish that is only a wish is the
- * shape that turns a villager into somebody handing out tasks.
- *
- * `intensity` is 1-3 and does three jobs that turn out to be the same job. It
- * fixes how much of the day the wish is on the villager's mind, it orders how
- * much of the writing room the wish gets, and it is how much the wish MATTERS —
- * so when a wish is answered, its intensity becomes the weight of the favour the
- * villager remembers. It is a number rather than a word so the renderer never
- * has to interpret prose the model wrote.
- *
- * The first job is the one that was claimed here long before it was true: the
- * number was stored, judged, weighted and then dropped at the last step, so a
- * wish the generator had been told to keep small arrived at the villager as
- * though it were large. See `renderWishesBlock`, which orders by it and says it
- * in words, and `wishWeightWords`, which says the same thing to the narrator.
- */
+/** One stable desired outcome. Size controls scope/lifetime; intensity remains emotional attention.
+ * Legacy tells stay readable but are excluded from Scene writing. Essential conditions are
+ * separately versioned, explicitly witnessed journal facts, not generated solution steps. */
 export type VillageWish = {
+  size?: import("./wish-definition.js").WishSize;
+  conditionRevision?: number;
   learnedAt?: string;
   learnedLineIds?: string[];
   need?: { id: string; subject: string; action: string; policy: import("./wish-types.js").WishPolicy };
@@ -1244,10 +1227,11 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  wishSystemVersion: number;
   exchangeReceipts: Record<string, import("./wish-progress.js").ExchangeEffectReceipt>;
   noticeSequence: number;
   dismissedNoticeIds: string[];
-  wishKnowledge: Record<string, { wishId: string; text: string; learnedAt: string; lineIds: string[] }[]>;
+  wishKnowledge: Record<string, import("./wish-journal.js").KnownWish[]>;
   projectWishOutbox: { projectId: string; at: string }[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;
   socialOutbox?: import("./relationship-social.js").SocialOutboxEntry[];

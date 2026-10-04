@@ -1,3 +1,5 @@
+import { WISH_SYSTEM_VERSION, wishSize } from "./wish-definition.js";
+import { coerceWishKnowledge, resetLegacyWishRecords } from "./wish-journal.js";
 import { assertVillageVenueCapacity, villageVenueUsage } from "./venue-capacity.js";
 import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "./owned-routine.js";
@@ -163,6 +165,7 @@ export function defaultVillageState(): VillageState {
     exchangeReceipts: {},
     noticeSequence: 0,
     dismissedNoticeIds: [],
+    wishSystemVersion: WISH_SYSTEM_VERSION,
     wishKnowledge: {},
     projectWishOutbox: [],
     wishRefillIntents: {},
@@ -396,6 +399,9 @@ function coerceWish(value: unknown): VillageWish | null {
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: asInstant(raw.addedAt),
     expiresAt: asInstant(raw.expiresAt),
+    size: wishSize(raw.size),
+    conditionRevision:
+      Number.isSafeInteger(raw.conditionRevision) && raw.conditionRevision >= 0 ? raw.conditionRevision : 0,
     ...(asInstant(raw.learnedAt)
       ? {
           learnedAt: asInstant(raw.learnedAt),
@@ -2483,7 +2489,8 @@ export function coerceVillageState(value: unknown): VillageState {
     exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
-    wishKnowledge: asRecord(raw.wishKnowledge) as VillageState["wishKnowledge"],
+    wishSystemVersion: raw.wishSystemVersion === WISH_SYSTEM_VERSION ? WISH_SYSTEM_VERSION : 0,
+    wishKnowledge: coerceWishKnowledge(raw.wishKnowledge),
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)
       ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
       : [],
@@ -2730,6 +2737,7 @@ export function coerceVillageState(value: unknown): VillageState {
       if (venue) block.zoneId = chooseAgendaZone(venue, villager.characterId, block.activity, block.zoneId, state).id;
     }
   }
+  resetLegacyWishRecords(state);
   return state;
 }
 
@@ -2865,6 +2873,16 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
     const capacity = villageVenueUsage(state);
     if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
       assertVillageVenueCapacity(state);
+    for (const resident of state.villagers)
+      for (const entry of state.wishKnowledge[resident.characterId] ?? []) {
+        if (
+          (entry.status && entry.status !== "active") ||
+          resident.agenda?.wishes.some((wish) => wish.id === entry.wishId)
+        )
+          continue;
+        const outcome = resident.wishLifecycle?.pendingOutcomes.find((outcome) => outcome.wish.id === entry.wishId);
+        entry.status = outcome?.kind === "fulfilled" ? "fulfilled" : "expired";
+      }
     // Assign notice order in the same document write as its committed effect.
     for (const receipt of Object.values(state.exchangeReceipts))
       if (receipt.notice && !receipt.noticeSequence) {

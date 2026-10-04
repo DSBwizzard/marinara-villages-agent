@@ -1,3 +1,15 @@
+import { wishExpired } from "./wish-definition.js";
+import {
+  bindWishFacts,
+  discloseWish,
+  addWishFacts,
+  knownWish,
+  rememberWishEvidence,
+  setWishJournalStatus,
+  wishCheckKnowledge,
+  wishConditionRevision,
+  type WishFactCandidate,
+} from "./wish-journal.js";
 import { backgroundCalls, backgroundSetting } from "./background-context.js";
 import { WorkFailureError, type WorkFailure } from "./work-failure.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
@@ -65,15 +77,18 @@ export function formatWishNotice(
   };
 }
 export type WishProposal = {
+  conditionRevision?: number;
+  conditionAt?: string;
+  facts?: WishFactCandidate[];
   receiptIds?: string[];
   actorId: string;
   wishId: string;
   fingerprint: string;
-  intent: "reveal" | "progress" | "check";
+  intent: "reveal" | "journal" | "progress" | "check";
   lineIds: string[];
 };
 export const WISH_PROPOSAL_INSTRUCTION =
-  'Return wishChanges:[] or [{actorId:"resident ID",wishId:"listed Wish ID",intent:"reveal|progress|check",evidence:["player",0]}]. Cite only the current exchange. Reveal requires the wishing resident actually telling the player what they want. Progress/check identifies meaningful new witnessed evidence relevant to an EXISTING wish; never invent a wish or mark fulfillment yourself. Greetings, repetition, company unrelated to a wish, promises of physical work and quoted/conditional claims are not progress. Actual physical results come only from verified receipts. Leave hidden wishes hidden.';
+  'Return wishChanges:[] or [{actorId:"resident ID",wishId:"listed Wish ID",intent:"reveal|journal|progress|check",evidence:["player",0],facts:[{kind:"preference|concern|possibility|condition",quote:"short exact resident speech",evidence:[0],supersedes:"optional existing fact ID"}]}]. Cite only this exchange. Reveal requires the resident telling the player their existing wish. Journal records discoveries, not fulfillment, and makes no check request; use it for preferences, concerns, mentioned approaches or explicit essential conditions. Facts are optional, at most four, with exact resident quotes of at most 320 characters. A concern is not a condition. Conditions require explicit necessity, must clarify the same desired outcome, and apply only prospectively. Never invent hidden requirements or change a goal. Supersede only an explicitly corrected existing fact. Progress/check is for actual new fulfillment evidence, not merely learning preferences or arranging an approach. Promises and plans cannot establish physical results. Physical results use verified action receipts. Leave hidden wishes hidden and record only player-witnessed speech. Do not expose a solution checklist or require the first approach to be completed.';
 
 export function bindWishProposals(
   value: unknown,
@@ -120,7 +135,7 @@ export function bindWishProposals(
           (context) =>
             context.actorId === actorId && context.wishId === wishId && context.fingerprint === wishFingerprint(wish),
         )) ||
-      !["reveal", "progress", "check"].includes(String(raw.intent)) ||
+      !["reveal", "journal", "progress", "check"].includes(String(raw.intent)) ||
       !refs.length ||
       refs.length > 8 ||
       evidence.some((line) => !line || !line.heardBy.includes(actorId) || line.contactReport || line.kind === "side")
@@ -146,21 +161,45 @@ export function bindWishProposals(
       (proposal) =>
         proposal.actorId === actorId &&
         proposal.wishId === wishId &&
-        proposal.intent !== "reveal" &&
-        raw.intent !== "reveal",
+        (proposal.intent === raw.intent ||
+          (["check", "progress"].includes(proposal.intent) && ["check", "progress"].includes(String(raw.intent)))),
     );
     if (existing) {
       existing.lineIds = [...new Set([...existing.lineIds, ...lineIds])];
+      existing.facts = [
+        ...(existing.facts ?? []),
+        ...bindWishFacts(raw.facts, actorId, lines, (ref) =>
+          ref === "player"
+            ? playerLineId
+            : Number.isInteger(ref) && Number(ref) >= 0
+              ? (replyLineIds[Number(ref)] ?? "")
+              : typeof ref === "string" && (ref === playerLineId || replyLineIds.includes(ref))
+                ? ref
+                : "",
+        ),
+      ].slice(0, 4);
       continue;
     }
     proposals.push({
       actorId,
       wishId,
       fingerprint: wishFingerprint(wish),
+      facts: bindWishFacts(raw.facts, actorId, lines, (ref) =>
+        ref === "player"
+          ? playerLineId
+          : Number.isInteger(ref) && Number(ref) >= 0
+            ? (replyLineIds[Number(ref)] ?? "")
+            : typeof ref === "string" && (ref === playerLineId || replyLineIds.includes(ref))
+              ? ref
+              : "",
+      ),
       intent: raw.intent as WishProposal["intent"],
       lineIds,
     });
   }
+  for (const proposal of [...proposals])
+    if (["check", "progress"].includes(proposal.intent) && proposal.facts?.length)
+      proposals.push({ ...proposal, intent: "journal" });
   return { proposals, error: errors.join("; ").slice(0, 500) };
 }
 
@@ -198,7 +237,11 @@ function currentWish(state: VillageState, proposal: WishProposal, now = Date.now
   const wish = state.villagers
     .find((resident) => resident.characterId === proposal.actorId)
     ?.agenda?.wishes.find((wish) => wish.id === proposal.wishId);
-  return wish && wishFingerprint(wish) === proposal.fingerprint && (!wish.expiresAt || Date.parse(wish.expiresAt) > now)
+  return wish &&
+    wishFingerprint(wish) === proposal.fingerprint &&
+    !wishExpired(wish, now) &&
+    (proposal.conditionRevision === undefined ||
+      wishConditionRevision(state, proposal.actorId, wish, proposal.conditionAt) === proposal.conditionRevision)
     ? wish
     : null;
 }
@@ -254,7 +297,12 @@ export function applyPreparedWishVerdict(
   const id = effectId(input.sceneId, input.submissionId, input.proposal);
   if (state.exchangeReceipts[id] || state.seed !== input.seed) return;
   const wish = currentWish(state, input.proposal);
-  if (!wish) return;
+  if (
+    !wish ||
+    (verdict.criteria.conditionRevision ?? input.proposal.conditionRevision ?? 0) !==
+      wishConditionRevision(state, input.proposal.actorId, wish, input.proposal.conditionAt)
+  )
+    return;
   if (state.correctedWishMemoryIds.includes(`${input.sceneId}:wish:${wish.id}`)) return;
   const matching = matchingWishReceipts(
     verdict.criteria,
@@ -346,6 +394,27 @@ export function applyPreparedWishVerdict(
     if (!previous) notice = formatWishNotice(id, input.context.card.name, wish, "progress");
     reason = "New Wish evidence accepted";
   }
+  const journal = knownWish(state, input.proposal.actorId, wish.id);
+  if (journal && supported && physical && ["progress", "fulfilled"].includes(verdict.outcome)) {
+    rememberWishEvidence(
+      journal,
+      input.context.evidence.filter((line) => verdict.evidenceIds.includes(line.id)),
+      input.sceneId,
+      input.submissionId,
+    );
+    for (const receipt of matching.filter((receipt) => verdict.receiptIds.includes(receipt.id)))
+      addWishFacts(
+        state,
+        input.proposal.actorId,
+        wish,
+        [{ kind: "result", quote: receipt.text.slice(0, 320), lineIds: ["receipt:" + receipt.id] }],
+        input.sceneId,
+        input.submissionId,
+        input.at,
+      );
+    if (verdict.outcome === "fulfilled") setWishJournalStatus(state, input.proposal.actorId, wish.id, "fulfilled");
+  }
+  if (notice) notice.wishUpdate = { ...notice.wishUpdate!, actorId: input.proposal.actorId };
   state.exchangeReceipts[id] = {
     actorId: input.proposal.actorId,
     wishId: wish.id,
@@ -576,7 +645,7 @@ export async function processProjectWishOutbox(): Promise<void> {
 
 export async function processWishExchange(scene: VenueScene, submissionId: string): Promise<Partial<DomainProcessing>> {
   const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
-  const state = await readVillageState();
+  let state = await readVillageState();
   if (turn.mode === "act" && !turn.actionReplyDone)
     return { status: "pending", reason: "Waiting for saved action narration" };
   if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
@@ -584,11 +653,15 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
   const proposals = [
     ...new Map(
       (turn.wishProposals ?? []).map((proposal) => [
-        `${proposal.actorId}:${proposal.wishId}:${proposal.intent === "reveal" ? "reveal" : "check"}`,
+        `${proposal.actorId}:${proposal.wishId}:${["progress", "check"].includes(proposal.intent) ? "check" : proposal.intent}`,
         proposal,
       ]),
     ).values(),
-  ];
+  ].sort(
+    (a, b) =>
+      ({ reveal: 0, journal: 1, progress: 2, check: 2 })[a.intent] -
+      { reveal: 0, journal: 1, progress: 2, check: 2 }[b.intent],
+  );
   if (turn.action?.happened) {
     const cached = await cachedWishCriteria();
     for (const resident of state.villagers) {
@@ -653,16 +726,21 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
         const current = currentWish(live, proposal);
         if (live.seed !== scene.villageSeed || !current || live.exchangeReceipts[id]) return;
         const fresh = !current.learnedAt;
-        current.learnedAt ||= turn.at;
-        current.learnedLineIds = [...new Set([...(current.learnedLineIds ?? []), ...proposal.lineIds])];
-        const known = (live.wishKnowledge[proposal.actorId] ??= []);
-        if (!known.some((wish) => wish.wishId === current.id && wish.text === current.wish))
-          known.push({
-            wishId: current.id,
-            text: current.wish,
-            learnedAt: current.learnedAt!,
-            lineIds: [...proposal.lineIds],
-          });
+        discloseWish(live, proposal.actorId, current, turn.at!, proposal.lineIds);
+        addWishFacts(live, proposal.actorId, current, proposal.facts ?? [], scene.id, turn.id, turn.at!);
+        rememberWishEvidence(
+          knownWish(live, proposal.actorId, current.id)!,
+          cited.map((line) => ({
+            id: line.id,
+            speakerId: line.speakerId,
+            name: line.name,
+            content: line.content,
+            kind: line.kind ?? "dialogue",
+            at: line.at,
+          })),
+          scene.id,
+          turn.id,
+        );
         const task = live.progressTasks.find((task) => task.definition.id === taskId(proposal));
         if (task) revealProgress(task, current.learnedAt!);
         live.exchangeReceipts[id] = {
@@ -678,24 +756,80 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
           reason: "Wish disclosed through witnessed speech",
           ...(fresh
             ? {
-                notice: formatWishNotice(id, resident.cardSnapshot.name, current, "revealed"),
+                notice: {
+                  ...formatWishNotice(id, resident.cardSnapshot.name, current, "revealed"),
+                  wishUpdate: { wishId: current.id, actorId: resident.characterId, state: "revealed" },
+                },
               }
             : {}),
         };
       });
       receiptIds.push(id);
+      state = await readVillageState();
       continue;
     }
+    if (proposal.intent === "journal") {
+      await mutateVillageState((live) => {
+        const current = currentWish(live, proposal);
+        if (!current || live.exchangeReceipts[id] || !current.learnedAt) return;
+        const added = addWishFacts(live, proposal.actorId, current, proposal.facts ?? [], scene.id, turn.id, turn.at!);
+        const entry = knownWish(live, proposal.actorId, current.id);
+        if (added && entry)
+          rememberWishEvidence(
+            entry,
+            cited.map((line) => ({
+              id: line.id,
+              speakerId: line.speakerId,
+              name: line.name,
+              content: line.content,
+              kind: line.kind ?? "dialogue",
+              at: line.at,
+            })),
+            scene.id,
+            turn.id,
+          );
+        live.exchangeReceipts[id] = {
+          id,
+          sceneId: scene.id,
+          submissionId: turn.id,
+          actorId: proposal.actorId,
+          wishId: current.id,
+          domain: "wishes",
+          at: turn.at!,
+          evidenceIds: proposal.lineIds,
+          status: "applied",
+          reason: "Wish discoveries recorded locally",
+          ...(added
+            ? {
+                notice: {
+                  ...formatWishNotice(id, resident.cardSnapshot.name, current, "progress"),
+                  text: "Wish discovery · " + resident.cardSnapshot.name,
+                  detail: current.wish,
+                  wishUpdate: { wishId: current.id, actorId: resident.characterId, state: "progress" as const },
+                },
+              }
+            : {}),
+        };
+      });
+      receiptIds.push(id);
+      state = await readVillageState();
+      continue;
+    }
+    const current = currentWish(state, proposal);
+    if (!current) continue;
+    proposal.conditionAt = turn.at;
+    proposal.conditionRevision = wishConditionRevision(state, proposal.actorId, current, turn.at);
     // Old per-Wish jobs remain recoverable; discovering them never authorizes replacement paid work.
     const player = readPlayerIdentity(state);
+    const currentIds = new Set([...(turn.processing?.lineIds ?? proposal.lineIds), ...(turn.replyLineIds ?? [])]);
     const witnessed = scene.lines.filter(
       (line) =>
+        (currentIds.has(line.id) || (!!line.at && line.at <= turn.at!)) &&
         line.heardBy.includes(proposal.actorId) &&
         !line.contactReport &&
         line.kind !== "side" &&
         (!line.contactHidden || proposal.lineIds.includes(line.id)),
     );
-    const currentIds = new Set([...(turn.processing?.lineIds ?? proposal.lineIds), ...(turn.replyLineIds ?? [])]);
     const priorAccepted = Object.values(state.exchangeReceipts)
       .filter(
         (receipt) => receipt.actorId === proposal.actorId && receipt.wishId === wish.id && receipt.status === "applied",
@@ -706,11 +840,15 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
     const evidence = witnessed.filter(
       (line) => pinned.has(line.id) || currentIds.has(line.id) || recent.includes(line),
     );
-    const receipts = wishReceiptRecords(state, proposal.actorId, scene);
+    const receipts = wishReceiptRecords(state, proposal.actorId, scene).filter(
+      (receipt) => receipt.at <= turn.at! || receipt.actionReceipt?.submissionId === turn.id,
+    );
     const newReceipts = receipts.filter(
       (receipt) => proposal.receiptIds?.includes(receipt.id) || receipt.actionReceipt?.submissionId === turn.id,
     );
+    const knowledge = wishCheckKnowledge(state, proposal.actorId, wish.id, turn.at);
     const context: WishInterpretationContext = {
+      knowledge,
       actorId: proposal.actorId,
       village: state.name,
       setting: state.setting,
@@ -720,15 +858,18 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
       playerDescription: player.description,
       wishes: [wish],
       claim: "Check the new cited evidence against this existing Wish",
-      evidence: evidence.map((line) => ({
-        id: line.id,
-        speakerId: line.role === "user" ? "player" : line.speakerId,
-        name: line.role === "user" ? player.name : line.name,
-        content: line.content,
-        kind: line.kind,
-        at: line.at,
-        current: currentIds.has(line.id),
-      })),
+      evidence: [
+        ...knowledge.evidence.filter((old) => !evidence.some((line) => line.id === old.id)),
+        ...evidence.map((line) => ({
+          id: line.id,
+          speakerId: line.role === "user" ? "player" : line.speakerId,
+          name: line.role === "user" ? player.name : line.name,
+          content: line.content,
+          kind: line.kind,
+          at: line.at,
+          current: currentIds.has(line.id),
+        })),
+      ],
       receipts,
       currentReceiptIds: newReceipts.map((receipt) => receipt.id),
       transcript: [],

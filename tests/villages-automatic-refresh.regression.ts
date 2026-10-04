@@ -96,6 +96,7 @@ async function main() {
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const migrated = coerceVillageState({
+    wishSystemVersion: 2,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
     refreshClocks: ["morning"],
@@ -118,8 +119,11 @@ async function main() {
   assert.ok(Date.parse(migrated.simulatedThrough) > 0);
   assert.equal(migrated.happenings[0]?.timePrecision, "phase");
   assert.equal(migrated.villagers[0]?.agenda?.day[0]?.startMinute, 300);
-  assert.equal(coerceVillageState({ refreshClocks: [] }).storyPace, "off");
-  assert.equal(coerceVillageState({ refreshClocks: ["morning", "evening"] }).storyPace, "balanced");
+  assert.equal(coerceVillageState({ wishSystemVersion: 2, refreshClocks: [] }).storyPace, "off");
+  assert.equal(
+    coerceVillageState({ wishSystemVersion: 2, refreshClocks: ["morning", "evening"] }).storyPace,
+    "balanced",
+  );
 
   const documentsByKey = new Map<string, any>();
   const documents = {
