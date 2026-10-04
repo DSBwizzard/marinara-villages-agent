@@ -306,7 +306,7 @@ try {
       });
     }
 
-    await page.getByRole("button", { name: /Noticeboard \(1\)/u }).click();
+    await page.getByRole("button", { name: /Notices \(1\)/u }).click();
     await expect(page.getByRole("heading", { name: "Noticeboard", level: 1 })).toBeVisible();
     await expect(page.getByText("Market today")).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
@@ -328,7 +328,7 @@ try {
     await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
+    await page.getByRole("button", { name: "More" }).click();
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to the village" }).click();
 
@@ -336,9 +336,7 @@ try {
     const pin = home.locator(`[data-pin-id="${visitedId}"]`);
     await pin.focus();
     await page.keyboard.press("Enter");
-    const doors = home.locator(
-      mobile ? ".marinara-capability-villages-explore-sheet" : ".marinara-capability-villages-doors",
-    );
+    const doors = home.locator(".marinara-capability-villages-explore-sheet");
     await expect(doors.getByRole("button", { name: "Visit" })).toBeVisible();
     const bounds = await doors.boundingBox();
     assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "edge pin choices stay on screen");
@@ -588,7 +586,7 @@ try {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
       await home
-        .locator(mobile ? ".marinara-capability-villages-explore-sheet" : ".marinara-capability-villages-doors")
+        .locator(".marinara-capability-villages-explore-sheet")
         .getByRole("button", { name: /View venue/iu })
         .click();
       const headerActions = page.locator(".marinara-capability-villages-actions");

@@ -1,18 +1,19 @@
+import { EXPLORATION_STYLES } from "./villages-exploration-styles.js";
 import { VenuePolaroid } from "./villages-venue-polaroid.js";
 import { VILLAGES_FORGING_STYLES } from "./villages-forging-styles.js";
 import {
   BrowseList,
-  MapIcon,
   MobileMarkers,
-  MobileMapControls,
-  MobileNavigation,
+  ExplorationNavigation,
+  DesktopPanel,
+  NoticesButton,
   MobileSheet,
   VenuePreview,
-  MOBILE_EXPLORATION_STYLES,
   useExplorationViewport,
   type ExplorationRow,
   type ExplorationSheet,
-} from "./villages-mobile-exploration";
+  type ExplorationTab,
+} from "./villages-exploration";
 import { VillagesUsageMeter } from "./villages-usage-meter.js";
 import { VillagesRelationships } from "./villages-relationships.js";
 import { DecisionsControl } from "./villages-decisions-control.js";
@@ -4536,16 +4537,6 @@ const VILLAGES_STYLES = `
   background: color-mix(in srgb, var(--popover) 86%, #c08b4e);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .22);
 }
-.${ELEMENT_TAG}-places-picker { position: relative; pointer-events: auto; }
-.${ELEMENT_TAG}-places-list {
-  position: absolute; top: calc(100% + .375rem); left: 0; z-index: 10;
-  display: flex; flex-direction: column; gap: .375rem;
-  min-width: min(19rem, 80vw); max-width: min(24rem, 90vw); max-height: 60vh; overflow: auto;
-  padding: .5rem; border: 1px solid var(--border); border-radius: .625rem;
-  background: var(--popover); box-shadow: 0 .375rem 1rem rgba(0, 0, 0, .28);
-}
-.${ELEMENT_TAG}-places-list-row { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem; }
-.${ELEMENT_TAG}-places-list-name { flex: 1 1 100%; font-size: .8125rem; font-weight: 600; }
 /* A button whose whole content is a drawn glyph: square, with the glyph centred
    in it rather than sitting on a text baseline it has none of. */
 .${ELEMENT_TAG}-icon-button {
@@ -6097,16 +6088,13 @@ function syncVillagesStyles() {
     return;
   }
   if (existing) {
-    if (
-      existing.textContent !==
-      VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + MOBILE_EXPLORATION_STYLES
-    )
-      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + MOBILE_EXPLORATION_STYLES;
+    if (existing.textContent !== VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES)
+      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES;
     return;
   }
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + MOBILE_EXPLORATION_STYLES;
+  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES;
   document.head.appendChild(style);
 }
 
@@ -8735,27 +8723,6 @@ function MapStage({
             ))
         : null}
 
-      {/* Outside the frame on purpose: a pointer down inside it starts a drag,
-          and a control that started one would drag the map instead of working. */}
-      {exploration && mobileImage && frame ? (
-        <MobileMapControls
-          canZoomIn={mobileCurrent.zoom < Math.max(4, mobileInitial.zoom * 2)}
-          canZoomOut={mobileCurrent.zoom > mobileInitial.zoom}
-          onReset={() => updateMobileView(null)}
-          onZoom={(factor) =>
-            updateMobileView(
-              mobileMapGesture(
-                mobileImage,
-                frame,
-                mobileCurrent,
-                { x: frame.width / 2, y: frame.height / 2 },
-                { x: frame.width / 2, y: frame.height / 2 },
-                factor,
-              ),
-            )
-          }
-        />
-      ) : null}
       {framing && zoom && live.fit === "cover" ? (
         <div className={`${ELEMENT_TAG}-zoom`}>
           <button
@@ -13180,9 +13147,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * meantime simply stops having any doors to draw.
    */
   const [openPlaceId, setOpenPlaceId] = useState<string | null>(null);
-  const [placesOpen, setPlacesOpen] = useState(false);
   useExplorationViewport(element, mobile && screen === "home");
   const [exploreSheet, setExploreSheet] = useState<ExplorationSheet | null>(null);
+  const [explorationSearch, setExplorationSearch] = useState({ places: "", people: "" });
+  const explorationReturnTab = useRef<ExplorationTab>("map");
   const [navigationView, setNavigationView] = useState<MobileMapView | null>(null);
   const explorationOrigin = useRef<HTMLElement | null>(null);
   const explorationMapKey = snapshot
@@ -13203,19 +13171,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     requestAnimationFrame(() => {
       const target = explorationOrigin.current;
       if (target?.isConnected) target.focus({ preventScroll: true });
-      else element.querySelector<HTMLElement>('[data-explore-tab="map"]')?.focus({ preventScroll: true });
+      else
+        element
+          .querySelector<HTMLElement>(`[data-explore-tab="${explorationReturnTab.current}"]`)
+          ?.focus({ preventScroll: true });
     });
   }, [element]);
   useEffect(() => {
-    if (!mobile || screen !== "home" || (!exploreSheet && !openPlaceId)) return;
+    if (screen !== "home" || (!exploreSheet && !openPlaceId)) return;
     const outside = (event: PointerEvent) => {
       if (
         !(event.target instanceof Element) ||
         !element.contains(event.target) ||
-        event.target.closest("." + ELEMENT_TAG + "-explore-sheet, ." + ELEMENT_TAG + "-explore-nav")
+        event.target.closest(
+          "." + ELEMENT_TAG + "-explore-sheet, ." + ELEMENT_TAG + "-home-bar, ." + ELEMENT_TAG + "-explore-nav",
+        )
       )
         return;
-      if (event.target.closest("." + ELEMENT_TAG + "-pin, ." + ELEMENT_TAG + "-explore-controls")) {
+      if (event.target.closest("." + ELEMENT_TAG + "-pin")) {
         setExploreSheet(null);
         setOpenPlaceId(null);
       } else closeExploration();
@@ -13229,11 +13202,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("keydown", escape);
     };
-  }, [closeExploration, element, exploreSheet, mobile, openPlaceId, screen]);
+  }, [closeExploration, element, exploreSheet, openPlaceId, screen]);
   useEffect(() => {
-    if (mobile && openPlaceId && snapshot && !snapshot.settings.venues.some((venue) => venue.id === openPlaceId))
+    if (openPlaceId && snapshot && !snapshot.settings.venues.some((venue) => venue.id === openPlaceId))
       closeExploration();
-  }, [closeExploration, mobile, openPlaceId, snapshot]);
+  }, [closeExploration, openPlaceId, snapshot]);
   const [menuPage, setMenuPage] = useState<MenuPage>("index");
   const menuSection = menuCategory(menuPage);
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
@@ -14853,7 +14826,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     (tab: MenuTab) => {
       if (tab === "projects") setSiteProjectId("");
       setSettingsError("");
-      setPlacesOpen(false);
       // The villager list is read when it is asked for rather than kept current
       // on every snapshot.
       if (tab === "villagers") void loadCatalog();
@@ -14901,7 +14873,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setPickerOpen(false);
     setSettingsError("");
     setOpenPlaceId(null);
-    setPlacesOpen(false);
     setScreen("home");
   }, []);
 
@@ -15244,7 +15215,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const openPlace = useCallback((place: VillageVenue) => {
     setExploreSheet(null);
     setOpenPlaceId(null);
-    setPlacesOpen(false);
     setVenueId(place.id);
     setVenuePage("view");
     setVenueZoneKey("exterior");
@@ -15383,7 +15353,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       leavingRoomPendingRef.current = false;
       roomCompletionRef.current = null;
       setOpenPlaceId(null);
-      setPlacesOpen(false);
       setPlaceProblem(null);
       setRoomDraft("");
       setRoomEnded(false);
@@ -15447,20 +15416,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * Every place offers both its details and an entrance. When nobody is present,
    * Enter opens the place's own action view; otherwise it opens the Common Space.
    */
-  const openVenue = useCallback(
-    (place: VillageVenue) => {
-      setPlayerMovePrivateZoneId("");
-      setMovePrivateZoneId("");
-      setPlacesOpen(false);
-      setExploreSheet(null);
-      if (mobile && !(document.activeElement instanceof HTMLHeadingElement)) {
-        explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      }
-      setOpenPlaceId(place.id);
-      setScreen("home");
-    },
-    [mobile],
-  );
+  const openVenue = useCallback((place: VillageVenue) => {
+    setPlayerMovePrivateZoneId("");
+    setMovePrivateZoneId("");
+    setExploreSheet(null);
+    if (!(document.activeElement instanceof HTMLHeadingElement)) {
+      explorationReturnTab.current = "map";
+      explorationOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    setOpenPlaceId(place.id);
+    setScreen("home");
+  }, []);
 
   /**
    * Step back out of a place and onto the map.
@@ -17080,6 +17046,33 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * Keep legacy MapPin identifiers for callers; the presentation is always a Polaroid.
    * Unplaced Venues remain available in play without guessing map coordinates.
    */
+  const venueExplorationActions = (place: VillageVenue): { label: string; onSelect: () => void }[] => {
+    const project = snapshot?.projects.find(
+      (entry) => entry.venueId === place.id && entry.lifecycle?.phase !== "complete",
+    );
+    return [
+      ...(project?.kind === "new-venue"
+        ? []
+        : [
+            { label: "Visit", onSelect: () => void openRoom(place) },
+            { label: "View venue", onSelect: () => openPlace(place) },
+          ]),
+      ...(project
+        ? [
+            {
+              label: "View Project",
+              onSelect: () => {
+                setExploreSheet(null);
+                openMenu("projects");
+                setFocusedProjectId(project.id);
+                setSiteProjectId(project.id);
+              },
+            },
+          ]
+        : []),
+    ];
+  };
+
   const savedPins: MapPin[] = (() => {
     const places = snapshot?.settings.venues ?? [];
     const pins: MapPin[] = [];
@@ -17099,14 +17092,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       const project = snapshot?.projects.find(
         (entry) => entry.venueId === place.id && entry.lifecycle?.phase !== "complete",
       );
-      const openProject = () => {
-        if (!project) return;
-        openMenu("projects");
-        setFocusedProjectId(project.id);
-        setSiteProjectId(project.id);
-      };
-      // Held in locals so the closures below keep the narrowing — a house nobody
-      // has moved into has no conversation to open.
       const occupant = place.occupancy.residentCharacterId;
       const house = isHouse(place);
       // Who the place is named after. A villager's own name, or the player's: the
@@ -17122,44 +17107,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         image: project ? PROJECT_BLUEPRINT_IMAGE : (place.presentation.image?.url ?? null),
         tone: house ? pinTone({ isPlayerHome: place.occupancy.playerHome, occupant }) : "venue",
         selected: openPlaceId === place.id,
-        // EVERY PLACE IS A DOOR NOW, not only a house with somebody in it.
-        //
-        // The pin used to lead straight into the villager's conversation, which
-        // made a house the only place on the map with anything behind it and left
-        // the mill and the harbour as decoration on a picture. A place is where
-        // the village's business happens, so the pin walks into the PLACE and
-        // `openVenue` offers both details and entry, even when nobody is present.
-        //
-        // Only while this pin is the one that was pressed, which is why the list
-        // is built here rather than kept somewhere: the map already knows where
-        // every pin is, so the pin that was pressed is the box that holds the
-        // answer. And because it is rebuilt on every render, out of the same `here`
-        // the press reads, a door cannot outlive whoever it names: when the hour
-        // turns and they leave, the same open pin now offers the empty room.
-        doors:
-          openPlaceId === place.id
-            ? [
-                ...(project ? [{ label: "View Project", onSelect: openProject }] : []),
-                ...(project?.kind === "new-venue"
-                  ? []
-                  : [
-                      { label: "View venue", onSelect: () => openPlace(place) },
-                      {
-                        /**
-                         * Enter opens the place's action view when it is empty, or the
-                         * shared conversation with whoever is present.
-                         */
-                        label: "Visit",
-                        onSelect: () => void openRoom(place),
-                      },
-                    ]),
-              ]
-            : undefined,
-        onSelect: mobile
-          ? () => openVenue(place)
-          : project?.kind === "new-venue"
-            ? openProject
-            : () => openVenue(place),
+        onSelect: () => openVenue(place),
       });
       // Who is here, under the building they are at. Drawn as a label rather than
       // a button, because the place is what you walk into: who happens to be
@@ -18931,11 +18879,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             <h2>Choose where to go</h2>
             <p>Manage the people and places in your village, adjust settings, or inspect its DEBUG records.</p>
             <div className={`${ELEMENT_TAG}-menu-quick-links`}>
-              {mobile ? (
-                <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => openMenu("events")}>
-                  Events
-                </button>
-              ) : null}
+              <button
+                type="button"
+                className={ELEMENT_TAG + "-button"}
+                disabled={!snapshot || busy}
+                onClick={() => openMenu("events")}
+              >
+                Events
+              </button>
               <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openMenu("villagers")}>
                 Village Management
               </button>
@@ -21943,6 +21894,23 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     );
   }
 
+  const explorationNavigation = (
+    <ExplorationNavigation
+      active={exploreSheet?.tab ?? "map"}
+      disabled={!snapshot || busy}
+      onChoose={(tab, button) => {
+        explorationOrigin.current = button;
+        explorationReturnTab.current = tab;
+        setOpenPlaceId(null);
+        if (tab === "map") closeExploration();
+        else if (tab === "more") {
+          setExploreSheet(null);
+          openMenu("index");
+        } else setExploreSheet({ tab });
+      }}
+    />
+  );
+
   return (
     <div
       className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-home-full`}
@@ -21950,72 +21918,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     >
       <div className={`${ELEMENT_TAG}-home-bar`}>
         <HomeDateWeather weather={snapshot?.village.weather ?? ""} />
-        {!mobile && snapshot?.isFounded && destinationPlaces(snapshot.settings.venues).length > 0 ? (
-          <div className={`${ELEMENT_TAG}-places-picker`}>
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              aria-expanded={placesOpen}
-              aria-controls={`${ELEMENT_TAG}-places-list`}
-              disabled={busy}
-              onClick={() => {
-                setOpenPlaceId(null);
-                setPlacesOpen((open) => !open);
-              }}
-            >
-              Places
-            </button>
-            {placesOpen ? (
-              <div id={`${ELEMENT_TAG}-places-list`} className={`${ELEMENT_TAG}-places-list`}>
-                {snapshot.settings.venues.map((place) => (
-                  <div key={place.id} className={`${ELEMENT_TAG}-places-list-row`}>
-                    <span className={`${ELEMENT_TAG}-places-list-name`}>{place.name}</span>
-                    <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => openPlace(place)}>
-                      View venue
-                    </button>
-                    <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void openRoom(place)}>
-                      Visit
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
+        {!mobile && !placingProjectId ? explorationNavigation : null}
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
-          <button
-            type="button"
-            className={mobile ? ELEMENT_TAG + "-explore-notices" : ELEMENT_TAG + "-mobile-board-button"}
-            aria-label={`Noticeboard (${snapshot?.noticeboard.length ?? 0})`}
+          <NoticesButton
+            count={snapshot?.noticeboard.length ?? 0}
             disabled={!snapshot || busy}
-            onClick={() => openMenu("noticeboard")}
-          >
-            {mobile ? (
-              <>
-                <MapIcon name="notices" />
-                <span>Notices ({snapshot?.noticeboard.length ?? 0})</span>
-              </>
-            ) : (
-              <span aria-hidden="true">▤</span>
-            )}
-          </button>
-          {!mobile && snapshot?.isFounded ? (
-            <VillageEvents happenings={snapshot.happenings} recap={snapshot.recap} mobile={mobile} />
-          ) : null}
-          {!mobile ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-mobile-menu-button`}
-              aria-label="Open settings menu"
-              disabled={busy || !snapshot}
-              onClick={() => {
-                setMenuPage("index");
-                setScreen("menu");
-              }}
-            >
-              ☰
-            </button>
-          ) : null}
+            onSelect={() => openMenu("noticeboard")}
+          />
           {!mobile ? <FullscreenToggle /> : null}
           {placingProjectId ? (
             <button
@@ -22063,7 +21972,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             onDismiss={() => {
               setExploreSheet(null);
               setOpenPlaceId(null);
-              setPlacesOpen(false);
             }}
             // The homepage is the whole tab, so the room it is drawn in is also the
             // ceiling on how big it can be. Every other stage sits in a column that
@@ -22109,7 +22017,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             ) : null}
           </MapStage>
         </div>
-        {mobile && !placingProjectId && snapshot && (exploreSheet || openPlaceId)
+        {!placingProjectId && snapshot && (exploreSheet || openPlaceId)
           ? (() => {
               const venues = snapshot.settings.venues;
               const venue = venues.find((entry) => entry.id === openPlaceId);
@@ -22147,10 +22055,19 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 exploreSheet?.tab === "places" ? "Places" : exploreSheet?.tab === "people" ? "People" : venue?.name;
               if (!title) return null;
               const rows = exploreSheet?.tab === "people" ? peopleRows : placeRows;
+              const Panel = mobile ? MobileSheet : DesktopPanel;
               return (
-                <MobileSheet key={exploreSheet?.tab ?? venue?.id} title={title} onClose={closeExploration}>
+                <Panel title={title} onClose={closeExploration}>
                   {exploreSheet ? (
-                    <BrowseList rows={rows} label={title} />
+                    <BrowseList
+                      rows={rows}
+                      label={title}
+                      disabled={busy}
+                      search={explorationSearch[exploreSheet.tab]}
+                      onSearch={(value) =>
+                        setExplorationSearch((current) => ({ ...current, [exploreSheet.tab]: value }))
+                      }
+                    />
                   ) : venue ? (
                     <VenuePreview
                       image={savedPins.find((pin) => pin.id === venue.id)?.image ?? venue.presentation.image?.url}
@@ -22160,60 +22077,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           .join(" · ") || "Venue"
                       }
                       disabled={busy}
-                      actions={(
-                        savedPins.find((pin) => pin.id === venue.id)?.doors ??
-                        (() => {
-                          const project = snapshot.projects.find(
-                            (entry) => entry.venueId === venue.id && entry.lifecycle?.phase !== "complete",
-                          );
-                          return [
-                            ...(project
-                              ? [
-                                  {
-                                    label: "View Project",
-                                    onSelect: () => {
-                                      setExploreSheet(null);
-                                      openMenu("projects");
-                                      setFocusedProjectId(project.id);
-                                      setSiteProjectId(project.id);
-                                    },
-                                  },
-                                ]
-                              : []),
-                            ...(project?.kind === "new-venue"
-                              ? []
-                              : [
-                                  { label: "Visit", onSelect: () => void openRoom(venue) },
-                                  { label: "View venue", onSelect: () => openPlace(venue) },
-                                ]),
-                          ];
-                        })()
-                      )
-                        .slice()
-                        .sort((a, b) => (a.label === "Visit" ? -1 : b.label === "Visit" ? 1 : 0))}
+                      actions={venueExplorationActions(venue)}
                     />
                   ) : null}
-                </MobileSheet>
+                </Panel>
               );
             })()
           : null}
       </div>
-      {mobile && !placingProjectId ? (
-        <MobileNavigation
-          active={exploreSheet?.tab === "places" || exploreSheet?.tab === "people" ? exploreSheet.tab : "map"}
-          disabled={!snapshot || busy}
-          onChoose={(tab, button) => {
-            explorationOrigin.current = button;
-            setOpenPlaceId(null);
-            if (tab === "map") closeExploration();
-            else if (tab === "more") {
-              setExploreSheet(null);
-              setMenuPage("index");
-              setScreen("menu");
-            } else setExploreSheet({ tab });
-          }}
-        />
-      ) : null}
+      {mobile && !placingProjectId ? explorationNavigation : null}
 
       {/* ── DORMANT 0.4.45 — the notice that told a phone held upright to turn.
             It covered the whole row rather than the map's own box, because on a

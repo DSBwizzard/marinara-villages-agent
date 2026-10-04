@@ -1,5 +1,13 @@
 # Villages
 
+## Warm exploration on desktop and mobile
+
+Map, Places, People and More share labels, icons, searches and Venue actions across layouts. Notices stays directly available with its count; Events is in More on both. Desktop uses a compact toolbar and an overlay side panel. Mobile keeps touch-sized bottom navigation and overlay sheets, with drag and pinch navigation and no zoom/reset buttons. Searching or opening a panel does not resize the map. Search and selection survive layout changes; the mobile map view survives browsing and menu round trips.
+
+Exploration components live in `villages-exploration.tsx`; scoped warm tokens and responsive styles live in `villages-exploration-styles.ts`. Changes to navigation, browsing or actions should update shared definitions and run the paired exploration regression. Engine chrome, Scenes, founding and general settings retain their existing appearance.
+
+`node tests/villages-mobile-exploration.e2e.mjs` checks seven viewport sizes, mouse/keyboard and touch navigation, search, resize state, focus restoration, explicit Visit, worksites and snapshot changes. Set `VILLAGES_VISUAL_OUTPUT` to capture rendered fixtures. For optional real-shell QA against an already-running local Engine, set `VILLAGES_ENGINE_URL` and run `node tests/villages-engine-shell.e2e.mjs`: the browser receives the candidate client and synthetic Village data, with real Engine writes blocked. This does not install a feature branch or restart the Engine.
+
 ## Founding preparation recovery
 
 Private spaces prepare one at a time, with one concise System request per unfinished space. Each completed space is saved before the next request; a failed or truncated reply stops preparation and retains earlier successes. **Retry preparation** resumes the saved village, map and finished work. Blank replies have no automatic retry. A recorded request interrupted by shutdown requires deliberate retry and may already have incurred provider costs. The Engine document store still has the buffered durability limitation described below.

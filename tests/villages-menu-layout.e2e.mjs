@@ -185,7 +185,7 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
 
     const root = page.locator(`.${tag}-sectioned-menu`);
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
+    await page.getByRole("button", { name: "More" }).click();
     await expect(root).toBeVisible();
     await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
     const nav = root.getByRole("navigation", { name: "Village menu pages" });
@@ -235,7 +235,7 @@ try {
     await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
     await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
     await root.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: /^Noticeboard \(/ }).click();
+    await page.getByRole("button", { name: /^Notices \(/ }).click();
     await expect(root).toHaveAttribute("data-page", "noticeboard");
     await expect(nav).toBeVisible();
     if (process.env.VILLAGES_MENU_SCREENSHOTS) {
@@ -247,7 +247,7 @@ try {
       const old = document.querySelector(elementName);
       old.replaceWith(document.createElement(elementName));
     }, tag);
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
+    await page.getByRole("button", { name: "More" }).click();
     await expect(root).toHaveAttribute("data-page", "index");
     await expect(nav).toBeVisible();
     await expect(nav.getByRole("button", { name: /^Homes \(/ })).toHaveCount(0);
@@ -255,7 +255,7 @@ try {
       await root.getByRole("button", { name: "Back to the village" }).click();
       await page.getByRole("button", { name: "Use the whole screen" }).click();
       await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName.toLowerCase())).toBe(tag);
-      await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
+      await page.getByRole("button", { name: "More" }).click();
       await expect(root).toBeVisible();
       await expect(nav).toBeVisible();
       await expect(main).toBeVisible();

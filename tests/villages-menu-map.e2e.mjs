@@ -220,7 +220,7 @@ try {
     await expect(page.locator(".marinara-capability-villages-pin-photo svg")).toHaveCount(0);
     for (const img of await page.locator(".marinara-capability-villages-pin-photo img").all())
       await expect(img).toHaveCSS("object-fit", "contain");
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
+    await page.getByRole("button", { name: "More" }).click();
     await expect(page.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Homes", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Town map", exact: true })).toHaveCount(0);
@@ -282,7 +282,7 @@ try {
     await expect(
       page.locator(".marinara-capability-villages-home-full .marinara-capability-villages-canvas-img"),
     ).toHaveAttribute("src", savedImage);
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
+    await page.getByRole("button", { name: "More" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();
     await page.getByRole("button", { name: "Cancel replacement" }).click();
     assert.equal(writes.length, 2);
@@ -308,7 +308,7 @@ try {
     await page.getByRole("button", { name: "Cancel replacement" }).click();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Back to the village" }).click();
-    await expect(page.getByRole("button", { name: /Noticeboard \(1\)/u })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Notices \(1\)/u })).toBeVisible();
     assert.deepEqual(errors, []);
     await page.close();
   }
