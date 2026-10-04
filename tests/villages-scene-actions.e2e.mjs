@@ -162,7 +162,8 @@ try {
     await expect(page.getByLabel("Contact Zone", { exact: true })).toHaveValue("exterior");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     while (await next.isEnabled()) await next.click();
-    await composer.fill("Draft survives Zone changes");
+    const preservedDraft = "Draft survives Zone changes. ".repeat(35);
+    await composer.fill(preservedDraft);
     scene.sceneRevision++;
     await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
@@ -178,7 +179,9 @@ try {
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
       "You move from Common Space to Exterior.",
     );
-    await expect(composer).toHaveValue("Draft survives Zone changes");
+    await expect(composer).toHaveValue(preservedDraft);
+    assert.ok(await composer.evaluate((field) => field.scrollHeight > field.clientHeight));
+    await expect(composer).toHaveCSS("overflow-y", "auto");
     await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
     assert.equal(moves, 1);
     await page.reload();

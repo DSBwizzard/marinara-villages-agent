@@ -10355,7 +10355,7 @@ function RoomPanel({
 
   useLayoutEffect(() => {
     resizeComposer();
-  }, [canDraft, draft, resizeComposer]);
+  }, [canDraft, draft, mode, resizeComposer]);
 
   useEffect(() => {
     const frame = composerRef.current?.parentElement;
@@ -10368,7 +10368,7 @@ function RoomPanel({
     });
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [canDraft, resizeComposer]);
+  }, [canDraft, mode, resizeComposer]);
 
   const submitComposer = () => {
     if (
