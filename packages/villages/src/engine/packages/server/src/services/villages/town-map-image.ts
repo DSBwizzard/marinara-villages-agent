@@ -19,7 +19,7 @@ import {
 export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 
 export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
-  "Create a wide landscape, top-down or three-quarter-view game navigation map. " +
+  "Create a landscape game navigation map on a three-to-two canvas, wider than tall but not panoramic. Use a top-down or three-quarter view. " +
   "Use cutaways or floor layouts indoors, and terrain and landmarks outdoors. " +
   "Distribute visually distinct usable areas for venue pins, including rooms within larger structures. " +
   "Pins need not represent detached buildings. Never add outlined lots or a zoning grid. Keep usable areas uncluttered and clear of edges.";

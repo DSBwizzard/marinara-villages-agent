@@ -7819,10 +7819,39 @@ function readFileAsDataUrl(file: File): Promise<string> {
 function measureImage(src: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
-    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-    image.onerror = () => reject(new Error("That picture could not be read."));
+    const timer = window.setTimeout(() => {
+      image.onload = image.onerror = null;
+      reject(new Error("The picture is taking too long to open. Try again."));
+    }, 30_000);
+    image.onload = () => {
+      window.clearTimeout(timer);
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    };
+    image.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error("That picture could not be read."));
+    };
     image.src = src;
   });
+}
+
+type SetupMapRequest = { id: string; sourceKey: string; startedAt: string; phase: "starting" | "waiting" | "paused" };
+type SetupMapReceipt = {
+  id: string;
+  sourceKey: string;
+  startedAt: string;
+  status: "running" | "complete" | "failed" | "interrupted";
+  error: string;
+  result: { image: string; width: number; height: number } | null;
+};
+async function requestSetupMapReceipt(path: string, init?: RequestInit): Promise<SetupMapReceipt> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 30_000);
+  try {
+    return await request<SetupMapReceipt>(path, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /**
@@ -13376,10 +13405,23 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   });
   const [setupMapBusy, setSetupMapBusy] = useState(false);
   const [setupMapProblem, setSetupMapProblem] = useState("");
-  const setupMapSourceRef = useRef(setupMapSource);
+  const [setupMapRequest, setSetupMapRequest] = useState<SetupMapRequest | null>(null);
+  const setupMapRequestRef = useRef<SetupMapRequest | null>(null);
+  const updateSetupMapRequest = useCallback((value: SetupMapRequest | null) => {
+    setupMapRequestRef.current = value;
+    setSetupMapRequest(value);
+  }, []);
+  const [setupMapClock, setSetupMapClock] = useState(Date.now());
   useEffect(() => {
-    setupMapSourceRef.current = setupMapSource;
-  }, [setupMapSource]);
+    if (!setupMapBusy) return;
+    const timer = window.setInterval(() => setSetupMapClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [setupMapBusy]);
+  const setupMapSeconds = Math.max(
+    0,
+    Math.floor((setupMapClock - Date.parse(setupMapRequest?.startedAt ?? new Date().toISOString())) / 1000),
+  );
+  const setupMapProgress = `Waiting for map artwork — ${Math.floor(setupMapSeconds / 60)}m ${setupMapSeconds % 60}s. Image generation can take several minutes. You can continue editing.`;
   const [preparationProblem, setPreparationProblem] = useState("");
   const [connectionSetupProblem, setConnectionSetupProblem] = useState("Connections are still loading.");
   /** Why the wizard cannot finish yet, said next to the button that would finish it. */
@@ -13508,6 +13550,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       mapOptions: setupMapOptions,
       mapReviewed: setupMapReviewed,
       mapProblem: setupMapProblem,
+      mapRequest: setupMapRequest,
       authoredFields: setupAuthoredFields,
       suggestionsKey: setupSuggestionsKey,
       selectedVenueId: selectedSetupVenueId,
@@ -13517,7 +13560,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       editorAuthoredOriginal: setupEditorAuthoredOriginal.current,
       editorZoneOriginal: setupEditorZoneOriginal.current,
       keyboardSpot: setupKeyboardSpot,
-      interruptedGeneration: setupMapBusy || setupVenueBusy || setupSuggestionsBusy,
+      interruptedGeneration: (setupMapBusy && !setupMapRequest) || setupVenueBusy || setupSuggestionsBusy,
     }),
     [
       setupStep,
@@ -13548,6 +13591,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupMapOptions,
       setupMapReviewed,
       setupMapProblem,
+      setupMapRequest,
       setupAuthoredFields,
       setupSuggestionsKey,
       selectedSetupVenueId,
@@ -13635,6 +13679,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setSetupMapOptions(data.mapOptions);
     setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
+    const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
+    updateSetupMapRequest(mapRequest);
+    setSetupMapBusy(!!mapRequest);
     setSetupAuthoredFields(data.authoredFields);
     setSetupSuggestionsKey(data.suggestionsKey);
     setSelectedSetupVenueId(data.selectedVenueId);
@@ -13682,6 +13729,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupAuthoredFields({});
       setSetupSuggestionsKey("");
       setSetupMapReviewed(false);
+      updateSetupMapRequest(null);
+      setSetupMapProblem("");
       setupZoneDrafts.current = {};
       openSetup(true, snapshot);
       setDraftReady(true);
@@ -15615,7 +15664,58 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, [snapshot]);
 
   // ── Town map ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (screen !== "setup" || setupMapRequest?.phase !== "waiting") return;
+    const pending = setupMapRequest;
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const receipt = await requestSetupMapReceipt(`/setup/town-map/generation/${encodeURIComponent(pending.id)}`);
+        if (cancelled) return;
+        if (receipt.status === "running") {
+          timer = window.setTimeout(() => void poll(), 2000);
+          return;
+        }
+        if (receipt.status !== "complete" || !receipt.result) {
+          setSetupMapProblem(
+            receipt.error || "The map request stopped without an image. Generate again only when you choose.",
+          );
+          updateSetupMapRequest(null);
+          setSetupMapBusy(false);
+          return;
+        }
+        const generated = receipt.result;
+        const measured = await measureImage(generated.image);
+        if (cancelled) return;
+        if (measured.width !== generated.width || measured.height !== generated.height)
+          throw new Error("The generated map's reported dimensions do not match the image.");
+        setSetupMapImage(generated.image);
+        setSetupMapImageSource("generate");
+        setSetupMapGeneratedKey(receipt.sourceKey);
+        setSetupMapSize(measured);
+        setSetupMapReviewed(false);
+        setSetupMapProblem("");
+        updateSetupMapRequest(null);
+        setSetupMapBusy(false);
+      } catch (cause) {
+        if (cancelled) return;
+        setSetupMapProblem(
+          `${messageFrom(cause, "Map status could not be retrieved.")} Check map status to retrieve this attempt without generating again.`,
+        );
+        updateSetupMapRequest({ ...pending, phase: "paused" });
+        setSetupMapBusy(false);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [screen, setupMapRequest, updateSetupMapRequest]);
+
   const generateSetupTownMap = useCallback(async () => {
+    if (setupMapRequestRef.current?.phase === "starting" || setupMapRequestRef.current?.phase === "waiting") return;
     if (setupSetting.trim().length === 0) {
       setSetupMapProblem("Describe what the village is like before generating its map.");
       return;
@@ -15623,10 +15723,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setSetupMapBusy(true);
     setSetupMapProblem("");
     setSetupProblem("");
+    const pending: SetupMapRequest = {
+      id: createVillagesClientId(),
+      sourceKey: setupMapGenerationKey,
+      startedAt: new Date().toISOString(),
+      phase: "starting",
+    };
+    updateSetupMapRequest(pending);
+    setSetupMapClock(Date.now());
+    let dispatched = false;
     try {
-      const generated = await request<{ image: string; width: number; height: number }>("/setup/town-map/generate", {
+      // Keep the receipt ID before the paid request, so a reload only retrieves it.
+      await persistSetupDraft({ ...setupDraftData, mapRequest: pending, mapProblem: "", interruptedGeneration: false });
+      dispatched = true;
+      const receipt = await requestSetupMapReceipt("/setup/town-map/generate", {
         method: "POST",
         body: JSON.stringify({
+          actionId: pending.id,
+          sourceKey: pending.sourceKey,
           structure: setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? undefined : setupMapPrompt,
           negative:
             setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
@@ -15640,19 +15754,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             : null,
         }),
       });
-      const measured = await measureImage(generated.image);
-      if (measured.width !== generated.width || measured.height !== generated.height) {
-        throw new Error("The generated map's reported dimensions do not match the image.");
-      }
-      setSetupMapImage(generated.image);
-      setSetupMapImageSource("generate");
-      setSetupMapGeneratedKey(setupMapGenerationKey);
-      setSetupMapSize(measured);
-      if (setupMapSourceRef.current === "generate") setSetupMapSource("generate");
-      setSetupMapReviewed(false);
+      updateSetupMapRequest({
+        id: receipt.id,
+        sourceKey: receipt.sourceKey,
+        startedAt: receipt.startedAt,
+        phase: "waiting",
+      });
     } catch (cause) {
-      setSetupMapProblem(messageFrom(cause, "The village map could not be generated."));
-    } finally {
+      setSetupMapProblem(
+        `${messageFrom(cause, "The village map could not be requested.")}${dispatched ? " Check map status before starting another attempt." : ""}`,
+      );
+      updateSetupMapRequest(dispatched ? { ...pending, phase: "paused" } : null);
       setSetupMapBusy(false);
     }
   }, [
@@ -15668,6 +15780,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     snapshot?.isFounded,
     snapshot?.settings.townMapLayoutPrompt,
     snapshot?.settings.townMapNegativePrompt,
+    persistSetupDraft,
+    setupDraftData,
+    updateSetupMapRequest,
   ]);
 
   const pickSetupTownMap = useCallback(
@@ -16140,6 +16255,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupMapBusy(false);
       setSetupMapProblem("");
       // Coming back through the wizard over a village that already exists keeps
+      updateSetupMapRequest(null);
       // the Persona it is linked to, exactly as it keeps the name and the
       // setting: the second run is a chance to redraw the map, not to be told
       // something new about yourself by accident.
@@ -16151,7 +16267,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       void loadCatalog();
       setScreen("setup");
     },
-    [loadCatalog, loadLorebooks, loadPersonas],
+    [loadCatalog, loadLorebooks, loadPersonas, updateSetupMapRequest],
   );
 
   const gotoSetupStep = (step: number) => {
@@ -21064,7 +21180,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           <p className="villages-forging-placement" role="status">
             {!mapReady
               ? setupMapBusy
-                ? "Generating map artwork. This can take several minutes. You can edit Venue details meanwhile."
+                ? setupMapProgress
                 : setupMapProblem
                   ? "Map artwork failed. Return to Place to review the error and try again, or select Simple map."
                   : "Choose map artwork on Place, or select Simple map."
@@ -21403,12 +21519,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 ? "Generate again"
                                 : "Generate map"}
                           </button>
-                          {setupMapBusy ? (
-                            <p role="status">
-                              Generating map artwork. This can take several minutes. You can continue to Spaces while it
-                              runs.
-                            </p>
-                          ) : null}
+                          {setupMapBusy ? <p role="status">{setupMapProgress}</p> : null}
                           {setupMapProblem ? (
                             <p className={`${ELEMENT_TAG}-error`} role="alert">
                               {setupMapProblem}
@@ -21487,7 +21598,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           A logical map keeps Venue positions without artwork. Automatic spacing is available on Spaces.
                         </p>
                       ) : setupMapSrc ? (
-                        <img className="villages-forging-preview" src={setupMapSrc} alt="Selected village map" />
+                        <figure>
+                          <img
+                            className="villages-forging-preview"
+                            src={setupMapSrc}
+                            width={setupMapSize?.width}
+                            height={setupMapSize?.height}
+                            alt="Selected village map"
+                          />
+                          {setupMapSize ? (
+                            <figcaption>
+                              {setupMapSize.width} × {setupMapSize.height} pixels.
+                              {setupMapImageSource === "generate" &&
+                              Math.abs(setupMapSize.width / setupMapSize.height - 1.5) > 0.2
+                                ? " The image provider returned a different shape from the requested 3:2 landscape map. This preview keeps the original proportions."
+                                : ""}
+                            </figcaption>
+                          ) : null}
+                        </figure>
                       ) : (
                         <p>
                           {setupMapBusy
@@ -21682,6 +21810,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupProblem}
             </p>
+          ) : null}
+          {setupMapBusy && setupStep !== 1 && setupStep !== 2 ? <p role="status">{setupMapProgress}</p> : null}
+          {setupMapProblem && setupStep !== 1 && setupStep !== 2 ? (
+            <p className={`${ELEMENT_TAG}-error`} role="alert">
+              {setupMapProblem}
+            </p>
+          ) : null}
+          {setupMapRequest?.phase === "paused" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSetupMapProblem("");
+                setSetupMapBusy(true);
+                updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
+              }}
+            >
+              Check map status
+            </button>
           ) : null}
           {draftSaveError ? (
             <div role="alert" className="villages-forging-notice">

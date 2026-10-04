@@ -97,6 +97,8 @@ try {
     let releaseImage;
     let releaseMap;
     let mapCalls = 0;
+    let mapReceipt;
+    let failMapStatus = false;
     let suggestionCalls = 0;
     let connections = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
     await page.route("**/api/villages**", async (route) => {
@@ -149,20 +151,33 @@ try {
       }
       if (path.endsWith("/setup/town-map/generate")) {
         mapCalls++;
-        await new Promise((resolve) => {
-          releaseMap = resolve;
-        });
-        if (mapCalls === 1)
+        const body = route.request().postDataJSON();
+        mapReceipt = {
+          id: body.actionId,
+          sourceKey: body.sourceKey,
+          startedAt: new Date().toISOString(),
+          status: "running",
+          error: "",
+          result: null,
+        };
+        releaseMap = () => {
+          mapReceipt = {
+            ...mapReceipt,
+            status: mapCalls === 1 ? "failed" : "complete",
+            error: mapCalls === 1 ? "The generated map is too large to store." : "",
+            result: mapCalls === 1 ? null : { image: mapImage, width: 1280, height: 720 },
+          };
+        };
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
+      }
+      if (path.includes("/setup/town-map/generation/")) {
+        if (failMapStatus)
           return route.fulfill({
-            status: 502,
+            status: 503,
             contentType: "application/json",
-            body: JSON.stringify({ error: "The generated map is too large to store." }),
+            body: JSON.stringify({ error: "Connection interrupted" }),
           });
-        return route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ image: mapImage, width: 1280, height: 720 }),
-        });
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
       }
       const value = path.endsWith("/personas/ada")
         ? { persona: personaPreview }
@@ -383,6 +398,8 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume founding", exact: true }).click();
       await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
+    }
+    if (width === 1366 || (width === 390 && height === 844)) {
       await root.getByRole("button", { name: "2 Place", exact: true }).click();
       await root.getByRole("button", { name: "Generate artwork", exact: true }).click();
       await root.getByLabel("Map layout", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
@@ -407,8 +424,19 @@ try {
         0,
       );
       await forward("Continue to spaces").click();
-      await expect(root.locator(".villages-forging-placement")).toContainText("Generating map artwork");
+      await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
+      // Reload while the provider is still drawing: the resumed draft only reads status.
+      await forward("Save & exit").click();
+      await page.reload();
+      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+      await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
+      assert.equal(mapCalls, 2, "resuming an unfinished attempt must not generate again");
+      failMapStatus = true;
+      await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
+      failMapStatus = false;
       releaseMap();
+      await root.getByRole("button", { name: "Check map status", exact: true }).click();
       await expect(
         root.getByRole("button", { name: "I checked all pins against this map", exact: true }),
       ).toBeVisible();
@@ -434,6 +462,7 @@ try {
       await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
       await root.getByLabel("Map layout", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();

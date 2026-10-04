@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { VillageVenue, VillageVenueImage } from "./villages-package-entry";
+import { createVillagesClientId } from "./villages-venue-send";
 
 export const SCENERY_STYLES = {
   "Painted illustration":
@@ -284,7 +285,7 @@ export function BaseZoneFields({
     const role = venue.classes?.[0] ?? "other";
     const zone = {
       ...personalSpaceDraft(),
-      id: "base:" + crypto.randomUUID(),
+      id: "base:" + createVillagesClientId(),
       ownerId: undefined,
       name: personal ? "Private Space" : "Common Space",
       venueClass: role,
@@ -566,7 +567,7 @@ export function PrivateSpaceFields({
               ...rooms,
               {
                 ...personalSpaceDraft(),
-                id: "restricted:" + crypto.randomUUID(),
+                id: "restricted:" + createVillagesClientId(),
                 ownerId: "",
                 name: "",
                 purpose: "",

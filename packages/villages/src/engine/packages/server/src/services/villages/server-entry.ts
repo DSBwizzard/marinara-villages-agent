@@ -4,6 +4,7 @@ import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 import type { FastifyPluginAsync } from "fastify";
 import { villagesRoutes } from "../../routes/villages.routes.js";
 import { startBackgroundWork } from "./background-work.js";
+import { startTownMapGeneration } from "./town-map-generation.js";
 import { readRuntimeDebug } from "./runtime-debug.js";
 import { configureVillagesRuntime, villagesLogger } from "./package-runtime.js";
 import { configureDecisionsAdapter } from "./decisions-adapter.js";
@@ -29,6 +30,7 @@ let active = false;
 export async function activate({ api, app }: ActivationContext) {
   const cleanups: Array<() => void | Promise<void>> = [
     configureVillagesRuntime(api.runtime),
+    startTownMapGeneration(),
     configureDecisionsAdapter({ app }),
     stopInterpretationComparisons,
   ];

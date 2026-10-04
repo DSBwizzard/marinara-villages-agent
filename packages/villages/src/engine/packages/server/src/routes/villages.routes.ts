@@ -96,6 +96,7 @@ import {
   storeVillageVenueImage,
 } from "../services/villages/location-image.js";
 import { generateVillageTownMap } from "../services/villages/town-map-image.js";
+import { requestTownMapGeneration, readTownMapGeneration } from "../services/villages/town-map-generation.js";
 import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
 import {
   generateFoundingVenueImage,
@@ -1313,9 +1314,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
-  // A paid operation with no side effects: the result stays in the founding
-  // wizard until the final setup write. Closing the wizard leaves no half-made
-  // village and no map attached to one.
+  // Save a recoverable artwork receipt without creating or changing a Village.
   app.post<{
     Body: {
       structure?: unknown;
@@ -1329,12 +1328,23 @@ export async function villagesRoutes(engine: FastifyInstance) {
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
       scenarioImprint?: unknown;
+      actionId?: unknown;
+      sourceKey?: unknown;
     };
   }>("/setup/town-map/generate", async (request, reply) => {
     try {
+      if (request.body?.actionId !== undefined) return await requestTownMapGeneration(request.body);
       return await generateVillageTownMap(request.body ?? {});
     } catch (error) {
       return fail(reply, error, "drawing the village map");
+    }
+  });
+
+  app.get<{ Params: { actionId: string } }>("/setup/town-map/generation/:actionId", async (request, reply) => {
+    try {
+      return await readTownMapGeneration(request.params.actionId);
+    } catch (error) {
+      return fail(reply, error, "retrieving the requested village map");
     }
   });
 
