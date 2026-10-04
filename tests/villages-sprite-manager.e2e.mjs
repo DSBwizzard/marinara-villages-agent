@@ -188,7 +188,7 @@ try {
     }
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await page.getByRole("button", { name: viewport.width < 900 ? "More" : "Open settings menu" }).click();
+    await page.getByRole("button", { name: "More" }).click();
     await openManager();
     await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();
     await page.getByLabel("Upload sprite images").setInputFiles([

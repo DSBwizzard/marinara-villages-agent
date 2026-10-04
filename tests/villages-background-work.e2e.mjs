@@ -181,7 +181,7 @@ try {
   });
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect.poll(() => heartbeats.some((beat) => beat.visible)).toBe(true);
-  await page.getByRole("button", { name: "Open settings menu" }).click();
+  await page.getByRole("button", { name: "More" }).click();
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs attention (1)" })).toBeVisible();
   await expect(page.getByText(/Background work: 0 running \/ queued, 0 paused, 1 need attention/)).toBeVisible();

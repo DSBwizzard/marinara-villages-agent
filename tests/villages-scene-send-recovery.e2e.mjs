@@ -219,7 +219,7 @@ try {
     // Reach General settings with no active Scene, then verify persistence.
     active = false;
     await load();
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu", exact: true }).click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("button", { name: "General settings", exact: true }).click();
     const toggle = page.getByRole("checkbox", { name: "Send on Enter", exact: true });
     await expect(toggle).not.toBeChecked();
@@ -227,7 +227,7 @@ try {
     await expect(toggle).toBeChecked();
     assert.deepEqual(settingsWrites.at(-1), { sendOnEnter: true });
     await load();
-    await page.getByRole("button", { name: mobile ? "More" : "Open settings menu", exact: true }).click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("button", { name: "General settings", exact: true }).click();
     await expect(toggle).toBeChecked();
     active = true;
