@@ -130,11 +130,46 @@ async function main() {
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /three-to-two canvas.*not panoramic/);
   assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Never add outlined lots or a zoning grid/);
+  const fixtures = [
+    "A forest settlement of timber cabins and clearings.",
+    "A prison cell block with repeated cells, a dayroom and service corridors.",
+    "An abandoned mall with shuttered storefronts around an atrium.",
+    "A spacecraft with bunks, a shared mess and connected compartments.",
+    "An underwater habitat of pressure domes connected by sealed passages.",
+    "An underground refuge in a network of inhabited caverns.",
+    "A modern apartment complex with flats and shared courtyards.",
+    "A nonhuman habitat of living chambers within a giant crystalline organism.",
+  ];
+  for (const setting of fixtures) {
+    const prompt = buildTownMapPrompt("Respect repeated living spaces and the shared approach.", setting);
+    assert.ok(prompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+    assert.ok(prompt.includes(setting));
+    assert.match(prompt, /up to sixteen Venue photographs/);
+    assert.match(prompt, /Authored layout: Respect repeated living spaces/);
+    assert.ok(prompt.length <= 4000);
+  }
+  const tightBase = buildTownMapPrompt(undefined, "x".repeat(1900));
+  const exactlyFits = "v".repeat(4000 - tightBase.length - 1 - "Compatible visual lore: ".length);
+  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1900), undefined, [exactlyFits]);
+  assert.equal(tightPrompt.length, 4000, "complete optional entry fits the actual final character allowance");
+  assert.ok(tightPrompt.includes("\nCompatible visual lore: "));
+  const longSetting = "a".repeat(1990) + "LAST-FACT";
+  assert.ok(buildTownMapPrompt(undefined, longSetting, undefined, "", undefined, "Watercolor").includes("LAST-FACT"));
+  const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", undefined, [
+    "z".repeat(4000),
+    "COMPLETE-SHORT-ENTRY",
+  ]);
+  assert.ok(!optionalPrompt.includes("zzz"));
+  assert.ok(optionalPrompt.includes("COMPLETE-SHORT-ENTRY"));
+  assert.doesNotMatch(
+    buildTownMapNegativePrompt({ roads: "exclude", structures: "exclude" }),
+    /streets, roads|corridors|enclosing/,
+  );
   const defaultPrompt = buildTownMapPrompt(undefined, "cozy forest village");
   assert.ok(defaultPrompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
   assert.match(defaultPrompt, /Follow the village description for water, paths, and existing structures/);
   assert.doesNotMatch(defaultPrompt, /Do not include (buildings|water|streets)/);
-  assert.match(defaultPrompt, /without any writing, numerals/);
+  assert.match(defaultPrompt, /without photographs.*writing, numerals/);
   const coastalPrompt = buildTownMapPrompt(undefined, "A fishing village on sea cliffs");
   assert.match(coastalPrompt, /A fishing village on sea cliffs/);
   assert.doesNotMatch(coastalPrompt, /Do not include water/);
@@ -173,7 +208,7 @@ async function main() {
       water: !!(mask & 4),
     });
     assert.match(prompt, /Village description.*harbor city with canals/s);
-    assert.equal(prompt.includes("Do not add streets"), !(mask & 1));
+    assert.equal(prompt.includes("Do not add decorative outdoor routes"), !(mask & 1));
     assert.equal(prompt.includes("Do not add decorative buildings"), !(mask & 2));
     assert.equal(prompt.includes("Do not include water"), !(mask & 4));
   }
@@ -254,22 +289,27 @@ async function main() {
       return Response.json({ error: "Not Found" }, { status: 404 });
     };
     const input = {
-      structure: "A corridor and shared hall. ".repeat(29),
+      structure: "A corridor and shared hall. ".repeat(4),
       setting: "An indoor observatory. ".repeat(70),
-      sceneryArtStyle: "Painted scenery. ".repeat(35),
+      sceneryArtStyle: "Painted scenery. ".repeat(6),
       options: { roads: "include", structures: "include", water: "include" },
       useVisualLore: false,
       connectionId: "fixture-image",
     };
     const expectedPrompt = buildTownMapPrompt(
       input.structure,
-      input.setting.slice(0, 1500),
+      input.setting,
       input.options,
       "",
       null,
       input.sceneryArtStyle.trim(),
     );
-    assert.ok(expectedPrompt.length > 3500 && expectedPrompt.length <= 4000);
+    assert.ok(expectedPrompt.length > 3000 && expectedPrompt.length <= 4000);
+    await assert.rejects(
+      generateVillageTownMap({ ...input, structure: "x".repeat(1500), sceneryArtStyle: "s".repeat(600) }),
+      /characters over.*no image request was made/,
+    );
+    assert.equal(imageRequests.length, 0, "over-budget inputs never dispatch an image request");
     const generated = await generateVillageTownMap(input);
     assert.deepEqual(generated, { image: generatedImage, width: 1536, height: 1024 });
     assert.equal(imageRequests.length, 1);
@@ -342,6 +382,12 @@ async function main() {
     );
     assert.equal(imageRequests.length, 5, "restart never dispatches a replacement automatically");
     stop();
+    const legacy: any = { ...defaultVillageState(), setupAt: "2026-10-03T12:00:00.000Z" };
+    delete legacy.venueCapacityPolicy;
+    documents.set("villages-village", { id: "villages-village", kind: "village", data: legacy, revision: 1 });
+    await generateVillageTownMap({ ...input, capacity: 1 } as any);
+    assert.match(imageRequests.at(-1).appearance, /up to forty-eight Venue photographs/);
+    assert.equal(imageRequests.at(-1).appearance.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
   } finally {
     globalThis.fetch = originalFetch;
     releaseRuntime();

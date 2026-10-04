@@ -89,10 +89,12 @@ const source = readFileSync(
   ),
   "utf8",
 );
+assert.ok(source.includes("<VenuePolaroid"));
+assert.ok(source.includes('data-photo-pins="true"'));
+assert.equal(source.includes("-pin-tack"), false);
+assert.equal(source.includes("-pin-photo-tack"), false);
 assert.ok(source.includes("touch-action: none;"));
 assert.ok(source.includes("mobile={mobile}"));
-assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo`}"));
-assert.ok(source.includes("className={`${ELEMENT_TAG}-pin-photo-card`}"));
 assert.ok(source.includes("data-pin-id={pin.id}"));
 assert.ok(source.includes("selected: openPlaceId === place.id"));
 assert.ok(source.includes('data-selected={pin.selected ? "true" : "false"}'));

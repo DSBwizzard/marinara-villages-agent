@@ -1,11 +1,14 @@
-import { readSceneryStyle, sceneryPrompt } from "./scenery-context.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
+import { villageVenueLimit } from "./venue-capacity.js";
+import { readVillageState } from "./village-store.js";
+import { readSceneryStyle } from "./scenery-context.js";
 // Villages — generation rules for the founding map.
 //
-// The navigation rules live here. Only the testing editor can override them.
+// Navigation requirements always apply; authored layout supplements them.
 
 import { badRequest } from "./errors.js";
 import { generateVillageImage, inspectVillageImage } from "./image-generation.js";
-import { readSelectedLorebookIds, readVillageVisualLore } from "./lorebooks.js";
+import { readSelectedLorebookIds, readVillageVisualLoreEntries } from "./lorebooks.js";
 import { coerceScenarioImprint } from "./scenario-imprint.js";
 import {
   MAX_SETTING_LENGTH,
@@ -14,15 +17,22 @@ import {
   TOWN_MAP_EXPECTED_WIDTH,
 } from "./prompt-preset.js";
 
-// Leaves room under the shared 4,000-character image-prompt ceiling for the
-// village's separate 2,000-character setting and the small `Setting:` join.
+// Individual inputs also share a final 4,000-character prompt allowance.
 export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
-
-export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
-  "Create a three-to-two canvas navigation map, landscape not panoramic, viewed top-down or at three quarters. " +
-  "Show cutaways or floor plans indoors, terrain and landmarks outdoors. " +
-  "Provide visually distinct usable areas for venue pins, including rooms within larger structures. " +
-  "Pins need not be detached buildings. Never add outlined lots or a zoning grid. Keep usable areas uncluttered and clear of edges.";
+const MAX_MAP_PROMPT_LENGTH = 4_000;
+function navigationRules(capacity: number): string {
+  const count = capacity === 16 ? "sixteen" : "forty-eight";
+  return (
+    "Create a wide landscape game navigation map on a three-to-two canvas, not panoramic, of the described shared place. " +
+    "Choose a coherent overhead view with visually distinct usable areas. Reveal indoor spaces through roofless plans or clear cutaways; show outdoor terrain where appropriate. Elevated outdoor views must keep usable areas visible; layered settings need separated, non-overlapping cutaways. " +
+    "Accommodate up to " +
+    count +
+    " Venue photographs added by the application, with generous separation and clearance from image edges; this is capacity, not an exact count of rooms or buildings. " +
+    "Depict existing architecture faithfully, including repeated rooms where appropriate. Vary sizes, landmarks, materials and openness where the setting permits, offering several plausible places to assign or develop Venues. Keep entrances and essential circulation legible. Preserve established structures and conditions; opportunities may be existing rooms, adaptable areas or open terrain. " +
+    "Draw scenery only, without photographs, location symbols, writing, numerals, labels, signs, icons, legend, watermark, borders or UI. Never add outlined lots or a zoning grid."
+  );
+}
+export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT = navigationRules(16);
 
 export type TownMapChoice = "auto" | "include" | "exclude";
 export type TownMapOptions = { roads: TownMapChoice; structures: TownMapChoice; water: TownMapChoice };
@@ -58,21 +68,23 @@ export function buildTownMapPrompt(
   structure: unknown,
   setting: unknown,
   options?: unknown,
-  lore = "",
+  lore: string | readonly string[] = "",
   scenarioImprint?: unknown,
   style = "",
+  capacity = 16,
 ): string {
-  const rules =
-    structure === undefined || structure === null || structure === ""
-      ? DEFAULT_TOWN_MAP_LAYOUT_PROMPT
-      : readRequiredText(structure, "The DEBUG map layout prompt", MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH);
+  const rules = navigationRules(capacity);
+  const layout =
+    structure === undefined || structure === null || structure === "" || structure === DEFAULT_TOWN_MAP_LAYOUT_PROMPT
+      ? ""
+      : readRequiredText(structure, "Map layout", MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH);
   const world = readRequiredText(setting, "Village description", MAX_SETTING_LENGTH);
   const chosen = readOptions(options);
   const elements = [
     chosen.roads === "include"
-      ? "Include setting-appropriate connecting routes, such as corridors, walkways, streets, trails, or bridges."
+      ? "Include setting-appropriate corridors, walkways, streets, trails or bridges."
       : chosen.roads === "exclude"
-        ? "Do not add streets, roads, trails, paths, or bridges; retain interior circulation required by the setting."
+        ? "Do not add decorative outdoor routes; retain essential access and interior circulation required by the setting."
         : "",
     chosen.structures === "include"
       ? "Include setting-appropriate structures or interior architecture without obscuring usable areas."
@@ -85,20 +97,35 @@ export function buildTownMapPrompt(
         ? "Do not include water features."
         : "",
   ].filter(Boolean);
-  const base = `${rules}\n\nFollow the village description for water, paths, and existing structures unless explicit preferences below say otherwise.${elements.length ? `\n\nExplicit map preferences:\n${elements.join("\n")}` : ""}\n\nDraw scenery without any writing, numerals, labels, signs, icons, legend, watermark, or UI.\n\nVillage description: ${world}`;
-  if (base.length > 4_000)
-    throw badRequest("The combined map prompt is too long. Shorten the DEBUG layout prompt or village description.");
   const imprint = coerceScenarioImprint(scenarioImprint);
-  return sceneryPrompt(
-    [base],
-    [
-      style ? "" : "Illustrated game navigation map scenery.",
-      ...(imprint?.worldFacts ?? []).map((fact) => "Reviewed founding world fact (map controls always win): " + fact),
-      ...(imprint?.visualCues ?? []).map((cue) => "Reviewed founding visual context (map controls always win): " + cue),
-      lore ? "Visual details from selected lore (consistent with setting and map controls): " + lore : "",
-    ],
-    style,
-  );
+  const prompt = [
+    rules,
+    VILLAGE_SHARED_SETTING_RULE,
+    "Priority: navigation and explicit preferences, then authored setting/layout, then reviewed context and compatible lore. Style must preserve spatial readability. Follow the village description for water, paths, and existing structures unless explicit preferences say otherwise.",
+    ...elements,
+    "Village description: " + world,
+    layout ? "Authored layout: " + layout : "",
+    ...(imprint?.worldFacts ?? []).map((fact) => "Reviewed world fact: " + fact),
+    style ? "Art style for this scenery: " + readSceneryStyle(style) : "Illustrated game navigation map scenery.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  if (prompt.length > MAX_MAP_PROMPT_LENGTH)
+    throw badRequest(
+      "The combined map prompt is " +
+        (prompt.length - MAX_MAP_PROMPT_LENGTH) +
+        " characters over the 4,000-character allowance. Shorten the layout, setting or art style; no image request was made.",
+    );
+  const optional = [
+    ...(imprint?.visualCues ?? []).map((cue) => "Reviewed visual cue: " + cue),
+    ...(Array.isArray(lore) ? lore : lore ? [lore] : []).map((entry) => "Compatible visual lore: " + entry),
+  ];
+  return fitMapContext(prompt, optional);
+}
+
+function fitMapContext(prompt: string, entries: readonly string[]): string {
+  for (const entry of entries) if (prompt.length + entry.length + 1 <= MAX_MAP_PROMPT_LENGTH) prompt += "\n" + entry;
+  return prompt;
 }
 
 export function buildTownMapNegativePrompt(options?: unknown, negative?: unknown): string {
@@ -115,8 +142,8 @@ export function buildTownMapNegativePrompt(options?: unknown, negative?: unknown
           );
           return extra === DEFAULT_TOWN_MAP_NEGATIVE_PROMPT ? "" : extra;
         })(),
-    chosen.roads === "exclude" ? "streets, roads, trails, paths, bridges" : "",
-    chosen.structures === "exclude" ? "additional standalone buildings, decorative structures" : "",
+    chosen.roads === "exclude" ? "decorative outdoor routes" : "",
+    chosen.structures === "exclude" ? "decorative buildings, decorative structures" : "",
     chosen.water === "exclude" ? "ocean, sea, lake, river, pond, canal, waterfall, water" : "",
   ]
     .filter(Boolean)
@@ -138,23 +165,30 @@ export async function generateVillageTownMap(input: {
   if (input.useVisualLore !== undefined && typeof input.useVisualLore !== "boolean")
     throw badRequest("Visual lore must be on or off.");
   const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
+  const capacity = villageVenueLimit(await readVillageState());
+  // Validate required inputs before lore reads or image dispatch.
+  const base = buildTownMapPrompt(
+    input.structure,
+    input.setting,
+    input.options,
+    "",
+    input.scenarioImprint,
+    style,
+    capacity,
+  );
+  const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const lore =
     input.useVisualLore === false
-      ? ""
-      : await readVillageVisualLore(
+      ? []
+      : await readVillageVisualLoreEntries(
           ids,
           [input.setting, JSON.stringify(coerceScenarioImprint(input.scenarioImprint))].filter(Boolean).join("\n"),
           900,
         );
-  const prompt = buildTownMapPrompt(
-    input.structure,
-    typeof input.setting === "string" ? input.setting.slice(0, style ? 1500 : 2000) : input.setting,
-    input.options,
-    lore,
-    input.scenarioImprint,
-    style,
+  const prompt = fitMapContext(
+    base,
+    lore.map((entry) => "Compatible visual lore: " + entry),
   );
-  const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const generated = await generateVillageImage({
     connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,
     name: "Village map",

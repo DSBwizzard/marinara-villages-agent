@@ -1,3 +1,4 @@
+import { assertCanAddVillageVenue } from "./venue-capacity.js";
 import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
 import { outsideVenueOperation } from "./venue-coordinator.js";
 import { readVenueImageContext } from "./village.js";
@@ -8,14 +9,11 @@ import { randomUUID } from "node:crypto";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import {
-  MAX_PLACES,
-  MAX_VENUES,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_NAME_LENGTH,
   boundText,
   isHousePlace,
   isHomeBuildingKind,
-  remapVenues,
 } from "./prompt-preset.js";
 import type {
   VillageProject,
@@ -125,8 +123,7 @@ export function draftNewVenueProject(
     throw conflict("Found the Village before starting a Project.");
   if (active(state, "new-venue")) throw conflict("Finish the current New Venue before starting another.");
   if (sameName(state, name)) throw conflict("That Venue name is already in use or reserved.");
-  if (state.venues.length >= MAX_PLACES || remapVenues(state.venues).length >= MAX_VENUES)
-    throw conflict("The Village has no open place for another Venue.");
+  assertCanAddVillageVenue(state, classes as VillageVenue["classes"]);
   const at = new Date().toISOString();
   const project: VillageProject = {
     id: requestId || randomUUID(),
@@ -206,7 +203,7 @@ export async function placeNewVenueProject(id: string, value: unknown): Promise<
       )
     )
       throw conflict("That spot overlaps another Venue. Choose another place.");
-    if (state.venues.length >= MAX_PLACES) throw conflict("The Village has no room for another Venue.");
+    assertCanAddVillageVenue(state, project.venueDraft?.classes, project.id);
     const at = new Date().toISOString();
     const shell = worksite(project, x, y, at);
     state.venues.push(shell);

@@ -124,6 +124,8 @@ jobs:
           npx tsx tests/villages-optional-layouts.regression.ts
           npx tsx tests/villages-lorebooks.regression.ts
           npx tsx tests/villages-town-map-image.regression.ts
+          npx tsx tests/villages-venue-capacity.regression.ts
+          npx tsx tests/villages-map-replacement.regression.ts
 
       - name: Verify desktop and mobile founding
         run: |
@@ -133,6 +135,7 @@ jobs:
           node tests/villages-venue-layout.e2e.mjs
           npx tsx tests/villages-mobile-map.regression.ts
           node tests/villages-mobile-exploration.e2e.mjs
+          node tests/villages-menu-map.e2e.mjs
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs
           node tests/villages-contact.e2e.mjs

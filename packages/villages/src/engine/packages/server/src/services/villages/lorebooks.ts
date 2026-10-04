@@ -212,6 +212,15 @@ export async function readVillageLore(
 
 /** Image prompts need visual cues, not a complete world-info entry. */
 export async function readVillageVisualLore(ids: readonly string[], context: string, maxLength = 360): Promise<string> {
+  return (await readVillageVisualLoreEntries(ids, context, maxLength)).join("; ");
+}
+
+/** Complete visual entries, allowing each caller to fit them independently. */
+export async function readVillageVisualLoreEntries(
+  ids: readonly string[],
+  context: string,
+  maxLength = 360,
+): Promise<string[]> {
   const entries = await readVillageLore(ids, context, undefined, DEFAULT_LORE_TOKEN_BUDGET, false, true);
   const selected: string[] = [];
   let length = 0;
@@ -220,5 +229,5 @@ export async function readVillageVisualLore(ids: readonly string[], context: str
     selected.push(entry);
     length += entry.length + (selected.length > 1 ? 2 : 0);
   }
-  return selected.join("; ");
+  return selected;
 }

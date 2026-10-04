@@ -221,16 +221,19 @@ async function main() {
       /retain enclosing architecture/,
     );
     for (const choice of ["auto", "include", "exclude"] as const) {
-      const maximumMap = buildTownMapPrompt(
-        undefined,
-        "x".repeat(2000),
-        { roads: choice, structures: choice, water: choice },
-        "",
-        null,
-        "s".repeat(600),
+      assert.throws(
+        () =>
+          buildTownMapPrompt(
+            undefined,
+            "x".repeat(2000),
+            { roads: choice, structures: choice, water: choice },
+            "",
+            null,
+            "s".repeat(600),
+          ),
+        /characters over.*no image request was made/,
+        "individually valid maximum inputs share a final allowance",
       );
-      assert.ok(maximumMap.length <= 4000, "maximum authored setting and style fit the image budget");
-      assert.ok(maximumMap.includes(VILLAGE_SHARED_SETTING_RULE));
     }
     assert.throws(() => validateFirstDayDescription("   ", true), /brings you and the others together/);
     assert.doesNotThrow(() => validateFirstDayDescription("", false));
