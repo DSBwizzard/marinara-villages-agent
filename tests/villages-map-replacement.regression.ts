@@ -132,7 +132,7 @@ async function main() {
     await assert.rejects(replaceVillageTownMap({ image: "", expectedMapSetAt: at, placements }), /map changed/);
     await assert.rejects(
       replaceVillageTownMap({ image: "", expectedMapSetAt: saved.townMapImageSetAt, placements }),
-      /pin changed/,
+      /photograph moved/,
     );
     const current = saved.venues.map((entry) => ({
       venueId: entry.id,

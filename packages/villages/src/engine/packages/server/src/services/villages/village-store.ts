@@ -1,3 +1,4 @@
+import { assertVillageVenueCapacity, villageVenueUsage } from "./venue-capacity.js";
 import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "./owned-routine.js";
 import { coerceSpriteManager, managerResidentSprite } from "./sprite-manager-model.js";
@@ -51,6 +52,7 @@ import {
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
   MAX_PLAYER_PERSONA_NAME_LENGTH,
   MAX_PLACES,
+  isHousePlace,
   MAX_REMAP_ACTIVITY_LENGTH,
   MAX_REMAP_HERE_LENGTH,
   MAX_REMAP_MOVES,
@@ -178,6 +180,7 @@ export function defaultVillageState(): VillageState {
     playerRole: null,
     scenarioImprint: null,
     worldFacts: [],
+    venueCapacityPolicy: "sixteen-total-v1",
     selectedLorebookIds: [],
     sceneryArtStyle: "",
     personalizeVenueImagesByDefault: true,
@@ -2504,6 +2507,12 @@ export function coerceVillageState(value: unknown): VillageState {
     playerRole: coercePlayerRole(raw.playerRole),
     scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
     worldFacts: coerceWorldFacts(raw.worldFacts),
+    venueCapacityPolicy:
+      raw.venueCapacityPolicy === "sixteen-total-v1" || raw.venueCapacityPolicy === "legacy-v1"
+        ? raw.venueCapacityPolicy
+        : asTrimmedString(raw.setupAt) || villagers.length || venues.some(isHousePlace)
+          ? "legacy-v1"
+          : "sixteen-total-v1",
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
     personalizeVenueImagesByDefault: raw.personalizeVenueImagesByDefault !== false,
@@ -2851,7 +2860,11 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
   let next = defaultVillageState();
   await mutateDocument(VILLAGE_DOC_ID, villageSlot, (state) => {
     const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
+    const previousCapacity = villageVenueUsage(state);
     mutate(state);
+    const capacity = villageVenueUsage(state);
+    if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
+      assertVillageVenueCapacity(state);
     // Assign notice order in the same document write as its committed effect.
     for (const receipt of Object.values(state.exchangeReceipts))
       if (receipt.notice && !receipt.noticeSequence) {

@@ -1277,6 +1277,8 @@ export type VillageState = {
   scenarioImprint: VillageScenarioImprint | null;
   /** Editable facts that still hold in the present village. */
   worldFacts: string[];
+  /** Internal admission policy; older founded saves retain their original limits. */
+  venueCapacityPolicy: import("./venue-capacity.js").VenueCapacityPolicy;
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   sceneryArtStyle: string;

@@ -1,16 +1,14 @@
+import { assertCanAddVillageVenue } from "./venue-capacity.js";
 import { venueZones, resolveVenueZone, legacyZoneId } from "./venue-zones.js";
 import { randomUUID } from "node:crypto";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { readVillageLore } from "./lorebooks.js";
 import {
-  MAX_PLACES,
-  MAX_VENUES,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
   boundText,
-  remapVenues,
 } from "./prompt-preset.js";
 import type { VillageBuildReceipt, VillageBuildSource, VillageProject, VillageState, VillageVenue } from "./types.js";
 import { readVenueRequestCore } from "./venue-requests.js";
@@ -105,12 +103,8 @@ function evidenceAfterTerms(project: VillageProject, at: string, sourceId = ""):
     throw conflict("Use a fresh roleplay turn after agreeing to these project terms.");
 }
 
-function ensureCapacity(state: VillageState): void {
-  const reserved = state.projects.filter(
-    (project) => project.kind === "build-venue" && project.status !== "complete" && project.status !== "draft",
-  ).length;
-  if (state.venues.length + reserved >= MAX_PLACES || remapVenues(state.venues).length + reserved >= MAX_VENUES)
-    throw conflict("There is no open venue place for another agreed project.");
+function ensureCapacity(state: VillageState, classes: VillageVenue["classes"], exceptProjectId = ""): void {
+  assertCanAddVillageVenue(state, classes, exceptProjectId);
 }
 
 function ensureName(state: VillageState, name: string, exceptId = ""): void {
@@ -153,7 +147,7 @@ export function draftBuildProject(
   const existing = state.projects.find((project) => project.id === requestId && project.kind === "build-venue");
   if (existing) return existing;
   ensureName(state, core.name);
-  ensureCapacity(state);
+  ensureCapacity(state, core.classes);
   const setting = [state.setting, ...state.worldFacts].join(" ").toLocaleLowerCase();
   const candidateSites = state.venues.filter((venue) => venue.constructionStatus !== "worksite");
   const site =
@@ -385,7 +379,7 @@ export async function agreeBuildProject(projectId: string): Promise<void> {
     const project = projectFor(state, projectId);
     if (project.status !== "draft") return;
     ensureName(state, project.venueDraft!.name, project.id);
-    ensureCapacity(state);
+    ensureCapacity(state, project.venueDraft!.classes, projectId);
     if (!project.plan!.siteVenueId || !state.venues.some((venue) => venue.id === project.plan!.siteVenueId))
       throw conflict("Choose a current site before agreeing to the plan.");
     if (
@@ -643,8 +637,7 @@ export async function startBuildWork(projectId: string, now = new Date()): Promi
       (entry) =>
         entry.id === project.venueId && entry.buildProjectId === project.id && entry.constructionStatus === "worksite",
     );
-    if (!existingShell && (state.venues.length >= MAX_PLACES || remapVenues(state.venues).length >= MAX_VENUES))
-      throw conflict("There is no room for the worksite.");
+    if (!existingShell) assertCanAddVillageVenue(state, project.venueDraft?.classes, project.id);
     if (!existingShell) ensureName(state, project.venueDraft!.name, project.id);
     const draft = project.venueDraft!;
     const venueId = existingShell?.id ?? randomUUID();

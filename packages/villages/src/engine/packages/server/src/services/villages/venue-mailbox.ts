@@ -1,3 +1,4 @@
+import { assertCanAddVillageVenue } from "./venue-capacity.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { venueZones } from "./venue-zones.js";
 import { renderPlayerRoleContext } from "./player-role.js";
@@ -7,14 +8,7 @@ import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, conflict, notFound } from "./errors.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
-import {
-  boundText,
-  MAX_PLACES,
-  MAX_VENUES,
-  MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUE_NOTE_LENGTH,
-  remapVenues,
-} from "./prompt-preset.js";
+import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueMail, VillageResidence } from "./types.js";
 import { hashString, randomVillageSeed } from "./village-clock.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
@@ -41,8 +35,7 @@ function validateMail(state: VillageState, mail: VillageVenueMail): VillageVenue
       (entry) => entry.id === mail.counterofferRequestId && entry.kind === "venue" && entry.status === "countered",
     );
     if (!request || !mail.counterofferDraft) throw conflict("The original Venue request is no longer available.");
-    if (state.venues.length >= MAX_PLACES || remapVenues(state.venues).length >= MAX_VENUES)
-      throw conflict("The village has no room for another Venue.");
+    assertCanAddVillageVenue(state, mail.counterofferDraft.classes);
     if (state.venues.some((entry) => entry.name.toLowerCase() === mail.counterofferDraft!.name.toLowerCase()))
       throw conflict("A Venue with that name already exists.");
     return null;

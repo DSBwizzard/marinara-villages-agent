@@ -1,3 +1,4 @@
+import { assertVillageVenueCapacity, assertCanAddVillageVenue, villageVenueLimit } from "./venue-capacity.js";
 import {
   addRoutineIdea,
   deriveInfluence,
@@ -123,7 +124,6 @@ import {
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUES,
   prependHappenings,
   remapVenues,
   SETUP_MAX_VILLAGER_COUNT,
@@ -474,7 +474,7 @@ export function villageSettings(
       };
     }),
     homeBuildingNames: village.homeBuildingNames,
-    maxPlaces: MAX_PLACES,
+    maxPlaces: villageVenueLimit(village),
     maxVenueNameLength: MAX_VENUE_NAME_LENGTH,
     maxVenueNoteLength: MAX_VENUE_NOTE_LENGTH,
     maxVenueImageUrlLength: MAX_VENUE_IMAGE_URL_LENGTH,
@@ -1788,7 +1788,7 @@ export async function setVillageVenues(value: unknown, scope: "all" | "homes" = 
       for (const place of places) {
         const current = state.venues.find((entry) => entry.id === place.id)!;
         if (place.presentation.x !== current.presentation.x || place.presentation.y !== current.presentation.y)
-          throw conflict("Moving a map pin needs a later project type.");
+          throw conflict("Move Venue photographs while replacing the map in Village Settings.");
         if (current.constructionStatus === "worksite") {
           if (place.name !== current.name || place.description !== current.description)
             throw conflict("A worksite's identity belongs to its active project.");
@@ -1820,7 +1820,7 @@ export async function setVillageVenues(value: unknown, scope: "all" | "homes" = 
       throw conflict("Move the resident before removing their home.");
     if (isVillageFounded(state) && !next.some((place) => place.occupancy.playerHome))
       throw conflict("The village must keep your home.");
-    if (next.length > MAX_PLACES) throw badRequest(`A village holds at most ${MAX_PLACES} places.`);
+    assertVillageVenueCapacity(state, next);
     state.venues = next.map((place) => {
       const latest = state.venues.find((entry) => entry.id === place.id);
       return latest
@@ -2264,12 +2264,7 @@ export async function createVillageVenue(value: unknown): Promise<VillageSnapsho
 }
 
 export function addVillageVenue(state: VillageState, draft: VillageVenue): void {
-  if (
-    state.venues.length >= MAX_PLACES ||
-    (draft.classes?.some((item) => item !== "residence") && remapVenues(state.venues).length >= MAX_VENUES)
-  ) {
-    throw badRequest("The village has no room for another venue.");
-  }
+  assertCanAddVillageVenue(state, draft.classes);
   if (state.venues.some((venue) => venue.name.trim().toLowerCase() === draft.name.toLowerCase())) {
     throw badRequest("A venue with that name already exists.");
   }
@@ -3604,7 +3599,7 @@ export async function runVillageSetup(input: {
       return !next || next.presentation.x !== old.presentation.x || next.presentation.y !== old.presentation.y;
     })
   )
-    throw conflict("Move map pins while replacing the map in Village Settings.");
+    throw conflict("Move Venue photographs while replacing the map in Village Settings.");
   for (const old of village.venues) {
     if (!old.occupancy.residentCharacterId) continue;
     const next = venues.find((venue) => venue.id === old.id);
@@ -3648,6 +3643,7 @@ export async function runVillageSetup(input: {
     state.selectedLorebookIds = selectedLorebookIds;
     state.loreTokenBudget = loreTokenBudget;
     if (founding) {
+      state.venueCapacityPolicy = "sixteen-total-v1";
       state.townMapImage = townMap.image;
       state.townMapCanvasWidth = townMap.size?.width ?? TOWN_MAP_EXPECTED_WIDTH;
       state.townMapCanvasHeight = townMap.size?.height ?? TOWN_MAP_EXPECTED_HEIGHT;
@@ -3665,6 +3661,7 @@ export async function runVillageSetup(input: {
     state.playerPersonaName = persona.name;
     state.playerPersonaIdentity = persona.identity;
     state.playerPersonaMissing = false;
+    assertVillageVenueCapacity(state, venues);
     state.venues = venues;
     if (input.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(input.sceneryArtStyle);
     else if (founding) state.sceneryArtStyle = DEFAULT_SCENERY_STYLE;
@@ -3984,7 +3981,7 @@ export async function replaceVillageTownMap(value: unknown): Promise<VillageSnap
   const body = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const submitted = await readTownMapSubmission(body.image, body.view);
   if (typeof body.expectedMapSetAt !== "string") throw badRequest("Reload the village map before replacing it.");
-  if (!Array.isArray(body.placements)) throw badRequest("Review every venue pin before saving the map.");
+  if (!Array.isArray(body.placements)) throw badRequest("Review every Venue photograph before saving the map.");
   const positions = new Map<
     string,
     { x: number | null; y: number | null; fromX: number | null; fromY: number | null }
@@ -3992,20 +3989,21 @@ export async function replaceVillageTownMap(value: unknown): Promise<VillageSnap
   const coordinate = (value: unknown): number | null => {
     if (value === null) return null;
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)
-      throw badRequest("Map pin coordinates must be between 0 and 1.");
+      throw badRequest("Venue photograph coordinates must be between 0 and 1.");
     return value;
   };
   for (const row of body.placements) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) throw badRequest("A venue pin is invalid.");
+    if (!row || typeof row !== "object" || Array.isArray(row))
+      throw badRequest("A Venue photograph placement is invalid.");
     const item = row as Record<string, unknown>;
     const id = asTrimmedString(item.venueId);
-    if (!id || positions.has(id)) throw badRequest("Every venue must have one distinct pin entry.");
+    if (!id || positions.has(id)) throw badRequest("Every Venue must have one distinct photograph placement.");
     const x = coordinate(item.x);
     const y = coordinate(item.y);
     const fromX = coordinate(item.fromX);
     const fromY = coordinate(item.fromY);
     if ((x === null) !== (y === null) || (fromX === null) !== (fromY === null))
-      throw badRequest("A venue pin needs both coordinates or neither.");
+      throw badRequest("A Venue photograph needs both coordinates or neither.");
     positions.set(id, { x, y, fromX, fromY });
   }
   await mutateVillageState((state) => {
@@ -4017,7 +4015,7 @@ export async function replaceVillageTownMap(value: unknown): Promise<VillageSnap
     for (const venue of state.venues) {
       const spot = positions.get(venue.id)!;
       if (venue.presentation.x !== spot.fromX || venue.presentation.y !== spot.fromY)
-        throw conflict("A venue pin changed. Reload the village map before saving.");
+        throw conflict("A Venue photograph moved. Reload the village map before saving.");
       if (submitted.image === state.townMapImage && (spot.x !== spot.fromX || spot.y !== spot.fromY))
         throw conflict("Choose a replacement map before moving venues.");
     }
@@ -4097,7 +4095,9 @@ export async function runVillageBootstrap(): Promise<VillageSnapshot> {
     // village like this, and where everybody sleeps is not one of the answers.
     // Throwing the whole list away would demolish a village the player had just
     // finished drawing, on the strength of an answer to a different question.
-    state.venues = [...state.venues.filter((place) => isHousePlace(place)), ...proposal.venues];
+    const venues = [...state.venues.filter((place) => isHousePlace(place)), ...proposal.venues];
+    assertVillageVenueCapacity(state, venues);
+    state.venues = venues;
   });
   return buildVillageSnapshot();
 }
