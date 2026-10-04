@@ -169,8 +169,11 @@ async function run() {
         /arrives in this (?:Venue|Residence)'s Exterior Zone/,
       );
       if (spaceClass === "residence") {
-        assert.match(outsidePrompt, /without validated permission/);
-        assert.match(outsidePrompt, /Do not expose unseen interior details/);
+        assert.match(outsidePrompt, /Say \/ Do reaches only its current physical occupants/);
+        assert.match(
+          outsidePrompt,
+          /never invent interior replies, disclose unseen details or narrate entering another Zone/,
+        );
       } else assert.match(outsidePrompt, /do not describe them entering an interior/);
     }
     const background = buildTickMessages({

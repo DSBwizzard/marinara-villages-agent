@@ -10,7 +10,7 @@
   },
   "id": "villages",
   "name": "Villages",
-  "version": "0.6.155",
+  "version": "0.6.156",
   "description": "A text-first shared-life sim in any setting that reconstructs elapsed life when you return. Install the package, restart Marinara Engine when prompted, then open Villages from Home. Add characters from your library, then talk to them in the village tab.",
   "engine": {
     "min": "2.4.6",
@@ -55,13 +55,13 @@
     },
     {
       "path": "server.mjs",
-      "sha256": "a65e0cf94885ae5c8cc46df720175dd577223faad7075c16f96954080700bdf5",
-      "bytes": 803860
+      "sha256": "7c6e6b1d82bfc440319cfecf8ee719f95894daff4ec3259cc0ea3357926baaaf",
+      "bytes": 805773
     },
     {
       "path": "client.js",
-      "sha256": "21040cf039098101f35ecf0d3f000e44a3db46f7b85026c14e1d4de2555831a0",
-      "bytes": 903483
+      "sha256": "a1c49fa167692b880256bba8def840b9762879b6f5839cc0613c3e74e12c6935",
+      "bytes": 904120
     },
     {
       "path": "villages-icon.png",

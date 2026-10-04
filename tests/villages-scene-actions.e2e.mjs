@@ -48,6 +48,7 @@ try {
     let releaseContact,
       heldContact,
       lastContact,
+      lastLeave,
       moves = 0;
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
     const page = await context.newPage();
@@ -79,6 +80,10 @@ try {
           zoneId: body.zoneId,
           area: "outside",
           activeIds: [],
+          submissions: [
+            ...scene.submissions,
+            { id: body.operationId, activeIdsAtTurn: ["mara"], activeIdsAfterTurn: [], replyLineIds: ["transition"] },
+          ],
           lines: [
             ...scene.lines,
             {
@@ -93,7 +98,12 @@ try {
             },
           ],
         };
+        if (width === 320) return route.abort("failed");
         value = { session: scene };
+      } else if (path.endsWith("/rooms/leave")) {
+        lastLeave = route.request().postDataJSON();
+        scene = { ...scene, status: "closed" };
+        value = { session: scene, recordEvents: [] };
       } else if (path.endsWith("/rooms/turn")) {
         lastContact = route.request().postDataJSON();
         releaseContact?.();
@@ -169,6 +179,7 @@ try {
       "You move from Common Space to Exterior.",
     );
     await expect(composer).toHaveValue("Draft survives Zone changes");
+    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
     assert.equal(moves, 1);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -182,11 +193,21 @@ try {
     await expect(page.getByLabel("Contact Zone")).toHaveValue("");
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
+    const finalMessage = width === 1366 ? "Goodbye." : "";
+    await composer.fill(finalMessage);
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
+    assert.equal(lastLeave, undefined, "selecting Conclude does not end the Scene");
+    await expect(composer).toHaveValue(finalMessage);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Return to map", exact: true }).first()).toBeVisible();
+    assert.equal(lastLeave.message, finalMessage, "Conclude keeps its optional final message");
     assert.deepEqual(errors, []);
     await context.close();
   }
   console.log(
-    "Scene actions browser: desktop/mobile modes, doorway targeting, busy/stale movement, drafts and restored transitions passed",
+    "Scene actions browser: four modes, contact targeting, busy/stale/lost-response movement, drafts, restored transitions and optional concluding messages passed",
   );
 } finally {
   await browser.close();
