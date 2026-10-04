@@ -16254,8 +16254,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupMapNegativePrompt(village?.settings.townMapNegativePrompt ?? "");
       setSetupMapBusy(false);
       setSetupMapProblem("");
-      // Coming back through the wizard over a village that already exists keeps
       updateSetupMapRequest(null);
+      // Coming back through the wizard over a village that already exists keeps
       // the Persona it is linked to, exactly as it keeps the name and the
       // setting: the second run is a chance to redraw the map, not to be told
       // something new about yourself by accident.
