@@ -211,10 +211,15 @@ try {
     );
     if (!mobile) await expect(visiblePhotos).toHaveCount(16);
     else
-      assert.ok(
-        (await visiblePhotos.count()) > 0 && (await visiblePhotos.count()) <= 16,
-        "offscreen Polaroids clip naturally while panning",
-      );
+      await expect
+        .poll(
+          async () => {
+            const count = await visiblePhotos.count();
+            return count > 0 && count <= 16;
+          },
+          { message: "offscreen Polaroids clip naturally while panning" },
+        )
+        .toBe(true);
 
     await expect(page.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
     await expect(page.locator(".marinara-capability-villages-pin-photo svg")).toHaveCount(0);
