@@ -164,9 +164,13 @@ export async function listSpriteLibrary(id: string): Promise<{ items: SpriteLibr
           (art) => !art.engineSource && art.origin !== "upload" && art.name === file.filename.slice(0, 100),
         );
         if (!adopted && legacy.length) {
-          const image = await readImage(file.url);
-          const hash = digest(Buffer.from(image.split(",")[1]!, "base64"));
-          adopted = legacy.find((art) => art.source.sha256 === hash);
+          try {
+            const image = await readImage(file.url);
+            const hash = digest(Buffer.from(image.split(",")[1]!, "base64"));
+            adopted = legacy.find((art) => art.source.sha256 === hash);
+          } catch {
+            // An unreadable legacy source must not hide the other library files.
+          }
         }
         return { ...file, ...(adopted ? { adoptedArtworkId: adopted.id } : {}) };
       }),

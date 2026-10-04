@@ -432,6 +432,19 @@ async function run() {
     delete records
       .get("villages-village")
       .data.villagers[0].spriteManager.artwork.find((item: any) => item.id === olderArt.id).origin;
+    files.set("mara/legacy.png", "data:image/png;base64,AAAA");
+    const partiallyUnreadable = await listSpriteLibrary("mara");
+    assert.equal(partiallyUnreadable.error, "");
+    assert.ok(
+      partiallyUnreadable.items.some((item) => item.filename === "happy.png"),
+      "one unreadable legacy source does not hide usable library files",
+    );
+    const beforeUnreadable = await readSpriteManager("mara"),
+      filesBeforeUnreadable = files.size;
+    await assert.rejects(adoptSpriteArtwork("mara", { filenames: ["legacy.png"] }), /PNG|sprite/);
+    assert.deepEqual(await readSpriteManager("mara"), beforeUnreadable);
+    assert.equal(files.size, filesBeforeUnreadable);
+    files.set("mara/legacy.png", original);
     assert.equal(
       (await listSpriteLibrary("mara")).items.find((item) => item.filename === "legacy.png")!.adoptedArtworkId,
       undefined,
