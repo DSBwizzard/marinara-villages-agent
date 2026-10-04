@@ -1925,7 +1925,9 @@ ${M}[data-scene-keyboard] .${M}-room-screen[data-mobile="true"] .${M}-chat-vn { 
   Send across two rows went with them.
 */
 .${i}-composer-row { display: flex; }
-.${i}-scene-scope { flex: 0 1 7rem; min-width: 0; max-width: 35%; margin: 0 .375rem 0 0; align-self: center; font-size: .625rem; line-height: 1.3; color: var(--muted-foreground); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+/* Textarea scrollbar widths must not resize its sibling scope or the mode menu. */
+.${i}-scene-scope { flex: 0 0 min(7rem, 30%); min-width: 0; max-width: 30%; margin: 0 .375rem 0 0; align-self: center; font-size: .625rem; line-height: 1.3; color: var(--muted-foreground); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.${i}-composer-row > .${i}-scene-scope + .${i}-chat-input { flex: 1 1 0; }
 .${i}-contact-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .${i}-contact-controls > select { flex: 1 1 130px; min-width: 0; max-width: 100%; }
 .${i}-composer-row > .${i}-claim,

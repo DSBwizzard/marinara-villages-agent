@@ -110,6 +110,12 @@ try {
       assert.equal(buttonBox.width, mobile ? 44 : 32);
       assert.equal((await send.locator("svg").boundingBox()).width, 15);
       assert.equal(await send.innerText(), "", "send control has no large text label");
+      // Cover browsers whose textarea scrollbars consume horizontal space.
+      await page.addStyleTag({ content: `.${tag}-textarea::-webkit-scrollbar { width: 17px; }` });
+      const inputBefore = await composer.locator("..").boundingBox();
+      await composer.fill("A long draft to force a scrollbar. ".repeat(35));
+      const inputAfter = await composer.locator("..").boundingBox();
+      assert.equal(inputAfter.width, inputBefore.width, "scrollbars cannot resize the composer");
       await composer.fill("Tea sounds perfect.");
       await page.getByRole("button", { name: "Previous paragraph" }).click();
       await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Rain taps");
