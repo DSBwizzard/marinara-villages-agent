@@ -55,6 +55,7 @@ import {
   venueOperationId,
   venueRequestMetrics,
   venueOperationSnapshot,
+  venueOperationInput,
   assertVenueOwnership,
   sceneRevision,
   venueRefusal,
@@ -187,6 +188,12 @@ import {
   type ContactMove,
   type ContactRelay,
 } from "./venue-contact.js";
+
+/** Older admitted requests retain their saved interaction contract during recovery. */
+function explicitSceneActions(): boolean {
+  const input = venueOperationInput();
+  return !input || input.interactionScopeVersion === 1;
+}
 
 export type VenueLine = {
   id: string;
@@ -1836,7 +1843,9 @@ export async function prepareVenueTurnMessages(
       `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Scene-start activities describe the opening situation; witnessed developments establish what is happening now. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
       session.area === "outside"
         ? session.spaceClass === "residence"
-          ? "The player is in this Residence's Exterior Zone, outside its interior. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from this Zone. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
+          ? session.contactGeneration || !explicitSceneActions()
+            ? "The player is in this Residence's Exterior Zone, outside its interior. A resident inside may answer, remain busy, sleep through the attempt, or ignore it. Show only what the player can observe from this Zone. Never describe the player entering the Common Space or a private space without validated permission. Do not expose unseen interior details."
+            : "The player is in this Residence's Exterior Zone. Say / Do reaches only its current physical occupants. Use Contact to attempt attention in an adjacent Zone. Show only what the player can observe here; never invent interior replies, disclose unseen details or narrate entering another Zone."
           : "The player is in this Venue's Exterior Zone. Show only what they can observe from this Zone; do not describe them entering an interior."
         : active.length
           ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
@@ -1919,8 +1928,10 @@ export async function prepareVenueTurnMessages(
         projects: projectContexts.length > 0,
         exampleSpeakerId: stageIds[0],
         exampleWitnessIds: stageIds,
+        explicitActions: explicitSceneActions(),
+        contactAction: !!session.contactGeneration,
         contactFacts:
-          !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
+          !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
             ? `Known villagers (not attendance): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
             : "",
         invitationZones: storedPlace
@@ -2033,11 +2044,11 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
   });
   const raw = extractSceneReply(completion.content ?? "");
   const movementIntent: MovementIntent | null =
-    !session.contactGeneration && (mode === "chat" || mode === "ask") && place
+    !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask") && place
       ? readPlayerMovement(message, place, raw?.movementIntent)
       : null;
   const extractedContact =
-    !session.contactGeneration && (mode === "chat" || mode === "ask")
+    !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
       ? readContactIntent(raw?.contactIntent, message)
       : null;
   // Route a valid contact interpretation before validating its uncommitted local draft.
@@ -2223,12 +2234,12 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
     roomEvents: raw?.roomEvents as unknown,
     projectContexts,
     contactIntent:
-      !session.contactGeneration && (mode === "chat" || mode === "ask")
+      !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
         ? readContactIntent(raw?.contactIntent, message)
         : null,
     contactMoves,
     contactRelay:
-      session.contactGeneration && storedPlace
+      !explicitSceneActions() && session.contactGeneration && storedPlace
         ? readContactRelay(raw?.contactRelay, parsed.lines, village, storedPlace, session, audience)
         : null,
     contactEndIds:
@@ -3473,7 +3484,10 @@ async function prepareContactReply(scene: VenueScene, intent: ContactIntent): Pr
     neighbors = contactNeighbors(venue, origin);
   if (intent.targetId && !village.villagers.some((entry) => entry.characterId === intent.targetId))
     throw badRequest("Choose a villager who still lives in the village.");
-  if (intent.boundaryZoneId && !neighbors.includes(intent.boundaryZoneId))
+  if (
+    (explicitSceneActions() && !intent.boundaryZoneId) ||
+    (intent.boundaryZoneId && !neighbors.includes(intent.boundaryZoneId))
+  )
     throw badRequest("Choose a doorway adjacent to your current Zone.");
   const established = scene.doorwayContacts?.find(
     (entry) =>
@@ -3494,7 +3508,14 @@ async function prepareContactReply(scene: VenueScene, intent: ContactIntent): Pr
   }
   if (intent.kind === "knock" && delivery === "voice" && !boundary && neighbors.length > 1)
     return quietContactReply("Choose which doorway to knock or call through using Knock / Call.", scene.activeIds);
-  const reachable = contactReach(village, venue, origin, delivery, intent.kind === "knock" ? boundary : "");
+  const reachable = contactReach(
+    village,
+    venue,
+    origin,
+    delivery,
+    explicitSceneActions() || intent.kind === "knock" ? boundary : "",
+    explicitSceneActions(),
+  );
   const remote = (scene.sceneAttendance?.occupants ?? []).filter((person) => {
     const position = contactPosition(scene, person.characterId);
     const zone = resolveVenueZone(venue, position);
@@ -3544,7 +3565,7 @@ Delivery: ${delivery}. Possible listeners are NOT actual witnesses. Select heard
 They hear the current message and ONLY earlier exchanges in their individual witnessed histories. Intended addressee: ${intent.targetId || "the ongoing conversational audience"}. Addressing is not isolation; audible bystanders may react voluntarily.
 Residents retain agency and may ignore, decline, be busy, misunderstand, relay, or not hear. An acknowledgement may wake someone; witnessed developments outrank their Scene-start activity. Silence must reveal no hidden reason or attendance. Never disclose unseen descriptions, objects or other occupants. A remote speaker stays in their Zone and has no on-stage sprite. Remote voice replies must use an audible delivery consistent with the established channel, not an inaudible whisper. Narration describes only what the player can observe; never narrate an unseen listener hearing, waking, or being busy unless they reveal it in audible speech.
 For a completed, willingly narrated move to any permitted Zone, including approaching through an intermediate Zone, return contactMoves:[{characterId,zoneId:"exact permitted destination",quote:"their exact spoken agreement"}]; include the actual completed movement in narration. Position changes do not grant player entry. Permitted arrivals: ${JSON.stringify(destinations)}. Maximum local cast is four.
-If a local or doorway responder willingly offers to fetch the addressed person, return contactRelay:{speakerId,targetId,quote:"exact unconditional spoken offer"}. Do not invent the target's response or whereabouts. The server checks a permitted route with no hop cutoff. The messenger may approach a private doorway without entering it. Do not narrate the journey as completed yet.
+${explicitSceneActions() ? "Contact attempts reach only the selected adjacent Zone. Optional words describe knocking, calling or speaking; do not assume a door exists without established context. An offer to fetch someone remains dialogue only: do not perform a farther-Zone exchange, invent their answer, or return contactRelay. The player never moves during Contact." : 'If a local or doorway responder willingly offers to fetch the addressed person, return contactRelay:{speakerId,targetId,quote:"exact unconditional spoken offer"}. Do not invent the target\'s response or whereabouts. The server checks a permitted route with no hop cutoff. The messenger may approach a private doorway without entering it. Do not narrate the journey as completed yet.'}
 For an explicit end to doorway conversation return contactEnd:[{speakerId,quote:"exact spoken goodbye"}], never sceneEnded or departures for that goodbye. Invitations grant permission only; do not narrate the player entering. Do not propose physical handoffs or lasting room changes.`,
     },
   };
@@ -3569,7 +3590,9 @@ For an explicit end to doorway conversation return contactEnd:[{speakerId,quote:
       ...reply.contactMoves.map((move) => ({ characterId: move.characterId, zoneId: move.zoneId })),
     ],
   };
-  const relay = readContactRelay(reply.contactRelay, reply.lines, village, venue, afterMoves, audience);
+  const relay = explicitSceneActions()
+    ? null
+    : readContactRelay(reply.contactRelay, reply.lines, village, venue, afterMoves, audience);
   reply.contactRelay = relay;
   if (!relay || (intent.targetId && relay.targetId !== intent.targetId)) return reply;
   const target = scene.sceneAttendance?.occupants.find((entry) => entry.characterId === relay.targetId);
@@ -3672,7 +3695,8 @@ function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"
 }
 
 export async function sendVenueTurn(input: VenueTurnInput) {
-  const prior = (await readSession(input.sessionId)).submissions.find((entry) => entry.id === input.submissionId);
+  const scene = await readSession(input.sessionId);
+  const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
   if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
   if (!prior) await requireLiveVenueSession(input.sessionId);
   const payload = {
@@ -3680,6 +3704,9 @@ export async function sendVenueTurn(input: VenueTurnInput) {
     mode: input.mode,
     targetId: input.targetId,
     ...(input.contact ? { contact: input.contact } : {}),
+    ...((scene.operation?.id === input.submissionId ? scene.operation.input.interactionScopeVersion : 1) === 1
+      ? { interactionScopeVersion: 1 }
+      : {}),
   };
   if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
     throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");
@@ -3893,7 +3920,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   if (input.mode !== "leave" && !input.message.trim()) throw badRequest("Write something before sending it.");
   if (input.message.length > 4000) throw badRequest("A line can be at most 4000 characters.");
-  if (input.mode === "chat" || input.mode === "ask") {
+  if (!explicitSceneActions() && (input.mode === "chat" || input.mode === "ask")) {
     const venue = movementVenue ?? (await readVillageState()).venues.find((entry) => entry.id === session.placeId);
     const movement = venue && readPlayerMovement(input.message, venue);
     if (movement)
@@ -3911,6 +3938,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     input.targetId &&
     !session.activeIds.includes(input.targetId) &&
     !(
+      !explicitSceneActions() &&
       (input.mode === "chat" || input.mode === "ask") &&
       session.doorwayContacts?.some((entry) => entry.characterId === input.targetId)
     )
@@ -4038,7 +4066,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           deviceFeatureId: input.contact?.deviceFeatureId,
         }
       : null;
-  if (!contactIntentUsed && (input.mode === "chat" || input.mode === "ask")) {
+  if (!explicitSceneActions() && !contactIntentUsed && (input.mode === "chat" || input.mode === "ask")) {
     const venue = village.venues.find((entry) => entry.id === session.placeId);
     const live = (session.doorwayContacts ?? []).filter((entry) => {
       if (
@@ -4088,11 +4116,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           venueOperationSignal() ?? AbortSignal.timeout(90_000),
         ),
       );
-  if (!contactIntentUsed && reply.contactIntent) {
+  if (!explicitSceneActions() && !contactIntentUsed && reply.contactIntent) {
     contactIntentUsed = reply.contactIntent;
     reply = await contactReply(session, contactIntentUsed);
   }
-  if (!contactIntentUsed && reply.movementIntent)
+  if (!explicitSceneActions() && !contactIntentUsed && reply.movementIntent)
     return {
       session: await moveVenueZoneOnce(session.id, reply.movementIntent.zoneId, { ...input, requestMode }),
       verdict: null,
@@ -4228,6 +4256,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
         venue,
         state.zoneId ?? "exterior",
         contactIntentUsed!.delivery ?? "voice",
+        explicitSceneActions() ? contactIntentUsed!.boundaryZoneId : "",
+        explicitSceneActions(),
       );
       state.doorwayContacts = [
         ...(state.doorwayContacts ?? []).filter(

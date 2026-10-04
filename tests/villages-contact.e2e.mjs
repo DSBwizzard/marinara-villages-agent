@@ -35,20 +35,11 @@ try {
       activeIds: [],
       participants: [],
       submissions: [],
-      lines: [
-        {
-          id: "opening",
-          role: "assistant",
-          kind: "narration",
-          speakerId: "__venue_scene__",
-          name: "",
-          content: "You stand outside.",
-          at: now,
-        },
-      ],
+      lines: [],
     };
     let submitted, entered;
     const submissions = [];
+    let contactTurns = 0;
     await page.route("http://villages.test/", (route) =>
       route.fulfill({
         status: 200,
@@ -64,6 +55,7 @@ try {
       else if (path.endsWith("/rooms/turn")) {
         submitted = route.request().postDataJSON();
         submissions.push(submitted);
+        if (submitted.mode === "contact") contactTurns++;
         session = {
           ...session,
           sceneRevision: submissions.length,
@@ -80,9 +72,7 @@ try {
               speakerId: "mara",
               name: "Mara",
               content:
-                submissions.length === 1
-                  ? "Come into our Common Space."
-                  : "Yes, I am still listening through the doorway.",
+                contactTurns === 1 ? "Come into our Common Space." : "Yes, I am still listening through the doorway.",
               viaDoorway: true,
               remoteDelivery,
               at: now,
@@ -92,6 +82,20 @@ try {
             { id: submitted.submissionId, activeIdsAtTurn: [], activeIdsAfterTurn: [], replyLineIds: ["answer"] },
           ],
         };
+        if (submitted.mode === "chat") {
+          session.participants = [];
+          session.doorwayContacts = [];
+          session.entryOffers = [];
+          session.lines[session.lines.length - 1] = {
+            id: "local-answer",
+            role: "assistant",
+            kind: "narration",
+            speakerId: "__venue_scene__",
+            name: "Narration",
+            content: "You look around the quiet exterior.",
+            at: now,
+          };
+        }
         value = { session, verdict: null, recordEvents: [] };
       } else if (path.endsWith("/rooms/zone")) {
         entered = route.request().postDataJSON();
@@ -99,7 +103,7 @@ try {
           ...session,
           zoneId: "common",
           area: "shared",
-          sceneRevision: 2,
+          sceneRevision: session.sceneRevision + 1,
           activeIds: ["mara"],
           doorwayContacts: [],
           entryOffers: [],
@@ -122,28 +126,41 @@ try {
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await page.getByRole("button", { name: "Knock / Call", exact: true }).click();
-    await page.getByLabel("Knock or call").selectOption("call");
-    await page.getByLabel("Doorway", { exact: true }).selectOption("common");
-    await page.getByLabel("Who to contact").selectOption("mara");
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    const sendEmpty = page.getByRole("button", { name: "Send", exact: true });
+    await expect(sendEmpty).toBeDisabled();
+    await composer.fill("I look around.");
+    await expect(sendEmpty).toBeEnabled();
+    await sendEmpty.click();
+    await expect.poll(() => submissions.length).toBe(1);
+    const readNext = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await readNext.isEnabled()) await readNext.click();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet exterior");
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
+    const send = page.getByRole("button", { name: "Send", exact: true });
+    await expect(send).toBeDisabled();
+    await page.getByLabel("Contact Zone", { exact: true }).selectOption("common");
+    await expect(send).toBeEnabled();
+    await expect(page.locator("[data-scene-scope]")).toHaveText("Contacting Interior entrance");
+    await expect(page.getByLabel("Who to contact")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Knock / Call", exact: true })).toHaveCount(0);
     assert.equal(
       await page
-        .getByLabel("Doorway", { exact: true })
+        .getByLabel("Contact Zone")
         .getByRole("option", { name: /Secret bedroom/ })
         .count(),
       0,
     );
-    for (const name of ["Knock or call", "Doorway", "Who to contact"]) {
-      const box = await page.getByLabel(name, { exact: true }).boundingBox();
-      assert.ok(box && box.x >= 0 && box.x + box.width <= width, name + " fits the viewport");
-    }
+    const box = await page.getByLabel("Contact Zone").boundingBox();
+    assert.ok(box && box.x >= 0 && box.x + box.width <= width);
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submitted?.mode).toBe("contact");
-    assert.equal(submitted.targetId, "mara");
+    assert.equal(submitted.targetId, "");
     assert.deepEqual(submitted.contact, { kind: "call", boundaryZoneId: "common" });
-    assert.match(submitted.message, /Mara/);
+    assert.match(submitted.message, /attention toward Interior entrance/);
     assert.equal(entered, undefined, "an invitation never automatically moves the player");
-    await expect(page.getByRole("button", { name: "Enter Common Space", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toBeVisible();
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
     await expect(
@@ -158,16 +175,21 @@ try {
         .first(),
     ).toBeVisible();
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Mode: Chat. Choose mode", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Message at The Mill", exact: true }).fill("Thanks. How are you?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect.poll(() => submissions.length).toBe(2);
-    assert.equal(submitted.mode, "chat");
+    await expect.poll(() => submissions.length).toBe(3);
+    assert.equal(submitted.mode, "contact");
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    await page.getByRole("button", { name: "Enter Common Space", exact: true }).click();
+    await page.getByRole("button", { name: "Move to Common Space", exact: true }).click();
+    assert.equal(entered, undefined, "the invitation only prepares Move");
+    await expect(page.getByRole("button", { name: "Mode: Move. Choose mode", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => entered?.zoneId).toBe("common");
-    assert.equal(entered.expectedSceneRevision, 2);
+    assert.equal(entered.expectedSceneRevision, 3);
+    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
     assert.deepEqual(errors, []);
     await page.close();
   }

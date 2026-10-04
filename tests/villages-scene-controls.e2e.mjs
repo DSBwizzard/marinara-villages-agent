@@ -110,6 +110,12 @@ try {
       assert.equal(buttonBox.width, mobile ? 44 : 32);
       assert.equal((await send.locator("svg").boundingBox()).width, 15);
       assert.equal(await send.innerText(), "", "send control has no large text label");
+      // Cover browsers whose textarea scrollbars consume horizontal space.
+      await page.addStyleTag({ content: `.${tag}-textarea::-webkit-scrollbar { width: 17px; }` });
+      const inputBefore = await composer.locator("..").boundingBox();
+      await composer.fill("A long draft to force a scrollbar. ".repeat(35));
+      const inputAfter = await composer.locator("..").boundingBox();
+      assert.equal(inputAfter.width, inputBefore.width, "scrollbars cannot resize the composer");
       await composer.fill("Tea sounds perfect.");
       await page.getByRole("button", { name: "Previous paragraph" }).click();
       await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("Rain taps");
@@ -123,12 +129,12 @@ try {
       await page.getByRole("button", { name: "Hide history" }).click();
       await page.getByRole("button", { name: "Next paragraph" }).click();
       await expect(send).toBeEnabled();
-      await page.getByRole("button", { name: "Mode: Chat. Choose mode" }).click();
-      for (const mode of ["Chat", "Conclude"])
+      await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
+      for (const mode of ["Say / Do", "Move", "Contact", "Conclude"])
         await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
       await expect(page.getByRole("menuitemradio", { name: "Fulfill", exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitemradio", { name: "Knock / Call", exact: true })).toHaveCount(0);
-      await page.getByRole("menuitemradio", { name: "Chat", exact: true }).click();
+      await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
       await page.getByRole("button", { name: "Venue actions" }).click();
       await expect(page.getByRole("menuitem", { name: "Projects", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();

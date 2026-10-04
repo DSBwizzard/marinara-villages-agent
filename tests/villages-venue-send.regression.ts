@@ -59,6 +59,16 @@ for (const mode of ["chat", "leave", "contact"])
   );
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
 assert.throws(() => sceneResend(saved, { ...saved.input, mode: "contact" }, "new"), /edits are preserved/);
+const interruptedMove = { ...saved, kind: "move", input: { zoneId: "common" } };
+assert.deepEqual(sceneResend(interruptedMove, { zoneId: "common" }, "new"), {
+  submissionId: "original",
+  retryOfAttemptId: "attempt",
+});
+assert.throws(() => sceneResend(interruptedMove, { zoneId: "exterior" }, "new"), /Recover the saved request/);
+assert.throws(
+  () => sceneResend(interruptedMove, { mode: "chat", message: "Hello" }, "new"),
+  /Recover the saved request/,
+);
 assert.equal(shouldSubmitVenueKey("Enter", true, false), false, "Shift Enter inserts a line break");
 assert.equal(shouldSubmitVenueKey("Enter", false, true), false, "IME composition does not submit");
 

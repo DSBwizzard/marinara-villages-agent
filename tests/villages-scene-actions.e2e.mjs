@@ -10,7 +10,7 @@ const browser = await chromium.launch({
   ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 try {
-  for (const width of [1366, 390]) {
+  for (const width of [1366, 390, 320]) {
     const snapshot = structuredClone(fixture);
     snapshot.villagers = residents.slice(0, 1);
     snapshot.settings.venues[0].zones = [
@@ -48,6 +48,7 @@ try {
     let releaseContact,
       heldContact,
       lastContact,
+      lastLeave,
       moves = 0;
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
     const page = await context.newPage();
@@ -79,6 +80,10 @@ try {
           zoneId: body.zoneId,
           area: "outside",
           activeIds: [],
+          submissions: [
+            ...scene.submissions,
+            { id: body.operationId, activeIdsAtTurn: ["mara"], activeIdsAfterTurn: [], replyLineIds: ["transition"] },
+          ],
           lines: [
             ...scene.lines,
             {
@@ -93,7 +98,12 @@ try {
             },
           ],
         };
+        if (width === 320) return route.abort("failed");
         value = { session: scene };
+      } else if (path.endsWith("/rooms/leave")) {
+        lastLeave = route.request().postDataJSON();
+        scene = { ...scene, status: "closed" };
+        value = { session: scene, recordEvents: [] };
       } else if (path.endsWith("/rooms/turn")) {
         lastContact = route.request().postDataJSON();
         releaseContact?.();
@@ -124,17 +134,14 @@ try {
     const composer = page.getByRole("textbox", { name: "Message at The Mill" });
     await expect(composer).toBeVisible();
     await composer.fill("Keep this draft");
-    await page.getByRole("button", { name: "Mode: Chat. Choose mode" }).click();
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
     assert.deepEqual(
       await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),
-      ["Chat", "Conclude"],
+      ["Say / Do", "Move", "Contact", "Conclude"],
     );
-    await page.getByRole("menuitemradio", { name: "Chat", exact: true }).click();
-    await page.getByRole("button", { name: "Knock / Call", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
     await expect(composer).toHaveValue("Keep this draft");
-    await page.getByLabel("Doorway", { exact: true }).selectOption("exterior");
-    await page.getByLabel("Knock or call").selectOption("call");
-    await page.getByLabel("Who to contact").selectOption("mara");
+    await page.getByLabel("Contact Zone", { exact: true }).selectOption("exterior");
     let finishContact;
     heldContact = new Promise((done) => {
       finishContact = done;
@@ -144,28 +151,38 @@ try {
     });
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await contactStarted;
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await expect(page.getByLabel("Move to Zone")).toBeDisabled();
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
     assert.equal(lastContact.mode, "contact");
     assert.equal(lastContact.contact.kind, "call");
     assert.equal(lastContact.contact.boundaryZoneId, "exterior");
     finishContact();
     await expect(composer).toBeEnabled();
-    await expect(page.getByLabel("Doorway", { exact: true })).toHaveCount(0);
-    await composer.fill("Draft survives Zone changes");
+    await expect(page.getByLabel("Contact Zone", { exact: true })).toHaveValue("exterior");
+    const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await next.isEnabled()) await next.click();
+    const preservedDraft = "Draft survives Zone changes. ".repeat(35);
+    await composer.fill(preservedDraft);
     scene.sceneRevision++;
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeDisabled();
     await page.getByLabel("Move to Zone").selectOption("exterior");
+    assert.equal(moves, 0, "selection alone never moves");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("alert").last()).toContainText("Scene changed");
     assert.equal(moves, 0);
-    await expect(composer).toHaveValue("Draft survives Zone changes");
-    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByLabel("Move to Zone").selectOption("exterior");
+    await expect(composer).toHaveCount(0);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText(
       "You move from Common Space to Exterior.",
     );
-    await expect(composer).toHaveValue("Draft survives Zone changes");
+    await expect(composer).toHaveValue(preservedDraft);
+    assert.ok(await composer.evaluate((field) => field.scrollHeight > field.clientHeight));
+    await expect(composer).toHaveCSS("overflow-y", "auto");
+    await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
     assert.equal(moves, 1);
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -174,11 +191,26 @@ try {
     );
     assert.equal(moves, 1);
     assert.equal(scene.lines.filter((line) => line.id === "transition").length, 1);
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
+    await expect(page.getByLabel("Contact Zone")).toHaveValue("");
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
+    const finalMessage = width === 1366 ? "Goodbye." : "";
+    await composer.fill(finalMessage);
+    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
+    assert.equal(lastLeave, undefined, "selecting Conclude does not end the Scene");
+    await expect(composer).toHaveValue(finalMessage);
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Return to map", exact: true }).first()).toBeVisible();
+    assert.equal(lastLeave.message, finalMessage, "Conclude keeps its optional final message");
     assert.deepEqual(errors, []);
     await context.close();
   }
   console.log(
-    "Scene actions browser: desktop/mobile modes, doorway targeting, busy/stale movement, drafts and restored transitions passed",
+    "Scene actions browser: four modes, contact targeting, busy/stale/lost-response movement, drafts, restored transitions and optional concluding messages passed",
   );
 } finally {
   await browser.close();

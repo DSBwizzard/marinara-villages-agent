@@ -49,7 +49,9 @@ export function contactReach(
   origin: string,
   delivery: ContactDelivery,
   boundary = "",
+  adjacentOnly = false,
 ): string[] {
+  if (adjacentOnly) return contactNeighbors(venue, origin).filter((id) => id === boundary);
   if (delivery === "voice") return contactNeighbors(venue, origin).filter((id) => !boundary || id === boundary);
   const queue = [origin],
     seen = new Set([origin]);
