@@ -138,6 +138,8 @@ export function bindWishProposals(
       !["reveal", "journal", "progress", "check"].includes(String(raw.intent)) ||
       !refs.length ||
       refs.length > 8 ||
+      (["journal", "reveal"].includes(String(raw.intent)) &&
+        evidence.some((line) => line?.contactHidden || line?.kind === "whisper")) ||
       evidence.some((line) => !line || !line.heardBy.includes(actorId) || line.contactReport || line.kind === "side")
     ) {
       errors.push("Wish proposal has an unknown Wish, missing evidence or wrong witness");

@@ -278,6 +278,25 @@ async function main() {
       "Private speech cannot leak into the journal",
     );
     assert.equal(
+      bindWishProposals(
+        [
+          {
+            actorId: "f",
+            wishId: "swim",
+            intent: "journal",
+            evidence: [1, 4],
+            facts: [{ kind: "concern", quote: lines[2].content, evidence: [1] }],
+          },
+        ],
+        live,
+        lines,
+        "player",
+        lines.slice(1).map((entry) => entry.id),
+      ).proposals.length,
+      0,
+      "A visible discovery cannot smuggle an unrelated hidden excerpt into saved evidence",
+    );
+    assert.equal(
       bindWishFacts([{ kind: "result", quote: "He swam", evidence: ["wish"] }], "f", lines, String).length,
       0,
       "Narration metadata cannot manufacture physical results",
