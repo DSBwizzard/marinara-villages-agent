@@ -911,6 +911,23 @@ export async function villagesRoutes(engine: FastifyInstance) {
     }
   });
 
+  // Receipt IDs combine Scene, submission, domain and digest identifiers. Keep
+  // them in the body so the host router's path-parameter limit does not apply.
+  app.post<{ Params: { id: string }; Body: { noticeId?: unknown } }>(
+    "/rooms/:id/notices/dismiss",
+    { bodyLimit: 2048 },
+    async (request, reply) => {
+      try {
+        const noticeId = request.body?.noticeId;
+        if (typeof noticeId !== "string" || !noticeId.trim() || noticeId.length > 1024)
+          throw badRequest("A notice id must be between 1 and 1024 characters.");
+        return await dismissSceneNotice(readChatId(request.params.id), noticeId.trim());
+      } catch (error) {
+        return fail(reply, error, "saving notice dismissal");
+      }
+    },
+  );
+  // Retain the original endpoint for clients with short notice IDs.
   app.post<{ Params: { id: string; noticeId: string } }>(
     "/rooms/:id/notices/:noticeId/dismiss",
     async (request, reply) => {
