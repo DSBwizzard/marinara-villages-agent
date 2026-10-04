@@ -295,7 +295,7 @@ try {
     await expect(sharedPeople.locator("." + P + "-explore-row")).toHaveCount(1);
     await sharedPeople.getByRole("button", { name: /Mara Village Market/ }).click();
     await expect(page.getByRole("heading", { name: "Mara", exact: true })).toBeVisible();
-    await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
+    await expect(page.getByText("No wishes shared yet", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     const sharedPreview = page.getByRole("dialog", { name: "Village Market", exact: true });
     await expect(sharedPreview.getByRole("button").nth(1)).toHaveText("Visit");

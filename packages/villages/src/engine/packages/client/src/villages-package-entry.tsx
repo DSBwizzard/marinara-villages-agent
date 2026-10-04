@@ -1,4 +1,11 @@
-import { VillagerWishJournal } from "./villages-wish-journal.js";
+import {
+  VillagerDossier,
+  type DossierNavigation,
+  type DossierSection,
+  type DossierVenue,
+  type DossierLink,
+} from "./villages-dossier.js";
+import { DOSSIER_STYLES } from "./villages-dossier-styles.js";
 import { EXPLORATION_STYLES } from "./villages-exploration-styles.js";
 import { VenuePolaroid } from "./villages-venue-polaroid.js";
 import { VILLAGES_FORGING_STYLES } from "./villages-forging-styles.js";
@@ -16,7 +23,6 @@ import {
   type ExplorationTab,
 } from "./villages-exploration";
 import { VillagesUsageMeter } from "./villages-usage-meter.js";
-import { VillagesRelationships } from "./villages-relationships.js";
 import { DecisionsControl } from "./villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "./villages-saved-changes.js";
 import { useReadingPages } from "./villages-reading-viewport.js";
@@ -86,8 +92,8 @@ import { createRoot, type Root } from "react-dom/client";
 import {
   classifyVillagesParagraph,
   villagesWalk,
-  type VillagesWalkAside,
   type VillagesWalkBeat,
+  type VillagesWalkAside,
 } from "./villages-chat-paragraphs";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
 import { normalizeVillageSnapshot } from "./villages-snapshot-normalization";
@@ -446,7 +452,14 @@ type VillageSnapshot = {
   venueRequests: VenueRequest[];
   projects: BuildProject[];
   villageCapabilities: string[];
-  upgradeRequests: { id: string; venueId: string; requesterName: string; detail: string; proposedHomeKind: string }[];
+  upgradeRequests: {
+    id: string;
+    venueId: string;
+    requesterCharacterId?: string;
+    requesterName: string;
+    detail: string;
+    proposedHomeKind: string;
+  }[];
   residences: {
     characterId: string;
     venueId: string;
@@ -505,6 +518,7 @@ type VillageSnapshot = {
 
 type VenueRequest = {
   id: string;
+  requesterCharacterId?: string;
   requesterName?: string;
   requestQuote?: string;
   source?: "chat" | "background";
@@ -514,6 +528,8 @@ type VenueRequest = {
 
 type BuildProject = {
   id: string;
+  requesterCharacterId?: string;
+  participantIds?: string[];
   updatedAt: string;
   kind?: "build-venue" | "new-venue" | "renovation";
   title: string;
@@ -1389,14 +1405,15 @@ function VillagerMemoriesPanel({
   busy,
   onRefresh,
   onForget,
+  characterId,
 }: {
   library: MemoryLibrary | null;
   busy: boolean;
   onRefresh: () => void;
   onForget: (kind: "durable" | "recollections", id: string) => void;
+  characterId: string;
 }) {
   const [kind, setKind] = useState<"all" | "passing" | "durable">("all");
-  const [residentId, setResidentId] = useState("");
   const [query, setQuery] = useState("");
   const [evidence, setEvidence] = useState<{ visit: SceneView; lineIds: string[] } | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
@@ -1404,7 +1421,7 @@ function VillagerMemoriesPanel({
   const matches = (text: string, people: readonly MemoryPerson[]) =>
     (!query.trim() ||
       `${text} ${people.map((person) => person.name).join(" ")}`.toLowerCase().includes(query.trim().toLowerCase())) &&
-    (!residentId || people.some((person) => person.id === residentId));
+    people.some((person) => person.id === characterId);
   const passing = (library?.recollections ?? []).filter((entry) =>
     matches(entry.text, [...entry.subjects, ...entry.knownBy]),
   );
@@ -1428,20 +1445,17 @@ function VillagerMemoriesPanel({
           <span className={`${ELEMENT_TAG}-memory-kicker`}>Continuity, with receipts</span>
           <h3>What your villagers carry forward</h3>
           <p>
-            Passing recollections keep conversations coherent for 24 hours. Durable memories survive because an
-            end-of-Scene review found lasting meaning. Exact transcripts remain separate and are never used as hidden
-            character knowledge.
+            Passing recollections keep conversations coherent for 24 hours. Durable memories retain witnessed
+            commitments, facts, boundaries, and meaningful experiences. Exact transcripts remain separate from character
+            knowledge.
           </p>
         </div>
         <div className={`${ELEMENT_TAG}-memory-stats`}>
           <span>
-            <strong>{library?.recollections.length ?? 0}</strong> passing
+            <strong>{passing.length}</strong> passing
           </span>
           <span>
-            <strong>{library?.durable.length ?? 0}</strong> durable
-          </span>
-          <span>
-            <strong>{library?.archive.total ?? 0}</strong> archived Scenes
+            <strong>{durable.length}</strong> durable
           </span>
         </div>
       </section>
@@ -1485,18 +1499,6 @@ function VillagerMemoriesPanel({
           placeholder="Search memories…"
           aria-label="Search memories"
         />
-        <select
-          value={residentId}
-          onChange={(event) => setResidentId(event.target.value)}
-          aria-label="Filter memories by resident"
-        >
-          <option value="">Everyone</option>
-          {(library?.residents ?? []).map((resident) => (
-            <option key={resident.id} value={resident.id}>
-              {resident.name}
-            </option>
-          ))}
-        </select>
         <button type="button" className={`${ELEMENT_TAG}-button`} disabled={busy} onClick={onRefresh}>
           Refresh
         </button>
@@ -1617,14 +1619,8 @@ function VillagerMemoriesPanel({
         <div className={`${ELEMENT_TAG}-memory-empty`}>
           <span>✧</span>
           <h3>No memories match</h3>
-          <p>Try another resident, phrase, or memory layer.</p>
+          <p>Try another phrase or memory layer.</p>
         </div>
-      ) : null}
-      {library?.expiredRecollectionCount ? (
-        <p className={`${ELEMENT_TAG}-memory-footnote`}>
-          {library.expiredRecollectionCount} expired passing recollection
-          {library.expiredRecollectionCount === 1 ? " is" : "s are"} waiting for routine cleanup.
-        </p>
       ) : null}
       {evidenceError ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">
@@ -6089,13 +6085,18 @@ function syncVillagesStyles() {
     return;
   }
   if (existing) {
-    if (existing.textContent !== VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES)
-      existing.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES;
+    if (
+      existing.textContent !==
+      VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES
+    )
+      existing.textContent =
+        VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
     return;
   }
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES;
+  style.textContent =
+    VILLAGES_STYLES + VILLAGES_SCENE_STYLES + SCENE_ASIDE_STYLES + EXPLORATION_STYLES + DOSSIER_STYLES;
   document.head.appendChild(style);
 }
 
@@ -9783,51 +9784,6 @@ function AvatarFace({
   );
 }
 
-function VillagerTile({
-  villager,
-  portrait,
-  selected,
-  onSelect,
-}: {
-  villager: VillageVillagerView;
-  /** Their picture and the card's framing of it, or nothing when there is none to draw. */
-  portrait: Portrait | undefined;
-  selected: boolean;
-  /**
-   * Talking, which happens on the map. Left out while a conversation is in hand
-   * — see `chatLocked` — and the name is then drawn as the label it has become,
-   * the same way a pin with no `onSelect` is drawn as a label rather than a
-   * button.
-   */
-  onSelect?: () => void;
-}) {
-  return (
-    <div className={`${ELEMENT_TAG}-tile`} data-selected={selected ? "true" : "false"}>
-      <div className={`${ELEMENT_TAG}-tile-head`}>
-        <AvatarFace portrait={portrait} name={villager.name} className={`${ELEMENT_TAG}-avatar`} />
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-tile-name`}
-          onClick={onSelect}
-          disabled={onSelect === undefined}
-          title={onSelect ? `See where ${villager.name} is` : `${villager.name} has no known venue`}
-        >
-          {villager.name}
-        </button>
-      </div>
-      {villager.summary ? <p className={`${ELEMENT_TAG}-tile-summary`}>{villager.summary}</p> : null}
-      <div className={`${ELEMENT_TAG}-tile-meta`}>
-        {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-        {villager.tags.slice(0, 3).map((tag) => (
-          <span key={tag} className={`${ELEMENT_TAG}-tag`}>
-            {tag}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /** One paragraph in a Scene, with its speaker and attached asides. */
 type RoomStep = {
   stagingEvent?: StagingEvent;
@@ -11415,20 +11371,16 @@ type MenuTab =
   | "noticeboard"
   | "venueRequests"
   | "projects"
-  | "memories"
-  | "relationships"
   | "village"
   | "general"
   | "chatlogs"
-  | "progress"
-  | "agendas"
-  | "schedules";
+  | "progress";
 
 type MenuPage = "index" | MenuTab;
 
 function menuCategory(page: MenuPage): "index" | "general" | "village" | "debug" {
   if (page === "index" || page === "general") return page;
-  if (["chatlogs", "progress", "agendas", "schedules"].includes(page)) return "debug";
+  if (["chatlogs", "progress"].includes(page)) return "debug";
   return "village";
 }
 
@@ -11439,14 +11391,10 @@ const MENU_PAGE_TITLES: Record<MenuPage, string> = {
   noticeboard: "Noticeboard",
   venueRequests: "Venue Requests",
   projects: "Projects",
-  memories: "Memories",
-  relationships: "Relationships",
   village: "Village Settings",
   general: "General Settings",
   chatlogs: "Scenes",
   progress: "Progress",
-  agendas: "Villager Wishes",
-  schedules: "Villager Agendas",
 };
 
 const FORCE_VILLAGE_UPDATE_NOTICE =
@@ -13100,6 +13048,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   >("home");
   useSceneViewport(element, screen === "room");
   const [focusedProjectId, setFocusedProjectId] = useState("");
+  const [focusedRequestId, setFocusedRequestId] = useState("");
   const [placingProjectId, setPlacingProjectId] = useState("");
   const [siteProjectId, setSiteProjectId] = useState("");
   /**
@@ -13155,11 +13104,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * village is re-read on a timer, and a place that has left the map in the
    * meantime simply stops having any doors to draw.
    */
-  const [personProfile, setPersonProfile] = useState<{
-    actorId: string;
-    wishId?: string;
-    returnTo: "home" | "room";
-  } | null>(null);
+  const [personProfile, setPersonProfile] = useState<DossierNavigation | null>(null);
+  const [profileInspection, setProfileInspection] = useState<DossierSection | null>(null);
+  const [rosterSearch, setRosterSearch] = useState("");
+  const profileOrigin = useRef<{ selector: string; scroll: Array<{ selector: string; top: number }> }>({
+    selector: "",
+    scroll: [],
+  });
   const [openPlaceId, setOpenPlaceId] = useState<string | null>(null);
   useExplorationViewport(element, mobile && screen === "home");
   const [exploreSheet, setExploreSheet] = useState<ExplorationSheet | null>(null);
@@ -13222,11 +13173,42 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       closeExploration();
   }, [closeExploration, openPlaceId, snapshot]);
   const [menuPage, setMenuPage] = useState<MenuPage>("index");
+  useEffect(() => {
+    if (screen !== "menu" || menuPage !== "venueRequests" || !focusedRequestId) return;
+    const target = element.querySelector<HTMLElement>(`[data-villager-request="${CSS.escape(focusedRequestId)}"]`);
+    target?.scrollIntoView({ block: "nearest" });
+    target?.focus({ preventScroll: true });
+  }, [element, focusedRequestId, menuPage, screen]);
   const menuSection = menuCategory(menuPage);
+  const openPerson = useCallback(
+    (navigation: DossierNavigation) => {
+      const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const key = button?.getAttribute("data-exploration-row");
+      const label = button?.getAttribute("aria-label");
+      const selector = key
+        ? `[data-exploration-row="${CSS.escape(key)}"]`
+        : label
+          ? `[aria-label="${CSS.escape(label)}"]`
+          : "";
+      const scroll = [
+        ...element.querySelectorAll<HTMLElement>(`.${ELEMENT_TAG}-root, .${ELEMENT_TAG}-explore-list`),
+      ].map((current) => ({
+        selector: current.classList.contains(`${ELEMENT_TAG}-explore-list`)
+          ? `.${ELEMENT_TAG}-explore-list`
+          : `.${ELEMENT_TAG}-root`,
+        top: current.scrollTop,
+      }));
+      profileOrigin.current = { selector, scroll };
+      setError("");
+      setProfileInspection(null);
+      setSpriteEditorId(null);
+      setPersonProfile(navigation);
+      setScreen("person");
+    },
+    [element],
+  );
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
   const [spriteEditorId, setSpriteEditorId] = useState<string | null>(null);
-  const spriteRosterButton = useRef<HTMLButtonElement | null>(null);
-  const spriteRosterScroll = useRef<Array<{ element: HTMLElement; top: number }>>([]);
   /**
    * Portraits, by character id, as the Engine has been willing to hand them over.
    *
@@ -14267,6 +14249,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const loadMemoryLibrary = useCallback(async (signal?: AbortSignal) => {
     try {
       const response = await request<MemoryLibrary>("/memories", { signal });
+      if (signal?.aborted) return;
       setMemoryLibrary(response);
       setError("");
     } catch (cause) {
@@ -14304,6 +14287,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const loadAgendas = useCallback(async (signal?: AbortSignal) => {
     try {
       const response = await request<AgendaListResponse>("/agendas", { signal });
+      if (signal?.aborted) return;
       setAgendas(response.villagers);
     } catch (cause) {
       if (signal?.aborted) return;
@@ -14313,14 +14297,38 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, []);
 
   useEffect(() => {
-    if (screen !== "menu" || (menuPage !== "agendas" && menuPage !== "schedules")) return;
+    if (screen !== "person" || !personProfile || !profileInspection) return;
+    const controller = new AbortController();
+    if (profileInspection === "memories") {
+      setMemoryLibrary(null);
+      void loadMemoryLibrary(controller.signal);
+    }
+    if (["wishes", "agenda", "venues"].includes(profileInspection)) {
+      setAgendas(null);
+      void loadAgendas(controller.signal);
+    }
+    return () => controller.abort();
+  }, [screen, personProfile, profileInspection, loadAgendas, loadMemoryLibrary]);
+
+  useEffect(() => {
+    if (screen !== "person" || !profileInspection || !["wishes", "agenda", "venues"].includes(profileInspection))
+      return;
     if (
-      !agendas?.some((villager) => villager.agenda?.personalizationPending && !villager.agenda.personalizationFailure)
+      !agendas?.some(
+        (villager) =>
+          villager.characterId === personProfile?.actorId &&
+          villager.agenda?.personalizationPending &&
+          !villager.agenda.personalizationFailure,
+      )
     )
       return;
-    const timer = window.setInterval(() => void loadAgendas(), 5_000);
-    return () => window.clearInterval(timer);
-  }, [agendas, loadAgendas, menuPage, screen]);
+    const controller = new AbortController();
+    const timer = window.setInterval(() => void loadAgendas(controller.signal), 5_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [agendas, loadAgendas, profileInspection, personProfile, screen]);
 
   /**
    * Ask the village to work one villager out again.
@@ -14351,13 +14359,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const backgroundPanel = (
     <BackgroundWorkPanel
       jobs={(snapshot?.backgroundWork ?? []).filter((job) =>
-        menuPage === "agendas"
-          ? ["agenda", "wish"].includes(job.kind)
-          : menuPage === "schedules"
-            ? ["agenda", "translation"].includes(job.kind)
-            : menuPage === "venueRequests"
-              ? ["mail", "adaptation"].includes(job.kind)
-              : true,
+        menuPage === "venueRequests" ? ["mail", "adaptation"].includes(job.kind) : true,
       )}
       onRetry={retryWork}
     />
@@ -14839,6 +14841,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // so a snapshot arriving from a chat send cannot overwrite what is being typed.
   const openMenu = useCallback(
     (tab: MenuTab) => {
+      setFocusedRequestId("");
       if (tab === "projects") setSiteProjectId("");
       setSettingsError("");
       // The villager list is read when it is asked for rather than kept current
@@ -14847,15 +14850,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       // Same rule for the Personas the identity picker offers.
       if (tab === "village") void loadPersonas();
       if (tab === "village") void loadLorebooks();
-      if (tab === "memories") {
-        setMemoryLibrary(null);
-        void loadMemoryLibrary();
-      }
-      // And again for the wishes, which are the whole reason this debug group
-      // exists: nothing else in the tab shows them. The agendas tab draws the
-      // other half of the same listing, so it reads it the same way — one route,
-      // one answer, and the two panels cannot disagree about the same villager.
-      if (tab === "agendas" || tab === "schedules") void loadAgendas();
       if (tab === "progress")
         void request<ProgressDebugView>("/progress/debug")
           .then(setProgressDebug)
@@ -14880,7 +14874,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setMenuPage(tab);
       setScreen("menu");
     },
-    [loadAgendas, loadCatalog, loadLorebooks, loadMemoryLibrary, loadPersonas, menuPage, screen, snapshot],
+    [loadCatalog, loadLorebooks, loadPersonas, menuPage, screen, snapshot],
   );
 
   const goHome = useCallback(() => {
@@ -17185,48 +17179,494 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // nothing in this village happens because the player looked at it.
   if (screen === "person" && personProfile) {
     const person = snapshot?.villagers.find((entry) => entry.characterId === personProfile.actorId);
-    const venue = snapshot?.settings.venues.find((entry) => entry.id === person?.place?.id);
-    return (
-      <div className={`${ELEMENT_TAG}-root`} data-mobile={String(mobile)} style={{ overflowY: "auto" }}>
-        <section className={`${ELEMENT_TAG}-overlay`} aria-label={`${person?.name ?? "Villager"} profile`}>
-          <button
-            type="button"
-            className={`${ELEMENT_TAG}-button`}
-            onClick={() => {
-              setScreen(personProfile.returnTo);
-              if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
-            }}
-          >
-            {personProfile.returnTo === "room" ? "Back to Scene" : "Back to People"}
-          </button>
-          <h2>{person?.name ?? "Villager"}</h2>
-          <p>{venue ? `Current location: ${venue.name}` : "Current location unavailable"}</p>
-          {venue ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              onClick={() => {
-                openVenue(venue);
-                if (personProfile.returnTo === "home") {
-                  explorationReturnTab.current = "people";
-                  explorationOrigin.current = null;
-                }
-              }}
-            >
-              View Venue
-            </button>
-          ) : null}
-          <VillagerWishJournal
-            request={request}
-            characterId={personProfile.actorId}
-            prefix={ELEMENT_TAG}
-            focusWishId={personProfile.wishId}
-          />
-        </section>
+    const selectedAgendas = (agendas ?? []).filter((entry) => entry.characterId === personProfile.actorId);
+    const relevantVenues: DossierVenue[] = (snapshot?.settings.venues ?? []).map((venue) => {
+      const connections: string[] = [];
+      const home = (venue.residentIds ?? [venue.occupancy.residentCharacterId]).includes(personProfile.actorId);
+      if (home) connections.push("Home");
+      const controlled = venue.zones?.some(
+        (zone) => zone.ownerId === personProfile.actorId || zone.controllerIds?.includes(personProfile.actorId),
+      );
+      if (controlled) connections.push("Owns or controls a space");
+      if (venue.id === person?.place?.id) connections.push("Current location");
+      const agendaDestination = selectedAgendas.some((entry) =>
+        Object.values(entry.effectiveDays ?? {}).some((blocks) => blocks.some((block) => block.venueId === venue.id)),
+      );
+      if (!connections.length && agendaDestination) connections.push("Agenda destination");
+      return {
+        id: venue.id,
+        name: venue.name,
+        image: venue.presentation.image?.url,
+        connections,
+        inspectOnly: !home && !controlled && venue.id !== person?.place?.id,
+      };
+    });
+    const relatedLinks: DossierLink[] = [];
+    for (const project of snapshot?.projects ?? []) {
+      const flow = project.lifecycle;
+      if (
+        project.requesterCharacterId !== personProfile.actorId &&
+        !project.participantIds?.includes(personProfile.actorId) &&
+        flow?.builderId !== personProfile.actorId &&
+        !flow?.affectedIds?.includes(personProfile.actorId) &&
+        !flow?.approvals?.some((entry) => entry.residentId === personProfile.actorId) &&
+        !flow?.sources?.some((entry) => entry.supplierId === personProfile.actorId)
+      )
+        continue;
+      relatedLinks.push({
+        id: "project:" + project.id,
+        title: project.title,
+        detail: "Project · " + project.status,
+        onOpen: () => {
+          openMenu("projects");
+          setFocusedProjectId(project.id);
+          setSiteProjectId(project.id);
+        },
+      });
+    }
+    for (const proposal of snapshot?.venueRequests ?? []) {
+      if (proposal.requesterCharacterId !== personProfile.actorId) continue;
+      relatedLinks.push({
+        id: "request:" + proposal.id,
+        title: proposal.venueDraft.name,
+        detail: "Venue Request",
+        onOpen: () => {
+          openMenu("venueRequests");
+          setFocusedRequestId("request:" + proposal.id);
+        },
+      });
+    }
+    for (const proposal of snapshot?.upgradeRequests ?? []) {
+      if (proposal.requesterCharacterId !== personProfile.actorId) continue;
+      relatedLinks.push({
+        id: "upgrade:" + proposal.id,
+        title: proposal.detail,
+        detail: "Venue upgrade request",
+        onOpen: () => {
+          openMenu("venueRequests");
+          setFocusedRequestId("upgrade:" + proposal.id);
+        },
+      });
+    }
+    for (const residence of snapshot?.residences ?? []) {
+      if (
+        residence.characterId !== personProfile.actorId ||
+        residence.status !== "pending" ||
+        residence.requestedBy !== "villager"
+      )
+        continue;
+      relatedLinks.push({
+        id: "residence:" + residence.characterId,
+        title: "Residence request",
+        detail: "Pending Venue Request",
+        onOpen: () => {
+          openMenu("venueRequests");
+          setFocusedRequestId("residence:" + residence.characterId);
+        },
+      });
+    }
+    const wishInspection = (
+      <div className={`${ELEMENT_TAG}-overlay`}>
+        <div className={`${ELEMENT_TAG}-overlay-head`}>
+          <h2 className={`${ELEMENT_TAG}-panel-title`}>Private wishes</h2>
+        </div>
+        <p className={`${ELEMENT_TAG}-empty`}>
+          Private wishes can shape what a villager notices, says, and does. Their full routine is in Inspect → Agenda.
+        </p>
+
+        {agendas === null ? (
+          <p className={`${ELEMENT_TAG}-empty`}>Reading what the villagers wish…</p>
+        ) : selectedAgendas.length === 0 ? (
+          <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
+        ) : (
+          <section>
+            {selectedAgendas.map((villager) => (
+              <div key={villager.characterId}>
+                <h3 className={`${ELEMENT_TAG}-story-day`}>
+                  {villager.name}
+                  {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
+                </h3>
+                {villager.agenda === null ? (
+                  <p className={`${ELEMENT_TAG}-empty`}>
+                    Not written for yet. The village works this out on the next part of the day it already runs on, so
+                    there is nothing to press.
+                  </p>
+                ) : villager.agenda.wishes.length === 0 ? (
+                  <p className={`${ELEMENT_TAG}-empty`}>
+                    {villager.agenda.personalizationFailure
+                      ? `Routine personalization needs attention: ${villager.agenda.personalizationFailure}`
+                      : villager.agenda.generatedAt
+                        ? "No current wishes."
+                        : "Their provisional routine is available. New wishes follow the daily allowance."}
+                  </p>
+                ) : (
+                  <ul className={`${ELEMENT_TAG}-story`}>
+                    {villager.agenda.wishes.map((wish) => (
+                      <li key={wish.id} className={`${ELEMENT_TAG}-wish-card`}>
+                        <p className={`${ELEMENT_TAG}-wish-text`}>{wish.wish}</p>
+                        {/* Said as the thing somebody would notice,
+                                      which is the half that makes a wish a
+                                      reason for an event instead of a to-do. */}
+                        {wish.tell.length > 0 ? (
+                          <p className={`${ELEMENT_TAG}-wish-tell`}>{`Shows as: ${wish.tell}`}</p>
+                        ) : null}
+                        {/* How long it has been sitting there, and the
+                                      day it goes quiet on its own. Said here
+                                      because this tab is the only place a wish is
+                                      a fact at all, and a wish that vanishes
+                                      between two visits reads as a bug until the
+                                      date it was always going to vanish on is
+                                      written down beside it. */}
+                        <p className={`${ELEMENT_TAG}-wish-meta`}>
+                          {`${wish.intensity === 1 ? "Faint" : wish.intensity === 3 ? "Strong" : "Present"} · ${wishLifetimeLabel(wish.addedAt ?? "", wish.expiresAt ?? "")}`}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <WishHistory
+                  characterId={villager.characterId}
+                  total={villager.wishHistoryCount ?? 0}
+                  busy={busy}
+                  onCorrect={correctCompletedWish}
+                />
+                {villager.wishAttempt ? (
+                  <p
+                    className={`${ELEMENT_TAG}-hint`}
+                  >{`Wish update: ${villager.wishAttempt.stage} · ${villager.wishAttempt.reason} · ${villager.wishAttempt.calls} requests · input tokens ${villager.wishAttempt.inputTokens ?? "unavailable"} · output tokens ${villager.wishAttempt.outputTokens ?? "unavailable"}`}</p>
+                ) : null}
+                {/*
+                          The Engine's own week and the village's translation of
+                          it live in Villager Agendas, not alongside wishes.
+                        */}
+              </div>
+            ))}
+          </section>
+        )}
       </div>
     );
+    const agendaInspection = (
+      <div className={`${ELEMENT_TAG}-overlay`}>
+        <div className={`${ELEMENT_TAG}-overlay-head`}>
+          <h2 className={`${ELEMENT_TAG}-panel-title`}>Villager agendas</h2>
+        </div>
+        <p className={`${ELEMENT_TAG}-empty`}>
+          Each villager follows a Villages agenda. A Marinara schedule can guide future days when enabled.
+        </p>
+        {agendas === null ? (
+          <p className={`${ELEMENT_TAG}-empty`}>Loading agendas…</p>
+        ) : selectedAgendas.length === 0 ? (
+          <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
+        ) : (
+          <div className={`${ELEMENT_TAG}-agenda-list`}>
+            {selectedAgendas.map((villager) => (
+              <details key={villager.characterId} className={`${ELEMENT_TAG}-week`} open>
+                <summary className={`${ELEMENT_TAG}-week-toggle`}>
+                  <h3 className={`${ELEMENT_TAG}-week-head`}>
+                    {villager.name}
+                    {villager.agenda?.personalizationPending ? (
+                      <span className={`${ELEMENT_TAG}-badge`}>
+                        {villager.agenda.personalizationFailure ? "Personalization needs retry" : "Personalizing"}
+                      </span>
+                    ) : null}
+                    {villager.agenda?.personalizationFailure ? (
+                      <span className={`${ELEMENT_TAG}-badge`}>Personalization failed</span>
+                    ) : null}
+                    {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>Card missing</span> : null}
+                    {villager.nativeSchedule ? (
+                      <span className={`${ELEMENT_TAG}-badge`}>
+                        {villager.ingestSchedule ? "Schedule influence enabled" : "Schedule available"}
+                      </span>
+                    ) : null}
+                    {agendaUpdatePending(villager) ? (
+                      <span className={`${ELEMENT_TAG}-badge`}>Earlier hours kept</span>
+                    ) : null}
+                  </h3>
+                </summary>
+                <div className={`${ELEMENT_TAG}-week-body`}>
+                  {villager.agenda?.routineSummary ? (
+                    <p className={`${ELEMENT_TAG}-story-meta`}>{villager.agenda.routineSummary}</p>
+                  ) : null}
+                  {villager.agenda?.personalizationFailure ? (
+                    <p className={`${ELEMENT_TAG}-empty`}>{villager.agenda.personalizationFailure}</p>
+                  ) : villager.agenda?.personalizationPending ? (
+                    <p className={`${ELEMENT_TAG}-story-scope`}>Personalizing this agenda in the background.</p>
+                  ) : null}
+                  <div className={`${ELEMENT_TAG}-agenda-actions`}>
+                    <label className={`${ELEMENT_TAG}-agenda-switch`}>
+                      <input
+                        type="checkbox"
+                        checked={villager.ingestSchedule}
+                        disabled={busy}
+                        onChange={(event) =>
+                          void setAgendaScheduleIngestion(villager.characterId, event.target.checked)
+                        }
+                      />
+                      Let Marinara schedule influence this Agenda
+                    </label>
+                    <button
+                      type="button"
+                      className={`${ELEMENT_TAG}-button`}
+                      disabled={busy}
+                      onClick={() => void rewriteAgenda(villager.characterId)}
+                    >
+                      Regenerate agenda
+                    </button>
+                    <VillagesBurstPreview
+                      request={request}
+                      action="agenda"
+                      args={{ characterId: villager.characterId }}
+                    />
+                    {Object.entries({
+                      rhythm: "Preferred sleep/wake rhythm",
+                      busyFree: "Broad busy/free periods",
+                      weekdayWeekend: "Weekday/weekend patterns",
+                      interests: "Compatible hobbies and interests",
+                      establishedEntities: "Established workplaces, vehicles and institutions",
+                    }).map(([key, label]) => (
+                      <label key={key} className={ELEMENT_TAG + "-agenda-switch"}>
+                        <input
+                          type="checkbox"
+                          checked={villager.scheduleInfluence?.categories[key] !== false}
+                          disabled={busy || !villager.ingestSchedule}
+                          onChange={(event) =>
+                            void setAgendaScheduleIngestion(villager.characterId, villager.ingestSchedule, {
+                              [key]: event.target.checked,
+                            })
+                          }
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className={ELEMENT_TAG + "-story-scope"}>
+                    Changes guide future days locally and make no AI requests. Today's plan and accepted commitments
+                    remain intact.
+                    {villager.ingestSchedule ? "" : " Schedule influence is off."}
+                  </p>
+                  {villager.ingestSchedule ? (
+                    <ul>
+                      {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                      {(villager.agenda?.scheduleInfluenceSnapshot?.unresolved ?? []).map((line) => (
+                        <li key={line}>{line}; waits for an existing generation request.</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {villager.weekUnreadable ? (
+                    <p className={`${ELEMENT_TAG}-empty`}>
+                      Marinara schedules could not be read right now. The Villages agenda remains active.
+                    </p>
+                  ) : !villager.nativeSchedule ? (
+                    <p className={`${ELEMENT_TAG}-empty`}>No Marinara schedule. Villages uses its own agenda.</p>
+                  ) : null}
+                  <div className={`${ELEMENT_TAG}-agenda-days`}>
+                    {villager.days.map((day) => {
+                      const blocks = day.isToday
+                        ? (villager.effectiveDays?.[day.weekday] ??
+                          villager.agenda?.activeDay?.blocks ??
+                          villager.agenda?.week?.[day.weekday] ??
+                          [])
+                        : (villager.effectiveDays?.[day.weekday] ?? villager.agenda?.week?.[day.weekday] ?? []);
+                      return (
+                        <details
+                          key={`${day.weekday}-${day.dateLabel}`}
+                          className={`${ELEMENT_TAG}-agenda-day`}
+                          open={day.isToday || undefined}
+                        >
+                          <summary>
+                            {day.weekday} · {day.dateLabel}
+                            {day.isToday ? " · Today" : ""}
+                          </summary>
+                          <div className={`${ELEMENT_TAG}-agenda-compare`}>
+                            <section aria-label={`${day.weekday} Villages agenda`}>
+                              <h4>Villages agenda</h4>
+                              <ol className={`${ELEMENT_TAG}-agenda-blocks`}>
+                                {blocks.map((part, index) => (
+                                  <li key={`${part.startMinute}-${part.endMinute}-${index}`}>
+                                    <time>
+                                      {agendaMinuteLabel(part.startMinute)}–{agendaMinuteLabel(part.endMinute)}
+                                    </time>
+                                    <strong>{part.activity}</strong>
+                                    <span>
+                                      {part.venueId
+                                        ? remapPlaceName(snapshot?.settings.venues ?? [], part.venueId)
+                                        : "Home"}
+                                    </span>
+                                    <span>{part.reason}</span>
+                                    <span className={`${ELEMENT_TAG}-story-scope`}>
+                                      {part.status === "idle"
+                                        ? "Available"
+                                        : part.status === "dnd"
+                                          ? "Busy"
+                                          : part.status === "offline"
+                                            ? "Offline"
+                                            : "Online"}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </section>
+                          </div>
+                        </details>
+                      );
+                    })}
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+    const back = () => {
+      setSpriteEditorId(null);
+      setProfileInspection(null);
+      setPersonProfile(null);
+      setScreen(personProfile.returnTo);
+      if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
+      if (personProfile.returnTo === "menu") setMenuPage("villagers");
+      requestAnimationFrame(() => {
+        for (const { selector, top } of profileOrigin.current.scroll) {
+          const target = element.querySelector<HTMLElement>(selector);
+          if (target) target.scrollTop = top;
+        }
+        const target = profileOrigin.current.selector
+          ? element.querySelector<HTMLElement>(profileOrigin.current.selector)
+          : element.querySelector<HTMLElement>(`textarea[aria-label]`);
+        target?.focus({ preventScroll: true });
+      });
+    };
+    return (
+      <>
+        {personProfile.returnTo === "room" ? (
+          <div key="retained-scene" hidden style={{ height: "100%" }}>
+            {renderScene()}
+          </div>
+        ) : null}
+        <VillagerDossier
+          key={personProfile.actorId}
+          navigation={personProfile}
+          villager={person}
+          portrait={
+            <AvatarFace
+              portrait={portraits[personProfile.actorId]}
+              name={person?.name ?? "Villager"}
+              className={`${ELEMENT_TAG}-avatar`}
+            />
+          }
+          request={request}
+          venues={relevantVenues}
+          links={relatedLinks}
+          error={error}
+          onInspectSection={setProfileInspection}
+          onBack={back}
+          onVenue={(id) => {
+            const venue = snapshot?.settings.venues.find((entry) => entry.id === id);
+            if (venue) {
+              openVenue(venue);
+              if (personProfile.returnTo === "home") explorationReturnTab.current = "people";
+            }
+          }}
+          spriteManager={
+            spriteEditorId && person ? (
+              <SpriteManager
+                key={person.characterId}
+                villager={person}
+                request={request}
+                backLabel="← Back to profile"
+                onSaved={(next) => setSnapshot(next as VillageSnapshot)}
+                onBack={() => {
+                  setSpriteEditorId(null);
+                  requestAnimationFrame(() =>
+                    element.querySelector<HTMLElement>("[data-dossier-sprites]")?.focus({ preventScroll: true }),
+                  );
+                }}
+              />
+            ) : undefined
+          }
+          inspectors={{
+            overview: (
+              <BackgroundWorkPanel
+                jobs={(snapshot?.backgroundWork ?? []).filter((job) => job.subjectId === personProfile.actorId)}
+                onRetry={retryWork}
+              />
+            ),
+            wishes: wishInspection,
+            agenda: agendaInspection,
+            memories: (
+              <div className={`${ELEMENT_TAG}-dossier-sheet`}>
+                <VillagerMemoriesPanel
+                  key={personProfile.actorId}
+                  characterId={personProfile.actorId}
+                  library={memoryLibrary}
+                  busy={busy}
+                  onRefresh={() => {
+                    setMemoryLibrary(null);
+                    void loadMemoryLibrary();
+                  }}
+                  onForget={(kind, id) => void forgetMemory(kind, id)}
+                />
+              </div>
+            ),
+          }}
+          controls={
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                data-dossier-sprites="true"
+                onClick={(event) => {
+                  event.currentTarget.blur();
+                  setSpriteEditorId(personProfile.actorId);
+                }}
+              >{`Manage sprites · ${person?.sprite?.images.length ?? 0} assigned`}</button>
+              <button
+                type="button"
+                disabled={busy || !!refreshBusyId}
+                onClick={() => void previewVillagerRefresh(personProfile.actorId)}
+              >
+                Compare card
+              </button>
+              <details>
+                <summary>Actions</summary>
+                <button
+                  type="button"
+                  disabled={busy || !!refreshBusyId}
+                  onClick={() => void removeVillager(personProfile.actorId)}
+                >
+                  Move out
+                </button>
+              </details>
+              {refreshPreviews[personProfile.actorId] ? (
+                <div className={`${ELEMENT_TAG}-dossier-refresh`}>
+                  <p>
+                    {refreshPreviews[personProfile.actorId].changed
+                      ? `New card: ${refreshPreviews[personProfile.actorId].proposed?.name ?? "unavailable"}`
+                      : refreshPreviews[personProfile.actorId].sourceAvailable
+                        ? `Snapshot revision ${refreshPreviews[personProfile.actorId].current.revision} is current.`
+                        : "The saved snapshot remains playable; the source card is unavailable."}
+                  </p>
+                  {refreshPreviews[personProfile.actorId].changed &&
+                  refreshPreviews[personProfile.actorId].sourceAvailable ? (
+                    <button
+                      type="button"
+                      disabled={busy || !!refreshBusyId}
+                      onClick={() => void applyVillagerRefresh(personProfile.actorId)}
+                    >
+                      Apply refresh
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          }
+        />
+      </>
+    );
   }
-  if (screen === "room") {
+  function renderScene() {
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
         {room?.operation?.status === "interrupted" ? (
@@ -17386,8 +17826,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             notices={roomNotices}
             onDismissNotice={dismissRoomNotice}
             onOpenWish={(actorId, wishId) => {
-              setPersonProfile({ actorId, wishId, returnTo: "room" });
-              setScreen("person");
+              openPerson({ actorId, wishId, section: "wishes", returnTo: "room" });
             }}
             changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
             unresolvedChanges={roomUnresolvedChanges}
@@ -17561,6 +18000,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </div>
         ) : null}
       </div>
+    );
+  }
+  if (screen === "room") {
+    return (
+      <>
+        <div key="retained-scene" style={{ height: "100%" }}>
+          {renderScene()}
+        </div>
+      </>
     );
   }
   if (screen === "venue") {
@@ -18758,6 +19206,140 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     );
   }
 
+  if (screen === "menu" && menuPage === "villagers") {
+    const query = rosterSearch.trim().toLocaleLowerCase();
+    const villagers = (snapshot?.villagers ?? []).filter((person) =>
+      `${person.name} ${person.summary} ${person.tags.join(" ")}`.toLocaleLowerCase().includes(query),
+    );
+    return (
+      <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-directory-root`} data-page="villagers">
+        <main className={`${ELEMENT_TAG}-directory-paper`} aria-label="Villagers directory">
+          <header className={`${ELEMENT_TAG}-directory-head`}>
+            <h1>Villagers</h1>
+            <button type="button" onClick={() => setMenuPage("index")}>
+              Back to menu
+            </button>
+          </header>
+          {error ? (
+            <p role="alert" className={`${ELEMENT_TAG}-dossier-warning`}>
+              {error}
+            </p>
+          ) : null}
+          <div className={`${ELEMENT_TAG}-directory-tools`}>
+            <input
+              type="search"
+              value={rosterSearch}
+              onChange={(event) => setRosterSearch(event.target.value)}
+              placeholder="Search villagers by name, summary or tag…"
+              aria-label="Search villagers"
+            />
+          </div>
+          <div className={`${ELEMENT_TAG}-directory-picker`}>
+            {" "}
+            <p className={`${ELEMENT_TAG}-empty`}>
+              Characters from your library live here. Moving someone out forgets nothing about the character card
+              itself.
+            </p>
+            <div className={`${ELEMENT_TAG}-row`}>
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                onClick={() => setPickerOpen((open) => !open)}
+                disabled={busy}
+              >
+                {pickerOpen ? "Close the list" : "Add a villager"}
+              </button>
+            </div>
+            {pickerOpen ? (
+              <div className={`${ELEMENT_TAG}-field`}>
+                <input
+                  className={`${ELEMENT_TAG}-search`}
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search by name, note or tag…"
+                  aria-label="Search your character library"
+                />
+                {catalog === null ? (
+                  <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                    Reading your library…
+                  </p>
+                ) : visibleCatalog.length === 0 ? (
+                  <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
+                    No characters match that search.
+                  </p>
+                ) : (
+                  <div className={`${ELEMENT_TAG}-picker-list`}>
+                    {visibleCatalog.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`${ELEMENT_TAG}-picker-item`}
+                        data-resident={entry.inVillage ? "true" : "false"}
+                      >
+                        <AvatarFace
+                          portrait={portraits[entry.id]}
+                          name={entry.name}
+                          className={`${ELEMENT_TAG}-avatar`}
+                        />
+                        <div className={`${ELEMENT_TAG}-picker-text`}>
+                          <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
+                          <div className={`${ELEMENT_TAG}-villager-role`}>
+                            {entry.comment || entry.tags.slice(0, 3).join(" · ")}
+                          </div>
+                          {entry.summary ? <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p> : null}
+                        </div>
+                        <button
+                          type="button"
+                          className={`${ELEMENT_TAG}-button`}
+                          onClick={() => void addVillager(entry.id)}
+                          disabled={busy || entry.inVillage}
+                        >
+                          {entry.inVillage ? "Lives here" : "Move in"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <div className={`${ELEMENT_TAG}-directory-grid`}>
+            {villagers.map((person) => (
+              <button
+                type="button"
+                key={person.characterId}
+                className={`${ELEMENT_TAG}-directory-card`}
+                aria-label={`Open ${person.name} profile`}
+                onClick={() => openPerson({ actorId: person.characterId, returnTo: "menu" })}
+              >
+                <AvatarFace
+                  portrait={portraits[person.characterId]}
+                  name={person.name}
+                  className={`${ELEMENT_TAG}-avatar`}
+                />
+                <strong>{person.name}</strong>
+                <small>{person.summary || "No character summary recorded."}</small>
+                <span className={`${ELEMENT_TAG}-dossier-tags`}>
+                  {person.tags.slice(0, 4).map((tag, index) => (
+                    <span key={`${tag}-${index}`}>{tag}</span>
+                  ))}
+                </span>
+                {person.missing ? <small>Card missing</small> : null}
+              </button>
+            ))}
+          </div>
+          {!snapshot ? (
+            <p role="status">Reading villagers…</p>
+          ) : !snapshot.villagers.length ? (
+            <p>Nobody lives here yet. Add a villager from your character library.</p>
+          ) : !villagers.length ? (
+            <p>No villagers match your search.</p>
+          ) : null}
+        </main>
+      </div>
+    );
+  }
+
   // ── The dedicated menu screen ──────────────────────────────────────────────
   // The map is the homepage and carries no villager controls at all, so
   // everything you can change lives here behind one button that was already on
@@ -18809,28 +19391,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 onClick={() => openMenu("villagers")}
               >
                 {`Villagers (${snapshot?.villagers.length ?? 0})`}
-              </button>
-              <button
-                type="button"
-                className={ELEMENT_TAG + "-button"}
-                aria-pressed={menuPage === "relationships"}
-                aria-label="Relationships"
-                data-active={menuPage === "relationships" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("relationships")}
-              >
-                Relationships
-                {snapshot?.relationshipStartingPending ? " · review ties" : ""}
-              </button>
-              <button
-                type="button"
-                className={ELEMENT_TAG + "-button"}
-                aria-pressed={menuPage === "memories"}
-                data-active={menuPage === "memories" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("memories")}
-              >
-                Memories
               </button>
               <button
                 type="button"
@@ -18899,33 +19459,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 onClick={() => openMenu("chatlogs")}
               >
                 {`DEBUG: Scenes (${venueVisits?.length ?? 0})`}
-              </button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "agendas"}
-                data-active={menuPage === "agendas" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("agendas")}
-              >
-                {`DEBUG: Villager Wishes (${agendas?.length ?? 0})`}
-              </button>
-              {/**
-                The Engine's week and the village's translation of it, which used
-                to sit at the bottom of Villager Wishes. It is its own tab because
-                it answers a different question — what the Engine thinks this
-                person's days are — and because reading it against somebody's
-                wishes, in the same column, made both harder to check.
-              */}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "schedules"}
-                data-active={menuPage === "schedules" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("schedules")}
-              >
-                {`Villager Agendas (${agendas?.length ?? 0})`}
               </button>
             </div>
           </div>
@@ -19795,228 +20328,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 ) : null}
               </section>
             ) : null}
-            {menuPage === "relationships" ? (
-              <VillagesRelationships
-                request={request}
-                prefix={ELEMENT_TAG}
-                onVenue={(id) => {
-                  const venue = snapshot?.settings.venues.find((place) => place.id === id);
-                  if (venue) openVenue(venue);
-                }}
-              />
-            ) : null}
-            {menuPage === "villagers" &&
-            spriteEditorId &&
-            snapshot?.villagers.some((entry) => entry.characterId === spriteEditorId) ? (
-              <SpriteManager
-                key={spriteEditorId}
-                villager={snapshot.villagers.find((entry) => entry.characterId === spriteEditorId)!}
-                request={request}
-                onSaved={(next) => setSnapshot(next as VillageSnapshot)}
-                onBack={() => {
-                  setSpriteEditorId(null);
-                  requestAnimationFrame(() => {
-                    for (const { element, top } of spriteRosterScroll.current) element.scrollTop = top;
-                    spriteRosterButton.current?.focus({ preventScroll: true });
-                  });
-                }}
-              />
-            ) : null}
-            {menuPage === "villagers" ? (
-              <div className={`${ELEMENT_TAG}-overlay`} style={spriteEditorId ? { display: "none" } : undefined}>
-                <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Villagers</h2>
-                </div>
-                <>
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    Characters from your library live here. Moving someone out forgets nothing about the character card
-                    itself.
-                  </p>
-                  <div className={`${ELEMENT_TAG}-row`}>
-                    <button
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      onClick={() => setPickerOpen((open) => !open)}
-                      disabled={busy}
-                    >
-                      {pickerOpen ? "Close the list" : "Add a villager"}
-                    </button>
-                  </div>
-                  {pickerOpen ? (
-                    <div className={`${ELEMENT_TAG}-field`}>
-                      <input
-                        className={`${ELEMENT_TAG}-search`}
-                        type="search"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                        placeholder="Search by name, note or tag…"
-                        aria-label="Search your character library"
-                      />
-                      {catalog === null ? (
-                        <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                          Reading your library…
-                        </p>
-                      ) : visibleCatalog.length === 0 ? (
-                        <p className={`${ELEMENT_TAG}-empty`} style={{ marginTop: ".625rem" }}>
-                          No characters match that search.
-                        </p>
-                      ) : (
-                        <div className={`${ELEMENT_TAG}-picker-list`}>
-                          {visibleCatalog.map((entry) => (
-                            <div
-                              key={entry.id}
-                              className={`${ELEMENT_TAG}-picker-item`}
-                              data-resident={entry.inVillage ? "true" : "false"}
-                            >
-                              <AvatarFace
-                                portrait={portraits[entry.id]}
-                                name={entry.name}
-                                className={`${ELEMENT_TAG}-avatar`}
-                              />
-                              <div className={`${ELEMENT_TAG}-picker-text`}>
-                                <div className={`${ELEMENT_TAG}-villager-name`}>{entry.name}</div>
-                                <div className={`${ELEMENT_TAG}-villager-role`}>
-                                  {entry.comment || entry.tags.slice(0, 3).join(" · ")}
-                                </div>
-                                {entry.summary ? (
-                                  <p className={`${ELEMENT_TAG}-tile-summary`}>{entry.summary}</p>
-                                ) : null}
-                              </div>
-                              <button
-                                type="button"
-                                className={`${ELEMENT_TAG}-button`}
-                                onClick={() => void addVillager(entry.id)}
-                                disabled={busy || entry.inVillage}
-                              >
-                                {entry.inVillage ? "Lives here" : "Move in"}
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                  {snapshot && snapshot.villagers.length > 0 ? (
-                    <>
-                      <div className={`${ELEMENT_TAG}-villagers`}>
-                        {snapshot.villagers.map((villager) => (
-                          <VillagerTile
-                            key={villager.characterId}
-                            villager={villager}
-                            portrait={portraits[villager.characterId]}
-                            selected={false}
-                            // A resident's name leads to the venue they currently
-                            // occupy. Conversation belongs to that Scene.
-                            onSelect={
-                              !villager.place || room !== null
-                                ? undefined
-                                : () => {
-                                    const place = snapshot.settings.venues.find(
-                                      (entry) => entry.id === villager.place?.id,
-                                    );
-                                    if (place) openVenue(place);
-                                  }
-                            }
-                          />
-                        ))}
-                      </div>
-                      <div className={`${ELEMENT_TAG}-roster`}>
-                        {snapshot.villagers.map((villager) => (
-                          <div key={villager.characterId} className={`${ELEMENT_TAG}-roster-entry`}>
-                            <div className={`${ELEMENT_TAG}-roster-row`}>
-                              <div>
-                                <span className={`${ELEMENT_TAG}-villager-name`}>{villager.name}</span>
-                                {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-                                {refreshPreviews[villager.characterId] ? (
-                                  <div className={`${ELEMENT_TAG}-tile-summary`}>
-                                    {refreshPreviews[villager.characterId].changed
-                                      ? `New card: ${refreshPreviews[villager.characterId].proposed?.name ?? "unavailable"}`
-                                      : refreshPreviews[villager.characterId].sourceAvailable
-                                        ? `Snapshot revision ${refreshPreviews[villager.characterId].current.revision} is current.`
-                                        : "The saved snapshot remains playable; the source card is unavailable."}
-                                  </div>
-                                ) : null}
-                              </div>
-                              <span className={`${ELEMENT_TAG}-row`}>
-                                <button
-                                  type="button"
-                                  className={`${ELEMENT_TAG}-button`}
-                                  onClick={(event) => {
-                                    spriteRosterButton.current = event.currentTarget;
-                                    spriteRosterScroll.current = [];
-                                    for (
-                                      let element: HTMLElement | null = event.currentTarget.parentElement;
-                                      element;
-                                      element = element.parentElement
-                                    ) {
-                                      spriteRosterScroll.current.push({ element, top: element.scrollTop });
-                                    }
-                                    setSpriteEditorId(villager.characterId);
-                                  }}
-                                  aria-expanded={spriteEditorId === villager.characterId}
-                                >
-                                  {`Sprite Manager · ${villager.sprite?.images.length ?? 0} assigned`}
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`${ELEMENT_TAG}-button`}
-                                  onClick={() => void previewVillagerRefresh(villager.characterId)}
-                                  disabled={busy || refreshBusyId.length > 0}
-                                >
-                                  Compare card
-                                </button>
-                                {refreshPreviews[villager.characterId]?.changed &&
-                                refreshPreviews[villager.characterId]?.sourceAvailable ? (
-                                  <button
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    onClick={() => void applyVillagerRefresh(villager.characterId)}
-                                    disabled={busy || refreshBusyId.length > 0}
-                                  >
-                                    Apply refresh
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className={`${ELEMENT_TAG}-button`}
-                                  onClick={() => void removeVillager(villager.characterId)}
-                                  disabled={busy || refreshBusyId.length > 0}
-                                >
-                                  Move out
-                                </button>
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <p className={`${ELEMENT_TAG}-empty`}>
-                      Nobody lives here yet. If you have just founded the village, the people you named are on their
-                      way.
-                    </p>
-                  )}
-                </>
-              </div>
-            ) : null}
-
-            {menuPage === "memories" ? (
-              <div className={ELEMENT_TAG + "-overlay"}>
-                <div className={ELEMENT_TAG + "-overlay-head"}>
-                  <h2 className={ELEMENT_TAG + "-panel-title"}>Memories</h2>
-                </div>
-                <VillagerMemoriesPanel
-                  library={memoryLibrary}
-                  busy={busy}
-                  onRefresh={() => {
-                    setMemoryLibrary(null);
-                    void loadMemoryLibrary();
-                  }}
-                  onForget={(kind, id) => void forgetMemory(kind, id)}
-                />
-              </div>
-            ) : null}
-
             {menuPage === "noticeboard" && snapshot ? (
               <div className={`${ELEMENT_TAG}-overlay`}>
                 <div className={`${ELEMENT_TAG}-overlay-head`}>
@@ -20124,7 +20435,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       const edit = (patch: Partial<typeof draft>) =>
                         setRequestEdits((current) => ({ ...current, [entry.id]: { ...draft, ...patch } }));
                       return (
-                        <li key={entry.id} className={`${ELEMENT_TAG}-notice-row`}>
+                        <li
+                          key={entry.id}
+                          className={`${ELEMENT_TAG}-notice-row`}
+                          data-villager-request={"request:" + entry.id}
+                          tabIndex={-1}
+                        >
                           <div className={`${ELEMENT_TAG}-field`}>
                             <strong>{entry.requesterName || "A villager"}</strong>
                             {entry.requestQuote ? <p>“{entry.requestQuote}”</p> : null}
@@ -20219,7 +20535,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   <p className={`${ELEMENT_TAG}-hint`}>No home upgrades requested.</p>
                 ) : (
                   snapshot.upgradeRequests.map((entry) => (
-                    <div key={entry.id} className={`${ELEMENT_TAG}-notice-row`}>
+                    <div
+                      key={entry.id}
+                      className={`${ELEMENT_TAG}-notice-row`}
+                      data-villager-request={"upgrade:" + entry.id}
+                      tabIndex={-1}
+                    >
                       <span>{entry.detail}</span>
                       {([true, false] as const).map((approved) => (
                         <button
@@ -20259,7 +20580,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         snapshot.settings.venues.find((venue) => venue.id === entry.proposedVenueId)?.name ||
                         "another venue";
                       return (
-                        <div key={entry.characterId} className={`${ELEMENT_TAG}-notice-row`}>
+                        <div
+                          key={entry.characterId}
+                          className={`${ELEMENT_TAG}-notice-row`}
+                          data-villager-request={"residence:" + entry.characterId}
+                          tabIndex={-1}
+                        >
                           <span>{`${name} → ${target}`}</span>
                           {entry.status === "moving" ? (
                             <>
@@ -20653,299 +20979,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </button>
                   </div>
                 ) : null}
-              </div>
-            ) : null}
-
-            {/*
-              What each villager privately wishes for, shown here and nowhere else.
-
-              This is the one screen where a wish is allowed to be written down
-              as a fact, and it is a debug screen on purpose. A wish is the
-              reason behind what a villager does; put it on their tile or in the
-              chat and it becomes an objective with a tick box, which is exactly
-              what the village's prompts spend four rules refusing to write.
-              Nothing is read by any prompt from here, so what is seen here
-              cannot change how the village behaves.
-
-              A provisional agenda and a completed one with no wishes are drawn
-              differently, so unfinished wish-writing is not mistaken for an
-              answer of "no current wishes".
-            */}
-            {menuPage === "agendas" ? (
-              <div className={`${ELEMENT_TAG}-overlay`}>
-                <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>What the villagers wish</h2>
-                </div>
-                <p className={`${ELEMENT_TAG}-empty`}>
-                  Private wishes can shape what a villager notices, says, and does. Their agenda is in Villager Agendas.
-                </p>
-
-                {agendas === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>Reading what the villagers wish…</p>
-                ) : agendas.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
-                ) : (
-                  <section>
-                    {agendas.map((villager) => (
-                      <div key={villager.characterId}>
-                        <h3 className={`${ELEMENT_TAG}-story-day`}>
-                          {villager.name}
-                          {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-                        </h3>
-                        {villager.agenda === null ? (
-                          <p className={`${ELEMENT_TAG}-empty`}>
-                            Not written for yet. The village works this out on the next part of the day it already runs
-                            on, so there is nothing to press.
-                          </p>
-                        ) : villager.agenda.wishes.length === 0 ? (
-                          <p className={`${ELEMENT_TAG}-empty`}>
-                            {villager.agenda.personalizationFailure
-                              ? `Routine personalization needs attention: ${villager.agenda.personalizationFailure}`
-                              : villager.agenda.generatedAt
-                                ? "No current wishes."
-                                : "Their provisional routine is available. New wishes follow the daily allowance."}
-                          </p>
-                        ) : (
-                          <ul className={`${ELEMENT_TAG}-story`}>
-                            {villager.agenda.wishes.map((wish) => (
-                              <li key={wish.id} className={`${ELEMENT_TAG}-wish-card`}>
-                                <p className={`${ELEMENT_TAG}-wish-text`}>{wish.wish}</p>
-                                {/* Said as the thing somebody would notice,
-                                      which is the half that makes a wish a
-                                      reason for an event instead of a to-do. */}
-                                {wish.tell.length > 0 ? (
-                                  <p className={`${ELEMENT_TAG}-wish-tell`}>{`Shows as: ${wish.tell}`}</p>
-                                ) : null}
-                                {/* How long it has been sitting there, and the
-                                      day it goes quiet on its own. Said here
-                                      because this tab is the only place a wish is
-                                      a fact at all, and a wish that vanishes
-                                      between two visits reads as a bug until the
-                                      date it was always going to vanish on is
-                                      written down beside it. */}
-                                <p className={`${ELEMENT_TAG}-wish-meta`}>
-                                  {`${wish.intensity === 1 ? "Faint" : wish.intensity === 3 ? "Strong" : "Present"} · ${wishLifetimeLabel(wish.addedAt ?? "", wish.expiresAt ?? "")}`}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <WishHistory
-                          characterId={villager.characterId}
-                          total={villager.wishHistoryCount ?? 0}
-                          busy={busy}
-                          onCorrect={correctCompletedWish}
-                        />
-                        {villager.wishAttempt ? (
-                          <p
-                            className={`${ELEMENT_TAG}-hint`}
-                          >{`Wish update: ${villager.wishAttempt.stage} · ${villager.wishAttempt.reason} · ${villager.wishAttempt.calls} requests · input tokens ${villager.wishAttempt.inputTokens ?? "unavailable"} · output tokens ${villager.wishAttempt.outputTokens ?? "unavailable"}`}</p>
-                        ) : null}
-                        {/*
-                          The Engine's own week and the village's translation of
-                          it live in Villager Agendas, not alongside wishes.
-                        */}
-                      </div>
-                    ))}
-                  </section>
-                )}
-              </div>
-            ) : null}
-
-            {/*
-              The Engine's own week for each villager, and how the village reads
-              it — the half of the listing Villager Wishes used to carry.
-
-              It is its own tab because it answers a different question. Villager
-              Wishes is what THIS village decided a person is after; this is what
-              the ENGINE says their days are, before the village has touched it,
-              plus the translation the village made from it. When the week looked
-              empty the two answers were being read in the same column and there
-              was no way to tell which side had failed.
-
-              So the empty state below is a diagnosis rather than an apology: a
-              villager with no week here has none on their character card, which
-              is where the Engine keeps it now, and the fix is in the Engine's
-              own schedule screen rather than in the village. The tab title
-              carries the count of weeks found for the same reason.
-            */}
-            {menuPage === "schedules" ? (
-              <div className={`${ELEMENT_TAG}-overlay`}>
-                <div className={`${ELEMENT_TAG}-overlay-head`}>
-                  <h2 className={`${ELEMENT_TAG}-panel-title`}>Villager agendas</h2>
-                </div>
-                <p className={`${ELEMENT_TAG}-empty`}>
-                  Each villager follows a Villages agenda. A Marinara schedule can guide future days when enabled.
-                </p>
-                {agendas === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>Loading agendas…</p>
-                ) : agendas.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
-                ) : (
-                  <div className={`${ELEMENT_TAG}-agenda-list`}>
-                    {agendas.map((villager) => (
-                      <details key={villager.characterId} className={`${ELEMENT_TAG}-week`}>
-                        <summary className={`${ELEMENT_TAG}-week-toggle`}>
-                          <h3 className={`${ELEMENT_TAG}-week-head`}>
-                            {villager.name}
-                            {villager.agenda?.personalizationPending ? (
-                              <span className={`${ELEMENT_TAG}-badge`}>
-                                {villager.agenda.personalizationFailure
-                                  ? "Personalization needs retry"
-                                  : "Personalizing"}
-                              </span>
-                            ) : null}
-                            {villager.agenda?.personalizationFailure ? (
-                              <span className={`${ELEMENT_TAG}-badge`}>Personalization failed</span>
-                            ) : null}
-                            {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>Card missing</span> : null}
-                            {villager.nativeSchedule ? (
-                              <span className={`${ELEMENT_TAG}-badge`}>
-                                {villager.ingestSchedule ? "Schedule influence enabled" : "Schedule available"}
-                              </span>
-                            ) : null}
-                            {agendaUpdatePending(villager) ? (
-                              <span className={`${ELEMENT_TAG}-badge`}>Earlier hours kept</span>
-                            ) : null}
-                          </h3>
-                        </summary>
-                        <div className={`${ELEMENT_TAG}-week-body`}>
-                          {villager.agenda?.routineSummary ? (
-                            <p className={`${ELEMENT_TAG}-story-meta`}>{villager.agenda.routineSummary}</p>
-                          ) : null}
-                          {villager.agenda?.personalizationFailure ? (
-                            <p className={`${ELEMENT_TAG}-empty`}>{villager.agenda.personalizationFailure}</p>
-                          ) : villager.agenda?.personalizationPending ? (
-                            <p className={`${ELEMENT_TAG}-story-scope`}>Personalizing this agenda in the background.</p>
-                          ) : null}
-                          <div className={`${ELEMENT_TAG}-agenda-actions`}>
-                            <label className={`${ELEMENT_TAG}-agenda-switch`}>
-                              <input
-                                type="checkbox"
-                                checked={villager.ingestSchedule}
-                                disabled={busy}
-                                onChange={(event) =>
-                                  void setAgendaScheduleIngestion(villager.characterId, event.target.checked)
-                                }
-                              />
-                              Let Marinara schedule influence this Agenda
-                            </label>
-                            <button
-                              type="button"
-                              className={`${ELEMENT_TAG}-button`}
-                              disabled={busy}
-                              onClick={() => void rewriteAgenda(villager.characterId)}
-                            >
-                              Regenerate agenda
-                            </button>
-                            <VillagesBurstPreview
-                              request={request}
-                              action="agenda"
-                              args={{ characterId: villager.characterId }}
-                            />
-                            {Object.entries({
-                              rhythm: "Preferred sleep/wake rhythm",
-                              busyFree: "Broad busy/free periods",
-                              weekdayWeekend: "Weekday/weekend patterns",
-                              interests: "Compatible hobbies and interests",
-                              establishedEntities: "Established workplaces, vehicles and institutions",
-                            }).map(([key, label]) => (
-                              <label key={key} className={ELEMENT_TAG + "-agenda-switch"}>
-                                <input
-                                  type="checkbox"
-                                  checked={villager.scheduleInfluence?.categories[key] !== false}
-                                  disabled={busy || !villager.ingestSchedule}
-                                  onChange={(event) =>
-                                    void setAgendaScheduleIngestion(villager.characterId, villager.ingestSchedule, {
-                                      [key]: event.target.checked,
-                                    })
-                                  }
-                                />
-                                {label}
-                              </label>
-                            ))}
-                          </div>
-                          <p className={ELEMENT_TAG + "-story-scope"}>
-                            Changes guide future days locally and make no AI requests. Today's plan and accepted
-                            commitments remain intact.
-                            {villager.ingestSchedule ? "" : " Schedule influence is off."}
-                          </p>
-                          {villager.ingestSchedule ? (
-                            <ul>
-                              {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
-                                <li key={line}>{line}</li>
-                              ))}
-                              {(villager.agenda?.scheduleInfluenceSnapshot?.unresolved ?? []).map((line) => (
-                                <li key={line}>{line}; waits for an existing generation request.</li>
-                              ))}
-                            </ul>
-                          ) : null}
-                          {villager.weekUnreadable ? (
-                            <p className={`${ELEMENT_TAG}-empty`}>
-                              Marinara schedules could not be read right now. The Villages agenda remains active.
-                            </p>
-                          ) : !villager.nativeSchedule ? (
-                            <p className={`${ELEMENT_TAG}-empty`}>
-                              No Marinara schedule. Villages uses its own agenda.
-                            </p>
-                          ) : null}
-                          <div className={`${ELEMENT_TAG}-agenda-days`}>
-                            {villager.days.map((day) => {
-                              const blocks = day.isToday
-                                ? (villager.effectiveDays?.[day.weekday] ??
-                                  villager.agenda?.activeDay?.blocks ??
-                                  villager.agenda?.week?.[day.weekday] ??
-                                  [])
-                                : (villager.effectiveDays?.[day.weekday] ?? villager.agenda?.week?.[day.weekday] ?? []);
-                              return (
-                                <details
-                                  key={`${day.weekday}-${day.dateLabel}`}
-                                  className={`${ELEMENT_TAG}-agenda-day`}
-                                  open={day.isToday || undefined}
-                                >
-                                  <summary>
-                                    {day.weekday} · {day.dateLabel}
-                                    {day.isToday ? " · Today" : ""}
-                                  </summary>
-                                  <div className={`${ELEMENT_TAG}-agenda-compare`}>
-                                    <section aria-label={`${day.weekday} Villages agenda`}>
-                                      <h4>Villages agenda</h4>
-                                      <ol className={`${ELEMENT_TAG}-agenda-blocks`}>
-                                        {blocks.map((part, index) => (
-                                          <li key={`${part.startMinute}-${part.endMinute}-${index}`}>
-                                            <time>
-                                              {agendaMinuteLabel(part.startMinute)}–{agendaMinuteLabel(part.endMinute)}
-                                            </time>
-                                            <strong>{part.activity}</strong>
-                                            <span>
-                                              {part.venueId
-                                                ? remapPlaceName(snapshot?.settings.venues ?? [], part.venueId)
-                                                : "Home"}
-                                            </span>
-                                            <span>{part.reason}</span>
-                                            <span className={`${ELEMENT_TAG}-story-scope`}>
-                                              {part.status === "idle"
-                                                ? "Available"
-                                                : part.status === "dnd"
-                                                  ? "Busy"
-                                                  : part.status === "offline"
-                                                    ? "Offline"
-                                                    : "Online"}
-                                            </span>
-                                          </li>
-                                        ))}
-                                      </ol>
-                                    </section>
-                                  </div>
-                                </details>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                )}
               </div>
             ) : null}
 
@@ -22111,8 +22144,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     />
                   ),
                   onSelect: () => {
-                    setPersonProfile({ actorId: person.characterId, returnTo: "home" });
-                    setScreen("person");
+                    openPerson({ actorId: person.characterId, returnTo: "home" });
                   },
                 };
               });

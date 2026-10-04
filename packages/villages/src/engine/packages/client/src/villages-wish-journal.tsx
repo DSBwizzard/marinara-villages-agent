@@ -23,37 +23,44 @@ export function VillagerWishJournal({
   characterId,
   prefix,
   focusWishId = "",
+  wishes: suppliedWishes,
+  onWishes,
 }: {
   request: Request;
   characterId: string;
   prefix: string;
   focusWishId?: string;
+  wishes?: KnownWish[] | null;
+  onWishes?: (wishes: KnownWish[]) => void;
 }) {
-  const [wishes, setWishes] = useState<KnownWish[] | null>(null);
+  const [localWishes, setWishes] = useState<KnownWish[] | null>(null);
+  const wishes = suppliedWishes === undefined ? localWishes : suppliedWishes;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const root = useRef<HTMLElement>(null);
   useEffect(() => {
-    let cancelled = false;
+    if (suppliedWishes !== undefined) return;
+    const controller = new AbortController();
     const refresh = () =>
-      void request<View>("/relationships")
+      void request<View>("/relationships", { signal: controller.signal })
         .then((view) => {
-          if (!cancelled) {
+          if (!controller.signal.aborted) {
             setWishes(view.profiles?.find((profile) => profile.characterId === characterId)?.knownWishes ?? []);
             setError("");
           }
         })
         .catch((cause) => {
-          if (!cancelled) setError(cause instanceof Error ? cause.message : "Wishes could not be read.");
+          if (!controller.signal.aborted)
+            setError(cause instanceof Error ? cause.message : "Wishes could not be read.");
         });
     setWishes(null);
     refresh();
     const timer = window.setInterval(refresh, 30_000);
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearInterval(timer);
     };
-  }, [request, characterId]);
+  }, [request, characterId, suppliedWishes]);
   useEffect(() => {
     if (!focusWishId || !wishes) return;
     const target = [...(root.current?.querySelectorAll<HTMLElement>("[data-wish-id]") ?? [])].find(
@@ -70,7 +77,9 @@ export function VillagerWishJournal({
         `/villagers/${encodeURIComponent(characterId)}/wishes/${encodeURIComponent(wishId)}/retire`,
         { method: "POST" },
       );
-      setWishes(view.profiles.find((profile) => profile.characterId === characterId)?.knownWishes ?? []);
+      const next = view.profiles.find((profile) => profile.characterId === characterId)?.knownWishes ?? [];
+      setWishes(next);
+      onWishes?.(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "That wish could not be retired.");
     } finally {

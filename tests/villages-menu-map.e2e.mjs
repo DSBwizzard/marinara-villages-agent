@@ -221,13 +221,11 @@ try {
     for (const img of await page.locator(".marinara-capability-villages-pin-photo img").all())
       await expect(img).toHaveCSS("object-fit", "contain");
     await page.getByRole("button", { name: "More" }).click();
-    await expect(page.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Memories", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Homes", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Town map", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Village Story/u })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Noticeboard/u })).toHaveCount(0);
-    await page.getByRole("button", { name: "Memories", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "What your villagers carry forward" })).toBeVisible();
     await page.getByRole("button", { name: "General settings", exact: true }).click();
     await expect(page.getByRole("button", { name: "Run setup again" })).toHaveCount(0);
     await page.getByRole("button", { name: "Village Settings" }).click();

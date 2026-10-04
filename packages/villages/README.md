@@ -4,6 +4,16 @@
 
 Scene notice dismissals send the complete saved receipt ID in a bounded JSON body. Relationship and memory receipts can exceed the host router's path-parameter limit; they now dismiss and stay dismissed after refresh without changing their IDs or requesting a model. The previous endpoint remains available for clients with short IDs.
 
+## Villager journals and dossiers
+
+Villagers is a searchable directory. Each resident opens a large, angled character journal over a paper dossier, with Overview, Relationships, Wishes, Memories, Agenda, and Venues sections. People on the map and Scene Wish notices open the same profile; Back returns to the directory, People, or the unchanged Scene. Phones stack a compact journal above the dossier. This paper presentation is scoped to Villagers; other management pages retain their existing layout.
+
+Normal profiles show existing earned relationship information, shared Wishes, known routines, and established Venue connections. Inspect starts off on every new profile entry. It contains private Wishes, full Agendas, memory records and their evidence/removal controls, and the existing relationship creator with its spoiler acknowledgment. Starting-tie acceptance and spoiler visibility remain village-wide. Full memory and Agenda data load only when their Inspect sections need them. Browsing adds no generation request or gameplay action.
+
+Manage sprites and Compare card live on the profile; Actions contains Move out. Relevant Projects and Venue Requests link to the existing shared records by resident ID. Venue links open View Venue; Visit remains an explicit action. Character prose is not parsed into invented species, occupations, birthdays, or ownership facts.
+
+Run `node tests/villages-dossier.e2e.mjs` for privacy, resident filtering, record links, card refresh, removal, return state, and six desktop/mobile layouts. Set `VILLAGES_VISUAL_OUTPUT` to save the rendered fixtures. The Wish journal, owned Agenda, Sprite Manager, menu, and mobile exploration browser regressions cover the relocated entry points and controls.
+
 ## Warm exploration on desktop and mobile
 
 Map, Places, People and More share labels, icons, searches and Venue actions across layouts. Notices stays directly available with its count; Events is in More on both. Desktop uses a compact toolbar and an overlay side panel. Mobile keeps touch-sized bottom navigation and overlay sheets, with drag and pinch navigation and no zoom/reset buttons. Searching or opening a panel does not resize the map. Search and selection survive layout changes; the mobile map view survives browsing and menu round trips.
