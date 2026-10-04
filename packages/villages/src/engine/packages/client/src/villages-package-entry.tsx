@@ -15807,13 +15807,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSetupMapSize(size);
         setSetupMapSource("upload");
         setSetupMapReviewed(false);
+        updateSetupMapRequest(null);
       } catch (cause) {
         setSetupMapProblem(messageFrom(cause, "That picture could not be used as the village map."));
       } finally {
         setSetupMapBusy(false);
       }
     },
-    [snapshot],
+    [snapshot, updateSetupMapRequest],
   );
 
   // The picture is stored whole, exactly as it was picked. Re-encoding a big
