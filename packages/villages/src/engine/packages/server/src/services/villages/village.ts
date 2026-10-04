@@ -1,4 +1,5 @@
 import { assertVillageVenueCapacity, assertCanAddVillageVenue, villageVenueLimit } from "./venue-capacity.js";
+import { wishExpired, wishRetained } from "./wish-definition.js";
 import {
   addRoutineIdea,
   deriveInfluence,
@@ -860,6 +861,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
   const context = {
     card: effectiveCard,
     characterId,
+    wishAttemptId: initialWishAttemptId,
     allowInitialWish: !!initialWishAttemptId,
     playerRole: village.playerRole,
     playerPersonaName: village.playerPersonaName,
@@ -964,10 +966,11 @@ function applyAgenda(
   const now = new Date();
   const initialAttempt = villager.wishLifecycle?.attempt;
   const acceptsInitialWish =
-    !initialAttempt ||
-    (initialAttempt.id === initialWishAttemptId &&
-      initialAttempt.dateKey === agendaDateKey(now) &&
-      !initialAttempt.candidate);
+    !!initialWishAttemptId &&
+    !!initialAttempt &&
+    initialAttempt.id === initialWishAttemptId &&
+    initialAttempt.dateKey === agendaDateKey(now) &&
+    !initialAttempt.candidate;
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
   const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
   villager.agenda = {
@@ -4310,7 +4313,7 @@ export async function reconcileVillage(
   // timer and restart catch-up, irrespective of story pace.
   await mutateVillageState((state) => {
     for (const resident of state.villagers) {
-      const expired = resident.agenda?.wishes.filter((wish) => Date.parse(wish.expiresAt) <= now.getTime()) ?? [];
+      const expired = resident.agenda?.wishes.filter((wish) => wishExpired(wish, now.getTime())) ?? [];
       if (expired.length)
         state.wishRefillIntents[resident.characterId] = {
           id: backgroundRevision(expired.map((wish) => wish.id)),
@@ -4751,7 +4754,7 @@ registerBackgroundHandler("story", {
       for (const lapse of proposal.lapsed) {
         const entry = state.villagers.find((villager) => villager.characterId === lapse.characterId);
         if (!entry?.agenda) continue;
-        const kept = entry.agenda.wishes.filter((wish) => wish.id !== lapse.wishId);
+        const kept = entry.agenda.wishes.filter((wish) => wish.id !== lapse.wishId || wishRetained(wish));
         if (kept.length !== entry.agenda.wishes.length) entry.agenda = { ...entry.agenda, wishes: kept };
       }
     }

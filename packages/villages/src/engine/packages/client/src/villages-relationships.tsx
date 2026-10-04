@@ -296,11 +296,9 @@ export function VillagesRelationships({
                       <p>Interests: {profile.interests || "Not yet shared."}</p>
                     </>
                   )}
-                  {profile.closeKnownAt ? (
+                  {profile.wishes.length ? (
                     <>
-                      <p>
-                        {profile.close ? "Current wishes" : "Last known wishes"} · {date(profile.closeKnownAt)}
-                      </p>
+                      <p>Known wishes</p>
                       <ul>
                         {profile.wishes.map((wish, index) => (
                           <li key={index}>{wish}</li>
@@ -309,7 +307,7 @@ export function VillagesRelationships({
                       {!profile.wishes.length ? <p>No current wish recorded.</p> : null}
                     </>
                   ) : (
-                    <p>A close, trusted friendship reveals personal wishes.</p>
+                    <p>No wishes shared yet.</p>
                   )}
                   {profile.learned.map((entry, index) => (
                     <p key={index}>

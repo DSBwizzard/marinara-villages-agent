@@ -611,7 +611,13 @@ assert.equal(
 knowledge.edges[relationshipKey("Rosa", "player")]!.playerContactAt = stamp;
 captureRelationshipKnowledge(knowledge, village);
 assert.equal(projectRelationshipProfiles(knowledge, village)[0]!.ties[0]!.reasons.length, 0);
-assert.ok(projectRelationshipProfiles(knowledge, village)[0]!.wishes.length);
+assert.equal(
+  projectRelationshipProfiles(knowledge, village)[0]!.wishes.length,
+  0,
+  "Friendship alone cannot reveal private wishes",
+);
+village.wishKnowledge.Rosa = [{ wishId: "wish", text: "A quiet garden", learnedAt: stamp, lineIds: ["disclosed"] }];
+assert.deepEqual(projectRelationshipProfiles(knowledge, village)[0]!.wishes, ["A quiet garden"]);
 knowledge.edges[relationshipKey("Rosa", "player")]!.trust = 14;
 reconcileRelationships(knowledge, village);
 const oldKnowledge = structuredClone(knowledge.knowledge);

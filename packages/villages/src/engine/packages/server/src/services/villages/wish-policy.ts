@@ -60,6 +60,7 @@ export function wishRevision(resident: VillageVillager, state: VillageState): st
         state.selectedLorebookIds,
         state.setting,
         state.storyPace,
+        state.wishSystemVersion,
       ]),
     )
     .digest("hex");

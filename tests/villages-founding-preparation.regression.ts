@@ -40,6 +40,7 @@ let writes = 0;
 function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
+    wishSystemVersion: 2,
     seed: "station-fields",
     name: "Station Fields",
     setting: "A disused station",

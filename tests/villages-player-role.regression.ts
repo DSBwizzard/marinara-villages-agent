@@ -69,7 +69,7 @@ async function main() {
   assert.throws(() => playerRoleForSetup(null, custom, false), /fixed at founding/);
   assertPlayerRoleLocked(custom, { ...custom });
   assert.equal(defaultVillageState().playerRole, null);
-  assert.equal(coerceVillageState({ setupAt: "2026-09-01T00:00:00Z" }).playerRole, null);
+  assert.equal(coerceVillageState({ wishSystemVersion: 2, setupAt: "2026-09-01T00:00:00Z" }).playerRole, null);
   const narration = builtInNarrationTurn({ maxTokens: 4096, temperature: 0.8 });
   const card = {
     id: "hana",

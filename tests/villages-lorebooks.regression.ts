@@ -13,11 +13,12 @@ import { buildTownMapPrompt } from "../packages/villages/src/engine/packages/ser
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({}).selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({ selectedLorebookIds: ["world", "world", "missing"] }).selectedLorebookIds, [
-    "world",
-    "missing",
-  ]);
+  assert.deepEqual(coerceVillageState({ wishSystemVersion: 2 }).selectedLorebookIds, []);
+  assert.deepEqual(
+    coerceVillageState({ wishSystemVersion: 2, selectedLorebookIds: ["world", "world", "missing"] })
+      .selectedLorebookIds,
+    ["world", "missing"],
+  );
   assert.deepEqual(readSelectedLorebookIds([" world ", "world"]), ["world"]);
   assert.deepEqual(coerceSelectedLorebookIds("wrong shape"), []);
 

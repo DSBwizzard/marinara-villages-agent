@@ -1,3 +1,4 @@
+import { VillagerWishJournal } from "./villages-wish-journal.js";
 import { EXPLORATION_STYLES } from "./villages-exploration-styles.js";
 import { VenuePolaroid } from "./villages-venue-polaroid.js";
 import { VILLAGES_FORGING_STYLES } from "./villages-forging-styles.js";
@@ -1251,7 +1252,7 @@ type SceneView = {
 };
 
 type RoomRecordEvent = {
-  wishUpdate?: { wishId: string; state: "revealed" | "progress" | "fulfilled" };
+  wishUpdate?: { actorId?: string; wishId: string; state: "revealed" | "progress" | "fulfilled" };
   id: string;
   kind: "memory" | "wish" | "venue" | "request" | "project" | "relationship-up" | "relationship-down";
   text: string;
@@ -10023,6 +10024,7 @@ function RoomPanel({
   onContinueWithoutGreeting,
   notices,
   onDismissNotice,
+  onOpenWish,
   changeStatus,
   onReplayChanges,
   unresolvedChanges,
@@ -10074,6 +10076,7 @@ function RoomPanel({
   onContinueWithoutGreeting: () => void;
   notices: RoomRecordEvent[];
   onDismissNotice: (id: string) => void;
+  onOpenWish?: (actorId: string, wishId: string) => void;
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
   unresolvedChanges?: { submissionId: string; domain: string }[];
@@ -10726,6 +10729,10 @@ function RoomPanel({
                       type="button"
                       className={`${ELEMENT_TAG}-room-star-detail`}
                       onClick={(event) => {
+                        if (notice.wishUpdate?.actorId && onOpenWish) {
+                          onOpenWish(notice.wishUpdate.actorId, notice.wishUpdate.wishId);
+                          return;
+                        }
                         memoryTriggerRef.current = event.currentTarget;
                         setOpenMemory(notice);
                       }}
@@ -13088,7 +13095,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // the place decides what is behind the door. See `openVenue`, which is where
   // the other half of that statement lives — a place with one person standing in
   // it never reaches this screen at all.
-  const [screen, setScreen] = useState<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room">("home");
+  const [screen, setScreen] = useState<
+    "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person"
+  >("home");
   useSceneViewport(element, screen === "room");
   const [focusedProjectId, setFocusedProjectId] = useState("");
   const [placingProjectId, setPlacingProjectId] = useState("");
@@ -13146,6 +13155,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * village is re-read on a timer, and a place that has left the map in the
    * meantime simply stops having any doors to draw.
    */
+  const [personProfile, setPersonProfile] = useState<{
+    actorId: string;
+    wishId?: string;
+    returnTo: "home" | "room";
+  } | null>(null);
   const [openPlaceId, setOpenPlaceId] = useState<string | null>(null);
   useExplorationViewport(element, mobile && screen === "home");
   const [exploreSheet, setExploreSheet] = useState<ExplorationSheet | null>(null);
@@ -17168,6 +17182,49 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // there is nothing here that is not already known. So the look-around is
   // RENDERED. It is the same promise the places list already makes about pictures:
   // nothing in this village happens because the player looked at it.
+  if (screen === "person" && personProfile) {
+    const person = snapshot?.villagers.find((entry) => entry.characterId === personProfile.actorId);
+    const venue = snapshot?.settings.venues.find((entry) => entry.id === person?.place?.id);
+    return (
+      <div className={`${ELEMENT_TAG}-root`} data-mobile={String(mobile)} style={{ overflowY: "auto" }}>
+        <section className={`${ELEMENT_TAG}-overlay`} aria-label={`${person?.name ?? "Villager"} profile`}>
+          <button
+            type="button"
+            className={`${ELEMENT_TAG}-button`}
+            onClick={() => {
+              setScreen(personProfile.returnTo);
+              if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
+            }}
+          >
+            {personProfile.returnTo === "room" ? "Back to Scene" : "Back to People"}
+          </button>
+          <h2>{person?.name ?? "Villager"}</h2>
+          <p>{venue ? `Current location: ${venue.name}` : "Current location unavailable"}</p>
+          {venue ? (
+            <button
+              type="button"
+              className={`${ELEMENT_TAG}-button`}
+              onClick={() => {
+                openVenue(venue);
+                if (personProfile.returnTo === "home") {
+                  explorationReturnTab.current = "people";
+                  explorationOrigin.current = null;
+                }
+              }}
+            >
+              View Venue
+            </button>
+          ) : null}
+          <VillagerWishJournal
+            request={request}
+            characterId={personProfile.actorId}
+            prefix={ELEMENT_TAG}
+            focusWishId={personProfile.wishId}
+          />
+        </section>
+      </div>
+    );
+  }
   if (screen === "room") {
     return (
       <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-room-screen`} data-mobile={mobile ? "true" : "false"}>
@@ -17327,6 +17384,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             onEnd={() => void closeRoom()}
             notices={roomNotices}
             onDismissNotice={dismissRoomNotice}
+            onOpenWish={(actorId, wishId) => {
+              setPersonProfile({ actorId, wishId, returnTo: "room" });
+              setScreen("person");
+            }}
             changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
             unresolvedChanges={roomUnresolvedChanges}
             onRetryChangeInterpretation={(submissionId, domain) => {
@@ -22048,7 +22109,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       className={ELEMENT_TAG + "-explore-face"}
                     />
                   ),
-                  onSelect: current ? () => selectVenue(current) : undefined,
+                  onSelect: () => {
+                    setPersonProfile({ actorId: person.characterId, returnTo: "home" });
+                    setScreen("person");
+                  },
                 };
               });
               const title =

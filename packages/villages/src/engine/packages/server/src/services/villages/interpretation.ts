@@ -220,6 +220,8 @@ export async function systemInterpretations(
             actorId: facts.actorId,
             wishId: facts.wishId,
             wishText: facts.wishText,
+            conditions: facts.conditions,
+            discoveries: facts.discoveries,
             wishAddedAt: facts.wishAddedAt,
             playerName: facts.playerName,
             matchingReceiptIds: facts.matchingReceiptIds,

@@ -1,3 +1,5 @@
+import { selectWishSize, wishGenerationDirection, wishExpired } from "./wish-definition.js";
+import { setWishJournalStatus } from "./wish-journal.js";
 import { completionFailure, WorkFailureError } from "./work-failure.js";
 import { addRoutineIdea } from "./owned-routine.js";
 import type { CapabilityLanguageModelCompletion, CapabilityLanguageModelMessage } from "@marinara-engine/shared";
@@ -47,6 +49,27 @@ import {
 const clocks = new Map<string, () => Date>();
 const MAX_ACTIVE = 2;
 
+/** Explicit player retirement has no fulfillment award and no model request. */
+export async function retireResidentWish(characterId: string, wishId: string): Promise<void> {
+  await outsideVenueOperation(async () => {
+    await mutateVillageState((state) => {
+      const resident = state.villagers.find((person) => person.characterId === characterId);
+      const wish = resident?.agenda?.wishes.find((item) => item.id === wishId);
+      if (!resident?.agenda || !wish?.learnedAt) throw notFound("That discovered wish is not active.");
+      resident.agenda.wishes = resident.agenda.wishes.filter((item) => item.id !== wishId);
+      removeWishActivities(resident, wishId, new Date());
+      setWishJournalStatus(state, characterId, wishId, "retired");
+      if (resident.wishLifecycle) {
+        const need = resident.wishLifecycle.needs.find((need) => need.id === wish.need?.id);
+        if (need) need.state = "expired";
+      }
+      state.progressTasks = state.progressTasks.filter(
+        (task) => task.definition.owner.kind !== "wish" || task.definition.owner.id !== wishId,
+      );
+    });
+  });
+}
+
 export function registerInitialWish(resident: VillageVillager, now: Date): void {
   const lifecycle = (resident.wishLifecycle ??= newWishLifecycle());
   for (const wish of resident.agenda?.wishes ?? []) rememberWishNeed(resident, wish);
@@ -81,8 +104,7 @@ export async function reserveInitialWishAllowance(characterId: string, now: Date
 export function expireResidentWishes(resident: VillageVillager, now: Date): void {
   if (!resident.agenda) return;
   resident.agenda.wishes = resident.agenda.wishes.filter((wish) => {
-    const expiry = Date.parse(wish.expiresAt);
-    if (!Number.isFinite(expiry) || expiry > now.getTime()) return true;
+    if (!wishExpired(wish, now.getTime())) return true;
     recordWishOutcome(resident, wish, now.toISOString(), `expired:${wish.id}`, "expired");
     removeWishActivities(resident, wish.id, now);
     return false;
@@ -381,10 +403,13 @@ async function generateWish(input: {
       resident.agenda.wishes,
       resident.wishLifecycle?.needs ?? [],
     );
+    const size = selectWishSize(job.id);
     const messages: CapabilityLanguageModelMessage[] = [
       {
         role: "system",
         content:
+          wishGenerationDirection(size) +
+          "\n" +
           'Propose at most ONE personal desire grounded in the complete authored character, or none. Their circumstances may change; their personality, voice, and values are not rewritten by the village. Do not prescribe a visible tell or recurring gesture. JSON only: {"wish":null} or {"wish":{"wish":"...","intensity":1,"need":{"subject":"specific object or experience","action":"acquire, repair, use, improve, or specific experience","policy":"lasting or recurring"}},"adjustment":{"slot":1,"activity":"ordinary activity","reason":"...","venueId":"existing id","zoneId":"existing id"}}. Adjustment is optional. Also return matchedNeedId (exact supplied known id, or empty for a new need) and certain (false if uncertain). Match the same unmet need, not merely the same object; acquiring, repairing and using differ. Do not change a matched recurrence policy. You may optionally include ONE routineIdea:{activity,venueId,zoneId,flexible:true} for an ordinary future optional activity; it establishes no asset, job or physical fact. Never invent people, places, physical changes, injuries, debts, emergencies, or an object already owned. Wishes are personal interests, not player errands. Lasting achievements stay settled; recurring ordinary needs may return only after seven fulfilled days. Active wishes must not repeat. Use the supplied future free-time slots only. No suitable wish is a valid quiet day.',
       },
       {
@@ -431,7 +456,7 @@ async function generateWish(input: {
       raw = payload?.wish;
     const candidate =
       raw && typeof raw === "object" && !Array.isArray(raw)
-        ? coerceWish(raw, randomVillageSeed(), now.toISOString())
+        ? coerceWish({ ...raw, size }, randomVillageSeed(), now.toISOString())
         : null;
     if (!candidate) {
       if (!payload || !("wish" in payload) || payload.wish !== null)

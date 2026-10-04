@@ -165,8 +165,14 @@ function saveTurn(message: string, content: string, speakerId = "rosa", venueId 
 
 async function main() {
   try {
-    assert.equal(coerceVillageState({ ...village, progressEngineVersion: undefined }).progressEngineVersion, 1);
-    assert.throws(() => coerceVillageState({ ...village, progressEngineVersion: 0 }), /retired Project engine/);
+    assert.equal(
+      coerceVillageState({ wishSystemVersion: 2, ...village, progressEngineVersion: undefined }).progressEngineVersion,
+      1,
+    );
+    assert.throws(
+      () => coerceVillageState({ wishSystemVersion: 2, ...village, progressEngineVersion: 0 }),
+      /retired Project engine/,
+    );
     await mutateVillageState((current) =>
       current.progressTasks.push(
         createProgressTask({

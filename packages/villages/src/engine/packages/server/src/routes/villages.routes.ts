@@ -1,3 +1,4 @@
+import { retireResidentWish } from "../services/villages/wish-lifecycle.js";
 import {
   readSpriteManager,
   importSpriteArtwork,
@@ -551,6 +552,17 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return fail(reply, error, "read relationships");
     }
   });
+  engine.post<{ Params: { characterId: string; wishId: string } }>(
+    "/villagers/:characterId/wishes/:wishId/retire",
+    async (request, reply) => {
+      try {
+        await retireResidentWish(readCharacterId(request.params.characterId), request.params.wishId);
+        return await readRelationshipsView();
+      } catch (error) {
+        return fail(reply, error, "retiring wish");
+      }
+    },
+  );
   engine.post("/relationships/creator", async (request, reply) => {
     try {
       return await changeRelationshipCreator(request.body);

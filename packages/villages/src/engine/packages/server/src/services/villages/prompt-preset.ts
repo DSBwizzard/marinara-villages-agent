@@ -1,3 +1,4 @@
+import { wishSize, sizedWishLifetime } from "./wish-definition.js";
 import { agendaPromptDay } from "./owned-routine.js";
 // Villages — the village's own half of a villager's prompt.
 //
@@ -1706,10 +1707,14 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
   return {
     id,
     wish,
+    size: wishSize(raw.size),
+    conditionRevision:
+      Number.isSafeInteger(raw.conditionRevision) && raw.conditionRevision >= 0 ? raw.conditionRevision : 0,
     intensity: Math.min(3, Math.max(1, intensity)),
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: born,
-    expiresAt: born.length === 0 ? "" : wishExpiresAt(born, wishLifetimeDays(id)),
+    expiresAt:
+      born.length === 0 ? "" : wishExpiresAt(born, sizedWishLifetime(id, wishSize(raw.size), wishLifetimeDays(id))),
     ...(need.subject || need.action || need.policy
       ? {
           need: {
@@ -1722,11 +1727,6 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
       : {}),
   };
 }
-
-// TODO: Wishes currently share one deliberately simple shape. If the village
-// later needs durable small/large wish tiers, add an explicit stored kind with
-// distinct generation, expiry, and UI semantics. Do not infer a tier from prose
-// or reuse `intensity`, which means present attention rather than importance.
 
 /** Compatibility helper; durable memories are never trimmed by entry count. */
 export function trimChronicle(entries: readonly VillageChronicleEntry[], _max: number): VillageChronicleEntry[] {

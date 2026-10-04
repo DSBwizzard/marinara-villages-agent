@@ -108,6 +108,7 @@ globalThis.fetch = async () =>
     ]),
   );
 const state = coerceVillageState({
+  wishSystemVersion: 2,
   seed: "seed",
   setting: "Village",
   venues: [{ id: "park", name: "Park", classes: ["gathering"], form: "Park" }],

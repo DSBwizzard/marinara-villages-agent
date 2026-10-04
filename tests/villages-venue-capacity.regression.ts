@@ -43,7 +43,7 @@ async function main() {
   });
   const fresh = defaultVillageState();
   assert.equal(villageVenueLimit(fresh), 16);
-  assert.equal(coerceVillageState({}).venueCapacityPolicy, "sixteen-total-v1");
+  assert.equal(coerceVillageState({ wishSystemVersion: 2 }).venueCapacityPolicy, "sixteen-total-v1");
   fresh.venues = Array.from({ length: 15 }, (_, i) => venue(i));
   addVillageVenue(fresh, venue(15));
   assert.equal(fresh.venues.length, 16);

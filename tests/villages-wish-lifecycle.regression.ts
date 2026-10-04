@@ -114,6 +114,7 @@ function seed(count = 1): VillageState {
   debugEnabled = false;
   onModel = undefined;
   const state = coerceVillageState({
+    wishSystemVersion: 2,
     seed: "wish-test",
     name: "Willow",
     setting: "A quiet village",

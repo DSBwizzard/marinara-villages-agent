@@ -7,7 +7,7 @@ import { coerceWishOutcome } from "./wish-coercion.js";
 import type { WishOutcome } from "./wish-types.js";
 
 function archivePrefix(seed: string, characterId: string): string {
-  return `wish-history:${createHash("sha256").update(`${seed}\0${characterId}`).digest("hex")}`;
+  return `wish-history:${createHash("sha256").update(`wish-journal-v2\0${seed}\0${characterId}`).digest("hex")}`;
 }
 const pointerId = (prefix: string, wishId: string): string =>
   `${prefix}:wish:${createHash("sha256").update(wishId).digest("hex")}`;
