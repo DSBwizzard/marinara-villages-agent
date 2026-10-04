@@ -89,8 +89,11 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: /Villager Agendas/ }).click();
-    await page.locator("summary").filter({ hasText: "Mara" }).first().click();
+    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("button", { name: "Open Mara profile" }).click();
+    const sections = page.getByRole("navigation", { name: "Villager profile sections" });
+    await sections.getByRole("button", { name: "Agenda", exact: true }).click();
+    await sections.getByRole("button", { name: "Inspect", exact: true }).click();
     const master = page.getByRole("checkbox", { name: "Let Marinara schedule influence this Agenda" });
     const controls = [
       "Preferred sleep/wake rhythm",

@@ -109,7 +109,26 @@ try {
           memoryMode: "live",
           activeIds: ["feddy"],
           participants: [{ characterId: "feddy", name: "Feddy" }],
-          lines: [],
+          lines: [
+            {
+              id: "earlier",
+              kind: "narration",
+              speakerId: "",
+              name: "Narration",
+              at: now,
+              content: "The mill hums while light settles across the floor. ".repeat(30),
+              heardBy: ["feddy"],
+            },
+            {
+              id: "latest",
+              kind: "speech",
+              speakerId: "feddy",
+              name: "Feddy",
+              at: now,
+              content: "Ready.",
+              heardBy: ["feddy"],
+            },
+          ],
           sceneRevision: 1,
         };
         value = { session };
@@ -141,6 +160,10 @@ try {
     await nav.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: /Feddy The Mill/ }).click();
     const profile = page.getByRole("region", { name: "Feddy profile" });
+    await page
+      .getByRole("navigation", { name: "Villager profile sections" })
+      .getByRole("button", { name: "Wishes", exact: true })
+      .click();
     await expect(profile.getByRole("heading", { name: "What you’ve learned" })).toBeVisible();
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I like the idea of lessons.", { exact: true })).toBeVisible();
@@ -161,6 +184,10 @@ try {
     assert.equal(retirements, 1);
     await profile.getByRole("button", { name: "Back to People" }).click();
     await page.getByRole("button", { name: /Roxie Current location unavailable/ }).click();
+    await page
+      .getByRole("navigation", { name: "Villager profile sections" })
+      .getByRole("button", { name: "Wishes", exact: true })
+      .click();
     await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Back to People" }).click();
     await page.getByRole("button", { name: /Feddy The Mill/ }).click();
@@ -171,11 +198,25 @@ try {
     await expect(notices).toBeVisible();
     // Fresh notices open after rendering; clicking during that effect would race and close the panel.
     await expect(notices).toHaveAttribute("aria-expanded", "true");
+    await page.getByRole("button", { name: /Previous/ }).click();
+    const reader = page.getByRole("region", { name: "Current paragraph" });
+    const retainedReader = await reader.elementHandle();
+    const readingText = await reader.textContent();
+    await reader.evaluate((node) => {
+      node.scrollTop = 20;
+    });
+    const readingScroll = await reader.evaluate((node) => node.scrollTop);
+    await page.getByRole("textbox", { name: "Message at The Mill" }).fill("Unsaved Scene draft");
     await page.getByRole("button", { name: /View Wish update: Wish discovery/ }).click();
     await expect(profile).toBeVisible();
+    assert.equal(await retainedReader.evaluate((node) => node.isConnected), true, "Scene reader stays mounted");
     await expect(profile.locator('[data-wish-id="swim"]')).toBeFocused();
     await profile.getByRole("button", { name: "Back to Scene" }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
+    await expect(reader).toHaveText(readingText);
+    assert.equal(await retainedReader.evaluate((node) => node.isConnected), true);
+    assert.equal(await reader.evaluate((node) => node.scrollTop), readingScroll);
     assert.equal(writes, 2, "The only writes are explicit retirement and Scene entry");
     assert.deepEqual(errors, []);
     await page.close();

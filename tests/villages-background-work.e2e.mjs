@@ -37,7 +37,7 @@ const snapshot = {
   residences: [],
   venueMail: [],
   happenings: [],
-  villagers: [],
+  villagers: [{ characterId: "mara", name: "Mara", summary: "", tags: [], missing: false, place: null }],
   foundingPreparation: null,
   recap: null,
   settings: {
@@ -200,7 +200,9 @@ try {
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect.poll(() => retries.length).toBe(2);
   assert.equal(acceptedRetries, 1);
-  await page.getByRole("button", { name: /^Villager Agendas/ }).click();
+  await page.getByRole("button", { name: /^Villagers \(/ }).click();
+  await page.getByRole("button", { name: "Open Mara profile" }).click();
+  await page.getByRole("button", { name: "Inspect", exact: true }).click();
   await expect(page.getByText("Mara's agenda", { exact: true })).toBeVisible();
   if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
     await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });

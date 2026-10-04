@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-type Profile = {
+export type RelationshipProfile = {
   characterId: string;
   name: string;
   warmth: number;
@@ -15,6 +15,7 @@ type Profile = {
   routine: string[];
   interests: string;
   wishes: string[];
+  knownWishes?: import("./villages-wish-journal.js").KnownWish[];
   ties: { toId: string; name: string; warmth: number; trust: number; reasons: string[] }[];
   learned: { text: string; kind: string; at: string }[];
   access: { venueId: string; zoneId: string; active: boolean; name: string }[];
@@ -28,8 +29,8 @@ type CreatorTie = {
   trust: number;
   proposed: boolean;
 };
-type View = {
-  profiles: Profile[];
+export type RelationshipView = {
+  profiles: RelationshipProfile[];
   starting: {
     pending: boolean;
     spoilers: boolean;
@@ -61,39 +62,58 @@ export function VillagesRelationships({
   request,
   prefix,
   onVenue,
+  characterId,
+  inspect = true,
+  view: suppliedView,
+  onView,
 }: {
   request: Request;
   prefix: string;
   onVenue: (id: string) => void;
+  characterId?: string;
+  inspect?: boolean;
+  view?: RelationshipView | null;
+  onView?: (view: RelationshipView) => void;
 }) {
-  const [view, setView] = useState<View | null>(null);
+  const [localView, setLocalView] = useState<RelationshipView | null>(null);
+  const view = suppliedView === undefined ? localView : suppliedView;
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [acknowledge, setAcknowledge] = useState(false);
   const [selected, setSelected] = useState("");
   useEffect(() => {
-    let cancelled = false;
+    if (suppliedView !== undefined) return;
+    const controller = new AbortController();
     const refresh = () => {
-      void request<View>("/relationships")
+      void request<RelationshipView>("/relationships", { signal: controller.signal })
         .then((next) => {
-          if (!cancelled) setView(next);
+          if (!controller.signal.aborted) {
+            setLocalView(next);
+            setError("");
+          }
         })
         .catch((cause) => {
-          if (!cancelled) setError(cause instanceof Error ? cause.message : "Relationships could not be read.");
+          if (!controller.signal.aborted)
+            setError(cause instanceof Error ? cause.message : "Relationships could not be read.");
         });
     };
     refresh();
     const interval = window.setInterval(refresh, 30_000);
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearInterval(interval);
     };
-  }, [request]);
+  }, [request, suppliedView]);
   const action = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError("");
     try {
-      setView(await request<View>("/relationships/creator", { method: "POST", body: JSON.stringify(body) }));
+      const next = await request<RelationshipView>("/relationships/creator", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setLocalView(next);
+      onView?.(next);
       setAcknowledge(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Relationships could not be saved.");
@@ -133,231 +153,241 @@ export function VillagesRelationships({
         <p role="status">Reading relationships…</p>
       ) : (
         <>
-          <details className="villages-relationship-setup" open={view.starting.pending || undefined}>
-            <summary>{view.starting.pending ? "Review starting ties" : "Relationship creator"}</summary>
-            {view.starting.pending ? (
-              <>
-                <p>
-                  These suggestions use explicit existing history. Accept them, start neutral, or reveal values to
-                  adjust them. Creator choices do not tell your player character private information.
-                </p>
-                <div className="villages-relationship-grid">
-                  {view.starting.summaries
-                    .filter((tie) => tie.status !== "No established history")
-                    .map((tie) => (
-                      <p key={`${tie.fromId}:${tie.toId}`}>
-                        {tie.fromName} → {tie.toName}: <strong>{tie.status}</strong>
-                      </p>
-                    ))}
-                </div>
-                {view.starting.summaries.every((tie) => tie.status === "No established history") ? (
-                  <p>No established history was found. Unspecified ties begin neutral.</p>
-                ) : null}
-                <button
-                  type="button"
-                  className={button}
-                  disabled={busy}
-                  onClick={() => void action({ action: "accept" })}
-                >
-                  Accept suggested ties
-                </button>{" "}
-                <button
-                  type="button"
-                  className={button}
-                  disabled={busy}
-                  onClick={() => void action({ action: "neutral" })}
-                >
-                  Start neutral
-                </button>
-              </>
-            ) : null}
-            {!view.starting.spoilers ? (
-              <>
-                <p>
-                  Revealing values exposes relationships you have not discovered in gameplay and allows editing them.
-                </p>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={acknowledge}
-                    onChange={(event) => setAcknowledge(event.target.checked)}
-                  />{" "}
-                  I understand this reveals gameplay spoilers.
-                </label>
-                <p>
+          {inspect && view.starting ? (
+            <details className="villages-relationship-setup" open={view.starting.pending || undefined}>
+              <summary>{view.starting.pending ? "Review starting ties" : "Relationship creator"}</summary>
+              <p>
+                Starting-tie acceptance, neutral setup, and spoiler visibility apply to the entire village. Directional
+                edits change only the selected tie.
+              </p>
+              {view.starting.pending ? (
+                <>
+                  <p>
+                    These suggestions use explicit existing history. Accept them, start neutral, or reveal values to
+                    adjust them. Creator choices do not tell your player character private information.
+                  </p>
+                  <div className="villages-relationship-grid">
+                    {view.starting.summaries
+                      .filter((tie) => tie.status !== "No established history")
+                      .map((tie) => (
+                        <p key={`${tie.fromId}:${tie.toId}`}>
+                          {tie.fromName} → {tie.toName}: <strong>{tie.status}</strong>
+                        </p>
+                      ))}
+                  </div>
+                  {view.starting.summaries.every((tie) => tie.status === "No established history") ? (
+                    <p>No established history was found. Unspecified ties begin neutral.</p>
+                  ) : null}
                   <button
                     type="button"
                     className={button}
-                    disabled={!acknowledge || busy}
-                    onClick={() => void action({ action: "acknowledge", spoilerAcknowledged: true })}
+                    disabled={busy}
+                    onClick={() => void action({ action: "accept" })}
                   >
-                    Reveal and edit relationship values
+                    Accept suggested ties
+                  </button>{" "}
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => void action({ action: "neutral" })}
+                  >
+                    Start neutral
                   </button>
-                </p>
-              </>
-            ) : (
-              <>
-                <p>Creator values are visible for this village. Exact reasons remain learned through gameplay.</p>
-                <button
-                  type="button"
-                  className={button}
-                  disabled={busy}
-                  onClick={() => void action({ action: "hide" })}
-                >
-                  Hide spoiler values
-                </button>
-                <p>
-                  <select
-                    aria-label="Directional relationship to edit"
-                    value={selected}
-                    onChange={(event) => setSelected(event.target.value)}
-                  >
-                    <option value="">Choose a direction…</option>
-                    {view.starting.values?.map((tie) => (
-                      <option key={`${tie.fromId}:${tie.toId}`} value={`${tie.fromId}:${tie.toId}`}>
-                        {tie.fromName} → {tie.toName}
-                        {tie.proposed ? " · proposed" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </p>
-                {view.starting.values
-                  ?.filter((tie) => `${tie.fromId}:${tie.toId}` === selected)
-                  .map((tie) => (
-                    <form
-                      key={`${selected}:${tie.warmth}:${tie.trust}`}
-                      className="villages-relationship-editor"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const values = new FormData(event.currentTarget);
-                        void action({
-                          action: "edit",
-                          fromId: tie.fromId,
-                          toId: tie.toId,
-                          warmth: Number(values.get("warmth")),
-                          trust: Number(values.get("trust")),
-                        });
-                      }}
+                </>
+              ) : null}
+              {!view.starting.spoilers ? (
+                <>
+                  <p>
+                    Revealing values exposes relationships you have not discovered in gameplay and allows editing them.
+                  </p>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={acknowledge}
+                      onChange={(event) => setAcknowledge(event.target.checked)}
+                    />{" "}
+                    I understand this reveals gameplay spoilers.
+                  </label>
+                  <p>
+                    <button
+                      type="button"
+                      className={button}
+                      disabled={!acknowledge || busy}
+                      onClick={() => void action({ action: "acknowledge", spoilerAcknowledged: true })}
                     >
-                      <label>
-                        Warmth
-                        <input
-                          name="warmth"
-                          type="number"
-                          min={-100}
-                          max={100}
-                          step={1}
-                          required
-                          defaultValue={tie.warmth}
-                        />
-                      </label>
-                      <label>
-                        Trust
-                        <input
-                          name="trust"
-                          type="number"
-                          min={-100}
-                          max={100}
-                          step={1}
-                          required
-                          defaultValue={tie.trust}
-                        />
-                      </label>
-                      <button type="submit" className={button} disabled={busy}>
-                        Save {tie.proposed ? "suggestion" : "values"}
-                      </button>
-                    </form>
-                  ))}
-              </>
-            )}
-          </details>
-          <div className="villages-relationship-grid">
-            {view.profiles.map((profile) => (
-              <article key={profile.characterId} className="villages-relationship-card">
-                <h3>{profile.name}</h3>
-                <p>{profile.familiarity ? "You have established familiarity." : "No established familiarity yet."}</p>
-                <Feeling name="Warmth toward you" value={profile.warmth} label={profile.warmthLabel} />
-                <Feeling name="Trust toward you" value={profile.trust} label={profile.trustLabel} />
-                <details>
-                  <summary>Personal life</summary>
-                  {!profile.knownAt ? (
-                    <p>Friendship reveals more of their routine and interests.</p>
-                  ) : (
-                    <>
-                      <p>
-                        {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
-                        {date(profile.knownAt)}
-                      </p>
-                      <ul>
-                        {profile.routine.map((line, index) => (
-                          <li key={index}>{line}</li>
+                      Reveal and edit relationship values
+                    </button>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>Creator values are visible for this village. Exact reasons remain learned through gameplay.</p>
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy}
+                    onClick={() => void action({ action: "hide" })}
+                  >
+                    Hide spoiler values
+                  </button>
+                  <p>
+                    <select
+                      aria-label="Directional relationship to edit"
+                      value={selected}
+                      onChange={(event) => setSelected(event.target.value)}
+                    >
+                      <option value="">Choose a direction…</option>
+                      {view.starting.values
+                        ?.filter((tie) => !characterId || tie.fromId === characterId || tie.toId === characterId)
+                        .map((tie) => (
+                          <option key={`${tie.fromId}:${tie.toId}`} value={`${tie.fromId}:${tie.toId}`}>
+                            {tie.fromName} → {tie.toName}
+                            {tie.proposed ? " · proposed" : ""}
+                          </option>
                         ))}
-                      </ul>
-                      <p>Interests: {profile.interests || "Not yet shared."}</p>
-                    </>
-                  )}
-                  {profile.wishes.length ? (
-                    <>
-                      <p>Known wishes</p>
-                      <ul>
-                        {profile.wishes.map((wish, index) => (
-                          <li key={index}>{wish}</li>
-                        ))}
-                      </ul>
-                      {!profile.wishes.length ? <p>No current wish recorded.</p> : null}
-                    </>
-                  ) : (
-                    <p>No wishes shared yet.</p>
-                  )}
-                  {profile.learned.map((entry, index) => (
-                    <p key={index}>
-                      {entry.kind}: {entry.text} <small>· {date(entry.at)}</small>
-                    </p>
-                  ))}
-                </details>
-                <details>
-                  <summary>Feelings toward other villagers</summary>
-                  {!profile.closeKnownAt ? (
-                    <p>A close, trusted friendship reveals these meters. Reasons must be shared separately.</p>
-                  ) : (
-                    <>
-                      <p>
-                        {profile.close ? "Current feelings" : "Last known feelings"} · {date(profile.closeKnownAt)}
-                      </p>
-                      {profile.ties.map((tie) => (
-                        <div className="villages-relationship-tie" key={tie.toId}>
-                          <strong>
-                            {profile.name} → {tie.name}
-                          </strong>
-                          <Feeling name="Warmth" value={tie.warmth} />
-                          <Feeling name="Trust" value={tie.trust} />
-                          <p>Why: {tie.reasons.length ? tie.reasons.join(" ") : "Not yet shared."}</p>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </details>
-                <details>
-                  <summary>Ongoing access</summary>
-                  {profile.access.length ? (
-                    profile.access.map((access) => (
-                      <p key={`${access.venueId}:${access.zoneId}`}>
-                        <strong>{access.name}</strong> ·{" "}
-                        {access.active ? "Available" : "Suspended until your relationship recovers"}{" "}
-                        <button type="button" className={button} onClick={() => onVenue(access.venueId)}>
-                          View Venue
+                    </select>
+                  </p>
+                  {view.starting.values
+                    ?.filter((tie) => `${tie.fromId}:${tie.toId}` === selected)
+                    .map((tie) => (
+                      <form
+                        key={`${selected}:${tie.warmth}:${tie.trust}`}
+                        className="villages-relationship-editor"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const values = new FormData(event.currentTarget);
+                          void action({
+                            action: "edit",
+                            fromId: tie.fromId,
+                            toId: tie.toId,
+                            warmth: Number(values.get("warmth")),
+                            trust: Number(values.get("trust")),
+                          });
+                        }}
+                      >
+                        <label>
+                          Warmth
+                          <input
+                            name="warmth"
+                            type="number"
+                            min={-100}
+                            max={100}
+                            step={1}
+                            required
+                            defaultValue={tie.warmth}
+                          />
+                        </label>
+                        <label>
+                          Trust
+                          <input
+                            name="trust"
+                            type="number"
+                            min={-100}
+                            max={100}
+                            step={1}
+                            required
+                            defaultValue={tie.trust}
+                          />
+                        </label>
+                        <button type="submit" className={button} disabled={busy}>
+                          Save {tie.proposed ? "suggestion" : "values"}
                         </button>
+                      </form>
+                    ))}
+                </>
+              )}
+            </details>
+          ) : null}
+          <div className="villages-relationship-grid">
+            {view.profiles
+              .filter((profile) => !characterId || profile.characterId === characterId)
+              .map((profile) => (
+                <article key={profile.characterId} className="villages-relationship-card">
+                  <h3>{profile.name}</h3>
+                  <p>{profile.familiarity ? "You have established familiarity." : "No established familiarity yet."}</p>
+                  <Feeling name="Warmth toward you" value={profile.warmth} label={profile.warmthLabel} />
+                  <Feeling name="Trust toward you" value={profile.trust} label={profile.trustLabel} />
+                  <details>
+                    <summary>Personal life</summary>
+                    {!profile.knownAt ? (
+                      <p>Friendship reveals more of their routine and interests.</p>
+                    ) : (
+                      <>
+                        <p>
+                          {profile.friend ? "Current shared information" : "Last known information"} ·{" "}
+                          {date(profile.knownAt)}
+                        </p>
+                        <ul>
+                          {profile.routine.map((line, index) => (
+                            <li key={index}>{line}</li>
+                          ))}
+                        </ul>
+                        <p>Interests: {profile.interests || "Not yet shared."}</p>
+                      </>
+                    )}
+                    {profile.wishes?.length ? (
+                      <>
+                        <p>Known wishes</p>
+                        <ul>
+                          {profile.wishes.map((wish, index) => (
+                            <li key={index}>{wish}</li>
+                          ))}
+                        </ul>
+                        {!profile.wishes.length ? <p>No current wish recorded.</p> : null}
+                      </>
+                    ) : (
+                      <p>No wishes shared yet.</p>
+                    )}
+                    {profile.learned?.map((entry, index) => (
+                      <p key={index}>
+                        {entry.kind}: {entry.text} <small>· {date(entry.at)}</small>
                       </p>
-                    ))
-                  ) : (
-                    <p>
-                      Friendship can earn shared-home access. Personal and work areas need an explicit standing
-                      invitation.
-                    </p>
-                  )}
-                </details>
-              </article>
-            ))}
+                    ))}
+                  </details>
+                  <details>
+                    <summary>Feelings toward other villagers</summary>
+                    {!profile.closeKnownAt ? (
+                      <p>A close, trusted friendship reveals these meters. Reasons must be shared separately.</p>
+                    ) : (
+                      <>
+                        <p>
+                          {profile.close ? "Current feelings" : "Last known feelings"} · {date(profile.closeKnownAt)}
+                        </p>
+                        {profile.ties?.map((tie) => (
+                          <div className="villages-relationship-tie" key={tie.toId}>
+                            <strong>
+                              {profile.name} → {tie.name}
+                            </strong>
+                            <Feeling name="Warmth" value={tie.warmth} />
+                            <Feeling name="Trust" value={tie.trust} />
+                            <p>Why: {tie.reasons.length ? tie.reasons.join(" ") : "Not yet shared."}</p>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </details>
+                  <details>
+                    <summary>Ongoing access</summary>
+                    {profile.access?.length ? (
+                      profile.access.map((access) => (
+                        <p key={`${access.venueId}:${access.zoneId}`}>
+                          <strong>{access.name}</strong> ·{" "}
+                          {access.active ? "Available" : "Suspended until your relationship recovers"}{" "}
+                          <button type="button" className={button} onClick={() => onVenue(access.venueId)}>
+                            View Venue
+                          </button>
+                        </p>
+                      ))
+                    ) : (
+                      <p>
+                        Friendship can earn shared-home access. Personal and work areas need an explicit standing
+                        invitation.
+                      </p>
+                    )}
+                  </details>
+                </article>
+              ))}
           </div>
         </>
       )}

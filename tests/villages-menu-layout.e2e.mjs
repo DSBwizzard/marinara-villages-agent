@@ -99,15 +99,11 @@ const snapshot = {
 };
 
 const pages = [
-  [/^Villagers \(/, "villagers"],
-  [/^Memories$/, "memories"],
   [/^Venue Requests \(/, "venueRequests"],
   [/^Projects \(/, "projects"],
   [/^Village Settings$/, "village"],
   [/^General settings$/, "general"],
   [/^DEBUG: Scenes/, "chatlogs"],
-  [/^DEBUG: Villager Wishes/, "agendas"],
-  [/^Villager Agendas/, "schedules"],
 ];
 
 try {
@@ -120,17 +116,9 @@ try {
     const mobile = width <= 704 || (width <= 880 && height <= 512);
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
-    let failMemory = false;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path.endsWith("/memories") && failMemory) {
-        return route.fulfill({
-          status: 503,
-          contentType: "application/json",
-          body: '{"error":"Memories unavailable"}',
-        });
-      }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
         : path.endsWith("/narration")
@@ -226,12 +214,11 @@ try {
     await root.getByRole("button", { name: "Back to menu" }).click();
     await expect(root).toHaveAttribute("data-page", "index");
     await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
-    failMemory = true;
-    await nav.getByRole("button", { name: /^Memories$/ }).click();
-    await expect(root.getByRole("alert")).toBeVisible();
-    await expect(main).toBeVisible();
-    failMemory = false;
-    await root.getByRole("button", { name: "Back to menu" }).click();
+    await nav.getByRole("button", { name: /^Villagers \(/ }).click();
+    await expect(page.getByRole("main", { name: "Villagers directory" })).toBeVisible();
+    await expect(nav).toHaveCount(0);
+    await expect(page.getByRole("searchbox", { name: "Search villagers" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to menu" }).click();
     await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
     await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
     await root.getByRole("button", { name: "Back to the village" }).click();

@@ -15,6 +15,7 @@ type Props = {
   request: Request;
   onSaved: (snapshot: unknown) => void;
   onBack: () => void;
+  backLabel?: string;
 };
 type Saved = {
   manager: SpriteManagerState;
@@ -64,7 +65,7 @@ const css = `
 @media(max-width:760px){.vsm{padding:.7rem}.vsm-layout{grid-template-columns:1fr}.vsm-artwork{grid-template-columns:repeat(auto-fill,minmax(95px,1fr))}.vsm-artwork img{height:130px}.vsm-image{max-height:280px}.vsm-fields{gap:.5rem}.vsm-toolbar>button{flex:1}.vsm-scene{height:170px}.vsm-scene[data-mobile=true]{height:220px}}
 `;
 
-export function SpriteManager({ villager, request, onSaved, onBack }: Props) {
+export function SpriteManager({ villager, request, onSaved, onBack, backLabel = "← Back to Villagers" }: Props) {
   const base = `/villagers/${encodeURIComponent(villager.characterId)}/sprites/manager`;
   const [manager, setManager] = useState<SpriteManagerState | null>(null);
   const [busy, setBusy] = useState(false),
@@ -194,7 +195,7 @@ export function SpriteManager({ villager, request, onSaved, onBack }: Props) {
       <style>{css}</style>
       <header>
         <button onClick={onBack} disabled={busy}>
-          ← Back to Villagers
+          {backLabel}
         </button>
         <div>
           <h2 ref={heading} tabIndex={-1}>

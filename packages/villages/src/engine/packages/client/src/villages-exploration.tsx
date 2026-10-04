@@ -307,6 +307,7 @@ export function BrowseList({
             type="button"
             className={P + "-explore-row"}
             key={row.id}
+            data-exploration-row={row.id}
             disabled={disabled || !row.onSelect}
             onClick={row.onSelect}
           >
