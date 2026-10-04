@@ -169,7 +169,8 @@ try {
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     const notices = page.getByRole("button", { name: "1 village notice" });
     await expect(notices).toBeVisible();
-    if ((await notices.getAttribute("aria-expanded")) !== "true") await notices.click();
+    // Fresh notices open after rendering; clicking during that effect would race and close the panel.
+    await expect(notices).toHaveAttribute("aria-expanded", "true");
     await page.getByRole("button", { name: /View Wish update: Wish discovery/ }).click();
     await expect(profile).toBeVisible();
     await expect(profile.locator('[data-wish-id="swim"]')).toBeFocused();
