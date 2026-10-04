@@ -67,6 +67,7 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
     await page.getByRole("button", { name: "Village Management", exact: true }).click();
+    await page.getByRole("button", { name: "Back to menu", exact: true }).click();
     await page.getByRole("button", { name: "Village Settings", exact: true }).click();
     await expect(page.getByText(/0 expected AI requests/).first()).toBeVisible();
     await expect(page.getByText(/1 with unknown cost/).first()).toBeVisible();
