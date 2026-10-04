@@ -1200,6 +1200,10 @@ The narration preset is **village-wide**. Per-villager presets are not implement
 
 Villages does not ship a town-map image. Founding can generate one through the configured Engine image connection, accept a player upload, or keep the logical map image-free.
 
+Founding map generation shows elapsed waiting time and saves the request ID before dispatch. Reloading a saved founding draft retrieves the current attempt rather than generating again. **Check map status** retries retrieval after a connection or image-decoding failure; it makes no image-generation request. One running founding attempt is shared across tabs. The latest result and error are stored separately from the Village until a new deliberate attempt replaces them. Engine restart cannot resume an unfinished provider request: it reports the interrupted attempt and leaves generating again to the player.
+
+The default map requests three-to-two landscape proportions, with the shape also stated in the prompt for image connections that do not forward canvas dimensions. The preview shows the actual returned dimensions and preserves the provider's image proportions. Provider latency and the exact returned canvas remain outside Villages' control.
+
 ## Layout
 
 ```

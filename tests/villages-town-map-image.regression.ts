@@ -127,7 +127,7 @@ async function main() {
   assert.equal(coerceVillageState({ townMapImage: oversizedMap }).townMapImage, "");
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /visually distinct usable areas/);
   assert.doesNotMatch(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /\d/);
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /wide landscape/);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /three-to-two canvas.*not panoramic/);
   assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Never add outlined lots or a zoning grid/);
   const defaultPrompt = buildTownMapPrompt(undefined, "cozy forest village");
@@ -237,6 +237,8 @@ async function main() {
   assert.ok(generatedImage.length > 4_000_000 && generatedImage.length < MAX_TOWN_MAP_IMAGE_LENGTH);
   const imageRequests: any[] = [];
   let resultImage = generatedImage;
+  let imageGate: Promise<void> | undefined;
+  let failImage = false;
   try {
     globalThis.fetch = async (url, init) => {
       const path = new URL(String(url)).pathname;
@@ -244,6 +246,8 @@ async function main() {
         return Response.json([{ id: "fixture-image", provider: "image_generation", model: "fixture" }]);
       if (path === "/api/characters/avatar-generation") {
         imageRequests.push(JSON.parse(String(init?.body)));
+        await imageGate;
+        if (failImage) return Response.json({ error: "Provider unavailable" }, { status: 503 });
         return Response.json({ image: resultImage });
       }
       assert.equal(path, "/api/image-metadata/inspect");
@@ -275,6 +279,69 @@ async function main() {
     resultImage = "data:image/png;base64," + "A".repeat(8_000_004);
     await assert.rejects(generateVillageTownMap(input), /too large to store/);
     assert.equal(imageRequests.length, 2, "an oversized result must not trigger another paid request");
+    const { requestTownMapGeneration, readTownMapGeneration, startTownMapGeneration } = await import(
+      pathToFileURL(join(services, "town-map-generation.ts")).href
+    );
+    let stop = startTownMapGeneration();
+    resultImage = generatedImage;
+    let releaseImage!: () => void;
+    imageGate = new Promise<void>((resolve) => {
+      releaseImage = resolve;
+    });
+    const attempt = { ...input, actionId: "map-attempt-one", sourceKey: "original-inputs" };
+    const first = await requestTownMapGeneration(attempt);
+    assert.equal(first.status, "running", "admission finishes before the provider response");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(imageRequests.length, 3);
+    assert.equal((await requestTownMapGeneration(attempt)).id, first.id);
+    assert.equal(
+      (await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" })).id,
+      first.id,
+      "another tab joins the existing request",
+    );
+    assert.equal((await readTownMapGeneration(first.id)).status, "running");
+    assert.equal(imageRequests.length, 3, "status reads and repeated admission do not spend again");
+    releaseImage();
+    for (let i = 0; i < 30 && (await readTownMapGeneration(first.id)).status === "running"; i++)
+      await new Promise((resolve) => setImmediate(resolve));
+    const complete = await readTownMapGeneration(first.id);
+    assert.equal(complete.status, "complete");
+    assert.deepEqual(complete.result, generated);
+    stop();
+    stop = startTownMapGeneration();
+    assert.equal(
+      (await readTownMapGeneration(first.id)).status,
+      "complete",
+      "completed result survives runtime restart",
+    );
+    failImage = true;
+    imageGate = undefined;
+    const second = await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" });
+    for (let i = 0; i < 30 && (await readTownMapGeneration(second.id)).status === "running"; i++)
+      await new Promise((resolve) => setImmediate(resolve));
+    assert.equal((await readTownMapGeneration(second.id)).status, "failed");
+    assert.match((await readTownMapGeneration(second.id)).error, /Provider unavailable/);
+    assert.equal(imageRequests.length, 4);
+    await assert.rejects(requestTownMapGeneration(attempt), /already used/);
+    assert.equal(imageRequests.length, 4, "replaying a replaced receipt must not spend again");
+    failImage = false;
+    imageGate = new Promise<void>((resolve) => {
+      releaseImage = resolve;
+    });
+    const third = await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-three" });
+    await new Promise((resolve) => setImmediate(resolve));
+    stop();
+    stop = startTownMapGeneration();
+    assert.equal((await readTownMapGeneration(third.id)).status, "interrupted");
+    releaseImage();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(
+      (await readTownMapGeneration(third.id)).status,
+      "interrupted",
+      "late response cannot overwrite restarted runtime state",
+    );
+    assert.equal(imageRequests.length, 5, "restart never dispatches a replacement automatically");
+    stop();
   } finally {
     globalThis.fetch = originalFetch;
     releaseRuntime();
