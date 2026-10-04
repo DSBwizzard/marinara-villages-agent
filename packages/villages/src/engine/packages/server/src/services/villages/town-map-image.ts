@@ -146,19 +146,13 @@ export async function generateVillageTownMap(input: {
           [input.setting, JSON.stringify(coerceScenarioImprint(input.scenarioImprint))].filter(Boolean).join("\n"),
           900,
         );
-  const prompt = sceneryPrompt(
-    [
-      buildTownMapPrompt(
-        input.structure,
-        typeof input.setting === "string" ? input.setting.slice(0, style ? 1500 : 2000) : input.setting,
-        input.options,
-        "",
-        input.scenarioImprint,
-        style,
-      ),
-    ],
-    [lore ? `Established visual lore: ${lore}` : ""],
-    "",
+  const prompt = buildTownMapPrompt(
+    input.structure,
+    typeof input.setting === "string" ? input.setting.slice(0, style ? 1500 : 2000) : input.setting,
+    input.options,
+    lore,
+    input.scenarioImprint,
+    style,
   );
   const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const generated = await generateVillageImage({

@@ -13325,6 +13325,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     options: setupMapOptions,
   });
   const [setupMapBusy, setSetupMapBusy] = useState(false);
+  const [setupMapProblem, setSetupMapProblem] = useState("");
   const setupMapSourceRef = useRef(setupMapSource);
   useEffect(() => {
     setupMapSourceRef.current = setupMapSource;
@@ -13456,6 +13457,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       mapNegative: setupMapNegativePrompt,
       mapOptions: setupMapOptions,
       mapReviewed: setupMapReviewed,
+      mapProblem: setupMapProblem,
       authoredFields: setupAuthoredFields,
       suggestionsKey: setupSuggestionsKey,
       selectedVenueId: selectedSetupVenueId,
@@ -13495,6 +13497,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupMapNegativePrompt,
       setupMapOptions,
       setupMapReviewed,
+      setupMapProblem,
       setupAuthoredFields,
       setupSuggestionsKey,
       selectedSetupVenueId,
@@ -13581,6 +13584,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setSetupMapNegativePrompt(data.mapNegative);
     setSetupMapOptions(data.mapOptions);
     setSetupMapReviewed(data.mapReviewed);
+    setSetupMapProblem(data.mapProblem ?? "");
     setSetupAuthoredFields(data.authoredFields);
     setSetupSuggestionsKey(data.suggestionsKey);
     setSelectedSetupVenueId(data.selectedVenueId);
@@ -15563,10 +15567,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // ── Town map ───────────────────────────────────────────────────────────────
   const generateSetupTownMap = useCallback(async () => {
     if (setupSetting.trim().length === 0) {
-      setSetupProblem("Describe what the village is like before generating its map.");
+      setSetupMapProblem("Describe what the village is like before generating its map.");
       return;
     }
     setSetupMapBusy(true);
+    setSetupMapProblem("");
     setSetupProblem("");
     try {
       const generated = await request<{ image: string; width: number; height: number }>("/setup/town-map/generate", {
@@ -15596,7 +15601,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       if (setupMapSourceRef.current === "generate") setSetupMapSource("generate");
       setSetupMapReviewed(false);
     } catch (cause) {
-      setSetupProblem(messageFrom(cause, "The village map could not be generated."));
+      setSetupMapProblem(messageFrom(cause, "The village map could not be generated."));
     } finally {
       setSetupMapBusy(false);
     }
@@ -15618,11 +15623,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const pickSetupTownMap = useCallback(
     async (file: File | undefined) => {
       if (!file || !snapshot) return;
-      setSetupProblem("");
+      setSetupMapProblem("");
       const bytesThatFit = Math.floor(((snapshot.settings.townMapImageMaxLength - 64) * 3) / 4);
       if (file.size > bytesThatFit) {
         const mb = (bytes: number) => Math.round(bytes / 100_000) / 10;
-        setSetupProblem(
+        setSetupMapProblem(
           `That picture is ${mb(file.size)} MB and a village map holds ${mb(bytesThatFit)} MB. Choose a smaller copy.`,
         );
         return;
@@ -15637,7 +15642,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         setSetupMapSource("upload");
         setSetupMapReviewed(false);
       } catch (cause) {
-        setSetupProblem(messageFrom(cause, "That picture could not be used as the village map."));
+        setSetupMapProblem(messageFrom(cause, "That picture could not be used as the village map."));
       } finally {
         setSetupMapBusy(false);
       }
@@ -16083,6 +16088,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupMapPrompt(fresh ? "" : (village?.settings.townMapLayoutPrompt ?? ""));
       setSetupMapNegativePrompt(village?.settings.townMapNegativePrompt ?? "");
       setSetupMapBusy(false);
+      setSetupMapProblem("");
       // Coming back through the wizard over a village that already exists keeps
       // the Persona it is linked to, exactly as it keeps the name and the
       // setting: the second run is a chance to redraw the map, not to be told
@@ -20999,10 +21005,19 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const mapReady = setupMapSource === "none" || (!!setupMapSrc && !setupMapBusy);
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
+        {setupMapProblem && setupMapSource !== "none" ? (
+          <p className={`${ELEMENT_TAG}-error`} role="alert">
+            {setupMapProblem}
+          </p>
+        ) : null}
         {interactive ? (
           <p className="villages-forging-placement" role="status">
             {!mapReady
-              ? "Your map is being prepared. You can edit Venue details meanwhile."
+              ? setupMapBusy
+                ? "Generating map artwork. This can take several minutes. You can edit Venue details meanwhile."
+                : setupMapProblem
+                  ? "Map artwork failed. Return to Place to review the error and try again, or select Simple map."
+                  : "Choose map artwork on Place, or select Simple map."
               : nextPin
                 ? `Next: click where ${nextPin.name || "this Venue"} is`
                 : `${placed} of ${setupVenues.length} pins placed`}
@@ -21338,6 +21353,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                 ? "Generate again"
                                 : "Generate map"}
                           </button>
+                          {setupMapBusy ? (
+                            <p role="status">
+                              Generating map artwork. This can take several minutes. You can continue to Spaces while it
+                              runs.
+                            </p>
+                          ) : null}
+                          {setupMapProblem ? (
+                            <p className={`${ELEMENT_TAG}-error`} role="alert">
+                              {setupMapProblem}
+                            </p>
+                          ) : null}
                           <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
                           <details>
                             <summary>Advanced artwork options</summary>
@@ -21385,19 +21411,26 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                         </>
                       ) : null}
                       {setupMapSource === "upload" ? (
-                        <label>
-                          Upload map image
-                          <input
-                            aria-label="Upload map image"
-                            type="file"
-                            accept="image/*"
-                            disabled={setupMapBusy}
-                            onChange={(event) => {
-                              void pickSetupTownMap(event.target.files?.[0]);
-                              event.target.value = "";
-                            }}
-                          />
-                        </label>
+                        <>
+                          <label>
+                            Upload map image
+                            <input
+                              aria-label="Upload map image"
+                              type="file"
+                              accept="image/*"
+                              disabled={setupMapBusy}
+                              onChange={(event) => {
+                                void pickSetupTownMap(event.target.files?.[0]);
+                                event.target.value = "";
+                              }}
+                            />
+                          </label>
+                          {setupMapProblem ? (
+                            <p className={`${ELEMENT_TAG}-error`} role="alert">
+                              {setupMapProblem}
+                            </p>
+                          ) : null}
+                        </>
                       ) : null}
                       {setupMapSource === "none" ? (
                         <p>
