@@ -82,6 +82,12 @@ const release = configureVillagesRuntime({
 } as Parameters<typeof configureVillagesRuntime>[0]);
 
 async function main() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.ok(String(url).includes("/api/image-metadata/inspect"), "only image inspection is requested");
+    // Exercise the supported older-host decoder without a running local Engine.
+    return Response.json({ error: "Not Found" }, { status: 404 });
+  };
   try {
     const original = await readVillageState();
     const placements = original.venues.map((entry) => ({
@@ -150,8 +156,9 @@ async function main() {
       /replacement map/,
     );
     assert.equal((await readVillageState()).venues[0].presentation.x, 0.4);
-    console.log("Villages map replacement: atomic pins, occupied home, worksite, stale saves, removal ok");
+    console.log("Villages map replacement: atomic photographs, occupied home, worksite, stale saves, removal ok");
   } finally {
+    globalThis.fetch = originalFetch;
     release();
   }
 }
