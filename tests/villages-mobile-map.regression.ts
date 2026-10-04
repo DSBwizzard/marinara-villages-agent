@@ -117,7 +117,8 @@ assert.ok(source.includes("bypasses Background events and wishes for one visual 
 assert.ok(source.includes("data-section={menuSection}"));
 assert.ok(source.includes('onClick={() => openMenu("general")}'));
 assert.ok(source.includes('onClick={() => openMenu("village")}'));
-assert.ok(source.includes('onClick={() => openMenu("memories")}'));
+assert.equal(source.includes('onClick={() => openMenu("memories")}'), false);
+assert.ok(source.includes('onClick={() => openMenu("villagers")}'));
 assert.equal(source.includes('onClick={() => openMenu("story")}'), false);
 assert.equal(source.includes("Fit entire map"), false);
 
