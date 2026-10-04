@@ -255,8 +255,8 @@ async function main() {
     const combinedEstimate = (estimates.wish as any).estimatedTokens;
     assert.ok(combinedEstimate < 99472 * 0.1, "Wish replay exceeds 90% reduction against the reference ledger");
     assert.ok(
-      (estimates.wish as any).estimatedCeiling < 99472 * 0.1,
-      "full output allowance also stays below the 90% target in this replay",
+      totals.wish.outputAllowance <= totals.wish.requests * 4096,
+      "prevention reasoning reserves remain bounded at 4096 per request",
     );
     console.log(
       JSON.stringify(

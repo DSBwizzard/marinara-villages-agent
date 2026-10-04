@@ -1,3 +1,5 @@
+import { backgroundCalls, backgroundSetting } from "./background-context.js";
+import { WorkFailureError, type WorkFailure } from "./work-failure.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { createProgressTask, revealProgress, submitProgressEvidence, type ProgressTask } from "./progress-engine.js";
 import {
@@ -163,6 +165,7 @@ export function bindWishProposals(
 }
 
 type WishCheckInput = {
+  contractVersion?: 2;
   sceneId: string;
   submissionId: string;
   seed: string;
@@ -179,8 +182,14 @@ type PreparedWishVerdict = {
   memory: string;
   receiptIds: string[];
 };
-type WishBatchInput = { sceneId: string; submissionId: string; seed: string; items: WishCheckInput[] };
-type PreparedWishBatch = { items: { id: string; verdict: PreparedWishVerdict }[] };
+type WishBatchInput = {
+  contractVersion?: 2;
+  sceneId: string;
+  submissionId: string;
+  seed: string;
+  items: WishCheckInput[];
+};
+type PreparedWishBatch = { items: { id: string; verdict: PreparedWishVerdict }[]; failures?: WorkFailure[] };
 const batchItems = (input: WishCheckInput | WishBatchInput) => ("items" in input ? input.items : [input]);
 const effectId = (sceneId: string, submissionId: string, proposal: WishProposal) =>
   `wish-change:${sceneId}:${submissionId}:${proposal.wishId}:${proposal.intent}`;
@@ -357,37 +366,69 @@ registerBackgroundHandler("wish-check", {
   valid: (state, input: WishCheckInput | WishBatchInput) =>
     state.seed === input.seed && batchItems(input).some((item) => !!currentWish(state, item.proposal)),
   async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
-    const items = batchItems(input);
+    const compact = input.contractVersion === 2;
+    const all = batchItems(input);
+    const state = await readVillageState();
+    const ids = compact
+      ? await backgroundSetting("wishRows:" + (backgroundCalls.getStore()?.metadata?.attempt ?? 0), () =>
+          all
+            .filter(
+              (item) =>
+                !state.exchangeReceipts[effectId(item.sceneId, item.submissionId, item.proposal)] &&
+                currentWish(state, item.proposal),
+            )
+            .map((item) => effectId(item.sceneId, item.submissionId, item.proposal)),
+        )
+      : all.map((item) => effectId(item.sceneId, item.submissionId, item.proposal));
+    const items = all.filter((item) => ids.includes(effectId(item.sceneId, item.submissionId, item.proposal)));
+    if (!items.length) return { items: [] };
     const batch = await interpretWishBatch(
       items.map((item) => item.context),
       input.sceneId,
       `live:${input.submissionId}`,
+      true,
+      compact,
     );
     await writeInterpretationDiagnostics(input.sceneId, batch.traces);
-    const prepared = items.map((item, index) => {
+    const failures: WorkFailure[] = [];
+    const prepared = items.flatMap((item, index) => {
       const check = batch.checks[index],
         result = batch.results[index];
-      if (!result) throw new Error("Wish interpretation missing; explicit retry required");
-      if (result.reason.startsWith("Invalid check output:")) throw new Error(result.reason);
+      const failure =
+        result?.failure ??
+        (!result
+          ? {
+              cause: "missing_result" as const,
+              stage: "interpretation",
+              message: "Wish interpretation missing; explicit retry required",
+            }
+          : undefined);
+      if (failure) {
+        if (!compact) throw new WorkFailureError(failure);
+        failures.push({ ...failure, checkIds: [effectId(item.sceneId, item.submissionId, item.proposal)] });
+        return [];
+      }
       const facts = asRecord(check.facts);
-      return {
-        id: effectId(item.sceneId, item.submissionId, item.proposal),
-        verdict: {
-          criteria: facts.criteria as WishCriteria,
-          outcome: result.outcome,
-          evidenceIds: result.evidenceIds,
-          reason:
-            result.outcome === "unresolved"
-              ? `Clarification needed: ${result.reason || "Wish meaning remains uncertain"}`
-              : result.reason || "No Wish change",
-          memory: "",
-          receiptIds: (facts.matchingReceiptIds as string[]).filter((id) =>
-            result.evidenceIds.includes(`receipt:${id}`),
-          ),
+      return [
+        {
+          id: effectId(item.sceneId, item.submissionId, item.proposal),
+          verdict: {
+            criteria: facts.criteria as WishCriteria,
+            outcome: result.outcome,
+            evidenceIds: result.evidenceIds,
+            reason:
+              result.outcome === "unresolved"
+                ? `Clarification needed: ${result.reason || "Wish meaning remains uncertain"}`
+                : result.reason || "No Wish change",
+            memory: "",
+            receiptIds: (facts.matchingReceiptIds as string[]).filter((id) =>
+              result.evidenceIds.includes(`receipt:${id}`),
+            ),
+          },
         },
-      };
+      ];
     });
-    return "items" in input ? { items: prepared } : prepared[0].verdict;
+    return compact || "items" in input ? { items: prepared, failures } : prepared[0].verdict;
   },
   apply(state, input: WishCheckInput | WishBatchInput, result: PreparedWishVerdict | PreparedWishBatch) {
     for (const item of batchItems(input)) {
@@ -396,6 +437,24 @@ registerBackgroundHandler("wish-check", {
           ? result.items.find((entry) => entry.id === effectId(item.sceneId, item.submissionId, item.proposal))?.verdict
           : result;
       if (verdict) applyPreparedWishVerdict(state, item, verdict);
+    }
+    if ("items" in result && result.failures?.length) {
+      const active = result.failures.filter((failure) =>
+        failure.checkIds?.some((id) =>
+          batchItems(input).some(
+            (item) =>
+              effectId(item.sceneId, item.submissionId, item.proposal) === id &&
+              currentWish(state, item.proposal) &&
+              !state.exchangeReceipts[id],
+          ),
+        ),
+      );
+      if (active.length)
+        return {
+          ...active[0],
+          checkIds: active.flatMap((failure) => failure.checkIds ?? []),
+          message: active.length + " Wish check(s) need explicit retry. Valid results were saved. " + active[0].message,
+        };
     }
   },
   async afterApply(input: WishCheckInput | WishBatchInput) {
@@ -483,6 +542,7 @@ export async function processProjectWishOutbox(): Promise<void> {
             worldState: [],
           };
           const input: WishCheckInput = {
+            contractVersion: 2,
             sceneId,
             submissionId,
             seed: state.seed,
@@ -733,6 +793,7 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
           submissionId: turn.id,
           seed: state.seed,
           items: batchInputs,
+          contractVersion: 2,
         } satisfies WishBatchInput,
       }),
     );

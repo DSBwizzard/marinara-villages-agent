@@ -13,7 +13,7 @@ export type BackgroundCompletion = ((
   maxTokens: number,
   options: VillageCompletionOptions,
 ) => Promise<CapabilityLanguageModelCompletion>) & {
-  metadata?: { id: string; kind: string; cause: string };
+  metadata?: { id: string; kind: string; cause: string; attempt?: number };
   setting?<T>(key: string, create: () => T | Promise<T>): Promise<T>;
 };
 

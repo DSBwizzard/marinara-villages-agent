@@ -73,6 +73,7 @@ jobs:
 
       - name: Verify finite wishes and routine isolation
         run: |
+          npx tsx tests/villages-wish-prevention.regression.ts
           npx tsx tests/villages-live-wishes.regression.ts
           npx tsx tests/villages-wish-lifecycle.regression.ts
           npx tsx tests/villages-wish-interpretation.regression.ts
@@ -138,6 +139,7 @@ jobs:
           node tests/villages-runtime-debug.e2e.mjs
           node tests/villages-usage-meter.e2e.mjs
           node tests/villages-usage-preview.e2e.mjs
+          node tests/villages-background-work.e2e.mjs
           node tests/villages-owned-agendas.e2e.mjs
           node tests/villages-sprite-manager.e2e.mjs
           node tests/villages-scene-staging.e2e.mjs

@@ -52,6 +52,7 @@ export async function writeInterpretationDiagnostics(sceneId: string, traces: In
           source: original.result.source,
           evidenceIds: original.result.evidenceIds.slice(0, 100),
           reason: original.result.reason,
+          ...(original.result.failure ? { failure: original.result.failure } : {}),
         },
         evidence: selected.map((line) => ({ ...line, content: line.content.slice(0, 600) })),
       };

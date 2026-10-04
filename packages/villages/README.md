@@ -1,6 +1,8 @@
 # Villages
 
-Completed failed Wish interpretations no longer block the next Scene reply. Explicit Wish retries use valid idempotency keys and remain visible in Scene diagnostics. Wish checks request compact output within the existing token allowance; truncated results report the output-limit failure and require deliberate retry. Saved dialogue and other committed exchange changes remain available.
+New Wish checks use short request-local IDs, bounded JSON and an output allowance sized with a reasoning reserve (up to 4,096 tokens, subject to the connection ceiling). Valid batch rows commit independently; deliberate retries request only unfinished rows and preserve effect receipts. Recovery can apply already saved results locally and retire obsolete checks without paid repairs. Empty, truncated and malformed daily proposals have explicit diagnostics; a valid `wish:null` still completes a quiet day.
+
+Background work separates running/queued jobs, paused jobs and failures needing attention. Completed history starts collapsed; failures show cause and age. The [prevention release record](WISH_CHECK_PREVENTION.md) includes fault-injection coverage and the bounded live comparison, which did **not** establish that production failures are rare.
 
 The [Scene actions release record](SCENE_ACTIONS_CHANGELOG.md) documents exactly what 0.6.140 changes, its before/after measurements, and the ownership changes still deferred.
 

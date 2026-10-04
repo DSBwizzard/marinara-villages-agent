@@ -256,6 +256,7 @@ export async function interpretWishBatch(
   sceneId: string,
   key: string,
   allowProgress = true,
+  compactWish = true,
 ): Promise<InterpretationBatch> {
   const checks = contexts.flatMap((context) =>
     context.wishes.map((wish) => {
@@ -283,7 +284,7 @@ export async function interpretWishBatch(
   );
   const batch = await interpretChecks(checks, `wish-v2:${key}`, sceneId, async (pending, signal) => {
     const paid = pending.filter((check) => asRecord(check.facts).admission);
-    const judged = paid.length ? await systemInterpretations(paid, signal) : [];
+    const judged = paid.length ? await systemInterpretations(paid, signal, compactWish) : [];
     return pending.map(
       (check) =>
         judged[paid.indexOf(check)] ?? {
