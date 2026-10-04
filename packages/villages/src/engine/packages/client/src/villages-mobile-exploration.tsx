@@ -1,3 +1,4 @@
+import { VenuePolaroid } from "./villages-venue-polaroid.js";
 import { useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from "react";
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
 const P = "marinara-capability-villages";
@@ -255,13 +256,7 @@ export function MobileMarkers({
                   pin.onSelect?.();
                 }}
               >
-                <span className={P + "-pin-photo-card " + P + "-explore-polaroid"}>
-                  <span className={P + "-pin-photo"} aria-hidden="true">
-                    {pin.image ? <img src={pin.image} alt="" draggable={false} /> : <MapIcon name="places" />}
-                    <span className={P + "-pin-photo-tack"} />
-                  </span>
-                  <span className={P + "-pin-name"}>{pin.text}</span>
-                </span>
+                <VenuePolaroid image={pin.image} name={pin.text} className={P + "-explore-polaroid"} />
                 {people.length ? (
                   <span className={P + "-explore-initials"} aria-hidden="true">
                     {people.slice(0, 3).map((person) => (

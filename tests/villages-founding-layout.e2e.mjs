@@ -87,6 +87,7 @@ try {
     { width: 1917, height: 600, fontSize: 20, homeCount: 1 },
     { width: 1024, height: 768, fontSize: 20, homeCount: 2 },
     { width: 390, height: 844, fontSize: 16, homeCount: 2 },
+    { width: 320, height: 568, fontSize: 16, homeCount: 1 },
     { width: 390, height: 650, fontSize: 20, homeCount: 3 },
   ]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
@@ -265,7 +266,7 @@ try {
     await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toBeVisible();
     await expect(root.locator(".villages-forging-venue")).toHaveCount(homeCount + 2);
     await forward("Review village").click();
-    await expect(root.getByRole("alert")).toContainText("pin");
+    await expect(root.getByRole("alert")).toContainText("photograph");
     await forward("Suggest names & descriptions").click();
     await expect(root.getByRole("button", { name: "Refresh suggestions", exact: true })).toBeVisible();
     const first = root.locator(".villages-forging-venue").first();
@@ -275,7 +276,7 @@ try {
     await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+    await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
     await expect(root.getByRole("dialog").getByLabel("Venue name", { exact: true })).toHaveValue("Cancelled name");
     await root.getByRole("dialog").getByRole("button", { name: "Cancel edits", exact: true }).click();
     await expect(first).not.toContainText("Cancelled name");
@@ -318,17 +319,20 @@ try {
       )
       .toBe(true);
     await expect(root.locator(".villages-forging-placement")).toHaveText(
-      `${homeCount + 2} of ${homeCount + 2} pins placed`,
+      `${homeCount + 2} of ${homeCount + 2} photographs placed`,
     );
+    await expect(placementMap.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
+    await expect(placementMap.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
+    await expect(placementMap.locator(".marinara-capability-villages-pin-photo svg")).toHaveCount(0);
     await bounds();
     await capture("spaces");
     await forward("Save & exit").click();
-    await expect(root.getByRole("button", { name: "Resume pin placement", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     root = page.locator(".villages-forging-v2");
-    await expect(root.getByRole("button", { name: "Resume pin placement", exact: true })).toBeVisible();
-    await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+    await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
+    await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
     await expect(root.getByText("Step 3 of 4 · Spaces")).toBeVisible();
     await expect(root.locator(".villages-forging-venue").first()).toContainText("My observatory quarters");
     assert.equal(suggestionCalls, 2, "reload never repeats generation");
@@ -344,7 +348,7 @@ try {
       await forward("Save & exit").click();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+      await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await root
         .locator(".villages-forging-venue")
         .first()
@@ -429,7 +433,7 @@ try {
       await forward("Save & exit").click();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+      await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
       assert.equal(mapCalls, 2, "resuming an unfinished attempt must not generate again");
       failMapStatus = true;
@@ -438,11 +442,11 @@ try {
       releaseMap();
       await root.getByRole("button", { name: "Check map status", exact: true }).click();
       await expect(
-        root.getByRole("button", { name: "I checked all pins against this map", exact: true }),
+        root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }),
       ).toBeVisible();
       await forward("Review village").click();
       await expect(root.getByRole("alert")).toContainText("Check all");
-      await root.getByRole("button", { name: "I checked all pins against this map", exact: true }).click();
+      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       await root
         .locator(".villages-forging-venue")
         .first()
@@ -452,14 +456,14 @@ try {
         .getByLabel("Venue placement map. Arrow keys choose a spot; Enter places a Venue.", { exact: true })
         .press("Enter");
       await expect(root.locator(".villages-forging-placement")).toHaveText(
-        `${homeCount + 2} of ${homeCount + 2} pins placed`,
+        `${homeCount + 2} of ${homeCount + 2} photographs placed`,
       );
       await capture("artwork-spaces");
       await forward("Save & exit").click();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await expect(root.getByRole("button", { name: "Resume pin placement", exact: true })).toBeVisible();
-      await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+      await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
+      await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await root.getByRole("button", { name: "2 Place", exact: true }).click();
       await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
@@ -467,7 +471,7 @@ try {
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
       await forward("Continue to spaces").click();
-      await root.getByRole("button", { name: "I checked all pins against this map", exact: true }).click();
+      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       // A chosen upload replaces paused recovery, even when the old provider finishes later.
       await root.getByRole("button", { name: "2 Place", exact: true }).click();
       failMapStatus = true;
@@ -487,12 +491,12 @@ try {
       failMapStatus = false;
       releaseMap();
       await forward("Continue to spaces").click();
-      await root.getByRole("button", { name: "I checked all pins against this map", exact: true }).click();
+      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       await forward("Save & exit").click();
-      await expect(root.getByRole("button", { name: "Resume pin placement", exact: true })).toBeVisible();
+      await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+      await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await root.getByRole("button", { name: "2 Place", exact: true }).click();
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
@@ -505,6 +509,8 @@ try {
     await expect(root.getByRole("button", { name: "Change place & map", exact: true })).toBeVisible();
     await expect(root.getByRole("button", { name: "Change starting spaces", exact: true })).toBeVisible();
     await bounds();
+    await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
+    await expect(root.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
     await capture("review");
     await forward("Found village").click();
     await expect.poll(() => foundingPayload).toBeTruthy();

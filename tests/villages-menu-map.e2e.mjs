@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 
@@ -38,14 +38,30 @@ const worksite = {
 };
 
 try {
-  for (const mobile of [false, true]) {
+  for (const width of [1440, 390, 320]) {
+    const mobile = width < 600;
     const page = await browser.newPage({
-      viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+      viewport: mobile ? { width, height: 844 } : { width: 1440, height: 900 },
       hasTouch: mobile,
     });
     let savedImage = image("#719b77");
     let mapSetAt = now;
-    let venues = [home, worksite];
+    let venues = [
+      home,
+      worksite,
+      ...Array.from({ length: 14 }, (_, index) => ({
+        ...home,
+        id: "extra-" + index,
+        name: "A long public Venue photograph name " + index,
+        classes: ["other"],
+        occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+        presentation: {
+          image: index % 2 ? { id: "photo-" + index, ref: "photo-" + index, url: image("#6596aa") } : null,
+          x: 0.18 + (index % 4) * 0.2,
+          y: 0.16 + Math.floor(index / 4) * 0.2,
+        },
+      })),
+    ];
     let failedGeneration = false;
     let staleSave = false;
     const writes = [];
@@ -102,6 +118,8 @@ try {
         maxVenueNoteLength: 2000,
         maxVenueImageUrlLength: 2000000,
         maxVenueImageIdLength: 100,
+        sceneryArtStyle: "Watercolor with clear spatial outlines",
+        useVisualLoreByDefault: false,
         maxVenueImageBytes: 1000000,
         villageGalleryFolderName: "QA Village",
         visitRetention: { mode: "forever", value: 0 },
@@ -130,7 +148,10 @@ try {
           value = { error: "The village map changed. Reload it before saving." };
         } else {
           assert.equal(body.expectedMapSetAt, mapSetAt);
-          assert.deepEqual(body.placements.map((entry) => entry.venueId).sort(), ["home", "worksite"]);
+          assert.deepEqual(
+            body.placements.map((entry) => entry.venueId).sort(),
+            venues.map((venue) => venue.id).sort(),
+          );
           savedImage = body.image;
           mapSetAt = savedImage ? new Date(Date.now() + writes.length * 1000).toISOString() : "";
           venues = venues.map((venue) => {
@@ -140,6 +161,10 @@ try {
           value = snapshot();
         }
       } else if (path.endsWith("/setup/town-map/generate")) {
+        const body = route.request().postDataJSON();
+        assert.equal(body.sceneryArtStyle, "Watercolor with clear spatial outlines");
+        assert.equal(body.useVisualLore, false);
+
         if (failedGeneration) {
           status = 500;
           value = { error: "Generation failed" };
@@ -181,6 +206,20 @@ try {
       "data-mobile",
       String(mobile),
     );
+    const visiblePhotos = page.locator(
+      ".marinara-capability-villages-home-full .marinara-capability-villages-pin-photo-card",
+    );
+    if (!mobile) await expect(visiblePhotos).toHaveCount(16);
+    else
+      assert.ok(
+        (await visiblePhotos.count()) > 0 && (await visiblePhotos.count()) <= 16,
+        "offscreen Polaroids clip naturally while panning",
+      );
+
+    await expect(page.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
+    await expect(page.locator(".marinara-capability-villages-pin-photo svg")).toHaveCount(0);
+    for (const img of await page.locator(".marinara-capability-villages-pin-photo img").all())
+      await expect(img).toHaveCSS("object-fit", "contain");
     await page.getByRole("button", { name: mobile ? "More" : "Open settings menu" }).click();
     await expect(page.getByRole("button", { name: "Memories", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Homes", exact: true })).toHaveCount(0);
@@ -194,6 +233,16 @@ try {
     await page.getByRole("button", { name: "Village Settings" }).click();
     await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Run setup again" })).toBeVisible();
+    const mapStage = page.locator(".marinara-capability-villages-stage");
+    await expect(mapStage.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(16);
+    await expect(mapStage.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
+    await expect(mapStage.locator(".marinara-capability-villages-pin-photo-empty")).not.toHaveCount(0);
+    if (process.env.VILLAGES_SCREENSHOT_DIR) {
+      mkdirSync(process.env.VILLAGES_SCREENSHOT_DIR, { recursive: true });
+      await mapStage.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "sixteen-polaroids-" + width + ".png"),
+      });
+    }
     await page.getByRole("button", { name: "Replace map" }).click();
     await expect(page.getByText("Venues will not move automatically.", { exact: false })).toBeVisible();
     failedGeneration = true;
@@ -208,12 +257,14 @@ try {
     await placement
       .locator(`.marinara-capability-villages-row`)
       .filter({ hasText: "Mara's home" })
-      .getByRole("button", { name: "Move pin" })
+      .getByRole("button", { name: "Move photograph" })
       .click();
-    await page
-      .locator(".marinara-capability-villages-canvas")
-      .first()
-      .click({ position: { x: 170, y: 110 } });
+    const placementCanvas = page.locator(".marinara-capability-villages-canvas").first();
+    const placementBounds = await placementCanvas.boundingBox();
+    assert.ok(placementBounds);
+    await placementCanvas.click({
+      position: { x: placementBounds.width * 0.93, y: placementBounds.height * 0.92 },
+    });
     await page.getByRole("button", { name: "Save map and placements" }).click();
     await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();
     assert.equal(writes.length, 1);
@@ -262,7 +313,7 @@ try {
     await page.close();
   }
   console.log(
-    "Villages menu/map browser: desktop and mobile navigation, generate, upload, removal, framing, pins, cancel, stale save ok",
+    "Villages menu/map browser: desktop and mobile navigation, generate, upload, removal, framing, sixteen Polaroids, cancel, stale save ok",
   );
 } finally {
   await browser.close();

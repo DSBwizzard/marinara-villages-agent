@@ -1,3 +1,4 @@
+import { VenuePolaroid } from "./villages-venue-polaroid.js";
 import { VILLAGES_FORGING_STYLES } from "./villages-forging-styles.js";
 import {
   BrowseList,
@@ -4739,15 +4740,7 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-pin[data-kind="person"] {
   border-style: dotted; border-color: var(--muted-foreground); color: var(--muted-foreground);
 }
-.${ELEMENT_TAG}-pin[data-kind="person"] .${ELEMENT_TAG}-pin-tack { display: none; }
-/*
-  A thumbtack, because that is what the thing on a map is: something pushed
-  through the paper to say a building is here. Drawn rather than taken from a
-  font or an emoji, so it is the same tack on every machine the Engine runs on.
-*/
-.${ELEMENT_TAG}-pin-tack { flex: 0 0 auto; width: 1rem; height: 1rem; color: var(--destructive, #e5484d); }
-.${ELEMENT_TAG}-pin-tack svg { display: block; width: 100%; height: 100%; fill: currentColor; }
-.${ELEMENT_TAG}-pin[data-tone="empty"] .${ELEMENT_TAG}-pin-tack { color: var(--muted-foreground); }
+
 .${ELEMENT_TAG}-pin-remove {
   border: 1px solid var(--border); border-radius: 999px;
   background: color-mix(in srgb, var(--background) 88%, transparent); color: var(--muted-foreground);
@@ -5726,8 +5719,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo-card, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex: 0 0 auto; flex-direction: column; width: clamp(3.5rem, 6cqw, 5rem); gap: .1rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; box-shadow: 0 3px 8px #0009; transform-origin: center; transition: transform 160ms ease-out; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-card { width: clamp(4rem, 17cqw, 5.25rem); }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; overflow: visible; }
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo img, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo-tack, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo-tack { position: absolute; top: -.35rem; left: 50%; width: .55rem; height: .55rem; transform: translateX(-50%); border-radius: 50%; background: #b89a43; box-shadow: 0 1px 2px #0009; }
+.${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-photo img, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .${ELEMENT_TAG}-home-full .${ELEMENT_TAG}-pin-name, .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: .58rem; font-weight: 700; }
 .${ELEMENT_TAG}-stage[data-mobile="true"] .${ELEMENT_TAG}-pin[data-kind="person"] { max-width: 7rem; }
 .${ELEMENT_TAG}-stage[data-mobile="true"][data-mobile-gesturing="true"] .${ELEMENT_TAG}-pin-photo-card { transition: none; }
@@ -5778,8 +5770,7 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin[data-kind="place"] { display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; overflow: visible; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-card { display: flex; flex-direction: column; gap: .1rem; width: 4rem; padding: .18rem; box-sizing: border-box; border-radius: .1rem; background: #faf4e7; color: #30261c; box-shadow: 0 3px 8px #0009; transform-origin: center; transition: transform 160ms ease-out; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo { position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; background: #201e29; }
-.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo-tack { position: absolute; top: -.35rem; left: 50%; width: .55rem; height: .55rem; transform: translateX(-50%); border-radius: 50%; background: #b89a43; box-shadow: 0 1px 2px #0009; }
+.${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-photo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .${ELEMENT_TAG}-stage[data-photo-pins="true"][data-mobile="false"] .${ELEMENT_TAG}-pin-name { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .55rem; font-weight: 700; }
 .${ELEMENT_TAG}-pin-photo-empty { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: #e8dfc9; font-size: 1.5rem; }
 .${ELEMENT_TAG}-pin-placement-error { position: absolute; z-index: 15; left: .5rem; bottom: .5rem; margin: 0; max-width: calc(100% - 1rem); padding: .4rem .6rem; border-radius: .5rem; background: #261a19e8; color: white; font-size: .75rem; pointer-events: none; }
@@ -6071,7 +6062,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-holder:has(.${ELEMENT_TAG}-pin:hover), .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-holder:focus-within { z-index: 7; }
 @media (hover: hover) { .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin:hover .${ELEMENT_TAG}-pin-photo-card { transform: scale(1) !important; } }
 .${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin:focus-visible .${ELEMENT_TAG}-pin-photo-card { transform: scale(1) !important; }
-.${ELEMENT_TAG}-stage[data-compact-photos="true"] .${ELEMENT_TAG}-pin-photo-tack { width: .4rem; height: .4rem; }
 @container (max-width: 70rem) {
   .${ELEMENT_TAG}-setup-root > .${ELEMENT_TAG}-setup-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content max-content; align-content: start; }
   .${ELEMENT_TAG}-setup-world-map { grid-template-columns: minmax(0, 1fr); }
@@ -6978,7 +6968,7 @@ function VenueDraftFields({
         />
       </label>
       <fieldset className={`${ELEMENT_TAG}-field`}>
-        <legend className={`${ELEMENT_TAG}-label`}>Map pin · optional</legend>
+        <legend className={`${ELEMENT_TAG}-label`}>Venue photograph · optional</legend>
         <p className={`${ELEMENT_TAG}-hint`}>Use a fraction from 0 to 1 across the map and down the map.</p>
         <div className={`${ELEMENT_TAG}-row`}>
           {(["x", "y"] as const).map((axis) => (
@@ -8100,7 +8090,6 @@ function MapStage({
   exploration = false,
   navigationView,
   onNavigationView,
-  photoPins,
   compactPhotos = false,
   placementCursor,
   children,
@@ -8501,7 +8490,7 @@ function MapStage({
       data-framing={framing && live.fit === "cover" ? "true" : "false"}
       data-mobile={mobile ? "true" : "false"}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
-      data-photo-pins={photoPins ? "true" : "false"}
+      data-photo-pins="true"
       data-compact-photos={compactPhotos ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
@@ -8644,44 +8633,26 @@ function MapStage({
                     pin.onSelect?.();
                   }}
                 >
-                  {(mobile || photoPins) && pin.kind !== "person" ? (
-                    <span
-                      className={`${ELEMENT_TAG}-pin-photo-card`}
+                  {pin.kind !== "person" ? (
+                    <VenuePolaroid
+                      image={pin.image}
+                      name={pin.text}
                       style={{
-                        transform: `scale(${focusedPhotoScale(
-                          compactPhotos
-                            ? 0.36
-                            : mobile
-                              ? mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)
-                              : DESKTOP_PHOTO_SCALE,
-                          pin.selected === true,
-                        )})`,
+                        transform:
+                          "scale(" +
+                          focusedPhotoScale(
+                            compactPhotos
+                              ? 0.36
+                              : mobile
+                                ? mobilePhotoScale(mobileCurrent.zoom, mobileInitial.zoom)
+                                : DESKTOP_PHOTO_SCALE,
+                            pin.selected === true,
+                          ) +
+                          ")",
                       }}
-                    >
-                      <span className={`${ELEMENT_TAG}-pin-photo`} aria-hidden="true">
-                        {pin.image ? (
-                          <img src={pin.image} alt="" loading="lazy" draggable={false} />
-                        ) : (
-                          <span className={`${ELEMENT_TAG}-pin-photo-empty`} role="img" aria-label="House">
-                            🏠
-                          </span>
-                        )}
-                        <span className={`${ELEMENT_TAG}-pin-photo-tack`} />
-                      </span>
-                      <span className={`${ELEMENT_TAG}-pin-name`}>{pin.text}</span>
-                    </span>
+                    />
                   ) : (
-                    <>
-                      <span aria-hidden="true" className={`${ELEMENT_TAG}-pin-tack`}>
-                        <svg viewBox="0 0 24 24" focusable="false">
-                          {/* The head, the waist under it and the needle. */}
-                          <path d="M7 2h10a1.2 1.2 0 0 1 1.2 1.2v2.4a1.2 1.2 0 0 1-1.2 1.2H7A1.2 1.2 0 0 1 5.8 5.6V3.2A1.2 1.2 0 0 1 7 2Z" />
-                          <path d="M9.4 7.4h5.2l-.7 3.2H10.1z" />
-                          <path d="M11.3 10.9h1.4v10.3l-.7 1.2-.7-1.2z" />
-                        </svg>
-                      </span>
-                      <span className={`${ELEMENT_TAG}-pin-name`}>{pin.text}</span>
-                    </>
+                    <span className={ELEMENT_TAG + "-pin-name"}>{pin.text}</span>
                   )}
                 </button>
                 {pin.onRemove ? (
@@ -15854,6 +15825,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         body: JSON.stringify({
           setting: snapshot.settings.setting,
           selectedLorebookIds: snapshot.settings.selectedLorebookIds,
+          sceneryArtStyle: snapshot.settings.sceneryArtStyle,
+          useVisualLore: snapshot.settings.useVisualLoreByDefault,
           scenarioImprint: {
             origin: "",
             worldFacts: snapshot.settings.worldFacts,
@@ -16102,7 +16075,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         rows.find((row) => row.presentation.x === null || row.presentation.y === null);
       if (!target || setupEditorOpen) return;
       if (setupMapSource !== "none" && (!setupMapSrc || setupMapBusy)) {
-        setSetupPlacementError("Wait for the selected artwork before placing pins, or use Simple map.");
+        setSetupPlacementError("Wait for the selected artwork before placing Venue photographs, or use Simple map.");
         return;
       }
       if (
@@ -16112,7 +16085,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           pictureSize ?? { width: 1000, height: 700, photoWidth: 58, photoHeight: 58 },
         )
       ) {
-        setSetupPlacementError("That pin would overlap another Venue. Choose a nearby spot.");
+        setSetupPlacementError("That Venue photograph would overlap another Venue. Choose a nearby spot.");
         return;
       }
       const next = rows.map((row) =>
@@ -16509,8 +16482,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       !snapshot?.isFounded &&
       setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
     )
-      return "Place every starting Venue pin.";
-    if (setupMapSource !== "none" && !setupMapReviewed) return "Check all Venue pins against the map on Spaces.";
+      return "Place every starting Venue photograph.";
+    if (setupMapSource !== "none" && !setupMapReviewed) return "Check all Venue photographs against the map on Spaces.";
 
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
     const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
@@ -17103,19 +17076,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   );
 
   /**
-   * What the map is drawing once the village exists: every place it has drawn,
-   * and everybody standing at one of them.
-   *
-   * The places are the pins in the sense the pins have always had — a tack
-   * through the paper saying something is here — and a villager's house is still
-   * the way into their conversation, because their house is still a place and it
-   * is the place they are at. What is new is that the rest of the village is on
-   * the map beside them: the mill and the harbour were always somewhere, they
-   * were only ever missing from the picture.
-   *
-   * A place nobody has drawn has no spot to be pinned at, so it is skipped here
-   * rather than guessed at. It is still a place — it is offered to the model and a
-   * villager can be sent there — it simply has nowhere to hang a pin yet.
+   * Every placed Venue uses its public photograph or a plain placeholder.
+   * Keep legacy MapPin identifiers for callers; the presentation is always a Polaroid.
+   * Unplaced Venues remain available in play without guessing map coordinates.
    */
   const savedPins: MapPin[] = (() => {
     const places = snapshot?.settings.venues ?? [];
@@ -17228,7 +17191,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         id: venue.id,
         x: spot.x,
         y: spot.y,
-        text: String(index + 1),
+        text: venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence"),
         label: `${index + 1}. ${venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence")}`,
         image: venue.presentation.image?.url ?? null,
         tone: venue.category === "public-center" ? "venue" : venue.occupancy.playerHome ? "player" : "resident",
@@ -19217,18 +19180,18 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <section className={ELEMENT_TAG + "-field"} aria-label="Village Map">
                   <h3 className={ELEMENT_TAG + "-panel-title"}>Village Map</h3>
                   <p className={ELEMENT_TAG + "-hint"}>
-                    Replace the background image here. Venue pins remain in their saved places until you reposition them
-                    in the preview.
+                    Replace the background image here. Venue photographs remain in their saved places until you
+                    reposition them in the preview.
                   </p>
                   {mapReplaceOpen ? (
                     <p className={ELEMENT_TAG + "-error"} role="alert">
-                      Venues will not move automatically. Review every pin on the new map; moving one here is free and
-                      does not change its residents, projects, or history.
+                      Venues will not move automatically. Review every Venue photograph on the new map; moving one here
+                      is free and does not change its residents, projects, or history.
                     </p>
                   ) : null}
                   <MapStage
                     src={townMapSrc}
-                    alt="Village map preview with venue pins"
+                    alt="Village map preview with Venue photographs"
                     pins={snapshot.settings.venues.flatMap((venue): MapPin[] => {
                       const spot = mapReplaceOpen ? mapPinDraft[venue.id] : placeSpot(venue);
                       if (!spot || spot.x === null || spot.y === null) return [];
@@ -19238,6 +19201,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           x: spot.x,
                           y: spot.y,
                           text: venue.name,
+                          image:
+                            venue.constructionStatus === "worksite"
+                              ? PROJECT_BLUEPRINT_IMAGE
+                              : (venue.presentation.image?.url ?? null),
                           tone: isHouse(venue)
                             ? pinTone({
                                 isPlayerHome: venue.occupancy.playerHome,
@@ -19305,8 +19272,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       {townMapPick || mapRemoveDraft ? (
                         <>
                           <p className={ELEMENT_TAG + "-hint"}>
-                            Select a venue, then choose Move pin and its new position on the preview. Unmoved venues
-                            keep their saved coordinates.
+                            Select a venue, then choose Move photograph and its new position on the preview. Unmoved
+                            venues keep their saved coordinates.
                           </p>
                           <div className={ELEMENT_TAG + "-field"} aria-label="Venue placement">
                             {snapshot.settings.venues.map((venue) => {
@@ -19341,7 +19308,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                                     aria-pressed={placingMapVenueId === venue.id}
                                     onClick={() => setPlacingMapVenueId(venue.id)}
                                   >
-                                    Move pin
+                                    Move photograph
                                   </button>
                                 </div>
                               );
@@ -21160,10 +21127,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             <div>
               <span className="villages-forging-saved">Saved draft</span>
               <h2>Welcome back to {draft?.name.trim() || "your village"}</h2>
-              <p>Your choices, edits, pin positions, and finished artwork are saved.</p>
+              <p>Your choices, edits, photograph positions, and finished artwork are saved.</p>
               <p>
-                <strong>Resume:</strong> {SETUP_STEPS[draft?.step ?? 0]} · {count} of {draft?.venues.length ?? 0} pins
-                placed
+                <strong>Resume:</strong> {SETUP_STEPS[draft?.step ?? 0]} · {count} of {draft?.venues.length ?? 0}{" "}
+                photographs placed
               </p>
               <p>{draft?.roster.length ?? 0} villagers selected · Persona and role saved</p>
               {draftSavedAt ? <p>Last saved {new Date(draftSavedAt).toLocaleString()}</p> : null}
@@ -21174,7 +21141,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   disabled={!draft}
                   onClick={() => draft && restoreSetupDraft(draft)}
                 >
-                  Resume {draft?.step === 2 ? "pin placement" : "founding"}
+                  Resume {draft?.step === 2 ? "photograph placement" : "founding"}
                 </button>
                 <button
                   type="button"
@@ -21238,7 +21205,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   : "Choose map artwork on Place, or select Simple map."
               : nextPin
                 ? `Next: click where ${nextPin.name || "this Venue"} is`
-                : `${placed} of ${setupVenues.length} pins placed`}
+                : `${placed} of ${setupVenues.length} photographs placed`}
           </p>
         ) : null}
         <div
@@ -21284,7 +21251,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         </div>
         {interactive ? (
           <>
-            <p>Select a Venue’s Move button, then click its new spot. Arrow keys and Enter also place pins.</p>
+            <p>
+              Select a Venue’s Move button, then click its new spot. Arrow keys and Enter also place Venue photographs.
+            </p>
             {setupMapSource === "none" && !snapshot?.isFounded ? (
               <button
                 type="button"
@@ -21302,10 +21271,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               </button>
             ) : null}
             {setupMapSource === "none" ? (
-              <p>Spaces pins evenly on this logical map.</p>
+              <p>Spaces Venue photographs evenly on this logical map.</p>
             ) : placed === setupVenues.length && !setupMapReviewed ? (
               <button type="button" onClick={() => setSetupMapReviewed(true)}>
-                I checked all pins against this map
+                I checked all Venue photographs against this map
               </button>
             ) : null}
           </>
@@ -21495,7 +21464,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <section className="villages-forging-card">
                   <h3>Map</h3>
                   {snapshot?.isFounded ? (
-                    <p>Change artwork and pins in Village Settings → Village Map. Existing locations are retained.</p>
+                    <p>
+                      Change artwork and Venue photographs in Village Settings → Village Map. Existing locations are
+                      retained.
+                    </p>
                   ) : (
                     <>
                       <div className="villages-forging-actions" role="group" aria-label="Map source">
@@ -21532,7 +21504,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                               placeholder="For example: bedrooms along the east corridor; lounge near the center."
                             />
                           </label>
-                          <p>Guides the artwork. You will place the Venue pins yourself.</p>
+                          <p>Guides the artwork. You will place the Venue photographs yourself.</p>
                           <label>
                             Art style
                             <select
@@ -21728,7 +21700,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                             : "Suggest names & descriptions"}
                       </button>
                       <p>
-                        Drafts names, forms, descriptions, and Zone layouts. Keeps your edited text and pin positions.
+                        Drafts names, forms, descriptions, and Zone layouts. Keeps your edited text and photograph
+                        positions.
                       </p>
                     </>
                   ) : null}
@@ -21747,7 +21720,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       <p>
                         {venue.presentation.x === null || venue.presentation.y === null
                           ? "Waiting for placement"
-                          : "✓ Pin placed"}{" "}
+                          : "✓ Photograph placed"}{" "}
                         · Exterior{venueHasCommon(venue) ? " · Common" : ""}
                         {venueHasPrivate(venue) ? " · Private" : ""}
                       </p>
@@ -21772,7 +21745,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </section>
                   ))}
                   <p>
-                    {placed} of {setupVenues.length} pins placed
+                    {placed} of {setupVenues.length} photographs placed
                   </p>
                 </section>
               </div>
@@ -21847,7 +21820,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <section className="villages-forging-card">
                   {map(false)}
                   <p>
-                    {placed} of {setupVenues.length} pins placed
+                    {placed} of {setupVenues.length} photographs placed
                   </p>
                   <h3>After founding</h3>
                   <p>

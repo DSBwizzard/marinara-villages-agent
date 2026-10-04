@@ -323,7 +323,7 @@ try {
         const card = marker.locator("." + P + "-pin-photo-card");
         assert.equal((await card.boundingBox()).width, 56);
         await expect(card).toHaveCSS("background-color", "rgb(250, 244, 231)");
-        await expect(card.locator("." + P + "-pin-photo-tack")).toHaveCount(1);
+        await expect(card.locator("." + P + "-pin-photo-tack")).toHaveCount(0);
         await expect(card.locator("." + P + "-pin-name")).toHaveText(venue.name);
         const thumbnail = card.locator("." + P + "-pin-photo");
         const bounds = await thumbnail.boundingBox();
