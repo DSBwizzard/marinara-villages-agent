@@ -13,8 +13,9 @@ export function selectWishSize(attemptId: string): WishSize {
 export function sizedWishLifetime(id: string, size: WishSize, everydayDays: number): number {
   return size === "everyday" ? everydayDays : size === "modest" ? 7 + (roll(id) % 8) : 14 + (roll(id) % 15);
 }
+export const wishRetained = (wish: VillageWish): boolean => !!wish.learnedAt && wishSize(wish.size) !== "everyday";
 export function wishExpired(wish: VillageWish, now: number): boolean {
-  if (wish.learnedAt && wishSize(wish.size) !== "everyday") return false;
+  if (wishRetained(wish)) return false;
   return !!wish.expiresAt && Number.isFinite(Date.parse(wish.expiresAt)) && Date.parse(wish.expiresAt) <= now;
 }
 export function wishGenerationDirection(size: WishSize): string {

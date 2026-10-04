@@ -4,6 +4,7 @@
 // time comes from `simulatedThrough`; after shutdown the same reconciliation
 // resumes from that instant when the package opens again.
 import { villagesLogger } from "./package-runtime.js";
+import { wishRetained } from "./wish-definition.js";
 import type { VillageState } from "./types.js";
 import { nextClockChangeAt } from "./village-clock.js";
 import { agendaBlocksFor } from "./agenda-week.js";
@@ -37,6 +38,7 @@ export function villageSchedulerDelayMs(
       deadlines.push(localMinuteDeadline(now, row.startMinute), localMinuteDeadline(now, row.endMinute));
     }
     for (const wish of villager.agenda?.wishes ?? []) {
+      if (wishRetained(wish)) continue;
       const expiry = Date.parse(wish.expiresAt);
       if (Number.isFinite(expiry) && expiry > now.getTime()) deadlines.push(expiry);
     }

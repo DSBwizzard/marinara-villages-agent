@@ -93,6 +93,22 @@ async function main() {
   );
   assert.ok(villageSchedulerDelayMs(at(9, 42, 59)) >= REFRESH_MIN_DELAY_MS);
   assert.ok(villageSchedulerDelayMs(at(9, 42, 0)) <= REFRESH_MAX_DELAY_MS);
+  const retainedDeadline = {
+    villagers: [
+      {
+        agenda: {
+          day: [],
+          wishes: [{ size: "larger", learnedAt: at(9, 40).toISOString(), expiresAt: at(9, 43).toISOString() }],
+        },
+      },
+    ],
+    scheduledEvents: [],
+  } as any;
+  assert.equal(
+    villageSchedulerDelayMs(at(9, 42, 30), retainedDeadline),
+    villageSchedulerDelayMs(at(9, 42, 30)),
+    "A retained discovered wish creates no expiry wake",
+  );
   assert.equal(villageSchedulerDelayMs(new Date("bad")), REFRESH_MAX_DELAY_MS);
 
   const migrated = coerceVillageState({
@@ -270,6 +286,35 @@ async function main() {
       state.storyPace = "off";
       state.simulatedThrough = start.toISOString();
       state.lastKnownTimeZone = "Etc/Old";
+      state.villagers = [
+        {
+          characterId: "retained",
+          cardSnapshot: {
+            id: "retained",
+            name: "Retained",
+            capturedAt: start.toISOString(),
+            revision: 1,
+            sourceStatus: "available",
+          },
+          completedWishes: [],
+          agenda: {
+            day: [],
+            generatedAt: start.toISOString(),
+            wishes: [
+              {
+                id: "retained",
+                wish: "Experience swimming",
+                tell: "",
+                intensity: 1,
+                size: "larger",
+                addedAt: start.toISOString(),
+                learnedAt: start.toISOString(),
+                expiresAt: new Date(start.getTime() + 14 * 86400000).toISOString(),
+              },
+            ],
+          },
+        },
+      ] as any;
       state.venues = [
         {
           id: "square",
@@ -288,6 +333,20 @@ async function main() {
     assert.equal(modelCalls, 0, "story pace Off never blocks deterministic reconciliation and spends no model call");
     assert.equal((await readVillageState()).simulatedThrough, later.toISOString());
     assert.equal((await readVillageState()).lastKnownTimeZone, quiet.village.timeZone);
+    const retainedState = await readVillageState();
+    assert.equal(
+      retainedState.villagers[0].agenda!.wishes[0].id,
+      "retained",
+      "Restart catch-up retains discovered larger wishes",
+    );
+    assert.equal(
+      retainedState.wishRefillIntents.retained,
+      undefined,
+      "Retained wishes never queue expiry replacements",
+    );
+    await mutateVillageState((state) => {
+      state.villagers = [];
+    });
     assert.ok(quiet.recap, "a long return receives a layered recap");
     assert.ok((quiet.recap?.summaries.length ?? 0) <= 6);
 
