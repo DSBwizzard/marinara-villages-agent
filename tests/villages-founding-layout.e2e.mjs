@@ -468,6 +468,36 @@ try {
       await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
       await forward("Continue to spaces").click();
       await root.getByRole("button", { name: "I checked all pins against this map", exact: true }).click();
+      // A chosen upload replaces paused recovery, even when the old provider finishes later.
+      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      failMapStatus = true;
+      await root.getByRole("button", { name: "Generate again", exact: true }).click();
+      await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
+      await root
+        .getByRole("group", { name: "Map source", exact: true })
+        .getByRole("button", { name: "Upload", exact: true })
+        .click();
+      const uploadArt = new PNG({ width: 640, height: 640 });
+      uploadArt.data.fill(110);
+      await root
+        .getByLabel("Upload map image", { exact: true })
+        .setInputFiles({ name: "chosen-map.png", mimeType: "image/png", buffer: PNG.sync.write(uploadArt) });
+      await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
+      await expect(root.getByRole("button", { name: "Check map status", exact: true })).toHaveCount(0);
+      failMapStatus = false;
+      releaseMap();
+      await forward("Continue to spaces").click();
+      await root.getByRole("button", { name: "I checked all pins against this map", exact: true }).click();
+      await forward("Save & exit").click();
+      await expect(root.getByRole("button", { name: "Resume pin placement", exact: true })).toBeVisible();
+      await page.reload();
+      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await root.getByRole("button", { name: "Resume pin placement", exact: true }).click();
+      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
+      await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
+      assert.equal(mapCalls, 3, "upload and reload do not dispatch another image request");
+      await forward("Continue to spaces").click();
     }
     await forward("Review village").click();
     await expect(root.getByText("Step 4 of 4 · Review")).toBeVisible();
