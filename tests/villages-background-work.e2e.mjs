@@ -113,6 +113,21 @@ snapshot.backgroundWork = [
     connectionPaused: true,
   },
 ];
+snapshot.backgroundWork[0].failedAt = "2026-09-28T12:00:00.000Z";
+snapshot.backgroundWork[0].failure = { cause: "provider_exception", stage: "dispatch" };
+snapshot.backgroundWork.push({
+  id: "villages-background-" + "b".repeat(64),
+  kind: "wish-check",
+  subjectId: "finished",
+  label: "Finished Wish check",
+  status: "completed",
+  attempt: 1,
+  completedSteps: 1,
+  requests: 1,
+  tokens: 200,
+  error: "",
+  connectionPaused: false,
+});
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
 const errors = [],
   heartbeats = [],
@@ -168,6 +183,15 @@ try {
   await expect.poll(() => heartbeats.some((beat) => beat.visible)).toBe(true);
   await page.getByRole("button", { name: "Open settings menu" }).click();
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs attention (1)" })).toBeVisible();
+  await expect(page.getByText(/Background work: 0 running \/ queued, 0 paused, 1 need attention/)).toBeVisible();
+  await expect(page.getByText("Finished Wish check", { exact: true })).not.toBeVisible();
+  await page.getByText("Completed history (1)", { exact: true }).click();
+  await expect(page.getByText("Finished Wish check", { exact: true })).toBeVisible();
+  await page.getByText("Completed history (1)", { exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry unfinished work" })).toBeVisible();
   await expect(page.getByText(/3 saved steps, 4 requests, token usage unavailable/)).toBeVisible();
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect(page.getByRole("alert")).toContainText("Failed to fetch");

@@ -4,6 +4,7 @@ import {
   villageBackgroundPresence,
   backgroundWorkSummaries,
   retryBackgroundJob,
+  recoverBackgroundWork,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
 import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
@@ -76,7 +77,8 @@ let pageFailure = false,
   conflictOnce = false,
   listCalls = 0,
   modelCalls: string[] = [];
-let mode: "fresh" | "none" | "repeat" | "uncertain" | "blank" | "throw" | "compare-throw" = "fresh";
+let mode: "fresh" | "none" | "repeat" | "uncertain" | "blank" | "empty" | "malformed" | "throw" | "compare-throw" =
+  "fresh";
 let onModel: (() => Promise<void>) | undefined;
 let comparisonId = "";
 let unavailableGenerationUsage = false;
@@ -220,6 +222,8 @@ const release = configureVillagesRuntime({
           }
           if (mode === "throw") throw new Error("provider unavailable");
           if (mode === "blank") return { content: "", finishReason: "length" };
+          if (mode === "empty") return { content: " ", finishReason: "stop" };
+          if (mode === "malformed") return { content: "unclosed {", finishReason: "stop" };
           if (mode === "compare-throw" && prompt.includes("Compare one wish"))
             throw new Error("comparison unavailable");
           if (prompt.includes("Compare one wish"))
@@ -311,6 +315,28 @@ async function run() {
     mode = "blank";
     await reconcileWishLifecycle(now, false, () => now);
     assert.equal(modelCalls.length, 1, "empty reasoning output is not retried");
+    assert.equal((await backgroundWorkSummaries()).find((j) => j.kind === "wish")?.failure?.cause, "output_limit");
+    for (const failureMode of ["empty", "malformed"] as const) {
+      seed();
+      mode = failureMode;
+      await reconcileWishLifecycle(now, false, () => now);
+      assert.equal(
+        (await backgroundWorkSummaries()).find((j) => j.kind === "wish")?.failure?.cause,
+        failureMode === "empty" ? "empty_output" : "invalid_json",
+      );
+      await reconcileWishLifecycle(noon, false, () => noon);
+      assert.equal(modelCalls.length, 1, "daily malformed output is never repaired automatically");
+    }
+    seed();
+    mode = "blank";
+    await reconcileWishLifecycle(now, false, () => now);
+    await mutateVillageState((live) => {
+      live.villagers[0]!.wishLifecycle!.attempt!.id = "replacement-identity";
+    });
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.equal((await backgroundWorkSummaries()).find((j) => j.kind === "wish")?.status, "obsolete");
+    assert.equal(modelCalls.length, 1, "a superseded daily identity retires without a replacement request");
     seed();
     mode = "throw";
     await reconcileWishLifecycle(now, false, () => now);

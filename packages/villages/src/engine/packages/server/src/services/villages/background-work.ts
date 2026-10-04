@@ -1,3 +1,4 @@
+import { WorkFailureError, type WorkFailure } from "./work-failure.js";
 import { measurePipeline } from "./pipeline-metrics.js";
 import { withUsagePurpose } from "./usage-meter.js";
 import { agendaRequestCount, remainingRequests } from "./generation-budgets.js";
@@ -26,6 +27,9 @@ export type BackgroundSummary = {
   tokens: number | null;
   error: string;
   connectionPaused: boolean;
+  failure?: WorkFailure;
+  updatedAt?: string;
+  failedAt?: string;
 };
 type Step = {
   key?: string;
@@ -68,11 +72,14 @@ type Job = BackgroundInput & {
   connectionPaused: boolean;
   completedCount: number;
   usageComplete: boolean;
+  failure?: WorkFailure;
+  partialResult?: boolean;
+  failedAt?: string;
 };
 type Handler = {
   generate(input: any): Promise<unknown>;
   valid(state: VillageState, input: any): boolean;
-  apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void;
+  apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void | WorkFailure;
   afterApply?(input: any, finite: boolean): Promise<void>;
   afterFailure?(input: any): Promise<void>;
 };
@@ -371,6 +378,9 @@ async function runMeasuredJob(id: string): Promise<void> {
       result: undefined,
       hasResult: false,
       error: "",
+      failure: undefined,
+      failedAt: undefined,
+      partialResult: false,
     }));
     return;
   }
@@ -379,6 +389,11 @@ async function runMeasuredJob(id: string): Promise<void> {
       ...current!,
       status: "interrupted",
       error: "Generation was interrupted. This request may already have incurred costs.",
+      failure: {
+        cause: "unknown_request",
+        stage: "recovery",
+        message: "Generation was interrupted. This request may already have incurred costs.",
+      },
       owner: runOwner,
     }));
     return;
@@ -388,6 +403,8 @@ async function runMeasuredJob(id: string): Promise<void> {
   let cursor = 0;
   let lastIndex = -1;
   let invoked = false;
+  let stage = "generation";
+  let dispatched = false;
   const complete: BackgroundCompletion = async (model, messages, maxTokens, options) => {
     // Provider and token-limit changes do not invalidate already purchased responses.
     const fingerprint = backgroundRevision(messages);
@@ -428,6 +445,7 @@ async function runMeasuredJob(id: string): Promise<void> {
         return current;
       });
       invoked = true;
+      dispatched = true;
       let response: Awaited<ReturnType<BackgroundCompletion>>;
       try {
         response = await withUsagePurpose(
@@ -447,9 +465,15 @@ async function runMeasuredJob(id: string): Promise<void> {
         pausedConnections.add(model.connectionId);
         await persistConnectionPause(model.connectionId, true);
         await changeJob(id, (current) => ({ ...current!, connectionPaused: true, usageComplete: false }));
-        throw error;
+        throw new WorkFailureError({
+          cause: "provider_exception",
+          stage: "dispatch",
+          message: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+          requestedOutputTokens: maxTokens,
+        });
       }
       if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
+      stage = "response-storage";
       job = await changeJob(id, (current) => {
         if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
         current.steps[index] = { key: options.checkpointId, fingerprint, status: "completed", response };
@@ -462,6 +486,8 @@ async function runMeasuredJob(id: string): Promise<void> {
         else current.usageComplete = false;
         return current;
       });
+      dispatched = false;
+      stage = "generation";
       if (job!.retrying) {
         try {
           await clearConnectionPause(model.connectionId);
@@ -475,6 +501,7 @@ async function runMeasuredJob(id: string): Promise<void> {
   complete.metadata = {
     id: job.id,
     kind: job.kind,
+    attempt: job.attempt,
     cause: job.finite
       ? "Player-requested generation"
       : job.kind === "translation"
@@ -495,16 +522,29 @@ async function runMeasuredJob(id: string): Promise<void> {
     if (!job.hasResult) {
       const result = await backgroundCalls.run(complete, () => handlers.get(job!.kind)!.generate(job!.input));
       if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
+      stage = "storage";
       job = await changeJob(id, (current) => ({ ...current!, result, hasResult: true }));
     }
     if (job.retrying && pausedConnections.has(job.connectionId)) await clearConnectionPause(job.connectionId);
+    stage = "application";
+    let partialFailure: WorkFailure | undefined;
     await mutateVillageState((state) => {
       if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
       if (state.backgroundReceipts[id] === job!.id) return;
       checkCurrent(job!, state);
-      handlers.get(job!.kind)!.apply(state, job!.input, job!.result, { retrying: job!.retrying });
-      state.backgroundReceipts[id] = job!.id;
+      partialFailure =
+        handlers.get(job!.kind)!.apply(state, job!.input, job!.result, { retrying: job!.retrying }) || undefined;
+      if (!partialFailure) state.backgroundReceipts[id] = job!.id;
     });
+    if (partialFailure) {
+      job = await changeJob(id, (current) => ({
+        ...current!,
+        partialResult: true,
+        failedStep: lastIndex >= 0 ? lastIndex : null,
+      }));
+      throw new WorkFailureError(partialFailure);
+    }
+    stage = "acknowledgement";
     const appliedInput = job.input;
     const appliedFinite = job.finite;
     const wasRetry = job.retrying;
@@ -513,6 +553,9 @@ async function runMeasuredJob(id: string): Promise<void> {
       completedCount: current!.steps.length,
       status: "completed",
       error: "",
+      failure: undefined,
+      failedAt: undefined,
+      partialResult: false,
       steps: [],
       settings: {},
       input: null,
@@ -520,7 +563,7 @@ async function runMeasuredJob(id: string): Promise<void> {
       hasResult: false,
       retrying: false,
     }));
-    if (wasRetry) queueMicrotask(() => void recoverBackgroundWork().catch(() => {}));
+    if (wasRetry) await recoverBackgroundWork().catch(() => {});
     await handlers
       .get(job.kind)!
       .afterApply?.(appliedInput, appliedFinite)
@@ -541,11 +584,20 @@ async function runMeasuredJob(id: string): Promise<void> {
             : "paused"
           : "failed",
       error: message,
-      failedStep: current!.hasResult
-        ? null
-        : paused || obsolete || !invoked
-          ? current!.failedStep
-          : Math.max(0, lastIndex),
+      failedAt: obsolete || paused ? current!.failedAt : (current!.failedAt ?? new Date().toISOString()),
+      failure:
+        error instanceof WorkFailureError
+          ? error.failure
+          : obsolete || paused
+            ? current!.failure
+            : { cause: dispatched ? "unknown_request" : "storage_application", stage, message },
+      failedStep: current!.partialResult
+        ? current!.failedStep
+        : current!.hasResult
+          ? null
+          : paused || obsolete || !invoked || ["storage", "response-storage"].includes(stage)
+            ? current!.failedStep
+            : Math.max(0, lastIndex),
       ...(obsolete ? { steps: [], settings: {}, input: null, result: undefined, hasResult: false } : {}),
     }));
     await handlers
@@ -570,6 +622,31 @@ export async function retryBackgroundJob(id: string, expectedAttempt: number, ac
   }
   if (!/^villages-background-[a-f0-9]{64}$/.test(id) || !/^[a-zA-Z0-9-]{1,100}$/.test(actionId))
     throw badRequest("Invalid background retry.");
+  // Apply a saved partial response before discarding its bad rows. A lost effect
+  // acknowledgement must not cause valid, purchased answers to be regenerated.
+  const prior = await readJob(id);
+  if (
+    prior?.kind === "wish-check" &&
+    prior.hasResult &&
+    !running.has(id) &&
+    prior.attempt === expectedAttempt &&
+    !prior.retryActions.includes(actionId) &&
+    ["failed", "interrupted", "paused"].includes(prior.status)
+  ) {
+    let remaining: WorkFailure | undefined;
+    await mutateVillageState((state) => {
+      if (state.backgroundReceipts[id] === prior.id) return;
+      if (state.seed !== prior.seed) throw conflict("This Wish check belongs to another village.");
+      remaining = handlers.get(prior.kind)!.apply(state, prior.input, prior.result, { retrying: true }) || undefined;
+      if (!remaining) state.backgroundReceipts[id] = prior.id;
+    });
+    if (remaining)
+      await changeJob(id, (current) => {
+        if (current?.id !== prior.id || current.attempt !== expectedAttempt)
+          throw conflict("That job changed during saved-response recovery.");
+        return { ...current, partialResult: true, failedStep: current.steps.length ? current.steps.length - 1 : null };
+      });
+  }
   await changeJob(id, (job) => {
     if (!job) throw new Error("That background job no longer exists.");
     if (job.retryActions.includes(actionId)) return job;
@@ -579,6 +656,13 @@ export async function retryBackgroundJob(id: string, expectedAttempt: number, ac
     if (job.failedStep !== null) job.steps.splice(job.failedStep);
     else if (job.steps.at(-1)?.status === "running") job.steps.pop();
     job.failedStep = null;
+    if (job.partialResult) {
+      job.hasResult = false;
+      job.result = undefined;
+      job.partialResult = false;
+    }
+    job.failure = undefined;
+    job.failedAt = undefined;
     job.attempt++;
     job.owner = owner;
     job.status = "queued";
@@ -611,6 +695,86 @@ export async function recoverBackgroundWork(): Promise<void> {
       }));
       continue;
     }
+    // Recovery applies only already prepared responses. It never enters generate
+    // or permits a replacement model request for failures or uncertain outcomes.
+    if (
+      job.kind === "wish-check" &&
+      job.hasResult &&
+      !running.has(record.id) &&
+      ["failed", "paused", "interrupted"].includes(job.status)
+    ) {
+      try {
+        let remaining: WorkFailure | undefined;
+        await mutateVillageState((state) => {
+          if (state.backgroundReceipts[record.id] === job.id) return;
+          checkCurrent(job, state);
+          remaining =
+            handlers.get(job.kind)!.apply(state, job.input, job.result, { retrying: job.retrying }) || undefined;
+          if (!remaining) state.backgroundReceipts[record.id] = job.id;
+        });
+        await changeJob(record.id, (current) => {
+          if (current?.id !== job.id || current.attempt !== job.attempt || running.has(record.id))
+            throw conflict("That job changed during local recovery.");
+          if (remaining)
+            return {
+              ...current,
+              partialResult: true,
+              failure: remaining,
+              failedStep: current.steps.length ? current.steps.length - 1 : null,
+            };
+          return {
+            ...current,
+            status: "completed",
+            error: "",
+            failure: undefined,
+            failedAt: undefined,
+            completedCount: current.steps.length,
+            steps: [],
+            settings: {},
+            input: null,
+            result: undefined,
+            hasResult: false,
+            partialResult: false,
+            retrying: false,
+          };
+        });
+        if (!remaining) {
+          await handlers.get(job.kind)?.afterApply?.(job.input, job.finite);
+          continue;
+        }
+      } catch (error) {
+        villagesLogger().warn("[villages] local Wish recovery remains unfinished: %s", String(error));
+      }
+    }
+    const input = asRecord(job.input);
+    if (
+      !running.has(record.id) &&
+      !["completed", "obsolete"].includes(job.status) &&
+      ((job.kind === "wish-check" && (Array.isArray(input.items) || asRecord(input.proposal).wishId)) ||
+        (job.kind === "wish" && input.characterId && input.id && input.revision))
+    ) {
+      const state = await readVillageState();
+      if (job.seed !== state.seed || !handlers.get(job.kind)!.valid(state, job.input)) {
+        const retiredInput = job.input;
+        await changeJob(record.id, (current) => ({
+          ...current!,
+          status: "obsolete",
+          error: "This Wish work no longer applies.",
+          failure: undefined,
+          steps: [],
+          settings: {},
+          input: null,
+          result: undefined,
+          hasResult: false,
+          replacement: undefined,
+        }));
+        await handlers
+          .get(job.kind)
+          ?.afterFailure?.(retiredInput)
+          .catch((error) => villagesLogger().warn("[villages] could not settle retired Wish check: %s", String(error)));
+        continue;
+      }
+    }
     if (job.connectionPaused) pausedConnections.add(job.connectionId);
     if (
       job.owner !== owner &&
@@ -622,6 +786,11 @@ export async function recoverBackgroundWork(): Promise<void> {
         status: "interrupted",
         owner,
         error: "Generation was interrupted. This request may already have incurred costs.",
+        failure: {
+          cause: "unknown_request",
+          stage: "recovery",
+          message: "Generation was interrupted. This request may already have incurred costs.",
+        },
       }));
     } else if (["queued", "paused", "running"].includes(job.status)) launch(record.id);
   }
@@ -673,6 +842,9 @@ export async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
       tokens: job.usageComplete ? job.tokens : null,
       error: job.error,
       connectionPaused: job.connectionPaused || pausedConnections.has(job.connectionId),
+      failure: job.failure,
+      updatedAt: record.updatedAt,
+      failedAt: job.failedAt,
     });
   }
   if (discardedReceipts.length)

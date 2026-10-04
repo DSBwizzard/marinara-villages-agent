@@ -1,3 +1,4 @@
+import { completionFailure, WorkFailureError } from "./work-failure.js";
 import { addRoutineIdea } from "./owned-routine.js";
 import type { CapabilityLanguageModelCompletion, CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
@@ -321,24 +322,41 @@ async function ask(
   // Losing any required comparison entry is an uncertain verdict, never permission.
   if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
     throw new Error("The System context cannot fit the bounded wish request.");
+  const outputLimit = Math.min(fitted.maxTokens ?? requested, requested);
   const started = performance.now();
   let completion: CapabilityLanguageModelCompletion | null = null;
   try {
-    completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requested, {
+    completion = await completeWithRoom(model, fitted.messages, outputLimit, {
       temperature: limit === 800 ? 0 : 0.7,
       reasoningEffort: "low",
       debugMode: !backgroundCalls.getStore() && villagesDebugAgentsEnabled(),
       retryEmpty: false,
       signal: AbortSignal.timeout(90_000),
     });
-    return extractJsonObject(completion.content ?? "");
+    const failure = completionFailure(completion, "wish-generation", outputLimit);
+    if (failure) throw new WorkFailureError(failure);
+    const payload = extractJsonObject(completion.content ?? "");
+    if (!payload)
+      throw new WorkFailureError({
+        cause: "invalid_json",
+        stage: "wish-generation",
+        message: "Wish generation returned malformed JSON; explicit retry required.",
+        finishReason: completion.finishReason,
+        requestedOutputTokens: outputLimit,
+      });
+    return payload;
   } finally {
     recordUsage(job, completion, performance.now() - started);
   }
 }
 
 /** Replay the frozen inputs; the coordinator checkpoints each raw provider response. */
-async function generateWish(input: { state: VillageState; characterId: string; now: string }): Promise<WishAttempt> {
+async function generateWish(input: {
+  state: VillageState;
+  characterId: string;
+  now: string;
+  outputContractVersion?: 2;
+}): Promise<WishAttempt> {
   const state = structuredClone(input.state),
     characterId = input.characterId,
     now = new Date(input.now);
@@ -408,7 +426,8 @@ async function generateWish(input: { state: VillageState; characterId: string; n
       },
     ];
     job.calls = 1;
-    const payload = await ask(job, messages, 1500),
+    // New generation reserves reasoning space; retained requests keep their old layout.
+    const payload = await ask(job, messages, input.outputContractVersion === 2 ? 4096 : 1500),
       raw = payload?.wish;
     const candidate =
       raw && typeof raw === "object" && !Array.isArray(raw)
@@ -416,7 +435,11 @@ async function generateWish(input: { state: VillageState; characterId: string; n
         : null;
     if (!candidate) {
       if (!payload || !("wish" in payload) || payload.wish !== null)
-        throw new Error("Wish generation returned no usable answer.");
+        throw new WorkFailureError({
+          cause: "missing_result",
+          stage: "wish-generation",
+          message: "Wish generation returned no usable answer; explicit retry required.",
+        });
       job.routineIdea = payload.routineIdea;
       job.stage = "done";
       job.reason = "No new wish today.";
@@ -549,6 +572,7 @@ export async function processWishAttempt(
     label: resident.cardSnapshot.name + "'s next wish",
     legacyError: interrupted ? "Interrupted wish request: outcome unknown; deliberate retry required." : undefined,
     input: {
+      outputContractVersion: 2,
       state,
       characterId,
       id,

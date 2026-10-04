@@ -13,6 +13,7 @@ import {
 import {
   settleBackgroundWork,
   backgroundWorkSummaries,
+  recoverBackgroundWork,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import { wishFingerprint } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
 import { bindLiveProposals } from "../packages/villages/src/engine/packages/server/src/services/villages/live-memory.js";
@@ -175,7 +176,7 @@ async function main() {
                 results: checks.map((check: any) => ({
                   id: check.id,
                   outcome,
-                  evidenceIds: ["p", "r"],
+                  evidenceIds: check.evidenceIds?.slice(0, 2) ?? ["p", "r"],
                   reason: "Both conditions supported by labeled evidence",
                 })),
               }),
@@ -446,6 +447,43 @@ async function main() {
     await settleBackgroundWork();
     assert.equal(calls, cachedCalls + 1, "Cached preparation does not shift or repeat paid stages");
     assert.equal((await readVillageState()).villagers[0].agenda?.wishes.length, 0);
+    const retiredWish = { ...wish, id: "retired-wish" };
+    records.get("villages-village").data.villagers[0].agenda.wishes = [retiredWish];
+    const retiredScene = structuredClone(cachedScene);
+    retiredScene.id = "retired-scene";
+    retiredScene.submissions[0].wishProposals[0].wishId = retiredWish.id;
+    retiredScene.submissions[0].wishProposals[0].fingerprint = wishFingerprint(retiredWish);
+    retiredScene.submissions[0].processing = createExchangeProcessing({
+      seed: state.seed,
+      sceneId: retiredScene.id,
+      submissionId: "uncertain-turn",
+      order: 0,
+      lineIds: ["p", "r"],
+      actionReceiptIds: [],
+    });
+    for (const domain of ["projects", "memories", "relationships"])
+      retiredScene.submissions[0].processing.domains[domain].status = "applied";
+    records.set("villages-venue-visit-retired-scene", {
+      id: "villages-venue-visit-retired-scene",
+      kind: "venue-visit",
+      revision: 1,
+      data: retiredScene,
+    });
+    failJudgment = true;
+    await processWishExchange(retiredScene, "uncertain-turn");
+    await settleBackgroundWork();
+    assert.equal((await readSceneChanges("retired-scene")).changes[0].processing?.domains.wishes.status, "failed");
+    const callsBeforeRetirement = calls;
+    records.get("villages-village").data.villagers[0].agenda.wishes = [];
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.equal(
+      (await readSceneChanges("retired-scene")).changes[0].processing?.domains.wishes.status,
+      "applied",
+      "retiring an inapplicable check settles Scene bookkeeping",
+    );
+    assert.equal(calls, callsBeforeRetirement, "retirement performs no paid repair");
+    failJudgment = false;
     const callsBeforeStorage = calls;
     for (const after of [false, true]) {
       const sceneId = "wish-storage-" + after,

@@ -98,7 +98,7 @@ async function main() {
           async chatComplete(messages: any, options: any) {
             calls++;
             assert.ok(!messages[0].content.startsWith("Prepare"));
-            assert.ok(options.maxTokens <= 1024);
+            assert.ok(options.maxTokens >= 1024 && options.maxTokens <= 4096);
             wireCharacters += messages[1].content.length;
             assert.ok(messages[1].content.length <= 12000);
             const checks = fixtureInterpretationChecks(messages[1].content);
