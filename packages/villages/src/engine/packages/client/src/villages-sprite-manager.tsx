@@ -16,7 +16,12 @@ type Props = {
   onSaved: (snapshot: unknown) => void;
   onBack: () => void;
 };
-type Saved = { manager: SpriteManagerState; snapshot: unknown; addedArtworkIds?: string[] };
+type Saved = {
+  manager: SpriteManagerState;
+  snapshot: unknown;
+  addedArtworkIds?: string[];
+  selectedArtworkIds?: string[];
+};
 async function loadPixels(url: string): Promise<SpritePixels> {
   const image = new Image();
   image.src = url;
@@ -256,6 +261,7 @@ export function SpriteManager({ villager, request, onSaved, onBack }: Props) {
                   <input
                     type="checkbox"
                     checked={librarySelected.includes(item.filename)}
+                    disabled={busy || Boolean(item.adoptedArtworkId)}
                     onChange={(event) =>
                       setLibrarySelected((prior) =>
                         event.target.checked
@@ -265,6 +271,7 @@ export function SpriteManager({ villager, request, onSaved, onBack }: Props) {
                     }
                   />{" "}
                   {item.filename}
+                  {item.adoptedArtworkId ? " · Already added" : ""}
                 </span>
               </label>
             ))}
@@ -275,9 +282,13 @@ export function SpriteManager({ villager, request, onSaved, onBack }: Props) {
               onClick={() =>
                 void perform(async () => {
                   const saved = await call<Saved>("adopt", { filenames: librarySelected });
-                  accept(saved, saved.addedArtworkIds?.[0]);
+                  accept(saved, saved.selectedArtworkIds?.[0] ?? saved.addedArtworkIds?.[0]);
                   setLibrary(null);
-                  setNotice("Independent artwork copies added. Choose their expressions and facing.");
+                  setNotice(
+                    saved.addedArtworkIds?.length
+                      ? "Independent artwork copies added. Choose their expressions and facing."
+                      : "Selected artwork is already in Sprite Manager.",
+                  );
                 })
               }
             >
