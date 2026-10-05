@@ -77,6 +77,7 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[], options: any) {
+          assert.deepEqual(options.responseFormat, { type: "json_object" });
           systemCalls++;
           const { checks } = JSON.parse(messages[1].content);
           frozenInputs.push(checks);

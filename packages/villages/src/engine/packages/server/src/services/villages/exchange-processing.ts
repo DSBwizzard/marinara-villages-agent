@@ -1,3 +1,4 @@
+import { WorkFailureError, coerceWorkFailure, type WorkFailure } from "./work-failure.js";
 import { pipelineSignal } from "./pipeline-metrics.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 
@@ -5,6 +6,7 @@ export const EXCHANGE_PROCESSING_VERSION = 1;
 export const EXCHANGE_DOMAINS = ["projects", "wishes", "memories", "relationships"] as const;
 export type ExchangeDomain = (typeof EXCHANGE_DOMAINS)[number];
 export type DomainProcessing = {
+  failure?: WorkFailure;
   rejectedProposals?: { kind: string; index: number; reason: string }[];
   status: "pending" | "applied" | "rejected" | "failed";
   reason: string;
@@ -70,6 +72,7 @@ export function coerceExchangeProcessing(value: unknown): ExchangeProcessing | u
       ...(Array.isArray(row.rejectedProposals)
         ? { rejectedProposals: row.rejectedProposals as DomainProcessing["rejectedProposals"] }
         : {}),
+      ...(coerceWorkFailure(row.failure) ? { failure: coerceWorkFailure(row.failure) } : {}),
       status: row.status === "applied" || row.status === "rejected" || row.status === "failed" ? row.status : "pending",
       reason: asTrimmedString(row.reason).slice(0, 500),
       evidenceIds: strings(row.evidenceIds),
@@ -110,6 +113,7 @@ export async function dispatchExchange(
         ...prior,
         status: "applied",
         reason: "Saved evidence checked and application completed",
+        failure: undefined,
         ...applied,
         attempts: prior.attempts + 1,
         updatedAt: new Date().toISOString(),
@@ -119,7 +123,11 @@ export async function dispatchExchange(
       result = {
         ...prior,
         status: "failed",
-        reason: String(error).slice(0, 500),
+        reason: (error instanceof Error ? error.message : String(error)).slice(0, 500),
+        failure:
+          error instanceof WorkFailureError
+            ? error.failure
+            : { cause: "storage_application", stage: "application", message: String(error).slice(0, 500) },
         attempts: prior.attempts + 1,
         updatedAt: new Date().toISOString(),
         elapsedMs: Math.round(performance.now() - started),

@@ -88,6 +88,7 @@ jobs:
         run: |
           npx tsx tests/villages-live-memory.regression.ts
           npx tsx tests/villages-exchange-processing.regression.ts
+          npx tsx tests/villages-response-format.regression.ts
           npx tsx tests/villages-pipeline-efficiency.regression.ts
           npx tsx tests/villages-progress-engine.regression.ts
           npx tsx tests/villages-progress-projects.regression.ts

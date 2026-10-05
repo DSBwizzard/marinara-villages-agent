@@ -1,5 +1,13 @@
 # Villages
 
+## Scene and Events response reliability (0.6.166)
+
+Scenes, Events and System interpretation request JSON mode through the existing Engine API. Complete examples include empty Wish, Memory and Relationship bookkeeping. Valid narration and independently valid domains remain saved when another domain lacks metadata. Scene recovery identifies missing metadata and explains when free replay cannot reconstruct it; interpretation and replacement requests remain manual. Connections that reject JSON mode report the incompatibility without a fallback request.
+
+Owner-only saved-change diagnostics include bounded model, connection, finish reason, output limit, response length, parsing status and missing-field details. Events format errors report validation failures rather than storage errors. Background work counts reusable steps. Existing saves, receipts and completed paid responses remain readable and replayable without automatic reinterpretation.
+
+The response-format, live-memory, interpretation, venue-session and background-work regressions use mocked providers; the room-notices and background-work browser tests cover recovery controls. No live-model compliance claim is made by those fixtures.
+
 ## Villager signatures (0.6.165)
 
 Each Villager's journal displays a stable handwritten name derived locally from their adopted character personality. **Generate signature** makes one explicit request through the Village image connection and saves an individual handwritten image. **Regenerate signature** is deliberate; profile browsing and snapshot refresh never request artwork. With images disabled, no connection, or unavailable artwork, the local signature remains available. Existing Villagers and missing source cards use their saved character snapshot.

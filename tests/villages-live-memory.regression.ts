@@ -23,6 +23,7 @@ import {
   deleteVenueVisit,
   retrySceneChangeInterpretation,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+import { responseDiagnostics } from "../packages/villages/src/engine/packages/server/src/services/villages/response-diagnostics.js";
 import { extractSceneReply } from "../packages/villages/src/engine/packages/server/src/services/villages/scene-reply-json.js";
 import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
 import {
@@ -137,7 +138,8 @@ async function main() {
           fitContext(messages: any[], options: any) {
             return { messages, ...options };
           },
-          async chatComplete() {
+          async chatComplete(_messages: any[], options: any) {
+            assert.deepEqual(options.responseFormat, { type: "json_object" });
             if (unknownInterpretation) throw new Error("unknown paid-request outcome");
             return {
               content: JSON.stringify({
@@ -196,6 +198,7 @@ async function main() {
     processing.domains.projects.status = "applied";
     const liveProposals = bindLiveProposals(
       {
+        responseDiagnostics: options.responseDiagnostics,
         memoryChanges,
         relationshipChanges,
         memoryVersions: options.memoryVersions ?? {},
@@ -212,7 +215,7 @@ async function main() {
       replyLineIds: [replyId],
       activeIdsAtTurn: ["a"],
       wishProposals: [],
-      wishProposalError: "",
+      wishProposalError: options.wishProposalError ?? "",
       processing,
       liveProposals,
     });
@@ -300,6 +303,58 @@ async function main() {
     saved = await readVenueVisit("live");
     assert.equal(saved.submissions.at(-1)?.processing?.domains.memories.status, "failed");
     assert.equal(saved.submissions.at(-1)?.processing?.domains.relationships.status, "applied");
+    const openingDiagnostics = responseDiagnostics(
+      { model: "fixture", connectionId: "fixture" },
+      { content: "{}", finishReason: "stop" },
+      1600,
+      {},
+      false,
+      ["wishChanges", "memoryChanges"],
+    );
+    saveExchange("opening-missing", undefined, emptyRelations, {
+      responseDiagnostics: openingDiagnostics,
+      wishProposalError: "Required wishChanges metadata is missing or invalid",
+    });
+    await processSavedExchange("live", "opening-missing");
+    const opening = (await readVenueVisit("live")).submissions.at(-1)!;
+    assert.equal(opening.processing.domains.wishes.failure.cause, "missing_result");
+    assert.equal(opening.processing.domains.memories.failure.cause, "missing_result");
+    assert.equal(opening.processing.domains.relationships.status, "applied");
+    const beforeRead = requests;
+    const diagnosticFeed = await readSceneChanges("live", "", 50);
+    assert.deepEqual(
+      diagnosticFeed.changes.find((change: any) => change.submissionId === "opening-missing")?.responseDiagnostics,
+      openingDiagnostics,
+    );
+    assert.match(
+      diagnosticFeed.unresolved.find((change: any) => change.submissionId === "opening-missing")!.reason,
+      /Replay cannot reconstruct/,
+    );
+    assert.ok(!JSON.stringify(publicSceneResponse(opening)).includes("requestedOutputTokens"));
+    await replaySceneChanges("live");
+    assert.equal(requests, beforeRead, "saved diagnostics and free replay make no model requests");
+    saveExchange("salvaged", undefined, emptyRelations, {
+      responseDiagnostics: { ...openingDiagnostics, parseStatus: "salvaged", finishReason: "length" },
+    });
+    await processSavedExchange("live", "salvaged");
+    assert.equal(
+      (await readVenueVisit("live")).submissions.at(-1)!.processing.domains.memories.failure.cause,
+      "output_limit",
+    );
+    saveExchange("complete-empty", [], emptyRelations, { responseDiagnostics: openingDiagnostics });
+    await processSavedExchange("live", "complete-empty");
+    assert.equal((await readVenueVisit("live")).submissions.at(-1)!.processing.domains.memories.status, "applied");
+    saveExchange(
+      "relationships-missing",
+      [],
+      { changes: [], permissions: [] },
+      { responseDiagnostics: openingDiagnostics },
+    );
+    await processSavedExchange("live", "relationships-missing");
+    const relationMissing = (await readVenueVisit("live")).submissions.at(-1)!;
+    assert.equal(relationMissing.processing.domains.relationships.failure.cause, "missing_result");
+    assert.equal(relationMissing.processing.domains.memories.status, "applied");
+    assert.equal(relationMissing.processing.domains.wishes.status, "applied");
     saveExchange("passing", [{ ...memory, kind: "passing", text: "The seedlings are beside the bench." }]);
     await processSavedExchange("live", "passing");
     assert.equal((await readVillageState()).recollections[0].text, "The seedlings are beside the bench.");

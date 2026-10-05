@@ -11,7 +11,7 @@ import {
   type WishFactCandidate,
 } from "./wish-journal.js";
 import { backgroundCalls, backgroundSetting } from "./background-context.js";
-import { WorkFailureError, type WorkFailure } from "./work-failure.js";
+import { WorkFailureError, metadataFailure, type WorkFailure } from "./work-failure.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { createProgressTask, revealProgress, submitProgressEvidence, type ProgressTask } from "./progress-engine.js";
 import {
@@ -949,7 +949,15 @@ export async function processWishExchange(scene: VenueScene, submissionId: strin
       receiptIds,
       reason: pending.join("; ") + "; replay saved work; a further paid attempt requires explicit retry",
     };
-  if (turn.wishProposalError) return { status: "failed", receiptIds, reason: turn.wishProposalError };
+  if (turn.wishProposalError) {
+    const missing = turn.wishProposalError.startsWith("Required wishChanges");
+    const reason = missing
+      ? "Wish proposals missing or invalid. Replay cannot reconstruct missing metadata; explicitly retry Wishes interpretation."
+      : turn.wishProposalError;
+    const failure = metadataFailure(reason, turn.liveProposals?.responseDiagnostics);
+    if (!missing) failure.cause = "invalid_citation";
+    return { status: "failed", receiptIds, reason, failure };
+  }
   const committed = await readVillageState();
   const rejected = receiptIds
     .map((id) => committed.exchangeReceipts[id])

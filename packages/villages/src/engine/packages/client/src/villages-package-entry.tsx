@@ -353,7 +353,7 @@ function BackgroundWorkPanel({
         <div className={ELEMENT_TAG + "-field"}>
           <strong>{job.label}</strong>
           <span>
-            {job.status}: {job.completedSteps} saved steps, {job.requests} requests,{" "}
+            {job.status}: {job.completedSteps} reusable steps, {job.requests} requests,{" "}
             {job.tokens === null ? "token usage unavailable" : job.tokens + " reported tokens"}
           </span>
           {["failed", "interrupted"].includes(job.status) ? (
@@ -10072,7 +10072,7 @@ function RoomPanel({
   onOpenWish?: (actorId: string, wishId: string) => void;
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
-  unresolvedChanges?: { submissionId: string; domain: string }[];
+  unresolvedChanges?: { submissionId: string; domain: string; reason?: string }[];
   onRetryChangeInterpretation?: (submissionId: string, domain: "memories" | "relationships" | "wishes") => void;
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
@@ -10663,19 +10663,24 @@ function RoomPanel({
             {(unresolvedChanges ?? [])
               .filter((change) => ["memories", "relationships", "wishes"].includes(change.domain))
               .map((change) => (
-                <button
-                  key={change.submissionId + change.domain}
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    onRetryChangeInterpretation?.(
-                      change.submissionId,
-                      change.domain as "memories" | "relationships" | "wishes",
-                    )
-                  }
-                >
-                  Retry {change.domain} interpretation · may use model requests
-                </button>
+                <div key={change.submissionId + change.domain}>
+                  <p>
+                    {change.domain}:{" "}
+                    {change.reason ?? "Saved changes need attention. Replay saved work or inspect saved diagnostics."}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      onRetryChangeInterpretation?.(
+                        change.submissionId,
+                        change.domain as "memories" | "relationships" | "wishes",
+                      )
+                    }
+                  >
+                    Retry {change.domain} interpretation · may use model requests
+                  </button>
+                </div>
               ))}
           </div>
         </details>
@@ -13924,7 +13929,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const seenRoomEventIdsRef = useRef(new Set<string>());
   const dismissedRoomEventIdsRef = useRef(new Set<string>());
   const [roomChangeStatus, setRoomChangeStatus] = useState({ pending: 0, failed: 0, rejected: 0 });
-  const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<{ submissionId: string; domain: string }[]>([]);
+  const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<
+    { submissionId: string; domain: string; reason?: string }[]
+  >([]);
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
   const lastRoomActivitySentRef = useRef(0);
   const lastRoomDeliberateAtRef = useRef(0);
@@ -13975,7 +13982,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           processingSummary: typeof roomChangeStatus;
           nextCursor: string;
           hasMore: boolean;
-          unresolved: { submissionId: string; domain: string }[];
+          unresolved: { submissionId: string; domain: string; reason?: string }[];
         }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`);
         if (stopped) return;
         for (const id of answer.dismissedNoticeIds ?? []) dismissedRoomEventIdsRef.current.add(id);
