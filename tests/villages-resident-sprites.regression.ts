@@ -121,6 +121,6 @@ const entry = readFileSync(
 );
 assert.match(entry, /Upload images/);
 assert.match(entry, /Save and use in Scenes/);
-assert.match(entry, /Download PNG/);
+assert.match(entry, /Download saved PNG/);
 assert.doesNotMatch(entry, /generate-sheet|repair-background|Suggest another pose/);
 console.log("Resident expressions, stage selection, gaze, portrait fallback and retired assignments passed.");

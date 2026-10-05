@@ -1154,7 +1154,7 @@ async function main() {
       "engine/packages/server/src/services/villages/image-generation.ts",
       "engine/packages/server/src/services/villages/location-image.ts",
     ],
-    "only explicit scenery draws, Studio generation and their metered shared transport reach image providers",
+    "only explicit scenery draws and their metered shared transport reach image providers",
   );
   for (const silent of [
     "village.ts",

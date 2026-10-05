@@ -297,13 +297,17 @@ Save migration is repeatable and preserves exterior/Class/private state, imagery
 
 ## Villager sprites
 
-Open **Villagers → [Villager] → Sprite Manager**. Upload finished PNG, WebP or JPEG images, or choose independent copies from Engine character sprites. Select artwork, name its expression, describe **Use when…**, choose front or side, and **Save and use in Scenes**. The first assigned expression becomes the default; one image is enough to begin. No image or System connection is required. Villages makes no sprite generation, preparation, review or background-removal requests.
+Open **Villagers → [Villager profile] → Manage sprites**. Upload finished PNG, WebP or JPEG images, or choose independent copies from Engine character sprites. Select artwork, name its expression, describe **Use when…**, choose front or side, and **Save and use in Scenes**. The first assigned expression becomes the default; one image is enough to begin. No image or System connection is required. Villages makes no sprite generation, preparation, review or background-removal requests.
 
 Each Engine character sprite file can be added once to a resident's Sprite Manager. The picker marks existing copies **Already added**, and repeated or concurrent requests reuse the saved artwork without creating files or changing expressions, assignments or framing. Older copies are recognized by their original filename and matching bytes. Existing duplicate copies remain available for deliberate removal, preserving authored assignments. To adopt a replacement saved under the same Engine filename, remove its manager copy first. Separate filenames and deliberate uploads remain independent.
 
 Recommended: transparent PNG, **1024 × 1536** pixels (2:3), one complete character with room around its silhouette. Desktop and mobile share the same artwork and scale it to the Scene. Other image dimensions, including **512 × 768**, are accepted. Opaque backgrounds remain visible. Resolution guidance is not an upload requirement.
 
-The manager preserves uploaded originals and creates independent 1024 × 1536 Scene PNGs. Framing provides crop, scale, horizontal and foot position, plus optional original-image head/foot markers for matching body height across expressions. Default framing uses a 32-pixel safe margin, a foot baseline at y=1504, and about 1280 pixels of visible height when width permits. Compare with the default expression and desktop/mobile previews. Low resolution is reported; framing outside the safe region must be corrected before saving. **Download PNG** exports the saved cutout.
+Sprite Manager uses the warm Villages palette. Wide panels place Artwork, Scene preview and settings side by side; narrower panels stack settings and use a horizontal artwork strip on phones. Desktop/Mobile preview and optional default comparison share the same artwork. Size and position sliders provide everyday framing; **Advanced framing** retains exact coordinates, crop and body-height markers.
+
+Each image keeps an in-memory draft while browsing. **Save and use in Scenes** saves the selected image; **Discard changes** restores its saved values. Leaving with unsaved drafts requires confirmation. Failed saves retain edits. Scene framing and **Make default** save immediately without clearing drafts. **Character library** is a focused picker that reuses existing independent copies. **More artwork actions** contains default selection, **Download saved PNG**, and removal.
+
+The manager preserves uploaded originals and creates independent 1024 × 1536 Scene PNGs. Framing provides crop, scale, horizontal and foot position, plus optional original-image head/foot markers for matching body height across expressions. Default framing uses a 32-pixel safe margin, a foot baseline at y=1504, and about 1280 pixels of visible height when width permits. Compare with the default expression and desktop/mobile previews. Low resolution is reported; framing outside the safe region must be corrected before saving. **Download saved PNG** exports the saved cutout, including when a newer draft is being edited.
 
 Front faces the viewer. Side faces right and mirrors automatically for leftward attention. The AI receives only assigned expression IDs, names and authored descriptions. Missing choices fall back to the default; no assigned art uses the character portrait. Full-body and half-body Scene presentation remain available.
 
@@ -333,6 +337,8 @@ Conversation memories are event-centric. A promise heard by four residents is on
 A played tiered visit is closed and releases the active-room pointer before review. No recollections means no review call. A failed or interrupted review leaves `memoryPending` with its transcript and decisions safely retryable; automatic retention skips it. Opening **Villagers → Memories** retries one pending review and shows passing context, durable history, archive health, and exact cited lines. Existing legacy chronicle entries remain untouched and use their older scope/actor fallback.
 
 ## What this release contains
+
+0.6.160 updates Sprite Manager with a warm responsive workspace, touch-friendly framing, persistent Save controls and per-artwork drafts. Unused crop-percent data is ignored while older saves and retired Studio routes remain compatible.
 
 0.6.133 replaces Sprite Studio generation with Sprite Manager: upload or adopt finished artwork, assign expression IDs and front/side views, adjust framing, and download individual PNGs. Old Studio artwork and assignments are ignored. Scenery generation remains available.
 
