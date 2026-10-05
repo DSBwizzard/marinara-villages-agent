@@ -46,7 +46,7 @@ try {
       const side = spriteImage("#e478ac");
       const fixture = {
         ...snapshot,
-        settings: { ...snapshot.settings },
+        settings: { ...snapshot.settings, ...(count === 4 ? { spriteCardFlipEnabled: false } : {}) },
         villagers: residents.map((person, index) => ({
           ...person,
           sprite:
@@ -252,9 +252,12 @@ try {
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       const flipSwitch = page.getByRole("checkbox", { name: "Card-flip sprite changes" });
-      await expect(flipSwitch).not.toBeChecked();
       const flipEnabled = count < 4;
-      if (flipEnabled) {
+      if (flipEnabled) await expect(flipSwitch).toBeChecked();
+      else await expect(flipSwitch).not.toBeChecked();
+      if (count === 2) {
+        await flipSwitch.uncheck();
+        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
         await flipSwitch.check();
         await expect(flipSwitch).toBeChecked();
         assert.equal(fixture.settings.spriteCardFlipEnabled, true);

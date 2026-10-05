@@ -1,8 +1,8 @@
 # Villages
 
-## Sprite card flips (0.6.158)
+## Sprite card flips (0.6.161)
 
-Scene settings has one **Card-flip sprite changes** switch, saved with the Village across devices. It starts Off. When On, forward Scene progression turns changing sprites edge-on, switches facing and artwork together, then opens them out over 300 ms. Names and feet stay anchored. Initial/restored Scenes, backward reading and reduced-motion preferences apply changes immediately. Replacement artwork loads before a flip; failed artwork uses the existing fallback. Other open devices adopt the saved switch on their existing snapshot refresh.
+Scene settings has one **Card-flip sprite changes** switch, saved with the Village across devices. It defaults On for new Villages and saves without a stored choice; an existing saved Off choice stays Off. When On, forward Scene progression turns changing sprites edge-on, switches facing and artwork together, then opens them out over 300 ms. Names and feet stay anchored. Initial/restored Scenes, backward reading and reduced-motion preferences apply changes immediately. Replacement artwork loads before a flip; failed artwork uses the existing fallback. Other open devices adopt the saved switch on their existing snapshot refresh.
 
 ## Scene notice dismissal (0.6.155)
 
