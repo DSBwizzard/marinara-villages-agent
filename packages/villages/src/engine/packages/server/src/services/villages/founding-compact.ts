@@ -1,4 +1,4 @@
-import { selectWishSize, wishGenerationDirection } from "./wish-definition.js";
+import { selectWishSize, wishGenerationDirection, validateGeneratedWishWording } from "./wish-definition.js";
 import { validRoutineRhythm } from "./owned-routine.js";
 import { routineDay, type RoutineProfile } from "./owned-routine.js";
 import { renderPlayerRoleContext } from "./player-role.js";
@@ -169,6 +169,7 @@ export function parseCompactFounding(
         at,
       );
       if (!wish || seen.has(compactKey(wish.wish))) continue;
+      validateGeneratedWishWording(wish.wish);
       seen.add(compactKey(wish.wish));
       wishes.push(wish);
       if (wishes.length >= 1) break;
@@ -241,7 +242,7 @@ export async function proposeCompactFounding(
     VILLAGE_SHARED_SETTING_RULE,
     `Write a compact founding plan for ${context.card.name} in ${context.village}. Return JSON only.`,
     "JSON keys: routine (one sentence), wishes (zero or one objects with wish, intensity 1–3, need: {subject, action, policy: lasting or recurring}), palette (objects with activity, venue, zoneId, status, flexible, essential, duration in minutes, parts 0–3), days (seven arrays of eight palette indexes), rhythm (zero or more objects with startMinute, endMinute, activity palette index).",
-    'Palette schema example (syntax only): {"activity":"reading","venue":0,"status":"idle","flexible":true,"essential":false,"duration":90,"parts":[1,2]}. The key is exactly "venue", with an integer value; optional zoneId must be a saved Zone identifier, never a label.',
+    'Palette field types: activity is a string; venue is an integer; status is an availability enum; flexible and essential are booleans; duration is numeric minutes; parts is an array of daypart indexes. The key is exactly "venue"; optional zoneId must be a saved Zone identifier, never a label.',
     "Palette: 6–16 specific, ordinary activities in this village, independent of wishes. Include flexible:true only on optional free-time activities; never on sleep, meals, work, or commitments. Venue 0 is the assigned living space; otherwise use only a numbered supplied public place. Never invent venue numbers, unlisted destinations, assets, vehicles, employers, institutions or obligations. Authored identity is not proof that its original-world possessions or job exist here. Status is online, idle, dnd, or offline. Activity should read after 'Right now you are'.",
     'Rhythm schema example (syntax only): {"startMinute":1320,"endMinute":360,"activity":0}. The key is exactly "activity", an integer palette index. Omit all rest windows with rhythm:[] when appropriate.',
     "Days: exactly seven arrays in Monday–Sunday order. Each has eight palette indexes: two alternatives for 00–06, 06–12, 12–18, 18–24. Code builds varied days locally. Describe rest explicitly in rhythm, including overnight windows if appropriate. Do not assume human sleep, eating, employment or physiology.",

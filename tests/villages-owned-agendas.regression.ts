@@ -442,7 +442,7 @@ async function main() {
       state: { condition: "sound", publicFacts: [] },
       presentation: { image: null, x: 0.2, y: 0.2 },
     };
-    const access = coerceVillageState({ wishSystemVersion: 2, ...raw, venues: [safeVenue] });
+    const access = coerceVillageState({ wishSystemVersion: 3, ...raw, venues: [safeVenue] });
     resident.scheduleInfluence = influenceSettings({ enabled: true });
     assert.ok(
       deriveInfluence(
@@ -460,7 +460,7 @@ async function main() {
     access.venues[0]!.constructionStatus = "worksite";
     assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
     const crowd = coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
       villagers: Array.from({ length: 6 }, (_, i) => ({

@@ -13,9 +13,9 @@ import { buildTownMapPrompt } from "../packages/villages/src/engine/packages/ser
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
-  assert.deepEqual(coerceVillageState({ wishSystemVersion: 2 }).selectedLorebookIds, []);
+  assert.deepEqual(coerceVillageState({ wishSystemVersion: 3 }).selectedLorebookIds, []);
   assert.deepEqual(
-    coerceVillageState({ wishSystemVersion: 2, selectedLorebookIds: ["world", "world", "missing"] })
+    coerceVillageState({ wishSystemVersion: 3, selectedLorebookIds: ["world", "world", "missing"] })
       .selectedLorebookIds,
     ["world", "missing"],
   );

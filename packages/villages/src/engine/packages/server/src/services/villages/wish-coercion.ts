@@ -125,6 +125,7 @@ export function coerceWishLifecycle(value: unknown): WishLifecycle | undefined {
         : "done";
     attempt = {
       id: shortWishText(job.id),
+      ...(job.resetRefill === true ? { resetRefill: true as const } : {}),
       dateKey: shortWishText(job.dateKey, 10),
       at: instant(job.at),
       stage,

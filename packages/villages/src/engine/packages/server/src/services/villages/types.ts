@@ -1228,6 +1228,8 @@ export type VillageScenarioImprint = {
 
 export type VillageState = {
   wishSystemVersion: number;
+  /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
+  wishResetPending: string[];
   exchangeReceipts: Record<string, import("./wish-progress.js").ExchangeEffectReceipt>;
   noticeSequence: number;
   dismissedNoticeIds: string[];

@@ -40,7 +40,7 @@ let writes = 0;
 function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
-    wishSystemVersion: 2,
+    wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",
     setting: "A disused station",
@@ -199,7 +199,10 @@ const release = configureVillagesRuntime({
           };
         }
         calls.push("routine");
-        assert.ok(messages[0].content.includes('"venue":0'), "prompt supplies an exact JSON palette schema");
+        assert.ok(
+          messages[0].content.includes('The key is exactly "venue"'),
+          "prompt supplies exact palette field names without concrete activity examples",
+        );
         return {
           content: JSON.stringify({
             routine: "Quiet days at the station",

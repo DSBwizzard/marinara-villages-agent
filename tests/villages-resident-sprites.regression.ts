@@ -110,7 +110,7 @@ const resident = {
   sprite: semanticSprite,
 };
 assert.equal(
-  coerceVillageState({ wishSystemVersion: 2, villagers: [resident] }).villagers[0]?.sprite,
+  coerceVillageState({ wishSystemVersion: 3, villagers: [resident] }).villagers[0]?.sprite,
   null,
   "retired unversioned assignments are ignored",
 );

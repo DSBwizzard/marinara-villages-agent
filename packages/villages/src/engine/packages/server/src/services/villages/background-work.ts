@@ -129,8 +129,14 @@ async function readJob(id: string): Promise<Job | null> {
   return job;
 }
 /** Read a subject's compact status without scanning unrelated work or wish history. */
-export async function backgroundStatus(kind: BackgroundKind, subjectId: string): Promise<BackgroundStatus | null> {
-  return (await readJob(slotId({ kind, subjectId })))?.status ?? null;
+export async function backgroundStatus(
+  kind: BackgroundKind,
+  subjectId: string,
+  expectedInputId?: string,
+): Promise<BackgroundStatus | null> {
+  const job = await readJob(slotId({ kind, subjectId }));
+  if (expectedInputId !== undefined && asRecord(job?.input).id !== expectedInputId) return null;
+  return job?.status ?? null;
 }
 async function changeJob(id: string, change: (job: Job | null) => Job): Promise<Job> {
   const documents = villagesDocuments();

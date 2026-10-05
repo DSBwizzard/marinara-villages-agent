@@ -166,11 +166,11 @@ function saveTurn(message: string, content: string, speakerId = "rosa", venueId 
 async function main() {
   try {
     assert.equal(
-      coerceVillageState({ wishSystemVersion: 2, ...village, progressEngineVersion: undefined }).progressEngineVersion,
+      coerceVillageState({ wishSystemVersion: 3, ...village, progressEngineVersion: undefined }).progressEngineVersion,
       1,
     );
     assert.throws(
-      () => coerceVillageState({ wishSystemVersion: 2, ...village, progressEngineVersion: 0 }),
+      () => coerceVillageState({ wishSystemVersion: 3, ...village, progressEngineVersion: 0 }),
       /retired Project engine/,
     );
     await mutateVillageState((current) =>

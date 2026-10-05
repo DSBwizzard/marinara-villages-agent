@@ -199,7 +199,7 @@ async function run() {
     assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],
     });

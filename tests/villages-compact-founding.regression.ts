@@ -94,6 +94,9 @@ async function main() {
   );
   assert.throws(() => parseCompactFounding({ ...payload(0), rhythm: undefined }, context(null) as any), /rest windows/);
 
+  for (const wish of ["You want company", "Repair my chair"])
+    assert.throws(() => parseCompactFounding({ ...payload(0), wishes: [{ wish }] }, context(null) as any), /neutrally/);
+
   let calls = 0;
   let capturedPrompt = "";
   let options: Record<string, unknown> = {};
@@ -150,6 +153,11 @@ async function main() {
       );
       assert.equal(calls, before + 1, "role context adds no generation call");
     }
+    assert.match(capturedPrompt, /neutral description/);
+    assert.doesNotMatch(
+      capturedPrompt,
+      /chocolate|identifying a tune|stuck in their head|borrowing a pencil|repair a favorite chair|arrange a picnic|perform a song|"activity":"reading"/,
+    );
     assert.equal(options.maxTokens, 4000);
     assert.equal(options.reasoningEffort, "none");
   } finally {
