@@ -1426,7 +1426,7 @@ async function main() {
   // because the failure happens on a tick nobody is watching.
   const store = await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts");
   const refusals = store.coerceVillageState({
-    wishSystemVersion: 2,
+    wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
     villagers: [
       {
@@ -1448,7 +1448,7 @@ async function main() {
   assert.equal(refusals.villagers[0]!.remap, null, "beside the null that says no translation was written");
 
   const partial = store.coerceVillageState({
-    wishSystemVersion: 2,
+    wishSystemVersion: 3,
     villagers: [
       {
         characterId: "a",
@@ -1503,7 +1503,7 @@ async function main() {
   );
   assert.deepEqual(
     store.coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],
     }).villagers[0]!.remapFailure,
     null,
@@ -1632,7 +1632,7 @@ async function main() {
   // second earlier and would silently re-age every wish in the village on every
   // restart.
   const stored = store.coerceVillageState({
-    wishSystemVersion: 2,
+    wishSystemVersion: 3,
     villagers: [
       {
         characterId: "character-ives",

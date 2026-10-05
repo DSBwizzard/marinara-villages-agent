@@ -166,6 +166,7 @@ export function defaultVillageState(): VillageState {
     noticeSequence: 0,
     dismissedNoticeIds: [],
     wishSystemVersion: WISH_SYSTEM_VERSION,
+    wishResetPending: [],
     wishKnowledge: {},
     projectWishOutbox: [],
     wishRefillIntents: {},
@@ -2491,6 +2492,9 @@ export function coerceVillageState(value: unknown): VillageState {
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
     wishSystemVersion: raw.wishSystemVersion === WISH_SYSTEM_VERSION ? WISH_SYSTEM_VERSION : 0,
+    wishResetPending: [...new Set(asStringArray(raw.wishResetPending))].filter((id) =>
+      villagers.some((resident) => resident.characterId === id),
+    ),
     wishKnowledge: coerceWishKnowledge(raw.wishKnowledge),
     projectWishOutbox: Array.isArray(raw.projectWishOutbox)
       ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])

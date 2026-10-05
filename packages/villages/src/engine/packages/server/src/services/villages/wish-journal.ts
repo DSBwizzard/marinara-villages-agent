@@ -291,6 +291,9 @@ export function wishCheckKnowledge(state: VillageState, actorId: string, wishId:
 export function resetLegacyWishRecords(state: VillageState): void {
   if (state.wishSystemVersion === WISH_SYSTEM_VERSION) return;
   state.wishSystemVersion = WISH_SYSTEM_VERSION;
+  state.wishResetPending = state.villagers
+    .filter((resident) => !!resident.agenda?.generatedAt && !resident.agenda.personalizationPending)
+    .map((resident) => resident.characterId);
   state.wishKnowledge = {};
   state.wishRefillIntents = {};
   state.projectWishOutbox = [];

@@ -111,7 +111,7 @@ async function main() {
     for (const [name, setting, circumstances, home] of scenarios) {
       validateFirstDayDescription(circumstances, true);
       const state = coerceVillageState({
-        wishSystemVersion: 2,
+        wishSystemVersion: 3,
         name,
         setting,
         foundingReason: "custom",
@@ -239,7 +239,7 @@ async function main() {
     assert.throws(() => validateFirstDayDescription("   ", true), /brings you and the others together/);
     assert.doesNotThrow(() => validateFirstDayDescription("", false));
     const legacy = coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
       foundingDetails: "On Day 1 we arrived.",
@@ -249,7 +249,7 @@ async function main() {
     assert.equal(legacy.foundingDetails, "On Day 1 we arrived.");
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerRole?.title, "Village Steward");
-    assert.equal(coerceVillageState({ wishSystemVersion: 2, setupAt: legacy.setupAt }).playerRole, null);
+    assert.equal(coerceVillageState({ wishSystemVersion: 3, setupAt: legacy.setupAt }).playerRole, null);
   } finally {
     release();
   }

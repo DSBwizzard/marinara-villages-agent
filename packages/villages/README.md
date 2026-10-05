@@ -197,6 +197,16 @@ Human-labeled saved outputs cover greetings, repetition, ambiguous/conditional/q
 
 Narration's normal output allowance remains 4096 tokens. Memories and relationships use that existing reply without automatic extra reviews or metadata repairs. Relevant Wish interpretation uses its required System batch; journal-only additions, storage retries, diagnostic reads, and notice polling add no model calls. Historical saved preparation remains recoverable. Project/Wish routing uses identified proposals and specific receipt conditions, with lexical Project-purpose routing as a heuristic rather than a guarantee of semantic coverage.
 
+## Independent Wish generation (0.6.159)
+
+Founding and ongoing Wish generation describe scale and desired outcomes without concrete sample wishes. New Wish goals use neutral descriptions of the resident's desired outcome; first-person and second-person goals are invalid output and require deliberate recovery rather than automatic paid rewriting. Character dialogue remains intact as identity context.
+
+The version-3 migration performs one full Wish reset: active Wishes, journals, completion records, remembered needs, Wish-owned progress, adjustments and pending state are cleared. A new archive namespace isolates prior outcomes. Conversations, relationships, routines, Scene continuity, physical receipts and world effects remain intact.
+
+Every prepared resident receives one finite replacement attempt through Background work, including with story pace Off and without the ordinary two-residents-per-phase cap. This one-time refill cannot add routine ideas or adjustments. It consumes the daily/24-hour allowance; a quiet result is final, saved responses replay without regeneration, and failures or unknown outcomes require deliberate retry. Unprepared residents use corrected founding generation. Normal ongoing limits and optional Wish activities remain unchanged. Agenda wording and activity selection are deferred.
+
+Lifecycle, compact founding and journal regressions inspect assembled prompts and exercise wording rejection, topic eligibility, all-resident refill, reload, application recovery, stale jobs and archive isolation. These are mocked contracts, not a live model-diversity measurement.
+
 ## Everyday wishes and discovery journals
 
 0.6.153 defines Wishes as stable, understandable desired outcomes. A local roll belonging to each generation attempt selects approximately 65% everyday wants, 25% modest undertakings, and 10% larger personal wishes. Size is separate from emotional intensity. Founding and daily generation share guidance for objects, information, assistance, repairs, company, and particular experiences; quiet days, the daily generation allowance, duplicate checks, and the two-active-Wish limit remain unchanged. Generation cannot create inventory, venues, injuries, obligations, or physical changes.

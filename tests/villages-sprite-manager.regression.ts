@@ -32,7 +32,7 @@ const records = new Map<string, any>(),
   files = new Map<string, string>();
 const now = new Date().toISOString();
 const village = coerceVillageState({
-  wishSystemVersion: 2,
+  wishSystemVersion: 3,
   name: "Preserved village",
   foundedAt: now,
   visitMemoryBackfilled: true,

@@ -84,7 +84,7 @@ async function main() {
     "",
   );
   const legacy = coerceVillageState({
-    wishSystemVersion: 2,
+    wishSystemVersion: 3,
     setting: "Misty cliffs",
     foundingReason: "rebuild",
     foundingDetails: "After the flood",
@@ -96,31 +96,31 @@ async function main() {
   assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [1536, 1024]);
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 2 }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 2 }).townMapCanvasHeight,
+      coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasWidth,
+      coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasHeight,
     ],
     [1536, 1024],
   );
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 2, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 2, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasHeight,
+      coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasWidth,
+      coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasHeight,
     ],
     [1216, 832],
   );
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 2, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
+      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
         .townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 2, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
+      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
         .townMapCanvasHeight,
     ],
     [1264, 848],
   );
   assert.deepEqual(
     [
-      coerceVillageState({ wishSystemVersion: 2, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 2, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
+      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 }).townMapCanvasWidth,
+      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
         .townMapCanvasHeight,
     ],
     [1536, 1024],
@@ -131,10 +131,10 @@ async function main() {
   assert.ok(acceptedMap.length <= MAX_TOWN_MAP_IMAGE_LENGTH);
   assert.ok(oversizedMap.length > MAX_TOWN_MAP_IMAGE_LENGTH);
   assert.equal(
-    coerceVillageState({ wishSystemVersion: 2, townMapImage: acceptedMap }).townMapImage.length,
+    coerceVillageState({ wishSystemVersion: 3, townMapImage: acceptedMap }).townMapImage.length,
     acceptedMap.length,
   );
-  assert.equal(coerceVillageState({ wishSystemVersion: 2, townMapImage: oversizedMap }).townMapImage, "");
+  assert.equal(coerceVillageState({ wishSystemVersion: 3, townMapImage: oversizedMap }).townMapImage, "");
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /visually distinct usable areas/);
   assert.doesNotMatch(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /\d/);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /three-to-two canvas.*not panoramic/);

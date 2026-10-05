@@ -193,7 +193,7 @@ async function main() {
     assert.ok(Math.abs(distribution.modest / 10000 - 0.25) < 0.02);
     assert.ok(Math.abs(distribution.larger / 10000 - 0.1) < 0.02);
     assert.equal(selectWishSize("retry"), selectWishSize("retry"));
-    assert.match(wishGenerationDirection("everyday"), /chocolate/);
+    assert.match(wishGenerationDirection("everyday"), /neutral description/);
     const journalTurn = async (id: string, raw: any[]) => {
       const live = await readVillageState();
       const bound = bindWishProposals(
@@ -641,7 +641,7 @@ async function main() {
       },
     ];
     const reset = coerceVillageState(legacy);
-    assert.equal(reset.wishSystemVersion, 2);
+    assert.equal(reset.wishSystemVersion, 3);
     assert.deepEqual(reset.wishKnowledge, {});
     assert.equal(reset.villagers[0].agenda!.wishes.length, 0);
     assert.equal(reset.villagers[0].wishLifecycle, undefined);

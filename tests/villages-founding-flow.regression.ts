@@ -111,13 +111,13 @@ async function main() {
   }
 
   assert.equal(
-    coerceVillageState({ wishSystemVersion: 2, setupAt: "2025-01-01T00:00:00Z" }).foundingPreparation,
+    coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).foundingPreparation,
     null,
     "older villages remain ready",
   );
   assert.deepEqual(
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
     { status: "failed", completedIds: ["one"], venueDetailsSeeded: false, currentId: "two", error: "offline" },
@@ -125,7 +125,7 @@ async function main() {
   );
   assert.deepEqual(
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
         completedIds: ["one"],
@@ -153,12 +153,12 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ wishSystemVersion: 2 }).foundingGuidance,
+    coerceVillageState({ wishSystemVersion: 3 }).foundingGuidance,
     "",
     "older villages have no narrative direction",
   );
   assert.equal(
-    coerceVillageState({ wishSystemVersion: 2, foundingGuidance: "Favor quiet bonds." }).foundingGuidance,
+    coerceVillageState({ wishSystemVersion: 3, foundingGuidance: "Favor quiet bonds." }).foundingGuidance,
     "Favor quiet bonds.",
   );
   const ongoingOnly = readScenarioImprint({

@@ -194,12 +194,12 @@ async function main() {
     nextTransitionAt: "2026-09-11T16:31:00.000Z",
   };
   const setting = "A mill town at the foot of a ridge.";
-  const village = coerceVillageState({ wishSystemVersion: 2, setting });
+  const village = coerceVillageState({ wishSystemVersion: 3, setting });
   assert.equal(
     buildLocationPrompt(
       village,
       coerceVillageState({
-        wishSystemVersion: 2,
+        wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
       }).venues[0]!,
       moment,
@@ -218,7 +218,7 @@ async function main() {
   const interiorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
     moment,
@@ -231,7 +231,7 @@ async function main() {
   assert.match(
     buildLocationPrompt(
       village,
-      coerceVillageState({ wishSystemVersion: 2, venues: [{ id: "mill", name: "the mill pond", form: "" }] })
+      coerceVillageState({ wishSystemVersion: 3, venues: [{ id: "mill", name: "the mill pond", form: "" }] })
         .venues[0]!,
       moment,
       "The mill walls are red brick",
@@ -241,13 +241,13 @@ async function main() {
   );
   const factual = buildLocationPrompt(
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       setting,
       foundingDetails: "Built beside the ridge",
       venues: [{ id: "square", name: "market square", form: "trade" }],
     }),
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       venues: [
         {
           id: "mill",
@@ -285,7 +285,7 @@ async function main() {
   const occupiedExterior = buildLocationPrompt(
     village,
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       venues: [
         {
           id: "home",
@@ -309,7 +309,7 @@ async function main() {
   assert.equal(
     buildLocationPrompt(
       village,
-      coerceVillageState({ wishSystemVersion: 2, venues: [{ id: "mill", name: "the mill pond", form: "   " }] })
+      coerceVillageState({ wishSystemVersion: 3, venues: [{ id: "mill", name: "the mill pond", form: "   " }] })
         .venues[0]!,
       moment,
     ).includes("—"),
@@ -317,8 +317,8 @@ async function main() {
     "a place with no note does not get a dangling dash",
   );
   const chatty = buildLocationPrompt(
-    coerceVillageState({ wishSystemVersion: 2, setting: "y".repeat(MAX_SETTING_LENGTH + 200) }),
-    coerceVillageState({ wishSystemVersion: 2, venues: [{ id: "mill", name: "the mill pond", form: "" }] }).venues[0]!,
+    coerceVillageState({ wishSystemVersion: 3, setting: "y".repeat(MAX_SETTING_LENGTH + 200) }),
+    coerceVillageState({ wishSystemVersion: 3, venues: [{ id: "mill", name: "the mill pond", form: "" }] }).venues[0]!,
     moment,
   );
   assert.ok(chatty.length < 1_200, "a two-thousand-character setting is cut for a picture rather than refused");
@@ -330,7 +330,7 @@ async function main() {
   const picture = { ref: "global-gallery:abc123", url: "/api/global-gallery/file/abc123.png", id: "abc123" };
   const venuesWith = (image: unknown) =>
     coerceVillageState({
-      wishSystemVersion: 2,
+      wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
     }).venues;
 
@@ -373,7 +373,7 @@ async function main() {
   assert.ok(MAX_VENUE_IMAGE_ID_LENGTH > 0 && MAX_VENUE_IMAGE_URL_LENGTH > 0);
   // A place with no name is still not a place, picture or no picture.
   assert.deepEqual(
-    coerceVillageState({ wishSystemVersion: 2, venues: [{ name: "  ", presentation: { image: picture } }] }).venues,
+    coerceVillageState({ wishSystemVersion: 3, venues: [{ name: "  ", presentation: { image: picture } }] }).venues,
     [],
   );
 
@@ -385,7 +385,7 @@ async function main() {
   // village has no name for one, while a place that says nothing else and has no
   // name is not a place at all — its name is the whole of what the translation
   // list can say about it.
-  const placesOf = (entries: unknown[]) => coerceVillageState({ wishSystemVersion: 2, venues: entries }).venues;
+  const placesOf = (entries: unknown[]) => coerceVillageState({ wishSystemVersion: 3, venues: entries }).venues;
   const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
     id,
     name: "",
