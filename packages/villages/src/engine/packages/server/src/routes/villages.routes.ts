@@ -163,6 +163,7 @@ import {
   setVillageStoryPace,
   setVillageCharacterSpeechColors,
   setVillageSendOnEnter,
+  setVillageSpriteCardFlipEnabled,
   setVillageSetting,
   setVillageVenueImage,
   setVillageHomeBuildingNames,
@@ -1177,6 +1178,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       storyPace?: unknown;
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
+      spriteCardFlipEnabled?: unknown;
       visitRetention?: unknown;
     };
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
@@ -1206,6 +1208,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
       if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
       if (body.storyPace !== undefined) snapshot = await setVillageStoryPace(body.storyPace);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);
+      if (body.spriteCardFlipEnabled !== undefined)
+        snapshot = await setVillageSpriteCardFlipEnabled(body.spriteCardFlipEnabled);
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
       if (body.visitRetention !== undefined) {

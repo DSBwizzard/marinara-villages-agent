@@ -109,6 +109,7 @@ import {
   type StagingEvent,
 } from "../../shared/src/villages/scene-staging.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
+import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import {
   readFoundingDraft,
   saveFoundingDraft,
@@ -924,6 +925,7 @@ type TownMapView = {
 type VillageSettings = {
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
+  spriteCardFlipEnabled: boolean;
   visitRetention: { mode: "forever" | "count" | "days"; value: number };
   promptKnowledge: string;
   defaultPromptKnowledge: string;
@@ -9992,6 +9994,7 @@ function RoomPanel({
   onTarget,
   onSend,
   sendOnEnter,
+  spriteCardFlipEnabled,
   onViewVenue,
   onEnterPrivate,
   privateSpaceOwnerName,
@@ -10044,6 +10047,7 @@ function RoomPanel({
   onTarget: (value: string) => void;
   onSend: () => void;
   sendOnEnter: boolean;
+  spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
   onEnterPrivate?: () => void;
   privateSpaceOwnerName?: string;
@@ -10805,10 +10809,12 @@ function RoomPanel({
               ? step?.gazeAt
               : (aside?.gazeAt ?? (villager.characterId === step?.gazeAt ? speaker?.characterId : undefined));
             const targetIndex = displayed.findIndex((person) => person.characterId === gazeAt);
+            const facing =
+              (slot ? (mobile ? mobileSlot?.facing : slot.facing) : undefined) ?? spriteFacing(index, targetIndex);
             const selected = selectSpriteImage(
               (sprite?.images ?? []).filter((image) => !failedSpriteUrls.has(image.url)),
               wanted,
-              (slot ? (mobile ? mobileSlot?.facing : slot.facing) : undefined) ?? spriteFacing(index, targetIndex),
+              facing,
             );
             return (
               <div
@@ -10830,12 +10836,17 @@ function RoomPanel({
                 }
               >
                 {selected ? (
-                  <img
-                    src={selected.image.url}
-                    onError={() => setFailedSpriteUrls((previous) => new Set([...previous, selected.image.url]))}
-                    alt=""
-                    data-framing={sprite?.framing.mode ?? "full"}
-                    data-facing={selected.image.view === "front" ? "front" : selected.mirrored ? "left" : "right"}
+                  <CardFlipSprite
+                    key={room.id}
+                    url={selected.image.url}
+                    facing={facing}
+                    mirrored={selected.mirrored}
+                    view={selected.image.view}
+                    framing={sprite?.framing.mode ?? "full"}
+                    enabled={spriteCardFlipEnabled}
+                    animate={animateStaging}
+                    stepKey={room.id + ":" + at}
+                    onError={(url) => setFailedSpriteUrls((previous) => new Set([...previous, url]))}
                   />
                 ) : (
                   <AvatarFace
@@ -15583,6 +15594,28 @@ export function VillagesView({ element }: { element: HTMLElement }) {
    * That is what keeps a switch from showing a setting the village did not
    * accept.
    */
+  const [spriteFlipSaving, setSpriteFlipSaving] = useState(false);
+  const [spriteFlipDraft, setSpriteFlipDraft] = useState<boolean | null>(null);
+  const [spriteFlipError, setSpriteFlipError] = useState("");
+  const saveSpriteCardFlip = useCallback(async (spriteCardFlipEnabled: boolean) => {
+    setSpriteFlipDraft(spriteCardFlipEnabled);
+    setSpriteFlipSaving(true);
+    setSpriteFlipError("");
+    try {
+      setSnapshot(
+        await request<VillageSnapshot>("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ spriteCardFlipEnabled }),
+        }),
+      );
+    } catch (cause) {
+      setSpriteFlipError(messageFrom(cause, "That setting could not be saved."));
+    } finally {
+      setSpriteFlipSaving(false);
+      setSpriteFlipDraft(null);
+    }
+  }, []);
+
   const saveStoryPace = useCallback(async (storyPace: VillageStoryPace) => {
     setBusy(true);
     setSettingsError("");
@@ -17944,8 +17977,22 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             }
             onProjects={() => openMenu("projects")}
             onProposals={() => openMenu("venueRequests")}
+            spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled === true}
             sceneSettings={
               <>
+                <label className={ELEMENT_TAG + "-row"}>
+                  <input
+                    type="checkbox"
+                    checked={spriteFlipDraft ?? snapshot?.settings.spriteCardFlipEnabled === true}
+                    disabled={spriteFlipSaving}
+                    onChange={(event) => void saveSpriteCardFlip(event.target.checked)}
+                  />
+                  Card-flip sprite changes
+                </label>
+                <p className={ELEMENT_TAG + "-hint"}>
+                  Flip when facing or artwork changes. Saved for this Village on every device.
+                </p>
+                {spriteFlipError ? <p role="alert">{spriteFlipError}</p> : null}
                 <DecisionsControl
                   sceneId={room.id}
                   busy={roomBusy || room.operation?.status === "running"}

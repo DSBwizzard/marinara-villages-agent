@@ -1,5 +1,9 @@
 # Villages
 
+## Sprite card flips (0.6.158)
+
+Scene settings has one **Card-flip sprite changes** switch, saved with the Village across devices. It starts Off. When On, forward Scene progression turns changing sprites edge-on, switches facing and artwork together, then opens them out over 300 ms. Names and feet stay anchored. Initial/restored Scenes, backward reading and reduced-motion preferences apply changes immediately. Replacement artwork loads before a flip; failed artwork uses the existing fallback. Other open devices adopt the saved switch on their existing snapshot refresh.
+
 ## Scene notice dismissal (0.6.155)
 
 Scene notice dismissals send the complete saved receipt ID in a bounded JSON body. Relationship and memory receipts can exceed the host router's path-parameter limit; they now dismiss and stay dismissed after refresh without changing their IDs or requesting a model. The previous endpoint remains available for clients with short IDs.

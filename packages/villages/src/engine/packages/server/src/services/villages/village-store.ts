@@ -174,6 +174,7 @@ export function defaultVillageState(): VillageState {
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
     sendOnEnter: false,
+    spriteCardFlipEnabled: false,
     // An empty setting means "no place yet": the venue and routine blocks render
     // nothing, and the village behaves exactly as it did before they existed.
     setting: "",
@@ -2507,6 +2508,7 @@ export function coerceVillageState(value: unknown): VillageState {
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
     sendOnEnter: raw.sendOnEnter === true,
+    spriteCardFlipEnabled: raw.spriteCardFlipEnabled === true,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
     foundingReason: boundText(raw.foundingReason, 40),
     foundingDetails: boundText(raw.foundingDetails, 2_000),
