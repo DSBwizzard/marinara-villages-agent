@@ -208,6 +208,8 @@ const VILLAGES_IMAGE_CONNECTION_DISABLED = "__villages_image_disabled__";
 type SetupMapSource = "existing" | "generate" | "upload" | "none";
 
 type VillageVillagerView = {
+  signature?: import("../../shared/src/villages/resident-signature.js").ResidentSignatureImage;
+  signatureFallback?: import("../../shared/src/villages/resident-signature.js").ResidentSignature;
   characterId: string;
   nameColor: string;
   dialogueColor: string;

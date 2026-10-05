@@ -20,7 +20,7 @@ try {
     [768, 1024],
     [390, 844],
     [320, 650],
-  ]) {
+  ].filter(([width]) => !process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH))) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
     const errors = [],
       writes = [],
@@ -35,6 +35,17 @@ try {
     village.villagers[1].name = secondName;
     village.villagers[1].summary = "";
     village.villagers[1].missing = true;
+    village.villagers[0].signatureFallback = { name: "Mara", hand: "lively", slant: -3, spacing: 0.2, flourish: 3 };
+    village.villagers[1].signatureFallback = { name: secondName, hand: "neat", slant: 1, spacing: -0.3, flourish: 0 };
+    let signatureAttempt = 0;
+    let failSignature = false;
+    const signatureUrl = "http://villages.test/saved-signature.png";
+    await page.route(signatureUrl, (route) =>
+      route.fulfill({
+        contentType: "image/svg+xml",
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180"><text x="20" y="120" font-size="100" font-style="italic">Mara</text></svg>',
+      }),
+    );
     village.settings.venues[0].residentIds = ["mara"];
     village.villagers[0].place = { id: "mill" };
     village.projects = [
@@ -168,7 +179,29 @@ try {
         writes.push({ path, method: request.method(), body: request.postDataJSON() });
       let value = village;
       if (path.endsWith("/town-map")) value = { image: mapImage };
-      else if (path.endsWith("/rooms/active")) value = { session: null };
+      else if (/\/villagers\/(mara|eli)\/signature$/.test(path)) {
+        const resident = village.villagers.find((person) => path.includes(`/${person.characterId}/`));
+        if (request.method() === "POST") {
+          signatureAttempt++;
+          if (!failSignature)
+            resident.signature = {
+              name: resident.name,
+              generatedAt: now,
+              image: { ref: "global-gallery:signature", id: "signature", url: signatureUrl },
+              original: { ref: "global-gallery:original-signature", id: "original-signature", url: signatureUrl },
+            };
+        }
+        value = {
+          fallback: resident.signatureFallback,
+          saved: resident.signature ?? null,
+          available: resident.characterId === "mara",
+          recoverable: false,
+          unavailableReason: "No image connection is available.",
+          attempt: signatureAttempt,
+          status: failSignature ? "failed" : resident.signature ? "saved" : "local",
+          error: failSignature ? "Signature provider unavailable" : "",
+        };
+      } else if (path.endsWith("/rooms/active")) value = { session: null };
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/relationships/creator")) {
         relationships.starting.spoilers = true;
@@ -252,6 +285,21 @@ try {
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     assert.equal(reads.filter((path) => path.endsWith("/memories") || path.endsWith("/agendas")).length, 0);
     assert.equal(writes.length, 0, JSON.stringify(writes));
+    const signature = profile.getByRole("img", { name: "Mara's signature", exact: true });
+    await expect(signature).toBeVisible();
+    await expect(signature.locator('[data-hand="lively"]')).toHaveText("Mara");
+    await profile.getByRole("button", { name: "Generate signature", exact: true }).click();
+    await expect(profile.getByRole("button", { name: "Regenerate signature", exact: true })).toBeVisible();
+    await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
+    assert.equal(writes.at(-1).path.endsWith("/villagers/mara/signature"), true);
+    assert.equal(writes.at(-1).body.expectedAttempt, 0);
+    failSignature = true;
+    await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
+    await expect(profile.getByRole("alert")).toContainText("Signature provider unavailable");
+    await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
+    failSignature = false;
+    await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
+    await expect(profile.getByRole("alert")).toHaveCount(0);
     await page.screenshot({ path: resolve(output, `overview-${width}-${height}.png`) });
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
@@ -293,7 +341,20 @@ try {
     await expect(profile.getByRole("checkbox", { name: "Let Marinara schedule influence this Agenda" })).toBeChecked();
     assert.equal(writes.at(-1).path.endsWith("/agendas/mara/influence"), true);
     await profile.getByRole("button", { name: "Regenerate agenda", exact: true }).click();
-    await expect.poll(() => writes.at(-1).path.endsWith("/agendas/mara/regenerate")).toBe(true);
+    try {
+      await expect.poll(() => writes.at(-1).path.endsWith("/agendas/mara/regenerate")).toBe(true);
+    } catch (cause) {
+      await page.screenshot({ path: resolve(output, `agenda-failure-${width}.png`) });
+      console.error(
+        JSON.stringify({
+          width,
+          writes: writes.slice(-6),
+          errors,
+          alerts: await profile.getByRole("alert").allTextContents(),
+        }),
+      );
+      throw cause;
+    }
     await tabs.getByRole("button", { name: "Venues", exact: true }).click();
     await expect(profile.getByText("Agenda destination", { exact: true })).toBeVisible();
     await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
@@ -325,6 +386,10 @@ try {
     await expect(page.getByText(/PRIVATE/)).toHaveCount(0);
     await expect(page.getByText("No character summary recorded.", { exact: true })).toBeVisible();
     await expect(page.getByText(/Card missing · saved character remains available/)).toBeVisible();
+    const otherSignature = page.getByRole("img", { name: `${secondName}'s signature`, exact: true });
+    await expect(otherSignature).toBeVisible();
+    await expect(otherSignature.locator('[data-hand="neat"]')).toHaveText(secondName);
+    await expect(page.getByRole("button", { name: "Generate signature", exact: true })).toHaveCount(0);
     assert.equal(
       await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1),
       false,
@@ -333,6 +398,10 @@ try {
     if (width <= 390) await page.screenshot({ path: resolve(output, `long-name-${width}.png`) });
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
+    await expect(profile.getByRole("img", { name: "Mara's signature", exact: true }).locator("img")).toHaveAttribute(
+      "src",
+      signatureUrl,
+    );
     await profile.getByRole("button", { name: "Compare card", exact: true }).click();
     await expect(profile.getByRole("button", { name: "Apply refresh", exact: true })).toBeVisible();
     await profile.getByRole("button", { name: "Apply refresh", exact: true }).click();

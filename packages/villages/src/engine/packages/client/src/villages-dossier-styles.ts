@@ -44,8 +44,19 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-tags span { border-radius:20px; padding:5px 13px; color:#322d28; background:#d2d9ba; font-size:13px; overflow-wrap:anywhere; max-width:100%; }
 .${P}-dossier-tags span:nth-child(3n+2) { background:#d9c9df; } .${P}-dossier-tags span:nth-child(3n+3) { background:#e6c998; }
 .${P}-dossier-journal-rule { display:block; width:65%; height:1px; background:#bba37c; margin:30px 0 0; }
+.${P}-signature { margin:20px 0 0; max-width:100%; color:#302b23; }
+.${P}-signature-art { max-width:100%; width:240px; padding:8px 10px; }
+.${P}-signature-image { display:block; width:220px; max-width:100%; height:70px; object-fit:contain; object-position:left center; }
+.${P}-signature-name { display:block; font:36px/1.4 "Segoe Script","Snell Roundhand","URW Chancery L",cursive; overflow-wrap:anywhere; transform-origin:center; padding:4px 0; }
+.${P}-signature-name[data-hand="neat"] { font-family:"Segoe Print","Bradley Hand",cursive; font-size:30px; }
+.${P}-signature-name[data-hand="bold"] { font-weight:700; }
+.${P}-signature-name[data-hand="lively"] { font-family:"Bradley Hand","Segoe Print",cursive; font-style:italic; }
+.${P}-dossier-root .${P}-signature-flourish { display:block; width:100%; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; }
+.${P}-signature-controls { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.${P}-dossier-root .${P}-signature-controls button { font-size:12px; padding:8px 10px; }
+.${P}-signature > p { font-size:12px; margin:8px 0 0; }
 .${P}-dossier-back { margin:12px 0 15px; position:relative; z-index:2; }
-.${P}-dossier-workspace { min-width:0; display:flex; flex-direction:column; gap:18px; padding:12px 0 0; }
+.${P}-dossier-workspace { min-width:0; display:flex; flex-direction:column; gap:18px; padding:12px 0 0; position:relative; z-index:1; }
 .${P}-dossier-tabs { display:flex; gap:14px; align-items:start; min-width:0; }
 .${P}-dossier-tabs > div { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; flex:1; min-width:0; }
 .${P}-dossier-tabs button { display:flex; align-items:center; justify-content:center; gap:8px; font-size:14px; padding:11px 9px; }
@@ -126,6 +137,7 @@ export const DOSSIER_STYLES = `
   .${P}-dossier-desk[data-overview="true"] .${P}-dossier-content > :last-child:not(.${P}-dossier-primary-sheet):not(.${P}-dossier-summary-grid):not(p) { grid-column:1 / -1; }
 }
 @media(max-width:1100px) { .${P}-dossier-desk { gap:18px; padding:16px; grid-template-columns:minmax(0,36%) minmax(0,1fr); } .${P}-dossier-journal { padding:30px 18px 30px 32px; margin-left:-24px; } .${P}-dossier-tabs { flex-wrap:wrap; } .${P}-dossier-tabs > div { flex-basis:100%; } .${P}-dossier-tabs .${P}-dossier-inspect { margin-left:auto; } .${P}-dossier-summary-title { font-size:18px; } .${P}-dossier-sheet { padding:15px; } .${P}-dossier-venues article { gap:12px; } .${P}-dossier-venues .${P}-dossier-polaroid { flex-basis:110px; width:110px; } }
+@media(min-width:761px) and (max-width:1100px) { .${P}-dossier-journal { transform:rotate(-4deg); } }
 @media(max-width:760px) {
   .${P}-dossier-desk { display:block; padding:14px; overflow:hidden; } .${P}-dossier-desk::before { inset:15px 7px 7px; }
   .${P}-dossier-identity { padding:10px 15px 0; } .${P}-dossier-journal { transform:rotate(-2deg); width:100%; min-height:0; margin:-12px 0 22px; padding:24px 18px 24px 30px; border-width:6px; border-left-width:10px; }

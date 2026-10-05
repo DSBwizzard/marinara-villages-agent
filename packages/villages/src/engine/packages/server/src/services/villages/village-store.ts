@@ -292,6 +292,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     agendaGeneration: asString(raw.agendaGeneration),
     translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
+    ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
     ...(readResidentFoundingContext(raw.foundingContext)
       ? { foundingContext: readResidentFoundingContext(raw.foundingContext)! }
       : {}),
@@ -1269,6 +1270,15 @@ function coerceVenueTraces(value: unknown): VillageVenueTrace[] {
       ];
     })
     .slice(0, 16);
+}
+
+function coerceResidentSignature(value: unknown) {
+  const raw = asRecord(value);
+  const image = coerceVenueImage(raw.image),
+    original = coerceVenueImage(raw.original);
+  const name = asTrimmedString(raw.name),
+    generatedAt = asIsoString(raw.generatedAt);
+  return image && original && name && generatedAt ? { image, original, name, generatedAt } : null;
 }
 
 /**

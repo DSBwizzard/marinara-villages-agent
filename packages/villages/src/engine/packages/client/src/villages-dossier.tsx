@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { VillagesRelationships, type RelationshipView } from "./villages-relationships.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
 import { VenuePolaroid } from "./villages-venue-polaroid.js";
+import { VillagerSignature } from "./villages-signature.js";
+import type { ResidentSignature, ResidentSignatureImage } from "../../shared/src/villages/resident-signature.js";
 
 export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 export type DossierNavigation = {
@@ -123,7 +125,15 @@ export function VillagerDossier({
   error,
 }: {
   navigation: DossierNavigation;
-  villager?: { characterId: string; name: string; summary: string; tags: string[]; missing: boolean };
+  villager?: {
+    characterId: string;
+    name: string;
+    summary: string;
+    tags: string[];
+    missing: boolean;
+    signatureFallback?: ResidentSignature;
+    signature?: ResidentSignatureImage;
+  };
   portrait: ReactNode;
   request: Request;
   venues: DossierVenue[];
@@ -263,6 +273,16 @@ export function VillagerDossier({
               ))}
             </div>
             <span className={`${P}-dossier-journal-rule`} aria-hidden="true" />
+            {villager ? (
+              <VillagerSignature
+                key={navigation.actorId}
+                actorId={navigation.actorId}
+                name={name}
+                signature={villager.signatureFallback}
+                saved={villager.signature}
+                request={request}
+              />
+            ) : null}
           </article>
           <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
             {navigation.returnTo === "room"

@@ -57,6 +57,7 @@ jobs:
         run: |
           npx tsx tests/villages-sprite-manager.regression.ts
           npx tsx tests/villages-resident-sprites.regression.ts
+          npx tsx tests/villages-signatures.regression.ts
 
       - name: Verify scene staging and reading pages
         run: |
