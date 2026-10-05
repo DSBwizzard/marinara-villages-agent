@@ -2,10 +2,8 @@
 
 ## Before and after
 
-- Planned inspection baseline: 0.6.138, `3df7d5f`. Nothing from this plan had been implemented there.
-- Actual freshly fetched starting staging: **0.6.139**, `a88f88b5dd616f91a2c7148ec4f44d78bb5a2298`.
-- Delivered package: **0.6.140**. Final implementation and generated-package commit: `268615786d651e88e7a4372668f046b1c548bf3f` (initial implementation: `36fa7d4265b5d27e23ec51af2b0ba32c2b2c4911`). The release record is maintained in separate documentation commits. The delivery report identifies the final staging merge revision.
-- Engine source, build and running process were not changed. Installation follows merged-staging checks/build through the existing Villages sideload helper.
+- Comparison baseline: **0.6.139**, `a88f88b5dd616f91a2c7148ec4f44d78bb5a2298`.
+- Released package: **0.6.140**; implementation commit `268615786d651e88e7a4372668f046b1c548bf3f`.
 
 | Area | Delivered change | Explicitly deferred |
 |---|---|---|
@@ -24,7 +22,7 @@ The Zone selector stays in Venue actions during an active Scene and disables whi
 
 ## Validation
 
-Passed locally: `npm run check` and `node scripts/build-feature-packages.mjs villages` with Node 24.21 and the configured Engine's read-only dependencies. Generated manifest: Villages 0.6.140, built against Engine 2.4.6 (`e0313a33caef973e645616419d11894f4d8c434e`).
+Passed locally: `npm run check` and `node scripts/build-feature-packages.mjs villages` with Node 24.21 and Engine 2.4.6 build dependencies. Generated manifest: Villages 0.6.140, built against Engine 2.4.6 (`e0313a33caef973e645616419d11894f4d8c434e`).
 
 Passed regression suites: venue-session, zones, contact, scene-actions, venue-coordinator, room-events, private-spaces, optional-layouts, project-checks, live-wishes, wish-interpretation, wish-batch, project-interpretation, progress-projects, progress-engine, live-memory, exchange-processing, pipeline-efficiency, reading-pages, scene-staging, character-writing, dialogue-context, scene-text and check-cost-replay. Affected suites were rerun after recovery changes.
 
@@ -49,4 +47,4 @@ No deferred redesign was implemented. Movement recognition deliberately supports
 
 Representative labeled expectations are preserved in `tests/fixtures/villages-scene-actions.samples.json`: current repair, physical handoff, substantial commitment, temporary mood, sarcastic character voice, conditional entry and doorway privacy. Use the same character cards, state and exchanges for paired live comparisons before approving the deferred changes.
 
-Decision criteria: **fewer incorrect or missed consequences; better character fidelity; and whether those benefits justify additional tokens, context, latency and maintenance.** Record wrong changes, missed changes, unnecessary clarification, altered voice, actual reported usage, request counts and latency. Mocked tests establish mechanics and request admission, not live quality or billing. No implementation departure from the approved scope is intended; the actual starting version was newer, and durable physical proof uses the existing receipt store so recent-feed trimming cannot undo duplicate prevention.
+Decision criteria: **fewer incorrect or missed consequences; better character fidelity; and whether those benefits justify additional tokens, context, latency and maintenance.** Record wrong changes, missed changes, unnecessary clarification, altered voice, actual reported usage, request counts and latency. Mocked tests establish mechanics and request admission, not live quality or billing. Durable physical proof uses the existing receipt store so recent-feed trimming cannot undo duplicate prevention.
