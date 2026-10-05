@@ -313,13 +313,13 @@ try {
     await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
     await page.getByRole("button", { name: /^Villagers \(/u }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    const studioButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
-    await studioButton.focus();
+    const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
+    await managerButton.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { name: "Mara’s Sprite Manager" })).toBeFocused();
     await expect(page.getByRole("button", { name: "Upload images", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to profile" }).click();
-    await expect(studioButton).toBeFocused();
+    await expect(managerButton).toBeFocused();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Back to menu" }).click();
     await page.getByRole("button", { name: "Village Settings" }).click();

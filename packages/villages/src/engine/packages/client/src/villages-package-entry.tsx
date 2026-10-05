@@ -230,7 +230,7 @@ type ResidentSprite = {
     expressionId?: string;
     isDefault?: boolean;
   }>;
-  framing: { mode: "full" | "half"; cropPercent: number };
+  framing: { mode: "full" | "half" };
 };
 
 type VillagerRefreshPreview = {
@@ -13192,6 +13192,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const menuSection = menuCategory(menuPage);
   const openPerson = useCallback(
     (navigation: DossierNavigation) => {
+      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
       const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const key = button?.getAttribute("data-exploration-row");
       const label = button?.getAttribute("aria-label");
@@ -13211,14 +13212,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       profileOrigin.current = { selector, scroll };
       setError("");
       setProfileInspection(null);
-      setSpriteEditorId(null);
+      setSpriteManagerId(null);
       setPersonProfile(navigation);
       setScreen("person");
     },
     [element],
   );
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
-  const [spriteEditorId, setSpriteEditorId] = useState<string | null>(null);
+  const [spriteManagerId, setSpriteManagerId] = useState<string | null>(null);
+  const spriteLeaveGuard = useRef<(() => boolean) | null>(null);
+  const spriteProfileScroll = useRef(0);
   /**
    * Portraits, by character id, as the Engine has been willing to hand them over.
    *
@@ -14904,6 +14907,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   );
 
   const goHome = useCallback(() => {
+    if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+    setSpriteManagerId(null);
     setExploreSheet(null);
     setPickerOpen(false);
     setSettingsError("");
@@ -17641,7 +17646,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       </div>
     );
     const back = () => {
-      setSpriteEditorId(null);
+      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+      setSpriteManagerId(null);
       setProfileInspection(null);
       setPersonProfile(null);
       setScreen(personProfile.returnTo);
@@ -17690,18 +17696,23 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             }
           }}
           spriteManager={
-            spriteEditorId && person ? (
+            spriteManagerId && person ? (
               <SpriteManager
                 key={person.characterId}
                 villager={person}
                 request={request}
                 backLabel="← Back to profile"
+                onLeaveGuard={(guard) => {
+                  spriteLeaveGuard.current = guard;
+                }}
                 onSaved={(next) => setSnapshot(next as VillageSnapshot)}
                 onBack={() => {
-                  setSpriteEditorId(null);
-                  requestAnimationFrame(() =>
-                    element.querySelector<HTMLElement>("[data-dossier-sprites]")?.focus({ preventScroll: true }),
-                  );
+                  setSpriteManagerId(null);
+                  requestAnimationFrame(() => {
+                    const profile = element.querySelector<HTMLElement>(`.${ELEMENT_TAG}-dossier-root`);
+                    if (profile) profile.scrollTop = spriteProfileScroll.current;
+                    element.querySelector<HTMLElement>("[data-dossier-sprites]")?.focus({ preventScroll: true });
+                  });
                 }}
               />
             ) : undefined
@@ -17738,8 +17749,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 disabled={busy}
                 data-dossier-sprites="true"
                 onClick={(event) => {
+                  spriteProfileScroll.current =
+                    element.querySelector<HTMLElement>(`.${ELEMENT_TAG}-dossier-root`)?.scrollTop ?? 0;
                   event.currentTarget.blur();
-                  setSpriteEditorId(personProfile.actorId);
+                  setSpriteManagerId(personProfile.actorId);
                 }}
               >{`Manage sprites · ${person?.sprite?.images.length ?? 0} assigned`}</button>
               <button

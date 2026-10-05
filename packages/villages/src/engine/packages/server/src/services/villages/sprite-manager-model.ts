@@ -32,7 +32,7 @@ export type SpriteManagerState = {
   expressions: SpriteExpression[];
   assignments: SpriteAssignment[];
   defaultExpressionId?: string;
-  framing: { mode: "full" | "half"; cropPercent: number };
+  framing: { mode: "full" | "half" };
 };
 export type SpriteLibraryItem = { filename: string; url: string; adoptedArtworkId?: string };
 export const isEngineSpriteFilename = (value: unknown): value is string =>
@@ -42,7 +42,7 @@ export const emptySpriteManager = (): SpriteManagerState => ({
   artwork: [],
   expressions: [],
   assignments: [],
-  framing: { mode: "full", cropPercent: 58 },
+  framing: { mode: "full" },
 });
 export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
   if (!value || typeof value !== "object") return null;
@@ -154,7 +154,6 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       : assignments[0]?.expressionId,
     framing: {
       mode: framing?.mode === "half" ? "half" : "full",
-      cropPercent: Number.isFinite(framing?.cropPercent) ? Math.min(85, Math.max(40, framing.cropPercent)) : 58,
     },
   };
 }

@@ -234,13 +234,15 @@ export function VillagerDossier({
       )}
     </div>
   );
+  // The artwork workspace uses the available screen; the dossier stays mounted for a seamless return.
+  if (spriteManager) return <div className={`${P}-root ${P}-sprite-manager-root`}>{spriteManager}</div>;
   return (
     <div className={`${P}-root ${P}-dossier-root`}>
       <section
         className={`${P}-dossier-desk`}
         aria-label={`${name} profile`}
         data-inspect={inspect}
-        data-overview={section === "overview" && !!villager && !spriteManager}
+        data-overview={section === "overview" && !!villager}
       >
         <div className={`${P}-dossier-identity`}>
           <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
@@ -290,7 +292,7 @@ export function VillagerDossier({
               {inspect ? "Leave Inspect" : "Inspect"}
             </button>
           </nav>
-          {villager && !spriteManager ? (
+          {villager ? (
             <div className={`${P}-dossier-controls`} role="group" aria-label="Villager management">
               {controls}
             </div>
@@ -316,8 +318,6 @@ export function VillagerDossier({
                   villager.
                 </p>
               </Sheet>
-            ) : spriteManager ? (
-              spriteManager
             ) : (
               <>
                 {inspect ? (

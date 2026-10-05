@@ -292,7 +292,16 @@ async function run() {
     await setSpriteDefault("mara", { expressionId: newDefault.manager.expressions.at(-1)!.id });
     assert.notEqual((await readSpriteManager("mara")).defaultExpressionId, expression.id);
     await setSpriteFraming("mara", { mode: "half", cropPercent: 61 });
-    assert.deepEqual((await readSpriteManager("mara")).framing, { mode: "half", cropPercent: 61 });
+    assert.deepEqual((await readSpriteManager("mara")).framing, { mode: "half" }, "obsolete cropPercent is ignored");
+    await setSpriteFraming("mara", { mode: "full" });
+    assert.deepEqual((await readSpriteManager("mara")).framing, { mode: "full" });
+    await assert.rejects(() => setSpriteFraming("mara", { mode: "other" }), /full or half/);
+    assert.deepEqual(
+      coerceSpriteManager({ ...(await readSpriteManager("mara")), framing: { mode: "half", cropPercent: 61 } })
+        ?.framing,
+      { mode: "half" },
+      "older saved framing remains readable",
+    );
     const removing = (await readSpriteManager("mara")).artwork[2]!;
     await removeSpriteArtwork("mara", { artworkId: removing.id, expectedUrl: removing.rendered.url });
     assert.equal((await readSpriteManager("mara")).defaultExpressionId, expression.id);

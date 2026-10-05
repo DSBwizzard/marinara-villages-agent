@@ -463,7 +463,7 @@ export type VillageResidentSprite = {
     name: string;
     useWhen: string;
   }>;
-  framing: { mode: "full" | "half"; cropPercent: number };
+  framing: { mode: "full" | "half" };
 };
 
 export type VillageVillagerCardSnapshot = {

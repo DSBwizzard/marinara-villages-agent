@@ -4,8 +4,9 @@ import { existsSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect as baseExpect } from "@playwright/test";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
+const expect = baseExpect.configure({ timeout: 15000 });
 const require = createRequire(import.meta.url);
 const { build } = require("esbuild");
 mkdirSync(".build-tmp/sprite-manager", { recursive: true });
@@ -35,15 +36,19 @@ const browser = await chromium.launch({
 });
 try {
   for (const viewport of [
+    { width: 1917, height: 1000 },
     { width: 1440, height: 900 },
     { width: 390, height: 844 },
+    { width: 320, height: 740 },
+    { width: 1024, height: 768 },
     { width: 844, height: 390 },
   ]) {
-    const page = await browser.newPage({ viewport });
+    const page = await browser.newPage({ viewport, hasTouch: viewport.width < 720 });
     const errors = [],
       requests = [],
       files = new Map();
-    let failSave = false;
+    let failSave = false,
+      failLibrary = false;
     page.on("pageerror", (error) => errors.push(error.message));
     let manager = {
       version: 1,
@@ -119,16 +124,19 @@ try {
         const body = route.request().method() === "POST" ? route.request().postDataJSON() : {};
         if (path.endsWith("/manager")) value = manager;
         else if (path.endsWith("/library"))
-          value = {
-            items: [
-              {
-                filename: "full_native.png",
-                url: "data:image/png;base64," + pngImage().toString("base64"),
-                adoptedArtworkId: manager.artwork.find((item) => item.engineSource?.filename === "full_native.png")?.id,
-              },
-            ],
-            error: "",
-          };
+          value = failLibrary
+            ? ((failLibrary = false), { items: [], error: "Library temporarily unavailable." })
+            : {
+                items: [
+                  {
+                    filename: "full_native.png",
+                    url: "data:image/png;base64," + pngImage().toString("base64"),
+                    adoptedArtworkId: manager.artwork.find((item) => item.engineSource?.filename === "full_native.png")
+                      ?.id,
+                  },
+                ],
+                error: "",
+              };
         else {
           let addedArtworkIds, selectedArtworkIds;
           if (path.endsWith("/import"))
@@ -215,24 +223,84 @@ try {
       { name: "Two figures.png", mimeType: "image/png", buffer: pngImage(false, true) },
     ]);
     await expect(page.getByLabel("Expression name")).toHaveValue("Composed");
+    await expect(page.getByLabel("Expression name")).toHaveCSS("background-color", "rgb(55, 53, 43)");
     await page.getByLabel("Use when…", { exact: true }).fill("Listening with controlled authority.");
     await expect(page.getByRole("button", { name: "Save and use in Scenes" })).toBeEnabled();
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
     assert.equal(manager.assignments.length, 1);
+    await page
+      .getByRole("group", { name: "Preview screen" })
+      .getByRole("button", { name: "Mobile", exact: true })
+      .click();
+    await expect(page.locator(".vsm-scene")).toHaveAttribute("data-mobile", "true");
+    await page
+      .getByRole("group", { name: "Preview screen" })
+      .getByRole("button", { name: "Desktop", exact: true })
+      .click();
+    // Metadata-only drafts survive selection, resize, and unrelated immediate saves.
+    await page.getByLabel("Expression name", { exact: true }).fill("Calm draft");
+    await expect(page.getByRole("button", { name: "Discard changes" })).toBeEnabled();
+    await page.getByRole("button", { name: /Angry.png/ }).click();
+    await page.getByLabel("Use when…", { exact: true }).fill("Angry draft");
+    await page.getByRole("button", { name: /Composed.png/ }).click();
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
+    await page.setViewportSize({ width: viewport.width > 719 ? 390 : 1024, height: 844 });
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
+    await page.setViewportSize(viewport);
+    if (viewport.width === 1917) {
+      const host = page.locator("marinara-capability-villages");
+      await host.evaluate((element) => (element.style.width = "700px"));
+      await expect(page.locator(".vsm-artwork")).toHaveCSS("display", "flex");
+      await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
+      await host.evaluate((element) => (element.style.width = ""));
+      await expect(page.locator(".vsm-artwork")).toHaveCSS("display", "grid");
+    }
+    assert.equal(
+      await page.evaluate(() => {
+        const event = new Event("beforeunload", { cancelable: true });
+        window.dispatchEvent(event);
+        return event.defaultPrevented;
+      }),
+      true,
+      "closing the browser warns about unsaved drafts",
+    );
+    let rejectedLeave = false;
+    page.once("dialog", async (dialog) => {
+      rejectedLeave = true;
+      await dialog.dismiss();
+    });
+    await page.getByRole("button", { name: "← Back to profile", exact: true }).click();
+    assert.equal(rejectedLeave, true);
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("button", { name: "← Back to profile", exact: true }).click();
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
+    await page.getByRole("button", { name: "Save and use in Scenes" }).click();
+    await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
+    await page.getByLabel("Expression name", { exact: true }).fill("Temporary edit");
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
+    await page.getByRole("button", { name: /Angry.png/ }).click();
+    await expect(page.getByLabel("Use when…", { exact: true })).toHaveValue("Angry draft");
+    await page.getByRole("button", { name: "Discard changes" }).click();
     await page.getByRole("button", { name: /Angry.png/ }).click();
     await expect(page.getByText(/This artwork has an opaque background/)).toBeVisible();
-    await page.getByLabel("Facing", { exact: true }).selectOption("side");
+    await page
+      .getByRole("group", { name: "Facing", exact: true })
+      .getByRole("button", { name: "Side", exact: true })
+      .click();
     await page.getByLabel("Expression", { exact: true }).selectOption(manager.defaultExpressionId);
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
     assert.equal(manager.assignments.length, 2);
+    await page.getByText("Advanced framing", { exact: true }).click();
     await page.getByLabel("Scale", { exact: true }).fill("3");
     await expect(page.getByRole("button", { name: "Save and use in Scenes" })).toBeDisabled();
     await expect(page.getByText(/Artwork exceeds the safe margin/)).toBeVisible();
     await page.getByLabel("Scale", { exact: true }).fill("1");
     await page.getByRole("button", { name: /Two figures.png/ }).click();
-    await page.getByText("Crop and body-height markers", { exact: true }).click();
+
     await page.getByLabel("Crop width", { exact: true }).fill("60");
     await page.getByLabel("Head marker (optional)", { exact: true }).fill("10");
     await page.getByLabel("Foot marker (optional)", { exact: true }).fill("84");
@@ -243,10 +311,12 @@ try {
     assert.equal(manager.assignments.length, 2);
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
+    await page.getByLabel("More artwork actions").click();
     await page.getByRole("button", { name: "Make default" }).click();
+    await page.getByLabel("More artwork actions").click();
     await expect(page.getByRole("button", { name: "Make default" })).toBeDisabled();
     const download = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download PNG" }).click();
+    await page.getByRole("button", { name: "Download saved PNG" }).click();
     assert.match((await download).suggestedFilename(), /Calculating-front\.png/);
     const png = PNG.sync.read(files.get(manager.artwork[2].rendered.url));
     assert.equal(png.width, 1024);
@@ -264,37 +334,53 @@ try {
     await page.getByLabel("Scene framing", { exact: true }).selectOption("half");
     await expect(page.getByLabel("Scale", { exact: true })).toHaveValue("0.9");
     await page.getByLabel("Scale", { exact: true }).fill("1");
-    await expect(page.locator(".vsm-scene[data-half=true]")).toHaveCount(2);
-    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await expect(page.locator(".vsm-scene[data-half=true]")).toHaveCount(1);
+    failLibrary = true;
+    await page.getByRole("button", { name: "Character library" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog").getByRole("alert")).toHaveText("Library temporarily unavailable.");
+    await page.getByRole("button", { name: "Retry library" }).click();
     await page.getByRole("checkbox", { name: "full_native.png" }).check();
     await page.getByRole("button", { name: "Add selected artwork" }).click();
     await expect(page.getByLabel("Expression name")).toHaveValue("native");
     const artworkAfterAdoption = manager.artwork.length;
-    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Add selected artwork" })).toBeDisabled();
     assert.equal(manager.artwork.length, artworkAfterAdoption);
-    await page.getByRole("button", { name: "Close library" }).click();
-    await page.getByRole("heading", { name: "Framing", exact: true }).scrollIntoViewIfNeeded();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Character library" })).toBeFocused();
+    await page.getByRole("heading", { name: "Scene preview", exact: true }).scrollIntoViewIfNeeded();
     await page.screenshot({
       path: resolve(`.build-tmp/sprite-manager/${viewport.width}x${viewport.height}.png`),
       fullPage: true,
     });
+    const saveBar = await page.locator(".vsm-savebar").boundingBox();
+    assert.ok(
+      saveBar && saveBar.y >= 0 && saveBar.y + saveBar.height <= viewport.height + 1,
+      "save controls remain visible",
+    );
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false, "manager fits narrow screens");
     await page.getByRole("button", { name: "← Back to profile" }).click();
+    await expect(page.getByRole("button", { name: /Manage sprites ·/ }).first()).toBeFocused();
     await page
       .getByRole("button", { name: /Manage sprites ·/ })
       .first()
       .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toBeVisible();
     await page.getByRole("button", { name: /full_native.png/ }).click();
-    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
     await page.getByRole("button", { name: "Close library" }).click();
+    await page.getByLabel("More artwork actions").click();
+    page.once("dialog", (dialog) => dialog.dismiss());
+    await page.getByRole("button", { name: "Remove artwork" }).click();
+    await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(1);
+    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Remove artwork" }).click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(0);
-    await page.getByRole("button", { name: "Choose from Engine character sprites" }).click();
+    await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png", exact: true })).toBeEnabled();
     await page.getByRole("checkbox", { name: "full_native.png", exact: true }).check();
     // Another tab adopts after this picker loads; reuse the returned artwork ID.

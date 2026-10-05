@@ -288,17 +288,11 @@ export function setSpriteDefault(id: string, raw: unknown) {
 export function setSpriteFraming(id: string, raw: unknown) {
   return serialize(id, async () => {
     const resident = await owner(id),
-      body = asRecord(raw),
-      cropPercent = Number(body.cropPercent);
-    if (
-      !["full", "half"].includes(asString(body.mode)) ||
-      !Number.isFinite(cropPercent) ||
-      cropPercent < 40 ||
-      cropPercent > 85
-    )
-      throw badRequest("Choose full or half body and a crop from 40% to 85%.");
+      body = asRecord(raw);
+    // Older clients may still send cropPercent; Scene rendering uses only mode.
+    if (!["full", "half"].includes(asString(body.mode))) throw badRequest("Choose full or half body.");
     await commit(id, resident.addedAt, (manager) => {
-      manager.framing = { mode: body.mode as "full" | "half", cropPercent };
+      manager.framing = { mode: body.mode as "full" | "half" };
     });
     return result(id);
   });
