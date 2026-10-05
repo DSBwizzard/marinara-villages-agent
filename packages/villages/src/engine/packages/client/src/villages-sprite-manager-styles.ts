@@ -71,14 +71,18 @@ export const SPRITE_MANAGER_STYLES = `
 .vsm-original img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .vsm-source-crop { position: absolute; border: 2px solid var(--sm-primary); pointer-events: none; }
 .vsm-marker { position: absolute; left: 0; right: 0; border-top: 2px dashed #e9b87c; pointer-events: none; }
-.vsm-savebar { position: sticky; bottom: 0; z-index: 3; background: var(--sm-background); border-top: 1px solid var(--sm-line); margin-top: 1rem; padding: .75rem 0 max(.75rem, env(safe-area-inset-bottom)); display: grid; gap: .65rem; }
-.vsm-save-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
-.vsm-save-row > p { flex: 1; min-width: 120px; color: var(--sm-muted); font-size: .8rem; }
-.vsm-more { position: relative; }
-.vsm-more > summary { list-style: none; border: 1px solid var(--sm-line); border-radius: 8px; padding: .6rem .75rem; background: var(--sm-panel); }
+.vsm-actions-buttons { display: flex; align-items: start; gap: .5rem; flex-wrap: wrap; }
+.vsm-actions-buttons > .vsm-primary { flex: 1 0 100%; }
+.vsm-actions-buttons > button:not(.vsm-primary) { flex: 1; }
+.vsm-more { min-width: 0; }
+.vsm-more[open] { flex-basis: 100%; }
+.vsm-more > summary { display: inline-block; list-style: none; border: 1px solid var(--sm-line); border-radius: 8px; padding: .6rem .75rem; background: var(--sm-panel); }
 .vsm-more > summary::-webkit-details-marker { display: none; }
-.vsm-more-menu { position: absolute; bottom: 100%; right: 0; z-index: 5; width: 230px; background: var(--sm-background); border: 1px solid var(--sm-line); padding: .5rem; border-radius: 8px; display: grid; gap: .4rem; box-shadow: 0 4px 20px #17120c70; }
+.vsm-more-menu { background: var(--sm-panel); border: 1px solid var(--sm-line); padding: .5rem; border-radius: 8px; display: grid; gap: .4rem; }
 .vsm-more-menu button { width: 100%; text-align: left; }
+.vsm-feedback { color: var(--sm-muted); font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.vsm-feedback-error { color: #f3aaaa; }
+.vsm > .vsm-feedback { margin-bottom: .5rem; }
 .vsm-danger { color: #f3aaaa !important; }
 .vsm-alert { padding: .7rem .8rem; border-left: 3px solid #e9b87c; background: #d99b4315; font-size: .85rem; line-height: 1.5; overflow-wrap: anywhere; }
 .vsm-error { border-color: #f09090; }
@@ -110,8 +114,6 @@ export const SPRITE_MANAGER_STYLES = `
   .vsm-help summary { min-height: 32px; padding: .35rem 0; }
   .vsm-scene { height: 230px; }
   .vsm-scene[data-mobile=true] { max-width: 170px; }
-  .vsm-save-row > p { flex-basis: 100%; }
-  .vsm-save-row > .vsm-primary { flex: 1; }
   .vsm-heading > .vsm-toolbar { width: 100%; }
   .vsm-heading > .vsm-toolbar button { flex: 1; }
 }

@@ -1,5 +1,9 @@
 # Villages
 
+## Compact Sprite Manager controls (0.6.163)
+
+Artwork Save, Discard, status and extra actions live above Expression in the settings panel and scroll with the page. Save confirmations and errors use compact inline text. The extra-actions menu expands within settings, leaving the preview and framing controls unobstructed.
+
 ## Founding People and resident continuity (0.6.162)
 
 People keeps Persona/role and the character picker compact, with full-width resident background rows on desktop and expandable, touch-sized cards on phones. New founders default to continuing their history and arriving at the Village; notes are optional. Custom story positions reveal a short description field. Always lived here uses “Their life here before play.” Review summarizes the same choices. Device-local founding drafts retain these edits through reload, save/resume, and deselection/reselection.

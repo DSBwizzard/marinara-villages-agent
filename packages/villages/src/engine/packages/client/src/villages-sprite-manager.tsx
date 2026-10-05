@@ -319,6 +319,20 @@ export function SpriteManager({
     accept(saved);
     setNotice("Expression and artwork saved for Scenes.");
   }
+  const feedback = (
+    <>
+      {error ? (
+        <p role="alert" className="vsm-feedback vsm-feedback-error">
+          {error}
+        </p>
+      ) : null}
+      {notice ? (
+        <p role="status" className="vsm-feedback">
+          {notice}
+        </p>
+      ) : null}
+    </>
+  );
   return (
     <section className="vsm" aria-label={`${villager.name} Sprite Manager`}>
       <style>{SPRITE_MANAGER_STYLES}</style>
@@ -360,6 +374,7 @@ export function SpriteManager({
           if (files.length) void perform(() => upload(files));
         }}
       />
+      {manager && !(selected && draft && frame) ? feedback : null}
       <details className="vsm-help">
         <summary>Artwork tips</summary>
         <p>{SPRITE_UPLOAD_GUIDANCE} PNG, WebP, or JPEG; up to 12 MB per image.</p>
@@ -487,6 +502,94 @@ export function SpriteManager({
                 </details>
               </section>
               <div className="vsm-panel vsm-settings">
+                <section className="vsm-actions" aria-label="Save artwork">
+                  <div className="vsm-actions-buttons">
+                    <button className="vsm-primary" disabled={!canSave} onClick={() => void perform(save)}>
+                      Save and use in Scenes
+                    </button>
+                    <button disabled={busy || !dirty} onClick={() => discard(selected.id)}>
+                      Discard changes
+                    </button>
+                    <details className="vsm-more" ref={moreActions}>
+                      <summary aria-label="More artwork actions">•••</summary>
+                      <div className="vsm-more-menu">
+                        <button
+                          disabled={
+                            busy ||
+                            dirty ||
+                            !draft.expressionId ||
+                            !manager.assignments.some(
+                              (item) => item.expressionId === draft.expressionId && item.artworkId === selected.id,
+                            ) ||
+                            manager.defaultExpressionId === draft.expressionId
+                          }
+                          onClick={() => {
+                            closeMoreActions();
+                            void perform(async () => {
+                              accept(await call<Saved>("default", { expressionId: draft.expressionId }));
+                              setNotice("Default expression saved.");
+                            });
+                          }}
+                        >
+                          Make default
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => {
+                            closeMoreActions();
+                            void perform(async () => {
+                              const response = await fetch(selected.rendered.url);
+                              if (!response.ok) throw new Error("The saved PNG could not be downloaded.");
+                              const url = URL.createObjectURL(await response.blob());
+                              const link = document.createElement("a");
+                              link.href = url;
+                              link.download = `${(baseline?.name ?? selected.name).replace(/[^a-z0-9_-]/gi, "-") || "sprite"}-${baseline?.view ?? "front"}.png`;
+                              link.click();
+                              setTimeout(() => URL.revokeObjectURL(url), 30000);
+                            });
+                          }}
+                        >
+                          Download saved PNG
+                        </button>
+                        <button
+                          className="vsm-danger"
+                          disabled={busy}
+                          onClick={() => {
+                            const count = manager.assignments.filter((item) => item.artworkId === selected.id).length;
+                            if (
+                              !window.confirm(
+                                `Remove ${selected.name}? This removes its ${count} Scene ${count === 1 ? "assignment" : "assignments"} and any unsaved edits to this image.`,
+                              )
+                            )
+                              return;
+                            closeMoreActions();
+                            void perform(async () => {
+                              const saved = await call<Saved>("remove", {
+                                artworkId: selected.id,
+                                expectedUrl: selected.rendered.url,
+                              });
+                              discard(selected.id);
+                              accept(saved);
+                              setNotice("Artwork removed from Sprite Manager and its Scene assignments.");
+                            });
+                          }}
+                        >
+                          Remove artwork
+                        </button>
+                      </div>
+                    </details>
+                  </div>
+                  <p className="vsm-hint">
+                    {busy
+                      ? "Saving…"
+                      : dirtyCount
+                        ? `Unsaved changes · ${dirtyCount} ${dirtyCount === 1 ? "image" : "images"}`
+                        : selected && !manager.assignments.some((item) => item.artworkId === selected.id)
+                          ? "Not yet assigned"
+                          : "Changes saved"}
+                  </p>
+                  {feedback}
+                </section>
                 <section aria-label="Expression and facing">
                   <h3>Expression</h3>
                   <label>
@@ -692,109 +795,6 @@ export function SpriteManager({
           )}
         </div>
       )}
-      {manager ? (
-        <footer className="vsm-savebar" aria-label="Save artwork">
-          {error ? (
-            <p role="alert" className="vsm-alert vsm-error">
-              {error}
-            </p>
-          ) : null}
-          {notice ? (
-            <p role="status" className="vsm-alert">
-              {notice}
-            </p>
-          ) : null}
-          <div className="vsm-save-row">
-            <p>
-              {busy
-                ? "Saving…"
-                : dirtyCount
-                  ? `Unsaved changes · ${dirtyCount} ${dirtyCount === 1 ? "image" : "images"}`
-                  : selected && !manager.assignments.some((item) => item.artworkId === selected.id)
-                    ? "Not yet assigned"
-                    : "Changes saved"}
-            </p>
-            {selected && draft ? (
-              <>
-                <button disabled={busy || !dirty} onClick={() => discard(selected.id)}>
-                  Discard changes
-                </button>
-                <button className="vsm-primary" disabled={!canSave} onClick={() => void perform(save)}>
-                  Save and use in Scenes
-                </button>
-                <details className="vsm-more" ref={moreActions}>
-                  <summary aria-label="More artwork actions">•••</summary>
-                  <div className="vsm-more-menu">
-                    <button
-                      disabled={
-                        busy ||
-                        dirty ||
-                        !draft.expressionId ||
-                        !manager.assignments.some(
-                          (item) => item.expressionId === draft.expressionId && item.artworkId === selected.id,
-                        ) ||
-                        manager.defaultExpressionId === draft.expressionId
-                      }
-                      onClick={() => {
-                        closeMoreActions();
-                        void perform(async () => {
-                          accept(await call<Saved>("default", { expressionId: draft.expressionId }));
-                          setNotice("Default expression saved.");
-                        });
-                      }}
-                    >
-                      Make default
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => {
-                        closeMoreActions();
-                        void perform(async () => {
-                          const response = await fetch(selected.rendered.url);
-                          if (!response.ok) throw new Error("The saved PNG could not be downloaded.");
-                          const url = URL.createObjectURL(await response.blob());
-                          const link = document.createElement("a");
-                          link.href = url;
-                          link.download = `${(baseline?.name ?? selected.name).replace(/[^a-z0-9_-]/gi, "-") || "sprite"}-${baseline?.view ?? "front"}.png`;
-                          link.click();
-                          setTimeout(() => URL.revokeObjectURL(url), 30000);
-                        });
-                      }}
-                    >
-                      Download saved PNG
-                    </button>
-                    <button
-                      className="vsm-danger"
-                      disabled={busy}
-                      onClick={() => {
-                        const count = manager.assignments.filter((item) => item.artworkId === selected.id).length;
-                        if (
-                          !window.confirm(
-                            `Remove ${selected.name}? This removes its ${count} Scene ${count === 1 ? "assignment" : "assignments"} and any unsaved edits to this image.`,
-                          )
-                        )
-                          return;
-                        closeMoreActions();
-                        void perform(async () => {
-                          const saved = await call<Saved>("remove", {
-                            artworkId: selected.id,
-                            expectedUrl: selected.rendered.url,
-                          });
-                          discard(selected.id);
-                          accept(saved);
-                          setNotice("Artwork removed from Sprite Manager and its Scene assignments.");
-                        });
-                      }}
-                    >
-                      Remove artwork
-                    </button>
-                  </div>
-                </details>
-              </>
-            ) : null}
-          </div>
-        </footer>
-      ) : null}
       <dialog
         ref={libraryDialog}
         className="vsm-dialog"

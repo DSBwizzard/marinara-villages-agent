@@ -229,6 +229,17 @@ try {
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
     assert.equal(manager.assignments.length, 1);
+    const feedback = page.locator(".vsm-actions").getByRole("status");
+    await expect(feedback).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(feedback).toHaveCSS("padding-top", "0px");
+    await expect(feedback).toHaveCSS("border-left-width", "0px");
+    const feedbackBox = await feedback.boundingBox();
+    assert.ok(feedbackBox.height < 60, "confirmation stays compact even on narrow screens");
+    await page.locator(".vsm-actions").scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: resolve(`.build-tmp/sprite-manager/confirmation-${viewport.width}x${viewport.height}.png`),
+    });
+
     await page
       .getByRole("group", { name: "Preview screen" })
       .getByRole("button", { name: "Mobile", exact: true })
@@ -311,7 +322,24 @@ try {
     assert.equal(manager.assignments.length, 2);
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
-    await page.getByLabel("More artwork actions").click();
+    const more = page.getByLabel("More artwork actions");
+    await more.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".vsm-more-menu")).toBeVisible();
+    await expect(page.locator(".vsm-more-menu")).toHaveCSS("position", "static");
+    const menuBox = await page.locator(".vsm-more-menu").boundingBox();
+    const settingsBox = await page.locator(".vsm-settings").boundingBox();
+    const expressionBox = await page.getByRole("heading", { name: "Expression", exact: true }).boundingBox();
+    assert.ok(
+      menuBox.x >= settingsBox.x && menuBox.x + menuBox.width <= settingsBox.x + settingsBox.width + 1,
+      "extra actions fit inside settings",
+    );
+    assert.ok(
+      expressionBox.y >= menuBox.y + menuBox.height,
+      "extra actions push settings down rather than covering them",
+    );
+    await page.locator(".vsm-more-menu").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(`.build-tmp/sprite-manager/menu-${viewport.width}x${viewport.height}.png`) });
     await page.getByRole("button", { name: "Make default" }).click();
     await page.getByLabel("More artwork actions").click();
     await expect(page.getByRole("button", { name: "Make default" })).toBeDisabled();
@@ -355,11 +383,19 @@ try {
       path: resolve(`.build-tmp/sprite-manager/${viewport.width}x${viewport.height}.png`),
       fullPage: true,
     });
-    const saveBar = await page.locator(".vsm-savebar").boundingBox();
-    assert.ok(
-      saveBar && saveBar.y >= 0 && saveBar.y + saveBar.height <= viewport.height + 1,
-      "save controls remain visible",
-    );
+    const actions = page.locator(".vsm-settings > .vsm-actions");
+    await expect(actions).toHaveCount(1);
+    await expect(page.locator(".vsm-savebar")).toHaveCount(0);
+    await expect(actions).toHaveCSS("position", "static");
+    await actions.scrollIntoViewIfNeeded();
+    const beforeScroll = await actions.boundingBox();
+    await page.getByLabel("Foot position", { exact: true }).scrollIntoViewIfNeeded();
+    const afterScroll = await actions.boundingBox();
+    assert.ok(afterScroll.y < beforeScroll.y - 20, "controls scroll away with settings");
+    await actions.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: resolve(`.build-tmp/sprite-manager/controls-${viewport.width}x${viewport.height}.png`),
+    });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false, "manager fits narrow screens");
     await page.getByRole("button", { name: "← Back to profile" }).click();
@@ -397,6 +433,19 @@ try {
       false,
       "UI has no generation or cleanup calls",
     );
+    while (manager.artwork.length) {
+      const remainingArtwork = manager.artwork.length - 1;
+      await page.locator(".vsm-artwork button").first().click();
+      await page.getByLabel("More artwork actions").click();
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.getByRole("button", { name: "Remove artwork" }).click();
+      await expect(page.locator(".vsm-artwork button")).toHaveCount(remainingArtwork);
+    }
+    await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();
+    await expect(page.locator(".vsm > .vsm-feedback[role=status]")).toHaveText(
+      "Artwork removed from Sprite Manager and its Scene assignments.",
+    );
+    await expect(page.locator(".vsm-actions")).toHaveCount(0);
     assert.deepEqual(errors, []);
     await page.close();
   }
