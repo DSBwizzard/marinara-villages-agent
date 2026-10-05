@@ -1,3 +1,4 @@
+import { renderResidentFoundingContext } from "./resident-founding-context.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { relationshipWritingPrompt } from "./relationships.js";
 import { renderPlayerRoleContext } from "./player-role.js";
@@ -372,6 +373,7 @@ function narrationTurn(
     // `sideLineDirection` for why it is here rather than in the preset.
     sideLineDirection(village.playerName),
     renderPlayerRoleContext(village),
+    renderResidentFoundingContext(card.name, card.foundingContext),
     "The player controls their own words, decisions, actions, thoughts, feelings, and consent. Never write or imply a new player response. You may refer only to what the player explicitly said or chose in the supplied turn or what the village has already verified. Leave the player's next response to them.",
     spriteExpressionDirection(village, card.id),
     narration.voiceGuidance,
@@ -460,6 +462,7 @@ export function renderSceneContextBlock(
     body,
     body.includes(VILLAGE_SHARED_SETTING_RULE) ? "" : VILLAGE_SHARED_SETTING_RULE,
     playerRoleContext,
+    renderResidentFoundingContext(card.name, card.foundingContext),
   ]
     .filter(Boolean)
     .join("\n\n");

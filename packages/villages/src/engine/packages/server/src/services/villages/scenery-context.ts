@@ -1,3 +1,4 @@
+import { renderResidentFoundingContext } from "./resident-founding-context.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { resolveVenueZone } from "./venue-zones.js";
 import { badRequest } from "./errors.js";
@@ -22,6 +23,7 @@ export function sceneryPrompt(required: string[], optional: string[], style = ""
 export function sceneryCardsContext(
   cards: readonly {
     name: string;
+    foundingContext?: import("../../../../shared/src/villages/resident-founding-context.js").ResidentFoundingContext;
     summary?: string;
     personality?: string;
     backstory?: string;
@@ -34,16 +36,19 @@ export function sceneryCardsContext(
     .map((card) => {
       const name = card.name.slice(0, Math.min(60, Math.floor(allowance / 4)));
       const remaining = Math.max(0, allowance - name.length - 12);
-      return [
-        name,
-        card.personality?.slice(0, Math.floor(remaining * 0.35)),
-        card.summary?.slice(0, Math.floor(remaining * 0.2)),
-        card.description?.slice(0, Math.floor(remaining * 0.2)),
-        card.backstory?.slice(0, Math.floor(remaining * 0.15)),
-        card.appearance?.slice(0, Math.floor(remaining * 0.1)),
-      ]
-        .filter(Boolean)
-        .join("; ");
+      return (
+        [
+          name,
+          card.personality?.slice(0, Math.floor(remaining * 0.35)),
+          card.summary?.slice(0, Math.floor(remaining * 0.2)),
+          card.description?.slice(0, Math.floor(remaining * 0.2)),
+          card.backstory?.slice(0, Math.floor(remaining * 0.15)),
+          card.appearance?.slice(0, Math.floor(remaining * 0.1)),
+        ]
+          .filter(Boolean)
+          .join("; ") +
+        (card.foundingContext ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : "")
+      );
     })
     .join("\n");
 }
@@ -54,7 +59,9 @@ export function sceneryCharacterContext(village: VillageState, venue: VillageVen
     return [village.playerName, village.playerDescription.slice(0, 900)].filter(Boolean).join("; ");
   const ids = ownerId ? [ownerId] : [...(venue.residentIds ?? []), ...(venue.workerIds ?? [])];
   return sceneryCardsContext(
-    village.villagers.filter((person) => ids.includes(person.characterId)).map((person) => person.cardSnapshot),
+    village.villagers
+      .filter((person) => ids.includes(person.characterId))
+      .map((person) => ({ ...person.cardSnapshot, foundingContext: person.foundingContext })),
   );
 }
 
@@ -72,7 +79,13 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     (venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault) ? village.selectedLorebookIds : [],
     personality && ownerId === "player" ? [village.playerPersonaId, village.playerName, village.playerDescription] : [],
     personality
-      ? village.villagers.filter((person) => ids.includes(person.characterId)).map((person) => person.cardSnapshot)
+      ? village.villagers
+          .filter((person) => ids.includes(person.characterId))
+          .map((person) =>
+            person.foundingContext
+              ? { ...person.cardSnapshot, foundingContext: person.foundingContext }
+              : person.cardSnapshot,
+          )
       : [],
     venue.name,
     venue.form,

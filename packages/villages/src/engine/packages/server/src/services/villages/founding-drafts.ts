@@ -1,3 +1,8 @@
+import {
+  readFoundingResidentContexts,
+  renderResidentFoundingContext,
+  RESIDENT_CONTINUITY_RULE,
+} from "./resident-founding-context.js";
 import { readSceneryStyle, sceneryPrompt, sceneryCardsContext } from "./scenery-context.js";
 import { readLinkedPersona } from "./village.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
@@ -84,7 +89,10 @@ export async function suggestStartingVenues(value: unknown): Promise<{ venues: F
   const residents = rows.filter((row) => row.residentCharacterId).map((row) => row.residentCharacterId);
   if (residents.length !== rows.length - 2 || new Set(residents).size !== residents.length)
     throw badRequest("Assign a different villager to each starting living space.");
-  const cards = await Promise.all(residents.map(findVillagerCard));
+  const contexts = readFoundingResidentContexts(input.foundingResidentContexts, residents);
+  const cards = (await Promise.all(residents.map(findVillagerCard))).map((card) =>
+    card ? { ...card, foundingContext: contexts[card.id] } : null,
+  );
   if (cards.some((card) => !card)) throw badRequest("Choose villagers still available in the character library.");
   const persona = await readLinkedPersona(input.playerPersonaId);
   const loreBudget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
@@ -178,6 +186,7 @@ async function withResident(row: DraftRow) {
     ...row,
     resident: card
       ? {
+          foundingBackground: renderResidentFoundingContext(card.name, card.foundingContext),
           name: card.name,
           summary: card.summary.slice(0, 400),
           description: card.description.slice(0, 600),
@@ -219,7 +228,16 @@ export async function seedFoundingVenueDetails(
         venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
         residentCharacterId: venue.occupancy.residentCharacterId,
       })),
-    ).map(withResident),
+    ).map(async (row) => {
+      const prepared = await withResident(row);
+      const resident = village.villagers.find((person) => person.characterId === row.residentCharacterId);
+      if (prepared.resident && resident?.foundingContext)
+        prepared.resident.foundingBackground = renderResidentFoundingContext(
+          resident.cardSnapshot.name,
+          resident.foundingContext,
+        );
+      return prepared;
+    }),
   );
   const setting = villageFoundingSetting(village);
   const lore = await readVillageLore(
@@ -237,6 +255,7 @@ export async function seedFoundingVenueDetails(
       role: "system",
       content: [
         "Seed a few observable initial physical details for each founding Venue.",
+        ...(village.villagers.some((person) => person.foundingContext) ? [RESIDENT_CONTINUITY_RULE] : []),
         "Player-written names, form, exterior and interior descriptions are authoritative. Never replace or redefine them.",
         "Use shared starting circumstances selectively for plausible initial condition; do not invent completed player actions or repeat the premise in every Venue.",
         "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
@@ -248,6 +267,11 @@ export async function seedFoundingVenueDetails(
     { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
   ];
   const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2000, 2000) });
+  if (
+    village.villagers.some((person) => person.foundingContext) &&
+    JSON.stringify(fitted.messages) !== JSON.stringify(messages)
+  )
+    throw badRequest("The required resident backgrounds do not fit the System connection. No request was sent.");
   await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
     temperature: 0.7,
@@ -284,6 +308,12 @@ export async function seedFoundingVenueDetails(
 export async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
   const input = record(value);
   const row = await withResident(rowsOf([input.venue])[0]!);
+  const foundingContext =
+    input.residentFoundingContext === undefined
+      ? undefined
+      : readFoundingResidentContexts({ [row.residentCharacterId]: input.residentFoundingContext }, [
+          row.residentCharacterId,
+        ])[row.residentCharacterId];
   const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
   const areaDescription =
     area === "private"
@@ -332,6 +362,9 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
         );
   const prompt = sceneryPrompt(
     [
+      personality && row.resident && foundingContext
+        ? renderResidentFoundingContext(row.resident.name, foundingContext)
+        : "",
       `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
       area === "exterior"
         ? "Show the described Venue entrance and approach, not its enterable interior. A room's approach can be a corridor within a larger building; do not invent a detached building or outdoor surroundings."

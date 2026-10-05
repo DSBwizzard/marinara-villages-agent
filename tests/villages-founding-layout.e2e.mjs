@@ -69,7 +69,7 @@ const personaPreview = {
 const characters = [
   { id: "finn", name: "Finn", summary: "Patient and practical" },
   { id: "rosa", name: "Rosa", summary: "Thoughtful and direct" },
-  { id: "lee", name: "Lee", summary: "Curious and resourceful" },
+  { id: "lee", name: "Lee, Keeper of the Observatory’s Long Forgotten Archives", summary: "Curious and resourceful" },
   ...Array.from({ length: 12 }, (_, index) => ({
     id: `extra-${index}`,
     name: `Other ${index}`,
@@ -234,10 +234,11 @@ try {
         await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${name}-${width}.png`) });
       }
     };
-    await expect(root.getByText("Step 1 of 4 · People")).toBeVisible();
+    await expect(root.getByRole("button", { name: "1 People", exact: true })).toBeVisible();
+    await expect(root.getByRole("heading", { name: "You", exact: true })).toBeVisible();
     await root.getByPlaceholder("Search Personas").fill("patient");
     await root.locator(".marinara-capability-villages-identity-card").click();
-    await root.getByText("Customize role title and explanation", { exact: true }).click();
+    if (width <= 704) await root.getByRole("button", { name: /^Your role ·/ }).click();
     await root.getByLabel("Role title", { exact: true }).fill(" ");
     await forward("Continue to place").click();
     await expect(root.getByRole("alert")).toContainText("title");
@@ -246,10 +247,95 @@ try {
       .getByLabel("Why villagers turn to you", { exact: true })
       .fill("I coordinate harbor construction Projects.");
     const grid = root.getByRole("group", { name: "Choose founding villagers" });
-    for (const name of ["Finn", "Rosa", "Lee"].slice(0, homeCount))
+    for (const name of ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount))
       await grid.getByRole("button", { name, exact: true }).click();
+    const finn = root.locator(".villages-resident-background").first();
+    if (width <= 704) await finn.getByRole("button").click();
+    await expect(root.getByLabel("Finn character history", { exact: true })).toHaveValue("continue");
+    await expect(root.getByLabel("Finn place in the Village's story", { exact: true })).toHaveValue("new-arrival");
+    for (const role of ["lifelong", "returning", "visiting", "new-arrival"]) {
+      await root.getByLabel("Finn place in the Village's story", { exact: true }).selectOption(role);
+      if (role === "lifelong")
+        await expect(root.getByText("Their life here before play", { exact: false })).toBeVisible();
+    }
+    for (const mode of ["adapt", "new", "continue"])
+      await root.getByLabel("Finn character history", { exact: true }).selectOption(mode);
+    if (width === 1366) {
+      await forward("Save & exit").click();
+      await page.evaluate(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open("villages-founding-v2", 1);
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+        await new Promise((resolve, reject) => {
+          const transaction = db.transaction("drafts", "readwrite"),
+            cursor = transaction.objectStore("drafts").openCursor();
+          cursor.onsuccess = () => {
+            const row = cursor.result;
+            if (!row) return;
+            const saved = row.value;
+            delete saved.data.residentContexts;
+            row.update(saved);
+            row.continue();
+          };
+          transaction.oncomplete = resolve;
+          transaction.onerror = () => reject(transaction.error);
+        });
+        db.close();
+      });
+      await page.reload();
+      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await root.getByRole("button", { name: "Resume founding", exact: true }).click();
+      await expect(root.getByLabel("Finn character history", { exact: true })).toHaveValue("continue");
+      await expect(root.getByLabel("Finn place in the Village's story", { exact: true })).toHaveValue("new-arrival");
+    }
+    await root.getByLabel("Finn place in the Village's story", { exact: true }).selectOption("custom");
+    await forward("Continue to place").click();
+    await expect(root.getByRole("alert").filter({ hasText: "Describe their place here." })).toBeVisible();
+    await root.getByLabel("Finn custom place", { exact: true }).fill("Guardian of a relic in the observatory.");
+    await root
+      .getByLabel("Finn starting background", { exact: true })
+      .fill("Remembers a former life elsewhere. The observatory's wider world is undecided.");
+    // Selection changes retain background drafts, but only selected residents submit.
+    await grid.getByRole("button", { name: "Finn", exact: true }).click();
+    await expect(root.locator(".villages-resident-background")).toHaveCount(homeCount - 1);
+    await grid.getByRole("button", { name: "Finn", exact: true }).click();
+    if (width <= 704) {
+      const toggle = root.locator(".villages-resident-background").filter({ hasText: "Finn" }).getByRole("button");
+      if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+    }
+    await expect(root.getByLabel("Finn custom place", { exact: true })).toHaveValue(
+      "Guardian of a relic in the observatory.",
+    );
+    assert.equal(suggestionCalls, 0);
+    assert.equal(imageCalls, 0);
+    if (width === 390 && height === 844) {
+      await page.setViewportSize({ width: 1366, height: 844 });
+      await expect(root.getByLabel("Finn starting background", { exact: true })).toHaveValue(
+        "Remembers a former life elsewhere. The observatory's wider world is undecided.",
+      );
+      await page.setViewportSize({ width, height });
+      // A reduced phone viewport exercises focus scrolling above the persistent footer.
+      await page.setViewportSize({ width, height: 460 });
+      const background = root.getByLabel("Finn starting background", { exact: true });
+      await background.focus();
+      await background.scrollIntoViewIfNeeded();
+      const fieldBox = await background.boundingBox();
+      const footerBox = await root.locator(".villages-forging-footer").boundingBox();
+      assert.ok(fieldBox && footerBox && fieldBox.y + fieldBox.height <= footerBox.y + 1);
+      await page.keyboard.press("Shift+Tab");
+      await expect(root.getByLabel("Finn custom place", { exact: true })).toBeFocused();
+      await page.setViewportSize({ width, height });
+    }
     await bounds();
     await capture("people");
+    if (process.env.VILLAGES_SCREENSHOT_DIR && [1366, 390, 320].includes(width)) {
+      await root.getByLabel("Finn custom place", { exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `resident-background-${width}-${height}.png`),
+      });
+    }
     await forward("Continue to place").click();
     await expect(root.getByText("Step 2 of 4 · Place")).toBeVisible();
     await root.getByLabel("Village name", { exact: true }).fill("Willowbrook");
@@ -261,6 +347,13 @@ try {
       .fill("We rented the observatory together because ordinary housing was too expensive.");
     await bounds();
     await capture("place");
+    await root.getByRole("button", { name: "1 People", exact: true }).click();
+    if (width <= 704)
+      await root.locator(".villages-resident-background").filter({ hasText: "Finn" }).getByRole("button").click();
+    await expect(root.getByLabel("Finn starting background", { exact: true })).toHaveValue(
+      "Remembers a former life elsewhere. The observatory's wider world is undecided.",
+    );
+    await root.getByRole("button", { name: "2 Place", exact: true }).click();
     await forward("Continue to spaces").click();
     await expect(root.getByText("Step 3 of 4 · Spaces")).toBeVisible();
     await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toBeVisible();
@@ -506,6 +599,9 @@ try {
     await forward("Review village").click();
     await expect(root.getByText("Step 4 of 4 · Review")).toBeVisible();
     await expect(root.getByRole("button", { name: "Change people & role", exact: true })).toBeVisible();
+    await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
+      "Guardian of a relic",
+    );
     await expect(root.getByRole("button", { name: "Change place & map", exact: true })).toBeVisible();
     await expect(root.getByRole("button", { name: "Change starting spaces", exact: true })).toBeVisible();
     await bounds();
@@ -516,7 +612,20 @@ try {
     await expect.poll(() => foundingPayload).toBeTruthy();
     assert.equal(foundingPayload.venues.length, homeCount + 2);
     assert.equal(foundingPayload.playerRole.title, "Harbor Patron");
-    assert.deepEqual(foundingPayload.foundingCharacterIds, ["finn", "rosa", "lee"].slice(0, homeCount));
+    assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "custom");
+    assert.equal(
+      foundingPayload.foundingResidentContexts.finn.customDescription,
+      "Guardian of a relic in the observatory.",
+    );
+    assert.match(foundingPayload.foundingResidentContexts.finn.background, /wider world is undecided/);
+    assert.deepEqual(
+      Object.keys(foundingPayload.foundingResidentContexts).sort(),
+      foundingPayload.foundingCharacterIds.slice().sort(),
+    );
+    assert.deepEqual(
+      foundingPayload.foundingCharacterIds.slice().sort(),
+      ["finn", "rosa", "lee"].slice(0, homeCount).sort(),
+    );
     assert.equal(foundingPayload.venues[0].name, "My observatory quarters");
     assert.equal(foundingPayload.venues[0].description, "A blue door beside the telescope corridor.");
     assert.equal(foundingPayload.venues[0].privateSpaces[0].description, "My hammock and traveling journal.");

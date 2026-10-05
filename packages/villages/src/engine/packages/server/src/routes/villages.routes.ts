@@ -1282,6 +1282,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   app.post<{
     Body: {
       foundingCharacterIds?: unknown;
+      foundingResidentContexts?: unknown;
       name?: unknown;
       setting?: unknown;
       foundingReason?: unknown;
@@ -1307,6 +1308,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
       const body = request.body ?? {};
       return await runVillageSetup({
         foundingCharacterIds: body.foundingCharacterIds,
+        foundingResidentContexts: body.foundingResidentContexts,
         name: body.name,
         setting: body.setting,
         foundingReason: body.foundingReason,

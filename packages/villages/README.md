@@ -1,5 +1,13 @@
 # Villages
 
+## Founding People and resident continuity (0.6.162)
+
+People keeps Persona/role and the character picker compact, with full-width resident background rows on desktop and expandable, touch-sized cards on phones. New founders default to continuing their history and arriving at the Village; notes are optional. Custom story positions reveal a short description field. Always lived here uses “Their life here before play.” Review summarizes the same choices. Device-local founding drafts retain these edits through reload, save/resume, and deselection/reselection.
+
+Resident context is saved separately from the complete captured card and reused in existing Venue suggestions, preparation, Agendas, Wishes, Scenes, Events and occupant-aware scenery. Card and lore locations do not establish the Village’s present location or recreate past workplaces. Authored secrets and knowledge limits remain in force. Adapt changes only explicitly described history; a blank note preserves it. New continuity keeps identity and skills while treating former personal events as reference material, without inventing amnesia. Background notes do not create gameplay records or replace later verified developments.
+
+There are no additional model calls or automatic arrival drafting. Existing Villages retain their prior continuity; editing backgrounds after founding and configuring later move-ins are outside this release. Card refresh preserves the founding context. Run the resident-continuity, character-writing, founding-preparation, and founding-layout regressions for coverage.
+
 ## Sprite card flips (0.6.161)
 
 Scene settings has one **Card-flip sprite changes** switch, saved with the Village across devices. It defaults On for new Villages and saves without a stored choice; an existing saved Off choice stays Off. When On, forward Scene progression turns changing sprites edge-on, switches facing and artwork together, then opens them out over 300 ms. Names and feet stay anchored. Initial/restored Scenes, backward reading and reduced-motion preferences apply changes immediately. Replacement artwork loads before a flip; failed artwork uses the existing fallback. Other open devices adopt the saved switch on their existing snapshot refresh.

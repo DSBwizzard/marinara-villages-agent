@@ -1,3 +1,4 @@
+import { readResidentFoundingContext } from "../../../../shared/src/villages/resident-founding-context.js";
 import { WISH_SYSTEM_VERSION, wishSize } from "./wish-definition.js";
 import { coerceWishKnowledge, resetLegacyWishRecords } from "./wish-journal.js";
 import { assertVillageVenueCapacity, villageVenueUsage } from "./venue-capacity.js";
@@ -291,6 +292,9 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     agendaGeneration: asString(raw.agendaGeneration),
     translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
+    ...(readResidentFoundingContext(raw.foundingContext)
+      ? { foundingContext: readResidentFoundingContext(raw.foundingContext)! }
+      : {}),
     spriteManager: coerceSpriteManager(raw.spriteManager),
     sprite: managerResidentSprite(coerceSpriteManager(raw.spriteManager)),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),

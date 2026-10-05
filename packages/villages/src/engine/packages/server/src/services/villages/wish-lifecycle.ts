@@ -428,7 +428,7 @@ async function generateWish(input: {
           setting: villageCurrentSetting(state),
           person: {
             name: card.name,
-            profile: venueCardProfile(villagerCardFromSnapshot(card)),
+            profile: venueCardProfile({ ...villagerCardFromSnapshot(card), foundingContext: resident.foundingContext }),
           },
           lore: lore.join("\n").slice(0, 1800),
           active: resident.agenda.wishes.map(({ tell: _tell, ...wish }) => wish),

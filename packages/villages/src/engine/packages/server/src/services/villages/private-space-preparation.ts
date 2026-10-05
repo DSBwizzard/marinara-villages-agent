@@ -1,3 +1,4 @@
+import { renderResidentFoundingContext, RESIDENT_CONTINUITY_RULE } from "./resident-founding-context.js";
 import { randomUUID } from "node:crypto";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { readVillageState, mutateVillageState } from "./village-store.js";
@@ -106,7 +107,8 @@ async function prepare(signal?: AbortSignal): Promise<void> {
         authoredDescription: zone.description,
         characters: village.villagers
           .filter((person) => owners.includes(person.characterId))
-          .map(({ cardSnapshot: card }) => ({
+          .map(({ cardSnapshot: card, foundingContext }) => ({
+            foundingBackground: renderResidentFoundingContext(card.name, foundingContext),
             name: card.name,
             personality: card.personality.slice(0, 400),
             summary: card.summary.slice(0, 200),
@@ -131,6 +133,7 @@ async function prepare(signal?: AbortSignal): Promise<void> {
         {
           role: "system",
           content:
+            (room.characters.some((person) => person.foundingBackground) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
             'Define exactly the one saved private space in the input. Respect venue form, world facts, authored description, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"at most 240 characters","items":["ordinary item"],"facts":["grounded physical detail"]}]}. Return at most four items and four facts, each at most 240 characters. Keep the complete reply concise.',
         },
         {
@@ -143,6 +146,11 @@ async function prepare(signal?: AbortSignal): Promise<void> {
         },
       ];
       const fitted = model.fitContext(messages, { maxTokens: requested });
+      if (
+        room.characters.some((person) => person.foundingBackground) &&
+        JSON.stringify(fitted.messages) !== JSON.stringify(messages)
+      )
+        throw new Error("The required resident background does not fit the System connection. No request was sent.");
       outputLimit = Math.min(fitted.maxTokens ?? requested, requested);
       signal?.throwIfAborted();
       await mutateVillageState((state) => {

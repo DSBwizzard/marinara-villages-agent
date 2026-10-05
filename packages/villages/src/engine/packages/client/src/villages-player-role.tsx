@@ -43,16 +43,22 @@ export function PlayerRoleFields({
   role,
   onChange,
   disabled,
+  compact = false,
 }: {
   role: PlayerRole;
   onChange: (role: PlayerRole) => void;
   disabled: boolean;
+  compact?: boolean;
 }) {
   return (
-    <fieldset className={`${PREFIX}-field`}>
-      <legend className={`${PREFIX}-label`}>Your place in the village</legend>
-      <p className={`${PREFIX}-hint`}>In Villages, you are the one who coordinates construction projects.</p>
-      <p className={`${PREFIX}-hint`}>Give this responsibility a title and a reason that fit your Persona.</p>
+    <fieldset className={`${PREFIX}-field`} aria-label={compact ? "Your role" : undefined}>
+      {!compact ? (
+        <>
+          <legend className={`${PREFIX}-label`}>Your place in the village</legend>
+          <p className={`${PREFIX}-hint`}>In Villages, you are the one who coordinates construction projects.</p>
+          <p className={`${PREFIX}-hint`}>Give this responsibility a title and a reason that fit your Persona.</p>
+        </>
+      ) : null}
       <div className={`${PREFIX}-founding-role-fields`}>
         <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-title`}>
           Role title
@@ -82,10 +88,12 @@ export function PlayerRoleFields({
           />
         </label>
       </div>
-      <p className={`${PREFIX}-hint`}>
-        Make this role your own. Residents can disagree or refuse; their homes and lives remain theirs. Your choice
-        becomes fixed at founding.
-      </p>
+      {!compact ? (
+        <p className={`${PREFIX}-hint`}>
+          Make this role your own. Residents can disagree or refuse; their homes and lives remain theirs. Your choice
+          becomes fixed at founding.
+        </p>
+      ) : null}
     </fieldset>
   );
 }
