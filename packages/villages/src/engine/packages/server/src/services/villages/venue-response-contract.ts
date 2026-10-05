@@ -24,11 +24,17 @@ export function buildVenueTextContract(speakerId?: string, heardBy: string[] = [
   if (!speakerId) return direction;
   const dialogue = (text: string) => ({ kind: "dialogue", speakerId, text, heardBy });
   const heardPlayerBy = opening ? [] : heardBy;
+  const bookkeeping = {
+    wishChanges: [],
+    memoryChanges: [],
+    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+  };
   const examples = [
-    { heardPlayerBy, segments: [dialogue('spoken words containing a quoted phrase: "quoted words"')] },
+    { heardPlayerBy, segments: [dialogue('spoken words containing a quoted phrase: "quoted words"')], ...bookkeeping },
     {
       heardPlayerBy,
       segments: [{ kind: "narration", text: "observable event", heardBy }],
+      ...bookkeeping,
     },
   ];
   return (
@@ -45,11 +51,11 @@ export const VENUE_LIVE_MEMORY_CONTRACT =
   'Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Memory rows: {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Passing gives useful temporary continuity (24 hours); durable records commitments, stable facts/preferences/boundaries, relationship changes, or significant experiences. Omit greetings, filler, weak inference, transient moods, repetitions, and facts already in world state; there is no promotion quota. Record contextual events, not enduring traits inferred from pauses, dry delivery, or narrator interpretation. Reinforce/supersede require supplied memoryIds and new witnessed evidence: reinforce preserves text; supersede replaces obsolete facts. Memories prove neither physical deeds nor authority. Relationship proposals are independent of memories. Changes: {fromId,toId,dimension:"warmth|trust",strength:"minor|meaningful|major|none",direction:"increase|decrease",ordinary:boolean,reason,lineIds:["player",0],disclosed:boolean}. Score substantive company, warmth, reliability, boundaries, conflict or candid disclosure; never the player\'s feelings. Ordinary positive company can increase warmth, not trust; trust requires demonstrated reliability or meaningful confidence/boundary interaction, not promises or claims. Mere co-location/greetings/repeated wording earn nothing; changes are optional. Disclosed means the resident explained that reason aloud. Permissions: {controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}, requiring explicit unconditional spoken standing permission/revocation for that visitor and listed Zone. Disclosures: {fromId,toId,text,kind:"explanation|preference|boundary",lineIds:[]}, quoting or closely paraphrasing speech heard by the player; personal preferences/boundaries use toId:"player". Keep unshared reasons private.';
 
 export const VENUE_WISH_CONTRACT =
-  'wishChanges:[] or [{actorId,wishId,intent:"reveal|progress|check",evidence:["player",0]}] for listed existing Wishes, citing only this exchange. Reveal requires the wishing resident telling the player what they want. Progress/check needs meaningful new relevant witnessed evidence, not greetings, unrelated company, repetition, physical-work promises, or quoted/conditional claims. Physical results need verified receipts. Never invent wishes, mark fulfillment, or expose hidden wishes.';
+  'Return wishChanges:[] even when there are no Wish updates, or [{actorId,wishId,intent:"reveal|progress|check",evidence:["player",0]}] for listed existing Wishes, citing only this exchange. Reveal requires the wishing resident telling the player what they want. Progress/check needs meaningful new relevant witnessed evidence, not greetings, unrelated company, repetition, physical-work promises, or quoted/conditional claims. Physical results need verified receipts. Never invent wishes, mark fulfillment, or expose hidden wishes.';
 
 export function buildVenueResponseContract(context: VenueResponseContext): string[] {
   return [
-    'Return one JSON object only: heardPlayerBy and segments FIRST, bookkeeping afterward. At least one main segment, narration or dialogue. Segments: {kind:"narration|dialogue|side|whisper",text,heardBy:[],speakerId?,expression?,gazeAt?,targetId?,staging?}. Speakers are active resident IDs; whisper targetId is an active resident ID or "player". heardBy and heardPlayerBy contain resident IDs only. Expression is a filled expression ID. Narration has no speakerId and is visible to the active cast. Dialogue/side/whisper require speakerId. Side/whisper attach to the preceding main segment, with their own witnesses; whisper requires targetId. Legacy gazeAt names an active resident or player.' +
+    'Return one JSON object only: heardPlayerBy and segments FIRST, bookkeeping afterward. Required bookkeeping keys are wishChanges, memoryChanges, and relationshipChanges (changes, permissions, disclosures arrays). Include them even when empty; other proposals are optional. At least one main segment, narration or dialogue. Segments: {kind:"narration|dialogue|side|whisper",text,heardBy:[],speakerId?,expression?,gazeAt?,targetId?,staging?}. Speakers are active resident IDs; whisper targetId is an active resident ID or "player". heardBy and heardPlayerBy contain resident IDs only. Expression is a filled expression ID. Narration has no speakerId and is visible to the active cast. Dialogue/side/whisper require speakerId. Side/whisper attach to the preceding main segment, with their own witnesses; whisper requires targetId. Legacy gazeAt names an active resident or player.' +
       (context.opening ? " Opening heardPlayerBy is empty." : ""),
     buildVenueTextContract(context.exampleSpeakerId, context.exampleWitnessIds, context.opening),
     VENUE_RESPONSE_EVIDENCE,

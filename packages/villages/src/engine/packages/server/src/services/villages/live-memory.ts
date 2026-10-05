@@ -1,3 +1,5 @@
+import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
+import { WorkFailureError, metadataFailure } from "./work-failure.js";
 import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
 import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
@@ -31,6 +33,7 @@ const LIVE_RELATIONSHIP_INSTRUCTION = RELATIONSHIP_REVIEW_INSTRUCTION.replace(
 export const LIVE_MEMORY_INSTRUCTION = `Return memoryChanges:[] and relationshipChanges:{changes:[],permissions:[],disclosures:[]} even when empty. Memory proposals use {kind:"passing|durable|reinforce|supersede",text,category:"commitment|personal-fact|preference|relationship|shared-experience",subjectCharacterIds:[],knownByCharacterIds:[],evidence:["player",0],memoryIds:[]}. Numeric evidence is a zero-based segment index in this reply; "player" means the latest player line. You may also cite exact earlier evidence IDs listed below. Recaps are context, never evidence. Every knower must directly witness EVERY cited line. Use passing for useful temporary continuity (24 hours); durable only for commitments, stable personal facts, meaningful preferences/boundaries, relationship changes, or significant shared experiences. Omit greetings, filler, weak inference, transient mood, repetition and facts already represented in world state. There is NO promotion quota. For reinforcement or a correction, cite only a supplied existing durable memory ID in memoryIds; passing entries provide temporary context, not durable correction targets. Cite the durable ID with new witnessed evidence; supersede replaces an obsolete fact, reinforce preserves its text. A memory does not prove a physical action or grant authority. ${EVENT_MEMORY_GUIDANCE} Relationship proposals are independent of memories. Use evidence references in relationship lineIds in the same format as memory evidence. ${LIVE_RELATIONSHIP_INSTRUCTION}`;
 
 export type LiveExchangeProposals = {
+  responseDiagnostics?: ResponseDiagnostics;
   version: 1;
   memoryChanges: unknown;
   relationshipChanges: unknown;
@@ -54,6 +57,7 @@ export function memoryVersion(memory: VillageChronicleEntry): string {
 }
 export function bindLiveProposals(
   reply: {
+    responseDiagnostics?: ResponseDiagnostics;
     memoryChanges?: unknown;
     relationshipChanges?: unknown;
     earlierLineIds?: string[];
@@ -64,6 +68,7 @@ export function bindLiveProposals(
 ): LiveExchangeProposals {
   return {
     version: 1,
+    ...(reply.responseDiagnostics ? { responseDiagnostics: coerceResponseDiagnostics(reply.responseDiagnostics) } : {}),
     memoryChanges: reply.memoryChanges,
     relationshipChanges: reply.relationshipChanges,
     earlierLineIds: reply.earlierLineIds ?? [],
@@ -92,6 +97,7 @@ export function mergeLiveReplyProposals(
   const a = asRecord(first.relationshipChanges),
     b = asRecord(second.relationshipChanges);
   return {
+    responseDiagnostics: second.responseDiagnostics ?? first.responseDiagnostics,
     memoryChanges: memories,
     relationshipChanges: Object.fromEntries(
       ["changes", "permissions", "disclosures"].map((key) => [
@@ -155,7 +161,12 @@ export async function processLiveMemories(
   const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
   const proposals = turn.liveProposals;
   if (!proposals || !Array.isArray(proposals.memoryChanges))
-    throw new Error("Memory proposals missing or incomplete; replay saved work or explicitly retry interpretation");
+    throw new WorkFailureError(
+      metadataFailure(
+        "Memory proposals missing or incomplete. Replay cannot reconstruct missing metadata; explicitly retry Memories interpretation.",
+        proposals?.responseDiagnostics,
+      ),
+    );
   if (proposals.memoryChanges.length > 16) throw new Error("Too many memory proposals");
   if (!proposals.memoryChanges.length) return { reason: "No memory changes proposed", receiptIds: [] };
   const { byId } = context ?? createLiveEvidenceContext(scene, proposals);
@@ -346,7 +357,18 @@ export async function processLiveRelationships(
 ): Promise<Partial<DomainProcessing>> {
   const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
   const proposals = turn.liveProposals;
-  if (!proposals) throw new Error("Relationship proposals missing; explicit interpretation retry required");
+  if (
+    !proposals ||
+    !["changes", "permissions", "disclosures"].every((key) =>
+      Array.isArray(asRecord(proposals.relationshipChanges)[key]),
+    )
+  )
+    throw new WorkFailureError(
+      metadataFailure(
+        "Relationship proposals missing or incomplete. Replay cannot reconstruct missing metadata; explicitly retry Relationships interpretation.",
+        proposals?.responseDiagnostics,
+      ),
+    );
   const raw = asRecord(proposals.relationshipChanges),
     lines = (context ?? createLiveEvidenceContext(scene, proposals)).lines;
   const village = await readVillageState();

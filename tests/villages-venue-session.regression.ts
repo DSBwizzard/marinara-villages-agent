@@ -290,6 +290,11 @@ const release = configureVillagesRuntime({
           };
         },
         async chatComplete(messages: any[], options: any) {
+          if (
+            String(messages[0]?.content).includes("Response format and evidence metadata") ||
+            String(messages[0]?.content).startsWith("Interpret the meaning of witnessed Scene evidence")
+          )
+            assert.deepEqual(options.responseFormat, { type: "json_object" });
           modelPayloadBytes.push(Buffer.byteLength(JSON.stringify(messages), "utf8"));
           const system = String(messages[0]?.content ?? "");
           const user = String(messages[1]?.content ?? "");

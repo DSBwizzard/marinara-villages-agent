@@ -1,3 +1,4 @@
+import { WorkFailureError } from "./work-failure.js";
 import { pipelineStorage, measureModel } from "./pipeline-metrics.js";
 import { createHash } from "node:crypto";
 import { trackUsage, withUsagePurpose, inferredPurpose } from "./usage-meter.js";
@@ -223,6 +224,7 @@ function answered(completion: CapabilityLanguageModelCompletion): boolean {
  * to be loadable first.
  */
 export type VillageCompletionOptions = {
+  responseFormat?: Readonly<{ type: string; [key: string]: unknown }>;
   /** Stable background request identity; optional for legacy sequential generators. */
   checkpointId?: string;
   temperature: number | null;
@@ -304,26 +306,59 @@ export async function completeWithRoom(
             options.temperature,
             options.reasoningEffort,
             options.verbosity,
+            ...(options.responseFormat ? [options.responseFormat] : []),
           ]),
         )
         .digest("hex"),
       (operationSignal) =>
         withUsagePurpose(options.usagePurpose ?? inferredPurpose(), () =>
-          model.chatComplete(messages, {
-            // Left off entirely when the caller has no temperature to ask for, which is
-            // what a preset with temperature switched off means. Sending a number here
-            // would be the package overruling a switch it had already read.
-            ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
-            ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-            ...(options.verbosity ? { verbosity: options.verbosity } : {}),
-            maxTokens: tokens,
-            debugMode: options.debugMode,
-            signal:
-              operationSignal && options.signal
-                ? AbortSignal.any([operationSignal, options.signal])
-                : (operationSignal ?? options.signal),
-          }),
+          model
+            .chatComplete(messages, {
+              // Left off entirely when the caller has no temperature to ask for, which is
+              // what a preset with temperature switched off means. Sending a number here
+              // would be the package overruling a switch it had already read.
+              ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+              ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+              ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+              ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
+              maxTokens: tokens,
+              debugMode: options.debugMode,
+              signal:
+                operationSignal && options.signal
+                  ? AbortSignal.any([operationSignal, options.signal])
+                  : (operationSignal ?? options.signal),
+            })
+            .catch((error) => {
+              if (!options.responseFormat || operationSignal?.aborted || options.signal?.aborted) throw error;
+              const message = safeFailureMessage(error);
+              const unsupported =
+                /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(message) &&
+                /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(message);
+              throw new WorkFailureError({
+                cause: "provider_exception",
+                stage: "dispatch",
+                requestedOutputTokens: tokens,
+                message: unsupported
+                  ? "The selected connection rejected JSON mode. Choose a connection supporting JSON responses, then explicitly retry. No fallback request was made."
+                  : message,
+              });
+            }),
         ),
+      options.responseFormat
+        ? createHash("sha256")
+            .update(
+              JSON.stringify([
+                model.connectionId,
+                model.model,
+                messages,
+                tokens,
+                options.temperature,
+                options.reasoningEffort,
+                options.verbosity,
+              ]),
+            )
+            .digest("hex")
+        : undefined,
     ).catch((error) => {
       try {
         villagesLogger().warn(

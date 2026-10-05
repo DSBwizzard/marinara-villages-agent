@@ -1,3 +1,6 @@
+import { extractJsonObject, responseDiagnostics } from "./response-diagnostics.js";
+export { extractJsonObject } from "./response-diagnostics.js";
+import { WorkFailureError, completionFailure as typedCompletionFailure } from "./work-failure.js";
 import { agendaPromptDay, compressAgendaBlocks } from "./owned-routine.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { renderPlayerRoleContext } from "./player-role.js";
@@ -42,7 +45,6 @@ import {
   villagesLanguageModels,
   villagesLogger,
   completeWithRoom,
-  completionFailure,
 } from "./package-runtime.js";
 import {
   boundText,
@@ -146,19 +148,6 @@ function buildBootstrapMessages(setting: string, lore: readonly string[]): Capab
  * reader of the same untrusted shape would be a second place for it to be read
  * differently.
  */
-export function extractJsonObject(content: string): Record<string, unknown> | null {
-  const start = content.indexOf("{");
-  const end = content.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  try {
-    const parsed = JSON.parse(content.slice(start, end + 1)) as unknown;
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 function coerceProposal(payload: Record<string, unknown>): { venues: VillageVenue[] } {
   const rawVenues = Array.isArray(payload.venues) ? payload.venues : [];
@@ -774,11 +763,30 @@ For a CURRENT encounter opportunity with at least two actors in the same zone, s
       housingOptions.length
         ? `Housing options for people in the offered opportunity: ${housingOptions.join(" | ")}.`
         : "No housing request options are available.",
+      context.opportunities[0]
+        ? "Complete format example (replace the narration with this opportunity's grounded event; do not copy placeholder text): " +
+          JSON.stringify({
+            happenings: [
+              {
+                opportunityId: context.opportunities[0].id,
+                kind: context.opportunities[0].kind,
+                actorIds: context.opportunities[0].actorIds,
+                venueId: context.opportunities[0].venueId,
+                narration: "A brief observable event grounded in the supplied opportunity.",
+              },
+            ],
+            housingRequests: [],
+          })
+        : "",
       `Answer with JSON only: {"happenings":[{"opportunityId":"...","kind":"...","actorIds":[],"venueId":"...","narration":"..."}],"housingRequests":[{"who":"resident id","kind":"move","venueId":"destination id"}]}. Write 1 to ${MAX_HAPPENINGS_PER_WRITE} short visual entries. Copy actor and venue IDs only from the chosen opportunity. Describe an observation, not a change to the village's physical state, memories, wishes, or behavior. You may optionally include ONE routineIdea:{characterId:"resident id",activity:"ordinary future activity",venueId:"existing id or empty for home",zoneId:"existing id",flexible:true}. This is a separate optional future routine proposal, never an observed fact, new job, asset, physical effect or commitment. Housing requests are optional and usually empty. Use one only when that person would independently want the specific move. Never treat a player request as their consent. ${context.social ? "Social may be included using the structured schema above." : "No additional keys beyond these."}`,
     ];
     return [
       { role: "system", content: sections.filter(Boolean).join("\n\n") },
-      { role: "user", content: "What appears in Events?" },
+      {
+        role: "user",
+        content:
+          "Generate the supplied opportunity as one Events JSON object with happenings and housingRequests arrays. Create new grounded visual entries; do not describe the Events UI or report whether it is empty. Return JSON only.",
+      },
     ];
   }
   const world = context.setting.trim();
@@ -1258,14 +1266,32 @@ export async function proposeHappenings(
   villagesLogger().debugOverride(debugEnabled, "[villages] creative prompt: %s", JSON.stringify(fitted.messages));
 
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
+    responseFormat: { type: "json_object" },
+    retryEmpty: false,
     temperature: TICK_TEMPERATURE,
     debugMode: debugEnabled,
     signal: options.signal,
   });
 
   const payload = extractJsonObject(completion.content ?? "");
-  if (!payload)
-    throw new Error(completionFailure("Village happenings", completion, fitted.maxTokens ?? requestedMaxTokens));
+  const diagnostics = responseDiagnostics(model, completion, fitted.maxTokens ?? requestedMaxTokens, payload);
+  const fail = (missing = false) =>
+    new WorkFailureError({
+      ...(typedCompletionFailure(completion, "events-response", fitted.maxTokens ?? requestedMaxTokens) ?? {
+        cause: missing ? ("missing_result" as const) : ("invalid_json" as const),
+        stage: "events-response",
+        message: "",
+      }),
+      message:
+        typedCompletionFailure(completion, "events-response", fitted.maxTokens ?? requestedMaxTokens)?.message ??
+        (missing
+          ? "Village Events returned JSON without usable happenings. Explicitly retry unfinished work."
+          : "Village Events returned no usable JSON. Explicitly retry unfinished work."),
+      finishReason: completion.finishReason,
+      requestedOutputTokens: fitted.maxTokens ?? requestedMaxTokens,
+      responseDiagnostics: { ...diagnostics, missingFields: missing ? ["happenings"] : [] },
+    });
+  if (!payload) throw fail();
   const proposal = LEGACY_EVENTS_CAN_AFFECT_VILLAGE
     ? coerceTickProposal(payload, context.moment, context, context.recent)
     : {
@@ -1296,8 +1322,7 @@ export async function proposeHappenings(
   // nothing is a perfectly good afternoon, and failing it would cost the player
   // the news as well — so the memory list is allowed to be empty and the
   // happenings list is not.
-  if (proposal.happenings.length === 0)
-    throw new Error(completionFailure("Village happenings", completion, fitted.maxTokens ?? requestedMaxTokens));
+  if (proposal.happenings.length === 0) throw fail(true);
   return { ...proposal, model: model.model };
 }
 

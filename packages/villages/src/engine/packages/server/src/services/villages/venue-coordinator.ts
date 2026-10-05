@@ -1,3 +1,4 @@
+import { coerceWorkFailure, type WorkFailure } from "./work-failure.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { runtimeDebug } from "./runtime-debug.js";
@@ -10,6 +11,7 @@ import {
 } from "./interpretation-settings.js";
 
 export type VenueOperation = {
+  failure?: WorkFailure;
   interpretationSettings?: InterpretationSettings;
   optionalAttempts?: Record<
     string,
@@ -40,6 +42,7 @@ type Context = {
   allowPaid: boolean;
   scope: string;
   counts: Map<string, number>;
+  usedAttemptKeys: Map<string, string>;
   blocked: Set<string>;
 };
 const context = new AsyncLocalStorage<Context>();
@@ -250,6 +253,7 @@ export async function venueCheckpoint<T>(stage: string, work: () => Promise<T>):
 export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
+  legacyFingerprint?: string,
 ): Promise<T> {
   const current = context.getStore();
   if (!current) return work();
@@ -257,7 +261,16 @@ export async function coordinatedCompletion<T>(
   const index = current.counts.get(current.scope) ?? 0;
   current.counts.set(current.scope, index + 1);
   const key = `${current.scope}:${index}:${fingerprint}`;
-  const prior = current.operation.attempts[key];
+  const legacyKey = legacyFingerprint ? `${current.scope}:${index}:${legacyFingerprint}` : undefined;
+  const legacy = legacyFingerprint
+    ? current.operation.attempts[`${current.scope}:${index}:${legacyFingerprint}`]
+    : undefined;
+  // Only exact completed legacy inputs can be replayed; never override a newer rejected or unknown attempt.
+  const prior = current.operation.attempts[key] ?? (legacy?.status === "complete" ? legacy : undefined);
+  current.usedAttemptKeys.set(
+    `${current.scope}:${index}`,
+    current.operation.attempts[key] || !legacyKey || legacy?.status !== "complete" ? key : legacyKey,
+  );
   if (prior?.status === "complete") {
     runtimeDebug("completion replay", { key });
     return structuredClone(prior.result) as T;
@@ -297,10 +310,7 @@ export async function rejectVenueCompletion(): Promise<void> {
   if (!current) return;
   assertVenueOwnership();
   const index = (current.counts.get(current.scope) ?? 0) - 1;
-  const key = Object.keys(current.operation.attempts).find(
-    (entry) =>
-      entry.startsWith(`${current.scope}:${index}:`) && current.operation.attempts[entry]?.status === "complete",
-  );
+  const key = current.usedAttemptKeys.get(`${current.scope}:${index}`);
   if (key && current.operation.attempts[key]?.status === "complete") {
     current.operation.attempts[key] = { status: "rejected" };
     await persist(current);
@@ -446,6 +456,7 @@ export async function coordinateVenue<T>(
       allowPaid: !options.recovery && (!options.replay || authorizedRetry),
       scope: kind,
       counts: new Map(),
+      usedAttemptKeys: new Map(),
       blocked: new Set(),
     };
     return context.run(current, async () => {
@@ -503,6 +514,7 @@ export async function coordinateVenue<T>(
               ? "interrupted"
               : "complete";
           operation.error = safeFailureMessage(error);
+          operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
           data.operation = operation;
         }).catch(() => {});
         throw error;

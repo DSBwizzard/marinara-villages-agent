@@ -1,3 +1,10 @@
+import {
+  responseDiagnostics,
+  sceneMissingFields,
+  coerceResponseDiagnostics,
+  type ResponseDiagnostics,
+} from "./response-diagnostics.js";
+import { metadataFailure, completionFailure as typedCompletionFailure, type WorkFailure } from "./work-failure.js";
 import { knownWish, setWishJournalStatus, wishCheckKnowledge, wishConditionRevision } from "./wish-journal.js";
 import { measurePipeline } from "./pipeline-metrics.js";
 import { readPlayerMovement, movementTransition, type MovementIntent } from "./venue-movement.js";
@@ -353,7 +360,13 @@ type VenueSubmission = {
   liveProposals?: LiveExchangeProposals;
   wishContexts?: { actorId: string; wishId: string; fingerprint: string }[];
   requestMetrics?: ReturnType<typeof venueRequestMetrics>;
-  interpretationHistory?: { at: string; domain: string; source: string; proposals: unknown }[];
+  interpretationHistory?: {
+    at: string;
+    domain: string;
+    source: string;
+    proposals: unknown;
+    responseDiagnostics?: ResponseDiagnostics;
+  }[];
   changeSequence?: number;
   recordEvents?: VenueRecordEvent[];
   at?: string;
@@ -1134,6 +1147,7 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
     activeRequest: {
       status: scene.operation?.status,
       error: scene.operation?.error,
+      failure: scene.operation?.failure,
       requests: venueRequestMetrics(scene.operation),
     },
     changes: turns.map(({ turn }) => ({
@@ -1157,6 +1171,7 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
         ),
       },
       requests: turn.requestMetrics ?? null,
+      responseDiagnostics: coerceResponseDiagnostics(turn.liveProposals?.responseDiagnostics) ?? null,
       interpretationHistory: turn.interpretationHistory ?? [],
       notices: filterRelationshipNotices(turn.recordEvents ?? [], village.relationshipContext)
         .filter(
@@ -1189,7 +1204,14 @@ export async function readSceneChanges(id: string, cursor = "", limit = 20) {
       .flatMap((turn) =>
         Object.entries(turn.processing?.domains ?? {})
           .filter(([, result]) => result.status === "failed")
-          .map(([domain]) => ({ submissionId: turn.id, domain })),
+          .map(([domain, result]) => ({
+            submissionId: turn.id,
+            domain,
+            reason:
+              result.failure?.cause === "missing_result" || result.failure?.cause === "output_limit"
+                ? "Required response metadata is missing or incomplete. Replay cannot reconstruct it; explicitly retry interpretation."
+                : "Saved changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
+          })),
       )
       .slice(0, 50),
     processingSummary: sceneProcessingSummary(scene),
@@ -1348,6 +1370,7 @@ async function retrySceneChangeInterpretationOnce(
     ];
     const fitted = model.fitContext(messages, { maxTokens: VENUE_REPLY_MAX_TOKENS });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, {
+      responseFormat: { type: "json_object" },
       temperature: 0,
       reasoningEffort: null,
       verbosity: null,
@@ -1356,6 +1379,7 @@ async function retrySceneChangeInterpretationOnce(
       retryEmpty: false,
     });
     const raw = extractJsonObject(completion.content ?? "");
+    const diagnostics = responseDiagnostics(model, completion, fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS, raw);
     const value =
       domain === "memories" ? raw?.memoryChanges : domain === "wishes" ? raw?.wishChanges : raw?.relationshipChanges;
     if (
@@ -1364,10 +1388,20 @@ async function retrySceneChangeInterpretationOnce(
         : !["changes", "permissions", "disclosures"].every((key) => Array.isArray(asRecord(value)[key]))
     ) {
       await rejectVenueCompletion();
-      throw badGateway("Interpretation metadata is still incomplete. Another model request requires explicit retry.");
+      diagnostics.missingFields = [
+        domain === "memories" ? "memoryChanges" : domain === "wishes" ? "wishChanges" : "relationshipChanges",
+      ];
+      const message = "Interpretation metadata is still incomplete. Another model request requires explicit retry.";
+      const failure =
+        typedCompletionFailure(completion, "change-interpretation", fitted.maxTokens ?? VENUE_REPLY_MAX_TOKENS) ??
+        (!raw
+          ? { cause: "invalid_json" as const, stage: "change-interpretation", message }
+          : metadataFailure(message, diagnostics));
+      throw Object.assign(badGateway(message), { failure: { ...failure, responseDiagnostics: diagnostics } });
     }
     return {
       value,
+      responseDiagnostics: diagnostics,
       memoryVersions: Object.fromEntries(memories.map((memory) => [memory.id, memoryVersion(memory)])),
       requests: venueRequestMetrics(),
     };
@@ -1391,6 +1425,7 @@ async function retrySceneChangeInterpretationOnce(
       domain,
       source: "explicit System retry",
       proposals: result.value,
+      responseDiagnostics: result.responseDiagnostics,
     });
     if (domain === "wishes") {
       const bound = bindWishProposals(
@@ -1521,6 +1556,8 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
       .filter(
         ([key]) =>
           ![
+            "responseDiagnostics",
+            "failure",
             "sceneAttendance",
             "contactGeneration",
             "contactEvidence",
@@ -1596,7 +1633,10 @@ type VenueReplyFailureKind =
   | "reserved-project-item";
 
 class VenueReplyFailure extends Error {
-  constructor(readonly kind: VenueReplyFailureKind) {
+  constructor(
+    readonly kind: VenueReplyFailureKind,
+    readonly failure?: WorkFailure,
+  ) {
     super(kind);
   }
 }
@@ -2026,6 +2066,7 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
   trace?.("model request", 0, `${model.model} (${model.connectionId})`);
   let attempts = 0;
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? maxTokens, {
+    responseFormat: { type: "json_object" },
     temperature: VENUE_REPLY_TEMPERATURE,
     usagePurpose: "conversation",
     reasoningEffort: null,
@@ -2043,6 +2084,14 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
       : undefined,
   });
   const raw = extractSceneReply(completion.content ?? "");
+  const diagnostics = responseDiagnostics(
+    model,
+    completion,
+    fitted.maxTokens ?? maxTokens,
+    raw,
+    !!raw && !extractJsonObject(completion.content ?? ""),
+    sceneMissingFields(raw),
+  );
   const movementIntent: MovementIntent | null =
     !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask") && place
       ? readPlayerMovement(message, place, raw?.movementIntent)
@@ -2080,7 +2129,17 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
       finishReason: completion.finishReason,
       content: completion.content,
     });
-    throw new VenueReplyFailure(raw ? "invalid-segments" : "invalid-json");
+    const failure = typedCompletionFailure(completion, "scene-response", fitted.maxTokens ?? maxTokens) ?? {
+      cause: raw ? ("missing_result" as const) : ("invalid_json" as const),
+      stage: "scene-response",
+      message: raw
+        ? "The Scene response did not contain valid segments; explicitly retry."
+        : "The Scene response was not usable JSON; explicitly retry.",
+    };
+    throw new VenueReplyFailure(raw ? "invalid-segments" : "invalid-json", {
+      ...failure,
+      responseDiagnostics: diagnostics,
+    });
   }
   if (session.contactGeneration) {
     const context = session.contactGeneration;
@@ -2360,6 +2419,7 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
     departures,
     sceneEnded,
     recollections,
+    responseDiagnostics: diagnostics as ResponseDiagnostics | undefined,
     memoryChanges: raw?.memoryChanges,
     relationshipChanges: raw?.relationshipChanges,
     earlierLineIds: earlierEvidence.map((line) => line.id),
@@ -2530,7 +2590,10 @@ async function generate(
     if (!(cause instanceof VenueReplyFailure)) throw cause;
     await rejectVenueCompletion();
     villagesLogger().warn("[villages] scene=%s draft rejected: %s; no automatic retry", session.id, cause.kind);
-    throw badGateway(`The Scene reply failed validation (${cause.kind}). Your draft is preserved; resend when ready.`);
+    throw Object.assign(
+      badGateway(`The Scene reply failed validation (${cause.kind}). Your draft is preserved; resend when ready.`),
+      cause.failure ? { failure: cause.failure } : {},
+    );
   }
 }
 
@@ -3395,6 +3458,7 @@ function quietContactReply(text: string, localIds: string[]): SceneReply {
     recollections: [],
     wishChanges: [],
     wishContexts: [],
+    responseDiagnostics: undefined,
     memoryChanges: [],
     relationshipChanges: { changes: [], permissions: [], disclosures: [] },
     earlierLineIds: [],
@@ -3423,7 +3487,10 @@ async function generateContactResponse(scene: VenueScene, message: string, targe
     if (!(cause instanceof VenueReplyFailure)) throw cause;
     await rejectVenueCompletion();
     runtimeDebug("contact draft rejection", { sceneId: scene.id, reason: cause.kind });
-    throw badGateway("The contact reply could not be kept accurate. Your draft is preserved; retry.");
+    throw Object.assign(
+      badGateway("The contact reply could not be kept accurate. Your draft is preserved; retry."),
+      cause.failure ? { failure: cause.failure } : {},
+    );
   }
 }
 

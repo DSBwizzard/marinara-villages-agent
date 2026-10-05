@@ -1,3 +1,4 @@
+import { responseDiagnostics } from "./response-diagnostics.js";
 import { completionFailure, type WorkFailure } from "./work-failure.js";
 import { createHash } from "node:crypto";
 import { trackUsage } from "./usage-meter.js";
@@ -300,6 +301,7 @@ export async function systemInterpretations(
       },
     }));
   const answer = await completeWithRoom(resolved, messages, requestedOutputTokens, {
+    responseFormat: { type: "json_object" },
     temperature: 0.1,
     ...(rooms || wishes ? { reasoningEffort: "low" as const } : {}),
     debugMode: false,
@@ -316,7 +318,11 @@ export async function systemInterpretations(
       source: "system",
       evidenceIds: [],
       reason: failure.message,
-      failure: { ...failure, checkIds: [check.id] },
+      failure: {
+        ...failure,
+        checkIds: [check.id],
+        responseDiagnostics: responseDiagnostics(resolved, answer, requestedOutputTokens),
+      },
     }));
   const parsed = extractJsonObject(answer.content ?? "");
   return readSystemInterpretations(
@@ -326,7 +332,14 @@ export async function systemInterpretations(
   ).map((result) => ({
     ...result,
     ...(result.failure
-      ? { failure: { ...result.failure, finishReason: answer.finishReason, requestedOutputTokens } }
+      ? {
+          failure: {
+            ...result.failure,
+            finishReason: answer.finishReason,
+            requestedOutputTokens,
+            responseDiagnostics: responseDiagnostics(resolved, answer, requestedOutputTokens, parsed),
+          },
+        }
       : {}),
   }));
 }

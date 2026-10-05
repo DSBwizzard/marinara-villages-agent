@@ -94,7 +94,16 @@ const api = async (route) => {
       notices: notices.filter((n) => !dismissed.has(n.id)),
       dismissedNoticeIds: [...dismissed],
       processingSummary: { pending: pending ? 1 : 0, failed: failed ? 1 : 0, rejected: 0 },
-      unresolved: failed ? [{ submissionId: "turn", domain: "memories" }] : [],
+      unresolved: failed
+        ? [
+            {
+              submissionId: "turn",
+              domain: "memories",
+              reason:
+                "Required response metadata is missing or incomplete. Replay cannot reconstruct it; explicitly retry interpretation.",
+            },
+          ]
+        : [],
       nextCursor: String(++polls) + ":0:0",
       hasMore: false,
     };
@@ -203,6 +212,8 @@ try {
   const status = page.getByRole("status", { name: "Saved change status" });
   await expect(status).toContainText("need attention");
   await status.locator("summary").click();
+  await expect(status).toContainText("memories: Required response metadata is missing or incomplete");
+  await expect(status).toContainText("Replay cannot reconstruct it");
   await status.getByRole("button", { name: "Replay saved work · no model request" }).click();
   await expect.poll(() => replays).toBe(1);
   assert.equal(interpretations, 0);

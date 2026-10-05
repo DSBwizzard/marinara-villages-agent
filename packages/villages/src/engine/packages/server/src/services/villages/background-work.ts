@@ -1,3 +1,4 @@
+import { responseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
 import { WorkFailureError, type WorkFailure } from "./work-failure.js";
 import { measurePipeline } from "./pipeline-metrics.js";
 import { withUsagePurpose } from "./usage-meter.js";
@@ -36,6 +37,7 @@ type Step = {
   fingerprint: string;
   status: "running" | "completed";
   response?: Awaited<ReturnType<BackgroundCompletion>>;
+  responseDiagnostics?: ResponseDiagnostics;
 };
 export type BackgroundInput = {
   residentIds?: string[];
@@ -463,6 +465,7 @@ async function runMeasuredJob(id: string): Promise<void> {
               ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
               ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
               ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+              ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
               maxTokens,
               debugMode: false,
               signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
@@ -476,7 +479,12 @@ async function runMeasuredJob(id: string): Promise<void> {
         throw new WorkFailureError({
           cause: "provider_exception",
           stage: "dispatch",
-          message: (error instanceof Error ? error.message : String(error)).slice(0, 300),
+          message:
+            options.responseFormat &&
+            /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(String(error)) &&
+            /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(String(error))
+              ? "The selected connection rejected JSON mode. Choose a connection supporting JSON responses, then explicitly retry. No fallback request was made."
+              : (error instanceof Error ? error.message : String(error)).slice(0, 300),
           requestedOutputTokens: maxTokens,
         });
       }
@@ -484,7 +492,13 @@ async function runMeasuredJob(id: string): Promise<void> {
       stage = "response-storage";
       job = await changeJob(id, (current) => {
         if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
-        current.steps[index] = { key: options.checkpointId, fingerprint, status: "completed", response };
+        current.steps[index] = {
+          key: options.checkpointId,
+          fingerprint,
+          status: "completed",
+          response,
+          ...(options.responseFormat ? { responseDiagnostics: responseDiagnostics(model, response, maxTokens) } : {}),
+        };
         const tokens =
           response.usage?.totalTokens ??
           (response.usage?.promptTokens !== undefined && response.usage?.completionTokens !== undefined
