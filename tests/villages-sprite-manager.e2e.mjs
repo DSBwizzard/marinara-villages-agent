@@ -196,8 +196,9 @@ try {
     });
     async function openManager() {
       await page.getByRole("button", { name: /^Villagers \(/ }).click();
+      await page.getByRole("button", { name: "Open Mara profile" }).click();
       await page
-        .getByRole("button", { name: /Sprite Manager ·/ })
+        .getByRole("button", { name: /Manage sprites ·/ })
         .first()
         .focus();
       await page.keyboard.press("Enter");
@@ -281,9 +282,9 @@ try {
     });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false, "manager fits narrow screens");
-    await page.getByRole("button", { name: "← Back to Villagers" }).click();
+    await page.getByRole("button", { name: "← Back to profile" }).click();
     await page
-      .getByRole("button", { name: /Sprite Manager ·/ })
+      .getByRole("button", { name: /Manage sprites ·/ })
       .first()
       .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toBeVisible();

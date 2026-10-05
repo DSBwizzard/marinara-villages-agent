@@ -137,6 +137,8 @@ jobs:
           npx tsx tests/villages-mobile-map.regression.ts
           node tests/villages-mobile-exploration.e2e.mjs
           node tests/villages-wish-journal.e2e.mjs
+          node tests/villages-dossier.e2e.mjs
+          node tests/villages-menu-layout.e2e.mjs
           node tests/villages-menu-map.e2e.mjs
           node tests/villages-player-role.e2e.mjs
           node tests/villages-room-notices.e2e.mjs
