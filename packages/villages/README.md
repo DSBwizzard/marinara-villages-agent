@@ -1,5 +1,9 @@
 # Villages
 
+## Scenery-only map prompts (0.6.167)
+
+Map generation requests a continuous, edge-to-edge overhead illustration on a 3:2 landscape canvas. Prompts describe readable rooms, outdoor spaces and routes without asking the model to reserve places for Venue photographs. Exclusions target blank annotation panels and photograph frames while allowing rectangular architecture. Provider output may still differ from the requested aspect ratio; existing artwork is unchanged.
+
 ## Scene and Events response reliability (0.6.166)
 
 Scenes, Events and System interpretation request JSON mode through the existing Engine API. Complete examples include empty Wish, Memory and Relationship bookkeeping. Valid narration and independently valid domains remain saved when another domain lacks metadata. Scene recovery identifies missing metadata and explains when free replay cannot reconstruct it; interpretation and replacement requests remain manual. Connections that reject JSON mode report the incompatibility without a fallback request.

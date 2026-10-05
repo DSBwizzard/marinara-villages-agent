@@ -135,11 +135,13 @@ async function main() {
     acceptedMap.length,
   );
   assert.equal(coerceVillageState({ wishSystemVersion: 3, townMapImage: oversizedMap }).townMapImage, "");
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /visually distinct usable areas/);
-  assert.doesNotMatch(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /\d/);
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /three-to-two canvas.*not panoramic/);
+  assert.match(
+    DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
+    /Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish/,
+  );
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /3:2 landscape canvas, wider than it is tall/);
   assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Never add outlined lots or a zoning grid/);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Do not draw outlined lots or a zoning grid/);
   const fixtures = [
     "A forest settlement of timber cabins and clearings.",
     "A prison cell block with repeated cells, a dayroom and service corridors.",
@@ -154,7 +156,10 @@ async function main() {
     const prompt = buildTownMapPrompt("Respect repeated living spaces and the shared approach.", setting);
     assert.ok(prompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
     assert.ok(prompt.includes(setting));
-    assert.match(prompt, /up to sixteen Venue photographs/);
+    assert.doesNotMatch(
+      prompt,
+      /Venue photographs|sixteen|forty-eight|added by the application|assign or develop Venues/,
+    );
     assert.match(prompt, /Authored layout: Respect repeated living spaces/);
     assert.ok(prompt.length <= 4000);
   }
@@ -179,7 +184,7 @@ async function main() {
   assert.ok(defaultPrompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
   assert.match(defaultPrompt, /Follow the village description for water, paths, and existing structures/);
   assert.doesNotMatch(defaultPrompt, /Do not include (buildings|water|streets)/);
-  assert.match(defaultPrompt, /without photographs.*writing, numerals/);
+  assert.match(defaultPrompt, /Do not reserve blank spaces.*placeholder panels.*photograph frames.*writing/);
   const coastalPrompt = buildTownMapPrompt(undefined, "A fishing village on sea cliffs");
   assert.match(coastalPrompt, /A fishing village on sea cliffs/);
   assert.doesNotMatch(coastalPrompt, /Do not include water/);
@@ -201,7 +206,12 @@ async function main() {
   assert.match(imprintMap, /Reused timber/);
   assert.match(imprintMap, /Do not include water/);
   assert.match(imprintMap, /Do not add decorative buildings/);
-  assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, digits, numbers, labels/);
+  assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, labels/);
+  assert.match(
+    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
+    /blank annotation panels, placeholder boxes, photograph frames, label plaques/,
+  );
+  assert.doesNotMatch(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /square plots/);
   assert.equal(buildTownMapNegativePrompt(), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
   assert.match(
     buildTownMapNegativePrompt({ roads: true, structures: true, water: true }, "foggy artifacts"),
@@ -396,7 +406,7 @@ async function main() {
     delete legacy.venueCapacityPolicy;
     documents.set("villages-village", { id: "villages-village", kind: "village", data: legacy, revision: 1 });
     await generateVillageTownMap({ ...input, capacity: 1 } as any);
-    assert.match(imageRequests.at(-1).appearance, /up to forty-eight Venue photographs/);
+    assert.doesNotMatch(imageRequests.at(-1).appearance, /Venue photographs|sixteen|forty-eight/);
     assert.equal(imageRequests.at(-1).appearance.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
   } finally {
     globalThis.fetch = originalFetch;
