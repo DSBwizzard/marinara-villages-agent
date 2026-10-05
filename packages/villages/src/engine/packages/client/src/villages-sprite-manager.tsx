@@ -128,6 +128,8 @@ export function SpriteManager({
   const libraryDialog = useRef<HTMLDialogElement>(null),
     libraryButton = useRef<HTMLButtonElement>(null);
   const moreActions = useRef<HTMLDetailsElement>(null);
+  const expressionSelect = useRef<HTMLSelectElement>(null);
+  const focusExpression = useRef(false);
   const inFlight = useRef(false);
   const selected = manager?.artwork.find((item) => item.id === selectedId);
   const baseline = selected && manager ? savedDraft(selected, manager, contexts[selected.id]) : null;
@@ -146,6 +148,13 @@ export function SpriteManager({
     ) ?? manager?.assignments.find((item) => item.expressionId === manager.defaultExpressionId);
   const defaultArt = manager?.artwork.find((item) => item.id === defaultAssignment?.artworkId);
   const canSave = Boolean(draft?.name.trim() && currentPreview?.image && !currentPreview.clipped && !busy);
+
+  useEffect(() => {
+    if (!busy && focusExpression.current) {
+      focusExpression.current = false;
+      expressionSelect.current?.focus({ preventScroll: true });
+    }
+  }, [busy]);
 
   useEffect(() => {
     let stopped = false;
@@ -595,6 +604,7 @@ export function SpriteManager({
                   <label>
                     Expression
                     <select
+                      ref={expressionSelect}
                       aria-label="Expression"
                       disabled={busy}
                       value={draft.expressionId}
@@ -642,6 +652,54 @@ export function SpriteManager({
                     </div>
                   </div>
                   <p className="vsm-hint">Side faces right; Scenes mirror it when looking left.</p>
+                  {manager.assignments.some((item) => item.artworkId === selected.id) ? (
+                    <div className="vsm-assignments" role="group" aria-label="Saved assignments">
+                      <p className="vsm-hint">Assignments</p>
+                      {manager.assignments
+                        .filter((item) => item.artworkId === selected.id)
+                        .map((assignment) => {
+                          const facing = assignment.view === "front" ? "Front" : "Side",
+                            expression = manager.expressions.find((item) => item.id === assignment.expressionId);
+                          return (
+                            <div className="vsm-assignment" key={assignment.expressionId + assignment.view}>
+                              <span>
+                                {expression?.name} · {facing}
+                              </span>
+                              <button
+                                disabled={busy || dirty}
+                                aria-label={`Remove ${facing} assignment for ${expression?.name}`}
+                                onClick={() => {
+                                  void perform(async () => {
+                                    const saved = await call<Saved>("unassign", {
+                                      artworkId: selected.id,
+                                      expectedUrl: selected.rendered.url,
+                                      expressionId: assignment.expressionId,
+                                      view: assignment.view,
+                                    });
+                                    discard(selected.id);
+                                    setContexts((prior) => {
+                                      const next = { ...prior };
+                                      delete next[selected.id];
+                                      return next;
+                                    });
+                                    accept(saved);
+                                    focusExpression.current = true;
+                                    setNotice(`${facing} assignment removed. Artwork kept.`);
+                                  });
+                                }}
+                              >
+                                Remove {facing} assignment
+                              </button>
+                            </div>
+                          );
+                        })}
+                      <p className="vsm-hint">
+                        {dirty
+                          ? "Save or discard this artwork’s edits before removing an assignment."
+                          : "Removing an assignment keeps the artwork and its other assignments."}
+                      </p>
+                    </div>
+                  ) : null}
                   <label>
                     Use when…
                     <textarea
