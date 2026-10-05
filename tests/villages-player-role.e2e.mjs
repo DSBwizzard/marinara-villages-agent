@@ -120,7 +120,7 @@ try {
         await page.locator("summary").filter({ hasText: "Connections · Ready" }).click();
         await expect(page.getByLabel("System", { exact: true })).toBeVisible();
       }
-      await expect(page.getByText("Step 1 of 4 · People")).toBeVisible();
+      await expect(page.getByRole("button", { name: "1 People", exact: true })).toBeVisible();
       if (scenario.founded) {
         const summary = page.getByRole("region", { name: "Your place in the village" });
         await expect(summary).toContainText(
@@ -133,14 +133,14 @@ try {
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
       } else {
-        await page.getByText("Customize role title and explanation", { exact: true }).click();
+        if (width <= 704) await page.getByRole("button", { name: /^Your role ·/ }).click();
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
-        const role = page.getByRole("group", { name: "Your place in the village" });
+        const role = page.getByRole("group", { name: "Your role", exact: true });
         await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("Project Coordinator");
         await role.scrollIntoViewIfNeeded();
         await screenshot(page, "founding-" + width);
-        await expect(page.getByRole("region", { name: "Your place in the village" })).toContainText(
-          "People here recognize you as the coordinator for shared Projects.",
+        await expect(role.getByRole("textbox", { name: "Why villagers turn to you" })).toHaveValue(
+          /People here recognize you as the coordinator for shared Projects\./,
         );
         assert.ok(
           await role.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
