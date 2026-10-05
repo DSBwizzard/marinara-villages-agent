@@ -13221,6 +13221,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
   const [spriteManagerId, setSpriteManagerId] = useState<string | null>(null);
   const spriteLeaveGuard = useRef<(() => boolean) | null>(null);
+  const spriteProfileScroll = useRef(0);
   /**
    * Portraits, by character id, as the Engine has been willing to hand them over.
    *
@@ -17707,9 +17708,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 onSaved={(next) => setSnapshot(next as VillageSnapshot)}
                 onBack={() => {
                   setSpriteManagerId(null);
-                  requestAnimationFrame(() =>
-                    element.querySelector<HTMLElement>("[data-dossier-sprites]")?.focus({ preventScroll: true }),
-                  );
+                  requestAnimationFrame(() => {
+                    const profile = element.querySelector<HTMLElement>(`.${ELEMENT_TAG}-dossier-root`);
+                    if (profile) profile.scrollTop = spriteProfileScroll.current;
+                    element.querySelector<HTMLElement>("[data-dossier-sprites]")?.focus({ preventScroll: true });
+                  });
                 }}
               />
             ) : undefined
@@ -17746,6 +17749,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 disabled={busy}
                 data-dossier-sprites="true"
                 onClick={(event) => {
+                  spriteProfileScroll.current =
+                    element.querySelector<HTMLElement>(`.${ELEMENT_TAG}-dossier-root`)?.scrollTop ?? 0;
                   event.currentTarget.blur();
                   setSpriteManagerId(personProfile.actorId);
                 }}

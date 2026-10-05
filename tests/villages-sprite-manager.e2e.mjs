@@ -363,6 +363,7 @@ try {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false, "manager fits narrow screens");
     await page.getByRole("button", { name: "← Back to profile" }).click();
+    await expect(page.getByRole("button", { name: /Manage sprites ·/ }).first()).toBeFocused();
     await page
       .getByRole("button", { name: /Manage sprites ·/ })
       .first()
