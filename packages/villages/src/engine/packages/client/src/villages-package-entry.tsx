@@ -17990,13 +17990,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             }
             onProjects={() => openMenu("projects")}
             onProposals={() => openMenu("venueRequests")}
-            spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled === true}
+            spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
             sceneSettings={
               <>
                 <label className={ELEMENT_TAG + "-row"}>
                   <input
                     type="checkbox"
-                    checked={spriteFlipDraft ?? snapshot?.settings.spriteCardFlipEnabled === true}
+                    checked={spriteFlipDraft ?? snapshot?.settings.spriteCardFlipEnabled !== false}
                     disabled={spriteFlipSaving}
                     onChange={(event) => void saveSpriteCardFlip(event.target.checked)}
                   />

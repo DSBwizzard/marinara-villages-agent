@@ -17,7 +17,10 @@ import {
   parseVillagesTurnBeats,
   renderVillagesTurnBeats,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/turn-beats.ts";
-import { coerceVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
 const answer = `[expression:happy] "Welcome home."\n\n[expression:unknown] "Maybe."\n\n[side] "Quiet now."`;
 const beats = parseVillagesTurnBeats(answer);
 assert.ok(beats);
@@ -95,8 +98,14 @@ assert.equal(staged.lines[1]?.gazeAt, undefined, "unknown gaze targets cannot st
 assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target without extra model output");
 
 const now = new Date().toISOString();
-assert.equal(coerceVillageState({}).spriteCardFlipEnabled, false, "legacy Villages start with flips off");
-assert.equal(coerceVillageState({ spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled, false);
+assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
+assert.equal(
+  coerceVillageState({}).spriteCardFlipEnabled,
+  true,
+  "legacy Villages without a choice default to flips on",
+);
+assert.equal(coerceVillageState({ spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled, true);
+assert.equal(coerceVillageState({ spriteCardFlipEnabled: false }).spriteCardFlipEnabled, false, "saved Off stays Off");
 const flipVillage = coerceVillageState({ spriteCardFlipEnabled: true });
 assert.equal(
   coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
