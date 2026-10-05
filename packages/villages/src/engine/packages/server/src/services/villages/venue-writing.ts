@@ -1,5 +1,6 @@
 import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { VillagerCard } from "./catalog.js";
+import { renderResidentFoundingContext } from "./resident-founding-context.js";
 import { badRequest } from "./errors.js";
 
 /** The authored person is complete; circumstances are supplied separately. */
@@ -20,7 +21,8 @@ export function venueCardProfile(card: VillagerCard, playerName = "the player", 
     fields
       .filter(([, value]) => value?.trim())
       .map(([label, value]) => `${label}:\n${expand(value!)}`)
-      .join("\n\n")
+      .join("\n\n") +
+    (card.foundingContext ? "\n\n" + renderResidentFoundingContext(card.name, card.foundingContext) : "")
   );
 }
 

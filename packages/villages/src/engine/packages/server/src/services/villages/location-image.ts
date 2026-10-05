@@ -286,9 +286,11 @@ export async function generateVillageLocationImage(
   );
 
   const prompt = sceneryPrompt(
-    [basePrompt],
+    [basePrompt, character.includes("## Starting background:") ? `Occupant context: ${character}` : ""],
     [
-      character ? `Occupant context, reflect preferences without depicting people: ${character}` : "",
+      character && !character.includes("## Starting background:")
+        ? `Occupant context, reflect preferences without depicting people: ${character}`
+        : "",
       village.setting ? `Village setting: ${village.setting.slice(0, 400)}` : "",
       ...village.worldFacts.map((fact) => `World fact: ${fact}`),
       lore ? `Established visual lore: ${lore}` : "",

@@ -52,6 +52,12 @@ function fixture(seeded = true) {
     foundingPreparation: { status: "pending", completedIds: [], currentId: "", error: "", venueDetailsSeeded: seeded },
     villagers: names.map((name, index) => ({
       characterId: ["aqua", "feddy", "sneak"][index],
+      foundingContext: {
+        historyMode: "continue",
+        storyRole: "new-arrival",
+        customDescription: "",
+        background: "STARTING-CONTEXT-" + name + ": former home is elsewhere; current work undecided.",
+      },
       cardSnapshot: {
         id: ["aqua", "feddy", "sneak"][index],
         name,
@@ -142,12 +148,16 @@ const release = configureVillagesRuntime({
       connectionId: "fixture",
       maxContext: 32000,
       maxOutputTokens: limit,
-      fitContext: (messages: any[], options: any) => ({ messages, maxTokens: options.maxTokens }),
+      fitContext: (messages: any[], options: any) => ({
+        messages: mode === "context-loss" ? [] : messages,
+        maxTokens: options.maxTokens,
+      }),
       chatComplete: async (messages: any[], options: any) => {
         if (messages[0].content.includes("Define exactly the one saved private space")) {
           const { rooms } = JSON.parse(messages[1].content);
           assert.equal(rooms.length, 1);
           const room = rooms[0];
+          for (const person of room.characters) assert.match(person.foundingBackground, /STARTING-CONTEXT-/);
           calls.push(room.venueId);
           assert.equal(options.maxTokens, Math.min(limit, 3000));
           assert.equal(options.reasoningEffort, "none");
@@ -185,6 +195,8 @@ const release = configureVillagesRuntime({
         if (messages[0].content.includes("Seed a few observable")) {
           calls.push("venues");
           const input = JSON.parse(messages[1].content);
+          for (const venue of input.venues)
+            if (venue.resident) assert.match(venue.resident.foundingBackground, /STARTING-CONTEXT-/);
           return {
             content: JSON.stringify({
               venues: input.venues.map((venue: any) => ({
@@ -199,6 +211,7 @@ const release = configureVillagesRuntime({
           };
         }
         calls.push("routine");
+        assert.match(messages[0].content, /STARTING-CONTEXT-/);
         assert.ok(
           messages[0].content.includes('The key is exactly "venue"'),
           "prompt supplies exact palette field names without concrete activity examples",
@@ -228,6 +241,12 @@ const release = configureVillagesRuntime({
 async function main() {
   const stop = startBackgroundWork();
   try {
+    install();
+    mode = "context-loss";
+    await prepareFoundedVillage();
+    assert.equal(calls.length, 0, "required resident context cannot be trimmed before dispatch");
+    assert.equal((await readVillageState()).foundingPreparation?.status, "failed");
+    mode = "valid";
     install(false);
     await Promise.all([prepareFoundedVillage(), prepareFoundedVillage()]);
     assert.deepEqual(calls, ["venues", "aqua", "feddy", "sneak", "hall", "routine", "routine", "routine"]);

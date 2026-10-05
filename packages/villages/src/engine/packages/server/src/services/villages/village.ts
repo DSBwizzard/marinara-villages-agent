@@ -1,3 +1,4 @@
+import { readFoundingResidentContexts } from "./resident-founding-context.js";
 import { assertVillageVenueCapacity, assertCanAddVillageVenue, villageVenueLimit } from "./venue-capacity.js";
 import { wishExpired, wishRetained } from "./wish-definition.js";
 import {
@@ -217,6 +218,7 @@ function projectVillager(
           })),
         }
       : null,
+    ...(villager.foundingContext ? { foundingContext: villager.foundingContext } : {}),
     name: cardName ?? villager.cardSnapshot.name,
     summary: cardSummary,
     tags: cardTags,
@@ -820,6 +822,7 @@ export function agendaRevision(village: VillageState, characterId: string): stri
       venue.zones?.map((zone) => [zone.id, zone.name, zone.kind, zone.ownerId]),
     ]),
     resident?.agendaGeneration,
+    ...(resident?.foundingContext ? [resident.foundingContext] : []),
     resident?.addedAt,
     resident && [
       resident.cardSnapshot.capturedAt,
@@ -3448,6 +3451,7 @@ export function validateFoundingRoster(
 
 export async function runVillageSetup(input: {
   foundingCharacterIds?: unknown;
+  foundingResidentContexts?: unknown;
   name?: unknown;
   setting?: unknown;
   foundingReason?: unknown;
@@ -3549,6 +3553,11 @@ export async function runVillageSetup(input: {
   const assignedResidents = new Set(
     places.flatMap((place) => (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : [])),
   );
+  const foundingContexts = founding
+    ? readFoundingResidentContexts(input.foundingResidentContexts, [...assignedResidents])
+    : {};
+  if (!founding && input.foundingResidentContexts !== undefined)
+    throw badRequest("Resident starting backgrounds are fixed after founding.");
   if (founding && input.foundingCharacterIds !== undefined)
     validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
   if (founding && privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
@@ -3709,6 +3718,7 @@ export async function runVillageSetup(input: {
       if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
       state.villagers.push({
         characterId: card.id,
+        ...(founding ? { foundingContext: foundingContexts[card.id] } : {}),
         cardSnapshot: {
           ...snapshotFromCard(card, 1),
         },

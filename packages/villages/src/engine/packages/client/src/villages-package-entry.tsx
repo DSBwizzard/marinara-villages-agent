@@ -1,3 +1,11 @@
+import { ResidentFoundingEditors } from "./villages-resident-founding.js";
+import {
+  DEFAULT_RESIDENT_FOUNDING_CONTEXT,
+  RESIDENT_HISTORY_MODES,
+  RESIDENT_STORY_ROLES,
+  residentFoundingProblems,
+  type ResidentFoundingContext,
+} from "../../shared/src/villages/resident-founding-context.js";
 import {
   VillagerDossier,
   type DossierNavigation,
@@ -8975,7 +8983,7 @@ function FoundingPersonaSelector({
     <div className={`${ELEMENT_TAG}-founding-persona`}>
       <div className={`${ELEMENT_TAG}-identity-picker-head`}>
         <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-persona-search`}>
-          Who are you?
+          Persona
         </label>
         <input
           id={`${ELEMENT_TAG}-setup-persona-search`}
@@ -9006,7 +9014,10 @@ function FoundingPersonaSelector({
           The saved Persona is no longer in your library. Choose another Persona to continue.
         </p>
       ) : adapted ? (
-        <IdentityChoicePreview value={adapted} />
+        <details className="villages-persona-preview">
+          <summary>View Persona details</summary>
+          <IdentityChoicePreview value={adapted} />
+        </details>
       ) : previewProblem ? (
         <p className={`${ELEMENT_TAG}-error`} role="alert">
           {previewProblem}
@@ -9050,7 +9061,7 @@ function FoundingVillagerPicker({
   return (
     <section className={`${ELEMENT_TAG}-founding-roster`} aria-label="Founding villagers">
       <div className={`${ELEMENT_TAG}-identity-picker-head`}>
-        <h3>Who joins the village?</h3>
+        <span>Choose 1–3 villagers</span>
         <span role="status">{selectedIds.length} of 3 selected</span>
       </div>
       <p className={`${ELEMENT_TAG}-hint`}>
@@ -13307,6 +13318,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
   const [setupFoundingVillagerIds, setSetupFoundingVillagerIds] = useState<string[]>([]);
+  const [setupResidentContexts, setSetupResidentContexts] = useState<Record<string, ResidentFoundingContext>>({});
+  const [setupRoleExpanded, setSetupRoleExpanded] = useState(false);
+  const selectedResidentContexts = useMemo(
+    () =>
+      Object.fromEntries(
+        setupFoundingVillagerIds.map((id) => [
+          id,
+          setupResidentContexts[id] ?? { ...DEFAULT_RESIDENT_FOUNDING_CONTEXT },
+        ]),
+      ),
+    [setupFoundingVillagerIds, setupResidentContexts],
+  );
+  const residentContextProblem =
+    !snapshot?.isFounded &&
+    Object.values(selectedResidentContexts).some((context) =>
+      Object.values(residentFoundingProblems(context)).some(Boolean),
+    )
+      ? "Complete the highlighted resident background fields in People."
+      : "";
   const setupHomeCount = setupFoundingVillagerIds.length;
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
   const [setupEditorOpen, setSetupEditorOpen] = useState(false);
@@ -13332,6 +13362,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [setupMapPrompt, setSetupMapPrompt] = useState("");
   const [setupMapNegativePrompt, setSetupMapNegativePrompt] = useState("");
   const setupBeginningSourceKey = JSON.stringify({
+    residentContexts: selectedResidentContexts,
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
     direction: setupFoundingGuidance.trim(),
@@ -13493,6 +13524,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       venues: setupVenues,
       zoneDrafts: structuredClone(setupZoneDrafts.current),
       roster: setupFoundingVillagerIds,
+      residentContexts: setupResidentContexts,
       persona: personaDraft,
       lorebooks: setupLorebookDraft,
       loreBudget: setupLoreTokenBudgetDraft,
@@ -13534,6 +13566,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupWorldFacts,
       setupVenues,
       setupFoundingVillagerIds,
+      setupResidentContexts,
       personaDraft,
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
@@ -13622,6 +13655,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setSetupVenues(data.venues);
     setupZoneDrafts.current = data.zoneDrafts ?? {};
     setSetupFoundingVillagerIds(data.roster);
+    setSetupResidentContexts(data.residentContexts ?? {});
     setPersonaDraft(data.persona);
     setSetupLorebookDraft(data.lorebooks);
     setSetupLoreTokenBudgetDraft(data.loreBudget);
@@ -13763,6 +13797,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           playerPersonaId: personaDraft,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
+          foundingResidentContexts: selectedResidentContexts,
           venues: rows.map((row) => ({
             id: row.id,
             name: row.name,
@@ -16291,6 +16326,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             ? (village.settings.playerRole ?? null)
             : { ...(village?.settings.playerRole ?? DEFAULT_PLAYER_ROLE), enabled: true },
       );
+      if (fresh) setSetupResidentContexts({});
       setSetupImprint(fresh ? emptyScenarioImprint() : (village?.settings.scenarioImprint ?? emptyScenarioImprint()));
       setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
       const foundingPlaces =
@@ -16356,7 +16392,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
-          : connectionSetupProblem ||
+          : residentContextProblem ||
+            connectionSetupProblem ||
             (!snapshot?.isFounded ? playerRoleProblem(setupPlayerRole) : "") ||
             (!snapshot?.isFounded &&
             (setupHomeCount < 1 ||
@@ -16435,6 +16472,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           area,
           privateOwnerId: area === "private" ? "player" : undefined,
           privateDescription: description,
+          residentFoundingContext: venue.occupancy.residentCharacterId
+            ? selectedResidentContexts[venue.occupancy.residentCharacterId]
+            : undefined,
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,
           useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? personalizeHomes,
@@ -16649,6 +16689,11 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   ]);
 
   const foundVillage = useCallback(async () => {
+    if (residentContextProblem) {
+      setSetupProblem(residentContextProblem);
+      setSetupStep(0);
+      return;
+    }
     const blocker = setupBlocker();
     if (blocker) {
       const incomplete = setupVenues.find(
@@ -16702,6 +16747,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           // the named public center, rather than relying on stored destinations.
           venues: setupVenues,
           foundingCharacterIds: snapshot?.isFounded ? undefined : setupFoundingVillagerIds,
+          foundingResidentContexts: snapshot?.isFounded ? undefined : selectedResidentContexts,
         }),
       });
       setSnapshot(founded);
@@ -16732,6 +16778,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     snapshot?.settings.foundingGuidance,
     snapshot?.settings.playerRole,
     snapshot?.settings.scenarioImprint,
+    residentContextProblem,
+    selectedResidentContexts,
     personaDraft,
     savedTownMapView,
     setupBlocker,
@@ -21476,55 +21524,83 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           ))}
         </nav>
         <main className="villages-forging-body" data-step={setupStep}>
-          <p className="villages-forging-kicker">
+          <p className="villages-forging-kicker" hidden={setupStep === 0}>
             Step {setupStep + 1} of 4 · {SETUP_STEPS[setupStep]}
           </p>
-          {setupStep === 0 ? (
-            <>
-              <h2>Who lives here?</h2>
-              <p>Choose yourself and one to three founding villagers.</p>
-              <div className="villages-forging-columns">
-                <section className="villages-forging-card">
-                  <h3>Your Persona</h3>
-                  <FoundingPersonaSelector
-                    personas={personas}
-                    draft={personaDraft}
-                    onDraft={setPersonaDraft}
-                    disabled={busy}
-                  />
-                  <h3>Your role</h3>
-                  <PlayerRoleSummary role={setupPlayerRole} />
-                  {!snapshot?.isFounded ? (
-                    <details>
-                      <summary>Customize role title and explanation</summary>
+          <div hidden={setupStep !== 0}>
+            <div className="villages-forging-columns">
+              <section className="villages-forging-card">
+                <h3>You</h3>
+                <FoundingPersonaSelector
+                  personas={personas}
+                  draft={personaDraft}
+                  onDraft={setPersonaDraft}
+                  disabled={busy}
+                />
+                <h3 className="villages-desktop-role-heading">Your role</h3>
+                {!snapshot?.isFounded ? (
+                  <>
+                    <button
+                      type="button"
+                      className="villages-mobile-role-toggle"
+                      aria-expanded={setupRoleExpanded}
+                      aria-controls="villages-founding-role-fields"
+                      onClick={() => setSetupRoleExpanded((value) => !value)}
+                    >
+                      Your role · {setupPlayerRole?.title || "Customize role"}
+                    </button>
+                    <div
+                      id="villages-founding-role-fields"
+                      className="villages-founding-role-editor"
+                      data-expanded={setupRoleExpanded}
+                    >
                       <PlayerRoleFields
+                        compact
                         role={setupPlayerRole ?? DEFAULT_PLAYER_ROLE}
                         onChange={setSetupPlayerRole}
                         disabled={busy}
                       />
-                    </details>
-                  ) : null}
-                </section>
-                <section className="villages-forging-card">
-                  <h3>Founding villagers</h3>
-                  <FoundingVillagerPicker
-                    catalog={catalog}
-                    portraits={portraits}
-                    selectedIds={setupFoundingVillagerIds}
-                    onChange={chooseRoster}
-                    disabled={busy || !!snapshot?.isFounded}
-                  />
-                </section>
-              </div>
-            </>
+                    </div>
+                  </>
+                ) : (
+                  <PlayerRoleSummary role={setupPlayerRole} />
+                )}
+              </section>
+              <section className="villages-forging-card">
+                <h3>Founding villagers</h3>
+                <FoundingVillagerPicker
+                  catalog={catalog}
+                  portraits={portraits}
+                  selectedIds={setupFoundingVillagerIds}
+                  onChange={chooseRoster}
+                  disabled={busy || !!snapshot?.isFounded}
+                />
+                <div className="villages-people-connections">
+                  <details open={!!connectionSetupProblem}>
+                    <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
+                    <p>System and Narration are required. Images are optional.</p>
+                    <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
+                  </details>
+                </div>
+              </section>
+            </div>
+          </div>
+          {setupStep === 0 && !snapshot?.isFounded && wizardVillagers.length ? (
+            <ResidentFoundingEditors
+              people={wizardVillagers.map((person) => ({ characterId: person.id, name: person.name }))}
+              contexts={setupResidentContexts}
+              onChange={(id, context) => setSetupResidentContexts((current) => ({ ...current, [id]: context }))}
+              avatar={(id, name) => (
+                <AvatarFace
+                  portrait={portraits[id]}
+                  name={name}
+                  className={ELEMENT_TAG + "-identity-card-face"}
+                  glyph="person"
+                />
+              )}
+              disabled={busy}
+            />
           ) : null}
-          <section className="villages-forging-card" hidden={setupStep !== 0}>
-            <details open={!!connectionSetupProblem}>
-              <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
-              <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
-            </details>
-            <p>System and Narration are required. Images are optional.</p>
-          </section>
           {setupStep === 1 ? (
             <>
               <h2>Define your place</h2>
@@ -21933,7 +22009,24 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       </button>
                     </div>
                     <p>{personas?.find((person) => person.id === personaDraft)?.name ?? "Selected Persona"} · You</p>
-                    <p>{wizardVillagers.map((person) => person.name).join(", ")}</p>
+                    {wizardVillagers.map((person) => {
+                      const context = selectedResidentContexts[person.id];
+                      return (
+                        <div key={person.id} className="villages-resident-review">
+                          <strong>{person.name}</strong>
+                          {!snapshot?.isFounded && context ? (
+                            <>
+                              <p>
+                                {RESIDENT_STORY_ROLES[context.storyRole]} ·{" "}
+                                {RESIDENT_HISTORY_MODES[context.historyMode]}
+                              </p>
+                              {context.storyRole === "custom" ? <p>{context.customDescription}</p> : null}
+                              {context.background ? <p>{context.background}</p> : null}
+                            </>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                     <PlayerRoleSummary role={setupPlayerRole} />
                     <p>Your role and founding circumstances become fixed after founding.</p>
                   </section>
@@ -21991,10 +22084,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     {placed} of {setupVenues.length} photographs placed
                   </p>
                   <h3>After founding</h3>
-                  <p>
-                    Prepare spaces, resident activities, native schedule mappings, and initial wishes before the first
-                    Scene.
-                  </p>
+                  <p>Prepare Venues, private spaces, Agendas, and initial Wishes before the first Scene.</p>
                 </section>
               </div>
             </>

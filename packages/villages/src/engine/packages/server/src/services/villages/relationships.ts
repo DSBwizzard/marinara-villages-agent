@@ -300,15 +300,20 @@ export function proposeStartingTies(
         trust: 0,
         established: false,
       };
-      const text = [
-        resident.cardSnapshot.description,
-        resident.cardSnapshot.personality,
-        resident.cardSnapshot.backstory,
-      ].join("\n");
+      const historyAllowed = (context: typeof resident.foundingContext) =>
+        !context || context.historyMode === "continue" || (context.historyMode === "adapt" && !context.background);
+      const importsHistory =
+        historyAllowed(resident.foundingContext) &&
+        historyAllowed(village.villagers.find((person) => person.characterId === target.id)?.foundingContext);
+      const text = importsHistory
+        ? [resident.cardSnapshot.description, resident.cardSnapshot.personality, resident.cardSnapshot.backstory].join(
+            "\n",
+          )
+        : "";
       const subject = `(?:${escapeName(resident.cardSnapshot.name)}|(?:s?he|they|I))`;
       const name = escapeName(target.name);
       const shared = [
-        ...lore,
+        ...(importsHistory ? lore : []),
         ...village.chronicle.filter((entry) => entry.memoryCategory === "relationship").map((entry) => entry.text),
       ].join("\n");
       const match = (expression: string) =>

@@ -15,6 +15,7 @@ import type { VillageCatalogEntry, VillagePersona, VillageVillager, VillageVilla
 
 /** Everything the village needs off one card, flattened and defaulted. */
 export type VillagerCard = {
+  foundingContext?: import("../../../../shared/src/villages/resident-founding-context.js").ResidentFoundingContext;
   id: string;
   /** Player-facing name; falls back to the user note so a tile is never blank. */
   name: string;
@@ -75,7 +76,7 @@ export function villagerCardFromSnapshot(snapshot: VillageVillagerCardSnapshot):
 
 /** Runtime reads use the adopted snapshot. Live cards are only read by refresh/capture flows. */
 export function readEffectiveVillagerCard(villager: VillageVillager): VillagerCard {
-  return villagerCardFromSnapshot(villager.cardSnapshot);
+  return { ...villagerCardFromSnapshot(villager.cardSnapshot), foundingContext: villager.foundingContext };
 }
 
 /**

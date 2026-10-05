@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   readVillagerCard,
+  readEffectiveVillagerCard,
   villagerCardFromSnapshot,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/catalog.js";
 import {
@@ -43,6 +44,12 @@ state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and t
 state.villagers = [
   {
     characterId: card.id,
+    foundingContext: {
+      historyMode: "continue",
+      storyRole: "new-arrival",
+      customDescription: "",
+      background: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED. NARRATOR SECRET IS UNKNOWN TO RESIDENT.",
+    },
     cardSnapshot: snapshot,
     addedAt: stamp,
     completedWishes: [],
@@ -112,6 +119,8 @@ async function run() {
       "Appearance:\nFeathered arms; no wings",
       "Example dialogue:\nResident: Your move,",
       "FOUNDING PREMISE",
+      "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
+      "narrator-only truths are not resident knowledge",
     ])
       assert.ok(prompt.includes(fragment), fragment);
     assert.ok(prompt.includes("cannot reauthor a character"));
@@ -184,7 +193,7 @@ async function run() {
         {
           characterId: card.id,
           name: card.name,
-          profile: venueCardProfile(card),
+          profile: venueCardProfile(readEffectiveVillagerCard(state.villagers[0])),
           summary: "",
           doing: "Talking",
           agenda: state.villagers[0].agenda,
@@ -195,6 +204,8 @@ async function run() {
       recent: [],
     } as any);
     assert.ok(String(background[0].content).includes("DESCRIPTION TAIL"));
+    assert.match(String(background[0].content), /REMEMBERED MECCA; CURRENT LOCATION UNDECIDED/);
+    assert.match(String(background[0].content), /narrator-only truths are not resident knowledge/);
     assert.ok(String(background[0].content).includes("See a concert"));
     assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
     assert.equal(paidCalls, 0);
@@ -214,6 +225,7 @@ async function run() {
     assert.equal(preview.proposed?.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
     await applyVillagerRefresh(card.id);
     assert.equal(row.data.villagers[0].cardSnapshot.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
+    assert.match(row.data.villagers[0].foundingContext.background, /CURRENT LOCATION UNDECIDED/);
     const removed: string[] = [];
     const budgetModel: any = {
       fitContext(messages: any, options: any) {
