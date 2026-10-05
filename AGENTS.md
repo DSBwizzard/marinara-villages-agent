@@ -1,37 +1,11 @@
-# Villages workspace instructions
+# Villages coding guidance
 
-## Standing scope restriction
+- Villages source is under packages/villages/src/engine. Read DEVELOPMENT.md for the build commands and packages/villages/README.md for product behavior.
+- Regenerate bundles, manifests, and checksums with the documented builder; do not hand-edit generated output.
+- The build uses the source snapshot under sources/engine and overlays Villages source. Changes to a package's Engine dependencies must remain within its documented compatibility and capability API boundaries.
 
-- Make code changes only in DSBwizzard's `marinara-villages-agent` repository unless the user explicitly authorizes a different code location for a specific task. Reading Engine source and dependencies to build or validate Villages is allowed.
-- Do not edit, patch, pull/update, commit, or otherwise change code in any local Marinara Engine installation or checkout. Do not build or restart the Engine as a substitute for changing Villages. Engine source changes require explicit, task-specific permission.
-- The documented Villages sideload helper is allowed after a Villages package has merged to `staging` and passed its checks and build. It may copy that Villages package into the configured Engine's capability-package data and update the installed-package registry; this is package installation, not permission to change Engine code. Report the installed version and required Engine restart. Do not launch, stop, or restart the Engine unless the user explicitly asks.
-- Do GitHub work only in `DSBwizzard/marinara-villages-agent`. Never push, open or update a pull request, merge, publish, or perform other GitHub operations for a Marinara Engine repository or any other repository unless the user explicitly changes this standing instruction.
-- Apply these boundaries to every task, including fixes, validation, staging, and releases.
+## Scene continuity and access
 
-- Keep work focused on Villages and files within this repository required to build or validate Villages.
-- Codex may perform Git operations for requested Villages work: create/switch branches, stage, commit, push, and create/update pull requests. Never change remotes or GitHub repository settings without the user's explicit request.
-- On this Windows workspace, ordinary Codex processes may report a Git "dubious ownership" error even though the user configured the exact repository as a global `safe.directory`. When Git commands fail for this reason, retry them with elevated access; do not treat the normal-process failure as a blocker. The exact repository path is `C:\Users\dsbwi\Desktop\marinara-villages-agent`. Never change ownership or use `safe.directory '*'`.
-- GitHub CLI is installed at `C:\Program Files\GitHub CLI\gh.exe` but may not be available on `PATH`. If `gh` is not resolved, invoke that exact executable before concluding GitHub CLI is unavailable. If it cannot read `%APPDATA%\GitHub CLI\config.yml` in the sandbox, retry it with elevated access rather than switching to browser automation.
-- Do not modify or track the preserved source workspace under `marinara-villages/`.
-- Preserve package-generated files through the documented build command; do not hand-edit bundles, manifests, or checksums.
-- Read `DEVELOPMENT.md` and `packages/villages/README.md` for setup, package, and coding guidance.
-
-## Villages terminology and Scene continuity
-
-- **Venue:** the place. **Zones:** dedicated spaces within a Venue, including Exterior, Common Space, and Private Space. **Scene:** the active chat in one Venue, continuing across all Zone movement until it ends.
-- Capture attendance, Zone positions, immediate activities, and scene time across the entire Venue when a Scene starts. Background agenda changes and resident movement must not mutate the active Scene. Only evidenced movement or departures within the Scene change its positions.
-- Preserve Zone-specific witnesses and keep unseen Zone attendance server-only. Use current schedules when starting a new Scene. Keep persisted identifiers and route compatibility when updating terminology.
-
-## Development and staging workflow
-
-- **Parallel Codex work:** every independently requested task must use its own managed Git worktree and short-lived `codex/` feature branch. Do not switch branches, reset, stash, or clean another thread's checkout. Before starting, fetch `origin/staging` and create the branch from that base. Name branches for the task. If managed worktrees are unavailable, create a separate checkout; never share one mutable checkout across simultaneous threads.
-- Start each task from an up-to-date `staging` base on a short-lived `codex/` feature branch. Keep commits focused and atomic, with clear imperative messages. Do not bundle unrelated changes.
-- **Integrating concurrent tasks:** before opening/updating a PR, fetch current `origin/staging`, rebase the task branch onto it, inspect the full diff, and run applicable checks. Each task gets its own PR to `staging`. The parallel-work CI check reports paths also changed by other open Villages PRs; resolve overlaps and rebase after another PR merges. Do not automatically merge or sideload a feature branch.
-- Before publishing a branch, inspect the full diff and run the applicable checks. Push the branch and open a focused pull request targeting `staging`; never push task changes directly to `staging` or `main`.
-- Enable GitHub auto-merge on the PR when repository rules permit it. Merge only after required CI checks pass and required reviews/approvals are satisfied. If auto-merge is unavailable or blocked, leave the PR ready and report the exact blocker; do not bypass protections.
-- For package changes, increment the Villages package version on the feature branch before opening the PR, following `DEVELOPMENT.md`. After the PR is merged to `staging`, update the local Villages checkout to the merged `staging` revision, run `npm run check` and the documented Villages package build, then sideload the generated Villages package into the configured Marinara Engine checkout. Never sideload unmerged feature-branch output.
-- Sideload only after build and checks pass. Report the installed version and remind the user that Marinara Engine must restart to load the server package. Do not restart or stop the Engine unless explicitly asked.
-- Treat `staging` as integration and local validation; promote reviewed staging work to `main` only through a separate PR. Do not auto-promote to `main` as part of ordinary task completion.
-- Follow the documented package build/versioning process. Do not hand-edit generated package output or publish this Villages-only checkout's catalog as a replacement for the official multi-agent catalog.
-- For large or risky changes, retain the same PR-to-staging flow but split implementation into multiple focused commits or PRs when that materially improves reviewability. Keep each branch scoped to one coherent outcome.
-- If a required credential, remote, branch protection rule, CI check, Engine path, or permission is unavailable, complete the safe local work and report the concrete setup blocker. Never bypass repository protections or use another person's credentials.
+- Venue is the place. Zones are dedicated spaces within a Venue, including Exterior, Common Space, and Private Space. A Scene is the active chat in one Venue and continues across Zone movement until it ends.
+- Capture attendance, Zone positions, immediate activities, and scene time across the Venue when a Scene starts. Background agenda changes and resident movement must not mutate the active Scene. Only evidenced movement or departures within the Scene change its positions.
+- Preserve Zone-specific witnesses and keep unseen Zone attendance server-only. Use current schedules when starting a new Scene. Preserve persisted identifiers and route compatibility when changing terminology.
