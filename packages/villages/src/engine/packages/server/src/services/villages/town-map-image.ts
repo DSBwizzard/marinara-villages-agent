@@ -1,6 +1,4 @@
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { villageVenueLimit } from "./venue-capacity.js";
-import { readVillageState } from "./village-store.js";
 import { readSceneryStyle } from "./scenery-context.js";
 // Villages — generation rules for the founding map.
 //
@@ -20,26 +18,18 @@ import {
 // Individual inputs also share a final 4,000-character prompt allowance.
 export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;
 const MAX_MAP_PROMPT_LENGTH = 4_000;
-function navigationRules(capacity: number): string {
-  const count = capacity === 16 ? "sixteen" : "forty-eight";
-  return (
-    "Create a wide landscape game navigation map on a three-to-two canvas, not panoramic, of the described shared place. " +
-    "Choose a coherent overhead view with visually distinct usable areas. Reveal indoor spaces through roofless plans or clear cutaways; show outdoor terrain where appropriate. Elevated outdoor views must keep usable areas visible; layered settings need separated, non-overlapping cutaways. " +
-    "Accommodate up to " +
-    count +
-    " Venue photographs added by the application, with generous separation and clearance from image edges; this is capacity, not an exact count of rooms or buildings. " +
-    "Depict existing architecture faithfully, including repeated rooms where appropriate. Vary sizes, landmarks, materials and openness where the setting permits, offering several plausible places to assign or develop Venues. Keep entrances and essential circulation legible. Preserve established structures and conditions; opportunities may be existing rooms, adaptable areas or open terrain. " +
-    "Draw scenery only, without photographs, location symbols, writing, numerals, labels, signs, icons, legend, watermark, borders or UI. Never add outlined lots or a zoning grid."
-  );
-}
-export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT = navigationRules(16);
+export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
+  "Create a single continuous overhead illustration of the described shared place, composed for a 3:2 landscape canvas, wider than it is tall. Extend the scenery to every edge of the image. " +
+  "Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish. Use generous spatial separation where the setting permits, while preserving the described architecture and density. Distinguish areas through their furnishings, materials, terrain and landmarks. " +
+  "Reveal indoor spaces through roofless plans or clear cutaways. Show outdoor terrain where appropriate. For layered settings, use separated, non-overlapping cutaways that keep usable spaces visible. Preserve existing structures and conditions, including repeated rooms where appropriate. Keep entrances and essential circulation legible. " +
+  "Render the place itself as a complete, unoccupied environment. Do not reserve blank spaces for annotations or add placeholder panels, photograph frames, label plaques, decorative borders, interface elements, symbols or writing. Do not draw outlined lots or a zoning grid.";
 
 export type TownMapChoice = "auto" | "include" | "exclude";
 export type TownMapOptions = { roads: TownMapChoice; structures: TownMapChoice; water: TownMapChoice };
 export const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "auto", water: "auto" };
 
 export const DEFAULT_TOWN_MAP_NEGATIVE_PROMPT =
-  "text, letters, writing, numerals, digits, numbers, labels, captions, signs, icons, markers, UI, interface elements, legend, compass rose, watermark, border, people, characters, square plots, outlined lots, zoning grid, crowded composition, blurry, low quality";
+  "text, letters, writing, numerals, labels, captions, signs, icons, markers, interface elements, legend, compass rose, watermark, decorative border, blank annotation panels, placeholder boxes, photograph frames, label plaques, people, characters, outlined lots, zoning grid, crowded composition, blurry, low quality";
 
 function readOptions(value: unknown): TownMapOptions {
   if (value === undefined) return { ...DEFAULT_TOWN_MAP_OPTIONS };
@@ -71,9 +61,8 @@ export function buildTownMapPrompt(
   lore: string | readonly string[] = "",
   scenarioImprint?: unknown,
   style = "",
-  capacity = 16,
 ): string {
-  const rules = navigationRules(capacity);
+  const rules = DEFAULT_TOWN_MAP_LAYOUT_PROMPT;
   const layout =
     structure === undefined || structure === null || structure === "" || structure === DEFAULT_TOWN_MAP_LAYOUT_PROMPT
       ? ""
@@ -106,7 +95,9 @@ export function buildTownMapPrompt(
     "Village description: " + world,
     layout ? "Authored layout: " + layout : "",
     ...(imprint?.worldFacts ?? []).map((fact) => "Reviewed world fact: " + fact),
-    style ? "Art style for this scenery: " + readSceneryStyle(style) : "Illustrated game navigation map scenery.",
+    style
+      ? "Art style for this scenery: " + readSceneryStyle(style)
+      : "Illustrated overhead scenery with clear spatial organization.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -165,17 +156,8 @@ export async function generateVillageTownMap(input: {
   if (input.useVisualLore !== undefined && typeof input.useVisualLore !== "boolean")
     throw badRequest("Visual lore must be on or off.");
   const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
-  const capacity = villageVenueLimit(await readVillageState());
   // Validate required inputs before lore reads or image dispatch.
-  const base = buildTownMapPrompt(
-    input.structure,
-    input.setting,
-    input.options,
-    "",
-    input.scenarioImprint,
-    style,
-    capacity,
-  );
+  const base = buildTownMapPrompt(input.structure, input.setting, input.options, "", input.scenarioImprint, style);
   const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
   const lore =
     input.useVisualLore === false
