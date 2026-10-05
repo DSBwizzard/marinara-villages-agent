@@ -297,6 +297,34 @@ export function setSpriteFraming(id: string, raw: unknown) {
     return result(id);
   });
 }
+function pruneSpriteExpressions(manager: SpriteManagerState) {
+  manager.expressions = manager.expressions.filter((item) =>
+    manager.assignments.some((assignment) => assignment.expressionId === item.id),
+  );
+  if (!manager.assignments.some((item) => item.expressionId === manager.defaultExpressionId))
+    manager.defaultExpressionId = manager.assignments[0]?.expressionId;
+}
+export function removeSpriteAssignment(id: string, raw: unknown) {
+  return serialize(id, async () => {
+    const resident = await owner(id),
+      body = asRecord(raw),
+      expressionId = asString(body.expressionId);
+    if (body.view !== "front" && body.view !== "side") throw badRequest("Choose front or side view.");
+    await commit(id, resident.addedAt, (manager) => {
+      const art = findArtwork(manager, asString(body.artworkId));
+      if (body.expectedUrl !== art.rendered.url)
+        throw conflict("This artwork changed. Reload Sprite Manager before removing its assignment.");
+      const assignment = manager.assignments.find(
+        (item) => item.expressionId === expressionId && item.view === body.view,
+      );
+      if (!assignment || assignment.artworkId !== art.id)
+        throw conflict("This assignment changed. Reload Sprite Manager before removing it.");
+      manager.assignments = manager.assignments.filter((item) => item !== assignment);
+      pruneSpriteExpressions(manager);
+    });
+    return result(id);
+  });
+}
 export function removeSpriteArtwork(id: string, raw: unknown) {
   return serialize(id, async () => {
     const resident = await owner(id),
@@ -307,11 +335,7 @@ export function removeSpriteArtwork(id: string, raw: unknown) {
     await commit(id, resident.addedAt, (manager) => {
       manager.artwork = manager.artwork.filter((item) => item.id !== art.id);
       manager.assignments = manager.assignments.filter((item) => item.artworkId !== art.id);
-      manager.expressions = manager.expressions.filter((item) =>
-        manager.assignments.some((assignment) => assignment.expressionId === item.id),
-      );
-      if (!manager.assignments.some((item) => item.expressionId === manager.defaultExpressionId))
-        manager.defaultExpressionId = manager.assignments[0]?.expressionId;
+      pruneSpriteExpressions(manager);
     });
     // Only files owned by this new manager entry. Never scan or delete old Studio art.
     for (const filename of [art.source.filename, art.rendered.filename]) {

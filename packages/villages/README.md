@@ -1,5 +1,9 @@
 # Villages
 
+## Individual sprite assignments (0.6.164)
+
+Select artwork in Sprite Manager and use **Remove Front assignment** or **Remove Side assignment** in the **Assignments** list beneath Facing. Each action removes only that saved expression/facing assignment and keeps the artwork, framing and other assignments. Save or discard edits to that artwork first. Removing an expression’s last assignment removes its unused expression metadata; if it was the default, another assigned expression becomes the default, or Scenes use the portrait when none remain. Stale requests cannot remove a replacement assignment.
+
 ## Compact Sprite Manager controls (0.6.163)
 
 Artwork Save, Discard, status and extra actions live above Expression in the settings panel and scroll with the page. Save confirmations and errors use compact inline text. The extra-actions menu expands within settings, leaving the preview and framing controls unobstructed.

@@ -48,6 +48,7 @@ try {
       requests = [],
       files = new Map();
     let failSave = false,
+      failUnassign = false,
       failLibrary = false;
     page.on("pageerror", (error) => errors.push(error.message));
     let manager = {
@@ -184,6 +185,34 @@ try {
             );
             manager.assignments.push({ expressionId: id, view: body.view, artworkId: art.id });
             manager.defaultExpressionId ??= id;
+          } else if (path.endsWith("/unassign")) {
+            if (failUnassign) {
+              failUnassign = false;
+              await route.fulfill({
+                status: 500,
+                contentType: "application/json",
+                body: JSON.stringify({ error: "Assignment removal failed." }),
+              });
+              return;
+            }
+            const art = manager.artwork.find((item) => item.id === body.artworkId);
+            assert.equal(body.expectedUrl, art.rendered.url);
+            assert.ok(
+              manager.assignments.some(
+                (item) =>
+                  item.artworkId === body.artworkId &&
+                  item.expressionId === body.expressionId &&
+                  item.view === body.view,
+              ),
+            );
+            manager.assignments = manager.assignments.filter(
+              (item) => item.expressionId !== body.expressionId || item.view !== body.view,
+            );
+            manager.expressions = manager.expressions.filter((item) =>
+              manager.assignments.some((assignment) => assignment.expressionId === item.id),
+            );
+            if (!manager.assignments.some((item) => item.expressionId === manager.defaultExpressionId))
+              manager.defaultExpressionId = manager.assignments[0]?.expressionId;
           } else if (path.endsWith("/default")) manager.defaultExpressionId = body.expressionId;
           else if (path.endsWith("/framing")) manager.framing = body;
           else if (path.endsWith("/remove")) {
@@ -305,6 +334,46 @@ try {
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
     assert.equal(manager.assignments.length, 2);
+    // Reproduce one artwork accidentally assigned to both Front and Side.
+    await page
+      .getByRole("group", { name: "Facing", exact: true })
+      .getByRole("button", { name: "Front", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Save and use in Scenes" }).click();
+    await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
+    const removeFront = page.getByRole("button", { name: /^Remove Front assignment for/ }),
+      removeSide = page.getByRole("button", { name: /^Remove Side assignment for/ });
+    await expect(removeFront).toBeVisible();
+    await expect(removeSide).toBeVisible();
+    await page.getByRole("group", { name: "Saved assignments" }).screenshot({
+      path: resolve(`.build-tmp/sprite-manager/assignments-${viewport.width}x${viewport.height}.png`),
+    });
+    await page.getByLabel("Expression name", { exact: true }).fill("Unsaved name");
+    await expect(removeFront).toBeDisabled();
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    failUnassign = true;
+    await removeFront.click();
+    await expect(page.getByRole("alert")).toHaveText("Assignment removal failed.");
+    assert.equal(manager.assignments.length, 2);
+    await expect(removeFront).toBeEnabled();
+    const artworkBeforeRemoval = structuredClone(manager.artwork);
+    await removeFront.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("status")).toHaveText("Front assignment removed. Artwork kept.");
+    await expect(page.getByLabel("Expression", { exact: true })).toBeFocused();
+    await expect(removeFront).toHaveCount(0);
+    await expect(removeSide).toBeVisible();
+    assert.deepEqual(manager.artwork, artworkBeforeRemoval);
+    assert.equal(manager.assignments.length, 1);
+    assert.equal(manager.assignments[0].view, "side");
+    await expect(
+      page.getByRole("group", { name: "Facing", exact: true }).getByRole("button", { name: "Side", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: /Composed.png/ }).click();
+    await page.getByLabel("Expression", { exact: true }).selectOption(manager.defaultExpressionId);
+    await page.getByRole("button", { name: "Save and use in Scenes" }).click();
+    await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
+    await page.getByRole("button", { name: /Angry.png/ }).click();
     await page.getByText("Advanced framing", { exact: true }).click();
     await page.getByLabel("Scale", { exact: true }).fill("3");
     await expect(page.getByRole("button", { name: "Save and use in Scenes" })).toBeDisabled();

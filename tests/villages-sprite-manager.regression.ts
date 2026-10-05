@@ -15,6 +15,7 @@ import {
   setSpriteDefault,
   setSpriteFraming,
   removeSpriteArtwork,
+  removeSpriteAssignment,
   decodeSpriteImage,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-manager.js";
 import { coerceSpriteManager } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-manager-model.js";
@@ -223,6 +224,59 @@ async function run() {
     assert.equal(validateSpriteExpression((await readVillageState()).villagers[0]!.sprite, "unknown"), "");
     saved = await save(saved.manager.artwork[1]!, expression.id, "Composed", "side");
     assert.equal(saved.manager.assignments.length, 2, "front and side share an expression");
+    // One image may occupy both facings and more than one expression.
+    saved = await save(saved.manager.artwork[0]!, expression.id, "Composed", "side");
+    saved = await save(saved.manager.artwork[0]!, "", "Surprised", "front");
+    const sharedArt = saved.manager.artwork[0]!,
+      beforeUnassign = structuredClone(saved.manager),
+      filesBeforeUnassign = new Map(files),
+      request = {
+        artworkId: sharedArt.id,
+        expectedUrl: sharedArt.rendered.url,
+        expressionId: expression.id,
+        view: "front",
+      };
+    await assert.rejects(removeSpriteAssignment("mara", { ...request, view: "back" }), /front or side/);
+    await assert.rejects(removeSpriteAssignment("mara", { ...request, expectedUrl: "stale" }), /artwork changed/);
+    await assert.rejects(
+      removeSpriteAssignment("mara", {
+        ...request,
+        artworkId: saved.manager.artwork[1]!.id,
+        expectedUrl: saved.manager.artwork[1]!.rendered.url,
+      }),
+      /assignment changed/,
+    );
+    failVillage = true;
+    await assert.rejects(removeSpriteAssignment("mara", request), /Disk unavailable/);
+    failVillage = false;
+    assert.deepEqual(await readSpriteManager("mara"), beforeUnassign, "failed and stale removals preserve state");
+    const unassigned = await removeSpriteAssignment("mara", request);
+    assert.deepEqual(unassigned.manager.artwork, beforeUnassign.artwork, "artwork and framing are preserved");
+    assert.deepEqual(files, filesBeforeUnassign, "removing an assignment does not touch files");
+    assert.deepEqual(
+      unassigned.manager.assignments,
+      beforeUnassign.assignments.filter((item) => item.expressionId !== expression.id || item.view !== "front"),
+    );
+    assert.equal(unassigned.manager.defaultExpressionId, expression.id, "remaining Side retains the default");
+    assert.equal(unassigned.snapshot.villagers[0]!.sprite!.images.length, 2);
+    await assert.rejects(removeSpriteAssignment("mara", request), /assignment changed/);
+    const fallback = await removeSpriteAssignment("mara", { ...request, view: "side" });
+    assert.equal(
+      fallback.manager.expressions.some((item) => item.id === expression.id),
+      false,
+    );
+    const remainingExpression = fallback.manager.assignments[0]!.expressionId;
+    assert.equal(fallback.manager.defaultExpressionId, remainingExpression);
+    const empty = await removeSpriteAssignment("mara", { ...request, expressionId: remainingExpression });
+    assert.equal(empty.manager.assignments.length, 0);
+    assert.equal(empty.manager.expressions.length, 0);
+    assert.equal(empty.manager.defaultExpressionId, undefined);
+    assert.equal(empty.snapshot.villagers[0]!.sprite, null, "no assignments returns Scenes to portrait fallback");
+    assert.deepEqual(empty.manager.artwork, beforeUnassign.artwork, "last removal still keeps artwork");
+    // Restore the front/side fixture for the remaining regressions.
+    saved = await save(empty.manager.artwork[0]!, "", "Composed");
+    expression.id = saved.manager.expressions[0]!.id;
+    saved = await save(saved.manager.artwork[1]!, expression.id, "Composed", "side");
     const assigned = structuredClone(saved.manager.assignments);
     failUpload = true;
     await assert.rejects(save(saved.manager.artwork[2]!), /storage unavailable/);
@@ -470,6 +524,7 @@ async function run() {
       ]),
     );
     await villagesRoutes(app as any);
+    assert.ok(handlers.has("post:/villagers/:characterId/sprites/manager/unassign"));
     for (const route of [
       "get:/villagers/:characterId/sprites/studio",
       "get:/villagers/:characterId/sprites/studio/*",

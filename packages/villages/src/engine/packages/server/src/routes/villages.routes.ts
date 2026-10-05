@@ -8,6 +8,7 @@ import {
   setSpriteDefault,
   setSpriteFraming,
   removeSpriteArtwork,
+  removeSpriteAssignment,
 } from "../services/villages/sprite-manager.js";
 import { readRuntimeDebug, saveRuntimeDebug, runtimeDebug } from "../services/villages/runtime-debug.js";
 import { readRelationshipsView, changeRelationshipCreator } from "../services/villages/relationships.js";
@@ -604,6 +605,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     default: setSpriteDefault,
     framing: setSpriteFraming,
     remove: removeSpriteArtwork,
+    unassign: removeSpriteAssignment,
   };
   for (const [action, handler] of Object.entries(managerActions)) {
     app.post<{ Params: CharacterParams; Body: unknown }>(

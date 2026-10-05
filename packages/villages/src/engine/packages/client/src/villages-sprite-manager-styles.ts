@@ -58,6 +58,10 @@ export const SPRITE_MANAGER_STYLES = `
 .vsm-image canvas, .vsm-image img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .vsm-safe { position: absolute; inset: 2.083333% 3.125%; border: 1px dashed var(--sm-primary); pointer-events: none; }
 .vsm-settings { display: grid; gap: 1rem; }
+.vsm-assignments { display: grid; gap: .5rem; }
+.vsm-assignment { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.vsm-assignment > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.vsm-assignment button { max-width: 100%; }
 .vsm-settings section { display: grid; gap: .65rem; }
 .vsm-settings section + section { border-top: 1px solid var(--sm-line); padding-top: 1rem; }
 .vsm label { display: grid; gap: .35rem; font-size: .85rem; min-width: 0; }
