@@ -1,5 +1,14 @@
 # Villages
 
+## Villager signatures (0.6.165)
+
+Each Villager's journal displays a stable handwritten name derived locally from their adopted character personality. **Generate signature** makes one explicit request through the Village image connection and saves an individual handwritten image. **Regenerate signature** is deliberate; profile browsing and snapshot refresh never request artwork. With images disabled, no connection, or unavailable artwork, the local signature remains available. Existing Villagers and missing source cards use their saved character snapshot.
+
+The requested canvas is 1536 × 1024; the provider may return a different supported size. Villages preserves the original in the Engine gallery and saves a cropped transparent ink derivative for reuse. Profiles display it within a responsive 220 × 70 area. The Villager retains both gallery references independently of card refresh. Signatures currently appear only on profiles; Projects and mailbox messages do not use them yet.
+
+Persisted request claims prevent duplicate clicks or lost-response replays from making another image request. Failed uploads and Village saves reuse the saved paid response on deliberate retry, even if images have since been disabled. Blank or invalid output and unknown provider outcomes require an explicit new attempt. The previous signature remains during regeneration and after a failure. Generated lettering can be imperfect; review it before choosing to regenerate. Host document persistence still has the buffered durability limitation described below.
+
+Run `node --import tsx tests/villages-signatures.regression.ts` and `node tests/villages-dossier.e2e.mjs` for handwriting, cropping, recovery, replay, late-effect fences and desktop/mobile profile coverage. Tests use synthetic images and mocked providers.
 ## Individual sprite assignments (0.6.164)
 
 Select artwork in Sprite Manager and use **Remove Front assignment** or **Remove Side assignment** in the **Assignments** list beneath Facing. Each action removes only that saved expression/facing assignment and keeps the artwork, framing and other assignments. Save or discard edits to that artwork first. Removing an expression’s last assignment removes its unused expression metadata; if it was the default, another assigned expression becomes the default, or Scenes use the portrait when none remain. Stale requests cannot remove a replacement assignment.

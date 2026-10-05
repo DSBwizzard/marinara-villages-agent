@@ -1,4 +1,5 @@
 import { readFoundingResidentContexts } from "./resident-founding-context.js";
+import { residentSignature } from "../../../../shared/src/villages/resident-signature.js";
 import { assertVillageVenueCapacity, assertCanAddVillageVenue, villageVenueLimit } from "./venue-capacity.js";
 import { wishExpired, wishRetained } from "./wish-definition.js";
 import {
@@ -204,6 +205,8 @@ function projectVillager(
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
+    signatureFallback: residentSignature(villager.cardSnapshot),
+    ...(villager.signature ? { signature: villager.signature } : {}),
     nameColor,
     dialogueColor,
     sprite: villager.sprite

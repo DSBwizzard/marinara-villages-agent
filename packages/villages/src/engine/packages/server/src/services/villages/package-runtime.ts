@@ -28,6 +28,10 @@ export const VILLAGES_PACKAGE_ID = "villages";
 
 let host: CapabilityRuntimeHost | null = null;
 let registration = 0;
+/** Fences delayed package effects across deactivation or replacement of the runtime host. */
+export function villagesRuntimeEpoch(): number | null {
+  return host ? registration : null;
+}
 const measuredDocuments = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 
 /** Called from `activate`; the returned function releases the slot on deactivate. */

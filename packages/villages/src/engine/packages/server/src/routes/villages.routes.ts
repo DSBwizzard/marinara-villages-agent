@@ -1,4 +1,5 @@
 import { retireResidentWish } from "../services/villages/wish-lifecycle.js";
+import { readResidentSignature, generateResidentSignature } from "../services/villages/resident-signature.js";
 import {
   readSpriteManager,
   importSpriteArtwork,
@@ -710,6 +711,21 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return await previewVillagerRefresh(readCharacterId(request.params.characterId));
     } catch (error) {
       return fail(reply, error, "previewing a villager refresh");
+    }
+  });
+
+  app.get<{ Params: CharacterParams }>("/villagers/:characterId/signature", async (request, reply) => {
+    try {
+      return await readResidentSignature(readCharacterId(request.params.characterId));
+    } catch (error) {
+      return fail(reply, error, "reading a Villager signature");
+    }
+  });
+  app.post<{ Params: CharacterParams; Body: unknown }>("/villagers/:characterId/signature", async (request, reply) => {
+    try {
+      return await generateResidentSignature(readCharacterId(request.params.characterId), request.body);
+    } catch (error) {
+      return fail(reply, error, "generating a Villager signature");
     }
   });
 
