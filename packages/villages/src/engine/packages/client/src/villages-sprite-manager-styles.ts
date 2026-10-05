@@ -103,6 +103,7 @@ export const SPRITE_MANAGER_STYLES = `
   .vsm-artwork { display: flex; overflow-x: auto; scroll-snap-type: x proximity; padding: 3px; }
   .vsm-artwork button { flex: 0 0 105px; scroll-snap-align: start; }
   .vsm-artwork img { height: 80px; }
+  .vsm-artwork-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .vsm-badges span { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .vsm-panel { gap: .6rem; padding: .7rem; }
   .vsm-heading > div:first-of-type { min-width: 130px; }

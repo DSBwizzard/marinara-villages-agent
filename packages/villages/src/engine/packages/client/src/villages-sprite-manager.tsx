@@ -330,7 +330,7 @@ export function SpriteManager({
             if (mayLeave()) onBack();
           }}
         >
-          {backLabel.replace("← Back to ", "← ")}
+          {backLabel === "← Back to profile" ? "← Profile" : backLabel.replace("← Back to ", "← ")}
         </button>
         <div>
           <h2 ref={heading} tabIndex={-1}>
