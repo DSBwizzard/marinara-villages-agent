@@ -95,6 +95,14 @@ assert.equal(staged.lines[1]?.gazeAt, undefined, "unknown gaze targets cannot st
 assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target without extra model output");
 
 const now = new Date().toISOString();
+assert.equal(coerceVillageState({}).spriteCardFlipEnabled, false, "legacy Villages start with flips off");
+assert.equal(coerceVillageState({ spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled, false);
+const flipVillage = coerceVillageState({ spriteCardFlipEnabled: true });
+assert.equal(
+  coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
+  true,
+  "the Village document preserves the shared setting through storage round trips",
+);
 const resident = {
   characterId: "a",
   addedAt: now,

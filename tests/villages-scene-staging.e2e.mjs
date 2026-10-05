@@ -23,6 +23,22 @@ try {
   ]) {
     for (let count = 1; count <= 4; count++) {
       const page = await browser.newPage({ viewport: { width, height } });
+      await page.addInitScript(() => {
+        window.spriteFlips = [];
+        const animate = Element.prototype.animate;
+        Element.prototype.animate = function (frames, options) {
+          if (this.tagName === "IMG" && this.parentElement?.dataset.characterId === "mara")
+            window.spriteFlips.push({
+              frames,
+              duration: options.duration,
+              src: this.getAttribute("src"),
+              facing: this.dataset.facing,
+            });
+          const animation = animate.call(this, frames, options);
+          if (this.tagName === "IMG" && window.holdSpriteFlips) animation.pause();
+          return animation;
+        };
+      });
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       const castIds = residents.slice(0, count).map((person) => person.characterId);
@@ -30,6 +46,7 @@ try {
       const side = spriteImage("#e478ac");
       const fixture = {
         ...snapshot,
+        settings: { ...snapshot.settings },
         villagers: residents.map((person, index) => ({
           ...person,
           sprite:
@@ -42,6 +59,18 @@ try {
                     { view: "side", label: "neutral", url: side },
                     { view: "front", label: "thinking", expressionId: "e-thinking", url: thoughts },
                     { view: "side", label: "thinking", expressionId: "e-thinking", url: thoughts },
+                    {
+                      view: "front",
+                      label: "delayed",
+                      expressionId: "e-delayed",
+                      url: "http://villages.test/delayed.png",
+                    },
+                    {
+                      view: "front",
+                      label: "failed",
+                      expressionId: "e-failed",
+                      url: "http://villages.test/failed.png",
+                    },
                   ],
                 },
         })),
@@ -77,10 +106,19 @@ try {
       };
       let phase = 0;
       let interpretationSettings = { decisionsEnabled: false, compareSystem: true };
-      await page.route("**/api/villages**", async (route) => {
+      let failSpriteSave = false;
+      const api = async (route) => {
         const path = new URL(route.request().url()).pathname;
         let value = fixture;
-        if (path.endsWith("/interpretation-settings")) {
+        if (path.endsWith("/settings") && route.request().method() === "PATCH") {
+          if (failSpriteSave)
+            return route.fulfill({
+              status: 500,
+              contentType: "application/json",
+              body: JSON.stringify({ message: "Setting save failed" }),
+            });
+          Object.assign(fixture.settings, route.request().postDataJSON());
+        } else if (path.endsWith("/interpretation-settings")) {
           if (route.request().method() === "PATCH")
             interpretationSettings = { ...interpretationSettings, ...route.request().postDataJSON() };
           value = {
@@ -93,7 +131,28 @@ try {
         else if (path.endsWith("/rooms/turn")) {
           const body = route.request().postDataJSON();
           phase++;
-          if (phase === 1) {
+          if (body.message.startsWith("sprite:")) {
+            const lineId = `sprite-${session.lines.length}`;
+            session.lines.push(
+              { id: lineId + "-player", role: "user", speakerId: "", name: "", content: body.message, at: now },
+              {
+                id: lineId,
+                role: "assistant",
+                kind: "dialogue",
+                speakerId: "mara",
+                name: "Mara",
+                content: "A different expression.",
+                expression: body.message.slice(7),
+                at: now,
+              },
+            );
+            session.submissions.push({
+              id: body.submissionId,
+              activeIdsAtTurn: castIds,
+              activeIdsAfterTurn: castIds,
+              replyLineIds: [lineId],
+            });
+          } else if (phase === 1) {
             session.lines.push(
               { id: "player", role: "user", speakerId: "", name: "", content: body.message, at: now },
               {
@@ -171,17 +230,18 @@ try {
           value = { session, verdict: null, action: null, recordEvents: [] };
         }
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
-      });
-      async function mount() {
-        await page.route("http://villages.test/", (route) =>
+      };
+      await page.route("**/api/villages**", api);
+      async function mount(target = page) {
+        await target.route("http://villages.test/", (route) =>
           route.fulfill({
             status: 200,
             contentType: "text/html",
             body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
           }),
         );
-        await page.goto("http://villages.test/");
-        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await target.goto("http://villages.test/");
+        await target.addScriptTag({ path: resolve("packages/villages/client.js") });
       }
       await mount();
       const cast = page.locator(".marinara-capability-villages-chat-cast");
@@ -191,6 +251,34 @@ try {
       const mobile = width <= 704 || (width <= 880 && height <= 512);
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+      const flipSwitch = page.getByRole("checkbox", { name: "Card-flip sprite changes" });
+      await expect(flipSwitch).not.toBeChecked();
+      const flipEnabled = count < 4;
+      if (flipEnabled) {
+        await flipSwitch.check();
+        await expect(flipSwitch).toBeChecked();
+        assert.equal(fixture.settings.spriteCardFlipEnabled, true);
+      }
+      if (count === 1 && width === 1440) {
+        failSpriteSave = true;
+        await flipSwitch.click();
+        await expect(page.getByRole("alert")).toBeVisible();
+        await expect(flipSwitch).toBeChecked();
+        failSpriteSave = false;
+        const otherDevice = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        await otherDevice.route("**/api/villages**", api);
+        await mount(otherDevice);
+        await otherDevice.getByRole("button", { name: "Venue actions" }).click();
+        await otherDevice.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+        await expect(otherDevice.getByRole("checkbox", { name: "Card-flip sprite changes" })).toBeChecked();
+        await otherDevice.getByRole("checkbox", { name: "Card-flip sprite changes" }).uncheck();
+        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
+        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+        await expect(flipSwitch).not.toBeChecked();
+        await flipSwitch.check();
+        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(true);
+        await otherDevice.close();
+      }
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
       await expect(decisionSwitch).toBeVisible();
       await expect(decisionSwitch).toBeEnabled();
@@ -293,6 +381,24 @@ try {
       await expect(mara).toHaveAttribute("data-attention", "left");
       await expect(mara.locator("img")).toHaveAttribute("data-facing", "left");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
+      await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
+      const firstFlips = await page.evaluate(() => window.spriteFlips);
+      assert.equal(firstFlips.length, flipEnabled ? 2 : 0, "simultaneous artwork and facing changes share one flip");
+      if (flipEnabled) {
+        assert.deepEqual(
+          firstFlips.map((flip) => flip.duration),
+          [150, 150],
+        );
+        assert.notEqual(firstFlips[0].src, thoughts, "outgoing half retains old artwork");
+        assert.equal(firstFlips[1].src, thoughts, "incoming half uses replacement artwork");
+        assert.match(firstFlips[0].frames[1].transform, /rotateY\(90deg\)/);
+        assert.match(firstFlips[1].frames[0].transform, /rotateY\(-90deg\)/);
+        assert.equal(
+          await mara.locator("span").evaluate((node) => node.getAnimations().length),
+          0,
+          "name does not rotate",
+        );
+      }
       await expect(cast).toHaveAttribute("data-animate", "true");
       if (count > 1 && count < 4) await expect(people.last().locator("img")).toHaveAttribute("src", thoughts);
       if (count === 4) await expect(people.last().locator(".marinara-capability-villages-avatar")).toHaveCount(1);
@@ -315,8 +421,20 @@ try {
       }
       await next.click();
       await expect(mara).toHaveAttribute("data-attention", "right", "side cue appears with the final paragraph");
+      await expect(mara.locator("img")).toHaveAttribute("data-facing", "right");
+      await expect(mara.locator("img")).toHaveAttribute("data-flipping", "false");
+      assert.equal(
+        await page.evaluate(() => window.spriteFlips.length),
+        flipEnabled ? 4 : 0,
+        "facing-only changes flip once",
+      );
       await next.click();
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
+      assert.equal(
+        await page.evaluate(() => window.spriteFlips.length),
+        flipEnabled ? 4 : 0,
+        "unchanged artwork and facing do not flip",
+      );
       await checkSpriteSize(mobile);
       if (count > 1) {
         const layers = await people.evaluateAll((nodes) =>
@@ -337,8 +455,14 @@ try {
       await previous.click();
       await expect(mara).toHaveAttribute("data-attention", "left");
       await expect(cast).toHaveAttribute("data-animate", "false");
+      const flipsBeforeReducedMotion = await page.evaluate(() => window.spriteFlips.length);
       await page.emulateMedia({ reducedMotion: "reduce" });
       await next.click();
+      assert.equal(
+        await page.evaluate(() => window.spriteFlips.length),
+        flipsBeforeReducedMotion,
+        "backward reading and reduced motion do not flip",
+      );
       assert.equal(await mara.evaluate((node) => getComputedStyle(node).transitionDuration), "0s");
       await next.click();
       if (process.env.VILLAGES_VISUAL_OUTPUT)
@@ -352,6 +476,7 @@ try {
       await expect(mara).toHaveAttribute("data-attention", "right");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
       await expect(cast).toHaveAttribute("data-animate", "false");
+      assert.equal(await page.evaluate(() => window.spriteFlips.length), 0, "restored Scene does not flip");
       if (count > 1) {
         const before = await mara.evaluate((node) => node.offsetLeft);
         await composer.fill("Until next time.");
@@ -381,6 +506,100 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await expect(mara.locator("img")).toHaveAttribute("data-framing", "half");
       await checkSpriteSize(mobile);
+      if (count === 1 && width === 1440) {
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        const img = mara.locator("img");
+        const initialArtwork = await img.getAttribute("src");
+        const sendExpression = async (expression) => {
+          await composer.fill("sprite:" + expression);
+          await page.getByRole("button", { name: "Send", exact: true }).click();
+        };
+        await sendExpression("e-thinking");
+        await expect(img).toHaveAttribute("src", thoughts);
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        assert.equal(await page.evaluate(() => window.spriteFlips.length), 2, "artwork-only changes flip once");
+        await previous.click();
+        await expect(img).toHaveAttribute("src", initialArtwork);
+        await page.evaluate(() => {
+          window.holdSpriteFlips = true;
+        });
+        await next.click();
+        await expect.poll(() => page.evaluate(() => window.spriteFlips.length)).toBeGreaterThan(2);
+        await expect(img).toHaveAttribute("data-flipping", "out");
+        await previous.click();
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        assert.equal(
+          await img.evaluate((node) => node.getAnimations().length),
+          0,
+          "rapid navigation cancels pending rotation",
+        );
+        await next.click();
+        await expect(img).toHaveAttribute("data-flipping", "out");
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        assert.equal(
+          await img.evaluate((node) => node.getAnimations().length),
+          0,
+          "reduced motion cancels an active flip",
+        );
+        await page.evaluate(() => {
+          window.holdSpriteFlips = false;
+        });
+        await page.emulateMedia({ reducedMotion: "no-preference" });
+        await expect(img).toHaveAttribute("src", thoughts);
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        await previous.click();
+        await page.evaluate(() => {
+          window.holdSpriteFlips = true;
+        });
+        await next.click();
+        await expect(img).toHaveAttribute("data-flipping", "out");
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+        await flipSwitch.uncheck();
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        await expect(img).toHaveAttribute("src", thoughts);
+        assert.equal(
+          await img.evaluate((node) => node.getAnimations().length),
+          0,
+          "disabling the shared toggle cancels an active flip",
+        );
+        await flipSwitch.check();
+        await page.getByRole("button", { name: "Close Scene settings" }).click();
+        await page.evaluate(() => {
+          window.holdSpriteFlips = false;
+        });
+        let releaseArtwork;
+        const artworkReady = new Promise((resolve) => {
+          releaseArtwork = resolve;
+        });
+        await page.route("http://villages.test/delayed.png", async (route) => {
+          await artworkReady;
+          await route.fulfill({ contentType: "image/svg+xml", body: Buffer.from(thoughts.split(",")[1], "base64") });
+        });
+        const beforeLoading = await page.evaluate(() => window.spriteFlips.length);
+        const requested = page.waitForRequest("http://villages.test/delayed.png");
+        await sendExpression("e-delayed");
+        await requested;
+        assert.equal(await img.getAttribute("src"), thoughts, "old artwork remains visible until replacement loads");
+        assert.equal(
+          await page.evaluate(() => window.spriteFlips.length),
+          beforeLoading,
+          "loading does not start a flip",
+        );
+        releaseArtwork();
+        await expect(img).toHaveAttribute("src", "http://villages.test/delayed.png");
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        await page.route("http://villages.test/failed.png", (route) => route.fulfill({ status: 404, body: "missing" }));
+        await sendExpression("e-failed");
+        await expect(img).toHaveAttribute("src", initialArtwork);
+        await expect(img).toHaveAttribute("data-flipping", "false");
+        assert.equal(
+          await img.evaluate((node) => node.complete && node.naturalWidth > 0),
+          true,
+          "failed artwork returns to a loaded default",
+        );
+      }
       if (process.env.VILLAGES_VISUAL_OUTPUT)
         await page.screenshot({
           path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `staging-half-${count}-${width}x${height}.png`),
@@ -390,7 +609,7 @@ try {
     }
   }
   console.log(
-    "Villages staging browser checks: one through four residents, four viewports, mobile sizing, overlap, rotation, waist-up framing, shared zones, side timing, replay, refresh, departures, legacy visits, and reduced motion passed",
+    "Villages staging browser checks: one through four residents, four viewports, framing, movement, card flips, shared settings, failures, loading, cancellation, replay, refresh, departures, legacy visits, and reduced motion passed",
   );
 } finally {
   await browser.close();
