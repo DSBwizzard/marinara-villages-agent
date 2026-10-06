@@ -18,9 +18,9 @@ import {
   setVillagerScheduleInfluence,
   setVillagerScheduleIngestion,
   buildVillageAgendas,
-  rollActiveAgendas,
   reconcileVillage,
 } from "../packages/villages/src/server/features/world/village.js";
+import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/agenda-roll.js";
 import {
   startBackgroundWork,
   settleBackgroundWork,

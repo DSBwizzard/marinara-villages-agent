@@ -1,8 +1,8 @@
 import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
 import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   approveVillageResidence,
-  buildVillageSnapshot,
   changeVenueAccess,
   completeVillageResidence,
   createVillageVenue,

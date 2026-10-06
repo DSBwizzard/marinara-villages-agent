@@ -5,9 +5,9 @@ import { readRuntimeDebug, saveRuntimeDebug } from "../../adapters/observability
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
 import { setVenueVisitRetention } from "../scenes/venue-session.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   buildVillagePersonaCatalog,
-  buildVillageSnapshot,
   readVillagePersonaPreview,
   refreshPlayerPersona,
   setScenerySettings,

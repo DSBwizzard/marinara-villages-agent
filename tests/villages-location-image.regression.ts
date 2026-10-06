@@ -895,7 +895,7 @@ async function main() {
       ]),
     );
   });
-  const addedSnapshot = (await import(moduleUrl(`${services}/features/world/village.ts`))).buildVillageSnapshot;
+  const addedSnapshot = (await import(moduleUrl(`${services}/features/world/snapshot.ts`))).buildVillageSnapshot;
   assert.deepEqual(
     (await addedSnapshot()).settings.venues
       .filter((venue: any) => ["mill", "ridge"].includes(venue.id))

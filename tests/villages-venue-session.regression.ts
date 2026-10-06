@@ -82,11 +82,11 @@ import {
   resetVillage,
   completeVillageResidence,
   updateVillageVenue,
-  buildVillageSnapshot,
   proposeResidenceSpaceEdit,
   setVillageVenueImage,
   setVillageSendOnEnter,
 } from "../packages/villages/src/server/features/world/village.js";
+import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
 async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {

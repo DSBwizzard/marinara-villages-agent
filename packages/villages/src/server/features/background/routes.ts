@@ -1,7 +1,8 @@
 import { fail } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { backgroundWorkSummaries, retryBackgroundJob, villageBackgroundPresence } from "../../jobs/background-work.js";
-import { buildVillageSnapshot, reconcileVillage } from "../world/village.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
+import { reconcileVillage } from "../world/village.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerBackgroundRoutes(engine: FastifyInstance) {

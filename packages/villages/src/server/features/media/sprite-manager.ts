@@ -15,8 +15,8 @@ import { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { emptySpriteManager, isEngineSpriteFilename } from "../../domain/rules/sprite-manager-model.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
-import { buildVillageSnapshot } from "../world/village.js";
 import { createHash, randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
 

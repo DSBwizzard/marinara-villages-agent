@@ -1,11 +1,11 @@
 import { fail } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { listVenueVisitSummaries } from "../scenes/venue-session.js";
+import { buildVillageSnapshot } from "./snapshot.js";
 import {
   addNotice,
   buildVillageCatalog,
   buildVillageMemories,
-  buildVillageSnapshot,
   buildVillageStory,
   reconcileVillage,
   removeChronicleEntry,

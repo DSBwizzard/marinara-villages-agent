@@ -2,8 +2,8 @@ import { fail, SETTINGS_BODY_LIMIT, VENUE_IMAGE_BODY_LIMIT } from "../../adapter
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
 import { generateVillageTownMap } from "../media/town-map-image.js";
 import { resetVenueSessions } from "../scenes/venue-session.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
-  buildVillageSnapshot,
   draftVenueDescriptions,
   foundingPreparationSnapshot,
   resetVillage,

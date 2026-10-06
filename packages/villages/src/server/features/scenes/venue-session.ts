@@ -181,6 +181,7 @@ import {
   projectProposals,
 } from "../projects/project-checks.js";
 import { processProjectSpeechTurn } from "../projects/project-evidence.js";
+import { rollActiveAgendas } from "../residents/agenda-roll.js";
 import {
   bindLiveProposals,
   createLiveEvidenceContext,
@@ -217,7 +218,6 @@ import {
   decideVillageResidence,
   proposeVillageResidence,
   queueVillageVenueRequest,
-  rollActiveAgendas,
 } from "../world/village.js";
 import { memoryForVillager } from "./chat.js";
 import { dispatchExchange } from "./exchange-processing.js";

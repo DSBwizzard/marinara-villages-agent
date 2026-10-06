@@ -9,12 +9,8 @@ import {
   VENUE_IMAGE_BODY_LIMIT,
 } from "../../adapters/http/route-support.js";
 import { imageTarget } from "../venues/image-target.js";
-import {
-  buildVillageSnapshot,
-  readVillageTownMapImage,
-  replaceVillageTownMap,
-  setVillageVenueImage,
-} from "../world/village.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
+import { readVillageTownMapImage, replaceVillageTownMap, setVillageVenueImage } from "../world/village.js";
 import { generateVillageLocationImage, storeVillageVenueImage } from "./location-image.js";
 import {
   adoptSpriteArtwork,

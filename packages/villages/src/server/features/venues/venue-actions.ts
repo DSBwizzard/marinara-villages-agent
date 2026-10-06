@@ -16,10 +16,10 @@ import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { venueCheckpoint } from "../../jobs/venue-coordinator.js";
 import { completeWithRoom } from "../generation/model-requests.js";
+import { rollActiveAgendas } from "../residents/agenda-roll.js";
 import { activeVenueSession, recordVenueAction } from "../scenes/venue-session.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
-import { rollActiveAgendas } from "../world/village.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 export type { VenueActionResult } from "../../domain/models/venue-action-model.js";
