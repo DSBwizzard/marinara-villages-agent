@@ -142,6 +142,8 @@ async function setupPersistence() {
   let requests = 0;
   let suggesting = false;
   let loseContext = false;
+  let responseMode = "valid";
+  let outputLimit = 8000;
   const queued: VoidFunction[] = [];
   const originalFetch = globalThis.fetch;
   const originalQueue = globalThis.queueMicrotask;
@@ -187,14 +189,24 @@ async function setupPersistence() {
         assert.ok(suggesting, "setup persistence must not request a model");
         return {
           model: "fixture",
-          maxOutputTokens: 4000,
+          maxOutputTokens: outputLimit,
           fitContext: (messages: any[], options: any) => ({ ...options, messages: loseContext ? [] : messages }),
-          chatComplete: async (messages: any[]) => {
+          chatComplete: async (messages: any[], options: any) => {
             requests++;
             assert.match(messages[0].content, /Mecca remains in the full card/);
             assert.match(messages[0].content, /Station Fields is elsewhere/);
             assert.match(messages[0].content, /narrator-only truths are not resident knowledge/);
+            assert.equal(options.reasoningEffort, "none", "drafting leaves output room for the Venue list");
+            assert.equal(options.maxTokens, Math.min(outputLimit, 4000));
             const input = JSON.parse(messages.at(-1).content);
+            assert.deepEqual(
+              input.responseTemplate.venues.map((venue: any) => venue.id),
+              input.venues.map((venue: any) => venue.id),
+            );
+            if (responseMode === "blank") return { content: "", finishReason: "stop" };
+            if (responseMode === "malformed") return { content: '{"venues":[', finishReason: "stop" };
+            if (responseMode === "truncated") return { content: '{"venues":[', finishReason: "length" };
+            if (responseMode === "max_tokens") return { content: '{"venues":[', finishReason: "max_tokens" };
             assert.match(input.setting, /orbital observatory/);
             return {
               content: JSON.stringify({
@@ -252,6 +264,32 @@ async function setupPersistence() {
     loseContext = false;
     assert.equal((await suggestStartingVenues(suggestionInput)).venues.length, 3);
     assert.equal(requests, 1, "resident context uses the existing suggestion request");
+    for (const [mode, error] of [
+      ["blank", /readable Venue suggestions/],
+      ["malformed", /readable Venue suggestions/],
+      ["truncated", /ran out of output room/],
+      ["max_tokens", /ran out of output room/],
+    ] as const) {
+      responseMode = mode;
+      const before = requests;
+      const saved = structuredClone([...docs].filter(([id]) => id !== "villages-ai-usage"));
+      const draft = structuredClone(suggestionInput);
+      await assert.rejects(suggestStartingVenues(suggestionInput), error);
+      assert.equal(requests, before + 1, "failed drafting makes only one model request");
+      assert.deepEqual(
+        [...docs].filter(([id]) => id !== "villages-ai-usage"),
+        saved,
+        "failed drafting cannot change the saved world",
+      );
+      assert.deepEqual(suggestionInput, draft, "failed drafting cannot change the founding draft");
+    }
+    responseMode = "valid";
+    outputLimit = 1024;
+    assert.equal(
+      (await suggestStartingVenues(suggestionInput)).venues.length,
+      3,
+      "the connection's lower output limit is honored",
+    );
     suggesting = false;
     requests = 0;
     for (const invalid of [{ stranger: context }, { aqua: { ...defaults, storyRole: "custom" } }]) {
