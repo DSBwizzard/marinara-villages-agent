@@ -1,3 +1,4 @@
+import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { clientImplementation } from "./client-source.js";
 // Villages — proof for the pictures a place can have.
 //
@@ -68,7 +69,7 @@ async function main() {
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
   const services = "packages/villages/src/server";
 
-  const { avatarPromptId, buildLocationPrompt, decodeImageDataUrl, MAX_LOCATION_IMAGE_BASE64_LENGTH } = await import(
+  const { avatarPromptId, buildLocationPrompt, decodeImageDataUrl } = await import(
     moduleUrl(`${services}/features/media/location-image.ts`)
   );
   const {
@@ -1126,7 +1127,7 @@ async function main() {
   assert.deepEqual(
     canDraw,
     [
-      "server/entry/routes.ts",
+      "server/features/media/routes.ts",
       "server/adapters/engine/engine-loopback.ts",
       "server/features/media/image-generation.ts",
       "server/features/media/location-image.ts",

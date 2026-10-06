@@ -1,0 +1,604 @@
+{
+  "baseline": "9e12f23be71c137c2e5017375641f72ec45b38b3",
+  "routes": [
+    {
+      "method": "get",
+      "path": "/interpretation-settings"
+    },
+    {
+      "method": "patch",
+      "path": "/interpretation-settings",
+      "bodyLimit": 1024
+    },
+    {
+      "method": "get",
+      "path": "/interpretation-diagnostics/:sceneId"
+    },
+    {
+      "method": "get",
+      "path": "/relationships"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/wishes/:wishId/retire"
+    },
+    {
+      "method": "post",
+      "path": "/relationships/creator"
+    },
+    {
+      "method": "get",
+      "path": "/villagers/:characterId/sprites/studio"
+    },
+    {
+      "method": "get",
+      "path": "/villagers/:characterId/sprites/studio/*"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/studio"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/studio/*"
+    },
+    {
+      "method": "get",
+      "path": "/villagers/:characterId/sprites/manager"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/import",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/library",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/adopt",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/save",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/default",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/framing",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/remove",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/manager/unassign",
+      "bodyLimit": 32000000
+    },
+    {
+      "method": "get",
+      "path": "/"
+    },
+    {
+      "method": "get",
+      "path": "/catalog"
+    },
+    {
+      "method": "get",
+      "path": "/personas"
+    },
+    {
+      "method": "get",
+      "path": "/personas/:personaId"
+    },
+    {
+      "method": "post",
+      "path": "/persona/refresh"
+    },
+    {
+      "method": "get",
+      "path": "/town-map"
+    },
+    {
+      "method": "put",
+      "path": "/town-map",
+      "bodyLimit": 8065536
+    },
+    {
+      "method": "post",
+      "path": "/villagers"
+    },
+    {
+      "method": "get",
+      "path": "/villagers/:characterId/refresh"
+    },
+    {
+      "method": "get",
+      "path": "/villagers/:characterId/signature"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/signature"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/refresh"
+    },
+    {
+      "method": "delete",
+      "path": "/villagers/:characterId"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/generate"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/approve"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/import"
+    },
+    {
+      "method": "post",
+      "path": "/villagers/:characterId/sprites/framing"
+    },
+    {
+      "method": "get",
+      "path": "/villagers/:characterId/sprites/source"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/active"
+    },
+    {
+      "method": "post",
+      "path": "/rooms"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/zone"
+    },
+    {
+      "method": "post",
+      "path": "/private-spaces/retry"
+    },
+    {
+      "method": "post",
+      "path": "/venues/:venueId/access"
+    },
+    {
+      "method": "put",
+      "path": "/venues/:venueId/zones/:zoneId"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/greet"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/continue"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/activity"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/enter-private"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/debug/discard"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/:id/changes"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/:id/operation"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/:id/notices/dismiss",
+      "bodyLimit": 2048
+    },
+    {
+      "method": "post",
+      "path": "/rooms/:id/notices/:noticeId/dismiss"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/:id/changes/replay"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/:id/changes/:submissionId/interpret"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/:id/operations/:operationId"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/turn"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/leave"
+    },
+    {
+      "method": "post",
+      "path": "/rooms/end"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/archive"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/archive/:id"
+    },
+    {
+      "method": "delete",
+      "path": "/rooms/archive/:id"
+    },
+    {
+      "method": "delete",
+      "path": "/rooms/archive"
+    },
+    {
+      "method": "get",
+      "path": "/usage"
+    },
+    {
+      "method": "post",
+      "path": "/usage/preview"
+    },
+    {
+      "method": "post",
+      "path": "/usage/reset"
+    },
+    {
+      "method": "patch",
+      "path": "/usage/linkapi"
+    },
+    {
+      "method": "patch",
+      "path": "/usage/pricing"
+    },
+    {
+      "method": "get",
+      "path": "/debug/runtime"
+    },
+    {
+      "method": "patch",
+      "path": "/debug/runtime"
+    },
+    {
+      "method": "get",
+      "path": "/lorebooks"
+    },
+    {
+      "method": "patch",
+      "path": "/settings",
+      "bodyLimit": 8065536
+    },
+    {
+      "method": "get",
+      "path": "/narration"
+    },
+    {
+      "method": "put",
+      "path": "/narration"
+    },
+    {
+      "method": "get",
+      "path": "/connections"
+    },
+    {
+      "method": "put",
+      "path": "/connections"
+    },
+    {
+      "method": "post",
+      "path": "/setup",
+      "bodyLimit": 8065536
+    },
+    {
+      "method": "post",
+      "path": "/setup/venues/suggest"
+    },
+    {
+      "method": "post",
+      "path": "/setup/scenario-imprint/draft"
+    },
+    {
+      "method": "post",
+      "path": "/setup/town-map/generate"
+    },
+    {
+      "method": "get",
+      "path": "/setup/town-map/generation/:actionId"
+    },
+    {
+      "method": "post",
+      "path": "/setup/reset"
+    },
+    {
+      "method": "post",
+      "path": "/bootstrap"
+    },
+    {
+      "method": "post",
+      "path": "/setup/public-venue/names/suggest"
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue/descriptions/draft"
+    },
+    {
+      "method": "get",
+      "path": "/setup/preparation"
+    },
+    {
+      "method": "post",
+      "path": "/setup/preparation/retry"
+    },
+    {
+      "method": "post",
+      "path": "/setup/venue-image/generate"
+    },
+    {
+      "method": "put",
+      "path": "/setup/venue-image",
+      "bodyLimit": 28027564
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue/image"
+    },
+    {
+      "method": "put",
+      "path": "/locations/venue/image",
+      "bodyLimit": 28027564
+    },
+    {
+      "method": "delete",
+      "path": "/locations/venue/image"
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue"
+    },
+    {
+      "method": "post",
+      "path": "/projects"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/place"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/request-approval"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/builder"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/requirements"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/deliver"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/start"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/debug-complete"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/open"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/revise"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/renew-approvals"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/record"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/existing-source"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/reallocate-held"
+    },
+    {
+      "method": "get",
+      "path": "/projects/:projectId/evidence"
+    },
+    {
+      "method": "get",
+      "path": "/progress/debug"
+    },
+    {
+      "method": "post",
+      "path": "/projects/renovations/:venueId"
+    },
+    {
+      "method": "post",
+      "path": "/venue-requests/:requestId/approve"
+    },
+    {
+      "method": "post",
+      "path": "/venue-requests/:requestId/deny"
+    },
+    {
+      "method": "post",
+      "path": "/venue-upgrades/:requestId/approve"
+    },
+    {
+      "method": "post",
+      "path": "/venue-upgrades/:requestId/deny"
+    },
+    {
+      "method": "put",
+      "path": "/locations/venue/:venueId"
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue/:venueId/edit-proposals"
+    },
+    {
+      "method": "get",
+      "path": "/locations/venue/:venueId/dependencies"
+    },
+    {
+      "method": "delete",
+      "path": "/locations/venue/:venueId"
+    },
+    {
+      "method": "post",
+      "path": "/residences/proposals"
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue/:venueId/proposals"
+    },
+    {
+      "method": "post",
+      "path": "/locations/venue/:venueId/player-move"
+    },
+    {
+      "method": "post",
+      "path": "/venue-mail/:mailId/decision"
+    },
+    {
+      "method": "post",
+      "path": "/residences/approvals"
+    },
+    {
+      "method": "post",
+      "path": "/residences/denials"
+    },
+    {
+      "method": "post",
+      "path": "/residences/debug/complete-now"
+    },
+    {
+      "method": "post",
+      "path": "/residences/private-space/retry"
+    },
+    {
+      "method": "post",
+      "path": "/noticeboard"
+    },
+    {
+      "method": "delete",
+      "path": "/noticeboard/:index"
+    },
+    {
+      "method": "post",
+      "path": "/reconcile"
+    },
+    {
+      "method": "post",
+      "path": "/background/presence"
+    },
+    {
+      "method": "post",
+      "path": "/background/retry"
+    },
+    {
+      "method": "get",
+      "path": "/story"
+    },
+    {
+      "method": "get",
+      "path": "/memories"
+    },
+    {
+      "method": "delete",
+      "path": "/memories/durable/:id"
+    },
+    {
+      "method": "delete",
+      "path": "/memories/recollections/:id"
+    },
+    {
+      "method": "delete",
+      "path": "/story/:id"
+    },
+    {
+      "method": "get",
+      "path": "/agendas/:characterId/history"
+    },
+    {
+      "method": "get",
+      "path": "/agendas"
+    },
+    {
+      "method": "delete",
+      "path": "/agendas/:characterId"
+    },
+    {
+      "method": "post",
+      "path": "/agendas/:characterId/regenerate"
+    },
+    {
+      "method": "post",
+      "path": "/agendas/:characterId/completed/:wishId/correct"
+    },
+    {
+      "method": "patch",
+      "path": "/agendas/:characterId/influence"
+    },
+    {
+      "method": "patch",
+      "path": "/agendas/:characterId/ingestion"
+    },
+    {
+      "method": "delete",
+      "path": "/remaps/:characterId"
+    },
+    {
+      "method": "get",
+      "path": "/spinoffs/prompts"
+    },
+    {
+      "method": "get",
+      "path": "/presets/:presetId/variables"
+    },
+    {
+      "method": "get",
+      "path": "/spinoffs/:chatId"
+    }
+  ]
+}

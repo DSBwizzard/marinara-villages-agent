@@ -1,3 +1,4 @@
+import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 // Wiring proof for the active Scene, Venue editor, and Mailbox. Behavior is
 // exercised by the Venue session, model, and location image suites.
@@ -7,7 +8,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const routes = readFileSync(resolve(root, "packages/villages/src/server/entry/routes.ts"), "utf8");
+const routes = villageRouteSource();
 const ui = clientImplementation();
 const session = readFileSync(resolve(root, "packages/villages/src/server/features/scenes/venue-session.ts"), "utf8");
 const sceneModel = readFileSync(resolve(root, "packages/villages/src/server/domain/models/scene-model.ts"), "utf8");

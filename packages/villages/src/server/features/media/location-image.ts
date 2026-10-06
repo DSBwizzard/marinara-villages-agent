@@ -4,6 +4,7 @@ import { readVillageVisualLore } from "../../adapters/engine/lorebooks.js";
 import { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
+import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
 import { MAX_VENUE_IMAGE_BYTES } from "../../domain/rules/prompt-preset.js";
 import { sceneryCharacterContext, sceneryImageKey, sceneryPrompt } from "../../domain/rules/scenery-context.js";
 import { venueClasses, venueInArea, venueInSpace } from "../../domain/rules/venue-model.js";
@@ -74,7 +75,6 @@ const LOCATION_NEGATIVE_PROMPT =
  * transport limit, the decoding limit and the number the settings panel shows
  * are one fact rather than three that agree today.
  */
-export const MAX_LOCATION_IMAGE_BASE64_LENGTH = Math.ceil(MAX_VENUE_IMAGE_BYTES / 3) * 4;
 
 /** The Engine's own avatar prompt id, built here exactly as the Engine builds it. */
 export const avatarPromptId = imagePromptId;

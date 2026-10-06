@@ -1,4 +1,5 @@
-import { startVillagesApplication, type ActivationContext } from "./application.js";
+import { type ActivationContext, startVillagesApplication } from "./application.js";
+
 let application: Awaited<ReturnType<typeof startVillagesApplication>> | null = null;
 export async function activate(context: ActivationContext) {
   const activated = await startVillagesApplication(context);

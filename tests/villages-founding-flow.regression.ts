@@ -1,3 +1,4 @@
+import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -302,7 +303,7 @@ async function main() {
   );
 
   const client = await clientImplementation();
-  const routes = await readFile(join(serverRoot, "entry/routes.ts"), "utf8");
+  const routes = villageRouteSource();
   const village = await readFile(join(serverRoot, "features/world/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts.ts"), "utf8");
   assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));

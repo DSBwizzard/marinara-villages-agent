@@ -1,6 +1,7 @@
 import type { StagingCue } from "../helpers/scene-staging.js";
 import type { PlayerRole } from "./player-role.js";
 import type { VillagesWalkBeat } from "./scene-beat.js";
+
 /** Client-visible wire data. Private saved-world and Scene records stay on the server. */
 
 export type ScenarioImprint = {

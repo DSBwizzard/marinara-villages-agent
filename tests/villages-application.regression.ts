@@ -112,7 +112,7 @@ async function exercise(failure = "") {
 async function main() {
   for (const failure of ["", "debug", "recover", "routes", "private"]) await exercise(failure);
   console.log(
-    "Villages application regression: startup order, failed activation unwind, read-only self-check and shutdown ownership passed (mocked assembly).",
+    "Villages application regression: startup order, failed activation unwind, self-check delegation and shutdown ownership passed (mocked assembly).",
   );
 }
 main().catch((error) => {

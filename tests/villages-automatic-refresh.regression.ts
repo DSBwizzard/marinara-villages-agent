@@ -1,3 +1,4 @@
+import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 // Continuous Villages time: exact projection, migration, idempotent restart
 // reconciliation, model-independent progress, and the live unreferenced timer.
@@ -11,7 +12,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
-  const routesSource = readFileSync(join(repoRoot, "packages/villages/src/server/entry/routes.ts"), "utf8");
+  const routesSource = villageRouteSource();
   const clientSource = clientImplementation();
   assert.match(routesSource, /"\/reconcile"/u);
   assert.doesNotMatch(routesSource, /"\/tick"/u);

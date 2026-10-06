@@ -37,7 +37,7 @@ import {
   discardVenueVisitDebug,
   publicSceneResponse,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
-import { sceneLockedRoutes } from "../packages/villages/src/server/entry/routes.js";
+import { sceneLockedRoutes } from "../packages/villages/src/server/features/spinoff/legacy-route-lock.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { buildVillageSnapshot, setVillageVenueImage } from "../packages/villages/src/server/features/world/village.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";

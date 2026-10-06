@@ -1,3 +1,4 @@
+import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
@@ -439,7 +440,7 @@ async function main() {
     "founding and replacement each generate explicitly",
   );
 
-  const routes = await readFile(join(root, "packages/villages/src/server/entry/routes.ts"), "utf8");
+  const routes = villageRouteSource();
   assert.ok(routes.includes('>("/setup", { bodyLimit: SETTINGS_BODY_LIMIT }'));
   assert.ok(routes.includes('>("/setup/town-map/generate"'));
 
