@@ -68,19 +68,32 @@ export async function startVillagesApplication(
   { api, app }: ActivationContext,
   services: ApplicationServices = applicationServices,
 ) {
-  const cleanups: Array<() => void | Promise<void>> = [
-    services.configureRuntime(api.runtime),
-    services.startTownMapGeneration(),
-    services.configureDecisions({ app }),
-    services.stopInterpretationComparisons,
-  ];
-  const unwind = async () => {
-    for (const cleanup of cleanups.reverse()) await cleanup();
+  const cleanups: Cleanup[] = [];
+  let stopping: Promise<void> | undefined;
+  const unwind = () => {
+    // Memoize before calling any disposer, including a synchronous one.
+    stopping ??= Promise.resolve().then(async () => {
+      const failures: unknown[] = [];
+      while (cleanups.length) {
+        const cleanup = cleanups.pop()!;
+        try {
+          await cleanup();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures.length) throw new AggregateError(failures, "Villages cleanup failed");
+    });
+    return stopping;
   };
   try {
+    cleanups.push(services.configureRuntime(api.runtime));
+    cleanups.push(services.startTownMapGeneration());
+    cleanups.push(services.configureDecisions({ app }));
+    cleanups.push(services.stopInterpretationComparisons);
     await services.readRuntimeDebug().catch(services.warnRuntimeDebug);
-    await services.recoverVenueSceneWork();
     cleanups.push(services.stopVenueCoordinator);
+    await services.recoverVenueSceneWork();
     cleanups.push(await api.registerPrivilegedRoutes(services.routes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.
@@ -90,7 +103,15 @@ export async function startVillagesApplication(
     cleanups.push(await services.startPrivateSpacePreparation());
   } catch (error) {
     // Never leave a half-wired package holding a runtime slot.
-    await unwind();
+    try {
+      await unwind();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, ...(cleanupError instanceof AggregateError ? cleanupError.errors : [cleanupError])],
+        "Villages activation and cleanup failed",
+        { cause: error },
+      );
+    }
     throw error;
   }
   return {

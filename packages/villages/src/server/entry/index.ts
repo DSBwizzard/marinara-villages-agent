@@ -5,7 +5,7 @@ export async function activate(context: ActivationContext) {
   const activated = await startVillagesApplication(context);
   application = activated;
   return async () => {
-    application = null;
+    if (application === activated) application = null;
     await activated.stop();
   };
 }
