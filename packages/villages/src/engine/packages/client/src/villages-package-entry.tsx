@@ -13676,6 +13676,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   }, [setupAuthoredFields]);
   const [setupSuggestionsKey, setSetupSuggestionsKey] = useState("");
   const [setupSuggestionsBusy, setSetupSuggestionsBusy] = useState(false);
+  const setupSuggestionsClaim = useRef(false);
   const [draftReady, setDraftReady] = useState(false);
   const [draftSaveError, setDraftSaveError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
@@ -13884,8 +13885,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     void loadCatalog();
   };
   const exitSetupDraft = async () => {
+    if (setupImageClaim.current || setupSuggestionsClaim.current) return;
     try {
       await flushSetupDraft();
+      if (setupImageClaim.current || setupSuggestionsClaim.current) return;
       setSetupEditorOpen(false);
       setScreen("resume");
     } catch (cause) {
@@ -13958,7 +13961,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     });
   }, [screen, snapshot?.isFounded, draftReady, setupFoundingVillagerIds, catalog]);
   const suggestSetupVenues = async () => {
-    if (setupSuggestionsBusy || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
+    if (setupSuggestionsClaim.current || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
+    setupSuggestionsClaim.current = true;
     const source = setupBeginningSourceKey;
     const rows = setupVenues;
     setSetupSuggestionsBusy(true);
@@ -14081,6 +14085,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
     } finally {
+      setupSuggestionsClaim.current = false;
       setSetupSuggestionsBusy(false);
     }
   };
@@ -22408,8 +22413,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </span>
           <button
             type="button"
-            disabled={busy || setupEditorOpen}
-            onClick={() => (snapshot?.isFounded ? setScreen("home") : void exitSetupDraft())}
+            disabled={busy || setupEditorOpen || setupVenueBusy || setupSuggestionsBusy}
+            onClick={() => {
+              if (setupImageClaim.current || setupSuggestionsClaim.current) return;
+              if (snapshot?.isFounded) setScreen("home");
+              else void exitSetupDraft();
+            }}
           >
             {snapshot?.isFounded ? "Cancel changes" : "Save & exit"}
           </button>

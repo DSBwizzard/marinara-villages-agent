@@ -457,6 +457,7 @@ try {
     await forward("Draft starting Venues").click();
     if (width === 1366) {
       await expect.poll(() => !!releaseSuggestion).toBe(true);
+      await expect(forward("Save & exit")).toBeDisabled();
       await inspector.getByRole("button", { name: "Venue", exact: true }).click();
       await inspector.getByLabel("Venue Type", { exact: true }).fill("Authored during suggestion");
       await inspector.getByLabel("Venue name", { exact: true }).fill("My observatory quarters");
@@ -465,6 +466,7 @@ try {
       await inspector.getByRole("button", { name: "Zones", exact: true }).click();
     }
     await expect(root.getByRole("button", { name: "Draft starting Venues", exact: true })).toBeEnabled();
+    await expect(forward("Save & exit")).toBeEnabled();
     await expect(list.locator("button").first()).toContainText("My observatory quarters");
     assert.equal(suggestionCalls, 2, "suggestions happen only on explicit request");
     // Fields, the selected Zone, and the map survive view switches and side-panel width changes.
@@ -556,12 +558,14 @@ try {
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect.poll(() => !!releaseImage).toBe(true);
       await expect(inspector.getByLabel("Zone appearance")).toBeDisabled();
+      await expect(forward("Save & exit")).toBeDisabled();
       await expect(forward("Review village")).toBeDisabled();
       await open(0);
       await inspector.getByRole("button", { name: "Venue", exact: true }).click();
       await expect(inspector.getByLabel("Physical form")).toBeEnabled();
       releaseImage();
       await expect(forward("Review village")).toBeEnabled();
+      await expect(forward("Save & exit")).toBeEnabled();
       await open(1);
       await expect(inspector.locator("img")).toHaveCount(1);
       await forward("Draft starting Venues").click();
