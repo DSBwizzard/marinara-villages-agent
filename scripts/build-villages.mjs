@@ -13,7 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageRoot = join(root, "packages/villages");
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const boundary = await assertPackagePrivateImportBoundary({
-  sourceRoot: join(packageRoot, "src/engine"),
+  sourceRoot: join(packageRoot, "src"),
   boundaryPath: join(packageRoot, "engine-boundary.json"),
   displayName: "Villages",
   capabilityApi: feature.capabilityApi,

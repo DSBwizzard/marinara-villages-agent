@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {
   mobileSceneLayout,
   mobileReadingCounter,
-} from "../packages/villages/src/engine/packages/client/src/villages-mobile-scene.js";
+} from "../packages/villages/src/client/features/scenes/villages-mobile-scene.js";
 import {
   initialStaging,
   replayStaging,

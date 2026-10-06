@@ -11,13 +11,15 @@
   "privateEngineImports": [],
   "privateEngineRuntimeImports": [
     {
-      "source": "packages/server/src/services/villages/decisions-adapter.ts",
+      "source": "engine/packages/server/src/services/villages/decisions-adapter.ts",
       "modules": [
         "services/decision/decision-default.js",
         "services/storage/connections.storage.js",
         "services/storage/app-settings.storage.js"
       ],
-      "testedBuilds": ["ead04150a132"]
+      "testedBuilds": [
+        "ead04150a132"
+      ]
     }
   ]
 }

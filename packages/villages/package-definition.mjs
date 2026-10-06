@@ -25,7 +25,7 @@ export const villagesDefinition = {
   ],
   "serverImport": "src/engine/packages/server/src/services/villages/server-entry.ts",
   "serverEntry": true,
-  "clientImport": "src/engine/packages/client/src/villages-package-entry.tsx",
+  "clientImport": "src/client/entry/index.tsx",
   "agent": {
     "runtimeDisabled": false
   },

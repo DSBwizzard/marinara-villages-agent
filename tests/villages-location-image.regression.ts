@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof for the pictures a place can have.
 //
 // A place's picture spends the player's image tokens, so these tests cover:
@@ -1183,16 +1184,12 @@ async function main() {
   // path has a durable one-attempt marker and is not a UI redraw effect.
   //
   // The shared venue image control serves exterior, Class, and private spaces.
-  const client = await readFile(
-    join(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-    "utf8",
-  );
-  const presses: Record<string, number> = { drawPlaceImage: 2, keepPlaceImage: 2, dropPlaceImage: 2 };
-  for (const [handler, count] of Object.entries(presses)) {
+  const client = await clientImplementation();
+  for (const handler of ["drawPlaceImage", "keepPlaceImage", "dropPlaceImage"]) {
     assert.equal(
-      client.split(handler).length - 1,
-      count,
-      `${handler} must be defined once and reached only from the control the player presses`,
+      client.split(`${handler}(`).length - 1,
+      1,
+      `${handler} is invoked only by its manual control; forwarding it between components does not invoke it`,
     );
   }
   assert.equal(

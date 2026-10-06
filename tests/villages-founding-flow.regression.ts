@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -8,7 +9,7 @@ async function main() {
   const clientRoot = join(root, "packages/villages/src/engine/packages/client/src");
   const serverRoot = join(root, "packages/villages/src/engine/packages/server/src");
   const { foundingPhotoOverlaps } = await import(
-    pathToFileURL(join(clientRoot, "villages-founding-placement.ts")).href
+    pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
   );
   const { coerceVillageState } = await import(
     pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
@@ -27,7 +28,9 @@ async function main() {
   const { parseFoundingVenueSuggestions } = await import(
     pathToFileURL(join(serverRoot, "services/villages/founding-drafts.ts")).href
   );
-  const { evenlySpacedFoundingPins } = await import(pathToFileURL(join(clientRoot, "villages-founding-draft.ts")).href);
+  const { evenlySpacedFoundingPins } = await import(
+    pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-draft.ts")).href
+  );
   const suggestion = {
     id: "one",
     name: "Observatory room",
@@ -301,7 +304,7 @@ async function main() {
     /Common Space/,
   );
 
-  const client = await readFile(join(clientRoot, "villages-package-entry.tsx"), "utf8");
+  const client = await clientImplementation();
   const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
   const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
   const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
@@ -309,7 +312,10 @@ async function main() {
   assert.ok(client.includes("Where are we?"));
   assert.ok(client.includes("What brings you together?"));
   assert.ok(client.includes("Search lorebooks"));
-  const editor = await readFile(join(clientRoot, "villages-founding-editor.tsx"), "utf8");
+  const editor = await readFile(
+    join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
+    "utf8",
+  );
   assert.ok(client.includes("FoundingWorkspace"));
   assert.equal(client.includes("resumeSetupPlacement"), false);
   assert.ok(client.includes("Review village"));

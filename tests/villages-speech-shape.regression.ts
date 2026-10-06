@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof for the reader that tells what a villager SAID from the room
 // going on around them.
 //
@@ -84,7 +85,7 @@ import {
   splitVillagesParagraphs,
   villagesWalk,
   type VillagesWalkBeat,
-} from "../packages/villages/src/engine/packages/client/src/villages-chat-paragraphs.ts";
+} from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
 
 const shape = classifyVillagesParagraph;
 
@@ -359,7 +360,7 @@ for (const walk of [noBeats, lifted, mixedWalk, runWalk, trailing, leading]) {
 */
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const clientSrc = resolve(repoRoot, "packages/villages/src/engine/packages/client/src");
-const entrySource = readFileSync(resolve(clientSrc, "villages-package-entry.tsx"), "utf8");
+const entrySource = clientImplementation();
 const tagName = /const ELEMENT_TAG = "([^"]+)";/u.exec(entrySource)?.[1];
 assert.ok(tagName);
 const css = entrySource.split("${ELEMENT_TAG}").join(tagName);

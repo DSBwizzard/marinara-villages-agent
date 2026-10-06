@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -412,10 +413,7 @@ async function main() {
     globalThis.fetch = originalFetch;
     releaseRuntime();
   }
-  const client = await readFile(
-    join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-    "utf8",
-  );
+  const client = await clientImplementation();
   for (const step of ["People", "Place", "Venues", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }

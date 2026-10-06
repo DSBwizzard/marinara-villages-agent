@@ -8,11 +8,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { villagesWalk } from "../packages/villages/src/engine/packages/client/src/villages-chat-paragraphs.ts";
+import { villagesWalk } from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
 import {
   selectSpriteImage,
   spriteFacing,
-} from "../packages/villages/src/engine/packages/client/src/villages-sprite-stage.ts";
+} from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
   parseVillagesTurnBeats,
   renderVillagesTurnBeats,
@@ -125,7 +125,7 @@ assert.equal(
 );
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const entry = readFileSync(
-  join(root, "packages/villages/src/engine/packages/client/src/villages-sprite-manager.tsx"),
+  join(root, "packages/villages/src/client/features/residents/villages-sprite-manager.tsx"),
   "utf8",
 );
 assert.match(entry, /Upload images/);

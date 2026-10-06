@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Wiring proof for the active Scene, Venue editor, and Mailbox. Behavior is
 // exercised by the Venue session, model, and location image suites.
 import assert from "node:assert/strict";
@@ -10,10 +11,7 @@ const routes = readFileSync(
   resolve(root, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),
   "utf8",
 );
-const ui = readFileSync(
-  resolve(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-  "utf8",
-);
+const ui = clientImplementation();
 const session = readFileSync(
   resolve(root, "packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts"),
   "utf8",
@@ -62,7 +60,7 @@ assert.match(
   "direct visit endings return durable-memory receipts",
 );
 assert.ok(ui.includes('"/rooms/turn"'), "one composer sends all visit modes");
-assert.match(ui, /const receiveRoomRecordEvents = useCallback/u, "all visit endings share receipt ingestion");
+assert.ok(ui.includes("function useReceiveRoomRecordEvents("), "all visit endings share receipt ingestion");
 assert.doesNotMatch(
   ui,
   /answer\.session\.status === "closed"\) \{\s*setRoomNotices\(\[\]\)/u,

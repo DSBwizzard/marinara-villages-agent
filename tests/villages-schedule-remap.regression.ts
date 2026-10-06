@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof for the translation of the Engine's weekly schedule into a
 // village's own terms.
 //
@@ -1123,13 +1124,7 @@ async function main() {
   const { readFileSync } = await import("node:fs");
   const { dirname, resolve } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
-  const clientSource = readFileSync(
-    resolve(
-      dirname(fileURLToPath(import.meta.url)),
-      "../packages/villages/src/engine/packages/client/src/villages-package-entry.tsx",
-    ),
-    "utf8",
-  );
+  const clientSource = clientImplementation();
   assert.ok(clientSource.includes("Villages agenda</h4>"), "the village agenda is named as the primary plan");
   assert.ok(!clientSource.includes("Marinara schedule</h4>"), "the authoritative translation comparison is retired");
   assert.ok(clientSource.includes("villager.agenda?.activeDay?.blocks"), "today reads the frozen active agenda");

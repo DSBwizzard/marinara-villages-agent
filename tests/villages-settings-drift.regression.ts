@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — the tab and the server have to agree about what a village's settings
 // are, and nothing was saying whether they did.
 //
@@ -31,7 +32,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SERVICES = "packages/villages/src/engine/packages/server/src/services/villages";
-const CLIENT = "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx";
+const CLIENT = "packages/villages/src/client/entry/index.tsx";
 
 const read = (relative: string) => readFileSync(resolve(repoRoot, relative), "utf8");
 
@@ -64,7 +65,7 @@ function declaredFields(source: string, typeName: string): string[] {
 const stripComments = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//gu, " ").replace(/(^|\s)\/\/[^\n]*/gmu, "$1");
 
-const clientSource = stripComments(read(CLIENT));
+const clientSource = stripComments(clientImplementation());
 
 const serverView = declaredFields(read(`${SERVICES}/types.ts`), "VillageSettingsView");
 const clientCopy = declaredFields(clientSource, "VillageSettings");

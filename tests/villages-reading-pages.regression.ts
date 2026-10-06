@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { parseVillagesInlineMarkdown } from "../packages/villages/src/engine/packages/client/src/villages-inline-markdown.js";
+import { parseVillagesInlineMarkdown } from "../packages/villages/src/client/shared/villages-inline-markdown.js";
 import {
   paginateReading,
   readingText,
   sliceReadingNodes,
-} from "../packages/villages/src/engine/packages/client/src/villages-reading-pages.js";
+} from "../packages/villages/src/client/features/scenes/villages-reading-pages.js";
 
 const source =
   "First sentence. **A longer bold sentence with *nested emphasis* inside it continues for several words.** Last sentence.";

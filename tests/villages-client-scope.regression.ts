@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Runtime snapshot guards and a compiler smoke test. npm run typecheck checks
 // every maintained client/server module using the repository-owned configuration.
 import assert from "node:assert/strict";
@@ -7,34 +8,11 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizeVillageSnapshot } from "../packages/villages/src/engine/packages/client/src/villages-snapshot-normalization";
+import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/*
-  Every source file of the tab's own client tree.
-
-  The entry is the one that shipped the bug, and it is the one that imports the other
-  two, so a single program would reach them anyway — they are named as well so that a
-  file nothing imports is still covered, since a file nothing imports is precisely the
-  kind of file a reader would assume somebody else is checking.
-*/
-const CLIENT_ROOT = resolve(repoRoot, "packages/villages/src/engine/packages/client/src");
-const CLIENT_SOURCES = [
-  "villages-package-entry.tsx",
-  "villages-dossier.tsx",
-  "villages-dossier-styles.ts",
-  "villages-exploration.tsx",
-  "villages-mobile-map.ts",
-  "villages-founding-editor.tsx",
-  "villages-player-role.tsx",
-  "villages-chat-paragraphs.ts",
-  "villages-inline-markdown.ts",
-  "villages-room-reading.ts",
-  "villages-snapshot-normalization.ts",
-].map((name) => join(CLIENT_ROOT, name));
-
-const entrySource = readFileSync(CLIENT_SOURCES[0]!, "utf8");
+const entrySource = clientImplementation();
 assert.match(
   entrySource,
   /typeof playerPersonaName === "string" \? playerPersonaName\.trim\(\) \|\| "You" : "You"/u,

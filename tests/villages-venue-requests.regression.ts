@@ -19,7 +19,7 @@ import {
   readTickVenueRequests,
   type VillageTickContext,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.ts";
-import { normalizeVillageSnapshot } from "../packages/villages/src/engine/packages/client/src/villages-snapshot-normalization.ts";
+import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
 import type {
   VillageVenue,
   VillageVillager,

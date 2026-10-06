@@ -10,7 +10,7 @@ import {
 import {
   DEFAULT_PLAYER_ROLE as CLIENT_DEFAULT,
   playerRoleProblem,
-} from "../packages/villages/src/engine/packages/client/src/villages-player-role.js";
+} from "../packages/villages/src/client/features/founding/villages-player-role.js";
 import {
   coerceVillageState,
   defaultVillageState,

@@ -11,7 +11,7 @@ import {
 } from "../packages/villages/src/engine/packages/shared/src/villages/scene-staging.js";
 import { parseVenueReply } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 import { validateSpriteExpression } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-expressions.js";
-import { selectSpriteImage } from "../packages/villages/src/engine/packages/client/src/villages-sprite-stage.js";
+import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 
 const ids = ["mara", "eli", "lina", "taro"];
 for (const [count, expected] of [

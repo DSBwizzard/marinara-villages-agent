@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Continuous Villages time: exact projection, migration, idempotent restart
 // reconciliation, model-independent progress, and the live unreferenced timer.
 import assert from "node:assert/strict";
@@ -14,10 +15,7 @@ async function main() {
     join(repoRoot, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),
     "utf8",
   );
-  const clientSource = readFileSync(
-    join(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-    "utf8",
-  );
+  const clientSource = clientImplementation();
   assert.match(routesSource, /"\/reconcile"/u);
   assert.doesNotMatch(routesSource, /"\/tick"/u);
   assert.match(clientSource, /request<VillageSnapshot>\("\/reconcile"/u);

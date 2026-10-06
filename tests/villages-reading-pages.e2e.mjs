@@ -126,6 +126,27 @@ try {
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
+    // Opening a dossier keeps the same mounted scene and its earlier reading position.
+    await previous.click();
+    await expect(text).toHaveText("A quiet afternoon.");
+    await draft.fill("Draft retained across dossier navigation");
+    events.push({
+      id: "wish-navigation",
+      kind: "wish",
+      text: "Inspect Mara's wish",
+      detail: { text: "Wish update" },
+      wishUpdate: { actorId: "mara", wishId: "swim" },
+    });
+    await expect(tray).toHaveAccessibleName("3 village notices");
+    await expect(page.getByLabel("Village events")).toBeVisible();
+    // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
+    await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
+    await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await expect(text).toHaveText("A quiet afternoon.");
+    await expect(draft).toHaveValue("Draft retained across dossier navigation");
+    await tray.click();
+    await next.click();
     if (mobile) {
       await expect(counter).toContainText("Page 1/");
       await previous.click();

@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof that the tab's calls carry the Engine's admin secret.
 //
 // Every route this package serves sits behind the Engine's privileged gate, and
@@ -26,10 +27,7 @@ import { fileURLToPath } from "node:url";
 import { transpileModule, ScriptTarget } from "typescript";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(
-  resolve(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-  "utf8",
-);
+const source = readFileSync(resolve(repoRoot, "packages/villages/src/client/shared/api.tsx"), "utf8");
 
 /* ── The one run of code that answers both questions ─────────────────────── */
 
