@@ -21699,17 +21699,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {setupMapProblem}
           </p>
         ) : null}
-        {interactive ? (
+        {interactive && !mapReady ? (
           <p className="villages-forging-placement" role="status">
-            {!mapReady
-              ? setupMapBusy
-                ? setupMapProgress
-                : setupMapProblem
-                  ? "Map artwork failed. Return to Place to review the error and try again, or select Simple map."
-                  : "Choose map artwork on Place, or select Simple map."
-              : nextPin
-                ? `Next: click where ${nextPin.name || "this Venue"} is`
-                : `${placed} of ${setupVenues.length} photographs placed`}
+            {setupMapBusy
+              ? setupMapProgress
+              : setupMapProblem
+                ? "Map artwork failed. Return to Place to review the error and try again, or select Simple map."
+                : "Choose map artwork on Place, or select Simple map."}
           </p>
         ) : null}
         <div
@@ -22167,7 +22163,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       ) : null}
                       {setupMapSource === "none" ? (
                         <p>
-                          A logical map keeps Venue positions without artwork. Automatic spacing is available on Spaces.
+                          A logical map keeps Venue positions without artwork. Automatic spacing is available on Venues.
                         </p>
                       ) : setupMapSrc ? (
                         <figure>

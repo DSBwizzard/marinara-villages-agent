@@ -82,8 +82,9 @@ const imageRef = {
   url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AGtLQAAAABJRU5ErkJggg==",
 };
 try {
-  for (const { width, height, fontSize, homeCount } of [
+  for (const { width, height, fontSize, homeCount, chromeHeight = 0 } of [
     { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
+    { width: 1440, height: 650, fontSize: 16, homeCount: 1, chromeHeight: 200 },
     { width: 1917, height: 600, fontSize: 20, homeCount: 1 },
     { width: 1024, height: 768, fontSize: 20, homeCount: 2 },
     { width: 390, height: 844, fontSize: 16, homeCount: 2 },
@@ -216,7 +217,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: "text/html",
-        body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>`,
+        body: `<style>:root{font-size:${fontSize}px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><header style="height:${chromeHeight}px;overflow:hidden">Engine chrome fixture</header><div style="height:calc(100% - ${chromeHeight}px)"><marinara-capability-villages></marinara-capability-villages></div>`,
       }),
     );
     await page.goto("http://villages.test/");
@@ -230,7 +231,10 @@ try {
       );
       const footer = root.locator(".villages-forging-footer");
       const box = await footer.boundingBox();
-      assert.ok(box && box.y >= 0 && box.y + box.height <= height + 1, "navigation stays in viewport");
+      assert.ok(
+        box && box.y >= 0 && box.y + box.height <= height + 1,
+        `navigation stays in viewport: ${JSON.stringify({ box, height, root: await root.boundingBox() })}`,
+      );
     };
     const capture = async (name) => {
       if (process.env.VILLAGES_SCREENSHOT_DIR) {
@@ -399,9 +403,14 @@ try {
       const box = await canvas.boundingBox();
       await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
     }
-    await expect(root.locator(".villages-forging-placement")).toHaveText(
-      `${homeCount + 2} of ${homeCount + 2} photographs placed`,
+    await expect(root.locator(".villages-workspace-toolbar > strong")).toHaveText(
+      `${homeCount + 2} / ${homeCount + 2} placed`,
     );
+    if (chromeHeight)
+      assert.ok(
+        (await placementMap.boundingBox()).height >= 230,
+        `short Engine tabs retain useful map height: ${JSON.stringify({ map: await placementMap.boundingBox(), root: await root.boundingBox(), toolbar: await root.locator(".villages-workspace-toolbar").boundingBox(), steps: await root.locator(".villages-forging-steps").boundingBox(), footer: await root.locator(".villages-forging-footer").boundingBox() })}`,
+      );
     // One request + one click per Venue + Review, without any editor confirmation or image request.
     await forward("Review village").click();
     await expect(root.getByText("Step 4 of 4 · Review")).toBeVisible();
@@ -710,8 +719,8 @@ try {
       await root
         .getByLabel("Venue placement map. Arrow keys choose a spot; Enter places a Venue.", { exact: true })
         .press("Enter");
-      await expect(root.locator(".villages-forging-placement")).toHaveText(
-        `${homeCount + 2} of ${homeCount + 2} photographs placed`,
+      await expect(root.locator(".villages-workspace-toolbar > strong")).toHaveText(
+        `${homeCount + 2} / ${homeCount + 2} placed`,
       );
       await capture("artwork-spaces");
       await forward("Save & exit").click();

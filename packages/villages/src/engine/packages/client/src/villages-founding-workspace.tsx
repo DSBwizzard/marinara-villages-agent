@@ -62,6 +62,7 @@ export function FoundingWorkspace({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const selected = venues.find((venue) => venue.id === selectedId);
+  const placement = venues.find((venue) => venue.id === placementId);
   const placed = venues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
   const attention = new Set(issues.filter((issue) => issue.field !== "placement").map((issue) => issue.venueId)).size;
   const section = selected ? (state.sections[selected.id] ?? "venue") : "venue";
@@ -182,8 +183,15 @@ export function FoundingWorkspace({
   return (
     <div ref={root} className="villages-workspace" data-view={state.view}>
       <div className="villages-workspace-toolbar">
-        <strong>
-          {placed} / {venues.length} placed
+        <strong role="status">
+          <span>
+            {placed} / {venues.length} placed
+          </span>
+          {placement ? (
+            <small title={`Click the map to place ${placement.name || "this Venue"}`}>
+              {placement.presentation.x === null ? "Next" : "Move"}: {placement.name || "this Venue"}
+            </small>
+          ) : null}
         </strong>
         <span>{attention ? `${attention} need details` : "Details ready"}</span>
         {!existing ? (
