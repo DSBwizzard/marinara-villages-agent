@@ -14,6 +14,7 @@ import type { VillageState, VillageVenue, VillageVenueZone } from "./types.js";
 
 export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone): string {
   return JSON.stringify([
+    venue.venueType,
     venue.form,
     venue.layoutVersion,
     venueZones(venue).map((area) => [area.id, area.kind, area.venueClass]),
@@ -21,7 +22,7 @@ export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZon
     zone.name,
     zone.purpose,
     zone.description,
-    zoneControllerIds(venue, zone),
+    zone.ownerId,
     zone.state.updatedAt,
   ]);
 }

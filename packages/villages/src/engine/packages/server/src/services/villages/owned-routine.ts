@@ -144,7 +144,9 @@ export function deriveInfluence(
         if (venue.name.length < 3 || !phrase.toLowerCase().includes(venue.name.toLowerCase())) continue;
         if (
           venueZones(venue).some(
-            (zone) => canOccupyZone(venue, zone, resident.characterId) && !zoneClosed(state, venue, zone),
+            (zone) =>
+              canOccupyZone(venue, zone, resident.characterId, { relationships: state.relationshipContext }) &&
+              !zoneClosed(state, venue, zone),
           ) &&
           venue.constructionStatus !== "worksite"
         )
@@ -479,20 +481,25 @@ export function validateRoutineDay(
   blocks: VillageAgendaBlock[],
   resident: VillageVillager,
   state: VillageState,
+  date: Date = new Date(),
 ): VillageAgendaBlock[] {
   return blocks.map((block) => {
     if (!block.venueId) return block;
     const venue = state.venues.find((item) => item.id === block.venueId);
+    const accessContext = {
+      relationships: state.relationshipContext,
+      at: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.startMinute),
+    };
     const zone =
       venue &&
       (block.zoneId
         ? venueZones(venue).find((item) => item.id === block.zoneId)
-        : chooseAgendaZone(venue, resident.characterId, block.activity, "", state));
+        : chooseAgendaZone(venue, resident.characterId, block.activity, "", state, accessContext));
     if (
       !venue ||
       !zone ||
       venue.constructionStatus === "worksite" ||
-      !canOccupyZone(venue, zone, resident.characterId) ||
+      !canOccupyZone(venue, zone, resident.characterId, accessContext) ||
       zoneClosed(state, venue, zone)
     )
       return {

@@ -7,6 +7,7 @@ import type { VenueScene } from "./venue-session.js";
 import type { VillageChronicleEntry, VillageMemoryCategory } from "./types.js";
 import type { DomainProcessing } from "./exchange-processing.js";
 import { mutateVillageState, readVillageState, readVillageAuthority } from "./village-store.js";
+import { settleStandingAccess } from "./venue-access.js";
 import { mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
 import {
   parseRelationshipProposals,
@@ -405,6 +406,20 @@ export async function processLiveRelationships(
       receiptIds,
       rejectedProposals: rejections,
     };
+  await mutateVillageState((authority) => {
+    const fresh = parseRelationshipProposals(raw, scene.id + ":" + turn.id, lines, authority, (row) => ({
+      ...row,
+      lineIds: refs(row.lineIds, proposals),
+    }));
+    for (const permission of fresh.review.permissions) {
+      const venue = authority.venues.find((row) => row.id === permission.venueId);
+      if (venue?.access)
+        settleStandingAccess(venue, permission, turn.at, [
+          "player",
+          ...authority.villagers.map((person) => person.characterId),
+        ]);
+    }
+  });
   await mutateRelationships(village.seed, async (state) => {
     const authority = await readVillageAuthority();
     if (authority.seed !== village.seed) throw new Error("Village identity changed");

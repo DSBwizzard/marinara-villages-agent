@@ -1,4 +1,6 @@
 import { recordInterpretationRouting } from "./interpretation-routing.js";
+import { managesAccess } from "./venue-access.js";
+import { accessManagementChecks } from "./access-speech.js";
 import { selectRoomEventChecks } from "./room-events.js";
 import { boundInterpretationEvidence, contextualChecks } from "./interpretation-evidence.js";
 import type { VillageState, VillageVenue } from "./types.js";
@@ -80,67 +82,110 @@ export function roomInterpretationChecks(
             ],
       ),
     ];
-    return venueZones(venue)
-      .filter((zone) => canInviteToZone(venue, zone, actor))
-      .map((zone) => {
-        const label = zone.seen
-          ? zone.name
-          : zone.kind === "private-residence"
-            ? `${name}'s Private Space`
-            : zone.kind === "shared-residence"
-              ? "Common Space"
-              : "Restricted Space";
-        return {
-          id: `${key}:${actor}:${zone.id}`,
-          domain: "room" as const,
-          question: `Did ${name} invite you into ${label} at ${venue.name ?? "this Venue"}, refuse entry, or ask you to leave it?`,
-          facts: {
-            playerId: "player",
-            playerName: village.playerPersonaName || "Player",
-            possibleRecipients: scene.participants
-              .filter((person) => scene.activeIds.includes(person.characterId))
-              .map((person) => ({ id: person.characterId, name: person.name })),
-            actorId: actor,
-            actorName: name,
-            zoneId: zone.id,
-            zoneName: label,
-            zoneKind: zone.kind,
-            venueId: venue.id,
-            venueName: venue.name,
-            currentPlayerZoneId: scene.zoneId,
-            currentPlayerVenueId: scene.placeId,
-            controllerId: actor,
-            closed: zoneClosed(village, venue, zone),
-          },
-          evidence,
-          outcomes: [
+    return [
+      ...(venue.access && managesAccess(venue, null, actor)
+        ? [
             {
-              id: "invite-now",
-              statement: `${name} gives the player permission to enter ${label} now in the latest exchange, including a contextual short answer or clear gesture.`,
+              id: `${key}:${actor}:venue-ban`,
+              domain: "room" as const,
+              question: `Did ${name} explicitly ban you from ${venue.name} on a lasting basis?`,
+              facts: {
+                actorId: actor,
+                actorName: name,
+                venueId: venue.id,
+                venueName: venue.name,
+                zoneId: null,
+                accessRevision: venue.access.revision,
+              },
+              evidence,
+              outcomes: [
+                {
+                  id: "ban-venue",
+                  statement: `${name} explicitly bans the player from all non-Entrance Zones at ${venue.name} on a lasting basis. A single-Zone refusal is not a Venue ban.`,
+                },
+              ],
             },
-            {
-              id: "invite-later",
-              statement: `${name} invites the player to visit ${label} on one future occasion, rather than enter now, in the latest exchange.`,
+          ]
+        : []),
+      ...venueZones(venue)
+        .filter((zone) => canInviteToZone(venue, zone, actor))
+        .map((zone) => {
+          const label = zone.seen
+            ? zone.name
+            : zone.kind === "private-residence"
+              ? `${name}'s Private Space`
+              : zone.kind === "shared-residence"
+                ? "Common Space"
+                : "Restricted Space";
+          return {
+            id: `${key}:${actor}:${zone.id}`,
+            domain: "room" as const,
+            question: `Did ${name} invite you into ${label} at ${venue.name ?? "this Venue"}, refuse entry, or ask you to leave it?`,
+            facts: {
+              playerId: "player",
+              playerName: village.playerPersonaName || "Player",
+              possibleRecipients: scene.participants
+                .filter((person) => scene.activeIds.includes(person.characterId))
+                .map((person) => ({ id: person.characterId, name: person.name })),
+              actorId: actor,
+              actorName: name,
+              zoneId: zone.id,
+              zoneName: label,
+              zoneKind: zone.kind,
+              venueId: venue.id,
+              venueName: venue.name,
+              accessRevision: venue.access?.revision,
+              currentPlayerZoneId: scene.zoneId,
+              currentPlayerVenueId: scene.placeId,
+              controllerId: actor,
+              closed: zoneClosed(village, venue, zone),
             },
-            ...(venue.id !== scene.placeId || zone.id !== scene.zoneId
-              ? [
-                  {
-                    id: "refuse",
-                    statement: `${name} refuses the player's request to enter ${label} in the latest exchange.`,
-                  },
-                ]
-              : []),
-            ...(venue.id === scene.placeId && zone.id === scene.zoneId
-              ? [
-                  {
-                    id: "dismiss",
-                    statement: `${name} directs the player to leave ${label} now in the latest exchange; this is not a joke, quotation, or instruction to leave an object alone.`,
-                  },
-                ]
-              : []),
-          ],
-        };
-      });
+            evidence,
+            outcomes: [
+              ...(venue.access
+                ? [
+                    {
+                      id: "invite-outside-hours",
+                      statement: `${name} explicitly approves the player's entry to ${label} outside opening hours in this exchange. Ordinary invitations do not imply this.`,
+                    },
+                    ...(managesAccess(venue, zone.id, actor)
+                      ? [
+                          {
+                            id: "ban-zone",
+                            statement: `${name} explicitly bans the player from ${label} on a lasting basis. Asking them to leave now or refusing this visit is not a ban.`,
+                          },
+                        ]
+                      : []),
+                  ]
+                : []),
+              {
+                id: "invite-now",
+                statement: `${name} gives the player permission to enter ${label} now in the latest exchange, including a contextual short answer or clear gesture.`,
+              },
+              {
+                id: "invite-later",
+                statement: `${name} invites the player to visit ${label} on one future occasion, rather than enter now, in the latest exchange.`,
+              },
+              ...(venue.id !== scene.placeId || zone.id !== scene.zoneId
+                ? [
+                    {
+                      id: "refuse",
+                      statement: `${name} refuses the player's request to enter ${label} in the latest exchange.`,
+                    },
+                  ]
+                : []),
+              ...(venue.id === scene.placeId && zone.id === scene.zoneId
+                ? [
+                    {
+                      id: "dismiss",
+                      statement: `${name} directs the player to leave ${label} now in the latest exchange; this is not a joke, quotation, or instruction to leave an object alone.`,
+                    },
+                  ]
+                : []),
+            ],
+          };
+        }),
+    ];
   });
 }
 export async function interpretRoomReply(
@@ -154,8 +199,9 @@ export async function interpretRoomReply(
   events?: unknown,
   invitation?: unknown,
 ) {
+  const management = accessManagementChecks(village, draft, events, key);
   const checks = roomInterpretationChecks(scene, village, message, draft, key, heardPlayerBy);
-  if (!checks.length) return null;
+  if (!checks.length && !management.length) return null;
   const selection = selectRoomEventChecks(
     (await contextualChecks(scene.id, checks)).map(boundInterpretationEvidence),
     scene,
@@ -163,6 +209,7 @@ export async function interpretRoomReply(
     events,
     invitation,
   );
+  selection.selected.push(...management);
   const ids = new Set([...selection.selected, ...selection.uncertain].map((check) => check.id));
   const reasons = new Map(selection.selected.map((check) => [check.id, "Cited permission event selected"]));
   const skipped = checks

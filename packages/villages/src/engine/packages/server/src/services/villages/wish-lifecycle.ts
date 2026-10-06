@@ -253,7 +253,15 @@ function proposalActivity(
     const zone =
       venueZones(venue).find((entry) => entry.id === zoneId) ??
       (zoneId ? undefined : venueZones(venue).find((entry) => entry.kind === "exterior"));
-    if (!zone || !canOccupyZone(venue, zone, resident.characterId) || zoneClosed(state, venue, zone)) return undefined;
+    if (
+      !zone ||
+      !canOccupyZone(venue, zone, resident.characterId, {
+        relationships: state.relationshipContext,
+        at: new Date(new Date(slot.dateKey + "T00:00:00").setMinutes(slot.startMinute)),
+      }) ||
+      zoneClosed(state, venue, zone)
+    )
+      return undefined;
     zoneId = zone.id;
   } else zoneId = undefined;
   return {
@@ -287,7 +295,10 @@ export function canApplyWishActivity(
       !venue ||
       !zone ||
       venue.constructionStatus === "worksite" ||
-      !canOccupyZone(venue, zone, resident.characterId) ||
+      !canOccupyZone(venue, zone, resident.characterId, {
+        relationships: state.relationshipContext,
+        at: new Date(new Date(activity.dateKey + "T00:00:00").setMinutes(activity.startMinute)),
+      }) ||
       zoneClosed(state, venue, zone)
     )
       return false;
@@ -453,7 +464,11 @@ async function generateWish(input: {
             facts: venue.state.publicFacts.slice(0, 3).map((fact) => fact.slice(0, 120)),
             furniture: venue.state.furniture.slice(0, 3).map((item) => item.slice(0, 120)),
             zones: venueZones(venue)
-              .filter((zone) => canOccupyZone(venue, zone, characterId) && !zoneClosed(state, venue, zone))
+              .filter(
+                (zone) =>
+                  canOccupyZone(venue, zone, characterId, { relationships: state.relationshipContext }) &&
+                  !zoneClosed(state, venue, zone),
+              )
               .map((zone) => ({ id: zone.id, kind: zone.kind })),
           })),
         }),

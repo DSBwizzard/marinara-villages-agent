@@ -9,6 +9,7 @@ import { knownWish, setWishJournalStatus, wishCheckKnowledge, wishConditionRevis
 import { measurePipeline } from "./pipeline-metrics.js";
 import { readPlayerMovement, movementTransition, type MovementIntent } from "./venue-movement.js";
 import { saveInterpretationContext } from "./interpretation-evidence.js";
+import { accessManagementPrompt } from "./access-speech.js";
 import { buildVenueResponseContract } from "./venue-response-contract.js";
 import { runtimeDebug } from "./runtime-debug.js";
 import {
@@ -37,6 +38,14 @@ import {
   type ExchangeProcessing,
 } from "./exchange-processing.js";
 import { relationshipZoneController } from "./relationship-store.js";
+import {
+  evaluateZoneAccess,
+  claimVisitPermission,
+  applyAccessCommand,
+  managesAccess,
+  readAccessCommand,
+} from "./venue-access.js";
+import { sceneAccessContext } from "./venue-contact.js";
 import { relationshipWritingPrompt, relationshipChangeNotices, filterRelationshipNotices } from "./relationships.js";
 
 import { renderPlayerRoleWritingContext } from "./player-role.js";
@@ -104,7 +113,7 @@ export { venueCardProfile } from "./venue-writing.js";
 import { memoryForVillager } from "./chat.js";
 import { asRecord, asString, asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
-import { VillagesRequestError, badGateway, badRequest, conflict, notFound } from "./errors.js";
+import { VillagesRequestError, badGateway, badRequest, conflict, notFound, safeFailureMessage } from "./errors.js";
 import { readVillageLore } from "./lorebooks.js";
 import { selectPromptMemories, selectPromptRecollections } from "./memory-selection.js";
 import {
@@ -121,7 +130,7 @@ import {
   villagesDebugAgentsEnabled,
 } from "./package-runtime.js";
 import { MAX_CHRONICLE_LENGTH, prependHappenings, villageCurrentSetting } from "./prompt-preset.js";
-import type { VillageState } from "./types.js";
+import type { VillageState, VillageVenue } from "./types.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import {
   type DocumentSlot,
@@ -332,6 +341,8 @@ type VenueSubmission = {
     quote: string;
     sourceLineId?: string;
   };
+  /** Approved access interpretations saved with their exact witnessed reply; never sent to the client. */
+  accessEvents?: SavedAccessEvent[];
   invitationSignal?: {
     residentId: string;
     venueId: string;
@@ -347,6 +358,7 @@ type VenueSubmission = {
     ownerId: string;
     quote: string;
     sourceLineId?: string;
+    accessRevision?: number;
   };
   editApprovalSignal?: {
     proposalId: string;
@@ -414,6 +426,8 @@ export type VenueScene = {
   legacyCast?: boolean;
   grantedZoneIds?: string[];
   enteredFromZoneId?: string;
+  accessPreviousZones?: Record<string, string>;
+  pendingAccessClaim?: string;
   dismissedZoneIds?: string[];
   pendingRoomQuestions?: string[];
   pendingProjectQuestions?: string[];
@@ -577,6 +591,12 @@ function coerceSession(value: unknown): VenueScene {
           }))
       : [],
     legacyCast: raw.legacyCast === true,
+    pendingAccessClaim: asTrimmedString(raw.pendingAccessClaim) || undefined,
+    accessPreviousZones: Object.fromEntries(
+      Object.entries(asRecord(raw.accessPreviousZones)).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
+    ),
     doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
     entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
     grantedZoneIds: Array.isArray(raw.grantedZoneIds)
@@ -762,6 +782,9 @@ function coerceSession(value: unknown): VenueScene {
                 : {}),
               ...(row.invitationSignal
                 ? { invitationSignal: row.invitationSignal as VenueSubmission["invitationSignal"] }
+                : {}),
+              ...(Array.isArray(row.accessEvents)
+                ? { accessEvents: structuredClone(row.accessEvents).slice(0, 64) as SavedAccessEvent[] }
                 : {}),
               ...(row.editApprovalSignal
                 ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
@@ -976,6 +999,8 @@ export async function processSavedExchange(sessionId: string, submissionId: stri
 async function applySavedExchange(sessionId: string, submissionId: string): Promise<void> {
   const scene = await readSession(sessionId);
   const turn = scene.submissions.find((entry) => entry.id === submissionId);
+  if (turn?.accessEvents?.length) await applySavedAccessEvents(scene, turn);
+  if (turn?.invitationSignal) await recordSpokenInvitation(scene, turn.invitationSignal);
   if (turn?.movement) return;
   if (!turn?.processing) return processSavedProgressSubmission(sessionId, submissionId);
   const village = await readVillageState();
@@ -1559,6 +1584,11 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>): T {
             "responseDiagnostics",
             "failure",
             "sceneAttendance",
+            "accompanying",
+            "access",
+            "accessEvents",
+            "accessPreviousZones",
+            "pendingAccessClaim",
             "contactGeneration",
             "contactEvidence",
             "contactHidden",
@@ -1879,6 +1909,7 @@ export async function prepareVenueTurnMessages(
         ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
         : "",
       `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
+      accessManagementPrompt(village, audience, session.placeId),
       venueFoundingBackground(village),
       `A Venue is the place; Zones are its separate spaces, including Exterior, Common Space, and Private Space. A Scene is the whole active conversation in that Venue, continuing across Zone movement. The residents currently here are: ${audience.join(", ")}. Only server-listed residents occupy this Zone. Attendance and activities were captured at Scene start across the entire Venue. Scene-start activities describe the opening situation; witnessed developments establish what is happening now. Background agendas cannot add, remove, or move anyone during this Scene. Only evidenced movement within the Scene changes positions. A resident may leave after a clear spoken departure. Do not force a departure merely because real time passed.`,
       session.area === "outside"
@@ -2501,6 +2532,7 @@ async function interpretRoomDraft(
           ownerId: zone.ownerId ?? "",
           evidenceKind: supporting.kind === "narration" ? "action" : "speech",
           quote: supporting.content,
+          accessRevision: controlledVenue.access?.revision,
         };
       }
     }
@@ -2819,6 +2851,7 @@ async function clearActivePointer(id: string): Promise<void> {
 function sceneZoneOccupants(session: VenueScene, village: VillageState, venue: VillageVenue, zoneId: string) {
   const positions = (session.accompanying ?? []).filter((entry) => {
     const destination = resolveVenueZone(venue, entry.zoneId);
+    if (venue.access) return !!destination; // Captured positions change only through recorded movement.
     return !!destination && contactCanEnter(village, venue, destination.id, entry.characterId);
   });
   const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
@@ -2829,17 +2862,119 @@ function sceneZoneOccupants(session: VenueScene, village: VillageState, venue: V
       !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
   );
 }
+/** Iterate escort dependencies using actual Scene positions, never background schedules. */
+function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {
+  const context = sceneAccessContext(session, village),
+    positions = { ...context.positions };
+  const exits: { actor: string; from: string; to: string }[] = [];
+  for (let pass = 0; pass <= Object.keys(positions).length; pass++) {
+    let changed = false;
+    for (const [actor, from] of Object.entries(positions)) {
+      if (!from || from === "exterior") continue;
+      const zone = resolveVenueZone(venue, from);
+      if (
+        zone &&
+        evaluateZoneAccess(venue, zone, actor, { ...context, positions, unavailable: zoneClosed(village, venue, zone) })
+          .allowed
+      )
+        continue;
+      const previous = actor === "player" ? session.enteredFromZoneId : session.accessPreviousZones?.[actor];
+      const fallback = previous && previous !== from ? resolveVenueZone(venue, previous) : undefined;
+      const to =
+        fallback &&
+        evaluateZoneAccess(venue, fallback, actor, {
+          ...context,
+          positions,
+          unavailable: zoneClosed(village, venue, fallback),
+        }).allowed
+          ? fallback.id
+          : "exterior";
+      positions[actor] = to;
+      exits.push({ actor, from, to });
+      changed = true;
+    }
+    if (!changed) break;
+  }
+  return exits;
+}
 async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
   if (!completing && hasVenueOperation(session.id)) return session;
   const village = await readVillageState(),
     venue = village.venues.find((entry) => entry.id === session.placeId);
   if (!venue || session.status === "closed") return session;
+  if (venue.access && session.pendingAccessClaim) {
+    await mutateVillageState((state) => {
+      const current = state.venues.find((row) => row.id === venue.id)!;
+      const target = resolveVenueZone(current, session.zoneId ?? "exterior");
+      if (!target) return;
+      const decision = evaluateZoneAccess(current, target, "player", {
+        ...sceneAccessContext(session, state),
+        accepting: true,
+        unavailable: zoneClosed(state, current, target),
+      });
+      if (decision.allowed) claimVisitPermission(current, decision.permissionId, session.id);
+    });
+    const settled = await changeSession(session.id, (state) => {
+      state.pendingAccessClaim = undefined;
+    });
+    return refreshZoneParticipants(settled, completing);
+  }
   const zoneId = session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId);
   const zone = resolveVenueZone(venue, zoneId);
-  const revoked = session.zoneGrants?.some(
-    (grant) => grant.zoneId === zoneId && (!zone || !canInviteToZone(venue, zone, grant.controllerId)),
-  );
-  if (!zone || zoneClosed(village, venue, zone) || revoked) {
+  if (venue.access && session.sceneAttendance) {
+    const exits = accessExits(session, village, venue);
+    if (exits.length) {
+      const displaced = await changeSession(session.id, (state) => {
+        // Recompute from committed positions, so retries cannot record an exit twice.
+        for (const exit of accessExits(state, village, venue)) {
+          const witnesses = [
+            ...new Set(
+              Object.entries(sceneAccessContext(state, village).positions ?? {})
+                .filter(([, position]) => position === exit.from || position === exit.to)
+                .map(([actor]) => actor),
+            ),
+          ].filter((actor) => actor !== "player");
+          const playerPosition = state.zoneId ?? "exterior";
+          appendLine(state, {
+            id: randomUUID(),
+            role: "assistant",
+            speakerId: "__venue_scene__",
+            name: "Narration",
+            kind: "narration",
+            content: `${exit.actor === "player" ? "You" : (state.sceneAttendance?.occupants.find((person) => person.characterId === exit.actor)?.name ?? "A visitor")} leave ${resolveVenueZone(venue, exit.from)?.name ?? "the Zone"} and return to ${resolveVenueZone(venue, exit.to)?.name ?? "Entrance"} because access has ended.`,
+            at: new Date().toISOString(),
+            heardBy: witnesses,
+            zoneId: exit.from,
+            contactHidden: exit.actor !== "player" && playerPosition !== exit.from && playerPosition !== exit.to,
+          });
+          state.accessPreviousZones ??= {};
+          state.accessPreviousZones[exit.actor] = exit.from;
+          if (exit.actor === "player") {
+            const destination = resolveVenueZone(venue, exit.to)!;
+            state.enteredFromZoneId = exit.from;
+            state.zoneId = exit.to;
+            state.area = zoneArea(destination);
+            state.spaceClass = destination.venueClass;
+            state.privateOwnerId = destination.ownerId ?? "";
+            state.privateSpaceId = destination.kind === "private-residence" ? destination.id : undefined;
+            state.recap = "";
+            state.doorwayContacts = [];
+          } else
+            state.accompanying = [
+              ...(state.accompanying ?? []).filter((row) => row.characterId !== exit.actor),
+              { characterId: exit.actor, zoneId: exit.to },
+            ];
+        }
+      });
+      return refreshZoneParticipants(displaced, completing);
+    }
+  }
+  const revoked =
+    !venue.access &&
+    session.zoneGrants?.some(
+      (grant) => grant.zoneId === zoneId && (!zone || !canInviteToZone(venue, zone, grant.controllerId)),
+    );
+  if (!venue.access && (!zone || zoneClosed(village, venue, zone) || revoked)) {
     const displaced = await changeSession(session.id, (state) => {
       if (!completing && hasVenueOperation(session.id)) return;
       state.zoneId = "exterior";
@@ -2874,10 +3009,12 @@ async function refreshZoneParticipants(session: VenueScene, completing = false):
     return refreshZoneParticipants(displaced, completing);
   }
   const invalidGrants =
-    session.zoneGrants?.filter((grant) => {
-      const target = resolveVenueZone(venue, grant.zoneId);
-      return !target || !canInviteToZone(venue, target, grant.controllerId);
-    }) ?? [];
+    (!venue.access
+      ? session.zoneGrants?.filter((grant) => {
+          const target = resolveVenueZone(venue, grant.zoneId);
+          return !target || !canInviteToZone(venue, target, grant.controllerId);
+        })
+      : []) ?? [];
   if (invalidGrants.length) {
     const refreshed = await changeSession(session.id, (state) => {
       state.zoneGrants = state.zoneGrants?.filter(
@@ -2990,7 +3127,9 @@ async function moveVenueZoneOnce(
   if (zoneClosed(village, venue, zone)) throw conflict("This zone is closed for Renovation.");
   const offered = session.entryOffers?.find((entry) => entry.zoneId === zone.id);
   const accompanying =
-    offered?.accompanies && canOccupyZone(venue, zone, offered.controllerId)
+    offered?.accompanies &&
+    canOccupyZone(venue, zone, offered.controllerId) &&
+    (!venue.access || contactPosition(session, offered.controllerId) === session.zoneId)
       ? [
           ...(session.accompanying ?? []).filter((entry) => entry.characterId !== offered.controllerId),
           { characterId: offered.controllerId, zoneId: zone.id },
@@ -3009,7 +3148,19 @@ async function moveVenueZoneOnce(
         !relationshipZoneController(village.relationshipContext, village, venue, zone, "player")));
   const ongoingController = relationshipZoneController(village.relationshipContext, village, venue, zone, "player");
   if (ongoingController) controllerId = ongoingController;
-  if (
+  if (venue.access) {
+    await mutateVillageState((state) => {
+      const current = state.venues.find((row) => row.id === venue.id)!;
+      const target = resolveVenueZone(current, zone.id)!;
+      const decision = evaluateZoneAccess(current, target, "player", {
+        ...sceneAccessContext({ ...session, accompanying }, state),
+        accepting: true,
+        unavailable: zoneClosed(state, current, target),
+      });
+      if (!decision.allowed) throw conflict(decision.explanation);
+      claimVisitPermission(current, decision.permissionId, session.id);
+    });
+  } else if (
     !canOccupyZone(venue, zone, "player") &&
     !ongoingController &&
     (!session.grantedZoneIds?.includes(zone.id) || revokedGrant)
@@ -3083,6 +3234,11 @@ async function moveVenueZoneOnce(
     state.enteredFromZoneId = state.zoneId;
     state.zoneId = zone.id;
     state.doorwayContacts = [];
+    state.accessPreviousZones ??= {};
+    for (const entry of accompanying ?? []) {
+      const prior = contactPosition(state, entry.characterId);
+      if (prior && prior !== entry.zoneId) state.accessPreviousZones[entry.characterId] = prior;
+    }
     state.accompanying = accompanying ?? [];
     state.entryOffers = state.entryOffers?.filter((entry) => entry.zoneId !== zone.id);
     for (const person of people) {
@@ -3111,7 +3267,9 @@ async function moveVenueZoneOnce(
 }
 
 async function markZoneSeen(session: VenueScene, generateImage = true): Promise<void> {
+  let admitted = false;
   await mutateVillageState((state) => {
+    admitted = false;
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     const zone =
       venue &&
@@ -3119,8 +3277,20 @@ async function markZoneSeen(session: VenueScene, generateImage = true): Promise<
         venue,
         session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId),
       );
-    if (zone) zone.seen = true;
+    if (
+      !venue ||
+      !zone ||
+      (venue.access &&
+        !evaluateZoneAccess(venue, zone, "player", {
+          ...sceneAccessContext(session, state),
+          unavailable: zoneClosed(state, venue, zone),
+        }).allowed)
+    )
+      return;
+    zone.seen = true;
+    admitted = true;
   });
+  if (!admitted) return;
   if (session.area === "private") await markResidenceSeen(session, generateImage);
   if (!generateImage) return;
   const village = await readVillageState(),
@@ -3192,6 +3362,15 @@ async function enterVenueOnce(
       () => moveVenueZoneOnce(existing.id, zone.id),
     );
   }
+  const id = randomUUID();
+  const sceneAttendance = captureSceneAttendance(village, placeId, new Date());
+  const entryAccessContext = {
+    sceneId: id,
+    at: new Date(sceneAttendance.capturedAt),
+    positions: Object.fromEntries(sceneAttendance.occupants.map((person) => [person.characterId, person.zoneId])),
+    accepting: true,
+  };
+  let initialPermissionId: string | undefined;
   const grantedZoneIds: string[] = [];
   const zoneGrants: { zoneId: string; controllerId: string; source?: "relationship" }[] = [];
   const ongoingController = relationshipZoneController(village.relationshipContext, village, place, zone, "player");
@@ -3199,7 +3378,27 @@ async function enterVenueOnce(
     grantedZoneIds.push(zone.id);
     zoneGrants.push({ zoneId: zone.id, controllerId: ongoingController, source: "relationship" });
   }
-  if (!canOccupyZone(place, zone, "player") && !ongoingController) {
+  if (place.access) {
+    const decision = evaluateZoneAccess(place, zone, "player", {
+      ...entryAccessContext,
+      relationships: village.relationshipContext,
+    });
+    if (!decision.allowed) {
+      if (requestedZoneId || entryArea) throw conflict(decision.explanation);
+      zone = resolveVenueZone(place, "exterior")!;
+    } else
+      await mutateVillageState((state) => {
+        const current = state.venues.find((row) => row.id === place.id)!;
+        const target = resolveVenueZone(current, zone!.id)!;
+        const checked = evaluateZoneAccess(current, target, "player", {
+          ...entryAccessContext,
+          relationships: state.relationshipContext,
+          unavailable: zoneClosed(state, current, target),
+        });
+        if (!checked.allowed) throw conflict(checked.explanation);
+        initialPermissionId = checked.permissionId;
+      });
+  } else if (!canOccupyZone(place, zone, "player") && !ongoingController) {
     const target = zone;
     const invitation = place.playerInvitations?.find(
       (entry) => entry.zoneId === target.id && canInviteToZone(place, target, entry.residentId),
@@ -3226,14 +3425,13 @@ async function enterVenueOnce(
       zoneGrants.push({ zoneId: target.id, controllerId: invitation.residentId });
     }
   }
-  const sceneAttendance = captureSceneAttendance(village, placeId, new Date());
   const participants = sceneAttendance.occupants
     .filter((person) => person.zoneId === zone.id)
     .map(({ characterId, name, doing }) => ({ characterId, name, doing }));
   if (participants.length > 4)
     throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
-  const id = randomUUID();
   const session: VenueScene = {
+    pendingAccessClaim: initialPermissionId,
     version: 1,
     sceneRevision: 0,
     processingVersion: 1,
@@ -3275,8 +3473,9 @@ async function enterVenueOnce(
     active.sessionId = id;
     active.placeId = placeId;
   });
-  await markZoneSeen(session);
-  return session;
+  const settled = await refreshZoneParticipants(session);
+  await markZoneSeen(settled);
+  return settled;
 }
 
 export async function enterResidencePrivateSpace(
@@ -3377,6 +3576,7 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
         wishProposalError: wishes.error,
         wishContexts: reply.wishContexts,
         liveProposals: bindLiveProposals(reply, "", savedLineIds),
+        accessEvents: savedAccessEvents(reply.roomInterpretation),
         requestMetrics: venueRequestMetrics(),
       });
     }
@@ -3402,11 +3602,7 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
     await writeInterpretationDiagnostics(id, reply.roomInterpretation.traces).catch(() => {});
     scheduleSystemComparisons(id, reply.roomInterpretation);
   }
-  if (
-    reply.invitationSignal &&
-    (reply.invitationSignal.timing === "later" || reply.invitationSignal.venueId !== greeted.placeId)
-  )
-    await recordSpokenInvitation(greeted, reply.invitationSignal);
+  if (reply.invitationSignal) await recordSpokenInvitation(greeted, reply.invitationSignal);
   if (reply.editApprovalSignal) {
     const approval = reply.editApprovalSignal;
     const quote = approval.quote.replace(/\s+/gu, " ").toLowerCase();
@@ -3570,7 +3766,7 @@ async function prepareContactReply(scene: VenueScene, intent: ContactIntent): Pr
   if (!boundary && neighbors.length === 1) boundary = neighbors[0]!;
   if (!boundary && intent.targetId) {
     const targetZone = contactPosition(scene, intent.targetId);
-    const route = contactPath(village, venue, origin, targetZone, intent.targetId);
+    const route = contactPath(village, venue, origin, targetZone, intent.targetId, scene);
     boundary = route?.[1] ?? "";
   }
   if (intent.kind === "knock" && delivery === "voice" && !boundary && neighbors.length > 1)
@@ -3609,10 +3805,10 @@ async function prepareContactReply(scene: VenueScene, intent: ContactIntent): Pr
   ];
   const destinations = audience.map((id) => ({
     characterId: id,
-    mayComeToPlayer: !!contactPath(village, venue, contactPosition(scene, id), origin, id),
+    mayComeToPlayer: !!contactPath(village, venue, contactPosition(scene, id), origin, id, scene),
     permittedDestinations: venueZones(venue)
       .filter((zone) => {
-        const path = contactPath(village, venue, contactPosition(scene, id), zone.id, id);
+        const path = contactPath(village, venue, contactPosition(scene, id), zone.id, id, scene);
         return !!path && path.length > 1;
       })
       .map((zone) => zone.id),
@@ -3682,7 +3878,7 @@ For an explicit end to doorway conversation return contactEnd:[{speakerId,quote:
       remoteIds: [relay.targetId],
       instruction: `RELAY RESPONSE. The messenger ${relay.speakerId} has willingly travelled a validated permitted route and is now at ${approach}, addressing ${relay.targetId} across their doorway.
 The target hears only the messenger's cited request. They do not hear earlier player-Zone dialogue. Produce only the target's response intended to be conveyed back to the player. Do not describe unseen private spaces, bystanders, or private activities. They may decline, send a message, invite the player, or willingly come to meet them.
-The player stays at ${origin}; permission does not move the player. A completed journey by the target to meet them can return contactMoves:[{characterId:"${relay.targetId}",zoneId:"${origin}",quote:"exact spoken agreement"}] only when a route is permitted: ${!!contactPath(village, venue, contactPosition(scene, relay.targetId), origin, relay.targetId)}.
+The player stays at ${origin}; permission does not move the player. A completed journey by the target to meet them can return contactMoves:[{characterId:"${relay.targetId}",zoneId:"${origin}",quote:"exact spoken agreement"}] only when a route is permitted: ${!!contactPath(village, venue, contactPosition(scene, relay.targetId), origin, relay.targetId, scene)}.
 Keep dialogue attributed to the target. The server conveys it through the messenger after their return. Do not create another relay, physical handoff, lasting change, or automatic player entry.`,
     },
   };
@@ -3885,6 +4081,7 @@ async function finishActReply(
     entry.wishProposalError = wishChanges.error;
     entry.wishContexts = reply.wishContexts;
     entry.liveProposals = bindLiveProposals(reply, playerLineId, ids);
+    entry.accessEvents = savedAccessEvents(reply.roomInterpretation);
     entry.requestMetrics = venueRequestMetrics();
     if (reply.invitationSignal) {
       reply.invitationSignal.sourceLineId =
@@ -3904,6 +4101,7 @@ async function finishActReply(
     applyInterpretedRoomEvents(state, reply.roomInterpretation, currentVillage);
     entry.actionReplyDone = true;
   });
+  if (reply.roomInterpretation) await recordRoomAccessEvents(completed, reply.roomInterpretation);
   if (completed.zoneId !== session.zoneId) await markZoneSeen(completed, false);
   if (
     reply.invitationSignal &&
@@ -4220,14 +4418,21 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     if (
       reply.contactRelay &&
       reply.contactRelay.path.some(
-        (zoneId) => !contactCanEnter(current, currentVenue, zoneId, reply.contactRelay!.speakerId),
+        (zoneId) => !contactCanEnter(current, currentVenue, zoneId, reply.contactRelay!.speakerId, session),
       )
     ) {
       throw badGateway("The messenger's route is no longer permitted. Your draft is preserved.");
     }
     for (const move of reply.contactMoves) {
       if (
-        !contactPath(current, currentVenue, contactPosition(session, move.characterId), move.zoneId, move.characterId)
+        !contactPath(
+          current,
+          currentVenue,
+          contactPosition(session, move.characterId),
+          move.zoneId,
+          move.characterId,
+          session,
+        )
       )
         throw badGateway("The proposed contact movement was not permitted. Your draft is preserved.");
     }
@@ -4311,6 +4516,9 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
         if (!state.heardHistory.some((entry) => entry.characterId === id))
           state.heardHistory.push({ characterId: id, lineIds: [] });
       }
+      state.accessPreviousZones ??= {};
+      for (const move of reply.contactMoves)
+        state.accessPreviousZones[move.characterId] = contactPosition(state, move.characterId);
       state.accompanying = [
         ...(state.accompanying ?? []).filter(
           (entry) => !reply.contactMoves.some((move) => move.characterId === entry.characterId),
@@ -4461,6 +4669,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       wishProposalError: wishChanges.error,
       wishContexts: reply.wishContexts,
       liveProposals: bindLiveProposals(reply, playerLineId, replyLineIds),
+      accessEvents: savedAccessEvents(reply.roomInterpretation),
       requestMetrics: venueRequestMetrics(),
       ...(reply.sceneChange
         ? {
@@ -4543,6 +4752,8 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     }
   });
   const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
+  // Settle witnessed policy/boundary changes before this reply's visit or standing grants.
+  if (reply.roomInterpretation) await recordRoomAccessEvents(updated, reply.roomInterpretation);
   try {
     await processSavedExchange(updated.id, submission.id);
   } catch (error) {
@@ -4562,11 +4773,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     scheduleSystemComparisons(updated.id, wishInterpretation);
   }
   await applyVenueRequests(updated, submission);
-  if (
-    submission.invitationSignal &&
-    (submission.invitationSignal.timing === "later" || submission.invitationSignal.venueId !== updated.placeId)
-  )
-    await recordSpokenInvitation(updated, submission.invitationSignal);
+  if (submission.invitationSignal) await recordSpokenInvitation(updated, submission.invitationSignal);
   await markZoneSeen(updated, updated.zoneId === session.zoneId);
   if (projectInterpretation) {
     await finalizeProjectDiagnostics(updated.id, projectInterpretation, submission.projectSpeech ?? [], submission.id);
@@ -4594,25 +4801,218 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   };
 }
 
+type SavedAccessEvent = {
+  id: string;
+  facts: {
+    actorId: string;
+    venueId: string;
+    zoneId: string | null;
+    accessRevision: number;
+    accessCommand?: import("../../../../shared/src/villages/venue-access.js").AccessCommand;
+  };
+  outcome: string;
+  evidenceIds: string[];
+};
+export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAccessEvent[] {
+  return batch
+    ? batch.checks.flatMap((check, index) => {
+        const facts = asRecord(check.facts),
+          result = batch.results[index];
+        if (
+          !result ||
+          (!facts.accessCommand &&
+            !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome))
+        )
+          return [];
+        return [
+          {
+            id: check.id,
+            facts: {
+              actorId: String(facts.actorId),
+              venueId: String(facts.venueId),
+              zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
+              accessRevision: Number(facts.accessRevision),
+              ...(facts.accessCommand
+                ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
+                : {}),
+            },
+            outcome: result.outcome,
+            evidenceIds: [...result.evidenceIds],
+          },
+        ];
+      })
+    : [];
+}
+async function applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission) {
+  const events = turn.accessEvents ?? [];
+  const batch = {
+    checks: events.map((event) => ({ id: event.id, facts: event.facts })),
+    results: events.map((event) => ({ outcome: event.outcome, evidenceIds: event.evidenceIds })),
+    traces: events.map(() => ({ applied: "Saved access interpretation awaiting application" })),
+  } as InterpretationBatch;
+  await recordRoomAccessEvents(scene, batch, turn.id);
+}
+export async function recordRoomAccessEvents(
+  scene: VenueScene,
+  batch: InterpretationBatch,
+  submissionId = scene.submissions.at(-1)?.id,
+) {
+  const turn = scene.submissions.find((turn) => turn.id === submissionId);
+  if (!turn?.replyLineIds?.length || !turn.at) return;
+  await mutateVillageState((state) => {
+    if (scene.villageSeed && state.seed !== scene.villageSeed) return;
+    const initialRevisions = new Map(state.venues.map((venue) => [venue.id, venue.access?.revision]));
+    for (const [index, result] of batch.results.entries()) {
+      const check = batch.checks[index],
+        facts = asRecord(check.facts),
+        actor = String(facts.actorId);
+      const management = asRecord(facts.accessCommand);
+      if (
+        !management.action &&
+        !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome)
+      )
+        continue;
+      const venue = state.venues.find((row) => row.id === facts.venueId),
+        zone = venue && resolveVenueZone(venue, String(facts.zoneId));
+      if (!venue?.access || (!management.action && !zone && result.outcome !== "ban-venue")) continue;
+      const operationId = management.action
+        ? String(management.operationId)
+        : "access-speech:" +
+          createHash("sha256")
+            .update(check.id + ":" + result.outcome)
+            .digest("hex");
+      if (venue.access.receipts[operationId]) {
+        batch.traces[index].applied = "Already settled; replay made no access change";
+        continue;
+      }
+      const reject = (reason: string) => {
+        venue.access!.receipts[operationId] = {
+          fingerprint: "rejected-witnessed-event",
+          revision: venue.access!.revision,
+          outcome: "rejected",
+        };
+        batch.traces[index].applied = reason;
+      };
+      if (
+        facts.accessRevision !== initialRevisions.get(venue.id) &&
+        (typeof facts.accessRevision !== "number" ||
+          venue.access.changes.some(
+            (change) =>
+              change.revision > Number(facts.accessRevision) &&
+              change.action !== "invite" &&
+              change.action !== "destinations",
+          ))
+      ) {
+        reject("Rejected: access changed after this speech was interpreted");
+        continue;
+      }
+      if (management.action && result.outcome !== "access-management") {
+        reject("Rejected: the exact management change was not established by current speech");
+        continue;
+      }
+      const sources = result.evidenceIds
+        .map((ref) => {
+          const draft = /^draft:(\d+)$/u.exec(ref);
+          return scene.lines.find((line) => line.id === (draft ? turn.replyLineIds[Number(draft[1])] : ref));
+        })
+        .filter(
+          (line): line is VenueLine =>
+            !!line && line.speakerId === actor && line.kind !== "narration" && turn.replyLineIds.includes(line.id),
+        );
+      if (!sources.length) {
+        reject("Rejected: no saved current speech by the authorized actor");
+        continue;
+      }
+      const scope = result.outcome === "ban-venue" ? null : (zone?.id ?? null);
+      const speech = sources.map((line) => line.content).join(" ");
+      if (
+        result.outcome.startsWith("ban-") &&
+        (!managesAccess(venue, scope, actor) ||
+          !/\b(?:ban|banned|barred)\b/iu.test(speech) ||
+          /\b(?:not banned|not ban|won't ban|would|might|if|joking)\b/iu.test(speech))
+      ) {
+        reject("Rejected: a lasting ban requires explicit manager speech");
+        continue;
+      }
+      const base = { operationId, expectedRevision: venue.access.revision, zoneId: scope, visitorId: "player" };
+      try {
+        if (management.action)
+          applyAccessCommand(
+            venue,
+            readAccessCommand({ ...management, expectedRevision: venue.access.revision }),
+            actor,
+            turn.at,
+            ["player", ...state.villagers.map((person) => person.characterId)],
+            sources.map((line) => line.id),
+          );
+        else if (result.outcome.startsWith("ban-"))
+          applyAccessCommand(
+            venue,
+            { ...base, action: "ban" },
+            actor,
+            turn.at,
+            ["player", ...state.villagers.map((person) => person.characterId)],
+            sources.map((line) => line.id),
+          );
+        else if (result.outcome === "invite-outside-hours")
+          applyAccessCommand(
+            venue,
+            {
+              ...base,
+              action: "invite",
+              duration: "visit",
+              sceneId: venue.id === scene.placeId ? scene.id : undefined,
+              accompanied: false,
+              outsideHours: true,
+            },
+            actor,
+            turn.at,
+            ["player", ...state.villagers.map((person) => person.characterId)],
+            sources.map((line) => line.id),
+          );
+        else if (venue.id === scene.placeId)
+          applyAccessCommand(
+            venue,
+            { ...base, action: result.outcome === "dismiss" ? "leave-now" : "refuse-entry", sceneId: scene.id },
+            actor,
+            turn.at,
+            ["player", ...state.villagers.map((person) => person.characterId)],
+            sources.map((line) => line.id),
+          );
+        else continue;
+        batch.traces[index].applied = "Scoped access change recorded with current authority and saved speech";
+      } catch (error) {
+        reject("Rejected: " + safeFailureMessage(error));
+      }
+    }
+  });
+}
 async function finalizeRoomInvitationDiagnostics(
   scene: VenueScene,
   batch: InterpretationBatch,
   signal: VenueSubmission["invitationSignal"],
 ) {
+  await recordRoomAccessEvents(scene, batch);
   await saveInterpretationContext(scene.id, batch, scene.submissions.at(-1)?.id).catch(() => {});
   const queued = batch.traces.filter((trace) => trace.applied.startsWith("Future invitation queued"));
+  if (signal) await recordSpokenInvitation(scene, signal);
   if (!queued.length) return;
-  if (signal && (signal.timing === "later" || signal.venueId !== scene.placeId))
-    await recordSpokenInvitation(scene, signal);
   const state = await readVillageState();
   for (const trace of queued) {
     const facts = asRecord(batch.checks[batch.traces.indexOf(trace)].facts);
     const venue = state.venues.find((entry) => entry.id === facts.venueId);
     const recorded =
       signal &&
-      venue?.playerInvitations?.some(
-        (invitation) => invitation.sourceLineId === signal.sourceLineId && invitation.zoneId === facts.zoneId,
-      );
+      (venue?.access
+        ? venue.access.permissions.some(
+            (grant) =>
+              !grant.revoked &&
+              grant.sourceLineIds.includes(signal.sourceLineId ?? "") &&
+              grant.zoneId === facts.zoneId,
+          )
+        : venue?.playerInvitations?.some(
+            (invitation) => invitation.sourceLineId === signal.sourceLineId && invitation.zoneId === facts.zoneId,
+          ));
     trace.applied = recorded
       ? `Next-visit invitation recorded using ${trace.result.source}; authority and saved evidence validated`
       : "Rejected: future invitation did not validate against saved evidence and current authority";
@@ -4679,6 +5079,13 @@ export function applyInterpretedRoomEvents(
             : "Rejected: no current supporting invitation evidence";
       continue;
     }
+    if (
+      venue.access &&
+      ["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome)
+    ) {
+      trace.applied = "Scoped access event queued for saved speech validation";
+      continue;
+    }
     if (result.outcome === "dismiss") {
       if (venue.id !== session.placeId) {
         trace.applied = "Rejected: dismissal concerns another Venue";
@@ -4740,7 +5147,7 @@ function applyImmediateZoneInvitation(
   ];
 }
 
-async function recordSpokenInvitation(
+export async function recordSpokenInvitation(
   session: VenueScene,
   signal: NonNullable<VenueSubmission["invitationSignal"]>,
 ): Promise<void> {
@@ -4753,6 +5160,7 @@ async function recordSpokenInvitation(
   );
   if (!spoken || !quote) return;
   await mutateVillageState((state) => {
+    if (session.villageSeed && session.villageSeed !== state.seed) return;
     const venue = state.venues.find((entry) => entry.id === signal.venueId);
     if (!venue) return;
     const zone = resolveVenueZone(
@@ -4761,6 +5169,48 @@ async function recordSpokenInvitation(
         legacyZoneId(venue, signal.scope === "private" ? "private" : "shared", "residence", signal.ownerId),
     );
     if (!zone || zoneClosed(state, venue, zone) || !canInviteToZone(venue, zone, signal.residentId)) return;
+    if (venue.access) {
+      const operationId = "speech:" + spoken.id + ":" + zone.id;
+      if (venue.access.receipts[operationId]) return;
+      if (
+        signal.accessRevision === undefined ||
+        venue.access.changes.some(
+          (change) =>
+            change.revision > signal.accessRevision! &&
+            (change.zoneId === null || change.zoneId === zone.id) &&
+            change.action !== "invite" &&
+            change.action !== "destinations",
+        )
+      ) {
+        venue.access.receipts[operationId] = {
+          fingerprint: "obsolete-visit-speech",
+          revision: venue.access.revision,
+          outcome: "rejected",
+        };
+        return;
+      }
+      applyAccessCommand(
+        venue,
+        {
+          action: "invite",
+          operationId,
+          expectedRevision: venue.access.revision,
+          zoneId: zone.id,
+          visitorId: "player",
+          duration: "visit",
+          accompanied: signal.accompanies === true,
+          outsideHours: false,
+          ...(signal.timing === "now" && venue.id === session.placeId ? { sceneId: session.id } : {}),
+        },
+        signal.residentId,
+        spoken.at,
+        ["player", ...state.villagers.map((person) => person.characterId)],
+        [spoken.id],
+      );
+      return;
+    }
+    // Legacy immediate admission is captured by the current Scene's zoneGrants.
+    if (signal.timing === "now" && venue.id === session.placeId) return;
     if (zone.kind === "private-residence" && signal.ownerId !== signal.residentId) return;
     if (
       venue.usedInvitationIds?.includes(spoken.id) ||
@@ -4784,21 +5234,36 @@ async function recordSpokenInvitation(
 }
 
 async function markResidenceSeen(session: VenueScene, generateImage = true): Promise<void> {
+  let admitted = false;
   await mutateVillageState((state) => {
+    admitted = false;
     const venue = state.venues.find((entry) => entry.id === session.placeId);
     if (!venue || !venueClasses(venue).includes("residence")) return;
     if (session.zoneId) {
       const zone = resolveVenueZone(venue, session.zoneId);
-      if (zone) zone.seen = true;
+      if (
+        !zone ||
+        (venue.access &&
+          !evaluateZoneAccess(venue, zone, "player", {
+            ...sceneAccessContext(session, state),
+            unavailable: zoneClosed(state, venue, zone),
+          }).allowed)
+      )
+        return;
+      zone.seen = true;
     } else if (session.area === "shared") venue.playerSeenShared = true;
     if (!session.zoneId && session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
       venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
+    admitted = true;
   });
-  if (generateImage && session.area === "private" && session.privateOwnerId) {
+  if (admitted && generateImage && session.area === "private" && session.privateOwnerId) {
     outsideVenueOperation(() => {
       void import("./location-image.js")
         .then(({ generateFirstPrivateSpaceImage }) =>
-          generateFirstPrivateSpaceImage(session.placeId, session.privateOwnerId),
+          generateFirstPrivateSpaceImage(
+            session.placeId,
+            session.zoneId ?? session.privateSpaceId ?? session.privateOwnerId,
+          ),
         )
         .catch((error) => villagesLogger().warn("[villages] private-space image could not start: %s", String(error)));
     });

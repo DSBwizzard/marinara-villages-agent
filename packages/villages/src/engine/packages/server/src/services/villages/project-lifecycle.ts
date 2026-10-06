@@ -891,7 +891,8 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
       if (project.kind === "new-venue") {
         const form = boundText(row.form, 240).trim();
         const exterior = boundText(row.exteriorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-        if (!form || !exterior) throw badRequest("Define the Venue form and exterior before opening it.");
+        if (!form || !exterior)
+          throw badRequest("Define the Venue's physical form and Entrance appearance before opening it.");
         if (row.layoutVersion !== 1) throw badRequest("Choose the venue layout before opening it.");
         if (row.layoutVersion === 1) {
           const zones = readBaseVenueLayout(
@@ -900,6 +901,11 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
             "",
             validImage,
           );
+          for (const zone of zones) {
+            const existing = venue.zones?.find((saved) => saved.id === zone.id);
+            // Structural finishing cannot replace access rules governed by the command service.
+            zone.access = existing?.access;
+          }
           validateLayoutZones(
             venue,
             zones.filter((zone) => zone.kind !== "exterior"),
@@ -913,6 +919,7 @@ export async function openFinishedProject(id: string, value: unknown): Promise<v
             .filter((zone) => zone.kind === "private-residence")
             .map((zone) => ({ ...zone, ownerId: zone.ownerId || "" }));
           venue.form = form;
+          venue.venueType = boundText(row.venueType, 100);
           venue.imageContext = readVenueImageContext(row.imageContext);
           venue.description = exterior;
           venue.presentation.image = validImage(row.exteriorImage);

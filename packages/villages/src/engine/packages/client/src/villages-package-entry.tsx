@@ -1,3 +1,5 @@
+import { VenueAccessPanel } from "./villages-venue-access";
+import { foundingZoneProblem, FoundingZoneFields, draftZonePolicy } from "./villages-founding-zones";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
@@ -50,10 +52,8 @@ import {
   FoundingVenueEditor,
   VenueLayoutFields,
   BaseZoneFields,
-  AreaClassField,
   venueHasCommon,
   venueHasPrivate,
-  PrivateSpaceFields,
   personalSpaceDraft,
   SceneryStyleFields,
   SCENERY_STYLES,
@@ -773,6 +773,9 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  venueType?: string;
+  accessView?: import("../../shared/src/villages/venue-access.js").VenueAccessView;
+  destinations?: Record<string, { home?: string; sleep?: string; work?: string }>;
   layoutVersion?: 1;
   layout?: "exterior" | "common" | "private" | "both";
   imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
@@ -792,6 +795,8 @@ export type VillageVenue = {
       upgradeId?: string;
       ownerId?: string;
       purpose?: string;
+      access?: import("../../shared/src/villages/venue-access.js").ZoneAccessPolicy;
+      accessView?: import("../../shared/src/villages/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       preparation?: { status: "pending" | "ready" | "failed"; error?: string };
       seen?: boolean;
@@ -799,6 +804,10 @@ export type VillageVenue = {
   >;
   spaces?: Array<{
     id: string;
+    name?: string;
+    ownerId?: string;
+    purpose?: string;
+    access?: import("../../shared/src/villages/venue-access.js").ZoneAccessPolicy;
     venueClass: "residence" | "workplace" | "gathering" | "other";
     description: string;
     image: VillageVenueImage | null;
@@ -827,6 +836,8 @@ export type VillageVenue = {
       ownerId: string;
       name?: string;
       purpose?: string;
+      access?: import("../../shared/src/villages/venue-access.js").ZoneAccessPolicy;
+      accessView?: import("../../shared/src/villages/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       adaptationPending?: boolean;
       initialImageAttemptedAt?: string;
@@ -858,6 +869,8 @@ export type VillageVenue = {
       kind: "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
       ownerId?: string;
       purpose?: string;
+      access?: import("../../shared/src/villages/venue-access.js").ZoneAccessPolicy;
+      accessView?: import("../../shared/src/villages/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       description: string;
       venueClass: "residence" | "workplace" | "gathering" | "other";
@@ -6833,6 +6846,7 @@ type VenueViewZone = {
   zoneId?: string;
   label: string;
   subtitle: string;
+  purpose?: string;
   area: "outside" | "shared" | "private" | "public";
   spaceClass: VenueClass;
   ownerId: string;
@@ -6845,6 +6859,8 @@ type VenueViewZone = {
   adaptationPending?: boolean;
 };
 function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave: (body: unknown) => Promise<void> }) {
+  const [name, setName] = useState(zone.label);
+  const [purpose, setPurpose] = useState(zone.purpose ?? "");
   const [description, setDescription] = useState(zone.description);
   const [features, setFeatures] = useState(zone.state?.features.map((feature) => feature.text).join("\n") ?? "");
   const [busy, setBusy] = useState(false);
@@ -6853,7 +6869,15 @@ function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave: (body:
     <section className={ELEMENT_TAG + "-venue-card"}>
       <h2>{zone.label} details</h2>
       <label>
-        Description
+        Zone name
+        <input maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+      </label>
+      <label>
+        Used for
+        <input maxLength={240} value={purpose} onChange={(event) => setPurpose(event.target.value)} />
+      </label>
+      <label>
+        Appearance
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
       </label>
       <label>
@@ -6874,6 +6898,8 @@ function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave: (body:
           setNotice("");
           try {
             await onSave({
+              name,
+              purpose,
               description,
               state: {
                 features: features
@@ -6980,7 +7006,16 @@ function VenueDraftFields({
         />
       </label>
       <label className={`${ELEMENT_TAG}-label`}>
-        Form <span className={`${ELEMENT_TAG}-hint`}>What is it, in your world?</span>
+        Venue Type <span className={`${ELEMENT_TAG}-hint`}>Home, bakery, church, campsite…</span>
+        <input
+          className={`${ELEMENT_TAG}-notice-input`}
+          maxLength={100}
+          value={draft.venueType ?? ""}
+          onChange={(event) => onChange({ ...draft, venueType: event.target.value })}
+        />
+      </label>
+      <label className={`${ELEMENT_TAG}-label`}>
+        Physical form <span className={`${ELEMENT_TAG}-hint`}>Building, shelter, or physical arrangement</span>
         <input
           className={`${ELEMENT_TAG}-notice-input`}
           value={draft.form ?? ""}
@@ -11766,6 +11801,8 @@ function ProjectsPanelV2({
     NonNullable<NonNullable<VillageVenue["improvements"]>[number]>["zones"]
   >([]);
   const [form, setForm] = useState("");
+  const [openingVenueType, setOpeningVenueType] = useState("");
+  const [openingSpaces, setOpeningSpaces] = useState<NonNullable<VillageVenue["spaces"]>>([]);
   const [exterior, setExterior] = useState("");
   const [interior, setInterior] = useState("");
   const [exteriorImage, setExteriorImage] = useState<VillageVenueImage | null>(null);
@@ -11801,6 +11838,8 @@ function ProjectsPanelV2({
     setOpeningLayout(undefined);
     setOpeningCommonClass(undefined);
     setForm("");
+    setOpeningVenueType("");
+    setOpeningSpaces([]);
     setExterior("");
     setInterior("");
     setExteriorImage(null);
@@ -11824,24 +11863,28 @@ function ProjectsPanelV2({
         layoutVersion: 1,
         layout: openingLayout,
         form,
+        venueType: openingVenueType,
         description: exterior,
         spaces:
           openingLayout === "common" || openingLayout === "both"
-            ? [
-                {
-                  id: "common:base",
-                  venueClass: openingCommonClass || target.classes?.[0] || "other",
-                  description: interior,
-                  image: interiorImage,
-                  state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
-                },
-              ]
+            ? openingSpaces.map((zone, index) =>
+                index === 0
+                  ? {
+                      ...zone,
+                      venueClass: openingCommonClass || zone.venueClass,
+                      description: interior,
+                      image: interiorImage,
+                    }
+                  : zone,
+              )
             : [],
         privateSpaces: openingPrivateSpaces,
       }
     : null;
   const patchOpeningLayout = (venue: VillageVenue) => {
     setOpeningLayout(venue.layout);
+    setOpeningSpaces(venue.spaces ?? []);
+    setOpeningVenueType(venue.venueType ?? "");
     setOpeningPrivateSpaces(venue.privateSpaces ?? []);
     if (venue.spaces?.[0]) {
       setOpeningCommonClass(venue.spaces[0].venueClass);
@@ -11929,7 +11972,17 @@ function ProjectsPanelV2({
   };
   const openingImageKey = JSON.stringify([
     project?.id,
-    openingVenue,
+    openingVenue
+      ? {
+          venueType: openingVenue.venueType,
+          form: openingVenue.form,
+          description: openingVenue.description,
+          spaces: openingVenue.spaces?.map(({ access: _access, accessView: _view, ...physical }) => physical),
+          privateSpaces: openingVenue.privateSpaces?.map(
+            ({ access: _access, accessView: _view, ...physical }) => physical,
+          ),
+        }
+      : null,
     openingLore,
     openingPersonality,
     snapshot.settings.setting,
@@ -11950,6 +12003,7 @@ function ProjectsPanelV2({
           venue: {
             id: target?.id || project.venueId || project.id,
             name: project.title,
+            venueType: openingVenueType,
             form: form || project.title,
             description: exterior || project.venueDraft?.description || target?.description,
             spaceDescription: interior || target?.spaces?.[0]?.description || exterior,
@@ -12016,7 +12070,7 @@ function ProjectsPanelV2({
           <h2>{project.kind === "new-venue" ? `Open ${project.title}` : `Review ${project.title}`}</h2>
           <p>
             {project.kind === "new-venue"
-              ? "Choose the finished place’s form, layout, exterior, and selected Zones. Images are optional."
+              ? "Define the Venue Type, physical form, and each Zone’s use and appearance. Images are optional."
               : "Review the approved zone names, access, and descriptions, then choose final images if you wish."}
           </p>
         </header>
@@ -12035,7 +12089,16 @@ function ProjectsPanelV2({
         {project.kind === "new-venue" ? (
           <>
             <label>
-              Form
+              Venue Type
+              <input
+                value={openingVenueType}
+                maxLength={100}
+                placeholder="Bakery, church, campsite…"
+                onChange={(event) => setOpeningVenueType(event.target.value)}
+              />
+            </label>
+            <label>
+              Physical form
               <input
                 value={form}
                 onChange={(event) => setForm(event.target.value)}
@@ -12046,22 +12109,18 @@ function ProjectsPanelV2({
               <VenueLayoutFields venue={openingVenue} onChange={patchOpeningLayout} onReveal={setOpeningFocusArea} />
             ) : null}
             <label>
-              Exterior description
+              Entrance appearance
               <textarea value={exterior} onChange={(event) => setExterior(event.target.value)} />
             </label>
-            {openingVenue && venueHasCommon(openingVenue) ? (
-              <>
-                <AreaClassField venue={openingVenue} privateArea={false} onChange={patchOpeningLayout} />
-                <label>
-                  Common Space description
-                  <textarea
-                    aria-label="Common Space description"
-                    data-layout-editor="common"
-                    value={interior}
-                    onChange={(event) => setInterior(event.target.value)}
-                  />
-                </label>
-              </>
+            {openingVenue ? (
+              <FoundingZoneFields
+                venue={openingVenue}
+                busy={busy}
+                editAccess={false}
+                people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
+                onPatch={patchOpeningLayout}
+                imageFields={() => <p>Optional artwork for additional Zones can be added after opening.</p>}
+              />
             ) : null}
             <label>
               <input
@@ -12077,29 +12136,9 @@ function ProjectsPanelV2({
             </label>
             {target?.classes?.includes("residence") ? (
               <p>
-                Capacity starts at one resident. A residential Private Space is assigned explicitly when someone moves
+                Capacity starts at one resident. A personal residential Zone is assigned explicitly when someone moves
                 in.
               </p>
-            ) : null}
-            {openingVenue && venueHasPrivate(openingVenue) ? (
-              <>
-                <AreaClassField venue={openingVenue} privateArea onChange={patchOpeningLayout} />
-                <div data-layout-editor="private">
-                  <PrivateSpaceFields
-                    allowAdd={false}
-                    rooms={openingPrivateSpaces}
-                    onChange={(rooms) => {
-                      setOpeningPrivateSpaces(rooms);
-                      if (!rooms.length) setOpeningLayout(openingLayout === "both" ? "common" : "exterior");
-                    }}
-                    workplace={openingPrivateSpaces[0]?.venueClass === "workplace"}
-                    people={[
-                      { id: "player", name: "You" },
-                      ...snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name })),
-                    ]}
-                  />
-                </div>
-              </>
             ) : null}
           </>
         ) : (
@@ -12114,7 +12153,9 @@ function ProjectsPanelV2({
           const image = area === "exterior" ? exteriorImage : interiorImage;
           return (
             <section key={area} className={`${ELEMENT_TAG}-project-image`}>
-              <h3>{area === "exterior" ? "Exterior" : "Common Space"} image · optional</h3>
+              <h3>
+                {area === "exterior" ? "Entrance" : openingVenue?.spaces?.[0]?.name || "First Zone"} image · optional
+              </h3>
               {image ? (
                 <img src={image.url} alt={`${area} preview`} />
               ) : (
@@ -12211,11 +12252,13 @@ function ProjectsPanelV2({
               (!form.trim() ||
                 !exterior.trim() ||
                 !openingLayout ||
-                ((openingLayout === "common" || openingLayout === "both") && !interior.trim())))
+                ((openingLayout === "common" || openingLayout === "both") && !interior.trim()) ||
+                !!(openingVenue && foundingZoneProblem(openingVenue))))
           }
           onClick={async () => {
             const next = await action("open", {
               form,
+              venueType: openingVenueType,
               exteriorDescription: exterior,
               exteriorImage,
               ...(project.kind === "new-venue" && openingVenue && venueHasCommon(openingVenue)
@@ -12449,16 +12492,16 @@ function ProjectsPanelV2({
                                 )
                               }
                             >
-                              <option value="public">Public · everyone</option>
-                              <option value="shared-residence">Common Space · residents and guests</option>
-                              <option value="private-residence">Residential Private Space · assigned resident</option>
-                              <option value="staff">Staff · all current workers and guests</option>
-                              <option value="restricted">Private · assigned controllers and guests</option>
+                              <option value="public">General Zone</option>
+                              <option value="shared-residence">Shared residential Zone</option>
+                              <option value="private-residence">Personal residential Zone · assigned resident</option>
+                              <option value="staff">Work Zone</option>
+                              <option value="restricted">Other dedicated Zone</option>
                             </select>
                           </label>
-                          {["private-residence", "staff", "restricted"].includes(zone.kind) ? (
+                          {
                             <label>
-                              Purpose
+                              Used for
                               <input
                                 value={zone.purpose ?? ""}
                                 maxLength={240}
@@ -12471,7 +12514,7 @@ function ProjectsPanelV2({
                                 }
                               />
                             </label>
-                          ) : null}
+                          }
                           {zone.kind === "private-residence" ? (
                             <label>
                               Assigned resident
@@ -13792,6 +13835,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           description: string;
           layout: "exterior" | "common" | "private" | "both";
           commonName: string;
+          commonPurpose?: string;
+          venueType?: string;
           commonDescription: string;
           privateName: string;
           privatePurpose: string;
@@ -13829,8 +13874,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           const before = rows.find((item) => item.id === row.id);
           if (!proposal || !before) return row;
           const changed: SetupVenueDraft = { ...row };
-          for (const key of ["name", "form", "description"] as const)
-            if (!setupAuthoredFields[row.id]?.includes(key) && row[key] === before[key]) changed[key] = proposal[key];
+          for (const key of ["name", "venueType", "form", "description"] as const)
+            if (!setupAuthoredFields[row.id]?.includes(key) && row[key] === before[key])
+              changed[key] = proposal[key] ?? row[key];
           const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
             setupAuthoredFields[row.id]?.includes(key),
           );
@@ -13851,6 +13897,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       ownerId: "",
                       venueClass: role,
                       name: proposal.commonName,
+                      purpose:
+                        proposal.commonPurpose ||
+                        (role === "residence" ? "Everyday home activities" : "Community gatherings"),
+                      access: draftZonePolicy(row, { venueClass: role }),
                       description: proposal.commonDescription,
                     },
                   ]
@@ -13865,6 +13915,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
                       name: proposal.privateName,
                       purpose: proposal.privatePurpose,
+                      access: draftZonePolicy(
+                        row,
+                        {
+                          venueClass: role,
+                          ownerId: row.occupancy.playerHome ? "player" : row.occupancy.residentCharacterId || "",
+                        },
+                        true,
+                      ),
                       controllerIds: role === "gathering" ? ["player"] : undefined,
                     },
                   ]
@@ -16438,12 +16496,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const setupDraftRow = (venue: SetupVenueDraft) => ({
     id: venue.id,
     name: venue.name,
+    venueType: venue.venueType,
     form: venue.form ?? "",
     description: venue.description,
     spaceDescription: venue.spaces?.[0]?.description ?? "",
     layout: venue.layout,
     layoutVersion: venue.layoutVersion,
     areas: [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].map((area) => ({
+      id: area.id,
       name: "name" in area ? area.name : "Common Space",
       purpose: "purpose" in area ? area.purpose : "",
       venueClass: area.venueClass,
@@ -16452,10 +16512,16 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     residentCharacterId: venue.occupancy.residentCharacterId ?? "",
   });
 
-  const generateSetupImage = async (venue: SetupVenueDraft, area: "exterior" | "interior" | "private") => {
+  const generateSetupImage = async (
+    venue: SetupVenueDraft,
+    area: "exterior" | "interior" | "private",
+    zoneId?: string,
+  ) => {
     if (setupVenueBusy) return;
-    const description =
-      area === "private"
+    const selectedArea = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find((zone) => zone.id === zoneId);
+    const description = selectedArea
+      ? selectedArea.description
+      : area === "private"
         ? (venue.privateSpaces?.find((room) => room.ownerId === "player")?.description ?? "")
         : area === "exterior"
           ? venue.description
@@ -16470,7 +16536,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       return;
     }
     const sourceKey = setupBeginningSourceKey;
-    const venueKey = JSON.stringify(venue);
+    const physicalImageKey = (row: VillageVenue | undefined) =>
+      row &&
+      JSON.stringify({
+        name: row.name,
+        venueType: row.venueType,
+        form: row.form,
+        description: row.description,
+        occupancy: row.occupancy,
+        imageContext: row.imageContext,
+        zone: [...(row.spaces ?? []), ...(row.privateSpaces ?? [])]
+          .filter((zone) => zone.id === zoneId)
+          .map(({ id, name, purpose, description, state }) => ({ id, name, purpose, description, state })),
+      });
+    const venueKey = physicalImageKey(venue);
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -16479,6 +16558,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         body: JSON.stringify({
           venue: setupDraftRow(venue),
           area,
+          zoneId,
+          zoneName: selectedArea?.name,
+          zonePurpose: selectedArea?.purpose,
+          zoneAppearance: selectedArea?.description,
           privateOwnerId: area === "private" ? "player" : undefined,
           privateDescription: description,
           residentFoundingContext: venue.occupancy.residentCharacterId
@@ -16498,14 +16581,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       });
       if (
         setupBeginningSourceKeyRef.current !== sourceKey ||
-        JSON.stringify(setupVenuesRef.current.find((row) => row.id === venue.id)) !== venueKey
+        physicalImageKey(setupVenuesRef.current.find((row) => row.id === venue.id)) !== venueKey
       ) {
         setSetupProblem("The venue changed while its image was generated. Generate again.");
         return;
       }
       setSetupVenues((rows) =>
         rows.map((row) =>
-          row.id === venue.id && JSON.stringify(row) === venueKey ? withSetupImage(row, area, image) : row,
+          row.id === venue.id && physicalImageKey(row) === venueKey ? withSetupImage(row, area, image, zoneId) : row,
         ),
       );
     } catch (cause) {
@@ -16515,7 +16598,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }
   };
 
-  const uploadSetupImage = async (venue: SetupVenueDraft, area: "exterior" | "interior" | "private", file?: File) => {
+  const uploadSetupImage = async (
+    venue: SetupVenueDraft,
+    area: "exterior" | "interior" | "private",
+    file?: File,
+    zoneId?: string,
+  ) => {
     if (!file || setupVenueBusy) return;
     if (file.size > (snapshot?.settings.maxVenueImageBytes ?? 8_000_000)) {
       setSetupProblem("That venue image is too large. Choose a smaller file.");
@@ -16528,7 +16616,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         method: "PUT",
         body: JSON.stringify({ name: venue.name, image: await readFileAsDataUrl(file) }),
       });
-      patchSetupVenue(venue.id, (row) => withSetupImage(row, area, image));
+      patchSetupVenue(venue.id, (row) => withSetupImage(row, area, image, zoneId));
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "That venue image could not be uploaded."));
     } finally {
@@ -16540,6 +16628,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     venue: SetupVenueDraft,
     area: "exterior" | "interior" | "private",
     image: VillageVenueImage,
+    zoneId?: string,
   ): SetupVenueDraft =>
     area === "exterior"
       ? { ...venue, presentation: { ...venue.presentation, image } }
@@ -16547,10 +16636,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         ? {
             ...venue,
             privateSpaces: (venue.privateSpaces ?? [personalSpaceDraft()]).map((room) =>
-              room.ownerId === "player" ? { ...room, image } : room,
+              (zoneId ? room.id === zoneId : room.ownerId === "player") ? { ...room, image } : room,
             ),
           }
-        : { ...venue, spaces: venue.spaces?.map((space, index) => (index === 0 ? { ...space, image } : space)) };
+        : {
+            ...venue,
+            spaces: venue.spaces?.map((space, index) =>
+              (zoneId ? space.id === zoneId : index === 0) ? { ...space, image } : space,
+            ),
+          };
   const resumeSetupPlacement = (_rows: SetupVenueDraft[], _completedIds?: string[]) => {
     setSetupEditorOpen(false);
     setSelectedSetupVenueId(null);
@@ -16574,17 +16668,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       !selectedSetupVenue.form?.trim() ||
       !selectedSetupVenue.description.trim() ||
       (!snapshot?.isFounded && selectedSetupVenue.layoutVersion === 1 && !selectedSetupVenue.layout) ||
-      (venueHasCommon(selectedSetupVenue) && !selectedSetupVenue.spaces?.[0]?.description.trim())
+      foundingZoneProblem(selectedSetupVenue)
     ) {
-      setSetupProblem("Complete this venue’s name, form, layout, exterior, and selected Common Space.");
+      setSetupProblem(
+        foundingZoneProblem(selectedSetupVenue) || "Complete the Venue name, physical form and Entrance appearance.",
+      );
       return;
     }
     if (
       selectedSetupVenue.privateSpaces?.some(
         (room) =>
-          !room.name?.trim() ||
-          !room.purpose?.trim() ||
-          (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
+          !room.access &&
+          (!room.name?.trim() ||
+            !room.purpose?.trim() ||
+            (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
       )
     ) {
       setSetupProblem("Give each Private Space a name, purpose, and controller.");
@@ -16647,10 +16744,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           !venue.form?.trim() ||
           !venue.description.trim() ||
           (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
-          (venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()),
+          foundingZoneProblem(venue),
       )
     )
-      return "Complete each venue's Form, Layout, Exterior, and selected Common Space on Spaces.";
+      return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Spaces.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -16665,9 +16762,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupVenues.some((venue) =>
         venue.privateSpaces?.some(
           (room) =>
-            !room.name?.trim() ||
-            !room.purpose?.trim() ||
-            (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
+            !room.access &&
+            (!room.name?.trim() ||
+              !room.purpose?.trim() ||
+              (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
         ),
       )
     )
@@ -18306,27 +18404,32 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             zone.relationshipAccess ||
             place.playerInvitations?.some((invitation) => invitation.zoneId === zone.id) ||
             (activeRoom?.placeId === place.id && activeRoom.grantedZoneIds?.includes(zone.id));
-          const canEnter =
-            !zone.closed &&
-            (zone.kind === "exterior" ||
-              zone.kind === "public" ||
-              ((zone.kind === "shared-residence" || (zone.kind === "private-residence" && zone.ownerId === "player")) &&
-                place.occupancy.playerHome) ||
-              !!invited ||
-              (zone.kind === "restricted" && !!zone.controllerIds?.includes("player")));
+          const canEnter = zone.accessView
+            ? zone.accessView.decision.allowed
+            : !zone.closed &&
+              (zone.kind === "exterior" ||
+                zone.kind === "public" ||
+                ((zone.kind === "shared-residence" ||
+                  (zone.kind === "private-residence" && zone.ownerId === "player")) &&
+                  place.occupancy.playerHome) ||
+                !!invited ||
+                (zone.kind === "restricted" && !!zone.controllerIds?.includes("player")));
           return {
             key: zone.id,
+            purpose: zone.purpose,
             zoneId: zone.id,
-            label:
-              zone.kind === "private-residence"
+            label: zone.accessView
+              ? zone.name
+              : zone.kind === "private-residence"
                 ? zone.ownerId === "player"
                   ? "Your Private Space"
                   : zone.ownerId
                     ? nameOfCharacter(zone.ownerId) + "'s Private Space"
                     : zone.name + " (vacant)"
                 : zone.name,
-            subtitle:
-              zone.kind === "staff"
+            subtitle: zone.accessView
+              ? zone.purpose || "Zone"
+              : zone.kind === "staff"
                 ? "Staff Zone"
                 : zone.kind === "shared-residence"
                   ? "Common Space"
@@ -18343,21 +18446,23 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             state: locked ? undefined : zone.state,
             locked,
             canEnter,
-            accessLabel: zone.closed
-              ? "Closed for Renovation"
-              : zone.kind === "exterior" || zone.kind === "public"
-                ? "Open to everyone"
-                : zone.relationshipAccess
-                  ? "Ongoing relationship access"
-                  : invited
-                    ? "Permission for this Scene"
-                    : zone.kind === "private-residence"
-                      ? "Owner's invitation required"
-                      : zone.kind === "staff"
-                        ? "Workers and invited guests"
-                        : zone.kind === "restricted"
-                          ? "Assigned controllers and invited guests"
-                          : "Residents and invited guests",
+            accessLabel: zone.accessView
+              ? zone.accessView.decision.explanation
+              : zone.closed
+                ? "Closed for Renovation"
+                : zone.kind === "exterior" || zone.kind === "public"
+                  ? "Open to everyone"
+                  : zone.relationshipAccess
+                    ? "Ongoing relationship access"
+                    : invited
+                      ? "Permission for this Scene"
+                      : zone.kind === "private-residence"
+                        ? "Owner's invitation required"
+                        : zone.kind === "staff"
+                          ? "Workers and invited guests"
+                          : zone.kind === "restricted"
+                            ? "Assigned controllers and invited guests"
+                            : "Residents and invited guests",
           };
         })
       : legacyZones;
@@ -18412,6 +18517,20 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     ) => (
       <section className={`${ELEMENT_TAG}-venue-card`} key={zoneId || ownerId || spaceClass || "exterior"}>
         <h3 className={`${ELEMENT_TAG}-panel-title`}>{label}</h3>
+        <details>
+          <summary>What informs this Zone’s artwork?</summary>
+          <p>
+            Venue Type: {place.venueType || "Not set"}. Physical form: {place.form || "Not set"}.
+          </p>
+          <p>
+            Used for: {place.zones?.find((zone) => zone.id === zoneId)?.purpose || "Arrival and approach"}. Appearance:{" "}
+            {place.zones?.find((zone) => zone.id === zoneId)?.description || place.description}.
+          </p>
+          <p>
+            Visible physical state, shared scenery style and enabled context also apply. Access rules do not change the
+            image.
+          </p>
+        </details>
         {ownerId ? <p>Personal-space images always reflect their owner.</p> : null}
         <fieldset>
           <legend>Venue image context</legend>
@@ -18495,6 +18614,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     );
     const editableFields = (venue: VillageVenue) => ({
       name: venue.name,
+      venueType: venue.venueType,
       form: venue.form,
       workerIds: venue.workerIds,
       position: { x: venue.presentation.x, y: venue.presentation.y },
@@ -18578,6 +18698,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           method: "PUT",
           body: JSON.stringify({
             name: venueEditDraft.name,
+            venueType: venueEditDraft.venueType,
             description: venueEditDraft.description,
           }),
         });
@@ -18797,6 +18918,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 <span className={ELEMENT_TAG + "-venue-kicker"}>Zone</span>
                 <h2>{selectedZone.label}</h2>
                 <p>{selectedZone.subtitle}</p>
+                {place.accessView && selectedZone.zoneId ? (
+                  <VenueAccessPanel
+                    key={place.accessView.revision + ":" + selectedZone.zoneId}
+                    venue={place}
+                    zoneId={selectedZone.zoneId}
+                    people={[
+                      { id: "player", name: "You" },
+                      ...snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name })),
+                    ]}
+                    onCommand={async (command) => {
+                      setSnapshot(
+                        await request<VillageSnapshot>("/venues/" + encodeURIComponent(place.id) + "/access", {
+                          method: "POST",
+                          body: JSON.stringify(command),
+                        }),
+                      );
+                    }}
+                  />
+                ) : null}
                 <div className={ELEMENT_TAG + "-venue-zone-stat"}>
                   <span>Occupancy</span>
                   <strong>
@@ -18809,7 +18949,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                   <span>Accessibility</span>
                   <strong>{selectedZone.accessLabel}</strong>
                 </div>
-                {privateSpace && ["private-residence", "staff", "restricted"].includes(privateSpace.kind) ? (
+                {!place.accessView &&
+                privateSpace &&
+                ["private-residence", "staff", "restricted"].includes(privateSpace.kind) ? (
                   <div className={ELEMENT_TAG + "-venue-zone-stat"}>
                     <span>Controllers</span>
                     <strong>
@@ -20258,15 +20400,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     </button>
                   </div>
                   <p className={`${ELEMENT_TAG}-hint`}>
-                    Each Venue is one unique place. Its Form describes what it is; one or two Classes describe what
-                    people do there.
+                    Each Venue is one unique place. Its physical form describes its structure; one or two Classes
+                    describe what people do there.
                   </p>
                   <input
                     className={`${ELEMENT_TAG}-notice-input`}
                     type="search"
                     value={venueSearch}
                     onChange={(event) => setVenueSearch(event.target.value)}
-                    placeholder="Find a Venue by name, Form, or Class"
+                    placeholder="Find a Venue by name, physical form, or Class"
                     aria-label="Search Venues"
                   />
                   <div className={`${ELEMENT_TAG}-notice-add`}>
@@ -21968,7 +22110,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                           ? "You"
                           : (wizardVillagers.find((person) => person.id === venue.occupancy.residentCharacterId)
                               ?.name ?? "Community")}{" "}
-                        · {venue.form || "Form needed"}
+                        · {venue.form || "Physical form needed"}
                       </p>
                       <p>
                         {venue.presentation.x === null || venue.presentation.y === null
@@ -22202,8 +22344,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               setSetupEditorOpen(false);
             }}
             usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
-            onGenerate={(area) => void generateSetupImage(selectedSetupVenue, area)}
-            onUpload={(area, file) => void uploadSetupImage(selectedSetupVenue, area, file)}
+            onGenerate={(area, zoneId) => void generateSetupImage(selectedSetupVenue, area, zoneId)}
+            onUpload={(area, file, zoneId) => void uploadSetupImage(selectedSetupVenue, area, file, zoneId)}
           />
         ) : null}
       </div>
