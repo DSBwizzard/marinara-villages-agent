@@ -293,7 +293,7 @@ export type VillageNarrationView = {
   /** The chosen preset's own cap, which is what `preset` means. */
   presetMaxTokens: number;
   /** Every preset in the Engine, plus the shipped one represented by `""`. */
-  presets: NarrationPresetOption[];
+  presets: readonly NarrationPresetOption[];
   /** The label the picker gives `""`. */
   builtInLabel: string;
   /** Legacy document's villager reply guidance. */

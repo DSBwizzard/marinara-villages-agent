@@ -70,15 +70,12 @@
 // Engine for after the chat exists are the villager's opening line and one
 // question about a chat's own metadata, and neither of them writes over anything
 // the player owns.
-import { findVillagerCard, listResidents, readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
+import { listResidents, readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
 import {
   buildPromptContext,
   buildSceneOpeningMessages,
-  conversationMemoryEntries,
   EMPTY_PROMPT_CONTEXT,
   MAX_MESSAGE_LENGTH,
-  memoryForVillager,
-  proposeConversationMemory,
   type VillagePromptContext,
 } from "./chat.js";
 import { badRequest, notFound, VillagesRequestError } from "./errors.js";
@@ -94,12 +91,8 @@ import {
 import { boundText, MAX_ENGINE_ID_LENGTH, MAX_SPINOFF_NAME_LENGTH, prependHappenings } from "./prompt-preset.js";
 import { spinOffMessageId, writeSpinOffSnapshot } from "./spinoff-snapshot.js";
 import type {
-  VillageChatMessage,
   VillageScene,
-  VillageSceneListingView,
   VillageSceneLockView,
-  VillageSceneResponse,
-  VillageSceneView,
   VillageSpinOffChoiceSelections,
   VillageSpinOffOriginView,
   VillageSpinOffPresetOption,
@@ -111,15 +104,7 @@ import type {
   VillageState,
 } from "./types.js";
 import { readPlayerIdentity } from "./village.js";
-import { deriveVillageMoment } from "./village-clock.js";
-import {
-  listVillageScenes,
-  mutateVillageScene,
-  mutateVillageState,
-  readVillageScene,
-  readVillageState,
-  removeVillageScene,
-} from "./village-store.js";
+import { listVillageScenes, readVillageState } from "./village-store.js";
 
 /**
  * A spin-off's chat is a roleplay chat. Not a constant the Engine reads, just the
@@ -479,102 +464,6 @@ async function readSceneChat(chatId: string): Promise<{ live: boolean; name: str
 }
 
 /**
- * How many lines the Engine is keeping for a scene.
- *
- * Asked through the Engine's own count route rather than by reading the messages,
- * because this is a number on a row: a scene a player has been writing in for a
- * week is hundreds of messages and swipes long, and reading all of them to say
- * "412" would be paying for a fact the Engine already keeps a tally of.
- *
- * Zero when it cannot be read, which is honest — it is also what an empty scene
- * answers, and the two are the same thing to the row: nothing to bring back yet.
- */
-async function readSceneMessageCount(chatId: string): Promise<number> {
-  try {
-    const answer = await villageEngineJson<{ count?: unknown }>(
-      `/api/chats/${encodeURIComponent(chatId)}/message-count`,
-    );
-    const count = answer.count;
-    return typeof count === "number" && Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
-  } catch (error) {
-    villagesLogger().debug("[villages] could not count a scene's lines: %s", String(error));
-    return 0;
-  }
-}
-
-/**
- * Every scene, as rows the tab can draw.
- *
- * The card names come from ONE read of the library for all of them, so a village
- * of sixty costs the same as a village of one. The per-scene reads are the two
- * Engine calls above, and they are made in parallel because neither depends on
- * the other and a player with several scenes should not wait for them in series.
- */
-async function listSceneViews(scenes: Map<string, VillageScene>): Promise<VillageSceneView[]> {
-  if (scenes.size === 0) return [];
-  const residents = await listResidents([...scenes.keys()]);
-  return Promise.all(
-    [...scenes.values()].map(async (scene) => {
-      const chat = await readSceneChat(scene.chatId);
-      return {
-        characterId: scene.characterId,
-        name: residents.names.get(scene.characterId) ?? "",
-        cardMissing: !residents.names.has(scene.characterId),
-        live: chat.live,
-        chatId: scene.chatId,
-        // The Engine's name when it has one, and the village's copy of what it
-        // was called when the chat cannot be read. Not the other way round: a
-        // rename in the chat list is the player's most recent word on the matter.
-        chatName: chat.name || scene.chatName,
-        presetId: scene.presetId,
-        personaId: scene.personaId,
-        spawnedAt: scene.spawnedAt,
-        beatAt: scene.beatAt,
-        lastImportedAt: scene.lastImportedAt,
-        endedAt: scene.endedAt,
-        messageCount: chat.live ? await readSceneMessageCount(scene.chatId) : 0,
-      };
-    }),
-  );
-}
-
-/** The rows and the picker together, which is what every scene answer carries. */
-async function buildSceneListing(scenes: Map<string, VillageScene>): Promise<VillageSceneListingView> {
-  const [presets, views, lock, village] = await Promise.all([
-    readScenePresetOptions(),
-    listSceneViews(scenes),
-    //  Handed the map this listing was built from rather than reading it again:
-    //  the lock is a question about the same documents, and asking the store for
-    //  them twice to answer two halves of one answer is a read nobody sees.
-    readVillageSceneLock(scenes),
-    //  Read here rather than left to the two surfaces that need it, because
-    //  neither of them can reach it: the chip in a roleplay chat has no tab and
-    //  no snapshot, and the gate is drawn before the tab's own snapshot matters.
-    readVillageState(),
-  ]);
-  return {
-    scenes: views,
-    presets,
-    defaultPresetLabel: DEFAULT_PRESET_LABEL,
-    maxSceneNameLength: MAX_SCENE_NAME_LENGTH,
-    villageName: village.name,
-    lock,
-  };
-}
-
-/**
- * Every scene the village has, with the presets a new one could be run on.
- *
- * The one read the scene panel needs on its own. It is a whole-list read rather
- * than a per-villager one because the panel is one screen — which villagers are
- * somewhere tonight, where, and how much is in there — and a tab that asked per
- * villager would make a village of sixty into sixty round trips to draw one list.
- */
-export async function listVillagerScenes(): Promise<VillageSceneListingView> {
-  return buildSceneListing(await listVillageScenes());
-}
-
-/**
  * The scene the player is in the middle of, or null.
  *
  * A scene is OPEN while nobody has filed it — `endedAt` is only ever stamped by
@@ -612,23 +501,6 @@ export async function readVillageSceneLock(scenes?: Map<string, VillageScene>): 
     };
   }
   return null;
-}
-
-// RETIRED 0.4.43 — the scene lane's return path. Kept, not called.
-/**
- * Answer with one villager's row, plus the whole list it came from.
- *
- * Both halves used to travel together because the picker and the rows were one
- * screen: a spawn changed the row AND could change which presets existed, and
- * splitting this would be two round trips to redraw one panel. There is no panel
- * of rows any more — a spawn answers with the one chat it made — so nothing asks
- * this question.
- */
-async function respondWithScene(characterId: string): Promise<VillageSceneResponse> {
-  const listing = await buildSceneListing(await listVillageScenes());
-  const scene = listing.scenes.find((entry) => entry.characterId === characterId);
-  if (!scene) throw notFound("That villager has no scene.");
-  return { scene, ...listing };
 }
 
 // ── Opening one ──────────────────────────────────────────────────────────────
@@ -1059,228 +931,4 @@ async function writeSpinOffOpening(
     return "";
   }
   return at;
-}
-
-// ── Reading one back into the village ────────────────────────────────────────
-//
-// RETIRED 0.4.43 — the scene lane's return path. Kept, not called.
-//
-// The three declarations below are the whole of the return half of the old lane:
-// bring a chat home into the villager's memory, read a chat's transcript in the
-// shape a prompt takes, and forget the link. 0.4.43 made the hand-off one way, so
-// nothing here is reachable: a spin-off is not read back, is not remembered, and
-// is not forgotten, because the package does not know it exists. The only thing
-// still true of them is that they are a worked example of how to read an Engine
-// chat without owning it.
-
-/**
- * Bring a scene back to the village: remember it, and leave the chat alone.
- *
- * This is the counterpart of the drawer's "end this conversation" and it is
- * deliberately NOT the same operation, because the two have different things to
- * lose. Ending a drawer conversation asks the villager what they took from it and
- * then DELETES the lines, because the village is the only place those lines exist
- * — if the package did not file them, they would be gone. A scene's lines live in
- * an Engine chat that belongs to the player. There is nothing here to clear and
- * nothing to protect from loss, so this reads the chat, files what it finds, and
- * changes not one word of it.
- *
- * What it writes is the same record a drawer conversation writes, through the same
- * helpers, so the villager remembers both channels in one voice:
- *
- *   * chronicle entries, deduped against the record as it stands and trimmed by
- *     weight, exactly as the tick and the drawer do;
- *   * happenings, into the same window the narrator reads, deduped and prepended
- *     with the window's own helper so the newest is at the same end either way.
- *
- * `simulatedThrough` is deliberately untouched. A scene records its own exact
- * occurrence while reconciliation alone owns the simulation cursor.
- *
- * A scene the player never wrote in is not sent to a model at all. It holds the
- * villager's own opening line and nothing else, and asking a model to remember a
- * hello is paying for nothing — the same rule the drawer applies to a transcript
- * with no line of the player's own in it. Nothing is stamped in that case either:
- * the scene is still open, because nothing happened in it.
- *
- * A failure leaves the scene exactly as it was, with the chat untouched and the
- * timestamps unmoved, so the player can simply press it again.
- */
-export async function importVillagerScene(
-  characterId: string,
-  options: { signal?: AbortSignal } = {},
-): Promise<VillageSceneResponse> {
-  const scene = await readVillageScene(characterId);
-  if (!scene) throw notFound("That villager has no scene.");
-  const chat = await readSceneChat(scene.chatId);
-  if (!chat.live) {
-    throw badRequest("That scene's chat is no longer in the Engine, so there is nothing left to bring back.");
-  }
-  const village = await readVillageState();
-  if (!village.villagers.some((entry) => entry.characterId === characterId)) {
-    throw notFound("That villager does not live here.");
-  }
-  const card = await findVillagerCard(characterId);
-  if (!card) throw notFound("That villager's card is no longer in the library.");
-
-  const transcript = await readSceneTranscript(scene.chatId);
-  if (!transcript.some((message) => message.role === "user")) return respondWithScene(characterId);
-
-  const player = readPlayerIdentity(village);
-  const now = new Date();
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  const { memory, happenings } = await proposeConversationMemory(
-    {
-      village,
-      moment,
-      card,
-      playerName: player.name,
-      playerDescription: player.description,
-      // Only what this villager already remembers is fed back, so the model is
-      // not handed its own last entry to write down again — and so that bringing
-      // the same scene back a second time adds what is NEW in it rather than
-      // filing the whole afternoon again.
-      memories: memoryForVillager(village.chronicle, characterId),
-      transcript,
-    },
-    options,
-  );
-
-  const at = now.toISOString();
-  const entries = conversationMemoryEntries(memory, { card, moment, village, at });
-  if (entries.length > 0 || happenings.length > 0) {
-    await mutateVillageState((state) => {
-      if (entries.length > 0) {
-        const seen = new Set(state.chronicle.map((entry) => entry.text.trim().toLowerCase()));
-        const fresh = entries.filter((entry) => {
-          const key = entry.text.trim().toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-        state.chronicle = [...fresh, ...state.chronicle];
-      }
-      if (happenings.length > 0) {
-        const seen = new Set(state.happenings.map((entry) => entry.text.trim().toLowerCase()));
-        const fresh = happenings.filter((entry) => {
-          const key = entry.text.trim().toLowerCase();
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-        state.happenings = prependHappenings(state.happenings, fresh);
-      }
-    });
-  }
-
-  // Stamped even when the model found nothing to file. The player asked for the
-  // scene to be brought back and it was read — that is what these two mean, and
-  // the row is what tells them it happened. Whether anything was WRITTEN is a
-  // separate fact the chronicle answers for itself.
-  await mutateVillageScene(characterId, (current) => {
-    if (current.chatId !== scene.chatId) return;
-    current.lastImportedAt = at;
-    current.endedAt = at;
-  });
-  return respondWithScene(characterId);
-}
-
-/**
- * A scene's lines, in the shape the village's own prompts and its model call take.
- *
- * The Engine's rows carry more than the drawer's messages do — ids, swipes,
- * attachments, per-character attribution — and none of it belongs in a prompt, so
- * the mapping is deliberate and one-way: who spoke and what they said, with the
- * time it was said. System turns are dropped rather than mapped, because a scene
- * chat may hold the Engine's own notes to itself and a villager asked to remember
- * a conversation has no business remembering the machinery.
- *
- * The rows are read defensively. `listMessages` is not a shape this package
- * controls, and a reader that assumed it would turn an Engine that answers with
- * one extra field into a villager who cannot remember their own afternoon.
- */
-async function readSceneTranscript(chatId: string): Promise<VillageChatMessage[]> {
-  const rows: unknown = await villagesPersistence().listMessages(chatId);
-  if (!Array.isArray(rows)) return [];
-  const transcript: VillageChatMessage[] = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const record = row as { role?: unknown; content?: unknown; createdAt?: unknown };
-    const role = record.role === "user" ? "user" : record.role === "assistant" ? "assistant" : null;
-    if (role === null) continue;
-    const content = typeof record.content === "string" ? record.content.trim() : "";
-    if (content.length === 0) continue;
-    transcript.push({
-      role,
-      content: boundText(content, MAX_MESSAGE_LENGTH),
-      at: typeof record.createdAt === "string" ? record.createdAt : "",
-    });
-  }
-  return transcript;
-}
-
-// ── Forgetting one ───────────────────────────────────────────────────────────
-//
-// RETIRED 0.4.43 — the scene lane's return path. Kept, not called.
-
-/**
- * Forget the link, and only the link.
- *
- * The chat stays in the Engine with every word in it, exactly as it would if the
- * package had never been installed — which is the sentence that makes this
- * operation safe to offer on a button. The counterpart is the drawer's "forget
- * the conversation", and both of them may only ever delete things the package
- * owns: a chat belongs to the player, and a package that tidied up its own
- * bookkeeping by removing the player's work would be a package nobody should
- * install.
- *
- * Whatever the scene had already put in the chronicle stays there too. Memory is
- * not a log of the chat that produced it; forgetting where an afternoon happened
- * is not the same as the villager forgetting the afternoon, and offering to undo
- * the second one here would be offering to make somebody forget on the player's
- * behalf.
- */
-export async function unlinkVillagerScene(characterId: string): Promise<VillageSceneListingView> {
-  const village = await readVillageState();
-  if (!village.villagers.some((entry) => entry.characterId === characterId)) {
-    throw notFound("That villager does not live here.");
-  }
-  await removeVillageScene(characterId);
-  return buildSceneListing(await listVillageScenes());
-}
-
-// ── What the prompt-context contributor needed ───────────────────────────────
-//
-// RETIRED 0.4.43 — the scene lane's return path. Kept, not called.
-//
-// This was the one read the live `prompt-context` contributor made on every
-// roleplay turn of every chat the player owned. The contributor is gone with the
-// rest of the two-way lane, and so is the per-turn read: nothing on the current
-// lane is asked on a turn at all, which is the point of a snapshot. Kept because
-// it is the cheap way to answer the same question, and a future release that had
-// a reason to ask it would otherwise have to work out how from scratch.
-
-/**
- * The villager a chat belongs to, or null when the chat is not a scene.
- *
- * This is the one read the `prompt-context` contributor makes on EVERY roleplay
- * turn of every chat the player owns, including chats that have nothing to do
- * with the village, so it is deliberately the cheapest thing in the lane: one
- * document list, filtered by kind. A player with no scenes pays one empty list
- * per turn, which is what keeps a package that adds a whole channel to roleplay
- * from being a package that slows roleplay down.
- *
- * Answered from the village's own record and not from the chat's metadata. It
- * would be possible to stamp the villager's id into the chat's metadata at spawn
- * and read it from the request — and it would be faster — but it would also be
- * the package writing a fact about itself into a record the player owns, where it
- * would survive the package being uninstalled and mean nothing to anybody
- * afterwards. What a chat is to this village is the village's business.
- */
-export async function sceneCharacterForChat(chatId: string): Promise<string | null> {
-  if (chatId.length === 0) return null;
-  const scenes = await listVillageScenes();
-  for (const scene of scenes.values()) {
-    if (scene.chatId === chatId) return scene.characterId;
-  }
-  return null;
 }

@@ -4,7 +4,11 @@ import { renderResidentFoundingContext } from "./resident-founding-context.js";
 import { badRequest } from "./errors.js";
 
 /** The authored person is complete; circumstances are supplied separately. */
-export function venueCardProfile(card: VillagerCard, playerName = "the player", includePostHistory = true): string {
+export function venueCardProfile(
+  card: Partial<Omit<VillagerCard, "tags">> & Pick<VillagerCard, "id" | "name">,
+  playerName = "the player",
+  includePostHistory = true,
+): string {
   const fields = [
     ["System prompt", card.systemPrompt],
     ["Description", card.description],

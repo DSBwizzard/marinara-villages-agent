@@ -230,7 +230,7 @@ export type VillageCompletionOptions = {
   temperature: number | null;
   reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
   verbosity?: "low" | "medium" | "high" | null;
-  debugMode: boolean;
+  debugMode?: boolean;
   signal?: AbortSignal;
   onAttempt?: (completion: CapabilityLanguageModelCompletion, elapsedMs: number, maxTokens: number) => void;
   /** Scene turns disable blank retries; other callers retain their existing policy. */

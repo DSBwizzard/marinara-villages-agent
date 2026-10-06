@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "strict": false,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": { "@marinara-engine/shared": ["sources/package-shared.ts"] }
+  },
+  "include": ["packages/villages/src/**/*.ts", "packages/villages/src/**/*.tsx", "sources/package-shared.ts"]
+}

@@ -48,7 +48,7 @@ export type CompactFoundingContext = {
   village: string;
   setting: string;
   home: string;
-  card: VillagerCard;
+  card: Partial<Omit<VillagerCard, "tags">> & Pick<VillagerCard, "id" | "name"> & { tags?: readonly string[] };
   venues: readonly VillageVenue[];
   lore: readonly string[];
   completedWishes: readonly VillageCompletedWish[];

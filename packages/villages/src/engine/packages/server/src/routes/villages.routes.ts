@@ -797,9 +797,9 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return {
         session: await enterVenue(
           readPlaceId(request.body?.venueId),
-          spaceClass,
+          spaceClass as VillageVenueClass | undefined,
           typeof request.body?.privateOwnerId === "string" ? request.body.privateOwnerId : "",
-          entryArea,
+          entryArea as "public" | "private" | "shared" | "outside" | undefined,
           await imageTarget(request.body),
           request.body?.expectedSceneRevision === undefined
             ? undefined

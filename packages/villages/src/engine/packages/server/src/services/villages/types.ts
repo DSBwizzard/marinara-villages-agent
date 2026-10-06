@@ -1235,6 +1235,7 @@ export type VillageScenarioImprint = {
 };
 
 export type VillageState = {
+  visitMemoryBackfilled?: boolean;
   wishSystemVersion: number;
   /** Prepared residents awaiting their one-time, finite post-reset Wish attempt. */
   wishResetPending: string[];

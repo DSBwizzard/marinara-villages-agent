@@ -63,7 +63,7 @@ function tokens(text: string) {
       text
         .normalize("NFKC")
         .toLocaleLowerCase()
-        .match(/[\p{L}\p{N}]+/gu) ?? []
+        .match(/[\p{L}\p{N}]+/gu) ?? ([] as string[])
     ).filter((word) => word.length >= 2 && !STOP.has(word)),
   );
 }

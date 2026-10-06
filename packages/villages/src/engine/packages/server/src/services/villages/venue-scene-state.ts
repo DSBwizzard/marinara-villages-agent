@@ -134,7 +134,7 @@ export function applyVenueSceneChange(
       : area === "outside"
         ? undefined
         : venue.spaces?.find((entry) => entry.venueClass === spaceClass);
-  if (zoneId && (!space || zoneClosed(state, venue, space)))
+  if (zoneId && (!space || zoneClosed(state, venue, space as ReturnType<typeof resolveVenueZone>)))
     throw conflict("That zone is unavailable during this turn.");
   if (area === "private" && !space) throw conflict("That private space is no longer here.");
   const areaState = space?.state ?? (area === "outside" ? venue.exteriorState : undefined);

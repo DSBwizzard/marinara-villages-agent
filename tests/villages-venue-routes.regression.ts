@@ -27,10 +27,8 @@ for (const path of [
   "/rooms/turn",
   "/rooms/end",
   "/rooms/leave",
-  "/rooms/leave-pending",
   "/rooms/archive",
   "/rooms/archive/:id",
-  "/rooms/archive/:id/retry-memory",
   "/locations/venue",
   "/locations/venue/:venueId",
   "/locations/venue/image",
@@ -47,6 +45,8 @@ for (const retired of [
   "/villagers/:characterId/end",
   "/villagers/:characterId/wish",
   "/rooms/debug-presence",
+  "/rooms/leave-pending",
+  "/rooms/archive/:id/retry-memory",
   "/venues/act",
   "/rooms/say",
   "/rooms/fulfill",
@@ -58,7 +58,7 @@ assert.match(routes, /await resetVenueSessions\(\);\s*return await resetVillage\
 assert.match(routes, /mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act"/u);
 assert.match(
   routes,
-  /"\/rooms\/end"[\s\S]*return await endVenueSessionWithReceipts/u,
+  /"\/rooms\/end"[\s\S]*return await closeVenueSessionWithReceipts/u,
   "direct visit endings return durable-memory receipts",
 );
 assert.ok(ui.includes('"/rooms/turn"'), "one composer sends all visit modes");
@@ -75,7 +75,10 @@ assert.match(ui, /Search Venues/u, "the Venue index is searchable");
 assert.match(ui, /Retry opening/u);
 assert.match(ui, /Continue without opening/u);
 assert.match(ui, /That line could not be sent/u, "failed turns keep a visible error");
-assert.match(ui, /Leave with memory pending/u);
+assert.ok(
+  routes.includes("await leaveVenueSession("),
+  "leaving delegates receipt and recovery handling to the session service",
+);
 assert.match(ui, /Open transcript/u);
 assert.match(session, /const ACTIVE_ID = "villages-active-venue"/u);
 assert.match(session, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);

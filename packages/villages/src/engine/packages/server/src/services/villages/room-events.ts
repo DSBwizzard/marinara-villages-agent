@@ -67,7 +67,7 @@ export function selectRoomEventChecks(
         (row.kind === "ban-venue"
           ? facts.zoneId === null
           : typeof facts.zoneId === "string" && (!row.zoneId || facts.zoneId === row.zoneId)) &&
-        row.evidence.every(
+        (row.evidence as unknown[]).every(
           (index) =>
             Number.isInteger(index) &&
             check.evidence.some(

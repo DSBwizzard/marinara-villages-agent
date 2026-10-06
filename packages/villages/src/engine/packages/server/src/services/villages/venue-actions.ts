@@ -218,7 +218,7 @@ export async function actAtVenue(
         : active.area === "outside"
           ? undefined
           : current.spaces?.find((entry) => entry.venueClass === active.spaceClass);
-      if (active.zoneId && (!space || zoneClosed(state, current, space)))
+      if (active.zoneId && (!space || zoneClosed(state, current, space as ReturnType<typeof resolveVenueZone>)))
         throw badRequest("That zone is unavailable during this action.");
       const areaState = space?.state ?? (active.area === "outside" ? current.exteriorState : undefined);
       if (areaState)

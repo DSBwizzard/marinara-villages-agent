@@ -809,6 +809,8 @@ export type VillageVenue = {
     ownerId?: string;
     purpose?: string;
     access?: import("../../shared/src/villages/venue-access.js").ZoneAccessPolicy;
+    accessView?: import("../../shared/src/villages/venue-access.js").ZoneAccessView;
+    controllerIds?: string[];
     venueClass: "residence" | "workplace" | "gathering" | "other";
     description: string;
     image: VillageVenueImage | null;
@@ -15122,7 +15124,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   // seeded when Village Settings opens and never re-seeded while it stays open,
   // so a snapshot arriving from a chat send cannot overwrite what is being typed.
   const openMenu = useCallback(
-    (tab: MenuTab) => {
+    (tab: MenuPage) => {
       setFocusedRequestId("");
       if (tab === "projects") setSiteProjectId("");
       setSettingsError("");

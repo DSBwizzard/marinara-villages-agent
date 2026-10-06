@@ -1709,7 +1709,9 @@ export function coerceWish(entry: unknown, id: string, at: string): VillageWish 
     wish,
     size: wishSize(raw.size),
     conditionRevision:
-      Number.isSafeInteger(raw.conditionRevision) && raw.conditionRevision >= 0 ? raw.conditionRevision : 0,
+      Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
+        ? (raw.conditionRevision as number)
+        : 0,
     intensity: Math.min(3, Math.max(1, intensity)),
     tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
     addedAt: born,

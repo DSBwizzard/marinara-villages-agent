@@ -1,0 +1,348 @@
+import type { DirectionCommand } from "./game.js";
+import type { LocationKind, MusicGenre, MusicIntensity } from "../utils/music-score.js";
+/** Available quantization variants for the sidecar model. */
+import type { DecisionThinkingMode } from "./decision.js";
+export type SidecarQuantization = "q8_0" | "q4_k_m";
+/** Runtime backend used by the built-in local model. */
+export type SidecarBackend = "llama_cpp" | "mlx";
+/** llama.cpp embedding pooling modes accepted by llama-server. */
+export declare const SIDECAR_EMBEDDING_POOLING_TYPES: readonly ["none", "mean", "cls", "last", "rank"];
+export type SidecarEmbeddingPooling = (typeof SIDECAR_EMBEDDING_POOLING_TYPES)[number];
+/** Which runtime target Marinara should prepare for llama.cpp-based local inference. */
+export declare const SIDECAR_RUNTIME_PREFERENCES: readonly ["auto", "nvidia", "amd", "intel", "vulkan", "cpu", "system"];
+export type SidecarRuntimePreference = (typeof SIDECAR_RUNTIME_PREFERENCES)[number];
+/** Where the active runtime comes from. */
+export type SidecarRuntimeSource = "bundled" | "system";
+/** Current lifecycle state of the sidecar model. */
+export type SidecarStatus = "not_downloaded" | "downloading_runtime" | "downloading_model" | "downloaded" | "starting_server" | "ready" | "server_error";
+/** Curated local speech-to-text model managed beside the Local Model sidecar. */
+export type SidecarSpeechModelId = "whisper_tiny" | "whisper_base";
+/** Local speech model lifecycle. Kept separate from the chat sidecar status. */
+export type SidecarSpeechStatus = "not_downloaded" | "downloading_model" | "downloaded" | "loading" | "ready" | "error";
+/** Progress info while downloading the runtime or model assets. */
+export interface SidecarDownloadProgress {
+    phase: "runtime" | "model";
+    status: "downloading" | "complete" | "error";
+    /** Bytes downloaded so far. */
+    downloaded: number;
+    /** Total file size in bytes (0 if unknown). */
+    total: number;
+    /** Download speed in bytes/second. */
+    speed: number;
+    /** Optional display label for the thing being downloaded. */
+    label?: string;
+    /** Error message if status is "error". */
+    error?: string;
+}
+/** Persisted sidecar configuration stored server-side. */
+export interface SidecarConfig {
+    /** Which local runtime backend is selected. */
+    backend: SidecarBackend;
+    /** Active model file path, relative to data/models. Null if none. */
+    modelPath: string | null;
+    /** Existing GGUF on the server host; Engine never deletes this file. */
+    externalModelPath?: string | null;
+    /** Active remote model repo id for MLX-native models. Null if none. */
+    modelRepo: string | null;
+    /** Which curated quantization variant is downloaded/active. Null for BYO models. */
+    quantization: SidecarQuantization | null;
+    /** HuggingFace repo for BYO models, e.g. "mlx-community/gemma-4-e2b-it-4bit". */
+    customModelRepo: string | null;
+    /** Whether to use the sidecar for tracker agents in roleplay mode. */
+    useForTrackers: boolean;
+    /** Whether agents without an explicit connection default to the sidecar.
+     *  Takes the place of a `defaultForAgents` connection row, which the sidecar
+     *  cannot have — it is a pseudo-connection with no stored row (#5539). */
+    useAsAgentsDefault: boolean;
+    /** Whether to use the sidecar for game scene analysis (backgrounds, music, weather, effects). */
+    useForGameScene: boolean;
+    /** Context size for the model. Default 8192. */
+    contextSize: number;
+    /** Maximum completion tokens Marinara should request from the local runtime. */
+    maxTokens: number;
+    /** Sampling temperature for local inference. */
+    temperature: number;
+    /** Top-p nucleus sampling value for local inference. */
+    topP: number;
+    /** Top-k sampling limit for local inference. */
+    topK: number;
+    /** Maximum local agent requests and llama-server slots that may run in parallel. */
+    maxParallelJobs: number;
+    /** GPU layers to offload (-1 = try max GPU offload first, then fall back if startup fails). */
+    gpuLayers: number;
+    /** llama.cpp K/V cache precision; f16 preserves the default runtime behavior. */
+    kvCacheType?: "f16" | "q8_0" | "q4_0";
+    /** Start llama.cpp with Jinja chat templates so OpenAI-compatible native tool calls can work. */
+    enableNativeToolCalls: boolean;
+    /** llama.cpp pooling mode for the OpenAI-compatible embeddings endpoint. */
+    embeddingPooling: SidecarEmbeddingPooling;
+    /** llama.cpp physical batch size for embeddings and prompt processing. */
+    embeddingBatchSize: number;
+    /** Which runtime target to install for llama.cpp-based local inference. */
+    runtimePreference: SidecarRuntimePreference;
+    /**
+     * How this slot's model may answer an agent activation question.
+     *
+     * Stored with the slot rather than with the decision setting because it is a
+     * property of the model loaded here: a reasoning model needs the slower path
+     * whichever feature asks it something.
+     */
+    decisionThinking: DecisionThinkingMode;
+}
+export interface SidecarRuntimeInfo {
+    installed: boolean;
+    build: string | null;
+    variant: string | null;
+    backend: SidecarBackend | null;
+    source?: SidecarRuntimeSource | null;
+    systemPath?: string | null;
+}
+export interface SidecarRuntimeDiagnostics {
+    gpuVendors: string[];
+    preferCuda: boolean;
+    preferHip: boolean;
+    preferRocm: boolean;
+    preferSycl: boolean;
+    preferVulkan: boolean;
+    systemLlamaPath: string | null;
+    launchCommand: string | null;
+    launchBackend: SidecarBackend | null;
+}
+/** GPU allocations reported by llama.cpp, excluding CPU/host buffers and driver overhead. */
+export interface SidecarGpuMemory {
+    weightsBytes: number | null;
+    kvCacheBytes: number | null;
+    buffersBytes: number | null;
+}
+/** Server response for sidecar status endpoint. */
+export interface SidecarStatusResponse {
+    status: SidecarStatus;
+    config: SidecarConfig;
+    /** Whether a model file is downloaded on disk. */
+    modelDownloaded: boolean;
+    /** Friendly current model label for UI display. */
+    modelDisplayName: string | null;
+    /** Model file size in bytes (if downloaded). */
+    modelSize: number | null;
+    gpuMemory?: SidecarGpuMemory | null;
+    /** Installed local runtime info. */
+    runtime: SidecarRuntimeInfo;
+    /** Absolute log path for the spawned local sidecar process. */
+    logPath: string | null;
+    /** Last startup error summary, if the local runtime failed to boot. */
+    startupError?: string | null;
+    /** Runtime variant that most recently failed to boot. */
+    failedRuntimeVariant?: string | null;
+    /** Current Node.js platform string, e.g. "darwin". */
+    platform: string;
+    /** Current CPU architecture string, e.g. "arm64". */
+    arch: string;
+    /** Curated local-model presets available on this machine. */
+    curatedModels: SidecarModelInfo[];
+    /** Runtime-selection diagnostics for support and troubleshooting. */
+    runtimeDiagnostics?: SidecarRuntimeDiagnostics;
+}
+/** A single segment-tied effect batch. Applied when the user reaches this segment. */
+export interface SceneSegmentEffect {
+    /** 0-based index of the narration segment this effect triggers on. */
+    segment: number;
+    background?: string | null;
+    music?: string | null;
+    sfx?: string[];
+    /** Total sequential plays for each sound effect on this beat. Defaults to 1. */
+    sfxLoopCount?: number;
+    ambient?: string | null;
+    /** Rare cinematic overlays/visual effects to fire when this narration segment appears. */
+    directions?: DirectionCommand[];
+}
+/** A provider-ready prompt for one named character in a multi-character scene illustration. */
+export interface SceneIllustrationCharacterPrompt {
+    /** Visible character name, matched against the scene's allowed character roster. */
+    name: string;
+    /** Character-only identity, appearance, pose, expression, and action prompt. */
+    prompt: string;
+    /** Optional character-only undesired-content prompt used by providers that support it. */
+    negativePrompt?: string;
+    /** Optional normalized subject center used by providers with spatial character prompting. */
+    position?: {
+        x: number;
+        y: number;
+    };
+}
+/** Rare request for a VN CG-style illustration background. */
+export interface SceneIllustrationRequest {
+    /** 0-based narration segment where the illustration should replace the background. */
+    segment?: number;
+    /** Short visual title for the illustrated moment. */
+    title?: string;
+    /** Image-generation prompt describing the important moment. */
+    prompt: string;
+    /** Names of visible referenced characters, if known. */
+    characters?: string[];
+    /** Optional provider-ready prompts that keep named characters visually distinct. */
+    characterPrompts?: SceneIllustrationCharacterPrompt[];
+    /** Why this scene is important enough to spend an image generation. */
+    reason?: string;
+    /** Optional stable filename hint. */
+    slug?: string;
+}
+export interface GeneratedSceneIllustration {
+    tag: string;
+    segment?: number;
+}
+/** Spotify track candidate offered to scene analysis for Game Mode music selection. */
+export interface SceneSpotifyTrackCandidate {
+    uri: string;
+    name: string;
+    artist: string;
+    album?: string | null;
+    position?: number | null;
+    score?: number | null;
+}
+/** Spotify track selected by scene analysis from the provided candidates. */
+export interface SceneSpotifyTrackSelection {
+    uri: string;
+    name?: string | null;
+    artist?: string | null;
+    album?: string | null;
+}
+/** Scene analysis result from the sidecar model for game mode.
+ *  Generated after the main model's narration is complete. */
+export interface SceneAnalysis {
+    /** Background tag from the asset manifest to display. */
+    background: string | null;
+    /** Music tag to play, populated by deterministic scoring after analysis. */
+    music: string | null;
+    /** Ambient loop tag, populated by deterministic scoring after analysis. */
+    ambient: string | null;
+    /** Weather description update — applied immediately. */
+    weather: string | null;
+    /** Time of day update — applied immediately. */
+    timeOfDay: string | null;
+    /** Compact scene-genre hint for deterministic music scoring. */
+    musicGenre?: MusicGenre | null;
+    /** Compact scene-intensity hint for deterministic music scoring. */
+    musicIntensity?: MusicIntensity | null;
+    /** Compact physical-location hint for deterministic ambient scoring. */
+    locationKind?: LocationKind | null;
+    /** Spotify track to play when Game Mode is configured to use Spotify music. */
+    spotifyTrack?: SceneSpotifyTrackSelection | null;
+    /** NPC reputation changes — applied immediately. */
+    reputationChanges: SceneReputationChange[];
+    /** Segment-indexed effects. Each entry fires when the user reaches that segment. */
+    segmentEffects?: SceneSegmentEffect[];
+    /** Cinematic overlay directions to play for this turn. */
+    directions?: DirectionCommand[];
+    /** Rare important-scene illustration request. Generated only when image generation is enabled. */
+    illustration?: SceneIllustrationRequest | null;
+    /** Generated illustration background tag, populated by the server when available. */
+    generatedIllustration?: GeneratedSceneIllustration | null;
+    /** NPC avatars generated during this scene wrap (populated by server when image gen is enabled). */
+    generatedNpcAvatars?: Array<{
+        name: string;
+        avatarUrl: string;
+    }>;
+}
+/** A single widget update from scene analysis. */
+export interface SceneWidgetUpdate {
+    widgetId: string;
+    /** For progress_bar/gauge/relationship_meter: new value. */
+    value?: number | string;
+    /** For counter: new count. */
+    count?: number;
+    /** For list/inventory: item to add. */
+    add?: string;
+    /** For list/inventory: item to remove. */
+    remove?: string;
+    /** For timer: start/stop. */
+    running?: boolean;
+    /** For timer: set seconds. */
+    seconds?: number;
+    /** For stat_block: which stat to update (by name). */
+    statName?: string;
+}
+/** A reputation change from scene analysis. */
+export interface SceneReputationChange {
+    npcName: string;
+    action: string;
+}
+/** Info about available sidecar models for download. */
+export interface SidecarModelInfo {
+    quantization: SidecarQuantization;
+    /** Display name, e.g. "Gemma 4 E2B — Q8" */
+    label: string;
+    /** Backend used by this preset. */
+    backend: SidecarBackend;
+    /** Final GGUF filename on disk, or the repo id for non-file-backed runtimes. */
+    filename: string;
+    /** Approximate file size in bytes. */
+    sizeBytes: number;
+    /** Exact downloadable file size in bytes, when known. Used for validation only. */
+    downloadSizeBytes?: number;
+    /** Approximate RAM needed at runtime. */
+    ramBytes: number;
+    /** HuggingFace download URL when the preset downloads a local file directly. */
+    downloadUrl?: string;
+    /** HuggingFace repo id when the backend loads by repo name directly. */
+    repoId?: string;
+    /** SHA256 hash for integrity check. */
+    sha256?: string;
+}
+export interface SidecarSpeechModelInfo {
+    id: SidecarSpeechModelId;
+    label: string;
+    repoId: string;
+    sizeBytes: number;
+    ramBytes: number;
+    description: string;
+}
+export interface SidecarSpeechConfig {
+    modelId: SidecarSpeechModelId | null;
+}
+export interface SidecarSpeechRuntimeDiagnostics {
+    packageFound: boolean;
+    bindingFound: boolean;
+    expectedBindingPath: string | null;
+    installedBindingArchs: string[];
+    platform: string;
+    arch: string;
+    nodeVersion: string;
+    nodeExecPath: string;
+    liteMode: boolean;
+}
+export interface SidecarSpeechStatusResponse {
+    status: SidecarSpeechStatus;
+    config: SidecarSpeechConfig;
+    available: boolean;
+    modelDownloaded: boolean;
+    modelDisplayName: string | null;
+    modelSize: number | null;
+    models: SidecarSpeechModelInfo[];
+    downloadProgress: SidecarDownloadProgress | null;
+    error: string | null;
+    platform: string;
+    arch: string;
+    runtime: SidecarSpeechRuntimeDiagnostics;
+}
+export interface SidecarCustomModelEntry {
+    path: string;
+    filename: string;
+    sizeBytes: number | null;
+    quantizationLabel: string | null;
+    downloadUrl: string;
+}
+/** Default sidecar configuration. */
+export declare const SIDECAR_DEFAULT_CONFIG: SidecarConfig;
+/**
+ * Reserved ID for the synthetic sidecar connection entry. The connections
+ * storage layer merges this ID into read paths when the sidecar is enabled
+ * as a connection, and rejects writes against it. Never stored in the DB.
+ */
+export declare const SIDECAR_CONNECTION_ID = "sidecar:local";
+export declare const SIDECAR_SPEECH_DEFAULT_MODEL_ID: SidecarSpeechModelId;
+export declare const SIDECAR_SPEECH_MODELS: SidecarSpeechModelInfo[];
+/** Available models for download. */
+export declare const SIDECAR_MODELS: SidecarModelInfo[];
+/** Apple Silicon MLX-native curated models. */
+export declare const SIDECAR_MLX_MODELS: SidecarModelInfo[];
+//# sourceMappingURL=sidecar.d.ts.map

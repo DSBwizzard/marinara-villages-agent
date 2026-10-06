@@ -142,7 +142,11 @@ export async function uploadVillageGalleryImage(input: VillageGalleryUpload): Pr
   if (typeof input.height === "number" && Number.isFinite(input.height)) {
     form.append("height", String(input.height));
   }
-  form.append("file", new Blob([input.bytes], { type: mime }), `${fileStem(input.name)}${extension}`);
+  form.append(
+    "file",
+    new Blob([input.bytes as Uint8Array<ArrayBuffer>], { type: mime }),
+    `${fileStem(input.name)}${extension}`,
+  );
 
   const folderId = await ensureVillagesGalleryFolder();
   const path = folderId ? `${UPLOAD_PATH}?folderId=${encodeURIComponent(folderId)}` : UPLOAD_PATH;

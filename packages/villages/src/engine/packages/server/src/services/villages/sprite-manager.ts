@@ -70,7 +70,9 @@ export async function decodeSpriteImage(image: string): Promise<SpritePixels> {
 export function spritePng(image: SpritePixels) {
   return (
     "data:image/png;base64," +
-    PNG.sync.write({ width: image.width, height: image.height, data: Buffer.from(image.data) }).toString("base64")
+    PNG.sync
+      .write({ width: image.width, height: image.height, data: Buffer.from(image.data) } as PNG)
+      .toString("base64")
   );
 }
 async function saveImage(assetId: string, expression: string, image: string) {
@@ -187,7 +189,7 @@ export function adoptSpriteArtwork(id: string, raw: unknown) {
   return serialize(id, async () => {
     const resident = await owner(id),
       body = asRecord(raw);
-    const selected = Array.isArray(body.filenames) ? body.filenames.map(asString) : [];
+    const selected = Array.isArray(body.filenames) ? body.filenames.map(asString as (value: unknown) => string) : [];
     if (!selected.length || selected.length > 40 || new Set(selected).size !== selected.length)
       throw badRequest("Choose between one and forty different character sprites.");
     const library = await listSpriteLibrary(id);

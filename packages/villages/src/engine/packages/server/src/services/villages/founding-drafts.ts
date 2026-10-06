@@ -345,7 +345,9 @@ export async function seedFoundingVenueDetails(
 
 export async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
   const input = record(value);
-  const row = await withResident(rowsOf([input.venue])[0]!);
+  const row = (await withResident(rowsOf([input.venue])[0]!)) as Awaited<ReturnType<typeof withResident>> & {
+    venueType?: string;
+  };
   const foundingContext =
     input.residentFoundingContext === undefined
       ? undefined

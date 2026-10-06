@@ -337,7 +337,7 @@ async function main() {
   assert.ok(village.includes("snapshot.cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
   assert.ok(drafts.includes("foundingDetails"));
-  const builder = await readFile(join(root, "scripts/build-feature-packages.mjs"), "utf8");
+  const builder = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
   for (const mode of ["rebuild", "pioneer", "prosper", "custom", "none"]) {
     const filename = `founding-${mode}.jpg`;
     assert.ok(builder.includes(`"${filename}"`), `${mode} illustration must be packaged`);

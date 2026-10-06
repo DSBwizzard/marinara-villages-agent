@@ -409,7 +409,9 @@ function coerceWish(value: unknown): VillageWish | null {
     expiresAt: asInstant(raw.expiresAt),
     size: wishSize(raw.size),
     conditionRevision:
-      Number.isSafeInteger(raw.conditionRevision) && raw.conditionRevision >= 0 ? raw.conditionRevision : 0,
+      Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
+        ? (raw.conditionRevision as number)
+        : 0,
     ...(asInstant(raw.learnedAt)
       ? {
           learnedAt: asInstant(raw.learnedAt),
@@ -815,7 +817,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           : undefined
         : ownerId === "player"
           ? undefined
-          : { status: "pending" },
+          : { status: "pending" as const },
       ownerId,
       description: value
         ? boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`
@@ -1935,7 +1937,7 @@ function coerceRelationships(value: unknown): VillageRelationship[] {
 
 function coerceProjects(value: unknown): VillageProject[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
+  return value.flatMap<VillageProject>((entry) => {
     const raw = asRecord(entry);
     const id = asTrimmedString(raw.id);
     const title = boundText(raw.title, MAX_NOTICE_LENGTH);
@@ -2516,7 +2518,9 @@ export function coerceVillageState(value: unknown): VillageState {
   const state: VillageState = {
     version: 2,
     backgroundReceipts: Object.fromEntries(
-      Object.entries(asRecord(raw.backgroundReceipts)).filter(([, value]) => typeof value === "string"),
+      Object.entries(asRecord(raw.backgroundReceipts)).filter(
+        (entry): entry is [string, string] => typeof entry[1] === "string",
+      ),
     ),
     exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),

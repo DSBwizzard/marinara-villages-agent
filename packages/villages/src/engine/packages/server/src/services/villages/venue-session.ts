@@ -537,7 +537,7 @@ function coerceSession(value: unknown): VenueScene {
             zoneId: asTrimmedString(row.zoneId) || undefined,
             ...(row.viaDoorway === true ? { viaDoorway: true } : {}),
             ...(row.remoteDelivery === "loud" || row.remoteDelivery === "device"
-              ? { remoteDelivery: row.remoteDelivery }
+              ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
               : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
             ...(row.contactReport === true ? { contactReport: true } : {}),
@@ -2402,7 +2402,8 @@ async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessa
       !(
         invitationZoneId &&
         invitation.entry.privateOwnerId &&
-        invitationZoneId !== legacyZoneId(invitedVenue, "private", "residence", invitation.entry.privateOwnerId)
+        invitationZoneId !==
+          legacyZoneId(invitedVenue, "private", "residence", invitation.entry.privateOwnerId as string)
       ) &&
       !/\b(no|not|never|don't|can't|cannot|won't|unless|if|maybe|perhaps)\b/iu.test(invitationQuote) &&
       privateScopeSupported &&
@@ -3633,9 +3634,11 @@ export async function continueVenueWithoutGreeting(id: string): Promise<VenueSce
 }
 
 type SceneReply = Awaited<ReturnType<typeof generateOnce>> & { roomInterpretation?: InterpretationBatch | null };
-function quietContactReply(text: string, localIds: string[]): SceneReply {
+function quietContactReply(text: string, localIds: string[]) {
   return {
-    lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }],
+    lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }] as ReturnType<
+      typeof parseVenueReply
+    >["lines"],
     heardPlayerBy: localIds,
     interpretationRouting: undefined,
     roomEvents: undefined,
@@ -4617,7 +4620,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       subjectCharacterIds: memory.subjectCharacterIds,
       knownByCharacterIds: memory.knownByCharacterIds,
       lineIds: [
-        ...new Set(
+        ...new Set<string>(
           memory.evidence
             .map((ref) => (ref === "player" ? playerLineId : replyLineIds[ref]))
             .filter((id): id is string => !!id),
@@ -5019,7 +5022,7 @@ async function finalizeRoomInvitationDiagnostics(
   }
 }
 
-function validateCurrentRoomInvitation(reply: Awaited<ReturnType<typeof generate>>, village: VillageState): void {
+function validateCurrentRoomInvitation(reply: Pick<SceneReply, "invitationSignal">, village: VillageState): void {
   const signal = reply.invitationSignal;
   if (!signal) return;
   const venue = village.venues.find((entry) => entry.id === signal.venueId);

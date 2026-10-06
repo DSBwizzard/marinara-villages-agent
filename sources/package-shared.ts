@@ -6,3 +6,6 @@ export {
   normalizeImageGenerationProfile,
   imageSourceToDefaultsService,
 } from "./engine/packages/shared/dist/constants/image-generation-defaults.js";
+
+// Public Engine declarations pinned separately from bundled utilities.
+export type { CapabilityCharacterRecord, CapabilityDocumentStore, CapabilityLanguageModelCompletion, CapabilityLanguageModelHost, CapabilityLanguageModelMessage, CapabilityPersistenceHost, CapabilityPersonaRecord, CapabilityResolvedLanguageModel, CapabilityResourceHost, CapabilityRuntimeHost, CapabilityRuntimeLogger } from "./engine-public/types/capability-runtime.js";

@@ -450,7 +450,7 @@ async function main() {
   );
   assert.ok(village.includes("state.townMapImage = townMap.image"));
 
-  const builder = await readFile(join(root, "scripts/build-feature-packages.mjs"), "utf8");
+  const builder = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
   assert.equal(builder.includes('"villages-townmap.png"'), false);
   await assert.rejects(access(join(root, "packages/villages/villages-townmap.png")));
 

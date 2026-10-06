@@ -139,9 +139,9 @@ export type VillagePromptContext = {
    */
   memory: VillageChronicleEntry[];
   /** The derived moment the reply happens at. */
-  moment: VillageMoment;
+  moment?: VillageMoment;
   /** The Engine's native routine for this character, when one exists. */
-  routine: NativeRoutine | null;
+  routine?: NativeRoutine | null;
   /**
    * How that routine happens HERE, or null when the village has no translation
    * for the week the Engine is currently keeping for this character.
