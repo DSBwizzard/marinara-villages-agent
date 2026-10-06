@@ -1,10 +1,8 @@
 import assert from "node:assert/strict";
-import {
-  createExchangeProcessing,
-  coerceExchangeProcessing,
-  dispatchExchange,
-  unfinishedExchange,
-} from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { coerceExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { unfinishedExchange } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 
 const exchange = () =>
   createExchangeProcessing({

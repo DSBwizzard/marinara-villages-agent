@@ -5,12 +5,12 @@ import {
   context,
   type Context,
   operationSummary,
-  sceneRevision,
   venueRefusal,
 } from "../adapters/operations/operation-context.js";
 import type { VenueOperation } from "../domain/models/operation-model.js";
 import { safeFailureMessage, VillagesRequestError } from "../domain/rules/errors.js";
 import { coerceInterpretationSettings, type InterpretationSettings } from "../domain/rules/interpretation-policy.js";
+import { sceneRevision } from "../domain/rules/scene-revision.js";
 import { coerceWorkFailure } from "../domain/rules/work-failure.js";
 import { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
 import { randomUUID } from "node:crypto";
@@ -18,7 +18,6 @@ import { randomUUID } from "node:crypto";
 export {
   VenueOperation,
   venueRefusal,
-  sceneRevision,
   operationSummary,
   outsideVenueOperation,
   venueSavedCheckpoint,

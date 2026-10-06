@@ -65,12 +65,12 @@ import {
   listVenueVisitSummaries,
   readVenueVisit,
   readProjectTurnEvidence,
-  parseVenueReply,
   resetVenueSessions,
   sendVenueTurn as sendVenueTurnRaw,
   touchVenueSession,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { venueCardProfile } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import {
   coerceVillageState,

@@ -21,9 +21,6 @@ export function venueRefusal(code: string, message: string): VillagesRequestErro
   villagesLogger().debug("[villages] scene refusal code=%s", code);
   return new VillagesRequestError(409, message, code);
 }
-export function sceneRevision(data: Record<string, unknown>): number {
-  return Number.isSafeInteger(data.sceneRevision) && Number(data.sceneRevision) >= 0 ? Number(data.sceneRevision) : 0;
-}
 export function operationSummary(operation?: VenueOperation) {
   if (!operation || (operation.status === "complete" && !operation.error)) return null;
   return {

@@ -5,7 +5,8 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import {
   bindLiveProposals,
   memoryVersion,

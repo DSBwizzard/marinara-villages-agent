@@ -39,7 +39,8 @@ import {
   projectRelationshipProfiles,
   readRelationshipsView,
 } from "../packages/villages/src/server/features/residents/relationships.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 
 async function main() {

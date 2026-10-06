@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { parseVenueReply } from "../packages/villages/src/server/features/scenes/venue-session.js";
+
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   describeSpriteExpressions,
   validateSpriteExpression,

@@ -32,7 +32,8 @@ import {
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,

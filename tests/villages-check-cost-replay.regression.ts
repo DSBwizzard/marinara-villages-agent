@@ -10,7 +10,8 @@ import { processWishExchange } from "../packages/villages/src/server/features/re
 import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 
 /** Optional read-only replay uses private data in memory; neither Scene text nor identities are saved/output. */
 async function inputs() {

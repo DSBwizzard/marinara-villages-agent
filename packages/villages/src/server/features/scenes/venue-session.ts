@@ -1,7 +1,5 @@
-import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import {
   initialStaging,
-  readStagingCues,
   replayStaging,
   stagingLayout,
   stagingTranscriptEvents,
@@ -20,7 +18,6 @@ import { runtimeDebug } from "../../adapters/observability/runtime-debug.js";
 import {
   assertVenueOwnership,
   outsideVenueOperation,
-  sceneRevision,
   venueOperationId,
   venueOperationInput,
   venueOperationSignal,
@@ -29,17 +26,24 @@ import {
   venueRequestMetrics,
   venueSavedCheckpoint,
 } from "../../adapters/operations/operation-context.js";
-import { type DocumentSlot, mutateDocument } from "../../adapters/storage/document-store.js";
+import { mutateDocument } from "../../adapters/storage/document-store.js";
+import {
+  ACTIVE_ID,
+  activeSlot,
+  changeSession,
+  clearActivePointer,
+  readActive,
+  readSession,
+  SESSION_KIND,
+  SESSION_PREFIX,
+  sessionSlot,
+} from "../../adapters/storage/scene-store.js";
+import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
+import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
-import type { LiveExchangeProposals } from "../../domain/models/memory-model.js";
-import type { VenueOperation } from "../../domain/models/operation-model.js";
 import type {
-  ActiveVenue,
   GreetingTrace,
-  SavedAccessEvent,
-  SceneAttendance,
   VenueLine,
-  VenueMemory,
   VenueParticipant,
   VenueRecollection,
   VenueRecordEvent,
@@ -49,11 +53,9 @@ import type {
   VenueSubmission,
 } from "../../domain/models/scene-model.js";
 import type { VenueActionResult } from "../../domain/models/venue-action-model.js";
-import type { WishProposal } from "../../domain/models/wish-check-model.js";
 import type { WishCriteria } from "../../domain/models/wish-interpretation-model.js";
 import type { VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { accessManagementPrompt } from "../../domain/rules/access-speech.js";
-import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import {
   badGateway,
@@ -74,7 +76,6 @@ import { renderPlayerRoleWritingContext } from "../../domain/rules/player-role.j
 import { ingestSavedProgressEvent } from "../../domain/rules/progress-runtime.js";
 import {
   bindProjectSpeech,
-  coerceProjectSpeech,
   projectSpeechContexts,
   projectSpeechPrompt,
 } from "../../domain/rules/project-interpretation.js";
@@ -86,7 +87,13 @@ import {
   type ResponseDiagnostics,
   sceneMissingFields,
 } from "../../domain/rules/response-diagnostics.js";
+import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
+import { isInactive } from "../../domain/rules/scene-inactivity.js";
+import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
+import { appendLine, heardLines, pendingProgressTurns } from "../../domain/rules/scene-record.js";
 import { extractSceneReply } from "../../domain/rules/scene-reply-json.js";
+import { parseVenueReply, quietContactReply, savedAccessEvents } from "../../domain/rules/scene-reply.js";
+import { applyInterpretedRoomEvents } from "../../domain/rules/scene-room-application.js";
 import { describeSpriteExpressions, validateSpriteExpression } from "../../domain/rules/sprite-expressions.js";
 import {
   applyAccessCommand,
@@ -104,7 +111,6 @@ import {
   contactPosition,
   contactReach,
   contactSpeech,
-  type DoorwayContact,
   readContactDelivery,
   readContactIntent,
   readContactMoves,
@@ -120,7 +126,6 @@ import {
   applyVenueSceneChange,
   physicalVenueEvents,
   readVenueSceneChange,
-  type VenueSceneChange,
 } from "../../domain/rules/venue-scene-state.js";
 import { venueReplyIntegrity } from "../../domain/rules/venue-turn-integrity.js";
 import {
@@ -132,7 +137,6 @@ import {
 import {
   canInviteToZone,
   canOccupyZone,
-  chooseAgendaZone,
   legacyZoneId,
   resolveVenueZone,
   venueInZone,
@@ -142,7 +146,7 @@ import {
   zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
-import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
+import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import {
   knownWish,
   setWishJournalStatus,
@@ -193,7 +197,6 @@ import {
   relationshipWritingPrompt,
 } from "../residents/relationships.js";
 import {
-  coerceWishApplicationProof,
   interpretWishClaim,
   matchingWishReceipts,
   wishFingerprint,
@@ -217,13 +220,8 @@ import {
   rollActiveAgendas,
 } from "../world/village.js";
 import { memoryForVillager } from "./chat.js";
-import {
-  coerceExchangeProcessing,
-  createExchangeProcessing,
-  dispatchExchange,
-  unfinishedExchange,
-} from "./exchange-processing.js";
-import { dismissalDestination, interpretRoomReply } from "./room-interpretation.js";
+import { dispatchExchange } from "./exchange-processing.js";
+import { interpretRoomReply } from "./room-interpretation.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 
@@ -315,455 +313,9 @@ export async function readProjectTurnEvidence(sessionId: string, submissionId: s
     ),
   };
 }
-
-/** One document is both the active transcript and the player's durable Scene archive. */
-
-/** Compatibility name for existing package integrations and saved Scene workflows. */
-
-const ACTIVE_ID = "villages-active-venue";
-const SESSION_PREFIX = "villages-venue-visit-";
-const SESSION_KIND = "venue-visit";
 const VENUE_REPLY_MAX_TOKENS = 4_096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
-const INACTIVITY_MS = 30 * 60 * 1000;
 const ACTIVITY_WRITE_MS = 15 * 1000;
-
-function coerceActive(value: unknown): ActiveVenue {
-  const raw = asRecord(value);
-  return { sessionId: asTrimmedString(raw.sessionId), placeId: asTrimmedString(raw.placeId) };
-}
-
-const activeSlot: DocumentSlot<ActiveVenue> = {
-  kind: "venue-active",
-  name: "Active Scene",
-  description: "The one Scene the player is in.",
-  coerce: coerceActive,
-  label: () => "Active Scene",
-};
-
-function coerceVenueRecollection(value: unknown): VenueRecollection | null {
-  const raw = asRecord(value);
-  const id = asTrimmedString(raw.id);
-  const text = asTrimmedString(raw.text).slice(0, MAX_CHRONICLE_LENGTH);
-  const subjectCharacterIds = Array.isArray(raw.subjectCharacterIds)
-    ? [...new Set(raw.subjectCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-    : [];
-  const knownByCharacterIds = Array.isArray(raw.knownByCharacterIds)
-    ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-    : [];
-  const lineIds = Array.isArray(raw.lineIds)
-    ? [...new Set(raw.lineIds.filter((lineId): lineId is string => typeof lineId === "string" && !!lineId))]
-    : [];
-  return id && text && knownByCharacterIds.length && lineIds.length
-    ? { id, text, subjectCharacterIds, knownByCharacterIds, lineIds }
-    : null;
-}
-
-function coerceSession(value: unknown): VenueScene {
-  const raw = asRecord(value);
-  if (raw.memoryMode && raw.memoryMode !== "live" && raw.status !== "closed")
-    throw conflict("This Scene uses a retired memory format; its transcript must be archived before continuing.");
-  const participants = Array.isArray(raw.participants)
-    ? raw.participants
-        .map((value) => {
-          const row = asRecord(value);
-          return {
-            characterId: asTrimmedString(row.characterId),
-            name: asTrimmedString(row.name),
-            doing: asTrimmedString(row.doing),
-          };
-        })
-        .filter((person) => person.characterId && person.name)
-    : [];
-  const participantIds = new Set(participants.map((person) => person.characterId));
-  const lines: VenueLine[] = Array.isArray(raw.lines)
-    ? raw.lines
-        .map((value) => {
-          const row = asRecord(value);
-          return {
-            id: asTrimmedString(row.id),
-            speakerId: asString(row.speakerId),
-            name: asString(row.name),
-            role: row.role === "user" ? ("user" as const) : ("assistant" as const),
-            content: asString(row.content),
-            at: asString(row.at),
-            zoneId: asTrimmedString(row.zoneId) || undefined,
-            ...(row.viaDoorway === true ? { viaDoorway: true } : {}),
-            ...(row.remoteDelivery === "loud" || row.remoteDelivery === "device"
-              ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
-              : {}),
-            ...(row.contactHidden === true ? { contactHidden: true } : {}),
-            ...(row.contactReport === true ? { contactReport: true } : {}),
-            heardBy: Array.isArray(row.heardBy) ? row.heardBy.filter((id): id is string => typeof id === "string") : [],
-            ...(row.kind === "narration" || row.kind === "dialogue" || row.kind === "side" || row.kind === "whisper"
-              ? { kind: row.kind as VenueLine["kind"] }
-              : {}),
-            ...(typeof row.expression === "string" ? { expression: row.expression } : {}),
-            ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, [...participantIds]) } : {}),
-            ...(row.gazeAt === "player" || (typeof row.gazeAt === "string" && participantIds.has(row.gazeAt))
-              ? { gazeAt: row.gazeAt as string }
-              : {}),
-            ...(typeof row.targetId === "string" ? { targetId: row.targetId } : {}),
-            ...(typeof row.asideFor === "string" ? { asideFor: row.asideFor } : {}),
-          };
-        })
-        .filter((line) => line.id && line.content)
-    : [];
-  return {
-    version: 1,
-    changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
-    ...(raw.processingVersion === 1 ? { processingVersion: 1 as const, villageSeed: asString(raw.villageSeed) } : {}),
-    sceneRevision: sceneRevision(raw),
-    operation: raw.operation as VenueOperation | undefined,
-    generationReceipts: Array.isArray(raw.generationReceipts)
-      ? (raw.generationReceipts as VenueScene["generationReceipts"])
-      : [],
-    id: asTrimmedString(raw.id),
-    placeId: asTrimmedString(raw.placeId),
-    placeName: asTrimmedString(raw.placeName),
-    zoneId: asTrimmedString(raw.zoneId) || undefined,
-    enteredFromZoneId: asTrimmedString(raw.enteredFromZoneId) || undefined,
-    pendingRoomQuestions: Array.isArray(raw.pendingRoomQuestions)
-      ? raw.pendingRoomQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
-      : [],
-    pendingProjectQuestions: Array.isArray(raw.pendingProjectQuestions)
-      ? raw.pendingProjectQuestions.filter((value): value is string => typeof value === "string").slice(0, 8)
-      : [],
-    dismissedZoneIds: Array.isArray(raw.dismissedZoneIds)
-      ? raw.dismissedZoneIds.filter((id): id is string => typeof id === "string")
-      : [],
-    privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
-    zoneGrants: Array.isArray(raw.zoneGrants)
-      ? raw.zoneGrants
-          .map(asRecord)
-          .filter((grant) => typeof grant.zoneId === "string" && typeof grant.controllerId === "string")
-          .map((grant) => ({
-            zoneId: String(grant.zoneId),
-            controllerId: String(grant.controllerId),
-            source: grant.source === "relationship" ? ("relationship" as const) : undefined,
-          }))
-      : [],
-    legacyCast: raw.legacyCast === true,
-    pendingAccessClaim: asTrimmedString(raw.pendingAccessClaim) || undefined,
-    accessPreviousZones: Object.fromEntries(
-      Object.entries(asRecord(raw.accessPreviousZones)).filter(
-        (entry): entry is [string, string] => typeof entry[1] === "string",
-      ),
-    ),
-    doorwayContacts: Array.isArray(raw.doorwayContacts) ? (raw.doorwayContacts as DoorwayContact[]) : [],
-    entryOffers: Array.isArray(raw.entryOffers) ? (raw.entryOffers as VenueScene["entryOffers"]) : [],
-    grantedZoneIds: Array.isArray(raw.grantedZoneIds)
-      ? raw.grantedZoneIds.filter((id): id is string => typeof id === "string")
-      : [],
-    accompanying: Array.isArray(raw.accompanying)
-      ? raw.accompanying.flatMap((value) => {
-          const row = asRecord(value);
-          return row.characterId && row.zoneId
-            ? [{ characterId: asTrimmedString(row.characterId), zoneId: asTrimmedString(row.zoneId) }]
-            : [];
-        })
-      : [],
-    departedIds: Array.isArray(raw.departedIds)
-      ? raw.departedIds.filter((id): id is string => typeof id === "string")
-      : [],
-    spaceClass:
-      raw.spaceClass === "residence" ||
-      raw.spaceClass === "workplace" ||
-      raw.spaceClass === "gathering" ||
-      raw.spaceClass === "other"
-        ? raw.spaceClass
-        : undefined,
-    area:
-      raw.area === "outside" || raw.area === "shared" || raw.area === "private" || raw.area === "public"
-        ? raw.area
-        : raw.spaceClass === "residence"
-          ? "shared"
-          : "public",
-    privateOwnerId: asTrimmedString(raw.privateOwnerId),
-    privateAccessOwnerId: asTrimmedString(raw.privateAccessOwnerId),
-    startedAt: asString(raw.startedAt),
-    endedAt: asString(raw.endedAt),
-    lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),
-    endReason:
-      raw.endReason === "player" ||
-      raw.endReason === "scene" ||
-      raw.endReason === "inactivity" ||
-      raw.endReason === "debug"
-        ? raw.endReason
-        : "",
-    ...(raw.stagingVersion === 1 ? { stagingVersion: 1 as const } : {}),
-    memoryMode: "live",
-    status: raw.status === "opening" || raw.status === "closing" || raw.status === "closed" ? raw.status : "active",
-    participants,
-    ...(raw.sceneAttendance && typeof raw.sceneAttendance === "object"
-      ? {
-          sceneAttendance: {
-            capturedAt: asString(asRecord(raw.sceneAttendance).capturedAt) || asString(raw.startedAt),
-            occupants: (Array.isArray(asRecord(raw.sceneAttendance).occupants)
-              ? (asRecord(raw.sceneAttendance).occupants as unknown[])
-              : []
-            ).flatMap((value) => {
-              const row = asRecord(value);
-              return row.characterId && row.zoneId
-                ? [
-                    {
-                      characterId: asTrimmedString(row.characterId),
-                      name: asTrimmedString(row.name),
-                      doing: asString(row.doing),
-                      zoneId: asTrimmedString(row.zoneId),
-                      availability: asString(row.availability),
-                    },
-                  ]
-                : [];
-            }),
-          },
-        }
-      : {}),
-    activeIds: Array.isArray(raw.activeIds) ? raw.activeIds.filter((id): id is string => typeof id === "string") : [],
-    lines,
-    heardHistory: Array.isArray(raw.heardHistory)
-      ? raw.heardHistory
-          .map((value) => {
-            const row = asRecord(value);
-            return {
-              characterId: asTrimmedString(row.characterId),
-              lineIds: Array.isArray(row.lineIds)
-                ? row.lineIds.filter((id): id is string => typeof id === "string")
-                : [],
-            };
-          })
-          .filter((entry) => !!entry.characterId)
-      : participants.map((person) => ({
-          characterId: person.characterId,
-          lineIds: lines.filter((line) => line.heardBy.includes(person.characterId)).map((line) => line.id),
-        })),
-    submissions: Array.isArray(raw.submissions)
-      ? raw.submissions
-          .map((value) => {
-            const row = asRecord(value);
-            return {
-              id: asTrimmedString(row.id),
-              ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),
-              ...(typeof row.wishProposalError === "string" ? { wishProposalError: row.wishProposalError } : {}),
-              ...(coerceExchangeProcessing(row.processing)
-                ? { processing: coerceExchangeProcessing(row.processing) }
-                : {}),
-              message: asString(row.message),
-              ...(row.physicalOutcomeVersion === 1 ? { physicalOutcomeVersion: 1 as const } : {}),
-              ...(row.requestMode === "act" || row.requestMode === "fulfill"
-                ? { requestMode: row.requestMode as "act" | "fulfill" }
-                : {}),
-              ...(row.movement ? { movement: row.movement as VenueSubmission["movement"] } : {}),
-              ...(row.contact ? { contact: row.contact as ContactIntent } : {}),
-              ...(Array.isArray(row.speechIdsAtTurn) ? { speechIdsAtTurn: row.speechIdsAtTurn as string[] } : {}),
-              ...(row.contactEvidence
-                ? { contactEvidence: row.contactEvidence as VenueSubmission["contactEvidence"] }
-                : {}),
-              mode:
-                row.mode === "contact"
-                  ? ("contact" as const)
-                  : row.mode === "leave"
-                    ? ("leave" as const)
-                    : row.mode === "act"
-                      ? ("act" as const)
-                      : row.mode === "fulfill"
-                        ? ("fulfill" as const)
-                        : row.mode === "ask"
-                          ? ("ask" as const)
-                          : ("chat" as const),
-              targetId: asString(row.targetId),
-              ...(typeof row.zoneIdAtTurn === "string" ? { zoneIdAtTurn: row.zoneIdAtTurn } : {}),
-              ...(row.areaAtTurn === "outside" ||
-              row.areaAtTurn === "shared" ||
-              row.areaAtTurn === "private" ||
-              row.areaAtTurn === "public"
-                ? { areaAtTurn: row.areaAtTurn as VenueScene["area"] }
-                : {}),
-              ...(typeof row.privateOwnerIdAtTurn === "string"
-                ? { privateOwnerIdAtTurn: row.privateOwnerIdAtTurn }
-                : {}),
-              ...(Array.isArray(row.activeIdsAtTurn)
-                ? { activeIdsAtTurn: row.activeIdsAtTurn.filter((id): id is string => typeof id === "string") }
-                : {}),
-              ...(Array.isArray(row.activeIdsAfterTurn)
-                ? {
-                    activeIdsAfterTurn: row.activeIdsAfterTurn.filter(
-                      (id): id is string => typeof id === "string" && participantIds.has(id),
-                    ),
-                  }
-                : {}),
-              ...(Array.isArray(row.replyLineIds)
-                ? { replyLineIds: row.replyLineIds.filter((id): id is string => typeof id === "string") }
-                : {}),
-              ...(typeof row.progressProcessedAt === "string" ? { progressProcessedAt: row.progressProcessedAt } : {}),
-              ...(Array.isArray(row.projectContexts)
-                ? {
-                    projectContexts: row.projectContexts.slice(0, 100).map((value) => {
-                      const context = asRecord(value);
-                      return {
-                        projectId: asTrimmedString(context.projectId),
-                        revision: Number(context.revision),
-                        phase: asTrimmedString(context.phase),
-                      };
-                    }),
-                  }
-                : {}),
-              ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
-              ...(row.projectInterpretationVersion === 1 ? { projectInterpretationVersion: 1 as const } : {}),
-              ...(Object.hasOwn(row, "wishInterpretationProof")
-                ? { wishInterpretationProof: coerceWishApplicationProof(row.wishInterpretationProof) }
-                : {}),
-              ...(typeof row.progressError === "string" ? { progressError: row.progressError.slice(0, 300) } : {}),
-              verdict:
-                row.verdict && typeof asRecord(row.verdict).fulfilled === "boolean"
-                  ? {
-                      fulfilled: asRecord(row.verdict).fulfilled === true,
-                      reason: asString(asRecord(row.verdict).reason),
-                    }
-                  : null,
-              wishId: asString(row.wishId),
-              wishMemory: asString(row.wishMemory),
-              ...(row.action ? { action: row.action as VenueActionResult } : {}),
-              ...(row.actionReplyDone === true ? { actionReplyDone: true } : {}),
-              ...(row.sceneChange ? { sceneChange: row.sceneChange as VenueSceneChange } : {}),
-              ...(row.residenceSignal
-                ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
-                : {}),
-              ...(row.upgradeSignal ? { upgradeSignal: row.upgradeSignal as VenueSubmission["upgradeSignal"] } : {}),
-              ...(row.venueRequestSignal
-                ? { venueRequestSignal: row.venueRequestSignal as VenueSubmission["venueRequestSignal"] }
-                : {}),
-              ...(row.invitationSignal
-                ? { invitationSignal: row.invitationSignal as VenueSubmission["invitationSignal"] }
-                : {}),
-              ...(Array.isArray(row.accessEvents)
-                ? { accessEvents: structuredClone(row.accessEvents).slice(0, 64) as SavedAccessEvent[] }
-                : {}),
-              ...(row.editApprovalSignal
-                ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
-                : {}),
-              ...(Array.isArray(row.turnMemories) ? { turnMemories: row.turnMemories as VenueMemory[] } : {}),
-              ...(asRecord(row.liveProposals).version === 1
-                ? { liveProposals: structuredClone(row.liveProposals) as LiveExchangeProposals }
-                : {}),
-              changeSequence: Math.max(0, Math.floor(Number(row.changeSequence) || 0)),
-              ...(Array.isArray(row.wishContexts)
-                ? { wishContexts: row.wishContexts as VenueSubmission["wishContexts"] }
-                : {}),
-              ...(Array.isArray(row.requestMetrics)
-                ? { requestMetrics: row.requestMetrics as VenueSubmission["requestMetrics"] }
-                : {}),
-              ...(Array.isArray(row.interpretationHistory)
-                ? { interpretationHistory: row.interpretationHistory as VenueSubmission["interpretationHistory"] }
-                : {}),
-              ...(Array.isArray(row.recollections)
-                ? {
-                    recollections: row.recollections
-                      .map(coerceVenueRecollection)
-                      .filter((entry): entry is VenueRecollection => entry !== null),
-                  }
-                : {}),
-              ...(Array.isArray(row.recordEvents) ? { recordEvents: row.recordEvents as VenueRecordEvent[] } : {}),
-              ...(typeof row.at === "string" ? { at: row.at } : {}),
-            };
-          })
-          .filter((entry) => entry.id)
-      : [],
-    memories: Array.isArray(raw.memories)
-      ? raw.memories
-          .map((value) => ({
-            characterId: asTrimmedString(asRecord(value).characterId),
-            text: asTrimmedString(asRecord(value).text),
-            lineIds: Array.isArray(asRecord(value).lineIds)
-              ? (asRecord(value).lineIds as unknown[]).filter((id): id is string => typeof id === "string")
-              : [],
-          }))
-          .filter((entry) => entry.characterId && entry.text)
-      : null,
-    recap: asString(raw.recap).slice(0, 600),
-  };
-}
-
-const sessionSlot: DocumentSlot<VenueScene> = {
-  kind: SESSION_KIND,
-  name: "Scene",
-  description: "The player's exact record of one Scene, indexed by Venue and participant.",
-  coerce: coerceSession,
-  label: (session) => session.placeName || "Scene",
-};
-
-async function readActive(): Promise<ActiveVenue> {
-  const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, ACTIVE_ID);
-  return coerceActive(record?.data);
-}
-
-async function readSession(id: string): Promise<VenueScene> {
-  const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${id}`);
-  if (!record) throw notFound("That Scene is no longer available.");
-  return coerceSession(record.data);
-}
-
-function sceneFingerprint(session: VenueScene): string {
-  return JSON.stringify([
-    session.status,
-    session.zoneId,
-    session.area,
-    session.privateOwnerId,
-    session.activeIds,
-    session.participants,
-    session.lines.map((line) => line.id),
-    session.recap,
-  ]);
-}
-
-async function changeSession(id: string, change: (session: VenueScene) => void): Promise<VenueScene> {
-  let result: VenueScene | null = null;
-  await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
-    if (session.id !== id) throw notFound("That Scene is no longer available.");
-    const snapshot = JSON.stringify(session);
-    const before = sceneFingerprint(session);
-    const priorChanges = new Map(
-      session.submissions.map((turn) => [
-        turn.id,
-        JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]),
-      ]),
-    );
-    change(session);
-    if (session.processingVersion === 1 && session.villageSeed)
-      session.submissions.forEach((turn, order) => {
-        if (turn.movement || turn.processing || !turn.at || (turn.mode === "act" && !turn.actionReplyDone)) return;
-        turn.processing = createExchangeProcessing({
-          seed: session.villageSeed!,
-          sceneId: id,
-          submissionId: turn.id,
-          order,
-          lineIds: session.lines
-            .filter((line) => turn.replyLineIds?.includes(line.id) || (line.role === "user" && line.at === turn.at))
-            .map((line) => line.id),
-          actionReceiptIds: turn.action?.happened
-            ? [turn.physicalOutcomeVersion ? `venue-chat:${id}:${turn.id}` : `venue-action:${turn.id}`]
-            : [],
-        });
-      });
-    for (const turn of session.submissions)
-      if (priorChanges.get(turn.id) !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
-        turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
-    if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
-    result = session;
-    if (snapshot === JSON.stringify(session)) return false;
-  });
-  return result!;
-}
-
-function pendingProgressTurns(session: VenueScene, foundedAt: string) {
-  return session.submissions.filter(
-    (turn) =>
-      !turn.movement &&
-      turn.at &&
-      !turn.progressProcessedAt &&
-      (!foundedAt || Date.parse(turn.at) >= Date.parse(foundedAt)),
-  );
-}
 
 /** The Scene document is the outbox. Village receipts are idempotent if the second write is interrupted. */
 export async function processSavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
@@ -1365,43 +917,6 @@ export function startProgressRecovery(): () => void {
   return () => {
     stopped = true;
     if (timer) clearTimeout(timer);
-  };
-}
-
-function appendLine(session: VenueScene, line: VenueLine): void {
-  line.zoneId ??= session.zoneId;
-  session.lines.push(line);
-  for (const id of line.heardBy)
-    if (!session.heardHistory.some((history) => history.characterId === id))
-      session.heardHistory.push({ characterId: id, lineIds: [] });
-  for (const history of session.heardHistory)
-    if (line.heardBy.includes(history.characterId)) history.lineIds.push(line.id);
-}
-
-function heardLines(session: VenueScene, characterId: string): VenueLine[] {
-  const ids = new Set(session.heardHistory.find((history) => history.characterId === characterId)?.lineIds ?? []);
-  return session.lines.filter((line) => ids.has(line.id));
-}
-
-function captureSceneAttendance(village: VillageState, placeId: string, now: Date): SceneAttendance {
-  const venue = village.venues.find((entry) => entry.id === placeId)!;
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  return {
-    capturedAt: now.toISOString(),
-    occupants: village.villagers.flatMap((villager) => {
-      if (villagerPlaceView(village, villager, null, moment.minuteOfDay, now)?.id !== placeId) return [];
-      const block = agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
-      const zone = chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village);
-      return [
-        {
-          characterId: villager.characterId,
-          name: villager.cardSnapshot.name,
-          doing: block?.activity ?? "",
-          availability: block?.status ?? "",
-          zoneId: zone.id,
-        },
-      ];
-    }),
   };
 }
 
@@ -2375,98 +1890,6 @@ async function generate(
   }
 }
 
-export function parseVenueReply(
-  raw: Record<string, unknown> | null,
-  audience: readonly string[],
-  expressionId?: (characterId: string, requested: string) => string,
-): {
-  lines: VenueReplyLine[];
-  heardPlayerBy: string[];
-} {
-  const structured = Array.isArray(raw?.segments);
-  const segments = structured ? raw!.segments : raw?.lines;
-  if (!raw || !Array.isArray(segments) || !Array.isArray(raw.heardPlayerBy))
-    throw new Error("The venue response could not be read. Try again.");
-  if (!segments.length) throw new Error("The venue response contained no scene moment. Try again.");
-  const allowed = new Set(audience);
-  // Models sometimes put a name or an obsolete ID in optional audience fields.
-  // Ignore those hints; only the cast captured at Visit may hear a line.
-  const ids = (value: unknown): string[] =>
-    Array.isArray(value)
-      ? [...new Set(value.filter((id): id is string => typeof id === "string" && allowed.has(id)))]
-      : [];
-  if (segments.length > 24) throw new Error("The venue response contained too many lines.");
-  const lines: VenueReplyLine[] = segments.map((value): VenueReplyLine => {
-    const row = asRecord(value);
-    if (
-      structured &&
-      row.kind !== "narration" &&
-      row.kind !== "dialogue" &&
-      row.kind !== "side" &&
-      row.kind !== "whisper"
-    )
-      throw new Error("The venue response had an unknown segment kind.");
-    let kind: VenueReplyLine["kind"] =
-      row.kind === "narration" || row.kind === "side" || row.kind === "whisper" ? row.kind : "dialogue";
-    const speakerId = asTrimmedString(row.speakerId);
-    const content = asTrimmedString(row.text);
-    if ((kind !== "narration" && !allowed.has(speakerId)) || !content || content.length > 2000)
-      throw new Error("The venue response had an unreadable speaker or line.");
-    const expression = asTrimmedString(row.expression).toLowerCase().slice(0, 40);
-    const requestedTarget = asTrimmedString(row.targetId);
-    const targetId = allowed.has(requestedTarget) || requestedTarget === "player" ? requestedTarget : "";
-    // An invalid whisper target must never make the whole greeting or turn fail.
-    // Treat it as an ordinary spoken line, without claiming anyone heard a whisper.
-    if (kind === "whisper" && !targetId) kind = "dialogue";
-    const requestedGaze = asTrimmedString(row.gazeAt);
-    const gazeAt =
-      kind === "narration"
-        ? ""
-        : requestedGaze === "player" || (allowed.has(requestedGaze) && requestedGaze !== speakerId)
-          ? requestedGaze
-          : kind === "whisper"
-            ? targetId
-            : "";
-    return {
-      kind,
-      speakerId: kind === "narration" ? "__venue_scene__" : speakerId,
-      content,
-      heardBy:
-        kind === "narration"
-          ? [...audience]
-          : [
-              ...new Set([
-                speakerId,
-                ...ids(row.heardBy),
-                ...(kind === "whisper" && allowed.has(targetId) ? [targetId] : []),
-              ]),
-            ],
-      ...(expression ? { expression } : {}),
-      ...(gazeAt ? { gazeAt } : {}),
-      ...(Array.isArray(row.staging) ? { staging: readStagingCues(row.staging, audience, expressionId) } : {}),
-      ...(targetId ? { targetId } : {}),
-    };
-  });
-  if (
-    lines.some((line) => line.kind === "side" || line.kind === "whisper") &&
-    !lines.some((line) => line.kind === "narration" || line.kind === "dialogue")
-  )
-    throw new Error("The venue response had side chatter without a main line.");
-  const anchored: VenueReplyLine[] = lines.map((line, index) => {
-    if (line.kind !== "side" && line.kind !== "whisper") return line;
-    let anchorIndex = index - 1;
-    while (anchorIndex >= 0 && (lines[anchorIndex]!.kind === "side" || lines[anchorIndex]!.kind === "whisper"))
-      anchorIndex -= 1;
-    if (anchorIndex < 0)
-      anchorIndex = lines.findIndex((candidate) => candidate.kind === "narration" || candidate.kind === "dialogue");
-    return { ...line, anchorIndex };
-  });
-  return {
-    lines: anchored,
-    heardPlayerBy: ids(raw.heardPlayerBy),
-  };
-}
-
 function appendVenueReply(
   session: VenueScene,
   lines: ReturnType<typeof parseVenueReply>["lines"],
@@ -2517,10 +1940,6 @@ export async function activeVenueSession(): Promise<VenueScene | null> {
   return refreshZoneParticipants(session);
 }
 
-function isInactive(session: VenueScene, now = Date.now()): boolean {
-  return now - Date.parse(session.lastActivityAt || session.startedAt) >= INACTIVITY_MS;
-}
-
 async function interruptInactiveVisit(id: string): Promise<void> {
   if (hasVenueOperation(id)) return;
   const closed = await changeSession(id, (state) => {
@@ -2567,65 +1986,6 @@ export async function touchVenueSession(id: string): Promise<VenueScene> {
     if (Date.now() - Date.parse(state.lastActivityAt) >= ACTIVITY_WRITE_MS)
       state.lastActivityAt = new Date().toISOString();
   });
-}
-
-async function clearActivePointer(id: string): Promise<void> {
-  await mutateDocument(ACTIVE_ID, activeSlot, (state) => {
-    if (state.sessionId === id) {
-      state.sessionId = "";
-      state.placeId = "";
-    }
-  });
-}
-
-function sceneZoneOccupants(session: VenueScene, village: VillageState, venue: VillageVenue, zoneId: string) {
-  const positions = (session.accompanying ?? []).filter((entry) => {
-    const destination = resolveVenueZone(venue, entry.zoneId);
-    if (venue.access) return !!destination; // Captured positions change only through recorded movement.
-    return !!destination && contactCanEnter(village, venue, destination.id, entry.characterId);
-  });
-  const accompanying = positions.filter((entry) => entry.zoneId === zoneId).map((entry) => entry.characterId);
-  return (session.sceneAttendance?.occupants ?? []).filter(
-    (person) =>
-      (person.zoneId === zoneId || accompanying.includes(person.characterId)) &&
-      !session.departedIds?.includes(person.characterId) &&
-      !positions.some((entry) => entry.characterId === person.characterId && entry.zoneId !== zoneId),
-  );
-}
-/** Iterate escort dependencies using actual Scene positions, never background schedules. */
-function accessExits(session: VenueScene, village: VillageState, venue: VillageVenue) {
-  const context = sceneAccessContext(session, village),
-    positions = { ...context.positions };
-  const exits: { actor: string; from: string; to: string }[] = [];
-  for (let pass = 0; pass <= Object.keys(positions).length; pass++) {
-    let changed = false;
-    for (const [actor, from] of Object.entries(positions)) {
-      if (!from || from === "exterior") continue;
-      const zone = resolveVenueZone(venue, from);
-      if (
-        zone &&
-        evaluateZoneAccess(venue, zone, actor, { ...context, positions, unavailable: zoneClosed(village, venue, zone) })
-          .allowed
-      )
-        continue;
-      const previous = actor === "player" ? session.enteredFromZoneId : session.accessPreviousZones?.[actor];
-      const fallback = previous && previous !== from ? resolveVenueZone(venue, previous) : undefined;
-      const to =
-        fallback &&
-        evaluateZoneAccess(venue, fallback, actor, {
-          ...context,
-          positions,
-          unavailable: zoneClosed(village, venue, fallback),
-        }).allowed
-          ? fallback.id
-          : "exterior";
-      positions[actor] = to;
-      exits.push({ actor, from, to });
-      changed = true;
-    }
-    if (!changed) break;
-  }
-  return exits;
 }
 async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
   if (!completing && hasVenueOperation(session.id)) return session;
@@ -3363,40 +2723,6 @@ export async function continueVenueWithoutGreeting(id: string): Promise<VenueSce
 }
 
 type SceneReply = Awaited<ReturnType<typeof generateOnce>> & { roomInterpretation?: InterpretationBatch | null };
-function quietContactReply(text: string, localIds: string[]) {
-  return {
-    lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }] as ReturnType<
-      typeof parseVenueReply
-    >["lines"],
-    heardPlayerBy: localIds,
-    interpretationRouting: undefined,
-    roomEvents: undefined,
-    projectContexts: [],
-    projectSpeech: [],
-    sceneChange: null,
-    movementIntent: null as MovementIntent | null,
-    residenceSignal: null,
-    upgradeSignal: null,
-    venueRequestSignal: null,
-    invitationSignal: null,
-    editApprovalSignal: null,
-    recap: "",
-    departures: [],
-    sceneEnded: false,
-    recollections: [],
-    wishChanges: [],
-    wishContexts: [],
-    responseDiagnostics: undefined,
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-    earlierLineIds: [],
-    memoryVersions: {},
-    contactIntent: null,
-    contactMoves: [],
-    contactRelay: null,
-    contactEndIds: [],
-  };
-}
 
 async function generateContactResponse(scene: VenueScene, message: string, targetId: string): Promise<SceneReply> {
   try {
@@ -4532,37 +3858,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     recordEvents,
   };
 }
-
-export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAccessEvent[] {
-  return batch
-    ? batch.checks.flatMap((check, index) => {
-        const facts = asRecord(check.facts),
-          result = batch.results[index];
-        if (
-          !result ||
-          (!facts.accessCommand &&
-            !["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome))
-        )
-          return [];
-        return [
-          {
-            id: check.id,
-            facts: {
-              actorId: String(facts.actorId),
-              venueId: String(facts.venueId),
-              zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
-              accessRevision: Number(facts.accessRevision),
-              ...(facts.accessCommand
-                ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
-                : {}),
-            },
-            outcome: result.outcome,
-            evidenceIds: [...result.evidenceIds],
-          },
-        ];
-      })
-    : [];
-}
 async function applySavedAccessEvents(scene: VenueScene, turn: VenueSubmission) {
   const events = turn.accessEvents ?? [];
   const batch = {
@@ -4746,103 +4041,6 @@ function validateCurrentRoomInvitation(reply: Pick<SceneReply, "invitationSignal
   const zone = venue && resolveVenueZone(venue, signal.zoneId);
   if (!venue || !zone || zoneClosed(village, venue, zone) || !canInviteToZone(venue, zone, signal.residentId))
     reply.invitationSignal = null;
-}
-
-export function applyInterpretedRoomEvents(
-  session: VenueScene,
-  batch: InterpretationBatch | null | undefined,
-  village: VillageState,
-): void {
-  if (!batch) return;
-  session.pendingRoomQuestions = batch.checks
-    .filter((_check, index) => batch.results[index].outcome === "unresolved")
-    .map((check) => check.question)
-    .slice(0, 8);
-  const invitationCount = batch.results.filter((result) =>
-    ["invite-now", "invite-later"].includes(result.outcome),
-  ).length;
-  for (const [index, result] of batch.results.entries()) {
-    const trace = batch.traces[index],
-      facts = asRecord(batch.checks[index].facts);
-    const venue = village.venues.find((entry) => entry.id === (facts.venueId ?? session.placeId));
-    const zone = venue && resolveVenueZone(venue, String(facts.zoneId));
-    const actor = String(facts.actorId);
-    trace.applied =
-      result.outcome === "unresolved" ? "Unresolved; no new permission or movement was inferred" : "No new room event";
-    if (["none", "unresolved"].includes(result.outcome)) continue;
-    if (!venue || !zone || zoneClosed(village, venue, zone) || !canInviteToZone(venue, zone, actor)) {
-      trace.applied = "Rejected: current Zone authority or availability did not validate";
-      continue;
-    }
-    if (
-      !batch.checks[index].evidence.some(
-        (line) =>
-          line.current &&
-          result.evidenceIds.includes(line.id) &&
-          (line.speakerId === actor || line.kind === "narration"),
-      )
-    ) {
-      trace.applied = "Rejected: no witnessed current evidence from the authorized speaker";
-      continue;
-    }
-    if (["invite-now", "invite-later"].includes(result.outcome)) {
-      if (invitationCount !== 1) {
-        trace.applied = "Unresolved: multiple invitation targets; clarification is needed";
-        continue;
-      }
-      trace.applied =
-        result.outcome === "invite-now" &&
-        session.entryOffers?.some((offer) => offer.zoneId === zone.id && offer.controllerId === actor)
-          ? `Entry offer created using ${result.source}; speaker authority validated`
-          : result.outcome === "invite-later" || venue.id !== session.placeId
-            ? "Future invitation queued for validation against saved speech"
-            : "Rejected: no current supporting invitation evidence";
-      continue;
-    }
-    if (
-      venue.access &&
-      ["refuse", "dismiss", "ban-zone", "ban-venue", "invite-outside-hours"].includes(result.outcome)
-    ) {
-      trace.applied = "Scoped access event queued for saved speech validation";
-      continue;
-    }
-    if (result.outcome === "dismiss") {
-      if (venue.id !== session.placeId) {
-        trace.applied = "Rejected: dismissal concerns another Venue";
-        continue;
-      }
-      if (session.zoneId !== zone.id) {
-        trace.applied = "Rejected: player is not in the dismissed Zone";
-        continue;
-      }
-      const destinationId = dismissalDestination(village, venue, session);
-      const destination = destinationId && resolveVenueZone(venue, destinationId);
-      if (!destination) {
-        trace.applied = "Unresolved: no adjacent accessible exit path";
-        continue;
-      }
-      session.enteredFromZoneId = zone.id;
-      session.zoneId = destination.id;
-      session.area = zoneArea(destination);
-      session.spaceClass = destination.venueClass;
-      session.privateOwnerId = destination.ownerId ?? "";
-      session.privateSpaceId = ["private-residence", "staff", "restricted"].includes(destination.kind)
-        ? destination.id
-        : undefined;
-      session.doorwayContacts = [];
-      session.recap = "";
-      trace.applied = `Moved to ${destination.name} within the same Scene using ${result.source}`;
-    } else if (result.outcome === "refuse")
-      trace.applied = `Entry refused using ${result.source}; current Scene permission withdrawn`;
-    if (venue.id !== session.placeId) {
-      trace.applied = "Refusal understood for another Venue; no current Scene access changed";
-      continue;
-    }
-    session.dismissedZoneIds = [...new Set([...(session.dismissedZoneIds ?? []), zone.id])];
-    session.entryOffers = session.entryOffers?.filter((offer) => offer.zoneId !== zone.id);
-    session.grantedZoneIds = session.grantedZoneIds?.filter((id) => id !== zone.id);
-    session.zoneGrants = session.zoneGrants?.filter((grant) => grant.zoneId !== zone.id);
-  }
 }
 
 function applyImmediateZoneInvitation(

@@ -32,11 +32,10 @@ import {
   scheduleSystemComparisons,
   stopInterpretationComparisons,
 } from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
-import { applyInterpretedRoomEvents } from "../packages/villages/src/server/features/scenes/venue-session.js";
-import {
-  roomInterpretationChecks,
-  dismissalDestination,
-} from "../packages/villages/src/server/features/scenes/room-interpretation.js";
+
+import { applyInterpretedRoomEvents } from "../packages/villages/src/server/domain/rules/scene-room-application.js";
+import { roomInterpretationChecks } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
+import { dismissalDestination } from "../packages/villages/src/server/domain/rules/scene-room-events.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const records = new Map<string, any>();

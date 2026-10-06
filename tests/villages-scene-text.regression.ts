@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
-import { parseVenueReply } from "../packages/villages/src/server/features/scenes/venue-session.js";
+
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 
 // Use the production contract, extractor and parser: interleaved speech/actions
 // must survive quoting without any paid repair or reinterpretation of the prose.

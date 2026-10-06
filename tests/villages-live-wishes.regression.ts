@@ -16,7 +16,8 @@ import {
 } from "../packages/villages/src/server/jobs/background-work.js";
 import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
 import { bindLiveProposals } from "../packages/villages/src/server/features/residents/live-memory.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
+
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import {
   readSceneChanges,
   processSavedExchange,

@@ -1,12 +1,10 @@
 import type { InterpretationCheck, InterpretationEvidence } from "../../domain/models/interpretation-check-model.js";
 import type { VenueLine, VenueScene } from "../../domain/models/scene-model.js";
-import type { VillageState, VillageVenue } from "../../domain/models/world.js";
+import type { VillageState } from "../../domain/models/world.js";
 import { accessManagementChecks } from "../../domain/rules/access-speech.js";
-import { relationshipZoneController } from "../../domain/rules/relationship-rules.js";
 import { selectRoomEventChecks } from "../../domain/rules/room-events.js";
 import { managesAccess } from "../../domain/rules/venue-access.js";
-import { contactNeighbors } from "../../domain/rules/venue-contact.js";
-import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "../../domain/rules/venue-zones.js";
+import { canInviteToZone, venueZones, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { boundInterpretationEvidence, contextualChecks } from "../generation/interpretation-evidence.js";
 import { recordInterpretationRouting } from "../generation/interpretation-routing.js";
 import { interpretChecks } from "../generation/interpretation.js";
@@ -233,39 +231,4 @@ export async function interpretRoomReply(
         },
     );
   });
-}
-/** Choose an adjacent admitted Zone, preferring the entry route, then a shortest path toward Exterior. */
-export function dismissalDestination(village: VillageState, venue: VillageVenue, scene: VenueScene): string | null {
-  const zones = venueZones(venue),
-    from = scene.zoneId ?? "exterior";
-  const admitted = (id: string) => {
-    const zone = zones.find((entry) => entry.id === id);
-    return (
-      !!zone &&
-      !zoneClosed(village, venue, zone) &&
-      !scene.dismissedZoneIds?.includes(id) &&
-      (canOccupyZone(venue, zone, "player") ||
-        !!relationshipZoneController(village.relationshipContext, village, venue, zone, "player") ||
-        !!scene.grantedZoneIds?.includes(id))
-    );
-  };
-  if (
-    scene.enteredFromZoneId &&
-    contactNeighbors(venue, from).includes(scene.enteredFromZoneId) &&
-    admitted(scene.enteredFromZoneId)
-  )
-    return scene.enteredFromZoneId;
-  const queue = [[from]],
-    seen = new Set([from]);
-  while (queue.length) {
-    const path = queue.shift()!,
-      last = path.at(-1)!;
-    if (zones.find((zone) => zone.id === last)?.kind === "exterior") return path[1] ?? null;
-    for (const next of contactNeighbors(venue, last))
-      if (!seen.has(next) && admitted(next)) {
-        seen.add(next);
-        queue.push([...path, next]);
-      }
-  }
-  return null;
 }

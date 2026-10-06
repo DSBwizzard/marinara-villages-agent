@@ -7,11 +7,11 @@ import {
   wishInterpretationCheck,
   validateWishInterpretation,
   matchingWishReceipts,
-  readWishCriteria,
   wishFingerprint,
   wishReceiptRecords,
-  coerceWishApplicationProof,
 } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { readWishCriteria } from "../packages/villages/src/server/domain/decoding/wish-criteria.js";
+import { coerceWishApplicationProof } from "../packages/villages/src/server/domain/decoding/wish-criteria.js";
 import { type WishInterpretationContext } from "../packages/villages/src/server/domain/models/wish-interpretation-model.js";
 import {
   coerceVillageState,
