@@ -2,6 +2,7 @@ import type { GenerationParameterSendMap } from "./prompt.js";
 import type { ImageGenerationQuality } from "./connection.js";
 import type { ImageGenerationDefaultsProfile, ComfyUiLoraSetting, NovelAiDefaults } from "./image-generation-defaults.js";
 import type { SceneIllustrationCharacterPrompt } from "./sidecar.js";
+
 export interface ChatMessage {
     role: "system" | "user" | "assistant" | "tool";
     content: string;
@@ -24,12 +25,14 @@ export interface ChatMessage {
     /** Provider-specific metadata (e.g. Gemini parts with thought signatures) */
     providerMetadata?: Record<string, unknown>;
 }
+
 export interface ChatMediaAttachment {
     kind: "audio" | "video";
     data: string;
     mimeType: string;
     filename?: string;
 }
+
 export interface LLMToolCall {
     id: string;
     type: "function";
@@ -38,6 +41,7 @@ export interface LLMToolCall {
         arguments: string;
     };
 }
+
 export interface LLMToolDefinition {
     type: "function";
     function: {
@@ -46,6 +50,7 @@ export interface LLMToolDefinition {
         parameters: Record<string, unknown>;
     };
 }
+
 export interface ChatOptions {
     model: string;
     temperature?: number;
@@ -134,6 +139,7 @@ export interface ChatOptions {
      */
     forceTextualToolCalls?: boolean;
 }
+
 /** Token usage statistics returned by the model */
 export interface LLMUsage {
     promptTokens: number;
@@ -152,6 +158,7 @@ export interface LLMUsage {
     /** Provider-reported stream finish reason when usage is returned from a streaming generator. */
     finishReason?: "stop" | "tool_calls" | "length" | string;
 }
+
 /** Result from a non-streaming chat call that may include tool calls */
 export interface ChatCompletionResult {
     content: string | null;
@@ -161,28 +168,22 @@ export interface ChatCompletionResult {
     /** Provider-native metadata to replay with the assistant message, e.g. DeepSeek reasoning_content */
     providerMetadata?: Record<string, unknown>;
 }
-export interface ContextFitResult {
-    messages: ChatMessage[];
-    maxContext?: number;
-    maxTokens?: number;
-    /** What the caller asked for, when fitting had to spend the reply budget on the prompt. */
-    requestedMaxTokens?: number;
-    inputBudget?: number;
-    reservedTokens?: number;
-    estimatedTokensBefore: number;
-    estimatedTokensAfter: number;
-    trimmed: boolean;
-}
+
 export type GenerationFallbackCategory = "main" | "agents" | "illustrator" | "video";
+
 export type GenerationFallbackNotice = {
     category: GenerationFallbackCategory;
     connectionId: string;
     connectionName: string;
     model: string;
 };
+
 export type GenerationFallbackNotifier = (notice: GenerationFallbackNotice) => void | Promise<void>;
+
 export type ConnectionAttemptOutcome = "completed" | "failed";
+
 export type ConnectionAttemptFinalizer = (outcome: ConnectionAttemptOutcome) => void | Promise<void>;
+
 export type ConnectionAdmissionMode = {
     kind: "foreground";
 } | {
@@ -197,6 +198,7 @@ export type ConnectionAdmissionMode = {
  | {
     kind: "none";
 };
+
 export interface ImageGenRequest {
     prompt: string;
     /** OpenAI GPT Image generation quality. Ignored by unsupported services and models. */
@@ -253,6 +255,7 @@ export interface ImageGenRequest {
         negativePrompt?: string | null;
     };
 }
+
 export interface ImageGenResult {
     /** Base64-encoded image data */
     base64: string;
@@ -271,6 +274,7 @@ export interface ImageGenResult {
         model: string;
     };
 }
+
 export type SaveImageToDiskOptions = {
     /**
      * Store one canonical file for images referenced by more than one gallery.
@@ -278,26 +282,32 @@ export type SaveImageToDiskOptions = {
      */
     shared?: boolean;
 };
+
 export type StagedGalleryImage = {
     filePath: string;
     promote: () => void;
     compensate: () => void;
 };
+
 export interface VideoReferenceImage {
     base64: string;
     mimeType: "image/png" | "image/jpeg";
     url?: string | null;
 }
+
 export type VideoReferencePublicUploadExpiry = "1h" | "12h" | "24h" | "72h";
+
 export interface VideoReferencePublicUploadOptions {
     enabled?: boolean;
     expiry?: VideoReferencePublicUploadExpiry | string | null;
 }
+
 export interface LtxDirectorPromptInput {
     globalPrompt: string;
     localPrompts: string;
     segmentLengths: string;
 }
+
 export interface VideoGenerationRequest {
     prompt: string;
     model?: string;
@@ -341,11 +351,13 @@ export interface VideoGenerationRequest {
         fps?: number;
     };
 }
+
 export interface VideoGenerationResult {
     base64: string;
     mimeType: "video/mp4";
     ext: "mp4";
 }
+
 export type FallbackConnection = {
     id: string;
     name?: string | null;
@@ -364,6 +376,7 @@ export type FallbackConnection = {
     claudeFastMode?: string | boolean | null;
     treatAsLocalEndpoint?: string | boolean | null;
 };
+
 export type GenerationProviderOrigin = {
     kind: "primary";
 } | {
@@ -371,6 +384,7 @@ export type GenerationProviderOrigin = {
     provider: string;
     model: string;
 };
+
 /** Public provider operations; credentials and implementation details remain on the host. */
 export interface CapabilityIntegrationProvider {
     readonly maxContextValue: number | null;
@@ -379,6 +393,7 @@ export interface CapabilityIntegrationProvider {
     chatComplete(messages: ChatMessage[], options: ChatOptions): Promise<ChatCompletionResult>;
     embed(texts: string[], model: string, signal?: AbortSignal): Promise<number[][]>;
 }
+
 export interface CapabilityConnectionFallbackOptions {
     primary: CapabilityIntegrationProvider;
     primaryConnectionId: string;
@@ -391,6 +406,7 @@ export interface CapabilityConnectionFallbackOptions {
     primarySupportsAssistantReasoningPrefill?: boolean;
     fallbackSupportsAssistantReasoningPrefill?: boolean;
 }
+
 /** Capability API 1.31: call the live host integrations instead of bundling provider forks. */
 export interface CapabilityIntegrationHost {
     llm: {
@@ -420,4 +436,3 @@ export interface CapabilityIntegrationHost {
         } | null | undefined): VideoReferencePublicUploadOptions | null;
     };
 }
-//# sourceMappingURL=generation-integration.d.ts.map

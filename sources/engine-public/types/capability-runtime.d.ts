@@ -2,7 +2,9 @@ import type { CapabilityAchievementHost } from "./achievement.js";
 import type { CapabilityIntegrationHost } from "./generation-integration.js";
 import type { ChatMode, MessageRole } from "./chat.js";
 import type { SpatialContextSnapshot, SpatialSnapshotSource } from "./spatial-context.js";
+
 export type CapabilityRuntimeLogArgument = unknown;
+
 export interface CapabilityRuntimeLogger {
     debug(message: string, ...args: CapabilityRuntimeLogArgument[]): void;
     info(message: string, ...args: CapabilityRuntimeLogArgument[]): void;
@@ -10,6 +12,7 @@ export interface CapabilityRuntimeLogger {
     error(error: unknown, message: string, ...args: CapabilityRuntimeLogArgument[]): void;
     debugOverride(overrideEnabled: boolean, message: string, ...args: CapabilityRuntimeLogArgument[]): void;
 }
+
 export interface CapabilityChatRecord {
     id: string;
     name: string;
@@ -28,20 +31,24 @@ export interface CapabilityChatRecord {
     lastMessageAt: string | null;
     updatedAt: string;
 }
+
 export interface CapabilityCharacterRecord {
     id: string;
     data: unknown;
     comment: string;
 }
+
 export interface CapabilityPersonaRecord {
     id: string;
     data: unknown;
 }
+
 export interface CapabilityLorebookRecord {
     id: string;
     data: unknown;
     entries: unknown[];
 }
+
 export interface CapabilityLorebookEntryRecord {
     id: string;
     lorebookId: string;
@@ -50,12 +57,14 @@ export interface CapabilityLorebookEntryRecord {
     content: string;
     description: string;
 }
+
 export interface CapabilityLorebookEntrySelection {
     lorebookIds: string[];
     entryIds: string[];
     excludedLorebookIds?: string[];
     excludedSourceAgentIds?: string[];
 }
+
 /** Fields accepted when a package creates the player persona. */
 export interface CapabilityPersonaCreateInput {
     name: string;
@@ -65,6 +74,7 @@ export interface CapabilityPersonaCreateInput {
     appearance?: string;
     tags?: string;
 }
+
 /** Fields a package may revise on a persona it created. The name is fixed once stored. */
 export interface CapabilityPersonaUpdateInput {
     description?: string;
@@ -72,9 +82,11 @@ export interface CapabilityPersonaUpdateInput {
     appearance?: string;
     tags?: string;
 }
+
 /** Lorebook categories the host understands. Spelled out here rather than left as a free string so a
  *  wrong value is a compile error in the package instead of a silent rejection at write time. */
 export type CapabilityLorebookCategory = "uncategorized" | "world" | "character" | "npc" | "spellbook";
+
 /** Fields accepted when a package creates a lorebook to hold its own world content. */
 export interface CapabilityLorebookCreateInput {
     name: string;
@@ -85,11 +97,13 @@ export interface CapabilityLorebookCreateInput {
     personaId?: string;
     enabled?: boolean;
 }
+
 /** The retrieval knobs a package may retune on a lorebook it owns. */
 export interface CapabilityLorebookUpdateInput {
     scanDepth?: number;
     tokenBudget?: number;
 }
+
 /** One lorebook entry to store. Extra keys pass through to storage; see the index signature below. */
 export interface CapabilityLorebookEntryInput {
     /** Required: an entry with no name cannot be stored, so accepting one here only defers the failure. */
@@ -98,6 +112,7 @@ export interface CapabilityLorebookEntryInput {
     keys?: string[];
     [key: string]: unknown;
 }
+
 export interface CapabilityResourceHost {
     listCharacters(characterIds?: string[]): Promise<CapabilityCharacterRecord[]>;
     listPersonas(personaIds?: string[]): Promise<CapabilityPersonaRecord[]>;
@@ -110,10 +125,12 @@ export interface CapabilityResourceHost {
     bulkCreateLorebookEntries?(lorebookId: string, entries: CapabilityLorebookEntryInput[]): Promise<void>;
     removeLorebookEntry?(entryId: string): Promise<void>;
 }
+
 export interface CapabilityLanguageModelMessage {
     role: "system" | "user" | "assistant" | "tool";
     content: string;
 }
+
 export interface CapabilityLanguageModelCompletionOptions {
     temperature?: number;
     maxTokens?: number;
@@ -126,6 +143,7 @@ export interface CapabilityLanguageModelCompletionOptions {
         [key: string]: unknown;
     }>;
 }
+
 export interface CapabilityLanguageModelCompletion {
     content: string | null;
     finishReason: string;
@@ -136,6 +154,7 @@ export interface CapabilityLanguageModelCompletion {
         totalTokens?: number;
     };
 }
+
 export interface CapabilityLanguageModelContextFit {
     messages: CapabilityLanguageModelMessage[];
     maxTokens?: number;
@@ -143,6 +162,7 @@ export interface CapabilityLanguageModelContextFit {
     estimatedTokensAfter: number;
     trimmed: boolean;
 }
+
 export interface CapabilityResolvedLanguageModel {
     name: string;
     connectionId: string;
@@ -152,18 +172,22 @@ export interface CapabilityResolvedLanguageModel {
     chatComplete(messages: CapabilityLanguageModelMessage[], options?: CapabilityLanguageModelCompletionOptions): Promise<CapabilityLanguageModelCompletion>;
     fitContext(messages: CapabilityLanguageModelMessage[], options?: Pick<CapabilityLanguageModelCompletionOptions, "maxTokens">): CapabilityLanguageModelContextFit;
 }
+
 export interface CapabilityLanguageModelRequest {
     connectionId?: string | null;
     chatConnectionId?: string | null;
     model?: string;
 }
+
 export interface CapabilityLanguageModelHost {
     resolve(connectionId?: string | null): Promise<CapabilityResolvedLanguageModel>;
     resolveForRequest(request: CapabilityLanguageModelRequest): Promise<CapabilityResolvedLanguageModel>;
 }
+
 export interface CapabilityJsonHost {
     parseJsonish(raw: string): unknown;
 }
+
 export interface CapabilityMessageRecord {
     id: string;
     chatId: string;
@@ -174,6 +198,7 @@ export interface CapabilityMessageRecord {
     extra: string;
     createdAt: string;
 }
+
 export interface CapabilitySpatialSnapshotWrite {
     /**
      * Must be globally unique across ALL chats (use a UUID). The store rejects
@@ -193,6 +218,7 @@ export interface CapabilitySpatialSnapshotWrite {
     transitionPayloadHash: string | null;
     createdAt: string;
 }
+
 export interface CapabilitySpatialSnapshotStore {
     /** chatId is optional but keeps the lazy file store from loading every chat's shards for a bare-id probe. */
     getById(id: string, chatId?: string): Promise<SpatialContextSnapshot | null>;
@@ -210,6 +236,7 @@ export interface CapabilitySpatialSnapshotStore {
     replaceBootstrap(input: CapabilitySpatialSnapshotWrite): Promise<SpatialContextSnapshot>;
     replaceAtAnchor(input: CapabilitySpatialSnapshotWrite): Promise<SpatialContextSnapshot>;
 }
+
 /** Package-owned JSON document stored independently from chats. */
 export interface CapabilityDocumentRecord {
     id: string;
@@ -222,6 +249,7 @@ export interface CapabilityDocumentRecord {
     createdAt: string;
     updatedAt: string;
 }
+
 export interface CapabilityDocumentWrite {
     id: string;
     packageId: string;
@@ -232,6 +260,7 @@ export interface CapabilityDocumentWrite {
     createdAt: string;
     updatedAt: string;
 }
+
 export interface CapabilityDocumentUpdate {
     id: string;
     packageId: string;
@@ -241,6 +270,7 @@ export interface CapabilityDocumentUpdate {
     data: unknown;
     updatedAt: string;
 }
+
 /** Generic persistence for package-owned reusable records such as map templates. */
 export interface CapabilityDocumentStore {
     list(packageId: string, kind: string): Promise<CapabilityDocumentRecord[]>;
@@ -249,6 +279,7 @@ export interface CapabilityDocumentStore {
     update(input: CapabilityDocumentUpdate): Promise<CapabilityDocumentRecord | null>;
     remove(packageId: string, id: string, expectedRevision: number): Promise<boolean>;
 }
+
 export interface CapabilityCreateMessageWithSwipeInput {
     id: string;
     swipeId: string;
@@ -259,17 +290,20 @@ export interface CapabilityCreateMessageWithSwipeInput {
     extra: Record<string, unknown>;
     createdAt: string;
 }
+
 export interface CapabilityChatActivityUpdate {
     chatId: string;
     lastMessageAt: string;
     updatedAt: string;
     metadata?: Record<string, unknown>;
 }
+
 export interface CapabilityChatMetadataUpdate {
     chatId: string;
     metadata: Record<string, unknown>;
     updatedAt: string;
 }
+
 /** Read-only snapshot of the latest committed World State for a chat. */
 export interface CapabilityGameStateRecord {
     snapshotId: string;
@@ -283,9 +317,11 @@ export interface CapabilityGameStateRecord {
     temperature: string | null;
     presentCharacterIds: string[];
 }
+
 export type CapabilityRoleplayEventAudience = "public" | "user-only" | {
     characterIds: string[];
 };
+
 export interface CapabilityRoleplayEventInput {
     id: string;
     chatId: string;
@@ -300,8 +336,10 @@ export interface CapabilityRoleplayEventInput {
     createdAt: string;
     idempotencyKey: string;
 }
+
 export interface CapabilityRoleplayEventRecord extends CapabilityRoleplayEventInput {
 }
+
 export interface CapabilityPersistenceSession {
     getChat(chatId: string): Promise<CapabilityChatRecord | null>;
     listChats(): Promise<CapabilityChatRecord[]>;
@@ -317,15 +355,18 @@ export interface CapabilityPersistenceSession {
     documents: CapabilityDocumentStore;
     spatialSnapshots: CapabilitySpatialSnapshotStore;
 }
+
 export interface CapabilityPersistenceHost extends CapabilityPersistenceSession {
     withChatLock<T>(chatId: string, operation: () => Promise<T>): Promise<T>;
     transaction<T>(operation: (session: CapabilityPersistenceSession) => Promise<T>): Promise<T>;
 }
+
 export interface CapabilityEmbeddingHost {
     spaceId: string;
     label: string;
     embed(texts: string[], signal?: AbortSignal): Promise<number[][] | null>;
 }
+
 export interface CapabilityRuntimeHost {
     /** Read and unlock the package's own achievements. Requires the `achievements`
      *  permission and capability API 1.36. */
@@ -346,4 +387,3 @@ export interface CapabilityRuntimeHost {
     persistence: CapabilityPersistenceHost;
     resources: CapabilityResourceHost;
 }
-//# sourceMappingURL=capability-runtime.d.ts.map

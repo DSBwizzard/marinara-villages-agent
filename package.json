@@ -33,7 +33,7 @@
     "zod": "3.25.76"
   },
   "scripts": {
-    "check": "npm run format:check && npm run lint && npm run typecheck",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:engine-types",
     "typecheck": "tsc --project tsconfig.package.json --pretty false",
     "build": "node scripts/build-villages.mjs",
     "verify:package": "node scripts/verify-package.mjs",
@@ -44,6 +44,7 @@
     "validate": "npm run check && npm run build && npm run verify:package && npm test && npm run test:browser",
     "format": "prettier --write \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs",
     "format:check": "prettier --check \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs",
-    "lint": "eslint \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs"
+    "lint": "eslint \"packages/**/src/**/*.{js,mjs,ts,tsx}\" \"scripts/**/*.{js,mjs}\" \"tests/**/*.{js,mjs,ts,tsx}\" eslint.config.mjs",
+    "check:engine-types": "node scripts/engine-public-declarations.mjs"
   }
 }

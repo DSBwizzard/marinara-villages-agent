@@ -9,188 +9,167 @@
   "license": "AGPL-3.0",
   "files": [
     {
-      "path": "constants/mari-permissions-mode.d.ts",
-      "sha256": "70fbd8375a5287b79260f1d21c8bd53b0cd55c3419d14495436cee1bc1c3f478"
-    },
-    {
-      "path": "constants/stat-icons.d.ts",
-      "sha256": "9f0e329ec2fb47a0cfd84a150baed609eb104fe14467e56f2c330a9b4bcf196e"
-    },
-    {
-      "path": "features/agents/agent-manifest.types.d.ts",
-      "sha256": "91e80d71a298085d916ad1133bb2de7ff991d5cb5bc8cfae066537696b089f21"
-    },
-    {
-      "path": "features/combat-ai.d.ts",
-      "sha256": "d5b631c6e43e1590e39ca941a9a36a5e401714b32b42ed6c5b4379e547edfbe3"
-    },
-    {
-      "path": "features/combat-conditions.d.ts",
-      "sha256": "3426596a96a251c643340accd20d2742ad3791c869293dfb3dc1bbe5656f570f"
-    },
-    {
-      "path": "features/combat-director.d.ts",
-      "sha256": "56250f081880052ec99ef60955dd253eb12338ab67e521fd7801ba9cdb418471"
-    },
-    {
-      "path": "features/function-calls/tool-definitions.d.ts",
-      "sha256": "3a1dde81f87ecb186dc45617b289ee1ce9e25424bc0f9acc42b196b293c95f81"
-    },
-    {
-      "path": "features/function-calls/tool-registry.generated.d.ts",
-      "sha256": "52581cb3d6dad51280e9f287629792de31becee32b334f2c3d1d482dc6eae189"
-    },
-    {
-      "path": "features/ruleset-combat/types.d.ts",
-      "sha256": "823b8b91cae81aec66bf6d02bb53d2b41428967bb6eec038912aef95abd7488d"
-    },
-    {
-      "path": "features/rulesets/live-state.d.ts",
-      "sha256": "08a9b78c670653c9acd8a9ff48447e2cb90c38bd5c0b7f6c19a251b074e6bcfa"
-    },
-    {
-      "path": "features/rulesets/sheet-math.d.ts",
-      "sha256": "b92484a523875dd1a0c727d8957ed4d973d8bdfbb2edafe17d2e6a604f5cd4cf"
-    },
-    {
-      "path": "features/tactical-combat/types.d.ts",
-      "sha256": "ab322b398c3cf09619d469fdc2609ed6abd582340a1c61707cc4e1dbf6b70577"
-    },
-    {
-      "path": "schemas/custom-emoji.schema.d.ts",
-      "sha256": "c81612144b44b1290d940d8baf7fd573e6cde12d25edc34f6599b72964b58e60"
-    },
-    {
-      "path": "schemas/multiplayer.schema.d.ts",
-      "sha256": "e5e4df2c3ca79fa0aa300ab388183a9bb1cecbe3fe84335215971729ec0b8a0e"
-    },
-    {
-      "path": "schemas/ruleset.schema.d.ts",
-      "sha256": "df34b8edc125896740775e412a3d9805bbaeb1c432fc65085e709c8cdbe41f5f"
-    },
-    {
       "path": "types/achievement.d.ts",
-      "sha256": "7ecbf1a392c19d5ea99da6a16c98cb0d267eefb123a4ea6fbe58d84b81d47852"
-    },
-    {
-      "path": "types/advanced-memory.d.ts",
-      "sha256": "5d06e88194ca8ebc6f9444b48457d32722b8e61d336263f2c0078be49695c527"
-    },
-    {
-      "path": "types/agent.d.ts",
-      "sha256": "3b62f3ff9854dfb61c33a8286f04ee6469cbd6afb9140a0722e54558744de1dd"
+      "sourceSha256": "7ecbf1a392c19d5ea99da6a16c98cb0d267eefb123a4ea6fbe58d84b81d47852",
+      "symbols": [
+        "AchievementProgress",
+        "CapabilityAchievementHost"
+      ],
+      "sha256": "4c5dbfdc6dbbbeb755109df3a0962f79478882d72ac2b1bb4cab05d10cb175e2"
     },
     {
       "path": "types/capability-runtime.d.ts",
-      "sha256": "ecee0d5b0184e7e6c4f3b560d19204319b554034af8f73a3c6e3f44442aee92c"
-    },
-    {
-      "path": "types/character.d.ts",
-      "sha256": "20991fa220f44df00946e66da3344c9e8821944efa652261de3b23d6e8ade157"
+      "sourceSha256": "ecee0d5b0184e7e6c4f3b560d19204319b554034af8f73a3c6e3f44442aee92c",
+      "symbols": [
+        "CapabilityCharacterRecord",
+        "CapabilityChatActivityUpdate",
+        "CapabilityChatMetadataUpdate",
+        "CapabilityChatRecord",
+        "CapabilityCreateMessageWithSwipeInput",
+        "CapabilityDocumentRecord",
+        "CapabilityDocumentStore",
+        "CapabilityDocumentUpdate",
+        "CapabilityDocumentWrite",
+        "CapabilityEmbeddingHost",
+        "CapabilityGameStateRecord",
+        "CapabilityJsonHost",
+        "CapabilityLanguageModelCompletion",
+        "CapabilityLanguageModelCompletionOptions",
+        "CapabilityLanguageModelContextFit",
+        "CapabilityLanguageModelHost",
+        "CapabilityLanguageModelMessage",
+        "CapabilityLanguageModelRequest",
+        "CapabilityLorebookCategory",
+        "CapabilityLorebookCreateInput",
+        "CapabilityLorebookEntryInput",
+        "CapabilityLorebookEntryRecord",
+        "CapabilityLorebookEntrySelection",
+        "CapabilityLorebookRecord",
+        "CapabilityLorebookUpdateInput",
+        "CapabilityMessageRecord",
+        "CapabilityPersistenceHost",
+        "CapabilityPersistenceSession",
+        "CapabilityPersonaCreateInput",
+        "CapabilityPersonaRecord",
+        "CapabilityPersonaUpdateInput",
+        "CapabilityResolvedLanguageModel",
+        "CapabilityResourceHost",
+        "CapabilityRoleplayEventAudience",
+        "CapabilityRoleplayEventInput",
+        "CapabilityRoleplayEventRecord",
+        "CapabilityRuntimeHost",
+        "CapabilityRuntimeLogArgument",
+        "CapabilityRuntimeLogger",
+        "CapabilitySpatialSnapshotStore",
+        "CapabilitySpatialSnapshotWrite"
+      ],
+      "sha256": "a331356d4f44c84feb8d318b5230bd27fe019b5721ba1968625de6cd609e7cc6"
     },
     {
       "path": "types/chat.d.ts",
-      "sha256": "5e26758375c38c6210d2371ccf8fa46f3ed2aac397fcfffb754dfebd0421b348"
-    },
-    {
-      "path": "types/combat-encounter.d.ts",
-      "sha256": "80ae02136d58e93149203b7f0b0d274aea9d1ba44b2345c6ae713c27ddf2ba23"
+      "sourceSha256": "5e26758375c38c6210d2371ccf8fa46f3ed2aac397fcfffb754dfebd0421b348",
+      "symbols": [
+        "ChatMode",
+        "MessageRole"
+      ],
+      "sha256": "65f77e5fc797240020ef9d4b12037bfab172a47df3babed28b19f5e803303bd0"
     },
     {
       "path": "types/connection.d.ts",
-      "sha256": "b0e57f4284eb84249aeb75500dbc3b7ade284be5355e342cc586c94bcad5bf87"
-    },
-    {
-      "path": "types/decision.d.ts",
-      "sha256": "f362ddf6ddd05c626b7b8859c9fc048c2b1401fc4645d697ff9a220b6dba68c0"
-    },
-    {
-      "path": "types/game-state.d.ts",
-      "sha256": "61342b33ccc8c5034c0bcd6bd95c68199c77aae8bfe46f08b75a5199c979eb57"
-    },
-    {
-      "path": "types/game.d.ts",
-      "sha256": "25495bbd7f16dd80be3fab2ce5937db7ccbe5f05d1bccf40d8ecda708b487a73"
+      "sourceSha256": "b0e57f4284eb84249aeb75500dbc3b7ade284be5355e342cc586c94bcad5bf87",
+      "symbols": [
+        "IMAGE_GENERATION_QUALITIES",
+        "ImageGenerationQuality"
+      ],
+      "sha256": "58b06721ac9209004a5040b0ff183c06b7b3ee3ec3956234348e656b9b628268"
     },
     {
       "path": "types/generation-integration.d.ts",
-      "sha256": "30520750ec32a18f9d1660dd5d52c51f59a528c1d6f438a0184a83fa14b87e03"
-    },
-    {
-      "path": "types/haptic.d.ts",
-      "sha256": "9b14b2579c6e0b77eae6a0455f7cb105eff05e90ba869ab9cec57259f03cfdb8"
+      "sourceSha256": "30520750ec32a18f9d1660dd5d52c51f59a528c1d6f438a0184a83fa14b87e03",
+      "symbols": [
+        "CapabilityConnectionFallbackOptions",
+        "CapabilityIntegrationHost",
+        "CapabilityIntegrationProvider",
+        "ChatCompletionResult",
+        "ChatMediaAttachment",
+        "ChatMessage",
+        "ChatOptions",
+        "ConnectionAdmissionMode",
+        "ConnectionAttemptFinalizer",
+        "ConnectionAttemptOutcome",
+        "FallbackConnection",
+        "GenerationFallbackCategory",
+        "GenerationFallbackNotice",
+        "GenerationFallbackNotifier",
+        "GenerationProviderOrigin",
+        "ImageGenRequest",
+        "ImageGenResult",
+        "LLMToolCall",
+        "LLMToolDefinition",
+        "LLMUsage",
+        "LtxDirectorPromptInput",
+        "SaveImageToDiskOptions",
+        "StagedGalleryImage",
+        "VideoGenerationRequest",
+        "VideoGenerationResult",
+        "VideoReferenceImage",
+        "VideoReferencePublicUploadExpiry",
+        "VideoReferencePublicUploadOptions"
+      ],
+      "sha256": "c4dbc2fd38bde9e198235c70a2e8eaee156675c5b66395e4946d4a4cc84a01e1"
     },
     {
       "path": "types/image-generation-defaults.d.ts",
-      "sha256": "ce1cc0c69c2c6c430558148be34c827864112a119fc8646d12a5ff5b338784ca"
-    },
-    {
-      "path": "types/lorebook.d.ts",
-      "sha256": "ef8f15f51eeb9a17024978916397d04e0ab5f22da811a36022bb825821274232"
-    },
-    {
-      "path": "types/multiplayer.d.ts",
-      "sha256": "8c88c9a3da1e4e4ddd54e371361af9b0652445a2ac7bb566c645797fa31a2d9c"
-    },
-    {
-      "path": "types/professor-mari-workspace.d.ts",
-      "sha256": "264ec9d75d0465fb0e579aeae7cb98ca2c7a1daec97350299d0938557e066cad"
+      "sourceSha256": "ce1cc0c69c2c6c430558148be34c827864112a119fc8646d12a5ff5b338784ca",
+      "symbols": [
+        "Automatic1111Defaults",
+        "ComfyUiDefaults",
+        "ComfyUiLoraSetting",
+        "ImageDefaultsService",
+        "ImageGenerationDefaultsProfile",
+        "NovelAiDefaults"
+      ],
+      "sha256": "a1306dd51addb0f88868b39d406414aac89328108bf6bb856b9c30b8784ffaf2"
     },
     {
       "path": "types/prompt.d.ts",
-      "sha256": "d0677a9a410855c7af62506c88905238934af30288ce8607fc3ad854b6f0f804"
-    },
-    {
-      "path": "types/regex.d.ts",
-      "sha256": "283f359f9135850776c839b294eb54aec8e9452c1c69e20278aeb215fbbc7d11"
-    },
-    {
-      "path": "types/roleplay-command.d.ts",
-      "sha256": "495f071351926abf3847d6ef2e9ce05005dd02219b82d2065bbb53797efa3e6b"
+      "sourceSha256": "d0677a9a410855c7af62506c88905238934af30288ce8607fc3ad854b6f0f804",
+      "symbols": [
+        "GENERATION_PARAMETER_SEND_KEYS",
+        "GenerationParameterSendKey",
+        "GenerationParameterSendMap"
+      ],
+      "sha256": "a0e8b7e2464cb3e21fb9c66147793dccb82fabcbc731e3c4b966afc6078b86eb"
     },
     {
       "path": "types/sidecar.d.ts",
-      "sha256": "29a9bd79cb256e45fe64c35d58015ecb2e4b77490b91b33935dc9a9edb988d87"
+      "sourceSha256": "29a9bd79cb256e45fe64c35d58015ecb2e4b77490b91b33935dc9a9edb988d87",
+      "symbols": [
+        "SceneIllustrationCharacterPrompt"
+      ],
+      "sha256": "1a306d36ec65bb7d90a918b74cfbf4eeb7796bf1a4a416b575a92bf00efa621e"
     },
     {
       "path": "types/spatial-context.d.ts",
-      "sha256": "74489f0d1a4be65b0cfe1e05f9ce5d4ba0ab9a2eebb2f9e6c992a3b46511c88b"
-    },
-    {
-      "path": "types/spotify.d.ts",
-      "sha256": "d958c5fd5b6927a0b870b172cf4fc8db6fa33610e954a6f0a1aca813de94a482"
-    },
-    {
-      "path": "utils/conversation-presence.d.ts",
-      "sha256": "94eb09e3d9c5875551e12c94e86ca18ff5e5040a1147739e4df987430a6fbd59"
-    },
-    {
-      "path": "utils/dice-notation.d.ts",
-      "sha256": "3f6bb5cdd41783345953b97a43a28c561991a1fc2cfdee5619800ebb3a291137"
-    },
-    {
-      "path": "utils/dice-placeholder.d.ts",
-      "sha256": "10aa36675db2cce6e313cb21ef7ded9d361230c6ce7a3f36be70a8f275e640ef"
-    },
-    {
-      "path": "utils/generation-guide.d.ts",
-      "sha256": "d02d600d58d9af22912099096d91aa67f7604e7f112d9a143149b2fcf95241c0"
-    },
-    {
-      "path": "utils/macro-engine.d.ts",
-      "sha256": "0bab2f49af9b053cbceae78306c08d76b9125c8cb6265e180a748c39edf89d85"
-    },
-    {
-      "path": "utils/message-marks.d.ts",
-      "sha256": "0d121a4ad1425c7cdb6c822905683e7e3a6e9d20e596a96581e708767a8b497f"
-    },
-    {
-      "path": "utils/music-score.d.ts",
-      "sha256": "929081a80c66a1d57d276156db8b232cd906d69df180c0374e48165e78ee149a"
-    },
-    {
-      "path": "utils/thinking-tags.d.ts",
-      "sha256": "bf7f2c9df2d3d285502568e3801ff2519786a8f78c07b6cb890d108fdfe45517"
+      "sourceSha256": "74489f0d1a4be65b0cfe1e05f9ce5d4ba0ab9a2eebb2f9e6c992a3b46511c88b",
+      "symbols": [
+        "SpatialContextSnapshot",
+        "SpatialSnapshotSource"
+      ],
+      "sha256": "c270821e257faa9c840d16078351651072d6a4bdba631ea31d3af56f6d6abd42"
     }
+  ],
+  "roots": [
+    "CapabilityCharacterRecord",
+    "CapabilityDocumentStore",
+    "CapabilityLanguageModelCompletion",
+    "CapabilityLanguageModelHost",
+    "CapabilityLanguageModelMessage",
+    "CapabilityPersistenceHost",
+    "CapabilityPersonaRecord",
+    "CapabilityResolvedLanguageModel",
+    "CapabilityResourceHost",
+    "CapabilityRuntimeHost",
+    "CapabilityRuntimeLogger"
   ]
 }

@@ -1,4 +1,5 @@
 export type ImageDefaultsService = "automatic1111" | "comfyui" | "novelai";
+
 export interface Automatic1111Defaults {
     promptPrefix: string;
     negativePromptPrefix: string;
@@ -10,10 +11,12 @@ export interface Automatic1111Defaults {
     restoreFaces: boolean;
     denoisingStrength: number;
 }
+
 export interface ComfyUiLoraSetting {
     model: string;
     strength: number;
 }
+
 export interface ComfyUiDefaults {
     promptPrefix: string;
     negativePromptPrefix: string;
@@ -28,6 +31,7 @@ export interface ComfyUiDefaults {
     saveToBackend?: boolean;
     loras: ComfyUiLoraSetting[];
 }
+
 export interface NovelAiDefaults {
     promptPrefix: string;
     negativePromptPrefix: string;
@@ -43,6 +47,7 @@ export interface NovelAiDefaults {
     styleReferenceStrength: number;
     styleReferenceFidelity: number;
 }
+
 export interface ImageGenerationDefaultsProfile {
     version: 1;
     service: ImageDefaultsService | "api";
@@ -55,4 +60,3 @@ export interface ImageGenerationDefaultsProfile {
     comfyui?: ComfyUiDefaults;
     novelai?: NovelAiDefaults;
 }
-//# sourceMappingURL=image-generation-defaults.d.ts.map
