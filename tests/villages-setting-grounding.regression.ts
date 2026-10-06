@@ -21,7 +21,8 @@ import { buildTownMapPrompt } from "../packages/villages/src/server/features/med
 import { buildTickMessages } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { validateFirstDayDescription } from "../packages/villages/src/server/features/world/village.js";
+
+import { validateFirstDayDescription } from "../packages/villages/src/server/domain/rules/founding-record.js";
 
 const scenarios = [
   [

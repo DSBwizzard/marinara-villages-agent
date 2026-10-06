@@ -12,13 +12,13 @@ async function main() {
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
   );
   const { coerceVillageState } = await import(pathToFileURL(join(serverRoot, "features/world/village-store.ts")).href);
-  const {
-    parsePlace,
-    runVillageSetup,
-    assertFoundingScenarioLocked,
-    validateFirstDayDescription,
-    validateFoundingRoster,
-  } = await import(pathToFileURL(join(serverRoot, "features/world/village.ts")).href);
+  const { runVillageSetup } = await import(pathToFileURL(join(serverRoot, "features/world/village.ts")).href);
+  const { parsePlace } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
+  const { assertFoundingScenarioLocked } =
+    await import("../packages/villages/src/server/domain/rules/founding-record.ts");
+  const { validateFirstDayDescription } =
+    await import("../packages/villages/src/server/domain/rules/founding-record.ts");
+  const { validateFoundingRoster } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { readScenarioImprint } = await import(
     pathToFileURL(join(serverRoot, "features/founding/scenario-imprint.ts")).href
   );
@@ -304,7 +304,9 @@ async function main() {
 
   const client = await clientImplementation();
   const routes = villageRouteSource();
-  const village = await readFile(join(serverRoot, "features/world/village.ts"), "utf8");
+  const village =
+    (await readFile(join(serverRoot, "features/world/village.ts"), "utf8")) +
+    (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts.ts"), "utf8");
   assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
   assert.ok(client.includes("Where are we?"));

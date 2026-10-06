@@ -26,12 +26,12 @@ import {
   readSceneryStyle,
 } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import {
-  villageSettings,
   assertVenueImageAccess,
   applyResidenceEditApproval,
   setVillageVenueImage,
-  readCreationPrivateZones,
 } from "../packages/villages/src/server/features/world/village.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { readCreationPrivateZones } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
 import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();

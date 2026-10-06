@@ -1,4 +1,3 @@
-import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import {
   captureMissingVillagerCardColors,
   findPlayerPersona,
@@ -22,37 +21,33 @@ import type {
   VillageCatalogEntry,
   VillageChronicleEntry,
   VillageChronicleEntryView,
-  VillageMomentView,
   VillageOpportunity,
   VillagePendingDecision,
   VillagePersonaEntry,
   VillagePersonaPreview,
-  VillagePlaceView,
-  VillagePlayerIdentity,
-  VillageRecap,
   VillageResidence,
-  VillageSettingsView,
   VillageSnapshot,
   VillageState,
   VillageStoryPace,
   VillageVenue,
   VillageVenueClass,
-  VillageVenueFeature,
   VillageVenueImage,
-  VillageVillager,
-  VillageVillagerCardSnapshot,
   VillageVillagerRefreshPreview,
-  VillageVillagerView,
 } from "../../domain/models/world.js";
 import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "../../domain/rules/agenda-week.js";
-import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
+import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound, safeFailureMessage } from "../../domain/rules/errors.js";
+import {
+  assertFoundingScenarioLocked,
+  parsePlace,
+  parsePlaces,
+  validateFirstDayDescription,
+  validateFoundingRoster,
+} from "../../domain/rules/founding-record.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
-  MAX_LORE_TOKEN_BUDGET,
-  MIN_LORE_TOKEN_BUDGET,
   readLoreTokenBudget,
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
@@ -62,25 +57,17 @@ import {
   deriveInfluence,
   INFLUENCE_CATEGORIES,
   influenceSettings,
-  routineDay,
   validateRoutineDay,
 } from "../../domain/rules/owned-routine.js";
 import { assertPlayerRoleLocked, playerRoleForSetup } from "../../domain/rules/player-role.js";
 import { reconcileBuildProjects } from "../../domain/rules/project-rules.js";
 import {
   boundText,
-  DEFAULT_HOME_BUILDING,
   DEFAULT_TOWN_MAP_VIEW,
   HOME_BUILDING_ORDER,
-  HOME_BUILDINGS,
-  homeBuildingOptions,
-  isGlobalGalleryRef,
-  isHomeBuildingKind,
   isHousePlace,
   isTownMapImage,
   LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
-  MAX_CHRONICLE_ABOUT_ONE_VILLAGER,
-  MAX_CHRONICLE_IN_PROMPT,
   MAX_CHRONICLE_LENGTH,
   MAX_HAPPENINGS,
   MAX_NOTICE_LENGTH,
@@ -88,32 +75,19 @@ import {
   MAX_PLACES,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
   MAX_PLAYER_PERSONA_NAME_LENGTH,
-  MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUE_IMAGE_BYTES,
-  MAX_VENUE_IMAGE_ID_LENGTH,
-  MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
-  MAX_VILLAGE_NAME_LENGTH,
   prependHappenings,
   remapVenues,
-  SETUP_MAX_VILLAGER_COUNT,
-  SETUP_MIN_VILLAGER_COUNT,
   TOWN_MAP_EXPECTED_HEIGHT,
   TOWN_MAP_EXPECTED_WIDTH,
-  TOWN_MAP_ZOOM_MAX,
-  TOWN_MAP_ZOOM_MIN,
-  TOWN_MAP_ZOOM_STEP,
-  VILLAGE_PRESET_MACROS,
   villageCurrentSetting,
   villageFoundingSetting,
-  VILLAGES_DEFAULT_KNOWLEDGE,
-  VILLAGES_GALLERY_FOLDER_NAME,
-  VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "../../domain/rules/prompt-preset.js";
-import { relationshipZoneController } from "../../domain/rules/relationship-rules.js";
+import { activateVillagerDay, keepAgendaPlaces, planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import { snapshotContent, snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { readFoundingResidentContexts } from "../../domain/rules/resident-founding-context.js";
 import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle, sceneryImageKey } from "../../domain/rules/scenery-context.js";
@@ -122,21 +96,21 @@ import { socialContinuationValid, socialPlanCandidates } from "../../domain/rule
 import {
   applyAccessCommand,
   evaluateZoneAccess,
-  initializeVenueAccess,
   managesAccess,
-  projectVenueAccess,
-  projectZoneAccess,
   readAccessCommand,
 } from "../../domain/rules/venue-access.js";
 import {
-  assertCanAddVillageVenue,
-  assertVillageVenueCapacity,
-  villageVenueLimit,
-} from "../../domain/rules/venue-capacity.js";
+  addVillageVenue,
+  personalDestinationSpace,
+  venueDraft,
+  venueFeatures,
+  venueFieldText,
+  venueStringList,
+} from "../../domain/rules/venue-authoring.js";
+import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
-import { assertResidencePrivateDestination, readBaseVenueLayout } from "../../domain/rules/venue-layout.js";
+import { assertResidencePrivateDestination } from "../../domain/rules/venue-layout.js";
 import {
-  defaultVenueSpace,
   hasVenueClass,
   validVenueClasses,
   venueAssignedCount,
@@ -156,7 +130,6 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import {
   deriveVillageMoment,
-  hashString,
   randomVillageSeed,
   VILLAGE_WEEKDAYS,
   villageDateLabel,
@@ -168,6 +141,29 @@ import {
   villagerPlaceView,
 } from "../../domain/rules/village-projections.js";
 import { wishExpired, wishRetained } from "../../domain/rules/wish-definition.js";
+import {
+  readHomeBuildingNames,
+  readPromptBox,
+  readVillageName,
+  readVillageSetting,
+  residenceCharacterId,
+  residenceVenueId,
+} from "../../domain/rules/world-input.js";
+import {
+  exactSnapshotTransition,
+  isVillageFounded,
+  projectVillager,
+  villageMomentView,
+  villageSettings,
+} from "../../domain/rules/world-snapshot.js";
+import {
+  buildReturnRecap,
+  creativeOpportunity,
+  localDateKey,
+  rememberedFor,
+  sharedMemoryFor,
+  storyAllowance,
+} from "../../domain/rules/world-story.js";
 import {
   backgroundRevision,
   backgroundStatus,
@@ -191,7 +187,6 @@ import {
   type VillageTickContext,
 } from "../founding/village-bootstrap.js";
 import { completeWithRoom } from "../generation/model-requests.js";
-import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "../media/town-map-image.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
@@ -231,89 +226,6 @@ export { readLinkedPersona } from "../settings/persona-service.js";
 
 /** How many villagers a village will hold, so the tab keeps rendering sanely. */
 export const MAX_VILLAGERS = 12;
-
-function projectVillager(
-  villager: VillageVillager,
-  cardName: string | null,
-  cardSummary: string,
-  cardTags: string[],
-  nameColor: string,
-  dialogueColor: string,
-  place: VillagePlaceView | null,
-): VillageVillagerView {
-  return {
-    characterId: villager.characterId,
-    signatureFallback: residentSignature(villager.cardSnapshot),
-    ...(villager.signature ? { signature: villager.signature } : {}),
-    nameColor,
-    dialogueColor,
-    sprite: villager.sprite
-      ? {
-          ...villager.sprite,
-          images: villager.sprite.expressions.map(({ view, label, filename, assetId, expressionId }) => ({
-            view,
-            label,
-            expressionId,
-            isDefault: Boolean(expressionId) && expressionId === villager.sprite!.defaultExpressionId,
-            url: `/api/sprites/${assetId}/file/${encodeURIComponent(filename)}`,
-          })),
-        }
-      : null,
-    ...(villager.foundingContext ? { foundingContext: villager.foundingContext } : {}),
-    name: cardName ?? villager.cardSnapshot.name,
-    summary: cardSummary,
-    tags: cardTags,
-    missing: cardName === null,
-    place,
-  };
-}
-
-/**
- * The village as the tab draws it.
- *
- * Everything except the name, the setting and the venues is DERIVED here rather
- * than stored, so the tab cannot show a stale time and the prompt and the chips
- * are always describing the same instant.
- */
-function villageMomentView(village: VillageState, now: Date, nextTransitionAt?: string): VillageMomentView {
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  return {
-    name: village.name,
-    setting: village.setting,
-    dateLabel: moment.dateLabel,
-    weekday: moment.weekday,
-    season: moment.season,
-    dayPhase: moment.dayPhase,
-    instant: moment.instant,
-    localTime: moment.localTime,
-    minuteOfDay: moment.minuteOfDay,
-    timeZone: moment.timeZone,
-    hour: moment.hour,
-    minute: moment.minute,
-    weather: moment.weather,
-    dayIndex: moment.dayIndex,
-    nextTransitionAt: nextTransitionAt ?? moment.nextTransitionAt,
-  };
-}
-
-function exactSnapshotTransition(village: VillageState, now: Date): string {
-  const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now });
-  const candidates = [Date.parse(moment.nextTransitionAt)];
-  const currentMinute = moment.minuteOfDay;
-  const addMinute = (minute: number) => {
-    if (minute <= currentMinute || minute >= 1440) return;
-    const at = new Date(now);
-    at.setHours(Math.floor(minute / 60), minute % 60, 0, 0);
-    candidates.push(at.getTime());
-  };
-  for (const villager of village.villagers) {
-    for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, villager.ingestSchedule !== false, now) : []) {
-      addMinute(row.startMinute);
-      addMinute(row.endMinute);
-    }
-  }
-  return new Date(Math.min(...candidates.filter(Number.isFinite))).toISOString();
-}
 
 /**
  * Who the player is, as the prompt layer is told it.
@@ -370,242 +282,6 @@ export async function refreshPlayerPersona(): Promise<boolean> {
     state.playerPersonaMissing = next.missing;
   });
   return true;
-}
-
-/**
- * The editable side of the village, as the settings panel needs it. The limits
- * and the macro list travel with the values so the tab never restates a number
- * or a token the server already owns.
- */
-export function villageSettings(
-  village: VillageState,
-  player: VillagePlayerIdentity,
-  residenceAccess: {
-    placeId: string;
-    area: "outside" | "shared" | "private" | "public";
-    privateOwnerId: string;
-    zoneId?: string;
-  } | null,
-  accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
-): VillageSettingsView {
-  return {
-    visitRetention: village.visitRetention,
-    promptKnowledge: village.promptKnowledge,
-    defaultPromptKnowledge: VILLAGES_DEFAULT_KNOWLEDGE,
-    promptBoxMaxLength: VILLAGES_PROMPT_BOX_MAX_LENGTH,
-    macros: VILLAGE_PRESET_MACROS,
-    storyPace: village.storyPace,
-    storyPaces: ["off", "quiet", "balanced", "lively"],
-    characterSpeechColors: village.characterSpeechColors,
-    sendOnEnter: village.sendOnEnter,
-    spriteCardFlipEnabled: village.spriteCardFlipEnabled,
-    villageNameMaxLength: MAX_VILLAGE_NAME_LENGTH,
-    playerPersonaId: village.playerPersonaId,
-    // The cached name travels even when the link is broken, so the panel can
-    // name the Persona it is telling the player about — "Robin Hale is gone" is
-    // a sentence worth reading and "your Persona is gone" is not. The flag
-    // beside it is what tells a panel whether to draw a choice or a notice.
-    playerPersonaName: player.name,
-    playerPersonaMissing: player.missing,
-    maxNoticeboardNotes: MAX_NOTICEBOARD_NOTES,
-    maxNoticeLength: MAX_NOTICE_LENGTH,
-    setting: village.setting,
-    foundingReason: village.foundingReason,
-    foundingDetails: village.foundingDetails,
-    foundingGuidance: village.foundingGuidance,
-    playerRole: village.playerRole,
-    scenarioImprint: village.scenarioImprint,
-    worldFacts: village.worldFacts,
-    selectedLorebookIds: village.selectedLorebookIds,
-    sceneryArtStyle: village.sceneryArtStyle,
-    personalizeVenueImagesByDefault: village.personalizeVenueImagesByDefault,
-    useVisualLoreByDefault: village.useVisualLoreByDefault,
-    loreTokenBudget: village.loreTokenBudget,
-    loreTokenBudgetMin: MIN_LORE_TOKEN_BUDGET,
-    loreTokenBudgetMax: MAX_LORE_TOKEN_BUDGET,
-    foundingDetailsMaxLength: 2_000,
-    foundingGuidanceMaxLength: 500,
-    townMapLayoutPrompt: DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
-    townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
-    settingMaxLength: MAX_SETTING_LENGTH,
-    venues: village.venues.map((venue) => {
-      const previewAt = accessContext?.at ?? new Date();
-      const context =
-        residenceAccess?.placeId === venue.id
-          ? accessContext
-          : {
-              at: previewAt,
-              positions: Object.fromEntries(
-                village.villagers.flatMap((resident) => {
-                  const destination = villagerPlaceView(
-                    village,
-                    resident,
-                    null,
-                    deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: previewAt })
-                      .minuteOfDay,
-                    previewAt,
-                  );
-                  return destination?.id === venue.id && destination.zoneId
-                    ? [[resident.characterId, destination.zoneId]]
-                    : [];
-                }),
-              ),
-            };
-      const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
-      const zones = venueZones(venue).map((originalZone) => {
-        const zone = {
-          ...originalZone,
-          access: undefined,
-          controllerIds: venue.access ? undefined : originalZone.controllerIds,
-          accessView: venue.access
-            ? projectZoneAccess(venue, originalZone, "player", {
-                ...context,
-                sceneId: context?.sceneId ?? "next-visit-preview",
-                accepting: true,
-                unavailable: zoneClosed(village, venue, originalZone),
-                relationships: village.relationshipContext,
-              })
-            : undefined,
-          relationshipAccess: !!relationshipZoneController(
-            village.relationshipContext,
-            village,
-            venue,
-            originalZone,
-            "player",
-          ),
-        };
-        const visible =
-          zone.kind === "exterior" ||
-          zone.seen ||
-          (zone.kind === "shared-residence" && venue.occupancy.playerHome) ||
-          (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id);
-        return visible
-          ? { ...zone, closed: zoneClosed(village, venue, zone) }
-          : {
-              ...zone,
-              closed: zoneClosed(village, venue, zone),
-              description: "",
-              image: null,
-              state: blankState,
-              initialImageAttemptedAt: undefined,
-              adaptationPending: undefined,
-              adaptationSourceArchiveAt: undefined,
-            };
-      });
-      const visibleIds = new Set(
-        zones
-          .filter(
-            (zone) =>
-              zone.kind === "exterior" ||
-              zone.seen ||
-              (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id) ||
-              (zone.kind === "shared-residence" && venue.occupancy.playerHome),
-          )
-          .map((zone) => zone.id),
-      );
-      const primary = zones.find(
-        (zone) =>
-          !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence" && visibleIds.has(zone.id),
-      );
-      return {
-        ...venue,
-        access: undefined,
-        accessView: projectVenueAccess(venue, "player"),
-        zones,
-        archivedZones: [],
-        archivedPrivateSpaces: [],
-        state: primary
-          ? {
-              ...venue.state,
-              condition: primary.state.condition,
-              furniture: primary.state.items,
-              publicFacts: primary.state.publicFacts,
-              features: primary.state.features,
-              traces: primary.state.traces,
-            }
-          : { ...venue.state, condition: "", furniture: [], publicFacts: [], features: [], traces: [] },
-        spaces: zones.filter(
-          (zone) => !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence",
-        ),
-        privateSpaces: zones
-          .filter((zone) => zone.kind === "private-residence")
-          .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
-        improvements: venue.improvements?.map((upgrade) =>
-          upgrade
-            ? {
-                ...upgrade,
-                zones: upgrade.zones?.map((zone) => ({
-                  ...zone,
-                  access: undefined,
-                  controllerIds: venue.access ? undefined : zone.controllerIds,
-                  description: visibleIds.has(zone.id) ? zone.description : "",
-                })),
-              }
-            : null,
-        ),
-        editProposals: venue.editProposals
-          ?.filter((proposal) =>
-            visibleIds.has(proposal.zoneId ?? legacyZoneId(venue, proposal.target, "residence", proposal.ownerId)),
-          )
-          .map((proposal) => ({
-            ...proposal,
-            proposed: { ...proposal.proposed, access: undefined, accessView: undefined, controllerIds: undefined },
-          })),
-      };
-    }),
-    homeBuildingNames: village.homeBuildingNames,
-    maxPlaces: villageVenueLimit(village),
-    maxVenueNameLength: MAX_VENUE_NAME_LENGTH,
-    maxVenueNoteLength: MAX_VENUE_NOTE_LENGTH,
-    maxVenueImageUrlLength: MAX_VENUE_IMAGE_URL_LENGTH,
-    maxVenueImageIdLength: MAX_VENUE_IMAGE_ID_LENGTH,
-    maxVenueImageBytes: MAX_VENUE_IMAGE_BYTES,
-    villageGalleryFolderName: VILLAGES_GALLERY_FOLDER_NAME,
-    homeBuildings: homeBuildingOptions(),
-    defaultHomeBuilding: DEFAULT_HOME_BUILDING,
-    setupHomeCount: 1 + SETUP_MAX_VILLAGER_COUNT,
-    setupPlaceCount: 2 + SETUP_MAX_VILLAGER_COUNT,
-    setupMinVillagerCount: SETUP_MIN_VILLAGER_COUNT,
-    setupMaxVillagerCount: SETUP_MAX_VILLAGER_COUNT,
-    // The stamp, not the image: the tab holds the picture and refetches it from
-    // `/town-map` when this changes, which keeps a megabyte off every snapshot.
-    townMapImageSetAt: village.townMapImageSetAt,
-    townMapImageMaxLength: MAX_TOWN_MAP_IMAGE_LENGTH,
-    townMapCanvasWidth: village.townMapCanvasWidth,
-    townMapCanvasHeight: village.townMapCanvasHeight,
-    townMapView: village.townMapView,
-    // The shape, and the picture size it is authored against. The tab lays its
-    // frame out from these rather than owning a ratio of its own, so the shape
-    // the map is drawn in and the shape the panel describes are one number.
-    townMapExpectedWidth: village.townMapCanvasWidth,
-    townMapExpectedHeight: village.townMapCanvasHeight,
-    townMapGenerationWidth: TOWN_MAP_EXPECTED_WIDTH,
-    townMapGenerationHeight: TOWN_MAP_EXPECTED_HEIGHT,
-    townMapZoomMin: TOWN_MAP_ZOOM_MIN,
-    townMapZoomMax: TOWN_MAP_ZOOM_MAX,
-    townMapZoomStep: TOWN_MAP_ZOOM_STEP,
-  };
-}
-
-/**
- * Whether the village has been founded yet, which is what decides between the
- * wizard and the village.
- *
- * The setup stamp alone is not enough. A village that already has a house on its
- * map or anybody living in it was plainly founded, whatever its record says, so
- * a village in progress is never dropped back into the wizard. The stamp is
- * still the only thing that says the flow FINISHED, which is why it is checked
- * alongside the other two rather than instead of them.
- *
- * A place the MODEL proposed is not one of those three. Coming up with the
- * village's geography is a question asked once the village exists, so a record
- * that holds nothing but proposed places is a record whose wizard was never
- * finished — and the wizard is what puts the four houses on the map.
- */
-function isVillageFounded(village: VillageState): boolean {
-  return (
-    village.setupAt.length > 0 || village.villagers.length > 0 || village.venues.some((place) => isHousePlace(place))
-  );
 }
 
 /**
@@ -1106,93 +782,6 @@ function applyAgenda(
   }
 }
 
-function planRoutineDays(state: VillageState, now: Date): void {
-  for (const resident of [...state.villagers].sort((a, b) => a.characterId.localeCompare(b.characterId))) {
-    const agenda = resident.agenda;
-    if (!agenda?.routineProfile) continue;
-    agenda.plannedDays ??= {};
-    for (let offset = 0; offset < 7; offset++) {
-      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12),
-        key = agendaDateKey(date);
-      if (agenda.activeDay?.dateKey === key) {
-        agenda.plannedDays[key] = agenda.activeDay.blocks;
-        continue;
-      }
-      if (agenda.plannedDays[key]) {
-        if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state, date);
-        continue;
-      }
-      let blocks = validateRoutineDay(
-        routineDay(
-          agenda.routineProfile,
-          agenda.generatedAt || agenda.routineSummary,
-          date,
-          agenda.scheduleInfluenceSnapshot,
-          influenceSettings(resident.scheduleInfluence),
-        ),
-        resident,
-        state,
-        date,
-      );
-      blocks = blocks.map((block) => {
-        if (!block.venueId) return block;
-        const otherBlocks = state.villagers
-          .filter((other) => other.characterId !== resident.characterId)
-          .map((other) => {
-            const home = state.venues.find((venue) => venueResidentIds(venue).includes(other.characterId))?.id ?? "";
-            return {
-              blocks:
-                other.agenda?.plannedDays?.[key] ?? (other.agenda ? agendaBlocksFor(other.agenda, false, date) : []),
-              home,
-            };
-          });
-        const boundaries = new Set([
-          block.startMinute,
-          ...otherBlocks.flatMap((other) =>
-            other.blocks
-              .filter((row) => row.startMinute > block.startMinute && row.startMinute < block.endMinute)
-              .map((row) => row.startMinute),
-          ),
-        ]);
-        const full = [...boundaries].some(
-          (minute) =>
-            otherBlocks.filter(
-              (other) =>
-                (other.blocks.find((row) => row.startMinute <= minute && row.endMinute > minute)?.venueId ||
-                  other.home) === block.venueId,
-            ).length >= 4,
-        );
-        return full
-          ? {
-              ...block,
-              venueId: "",
-              zoneId: undefined,
-              activity: "Taking care of their own affairs",
-              status: "idle" as const,
-              flexible: true,
-            }
-          : block;
-      });
-      agenda.plannedDays[key] = blocks;
-    }
-    const today = agendaDateKey(now);
-    for (const key of Object.keys(agenda.plannedDays)) if (key < today) delete agenda.plannedDays[key];
-  }
-}
-function activateVillagerDay(villager: VillageVillager, now: Date, state: VillageState): void {
-  const agenda = villager.agenda;
-  if (!agenda) return;
-  const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
-  agenda.activeDay = {
-    dateKey: agendaDateKey(now),
-    weekday,
-    blocks:
-      agenda.plannedDays?.[agendaDateKey(now)] ??
-      validateRoutineDay(agendaBlocksFor(agenda, false, now), villager, state, now),
-    scheduleInformed: false,
-  };
-}
-
 export async function rollActiveAgendas(now: Date, known?: VillageState): Promise<boolean> {
   const village = known ?? (await readVillageState());
   if (village.villagers.every((villager) => villager.agenda?.activeDay?.dateKey === agendaDateKey(now))) return false;
@@ -1336,49 +925,6 @@ export async function addVillager(characterId: string): Promise<void> {
   }
 }
 
-function snapshotFromCard(card: VillagerCard, revision: number): VillageVillagerCardSnapshot {
-  return {
-    id: card.id,
-    revision,
-    sourceStatus: "available",
-    name: card.name,
-    comment: card.comment,
-    summary: card.summary,
-    tags: [...card.tags],
-    systemPrompt: card.systemPrompt,
-    description: card.description,
-    personality: card.personality,
-    scenario: card.scenario,
-    backstory: card.backstory,
-    appearance: card.appearance,
-    exampleDialogue: card.exampleDialogue,
-    postHistoryInstructions: card.postHistoryInstructions ?? "",
-    nameColor: card.nameColor,
-    dialogueColor: card.dialogueColor,
-    capturedAt: new Date().toISOString(),
-  };
-}
-
-function snapshotContent(snapshot: VillageVillagerCardSnapshot): string {
-  return JSON.stringify({
-    id: snapshot.id,
-    name: snapshot.name,
-    comment: snapshot.comment,
-    summary: snapshot.summary,
-    tags: snapshot.tags,
-    systemPrompt: snapshot.systemPrompt,
-    description: snapshot.description,
-    personality: snapshot.personality,
-    scenario: snapshot.scenario,
-    backstory: snapshot.backstory,
-    appearance: snapshot.appearance,
-    exampleDialogue: snapshot.exampleDialogue,
-    postHistoryInstructions: snapshot.postHistoryInstructions ?? "",
-    nameColor: snapshot.nameColor ?? "",
-    dialogueColor: snapshot.dialogueColor ?? "",
-  });
-}
-
 export async function previewVillagerRefresh(characterId: string): Promise<VillageVillagerRefreshPreview> {
   const village = await readVillageState();
   const villager = village.villagers.find((entry) => entry.characterId === characterId);
@@ -1507,69 +1053,6 @@ export async function removeVillager(characterId: string): Promise<void> {
   if (!removed) throw notFound("That villager does not live here.");
 }
 
-/**
- * Where this villager is, said as a place the drawer can draw.
- *
- * The last step of the join the translation starts: the remap says which venue
- * an hour belongs to, and this turns that into the one thing a drawer needs —
- * a name and a picture.
- *
- * There are TWO fallbacks and they are not the same kind of thing. A venue is
- * the translation's answer and it is only reached when the hour genuinely
- * belongs somewhere the village has a name for. Failing that, the answer is the
- * villager's own HOME, which is the same default the hour itself lands on — see
- * `VILLAGE_UNTRANSLATED_ACTIVITY` — so that the picture behind somebody and the
- * sentence in their mouth come out of one decision instead of two that agree by
- * luck. Only when they have no home either does this answer null, and that is the
- * ordinary state for a villager whose card was moved around the map by hand.
- *
- * Read on demand rather than carried on the snapshot, because the snapshot is a
- * sixty-second poll of the whole village and this is wanted on the moment rather
- * than on the poll — the drawer to draw it, and the prompt to say who else is
- * standing in it. The schedule read behind it is the one the prompt already does,
- * from the same thirty-second cache, and it is passed IN rather than taken here
- * so that a conversation pays for it once and the two things built from it — the
- * place and the availability — can never come from different reads of the clock.
- *
- * Exported for the prompt's own use, which is the second reader and the only
- * other one: `presentFor` in `chat.ts` calls this once per villager to group the
- * village by where everybody is standing. Exported rather than reimplemented
- * there for the reason the whole join exists — the place a villager's own plate
- * shows them standing in and the place their neighbour is told they are standing
- * in have to be ONE answer, and a second implementation is a second answer.
- *
- * It has a THIRD reader as of the map: the snapshot fills this in for every
- * villager off the one schedule read the poll already performs, so the locator
- * pin on the map and the plate over the conversation are the same answer rather
- * than two that agree by luck. The `routine` argument is what keeps that cheap —
- * the caller reads the whole village's schedules once and hands each villager
- * their own — and it is why this is a pure function over the record rather than
- * anything that reads a clock.
- */
-
-// ── Village settings ─────────────────────────────────────────────────────────
-// What a villager is told about the world beyond their own card. It used to be
-// two things and is now one: the box about how everyone TALKS is gone, because
-// that question belongs to the player's own Engine preset and is answered in the
-// narration settings. The box about what a villager KNOWS stayed, because no
-// preset knows where this village is or who lives in it.
-
-/**
- * Read the village's prompt box out of a request body.
- *
- * An over-long box is refused rather than silently truncated — the player is
- * editing text they can see, so quietly dropping the end of it would be the
- * worst possible outcome. `what` names the box the refusal is about, which is
- * now one name but was two.
- */
-function readPromptBox(value: unknown, what: string): string {
-  if (typeof value !== "string") throw badRequest(`${what} must be text.`);
-  if (value.length > VILLAGES_PROMPT_BOX_MAX_LENGTH) {
-    throw badRequest(`${what} can be at most ${VILLAGES_PROMPT_BOX_MAX_LENGTH} characters.`);
-  }
-  return value;
-}
-
 /** Store the box: what a villager in this village knows. */
 export async function setVillagePromptKnowledge(value: unknown): Promise<VillageSnapshot> {
   const text = readPromptBox(value, "The information villagers know");
@@ -1630,32 +1113,6 @@ export async function setVillageCharacterSpeechColors(value: unknown): Promise<V
     state.characterSpeechColors = value;
   });
   return buildVillageSnapshot();
-}
-
-/**
- * Read a village name out of a request body.
- *
- * Shared with the setup flow so the wizard and the settings panel cannot
- * disagree about what counts as a name. An over-long one is refused rather
- * than cut down: the player is looking at the field they typed it into.
- */
-function readVillageName(value: unknown): string {
-  if (typeof value !== "string") throw badRequest("The village name must be text.");
-  const name = value.trim();
-  if (name.length === 0) throw badRequest("Give the village a name.");
-  if (name.length > MAX_VILLAGE_NAME_LENGTH) {
-    throw badRequest(`The village name can be at most ${MAX_VILLAGE_NAME_LENGTH} characters.`);
-  }
-  return name;
-}
-
-/** Read the setting out of a request body. Shared with the setup flow. */
-function readVillageSetting(value: unknown): string {
-  if (typeof value !== "string") throw badRequest("The setting must be text.");
-  if (value.length > MAX_SETTING_LENGTH) {
-    throw badRequest(`The setting can be at most ${MAX_SETTING_LENGTH} characters.`);
-  }
-  return value.trim();
 }
 
 /** Rename the village. */
@@ -1889,45 +1346,6 @@ export async function setVillageVenues(value: unknown, scope: "all" | "homes" = 
   return buildVillageSnapshot();
 }
 
-/** An edited map cannot leave a daily plan pointing at a vanished public place. */
-function keepAgendaPlaces(state: VillageState): void {
-  const publicIds = new Set(remapVenues(state.venues).map((venue) => venue.id));
-  for (const villager of state.villagers) {
-    if (!villager.agenda) continue;
-    villager.agenda.day = villager.agenda.day.map((part) =>
-      part.venueId && !publicIds.has(part.venueId)
-        ? { ...part, venueId: "", activity: "taking it easy at home" }
-        : part,
-    );
-    const repair = (week: VillageAgenda["week"]) =>
-      week &&
-      Object.fromEntries(
-        Object.entries(week).map(([weekday, blocks]) => [
-          weekday,
-          blocks.map((part) =>
-            part.venueId && !publicIds.has(part.venueId)
-              ? {
-                  ...part,
-                  venueId: "",
-                  activity: "Taking it easy at home",
-                  reason: "The previous place is unavailable",
-                }
-              : part,
-          ),
-        ]),
-      );
-    villager.agenda.week = repair(villager.agenda.week);
-    villager.agenda.scheduleWeek = repair(villager.agenda.scheduleWeek ?? undefined) ?? null;
-    if (villager.agenda.activeDay) {
-      villager.agenda.activeDay.blocks = villager.agenda.activeDay.blocks.map((part) =>
-        part.venueId && !publicIds.has(part.venueId)
-          ? { ...part, venueId: "", activity: "Taking it easy at home", reason: "The previous place is unavailable" }
-          : part,
-      );
-    }
-  }
-}
-
 /**
  * Give one place its picture, or take it away again with null.
  *
@@ -2060,199 +1478,6 @@ export async function setVillageHomeBuildingNames(value: unknown): Promise<Villa
   return buildVillageSnapshot();
 }
 
-function venueFieldText(value: unknown, fallback: string, limit: number): string {
-  return value === undefined ? fallback : boundText(value, limit);
-}
-
-function readHomeBuildingNames(value: unknown): VillageState["homeBuildingNames"] {
-  const record = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  return Object.fromEntries(
-    HOME_BUILDING_ORDER.map((kind) => [kind, boundText(record[kind], 60).trim() || HOME_BUILDINGS[kind].name]),
-  ) as VillageState["homeBuildingNames"];
-}
-
-function venueStringList(value: unknown, fallback: string[]): string[] {
-  if (value === undefined) return [...fallback];
-  if (!Array.isArray(value)) throw badRequest("Venue lists must be arrays of text.");
-  return value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => boundText(entry, MAX_VENUE_NOTE_LENGTH))
-    .filter(Boolean)
-    .slice(0, 24);
-}
-
-function venueFeatures(value: unknown, existing: readonly VillageVenueFeature[]): VillageVenueFeature[] {
-  if (value === undefined) return [...existing];
-  if (!Array.isArray(value) || value.length > 5) throw badRequest("A venue can have at most five features.");
-  const ids = new Set<string>();
-  return value.map((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw badRequest("Each feature needs text.");
-    const row = entry as Record<string, unknown>;
-    const requestedId = asTrimmedString(row.id);
-    const prior = existing.find((feature) => feature.id === requestedId);
-    const id = prior?.id ?? randomVillageSeed();
-    const text = boundText(row.text, MAX_VENUE_NOTE_LENGTH);
-    if (!text || ids.has(id)) throw badRequest("Each feature needs distinct text and an identity.");
-    ids.add(id);
-    return {
-      id,
-      text,
-      sourceCharacterId: prior && prior.text === text ? prior.sourceCharacterId : "",
-      locked: row.locked === true,
-      updatedAt:
-        prior && prior.text === text && prior.locked === (row.locked === true)
-          ? prior.updatedAt
-          : new Date().toISOString(),
-    };
-  });
-}
-
-function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw badRequest("A venue must be an object.");
-  }
-  const record = value as Record<string, unknown>;
-  const name = venueFieldText(record.name, existing?.name ?? "", MAX_VENUE_NAME_LENGTH).trim();
-  if (name.length === 0 && !existing?.occupancy.homeKind) throw badRequest("Every venue needs a name.");
-  const description = venueFieldText(
-    record.description,
-    existing?.description ?? "",
-    MAX_VENUE_DESCRIPTION_LENGTH,
-  ).trim();
-  if (!description) throw badRequest("Approve a description before saving this venue.");
-  const category = venueFieldText(record.category, existing?.category ?? "", MAX_VENUE_NOTE_LENGTH).trim();
-  const form = venueFieldText(record.form, existing?.form ?? "", MAX_VENUE_NOTE_LENGTH).trim();
-  if (record.classes !== undefined && !validVenueClasses(record.classes))
-    throw badRequest("Choose one or two different Venue Classes.");
-  if (existing && record.classes !== undefined && JSON.stringify(record.classes) !== JSON.stringify(existing.classes))
-    throw badRequest("Changing Classes requires a Venue proposal.");
-  const classes: VillageVenueClass[] =
-    existing?.classes ?? (validVenueClasses(record.classes) ? record.classes : ["other"]);
-  const requestedCapacity = record.residenceCapacity;
-  if (existing && requestedCapacity !== undefined && requestedCapacity !== existing.residenceCapacity)
-    throw badRequest("Changing residence capacity requires a Venue proposal.");
-  if (
-    requestedCapacity !== undefined &&
-    (!Number.isInteger(requestedCapacity) || Number(requestedCapacity) < 1 || Number(requestedCapacity) > 4)
-  )
-    throw badRequest("A Residence holds between one and four people.");
-  const residenceCapacity =
-    existing?.residenceCapacity ?? (typeof requestedCapacity === "number" ? requestedCapacity : 1);
-  const presentationValue = record.presentation;
-  const presentation =
-    presentationValue && typeof presentationValue === "object" && !Array.isArray(presentationValue)
-      ? (presentationValue as Record<string, unknown>)
-      : {};
-  const x = presentation.x === undefined ? (existing?.presentation.x ?? null) : presentation.x;
-  const y = presentation.y === undefined ? (existing?.presentation.y ?? null) : presentation.y;
-  const position = readPlacePosition({ x, y });
-  const stateValue = record.state;
-  const state =
-    stateValue && typeof stateValue === "object" && !Array.isArray(stateValue)
-      ? (stateValue as Record<string, unknown>)
-      : {};
-  const priorSpaces = existing
-    ? venueSpaces(existing)
-    : classes.map((venueClass) => defaultVenueSpace(venueClass, description));
-  const editableSpaceClasses = existing?.layoutVersion === 1 ? priorSpaces.map((space) => space.venueClass) : classes;
-  const postedSpaces = record.spaces;
-  if (
-    postedSpaces !== undefined &&
-    (!Array.isArray(postedSpaces) || postedSpaces.length !== editableSpaceClasses.length)
-  )
-    throw badRequest("Provide one scene for each Venue Class.");
-  const spaces = editableSpaceClasses.map((venueClass) => {
-    const prior =
-      priorSpaces.find((space) => space.venueClass === venueClass) ?? defaultVenueSpace(venueClass, description);
-    const posted = Array.isArray(postedSpaces)
-      ? postedSpaces.find((space) => typeof space === "object" && space !== null && space.venueClass === venueClass)
-      : null;
-    const row = posted && typeof posted === "object" ? (posted as Record<string, unknown>) : {};
-    const scene =
-      row.state && typeof row.state === "object" && !Array.isArray(row.state)
-        ? (row.state as Record<string, unknown>)
-        : {};
-    const nextDescription = venueFieldText(row.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-    const nextState = {
-      condition: venueFieldText(scene.condition, prior.state.condition, MAX_VENUE_NOTE_LENGTH),
-      items: venueStringList(scene.items, prior.state.items),
-      publicFacts: venueStringList(scene.publicFacts, prior.state.publicFacts),
-      features: venueFeatures(scene.features, prior.state.features),
-      traces: prior.state.traces,
-      updatedAt: prior.state.updatedAt,
-    };
-    const changed =
-      nextDescription !== prior.description ||
-      nextState.condition !== prior.state.condition ||
-      JSON.stringify(nextState.items) !== JSON.stringify(prior.state.items) ||
-      JSON.stringify(nextState.publicFacts) !== JSON.stringify(prior.state.publicFacts) ||
-      JSON.stringify(nextState.features) !== JSON.stringify(prior.state.features);
-    if (changed) nextState.updatedAt = new Date().toISOString();
-    return {
-      ...prior,
-      description: nextDescription,
-      state: nextState,
-    };
-  });
-  if (spaces.some((space) => !space.description)) throw badRequest("Approve a description for every Venue space.");
-  const draft: VillageVenue = {
-    layoutVersion: existing?.layoutVersion,
-    baseClasses: existing?.baseClasses,
-    zones: existing?.zones,
-    archivedZones: existing?.archivedZones,
-    usedInvitationIds: existing?.usedInvitationIds,
-    id: (existing?.id ?? asTrimmedString(record.id)) || randomVillageSeed(),
-    name,
-    form,
-    classes,
-    spaces,
-    residenceCapacity,
-    residentIds: existing ? venueResidentIds(existing) : [],
-    playerInvitations: existing?.playerInvitations ?? [],
-    exteriorState: existing?.exteriorState,
-    privateSpaces: existing?.privateSpaces,
-    archivedPrivateSpaces: existing?.archivedPrivateSpaces,
-    editProposals: existing?.editProposals,
-    playerSeenShared: existing?.playerSeenShared,
-    playerSeenPublic: existing?.playerSeenPublic,
-    playerSeenPrivateIds: existing?.playerSeenPrivateIds,
-    improvements: existing?.improvements ?? [null, null],
-    description,
-    category,
-    presentation: {
-      image: existing?.presentation.image ?? null,
-      x: position.x,
-      y: position.y,
-    },
-    occupancy: existing?.occupancy ?? { playerHome: false, residentCharacterId: null, homeKind: null },
-    capabilities: venueStringList(record.capabilities, existing?.capabilities ?? []),
-    workerIds: venueStringList(record.workerIds, existing?.workerIds ?? []),
-    state: {
-      condition: venueFieldText(state.condition, existing?.state.condition ?? "", MAX_VENUE_NOTE_LENGTH),
-      upgrades: venueStringList(state.upgrades, existing?.state.upgrades ?? []),
-      furniture: venueStringList(state.furniture, existing?.state.furniture ?? []),
-      publicFacts: venueStringList(state.publicFacts, existing?.state.publicFacts ?? []),
-      features: venueFeatures(state.features, existing?.state.features ?? []),
-      traces: existing?.state.traces ?? [],
-      updatedAt: new Date().toISOString(),
-    },
-  };
-  // Older editors submit the single scene as `state`. Keep its Class space in
-  // step so the next visit and the next edit see the same feature identities.
-  if (postedSpaces === undefined && record.state !== undefined && draft.spaces?.[0]) {
-    draft.spaces[0].state = {
-      ...draft.spaces[0].state,
-      condition: draft.state.condition,
-      items: [...draft.state.furniture],
-      publicFacts: [...draft.state.publicFacts],
-      features: [...(draft.state.features ?? [])],
-      traces: [...(draft.state.traces ?? [])],
-      updatedAt: draft.state.updatedAt,
-    };
-  }
-  return draft;
-}
-
 export type VillageVenueDeletionDependencies = {
   venueId: string;
   venueName: string;
@@ -2305,18 +1530,6 @@ export async function createVillageVenue(value: unknown): Promise<VillageSnapsho
     addVillageVenue(state, draft);
   });
   return buildVillageSnapshot();
-}
-
-export function addVillageVenue(state: VillageState, draft: VillageVenue): void {
-  assertCanAddVillageVenue(state, draft.classes);
-  if (state.venues.some((venue) => venue.name.trim().toLowerCase() === draft.name.toLowerCase())) {
-    throw badRequest("A venue with that name already exists.");
-  }
-  state.venues.push({
-    ...draft,
-    id: randomVillageSeed(),
-    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-  });
 }
 
 /** Host authentication identifies the player; the request cannot impersonate an NPC. */
@@ -2821,18 +2034,6 @@ export async function deleteVillageVenue(venueId: string, confirmed: boolean): P
   return buildVillageSnapshot();
 }
 
-function residenceCharacterId(value: unknown): string {
-  const characterId = asTrimmedString(value);
-  if (characterId.length === 0) throw badRequest("A character id is required.");
-  return characterId;
-}
-
-function residenceVenueId(value: unknown): string {
-  const venueId = asTrimmedString(value);
-  if (venueId.length === 0) throw badRequest("A venue id is required.");
-  return venueId;
-}
-
 export async function proposeVillageResidence(
   characterValue: unknown,
   venueValue: unknown,
@@ -3031,11 +2232,6 @@ export async function completeVillageResidence(
   }
   return buildVillageSnapshot(now);
 }
-
-function personalDestinationSpace(venue: VillageVenue, characterId: string) {
-  const id = legacyZoneId(venue, "private", "residence", characterId);
-  return venue.privateSpaces?.find((space) => space.id === id);
-}
 function adaptationRevision(venue: VillageVenue, characterId: string): string {
   const room = personalDestinationSpace(venue, characterId);
   return backgroundRevision([
@@ -3159,395 +2355,6 @@ registerBackgroundHandler("adaptation", {
     current.adaptationPending = false;
   },
 });
-
-// ── Places: the village's one list ───────────────────────────────────────────
-// A place is somewhere the player or a villager can BE, whether that is a shop
-// on the map or the house they sleep in. Both are written through
-// `setVillageVenues`; what is here is the reading of a request body, which
-// refuses rather than repairs because the player typed it and can still see it.
-
-/** A place as it comes out of a request body, once it has been checked over. */
-type ParsedPlace = {
-  venueType?: string;
-  access?: VillageVenue["access"];
-  destinations?: VillageVenue["destinations"];
-  layoutVersion?: 1;
-  zones?: VillageVenue["zones"];
-  privateSpaces?: VillageVenue["privateSpaces"];
-  imageContext?: VillageVenue["imageContext"];
-  id: string;
-  name: string;
-  form: string;
-  classes: VillageVenueClass[];
-  spaces: NonNullable<VillageVenue["spaces"]>;
-  residenceCapacity: number;
-  residentIds: string[];
-  improvements: NonNullable<VillageVenue["improvements"]>;
-  description: string;
-  category: string;
-  presentation: VillageVenue["presentation"];
-  occupancy: VillageVenue["occupancy"];
-  capabilities: string[];
-  state: VillageVenue["state"];
-};
-
-/** Where a place stands, or a refusal — see `parsePlace` for why the two are exclusive. */
-function readPlacePosition(record: Record<string, unknown>): { x: number | null; y: number | null } {
-  const x = record.x ?? null;
-  const y = record.y ?? null;
-  // Absent on BOTH counts is "not on the map yet" and is ordinary. Absent on one
-  // is half a position, which is not a position: silently dropping the half that
-  // arrived would move the pin to the wrong street, and inventing the other half
-  // would be worse.
-  if (x === null && y === null) return { x: null, y: null };
-  const placed = typeof x === "number" && typeof y === "number" && x >= 0 && x <= 1 && y >= 0 && y <= 1;
-  if (!placed) throw badRequest("A place's spot on the map is two fractions between 0 and 1.");
-  return { x: x as number, y: y as number };
-}
-
-/**
- * Read one place out of a request body.
- *
- * Refuses rather than repairs, unlike the store's own `coerceVenue`: this is
- * input the player just typed and can still see, so quietly nudging a pin onto
- * the map or dropping an occupant would hide the very mistake they need to fix.
- * The store is the other way round for the same reason in reverse — a document
- * that has been sitting on disk is repaired so a hand-edit cannot cost the
- * player a village.
- *
- * A place that is somebody's house does not need a name, and a place that is not
- * does. That is not a leniency: the village genuinely has no name for a house.
- * It knows "Bram's house", which is a sentence about Bram, not a name for a
- * building — nobody stands in the street and calls it that. Names exist on this
- * list for one reason, which is that the model is shown them and told to answer
- * with the number of the one it means, and the houses are not in that list. So
- * demanding a name for one would be demanding a fact nothing reads.
- */
-function foundingImage(value: unknown): VillageVenueImage | null {
-  if (value === null || value === undefined) return null;
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw badRequest("A founding image must come from the gallery.");
-  const row = value as Record<string, unknown>;
-  const ref = asTrimmedString(row.ref);
-  const id = asTrimmedString(row.id);
-  const url = asTrimmedString(row.url);
-  if (
-    !isGlobalGalleryRef(ref) ||
-    id !== ref.slice("global-gallery:".length) ||
-    !url ||
-    url.length > MAX_VENUE_IMAGE_URL_LENGTH
-  ) {
-    throw badRequest("A founding image needs a valid gallery reference.");
-  }
-  return { ref, id, url };
-}
-
-function foundingSpace(
-  value: unknown,
-  venueClass: VillageVenueClass,
-  description: string,
-): NonNullable<VillageVenue["spaces"]>[number] {
-  const row = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  const spaceDescription = boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-  if (!spaceDescription) throw badRequest("Describe the interior before founding the village.");
-  return {
-    ...defaultVenueSpace(venueClass, description),
-    description: spaceDescription,
-    image: foundingImage(row.image),
-  };
-}
-
-export function parsePlace(value: unknown, founding = false): ParsedPlace {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw badRequest("Every place needs a name.");
-  }
-  const record = value as Record<string, unknown>;
-  const occupancyRecord =
-    record.occupancy && typeof record.occupancy === "object" && !Array.isArray(record.occupancy)
-      ? (record.occupancy as Record<string, unknown>)
-      : {};
-  if (occupancyRecord.playerHome !== undefined && typeof occupancyRecord.playerHome !== "boolean") {
-    throw badRequest("A place is either your home or a villager's.");
-  }
-  if (
-    occupancyRecord.residentCharacterId !== undefined &&
-    occupancyRecord.residentCharacterId !== null &&
-    typeof occupancyRecord.residentCharacterId !== "string"
-  ) {
-    throw badRequest("A place's resident must be a character.");
-  }
-  const playerHome = occupancyRecord.playerHome === true;
-  const characterId =
-    typeof occupancyRecord.residentCharacterId === "string" ? occupancyRecord.residentCharacterId.trim() : "";
-  if (
-    occupancyRecord.homeKind !== undefined &&
-    occupancyRecord.homeKind !== null &&
-    !isHomeBuildingKind(occupancyRecord.homeKind)
-  ) {
-    throw badRequest("A place has to be a building this village has, or no building at all.");
-  }
-  const homeKind = isHomeBuildingKind(occupancyRecord.homeKind) ? occupancyRecord.homeKind : null;
-  if (record.name !== undefined && typeof record.name !== "string") {
-    throw badRequest("A place name must be text.");
-  }
-  const name = typeof record.name === "string" ? record.name.trim() : "";
-  // A house can leave this blank; anything a villager could be SENT to cannot,
-  // because the name is the only thing the translation list has to say about it.
-  if (name.length === 0) throw badRequest("Every Venue needs a name.");
-  if (name.length > MAX_VENUE_NAME_LENGTH) {
-    throw badRequest(`A place name can be at most ${MAX_VENUE_NAME_LENGTH} characters.`);
-  }
-  const description = typeof record.description === "string" ? record.description.trim() : "";
-  const form = boundText(record.form, MAX_VENUE_NOTE_LENGTH).trim();
-  if (founding && !form) throw badRequest("Describe what each venue actually is in Form before founding.");
-  if (founding && !description) throw badRequest("Describe the exterior of each venue before founding.");
-  const classes: VillageVenueClass[] = validVenueClasses(record.classes)
-    ? record.classes
-    : playerHome || characterId
-      ? ["residence"]
-      : record.category === "public-center"
-        ? ["gathering"]
-        : ["other"];
-  const capacity =
-    Number.isInteger(record.residenceCapacity) &&
-    Number(record.residenceCapacity) >= 1 &&
-    Number(record.residenceCapacity) <= 4
-      ? Number(record.residenceCapacity)
-      : 1;
-  if (description.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("A venue description is too long.");
-  const presentationRecord =
-    record.presentation && typeof record.presentation === "object" && !Array.isArray(record.presentation)
-      ? (record.presentation as Record<string, unknown>)
-      : {};
-  const { x, y } = readPlacePosition(presentationRecord);
-  // The player's home is their own. Letting a villager be recorded against it
-  // would make two different parts of the tab disagree about who lives there.
-  if (playerHome && characterId.length > 0) {
-    throw badRequest("Your own home cannot also belong to a villager.");
-  }
-  if (founding && record.layoutVersion !== 1) throw badRequest("Choose the venue layout before founding.");
-  const explicitZones =
-    record.layoutVersion === 1 && founding
-      ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage)
-      : undefined;
-  const result: ParsedPlace = {
-    venueType: boundText(record.venueType, 100),
-    layoutVersion: record.layoutVersion === 1 ? 1 : undefined,
-    zones: explicitZones ?? (founding ? readCreationPrivateZones(record.privateSpaces, classes) : undefined),
-    privateSpaces:
-      !explicitZones && founding && playerHome
-        ? [
-            {
-              ...defaultVenueSpace(
-                "residence",
-                boundText(
-                  (Array.isArray(record.privateSpaces)
-                    ? record.privateSpaces.find((room) => room.ownerId === "player")
-                    : {}
-                  )?.description,
-                  1000,
-                ) || "Your personal space.",
-              ),
-              id: "private:player",
-              ownerId: "player",
-              image: foundingImage(
-                (Array.isArray(record.privateSpaces)
-                  ? record.privateSpaces.find((room) => room.ownerId === "player")
-                  : {}
-                )?.image,
-              ),
-            },
-          ]
-        : undefined,
-    imageContext: readVenueImageContext(record.imageContext),
-    id: asTrimmedString(record.id) || randomVillageSeed(),
-    name,
-    form,
-    classes,
-    spaces: explicitZones
-      ? explicitZones.filter((zone) => ["public", "shared-residence"].includes(zone.kind))
-      : classes.map((venueClass) => {
-          const posted = Array.isArray(record.spaces)
-            ? record.spaces.find(
-                (entry) =>
-                  entry && typeof entry === "object" && (entry as Record<string, unknown>).venueClass === venueClass,
-              )
-            : null;
-          const scene = posted && typeof posted === "object" ? (posted as Record<string, unknown>) : {};
-          return founding
-            ? foundingSpace(scene, venueClass, description)
-            : defaultVenueSpace(venueClass, boundText(scene.description, MAX_VENUE_DESCRIPTION_LENGTH) || description);
-        }),
-    residenceCapacity: founding && record.layoutVersion === 1 ? 1 : capacity,
-    residentIds: characterId ? [characterId] : [],
-    improvements: [null, null],
-    description,
-    category: typeof record.category === "string" ? record.category.trim() : "",
-    presentation: { image: founding ? foundingImage(presentationRecord.image) : null, x, y },
-    occupancy: {
-      playerHome,
-      residentCharacterId: characterId.length > 0 ? characterId : null,
-      homeKind,
-    },
-    capabilities: [],
-    state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-  };
-  if (founding) {
-    initializeVenueAccess(result);
-    for (const [actor, destinations] of Object.entries(asRecord(record.destinations))) {
-      if (!result.destinations?.[actor])
-        throw badRequest("Choose destinations only for assigned residents or workers.");
-      const selected = asRecord(destinations);
-      for (const role of ["home", "sleep", "work"] as const) {
-        const destination = asTrimmedString(selected[role]);
-        if (!destination) continue;
-        const zone = result.zones?.find((zone) => zone.id === destination);
-        if (
-          !zone ||
-          zone.kind === "exterior" ||
-          zone.venueClass !== (role === "work" ? "workplace" : "residence") ||
-          (zone.ownerId && zone.ownerId !== actor)
-        )
-          throw badRequest("Choose a suitable Zone for each destination.");
-        result.destinations[actor][role] = destination;
-      }
-    }
-  }
-  return result;
-}
-
-/**
- * Read a whole list of places, enforcing the rules no single place can check for
- * itself: at most one of them is the player's, every occupant is somebody who
- * lives here, and a villager sleeps in one place at a time.
- *
- * `residents` is who is allowed to hold a home — the village's villagers when
- * the map is being edited, or the cards being moved in when the village is being
- * founded, since neither is written to the record yet at that point.
- *
- * `requiredHomes` is the founding flow's own rule, and it counts HOMES rather
- * than places: a village is founded with four houses on its map, and the venues
- * the model proposes afterwards are not part of that count. Null means "accept
- * the map as it now stands", which is what a second run through the wizard over
- * a village that already exists passes. A house counts whether or not anybody
- * has moved into it yet — see `isHousePlace` — because the wizard's four pins are
- * four buildings on a picture long before they are four people.
- */
-function parsePlaces(value: unknown, residents: ReadonlySet<string>, founding: boolean): ParsedPlace[] {
-  if (!Array.isArray(value)) throw badRequest("The places must be a list.");
-  if (value.length > MAX_PLACES) throw badRequest(`A village holds at most ${MAX_PLACES} places.`);
-  const places = value.map((entry) => parsePlace(entry, founding));
-  const homes = places.filter((place) => isHousePlace(place));
-  const playerHomes = places.filter((place) => place.occupancy.playerHome).length;
-  if (playerHomes > 1) throw badRequest("Only one place can be your home.");
-  if (founding && playerHomes !== 1) throw badRequest("One of the homes has to be yours.");
-  const seenIds = new Set<string>();
-  const seenOccupants = new Set<string>();
-  const seenNames = new Set<string>();
-  for (const place of places) {
-    if (seenIds.has(place.id)) throw badRequest("Two places cannot share an id.");
-    seenIds.add(place.id);
-    const nameKey = place.name.toLowerCase();
-    if (seenNames.has(nameKey)) throw badRequest("Every Venue needs a distinct name.");
-    seenNames.add(nameKey);
-    if ((place.occupancy.playerHome || place.occupancy.residentCharacterId) && !place.classes.includes("residence"))
-      throw badRequest("An assigned home must have the Residence Class.");
-    if (place.zones?.some((zone) => zone.controllerIds?.some((id) => id !== "player" && !residents.has(id))))
-      throw badRequest("Choose current villagers as Private Space controllers.");
-    if (place.occupancy.residentCharacterId === null) continue;
-    if (!residents.has(place.occupancy.residentCharacterId)) {
-      throw badRequest("Every villager's home has to belong to someone who lives here.");
-    }
-    if (seenOccupants.has(place.occupancy.residentCharacterId))
-      throw badRequest("A villager can only live in one place.");
-    seenOccupants.add(place.occupancy.residentCharacterId);
-  }
-  if (founding) {
-    if (places.some((place) => !place.description.trim())) throw badRequest("Describe every founding venue.");
-    if (places.some((place) => place.spaces?.some((space) => !space.description.trim())))
-      throw badRequest("Describe every founding venue scene.");
-    if (homes.some((place) => place.presentation.x === null || place.presentation.y === null))
-      throw badRequest("Every founding home needs a spot on the map.");
-    const assignedVillagers = places.filter((place) => place.occupancy.residentCharacterId !== null);
-    if (assignedVillagers.length < SETUP_MIN_VILLAGER_COUNT || assignedVillagers.length > SETUP_MAX_VILLAGER_COUNT) {
-      throw badRequest(
-        `Founding needs between ${SETUP_MIN_VILLAGER_COUNT} and ${SETUP_MAX_VILLAGER_COUNT} villager homes.`,
-      );
-    }
-    if (homes.length !== assignedVillagers.length + 1) {
-      throw badRequest("Founding needs exactly one player home plus one home for each initial villager.");
-    }
-    if (assignedVillagers.some((place) => place.occupancy.playerHome)) {
-      throw badRequest("A villager home cannot also be the player's home.");
-    }
-    const publicCenters = places.filter(
-      (place) => !isHousePlace(place) && place.category.trim().toLowerCase() === "public-center",
-    );
-    if (publicCenters.length !== 1) {
-      throw badRequest("Founding needs exactly one public center marked public-center.");
-    }
-    if (publicCenters[0]?.name.length === 0) {
-      throw badRequest("The founding public center needs a name.");
-    }
-    if (publicCenters[0]?.presentation.x === null || publicCenters[0]?.presentation.y === null)
-      throw badRequest("Place the public center on the map.");
-    if (places.filter((place) => !isHousePlace(place)).length !== 1)
-      throw badRequest("Founding needs exactly one public venue.");
-  }
-  return places;
-}
-
-// ── Founding the village ─────────────────────────────────────────────────────
-
-/**
- * Found the village in one go: its name, what it is like, who the player is,
- * and the places placed on the map.
- *
- * Everything is checked BEFORE anything is written, and the record is written
- * exactly once. A setup that failed halfway would leave a village claiming to
- * be founded with no homes, or homes with nobody in them, and the player would
- * have no way to tell which half had happened.
- *
- * Re-running this is safe and is not the same as `resetVillage`: villagers are
- * only ever added, so a player who runs setup again to redraw their map keeps
- * everyone who already lives here.
- */
-export function assertFoundingScenarioLocked(
-  village: Pick<VillageState, "foundingReason" | "foundingDetails" | "foundingGuidance" | "scenarioImprint">,
-  submitted: { foundingReason: string; foundingDetails: string; foundingGuidance: string; scenarioImprint?: unknown },
-): void {
-  if (
-    submitted.foundingReason !== village.foundingReason ||
-    submitted.foundingDetails !== village.foundingDetails ||
-    submitted.foundingGuidance !== village.foundingGuidance ||
-    (submitted.scenarioImprint !== undefined &&
-      JSON.stringify(submitted.scenarioImprint) !== JSON.stringify(village.scenarioImprint))
-  )
-    throw conflict("The founding Scenario is locked. Start a new village to choose another one.");
-}
-
-/** Existing villages keep their locked beginning, including older records without starting circumstances. */
-export function validateFirstDayDescription(description: string, founding: boolean): void {
-  if (founding && !description.trim()) throw badRequest("Describe what brings you and the others together here.");
-}
-
-/** Bind a new wizard's selected roster to its assigned homes before generation or writes. */
-export function validateFoundingRoster(
-  value: unknown,
-  assigned: ReadonlySet<string>,
-  available: ReadonlySet<string>,
-): void {
-  if (
-    !Array.isArray(value) ||
-    value.length < 1 ||
-    value.length > 3 ||
-    value.some((id) => typeof id !== "string" || !available.has(id)) ||
-    new Set(value).size !== value.length
-  )
-    throw badRequest("Choose one to three available founding villagers.");
-  if (assigned.size !== value.length || value.some((id) => !assigned.has(id)))
-    throw badRequest("Assign every villager chosen on People to one Residence.");
-}
 
 export async function runVillageSetup(input: {
   foundingCharacterIds?: unknown;
@@ -4275,124 +3082,6 @@ export async function draftVenueDescriptions(value: unknown): Promise<{ descript
   return { descriptions: await draftVillageVenueDescriptions(setting, venues, lore) };
 }
 
-function localDateKey(now: Date): string {
-  const year = String(now.getFullYear()).padStart(4, "0");
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function storyAllowance(pace: VillageStoryPace, seed: string, date: string): number {
-  if (pace === "off") return 0;
-  if (pace === "quiet") return 1;
-  if (pace === "lively") return 3;
-  return 1 + (hashString(`${seed}|${date}|creative-allowance`) % 3);
-}
-
-function creativeOpportunity(
-  village: VillageState,
-  routines: ReadonlyMap<string, NativeRoutine>,
-  moment: ReturnType<typeof deriveVillageMoment>,
-  startsAt: string,
-): VillageOpportunity | null {
-  const currentPlaces = new Map<string, string[]>();
-  for (const villager of village.villagers) {
-    const place = villagerPlaceView(village, villager, routines.get(villager.characterId) ?? null, moment.minuteOfDay);
-    if (!place) continue;
-    const destinationKey = JSON.stringify([place.id, place.zoneId ?? "exterior"]);
-    currentPlaces.set(destinationKey, [...(currentPlaces.get(destinationKey) ?? []), villager.characterId]);
-  }
-  const overlap = [...currentPlaces.entries()].find(([, actorIds]) => actorIds.length >= 2);
-  const activeProject = village.projects.find((project) => project.status === "active");
-  const wishing = village.villagers.find((villager) => (villager.agenda?.wishes.length ?? 0) > 0);
-  const publicVenue = village.venues.find((venue) => !isHousePlace(venue));
-  const firstResident = village.villagers[0];
-  const kind: VillageOpportunity["kind"] = overlap
-    ? "encounter"
-    : activeProject
-      ? "project"
-      : wishing
-        ? "wish"
-        : publicVenue
-          ? "weather"
-          : firstResident
-            ? "routine"
-            : "weather";
-  const actorIds =
-    overlap?.[1].slice(0, 4) ??
-    activeProject?.participantIds.slice(0, 4) ??
-    (wishing ? [wishing.characterId] : firstResident ? [firstResident.characterId] : []);
-  const destinationKey =
-    overlap?.[0] ??
-    (wishing ? currentPlaces.entries().find(([, ids]) => ids.includes(wishing.characterId))?.[0] : undefined);
-  const [destinationVenueId, zoneId] = destinationKey
-    ? (JSON.parse(destinationKey) as [string, string])
-    : [undefined, "exterior"];
-  const venueId = destinationVenueId ?? activeProject?.venueId ?? publicVenue?.id ?? "";
-  if (actorIds.length === 0 && venueId.length === 0) return null;
-  const facts = [
-    `${moment.localTime} local time`,
-    `${moment.weather} weather`,
-    overlap ? `${actorIds.length} residents share this zone` : "",
-    activeProject ? `active project: ${activeProject.title}` : "",
-    wishing?.agenda?.wishes[0] ? `active wish: ${wishing.agenda.wishes[0].wish}` : "",
-  ].filter(Boolean);
-  const identity = `${village.seed}|${startsAt}|${moment.instant}|${kind}|${actorIds.join(",")}|${venueId}`;
-  return {
-    id: `opportunity-${hashString(identity)}`,
-    kind,
-    startsAt,
-    endsAt: moment.instant,
-    actorIds,
-    venueId,
-    zoneId,
-    facts,
-  };
-}
-
-function buildReturnRecap(
-  village: VillageState,
-  from: string,
-  through: string,
-  elapsedMs: number,
-): VillageRecap | null {
-  const pendingDecisionCount = village.pendingDecisions.filter(
-    (decision) => decision.status !== "approved" && decision.status !== "denied",
-  ).length;
-  if (elapsedMs < 6 * 60 * 60 * 1_000 && pendingDecisionCount === 0) return null;
-  const throughMs = Date.parse(through);
-  const fromMs = Date.parse(from);
-  const details = village.happenings
-    .filter((entry) => {
-      const at = Date.parse(entry.occurredAt);
-      return Number.isFinite(at) && at >= throughMs - 48 * 60 * 60 * 1_000 && at <= throughMs && at >= fromMs;
-    })
-    .slice(0, 4);
-  const older = village.happenings.filter((entry) => {
-    const at = Date.parse(entry.occurredAt);
-    return Number.isFinite(at) && at >= fromMs && at < throughMs - 48 * 60 * 60 * 1_000;
-  });
-  const counts = new Map<string, number>();
-  for (const entry of older) {
-    const at = new Date(entry.occurredAt);
-    const ageDays = Math.floor((throughMs - at.getTime()) / 86_400_000);
-    const label =
-      ageDays <= 14
-        ? at.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-        : `week of ${new Date(at.getFullYear(), at.getMonth(), at.getDate() - at.getDay()).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  const summaries = [...counts.entries()]
-    .slice(-6)
-    .reverse()
-    .map(([label, count]) => `${count} remembered ${count === 1 ? "event" : "events"} from ${label}.`);
-  if (summaries.length === 0 && elapsedMs >= 48 * 60 * 60 * 1_000) {
-    const days = Math.max(2, Math.floor(elapsedMs / 86_400_000));
-    summaries.push(`${days} days passed in the village.`);
-  }
-  return { from, through, details, summaries, pendingDecisionCount };
-}
-
 /**
  * Advance the village from its durable high-water mark to one exact instant.
  * Required local state is committed before optional narration is requested, so
@@ -4958,59 +3647,6 @@ export async function runVillageReaction(params: {
 }
 
 /**
- * What the village already remembers about one person.
- *
- * Only private memories. The village-scope ones are no longer thrown away —
- * they are fed to the same call as their own section by `sharedMemoryFor` below
- * — but they are still NOT fed back here, because they arrive by that route and
- * feeding the same fortnight in twice would spend the prompt's room on saying it
- * again.
- */
-function rememberedFor(chronicle: readonly VillageChronicleEntry[], characterId: string): string[] {
-  const lines: string[] = [];
-  for (const entry of chronicle) {
-    if (entry.scope !== "private" || !entry.actors.some((actor) => actor.id === characterId)) continue;
-    lines.push(entry.text);
-    if (lines.length >= MAX_CHRONICLE_ABOUT_ONE_VILLAGER) break;
-  }
-  return lines;
-}
-
-/**
- * What the WHOLE village remembers, newest first, as the narrator reads it.
- *
- * Three things are decided here, and each of them is the difference between a
- * prompt that helps and a prompt that lies:
- *
- *   * Private memories are excluded. A memory filed against one villager is
- *     that villager's to know, and handing it to the narrator as village history
- *     would put a confidence in the mouth of the whole square. It reaches the
- *     narrator only as `rememberedFor` on the person it belongs to.
- *   * Anything already in the happenings window is dropped. The window is the
- *     last part of this same record, so it is already in the prompt above and a
- *     memory that repeated it would read as the village saying everything twice.
- *   * It is capped, and the cap is a cap on ENTRIES rather than characters,
- *     because the old end of this list is the part that can afford to be
- *     forgotten — the window above is what proves what happened most recently.
- */
-function sharedMemoryFor(
-  chronicle: readonly VillageChronicleEntry[],
-  alreadySaid: readonly string[],
-): VillageChronicleEntry[] {
-  const seen = new Set(alreadySaid.map((line) => line.trim().toLowerCase()));
-  const memory: VillageChronicleEntry[] = [];
-  for (const entry of chronicle) {
-    if (entry.scope !== "village") continue;
-    const key = entry.text.trim().toLowerCase();
-    if (key.length === 0 || seen.has(key)) continue;
-    seen.add(key);
-    memory.push(entry);
-    if (memory.length >= MAX_CHRONICLE_IN_PROMPT) break;
-  }
-  return memory;
-}
-
-/**
  * The whole of what the village remembers, newest first, as the story tab draws
  * it.
  *
@@ -5264,42 +3900,4 @@ export async function setScenerySettings(value: {
       state.useVisualLoreByDefault = readBool(value.useVisualLoreByDefault);
   });
   return buildVillageSnapshot();
-}
-export function readCreationPrivateZones(
-  value: unknown,
-  classes: VillageVenueClass[],
-): NonNullable<VillageVenue["zones"]> {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 12) throw badRequest("Choose at most twelve private spaces.");
-  const ids = new Set<string>();
-  return value
-    .filter((raw) => raw && typeof raw === "object" && raw.ownerId !== "player")
-    .map((raw) => {
-      const row = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-      const id = asTrimmedString(row.id),
-        name = boundText(row.name, 100).trim(),
-        purpose = boundText(row.purpose, 240).trim();
-      if (!id || ids.has(id) || !id.startsWith("restricted:"))
-        throw badRequest("Private space IDs must be unique restricted room IDs.");
-      ids.add(id);
-      if (!name || !purpose) throw badRequest("Give each private space a name and purpose.");
-      const controllerIds = Array.isArray(row.controllerIds)
-        ? [...new Set(row.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
-        : [];
-      if (!classes.includes("workplace") && !controllerIds.length)
-        throw badRequest("Assign a controller to this private space.");
-      return {
-        ...defaultVenueSpace(
-          classes.includes("workplace") ? "workplace" : (classes[0] ?? "other"),
-          boundText(row.description, 1000),
-        ),
-        id,
-        name,
-        purpose,
-        controllerIds,
-        kind: classes.includes("workplace") ? ("staff" as const) : ("restricted" as const),
-        seen: false,
-        preparation: { status: "pending" as const },
-      };
-    });
 }

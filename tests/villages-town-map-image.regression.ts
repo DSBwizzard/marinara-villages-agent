@@ -13,10 +13,12 @@ async function main() {
     buildTownMapPrompt,
     buildTownMapNegativePrompt,
     MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH,
-    DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
-    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     generateVillageTownMap,
   } = await import(pathToFileURL(join(services, "features/media/town-map-image.ts")).href);
+  const { DEFAULT_TOWN_MAP_LAYOUT_PROMPT } =
+    await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
+  const { DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } =
+    await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   const {
     TOWN_MAP_EXPECTED_HEIGHT,
     TOWN_MAP_EXPECTED_WIDTH,

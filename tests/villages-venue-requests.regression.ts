@@ -9,10 +9,10 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
-  addVillageVenue,
   applyVillageVenueDecision,
   queueVillageVenueRequest,
 } from "../packages/villages/src/server/features/world/village.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   readHousingRequests,

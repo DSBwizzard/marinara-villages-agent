@@ -55,7 +55,8 @@ import {
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";
-import { villageSettings } from "../packages/villages/src/server/features/world/village.js";
+
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { sceneryImageKey } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import type { VillageVenue, VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
