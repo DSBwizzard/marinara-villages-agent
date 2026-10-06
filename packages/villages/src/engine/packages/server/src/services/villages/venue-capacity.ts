@@ -1,5 +1,5 @@
 import { conflict } from "./errors.js";
-import { MAX_PLACES, MAX_VENUES, isHousePlace } from "./prompt-preset.js";
+import { isHousePlace, MAX_PLACES, MAX_VENUES } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "./types.js";
 
 export type VenueCapacityPolicy = "sixteen-total-v1" | "legacy-v1";

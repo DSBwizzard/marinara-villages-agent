@@ -1,7 +1,8 @@
-import { villagesDocuments, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
-import { mutateDocument } from "./village-store.js";
+import { mutateDocument } from "./document-store.js";
 import type { InterpretationBatch } from "./interpretation.js";
-import type { InterpretationCheck, InterpretationEvidence } from "./interpretation.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
+import type { InterpretationCheck, InterpretationEvidence } from "./system-interpretation.js";
+
 export const INTERPRETATION_HISTORY_LINES = 12;
 export const INTERPRETATION_HISTORY_CHARACTERS = 8_000;
 export const INTERPRETATION_PAYLOAD_CHARACTERS = 24_000;

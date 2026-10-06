@@ -1,8 +1,5 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { readZonePolicy } from "./venue-access.js";
 import { badRequest, conflict } from "./errors.js";
-import { defaultVenueSpace, venueResidentIds } from "./venue-model.js";
-import { venueZones, zoneClosed } from "./venue-zones.js";
 import type {
   VillageState,
   VillageVenue,
@@ -11,6 +8,9 @@ import type {
   VillageVenueZone,
   VillageZoneDraft,
 } from "./types.js";
+import { readZonePolicy } from "./venue-access.js";
+import { defaultVenueSpace, venueResidentIds } from "./venue-model.js";
+import { venueZones, zoneClosed } from "./venue-zones.js";
 
 export const VENUE_LAYOUTS = ["exterior", "common", "private", "both"] as const;
 export function readBaseVenueLayout(

@@ -1,6 +1,6 @@
-import { PNG } from "pngjs";
 import { badRequest } from "./errors.js";
-import { inspectVillageImage, type DecodedVillageImage } from "./image-files.js";
+import { type DecodedVillageImage, inspectVillageImage } from "./image-files.js";
+import { PNG } from "pngjs";
 
 /** Preserve the original separately; the reusable derivative is dark ink on transparency. */
 export async function prepareSignatureImage(decoded: DecodedVillageImage) {

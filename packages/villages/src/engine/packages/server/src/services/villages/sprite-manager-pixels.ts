@@ -1,4 +1,5 @@
 import { SPRITE_CANVAS, type SpriteFrame } from "./sprite-manager-model.js";
+
 export type SpritePixels = { width: number; height: number; data: Uint8ClampedArray };
 export function initialSpriteFrame(width: number, height: number): SpriteFrame {
   return { x: 0, y: 0, width, height, scale: 1, offsetX: 0, offsetY: 0 };

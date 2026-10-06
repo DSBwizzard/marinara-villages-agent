@@ -1,33 +1,35 @@
-// Active venue writing uses the per-village state below. The older preset
-// document and its helpers remain readable for legacy data and regressions,
-// but venue generation never reads them.
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { type DocumentSlot, mutateDocument } from "./document-store.js";
 import { badRequest } from "./errors.js";
-import {
-  DEFAULT_VILLAGER_REPLY_GUIDANCE,
-  VILLAGER_REPLY_GUIDANCE_MAX_LENGTH,
-  WRITING_GUIDANCE_MAX_LENGTH,
-  type VillageNarrationStyle,
-} from "./narration-style.js";
 import {
   coerceNarrationAnswers,
   NARRATION_BUILT_IN_LABEL,
   NARRATION_BUILT_IN_PRESET,
   NARRATION_MAX_TOKENS,
   NARRATION_REPLY_LENGTH_DEFAULT,
-  readNarrationPreset,
-  readNarrationPresetPicker,
-  resolveNarrationChoices,
   type NarrationChoiceAnswers,
   type NarrationPreset,
   type NarrationPresetOption,
   type NarrationReasoningEffort,
   type NarrationReplyLength,
   type NarrationVerbosity,
+  readNarrationPreset,
+  readNarrationPresetPicker,
+  resolveNarrationChoices,
 } from "./narration-preset.js";
-import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./package-runtime.js";
+import {
+  DEFAULT_VILLAGER_REPLY_GUIDANCE,
+  type VillageNarrationStyle,
+  VILLAGER_REPLY_GUIDANCE_MAX_LENGTH,
+  WRITING_GUIDANCE_MAX_LENGTH,
+} from "./narration-style.js";
 import { boundText, MAX_ENGINE_ID_LENGTH } from "./prompt-preset.js";
-import { mutateDocument, mutateVillageState, readVillageState, type DocumentSlot } from "./village-store.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+
+// Active venue writing uses the per-village state below. The older preset
+// document and its helpers remain readable for legacy data and regressions,
+// but venue generation never reads them.
 
 const NARRATION_DOC_ID = "villages-narration";
 const NARRATION_DOC_KIND = "settings";

@@ -1,4 +1,4 @@
-import type { VillageWish, VillageCompletedWish } from "./types.js";
+import type { VillageCompletedWish, VillageWish } from "./types.js";
 
 export type WishPolicy = "lasting" | "recurring" | "unknown";
 export type WishNeed = {

@@ -7,7 +7,8 @@ import { readVillagerCard } from "../packages/villages/src/engine/packages/serve
 import { proposeCompactFounding } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/engine/packages/server/src/services/villages/narrative-grounding.js";
 import { builtInNarrationTurn } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
 import {
   villageCurrentSetting,

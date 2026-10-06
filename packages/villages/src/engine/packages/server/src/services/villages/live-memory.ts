@@ -1,23 +1,24 @@
-import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
-import { WorkFailureError, metadataFailure } from "./work-failure.js";
-import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
-import { createHash } from "node:crypto";
 import { asRecord } from "./coerce.js";
-import type { VenueScene } from "./venue-session.js";
-import type { VillageChronicleEntry, VillageMemoryCategory } from "./types.js";
 import type { DomainProcessing } from "./exchange-processing.js";
-import { mutateVillageState, readVillageState, readVillageAuthority } from "./village-store.js";
-import { settleStandingAccess } from "./venue-access.js";
-import { mutateRelationships, applyRelationshipReview } from "./relationship-store.js";
+import { MAX_MEMORY_LENGTH } from "./memory-policy.js";
 import {
   parseRelationshipProposals,
-  substantiveContact,
   RELATIONSHIP_REVIEW_INSTRUCTION,
+  substantiveContact,
 } from "./relationship-review.js";
-import { captureRelationshipKnowledge } from "./relationships.js";
+import { applyRelationshipReview } from "./relationship-rules.js";
+import { mutateRelationships } from "./relationship-store.js";
 import type { RelationshipEvidenceLine } from "./relationship-types.js";
-import { deriveVillageMoment } from "./village-clock.js";
+import { captureRelationshipKnowledge } from "./relationships.js";
+import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
+import type { VillageChronicleEntry, VillageMemoryCategory } from "./types.js";
+import { settleStandingAccess } from "./venue-access.js";
+import type { VenueScene } from "./venue-session.js";
 import { EVENT_MEMORY_GUIDANCE } from "./venue-writing.js";
+import { deriveVillageMoment } from "./village-clock.js";
+import { mutateVillageState, readVillageAuthority, readVillageState } from "./village-store.js";
+import { metadataFailure, WorkFailureError } from "./work-failure.js";
+import { createHash } from "node:crypto";
 
 // Saved reviews have exact line IDs; a reply being written has only segment
 // indexes. Keep the same policy without importing the review's conflicting example.

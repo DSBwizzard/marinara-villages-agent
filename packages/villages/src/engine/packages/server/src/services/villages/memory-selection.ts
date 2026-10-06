@@ -1,4 +1,5 @@
 import type { VillageChronicleEntry, VillageRecollection } from "./types.js";
+
 const STOP = new Set([
   "the",
   "and",

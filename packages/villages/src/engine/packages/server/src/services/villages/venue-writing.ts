@@ -1,7 +1,7 @@
-import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { VillagerCard } from "./catalog.js";
-import { renderResidentFoundingContext } from "./resident-founding-context.js";
 import { badRequest } from "./errors.js";
+import { renderResidentFoundingContext } from "./resident-founding-context.js";
+import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(

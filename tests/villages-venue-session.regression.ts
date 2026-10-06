@@ -40,7 +40,8 @@ import {
   recordVillagerVenueImprovement,
   respondDueVenueMail,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-mailbox.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   readVillageWriting,
   saveVillageWriting,

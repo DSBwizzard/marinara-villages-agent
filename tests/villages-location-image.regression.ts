@@ -1314,7 +1314,9 @@ async function main() {
   // API; reaching past it would be a second copy of each.
   const boundary = JSON.parse(await readFile(join(repoRoot, "packages/villages/engine-boundary.json"), "utf8"));
   assert.deepEqual(boundary.privateEngineImports, [], "the pictures add no private Engine import");
-  for (const bound of sources.filter((file) => file.path.endsWith("engine-loopback.ts"))) {
+  const transports = sources.filter((file) => file.path.endsWith("engine-transport.ts"));
+  assert.equal(transports.length, 1, "there is one authoritative Engine transport");
+  for (const bound of transports) {
     assert.ok(bound.source.includes("127.0.0.1"), "and the Engine is reached over its own loopback address");
   }
 

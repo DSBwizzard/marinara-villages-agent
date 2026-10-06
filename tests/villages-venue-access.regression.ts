@@ -55,7 +55,8 @@ import {
   completeVillageResidence,
   updateVillageZone,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { contactPath } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-contact.js";
 import { villageSettings } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
 import { sceneryImageKey } from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";

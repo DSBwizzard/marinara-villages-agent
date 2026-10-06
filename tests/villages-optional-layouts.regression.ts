@@ -33,7 +33,8 @@ import {
   openFinishedProject,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.js";
 import { assertResidencePrivateDestination } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-layout.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import type { VillageVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
 
 function draft(layout: string, role = "residence", owner = "a") {

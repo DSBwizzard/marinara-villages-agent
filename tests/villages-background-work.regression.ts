@@ -1,9 +1,7 @@
 import { proposeRemap } from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
 import assert from "node:assert/strict";
-import {
-  configureVillagesRuntime,
-  completeWithRoom,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { completeWithRoom } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   queueBackgroundJob,
   registerBackgroundHandler,

@@ -1,17 +1,18 @@
+import { asRecord, asString, asStringArray, asTrimmedString, condense } from "./coerce.js";
+import { villagesResources } from "./runtime-host.js";
+import type { VillageCatalogEntry, VillagePersona, VillageVillager, VillageVillagerCardSnapshot } from "./types.js";
+import type {
+  CapabilityCharacterRecord,
+  CapabilityPersonaRecord,
+  CapabilityResourceHost,
+} from "@marinara-engine/shared";
+
 // Villages — reading library cards.
 //
 // The card is the authoritative answer to "who is this person": it supplies the
 // name, the voice and the history. The village only decides where they live and
 // who they talk to. Nothing here mutates a card, and nothing here caches one —
 // every read goes back to the library so edits show up on the next render.
-import type {
-  CapabilityCharacterRecord,
-  CapabilityPersonaRecord,
-  CapabilityResourceHost,
-} from "@marinara-engine/shared";
-import { asRecord, asString, asStringArray, asTrimmedString, condense } from "./coerce.js";
-import { villagesResources } from "./package-runtime.js";
-import type { VillageCatalogEntry, VillagePersona, VillageVillager, VillageVillagerCardSnapshot } from "./types.js";
 
 /** Everything the village needs off one card, flattened and defaulted. */
 export type VillagerCard = {

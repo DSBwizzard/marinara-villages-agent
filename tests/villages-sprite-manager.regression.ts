@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   coerceVillageState,
   readVillageState,

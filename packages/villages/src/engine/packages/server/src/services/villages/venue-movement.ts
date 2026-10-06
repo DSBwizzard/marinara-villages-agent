@@ -1,7 +1,7 @@
 import { badRequest } from "./errors.js";
-import { venueZones } from "./venue-zones.js";
-import type { VillageVenue } from "./types.js";
 import type { VillageNarrationStyle } from "./narration-style.js";
+import type { VillageVenue } from "./types.js";
+import { venueZones } from "./venue-zones.js";
 
 export type MovementIntent = { zoneId: string; quote: string };
 const clean = (text: string) =>

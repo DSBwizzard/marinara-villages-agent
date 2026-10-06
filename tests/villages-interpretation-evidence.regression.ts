@@ -81,7 +81,7 @@ async function main() {
   );
   console.log("Essential overflow makes zero model requests");
   const { configureVillagesRuntime } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js");
+    await import("../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js");
   const { contextualChecks, saveInterpretationContext } =
     await import("../packages/villages/src/engine/packages/server/src/services/villages/interpretation-evidence.js");
   const records = new Map<string, any>();

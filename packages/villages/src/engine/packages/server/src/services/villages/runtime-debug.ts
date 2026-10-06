@@ -1,12 +1,8 @@
-import {
-  VILLAGES_PACKAGE_ID,
-  villagesDocuments,
-  villagesDebugAgentsEnabled,
-  villagesLogger,
-} from "./package-runtime.js";
-import { mutateDocument } from "./village-store.js";
+import { mutateDocument } from "./document-store.js";
 import { badRequest } from "./errors.js";
-import { venueDebugContext } from "./venue-coordinator.js";
+import { venueDebugContext } from "./operation-context.js";
+import { VILLAGES_PACKAGE_ID, villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from "./runtime-host.js";
+
 export type RuntimeDebugView = {
   verbose: boolean;
   effective: boolean;

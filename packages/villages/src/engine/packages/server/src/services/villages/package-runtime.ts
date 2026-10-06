@@ -1,105 +1,54 @@
-import { WorkFailureError } from "./work-failure.js";
-import { pipelineStorage, measureModel } from "./pipeline-metrics.js";
-import { createHash } from "node:crypto";
-import { trackUsage, withUsagePurpose, inferredPurpose } from "./usage-meter.js";
+import { backgroundCalls } from "./background-context.js";
 import { safeFailureMessage } from "./errors.js";
-import { resetRuntimeDebug, readRuntimeDebug, runtimeDebug } from "./runtime-debug.js";
+import { measureModel } from "./pipeline-metrics.js";
+import { readRuntimeDebug, runtimeDebug } from "./runtime-debug.js";
+import { requireHost, villagesLogger } from "./runtime-host.js";
+import { inferredPurpose, trackUsage, withUsagePurpose } from "./usage-ledger.js";
+import { coordinatedCompletion } from "./venue-coordinator.js";
+import { WorkFailureError } from "./work-failure.js";
+import type {
+  CapabilityLanguageModelCompletion,
+  CapabilityLanguageModelHost,
+  CapabilityLanguageModelMessage,
+  CapabilityResolvedLanguageModel,
+} from "@marinara-engine/shared";
+import { createHash } from "node:crypto";
+
+export {
+  villagesRuntimeEpoch,
+  villagesDocuments,
+  villagesResources,
+  villagesPersistence,
+  villagesLogger,
+  villagesDebugAgentsEnabled,
+  VILLAGES_PACKAGE_ID,
+} from "./runtime-host.js";
+
 // Villages — the handle on the Engine services this package is allowed to use.
 //
 // `activate` receives the runtime host on its context, hands it here, and the
 // routes read it back through these accessors. Holding it in a module slot
 // instead of threading it through every route keeps the route file readable and
 // matches how the other first-party packages do it.
-import { coordinatedCompletion } from "./venue-coordinator.js";
-import { backgroundCalls } from "./background-context.js";
-import type {
-  CapabilityDocumentStore,
-  CapabilityLanguageModelCompletion,
-  CapabilityLanguageModelHost,
-  CapabilityLanguageModelMessage,
-  CapabilityPersistenceHost,
-  CapabilityResolvedLanguageModel,
-  CapabilityResourceHost,
-  CapabilityRuntimeHost,
-  CapabilityRuntimeLogger,
-} from "@marinara-engine/shared";
 
 /** Also the `packageId` every village document is written under. */
-export const VILLAGES_PACKAGE_ID = "villages";
 
-let host: CapabilityRuntimeHost | null = null;
-let registration = 0;
 /** Fences delayed package effects across deactivation or replacement of the runtime host. */
-export function villagesRuntimeEpoch(): number | null {
-  return host ? registration : null;
-}
-const measuredDocuments = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 
 /** Called from `activate`; the returned function releases the slot on deactivate. */
-export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => void {
-  const token = ++registration;
-  host = next;
-  resetRuntimeDebug();
-  return () => {
-    if (registration === token) host = null;
-  };
-}
-
-function requireHost(): CapabilityRuntimeHost {
-  if (!host) throw new Error("The Villages package runtime is not configured.");
-  return host;
-}
 
 /**
  * The Engine's package-owned document store. It is the only persistence surface
  * the runtime host exposes without a chat permission check, which is exactly
  * what a village needs: its records are the package's own, not a chat's.
  */
-export function villagesDocuments(): CapabilityDocumentStore {
-  const documents = requireHost().persistence?.documents;
-  if (!documents) {
-    throw new Error(
-      "This Engine version did not provide the package document store, so Villages cannot remember anything.",
-    );
-  }
-  let measured = measuredDocuments.get(documents);
-  if (!measured) {
-    measured = new Proxy(documents, {
-      get(target, key) {
-        const value = Reflect.get(target, key);
-        if (typeof value !== "function") return value;
-        return (...args: unknown[]) => {
-          if (key === "getById" || key === "list") pipelineStorage("reads");
-          if (key === "create" || key === "update") pipelineStorage("writes");
-          return value.apply(target, args);
-        };
-      },
-    });
-    measuredDocuments.set(documents, measured);
-  }
-  return measured;
-}
 
 /** Read-only access to the character library — the pool the picker draws from. */
-export function villagesResources(): CapabilityResourceHost {
-  const resources = requireHost().resources;
-  if (!resources) {
-    throw new Error("This Engine version did not provide the character library to packages.");
-  }
-  return resources;
-}
 
 /**
  * The Engine's chat persistence session, used when creating and reading
  * a Villages spin-off chat.
  */
-export function villagesPersistence(): CapabilityPersistenceHost {
-  const persistence = requireHost().persistence;
-  if (!persistence) {
-    throw new Error("This Engine version did not provide chat persistence to packages.");
-  }
-  return persistence;
-}
 
 export function villagesLanguageModels(): CapabilityLanguageModelHost {
   const languageModels = requireHost().languageModels;
@@ -136,60 +85,6 @@ export function villagesLanguageModels(): CapabilityLanguageModelHost {
  * so a logger that throws would replace a readable error with an opaque
  * "Internal Server Error" whenever a request lands after teardown.
  */
-const fallbackLogger: CapabilityRuntimeLogger = {
-  debug: (message, ...args) => console.debug(message, ...args),
-  info: (message, ...args) => console.info(message, ...args),
-  warn: (message, ...args) => console.warn(message, ...args),
-  error: (error, message, ...args) => console.error(message, ...args, error),
-  debugOverride: (enabled, message, ...args) => {
-    if (enabled) console.debug(message, ...args);
-  },
-};
-
-export function villagesLogger(): CapabilityRuntimeLogger {
-  const target = host?.logger ?? fallbackLogger;
-  return {
-    debug: (...args) => {
-      try {
-        target.debug(...args);
-      } catch {
-        /* logging is best effort */
-      }
-    },
-    info: (...args) => {
-      try {
-        target.info(...args);
-      } catch {
-        /* logging is best effort */
-      }
-    },
-    warn: (...args) => {
-      try {
-        target.warn(...args);
-      } catch {
-        /* logging is best effort */
-      }
-    },
-    error: (...args) => {
-      try {
-        target.error(...args);
-      } catch {
-        /* logging is best effort */
-      }
-    },
-    debugOverride: (...args) => {
-      try {
-        target.debugOverride(...args);
-      } catch {
-        /* logging is best effort */
-      }
-    },
-  };
-}
-
-export function villagesDebugAgentsEnabled(): boolean {
-  return requireHost().isDebugAgentsEnabled() === true;
-}
 
 /**
  * The floor and the ceiling on a second attempt at the same question.

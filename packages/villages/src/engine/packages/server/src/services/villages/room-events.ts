@@ -1,5 +1,5 @@
 import { asRecord } from "./coerce.js";
-import type { InterpretationCheck } from "./interpretation.js";
+import type { InterpretationCheck } from "./system-interpretation.js";
 import type { VenueScene } from "./venue-session.js";
 
 const access =

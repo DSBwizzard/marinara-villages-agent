@@ -1,19 +1,20 @@
-import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { readSceneryStyle } from "./scenery-context.js";
-// Villages — generation rules for the founding map.
-//
-// Navigation requirements always apply; authored layout supplements them.
-
 import { badRequest } from "./errors.js";
 import { generateVillageImage, inspectVillageImage } from "./image-generation.js";
-import { readSelectedLorebookIds, readVillageVisualLoreEntries } from "./lorebooks.js";
-import { coerceScenarioImprint } from "./scenario-imprint.js";
+import { readSelectedLorebookIds } from "./lore-policy.js";
+import { readVillageVisualLoreEntries } from "./lorebooks.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import {
   MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   TOWN_MAP_EXPECTED_HEIGHT,
   TOWN_MAP_EXPECTED_WIDTH,
 } from "./prompt-preset.js";
+import { coerceScenarioImprint } from "./scenario-rules.js";
+import { readSceneryStyle } from "./scenery-context.js";
+
+// Villages — generation rules for the founding map.
+//
+// Navigation requirements always apply; authored layout supplements them.
 
 // Individual inputs also share a final 4,000-character prompt allowance.
 export const MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH = 1_500;

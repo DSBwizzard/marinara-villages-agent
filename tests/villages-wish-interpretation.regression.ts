@@ -1,6 +1,7 @@
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   interpretWishClaim,
   wishInterpretationCheck,

@@ -1,13 +1,18 @@
-import { resolveVenueZone, canOccupyZone, zoneClosed } from "./venue-zones.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { VillagesRequestError, badRequest, conflict, notFound } from "./errors.js";
+import { badRequest, conflict, notFound, VillagesRequestError } from "./errors.js";
+import { type ProgressEvidence, rejectProgressEvidence } from "./progress-engine.js";
 import { validateProjectSpeech } from "./project-interpretation.js";
 import { progressProject, projectProgressPhase, recordProjectProgress } from "./project-progress.js";
-import { rejectProgressEvidence, type ProgressEvidence } from "./progress-engine.js";
+import { sceneQueries } from "./scene-queries.js";
 import type { VillageProject, VillageState } from "./types.js";
-import { readProjectTurnEvidence, activeVenueSession } from "./venue-session.js";
 import { sceneAccessContext } from "./venue-contact.js";
+import { canOccupyZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
+
+const readProjectTurnEvidence: typeof import("./venue-session.js").readProjectTurnEvidence = (...args) =>
+  sceneQueries().readProjectTurnEvidence(...args);
+const activeVenueSession: typeof import("./venue-session.js").activeVenueSession = () =>
+  sceneQueries().activeVenueSession();
 
 const negative = /\b(?:not|never|don't|can't|won't|refuse|maybe|perhaps|if)\b/iu;
 const offerVerb =
@@ -643,7 +648,7 @@ export async function reallocateHeldProjectSupply(projectId: string, value: unkn
 export async function listProjectEvidenceCandidates(projectId: string) {
   const state = await readVillageState();
   projectFor(state, projectId);
-  const { listVenueVisits, activeVenueSession } = await import("./venue-session.js");
+  const { listVenueVisits, activeVenueSession } = sceneQueries();
   const active = await activeVenueSession();
   const visits = [...(active ? [active] : []), ...(await listVenueVisits()).slice(0, 20)];
   return visits

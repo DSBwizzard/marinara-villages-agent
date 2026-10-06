@@ -1,6 +1,17 @@
-import { sceneryImageKey, sceneryPrompt, sceneryCharacterContext } from "./scenery-context.js";
-import { legacyZoneId, venueZones } from "./venue-zones.js";
-import { venueInZone, resolveVenueZone } from "./venue-zones.js";
+import { conflict, notFound } from "./errors.js";
+import { uploadVillageGalleryImage } from "./global-gallery.js";
+import { decodeVillageImageDataUrl, generateVillageImage, imagePromptId } from "./image-generation.js";
+import { readVillageVisualLore } from "./lorebooks.js";
+import { MAX_VENUE_IMAGE_BYTES } from "./prompt-preset.js";
+import { villagesLogger } from "./runtime-host.js";
+import { sceneryCharacterContext, sceneryImageKey, sceneryPrompt } from "./scenery-context.js";
+import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "./types.js";
+import { venueClasses, venueInArea, venueInSpace } from "./venue-model.js";
+import { legacyZoneId, resolveVenueZone, venueInZone, venueZones } from "./venue-zones.js";
+import { deriveVillageMoment, describeMoment, type VillageMoment } from "./village-clock.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { assertVenueImageAccess, setVillageVenueImage } from "./village.js";
+
 // Villages — how a place gets its picture.
 //
 // Two ways in, and the difference between them is the whole point of this file:
@@ -22,20 +33,6 @@ import { venueInZone, resolveVenueZone } from "./venue-zones.js";
 //
 // Manual draw errors reach the player. The automatic private-room draw catches
 // and logs failures, leaving the player a manual Draw image action.
-
-import { notFound, conflict } from "./errors.js";
-import { uploadVillageGalleryImage } from "./global-gallery.js";
-import { decodeVillageImageDataUrl, generateVillageImage, imagePromptId } from "./image-generation.js";
-import { readVillageVisualLore } from "./lorebooks.js";
-import { MAX_VENUE_IMAGE_BYTES } from "./prompt-preset.js";
-import { describeMoment, deriveVillageMoment } from "./village-clock.js";
-import { readVillageState } from "./village-store.js";
-import { mutateVillageState } from "./village-store.js";
-import { villagesLogger } from "./package-runtime.js";
-import { assertVenueImageAccess, setVillageVenueImage } from "./village.js";
-import { venueInArea, venueInSpace, venueClasses } from "./venue-model.js";
-import type { VillageMoment } from "./village-clock.js";
-import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "./types.js";
 
 /**
  * The shape of a place's picture.

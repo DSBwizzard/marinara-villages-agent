@@ -1,5 +1,23 @@
-import { wishSize, sizedWishLifetime } from "./wish-definition.js";
+import { asInstant, asRecord, asTrimmedString } from "./coerce.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { agendaPromptDay } from "./owned-routine.js";
+import type {
+  TownMapFit,
+  VillageAgenda,
+  VillageChatMode,
+  VillageChronicleEntry,
+  VillageDayBlock,
+  VillageHappening,
+  VillageNotice,
+  VillagePlaceView,
+  VillageTownMapView,
+  VillageVenue,
+  VillageWish,
+} from "./types.js";
+import { hasVenueClass } from "./venue-model.js";
+import { describeVillageAge, hashString, villageDateLabel, type VillageMoment } from "./village-clock.js";
+import { sizedWishLifetime, wishSize } from "./wish-definition.js";
+
 // Villages — the village's own half of a villager's prompt.
 //
 // The village answers "what does this village know, and what has been happening
@@ -28,23 +46,6 @@ import { agendaPromptDay } from "./owned-routine.js";
 // (a card field containing a literal `{{char}}` stays literal), and leaving an
 // unknown macro alone means a typo is visible in the prompt and in the debug
 // dump instead of silently deleting a line.
-import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { asInstant, asRecord, asTrimmedString } from "./coerce.js";
-import { hasVenueClass } from "./venue-model.js";
-import type {
-  TownMapFit,
-  VillageAgenda,
-  VillageChatMode,
-  VillageChronicleEntry,
-  VillageDayBlock,
-  VillageHappening,
-  VillageNotice,
-  VillagePlaceView,
-  VillageTownMapView,
-  VillageVenue,
-  VillageWish,
-} from "./types.js";
-import { describeVillageAge, hashString, type VillageMoment, villageDateLabel } from "./village-clock.js";
 
 /**
  * Longest the village's own prompt box may be, so one paste cannot balloon every

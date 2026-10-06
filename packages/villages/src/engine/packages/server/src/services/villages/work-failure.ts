@@ -1,5 +1,5 @@
-import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
 
 /** Technical failures are distinct from a valid negative or uncertain interpretation. */
 export type WorkFailure = {

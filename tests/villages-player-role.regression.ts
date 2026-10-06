@@ -20,7 +20,8 @@ import {
   renderSceneContextBlock,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/chat.js";
 import { builtInNarrationTurn } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
 import {
   villageCurrentSetting,

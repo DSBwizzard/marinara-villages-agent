@@ -1,6 +1,6 @@
 import { ingestProgressEvent, type ProgressEvidence, type ProgressRegistry } from "./progress-engine.js";
-import type { VillageState } from "./types.js";
 import { ingestProjectProgressEvent } from "./project-progress.js";
+import type { VillageState } from "./types.js";
 
 /** Dispatch only durable, typed events. A transcript's prose is context, never a completion verdict. */
 export function ingestSavedProgressEvent(state: VillageState, evidence: ProgressEvidence): void {

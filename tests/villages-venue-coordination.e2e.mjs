@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts";
 import {
   coordinateVenue,
   coordinatedCompletion,

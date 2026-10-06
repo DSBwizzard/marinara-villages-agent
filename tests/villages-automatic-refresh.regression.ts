@@ -20,7 +20,7 @@ async function main() {
   assert.doesNotMatch(routesSource, /"\/tick"/u);
   assert.match(clientSource, /request<VillageSnapshot>\("\/reconcile"/u);
   const { configureVillagesRuntime } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts")
+    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts")
   );
   const {
     startBackgroundWork,

@@ -1,119 +1,46 @@
 import {
-  responseDiagnostics,
-  sceneMissingFields,
-  coerceResponseDiagnostics,
-  type ResponseDiagnostics,
-} from "./response-diagnostics.js";
-import { metadataFailure, completionFailure as typedCompletionFailure, type WorkFailure } from "./work-failure.js";
-import { knownWish, setWishJournalStatus, wishCheckKnowledge, wishConditionRevision } from "./wish-journal.js";
-import { measurePipeline } from "./pipeline-metrics.js";
-import { readPlayerMovement, movementTransition, type MovementIntent } from "./venue-movement.js";
-import { saveInterpretationContext } from "./interpretation-evidence.js";
-import { accessManagementPrompt } from "./access-speech.js";
-import { buildVenueResponseContract } from "./venue-response-contract.js";
-import { runtimeDebug } from "./runtime-debug.js";
-import {
-  LIVE_MEMORY_INSTRUCTION,
-  bindLiveProposals,
-  mergeLiveReplyProposals,
-  memoryVersion,
-  processLiveMemories,
-  createLiveEvidenceContext,
-  processLiveRelationships,
-  liveEvidence,
-  type LiveExchangeProposals,
-} from "./live-memory.js";
-import {
-  bindWishProposals,
-  processWishExchange,
-  processProjectWishOutbox,
-  WISH_PROPOSAL_INSTRUCTION,
-  type WishProposal,
-} from "./wish-progress.js";
-import {
-  createExchangeProcessing,
-  coerceExchangeProcessing,
-  dispatchExchange,
-  unfinishedExchange,
-  type ExchangeProcessing,
-} from "./exchange-processing.js";
-import { relationshipZoneController } from "./relationship-store.js";
-import {
-  evaluateZoneAccess,
-  claimVisitPermission,
-  applyAccessCommand,
-  managesAccess,
-  readAccessCommand,
-} from "./venue-access.js";
-import { sceneAccessContext } from "./venue-contact.js";
-import { relationshipWritingPrompt, relationshipChangeNotices, filterRelationshipNotices } from "./relationships.js";
-
-import { renderPlayerRoleWritingContext } from "./player-role.js";
-import { venueFoundingBackground } from "./venue-scene-context.js";
-import { fulfillResidentWish } from "./wish-lifecycle.js";
-import { zoneControllerIds } from "./venue-zones.js";
-import { interpretRoomReply, dismissalDestination } from "./room-interpretation.js";
-import {
-  scheduleSystemComparisons,
-  writeInterpretationDiagnostics,
-  stopInterpretationComparisons,
-  removeInterpretationDiagnostics,
-} from "./interpretation-diagnostics.js";
-import type { InterpretationBatch } from "./interpretation.js";
-import {
-  coordinateVenue,
-  cancelVenueOperation,
-  hasVenueOperation,
-  venueCheckpoint,
-  venueSavedCheckpoint,
-  outsideVenueOperation,
-  venueOperationSignal,
-  venueOperationId,
-  venueRequestMetrics,
-  venueOperationSnapshot,
-  venueOperationInput,
-  assertVenueOwnership,
-  sceneRevision,
-  venueRefusal,
-  recoverVenueOperations,
-  rejectVenueCompletion,
-  type VenueOperation,
-} from "./venue-coordinator.js";
-import {
-  venueZones,
-  resolveVenueZone,
-  legacyZoneId,
-  zoneArea,
-  canOccupyZone,
-  canInviteToZone,
-  chooseAgendaZone,
-  zoneClosed,
-  venueInZone,
-} from "./venue-zones.js";
-import { createHash, randomUUID } from "node:crypto";
-import {
   initialStaging,
   readStagingCues,
   replayStaging,
-  stagingTranscriptEvents,
-  stagingLayout,
   type StagingCue,
+  stagingLayout,
+  stagingTranscriptEvents,
 } from "../../../../shared/src/villages/scene-staging.js";
-import { describeSpriteExpressions, validateSpriteExpression } from "./sprite-expressions.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { accessManagementPrompt } from "./access-speech.js";
 import { agendaAt } from "./agenda-plan.js";
 import { readEffectiveVillagerCard } from "./catalog.js";
-import {
-  buildVenueSceneBlocks,
-  venueCardProfile,
-  fitVenueWritingMessages,
-  type VenueWritingBlock,
-} from "./venue-writing.js";
-export { venueCardProfile } from "./venue-writing.js";
 import { memoryForVillager } from "./chat.js";
 import { asRecord, asString, asTrimmedString } from "./coerce.js";
 import { villagesConnectionIdFor } from "./connections.js";
-import { VillagesRequestError, badGateway, badRequest, conflict, notFound, safeFailureMessage } from "./errors.js";
+import { type DocumentSlot, mutateDocument } from "./document-store.js";
+import { badGateway, badRequest, conflict, notFound, safeFailureMessage, VillagesRequestError } from "./errors.js";
+import {
+  coerceExchangeProcessing,
+  createExchangeProcessing,
+  dispatchExchange,
+  type ExchangeProcessing,
+  unfinishedExchange,
+} from "./exchange-processing.js";
+import {
+  removeInterpretationDiagnostics,
+  scheduleSystemComparisons,
+  stopInterpretationComparisons,
+  writeInterpretationDiagnostics,
+} from "./interpretation-diagnostics.js";
+import { saveInterpretationContext } from "./interpretation-evidence.js";
+import type { InterpretationBatch } from "./interpretation.js";
+import { extractJsonObject } from "./json-reply.js";
+import {
+  bindLiveProposals,
+  createLiveEvidenceContext,
+  LIVE_MEMORY_INSTRUCTION,
+  liveEvidence,
+  type LiveExchangeProposals,
+  memoryVersion,
+  mergeLiveReplyProposals,
+  processLiveMemories,
+  processLiveRelationships,
+} from "./live-memory.js";
 import { readVillageLore } from "./lorebooks.js";
 import { selectPromptMemories, selectPromptRecollections } from "./memory-selection.js";
 import {
@@ -122,88 +49,149 @@ import {
   venueWritingDirection,
 } from "./narration-style.js";
 import {
-  VILLAGES_PACKAGE_ID,
-  completeWithRoom,
-  villagesDocuments,
-  villagesLanguageModels,
-  villagesLogger,
-  villagesDebugAgentsEnabled,
-} from "./package-runtime.js";
-import { MAX_CHRONICLE_LENGTH, prependHappenings, villageCurrentSetting } from "./prompt-preset.js";
-import type { VillageState, VillageVenue } from "./types.js";
-import { deriveVillageMoment } from "./village-clock.js";
+  assertVenueOwnership,
+  outsideVenueOperation,
+  sceneRevision,
+  type VenueOperation,
+  venueOperationId,
+  venueOperationInput,
+  venueOperationSignal,
+  venueOperationSnapshot,
+  venueRefusal,
+  venueRequestMetrics,
+  venueSavedCheckpoint,
+} from "./operation-context.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { measurePipeline } from "./pipeline-metrics.js";
+import { renderPlayerRoleWritingContext } from "./player-role.js";
+import { ingestSavedProgressEvent } from "./progress-runtime.js";
 import {
-  type DocumentSlot,
-  mutateDocument,
-  mutateVillageState,
-  readVillageState,
-  readVillageSnapshot,
-} from "./village-store.js";
-import {
-  decideVillageResidence,
-  applyResidenceEditApproval,
-  proposeVillageResidence,
-  readPlayerIdentity,
-  rollActiveAgendas,
-  queueVillageVenueRequest,
-  villagerPlaceView,
-} from "./village.js";
-import {
-  interpretWishClaim,
-  wishFingerprint,
-  matchingWishReceipts,
-  wishReceiptRecords,
-  coerceWishApplicationProof,
-  type WishCriteria,
-} from "./wish-interpretation.js";
-import {
+  applyProjectPickup,
+  finalizeProjectDiagnostics,
   interpretProjectDraft,
   projectProposals,
-  finalizeProjectDiagnostics,
-  applyProjectPickup,
 } from "./project-checks.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import { extractSceneReply } from "./scene-reply-json.js";
-import type { VenueActionResult } from "./venue-actions.js";
-import {
-  applyVenueSceneChange,
-  readVenueSceneChange,
-  physicalVenueEvents,
-  type VenueSceneChange,
-} from "./venue-scene-state.js";
-import { venueReplyIntegrity } from "./venue-turn-integrity.js";
-import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
-import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
-
-import { ingestSavedProgressEvent } from "./progress-runtime.js";
 import { processProjectSpeechTurn } from "./project-evidence.js";
 import {
   bindProjectSpeech,
   coerceProjectSpeech,
+  type ProjectSpeechContext,
   projectSpeechContexts,
   projectSpeechPrompt,
-  type ProjectSpeechContext,
   type ProjectSpeechProposal,
 } from "./project-interpretation.js";
-import { readVenueRequestCore } from "./venue-requests.js";
-import type { VillageVenueClass } from "./types.js";
+import { MAX_CHRONICLE_LENGTH, prependHappenings, villageCurrentSetting } from "./prompt-preset.js";
+import { relationshipZoneController } from "./relationship-rules.js";
+import { filterRelationshipNotices, relationshipChangeNotices, relationshipWritingPrompt } from "./relationships.js";
 import {
-  contactNeighbors,
-  contactReach,
-  contactDevice,
-  contactSpeech,
-  readContactDelivery,
-  contactPosition,
-  contactPath,
+  coerceResponseDiagnostics,
+  responseDiagnostics,
+  type ResponseDiagnostics,
+  sceneMissingFields,
+} from "./response-diagnostics.js";
+import { dismissalDestination, interpretRoomReply } from "./room-interpretation.js";
+import { runtimeDebug } from "./runtime-debug.js";
+import { VILLAGES_PACKAGE_ID, villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from "./runtime-host.js";
+import { extractSceneReply } from "./scene-reply-json.js";
+import { describeSpriteExpressions, validateSpriteExpression } from "./sprite-expressions.js";
+import type { VillageState, VillageVenue, VillageVenueClass } from "./types.js";
+import {
+  applyAccessCommand,
+  claimVisitPermission,
+  evaluateZoneAccess,
+  managesAccess,
+  readAccessCommand,
+} from "./venue-access.js";
+import type { VenueActionResult } from "./venue-actions.js";
+import {
   contactCanEnter,
+  contactDevice,
+  type ContactIntent,
+  type ContactMove,
+  contactNeighbors,
+  contactPath,
+  contactPosition,
+  contactReach,
+  type ContactRelay,
+  contactSpeech,
+  type DoorwayContact,
+  readContactDelivery,
   readContactIntent,
   readContactMoves,
   readContactRelay,
-  type ContactIntent,
-  type DoorwayContact,
-  type ContactMove,
-  type ContactRelay,
+  sceneAccessContext,
 } from "./venue-contact.js";
+import {
+  cancelVenueOperation,
+  coordinateVenue,
+  hasVenueOperation,
+  recoverVenueOperations,
+  rejectVenueCompletion,
+  venueCheckpoint,
+} from "./venue-coordinator.js";
+import { recordVillagerVenueImprovement } from "./venue-mailbox.js";
+import { venueClasses, venueInArea, venueResidentIds } from "./venue-model.js";
+import { type MovementIntent, movementTransition, readPlayerMovement } from "./venue-movement.js";
+import { readVenueRequestCore } from "./venue-requests.js";
+import { buildVenueResponseContract } from "./venue-response-contract.js";
+import { venueFoundingBackground } from "./venue-scene-context.js";
+import {
+  applyVenueSceneChange,
+  physicalVenueEvents,
+  readVenueSceneChange,
+  type VenueSceneChange,
+} from "./venue-scene-state.js";
+import { venueReplyIntegrity } from "./venue-turn-integrity.js";
+import {
+  buildVenueSceneBlocks,
+  fitVenueWritingMessages,
+  venueCardProfile,
+  type VenueWritingBlock,
+} from "./venue-writing.js";
+import {
+  canInviteToZone,
+  canOccupyZone,
+  chooseAgendaZone,
+  legacyZoneId,
+  resolveVenueZone,
+  venueInZone,
+  venueZones,
+  zoneArea,
+  zoneClosed,
+  zoneControllerIds,
+} from "./venue-zones.js";
+import { deriveVillageMoment } from "./village-clock.js";
+import { readPlayerIdentity, villagerPlaceView } from "./village-projections.js";
+import { mutateVillageState, readVillageSnapshot, readVillageState } from "./village-store.js";
+import {
+  applyResidenceEditApproval,
+  decideVillageResidence,
+  proposeVillageResidence,
+  queueVillageVenueRequest,
+  rollActiveAgendas,
+} from "./village.js";
+import {
+  coerceWishApplicationProof,
+  interpretWishClaim,
+  matchingWishReceipts,
+  type WishCriteria,
+  wishFingerprint,
+  wishReceiptRecords,
+} from "./wish-interpretation.js";
+import { knownWish, setWishJournalStatus, wishCheckKnowledge, wishConditionRevision } from "./wish-journal.js";
+import { fulfillResidentWish } from "./wish-lifecycle.js";
+import {
+  bindWishProposals,
+  processProjectWishOutbox,
+  processWishExchange,
+  WISH_PROPOSAL_INSTRUCTION,
+  type WishProposal,
+} from "./wish-progress.js";
+import { metadataFailure, completionFailure as typedCompletionFailure, type WorkFailure } from "./work-failure.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { createHash, randomUUID } from "node:crypto";
+
+export { venueCardProfile } from "./venue-writing.js";
 
 /** Older admitted requests retain their saved interaction contract during recovery. */
 function explicitSceneActions(): boolean {

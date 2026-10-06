@@ -1,18 +1,19 @@
-import { responseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
-import { WorkFailureError, type WorkFailure } from "./work-failure.js";
-import { measurePipeline } from "./pipeline-metrics.js";
-import { withUsagePurpose } from "./usage-meter.js";
-import { agendaRequestCount, remainingRequests } from "./generation-budgets.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { asRecord } from "./coerce.js";
-import { runtimeDebug } from "./runtime-debug.js";
-// Package-owned work ledger. Only this module dispatches coordinated background requests.
-import { createHash, randomUUID } from "node:crypto";
 import { backgroundCalls, type BackgroundCompletion } from "./background-context.js";
-import { villagesDocuments, villagesLogger, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
-import { mutateVillageState, readVillageState } from "./village-store.js";
-import { conflict, badRequest } from "./errors.js";
+import { asRecord } from "./coerce.js";
+import { badRequest, conflict } from "./errors.js";
+import { agendaRequestCount, remainingRequests } from "./generation-budgets.js";
+import { measurePipeline } from "./pipeline-metrics.js";
+import { responseDiagnostics, type ResponseDiagnostics } from "./response-diagnostics.js";
+import { runtimeDebug } from "./runtime-debug.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments, villagesLogger } from "./runtime-host.js";
 import type { VillageState } from "./types.js";
+import { withUsagePurpose } from "./usage-ledger.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { type WorkFailure, WorkFailureError } from "./work-failure.js";
+import { createHash, randomUUID } from "node:crypto";
+
+// Package-owned work ledger. Only this module dispatches coordinated background requests.
 
 export type BackgroundKind = "story" | "agenda" | "translation" | "wish" | "wish-check" | "mail" | "adaptation";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";

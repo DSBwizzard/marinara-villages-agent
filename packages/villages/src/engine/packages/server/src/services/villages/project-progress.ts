@@ -3,12 +3,12 @@ import {
   advanceProgress,
   createProgressTask,
   ingestProgressEvent,
-  reviseProgress,
-  submitProgressEvidence,
   type ProgressDefinition,
   type ProgressEvidence,
   type ProgressRegistry,
   type ProgressTask,
+  reviseProgress,
+  submitProgressEvidence,
 } from "./progress-engine.js";
 import type { VillageProject, VillageState } from "./types.js";
 

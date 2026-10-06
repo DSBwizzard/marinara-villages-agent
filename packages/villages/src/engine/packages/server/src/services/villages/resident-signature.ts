@@ -1,17 +1,17 @@
-import { createHash, randomUUID } from "node:crypto";
 import { residentSignature, type ResidentSignatureView } from "../../../../shared/src/villages/resident-signature.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { conflict, badRequest, notFound, safeFailureMessage, statusCodeOf } from "./errors.js";
-import { readVillageAuthority, mutateVillageState } from "./village-store.js";
-import { villagesDocuments, villagesRuntimeEpoch, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
+import { badRequest, conflict, notFound, safeFailureMessage, statusCodeOf } from "./errors.js";
+import { uploadVillageGalleryImage } from "./global-gallery.js";
 import {
   decodeVillageImageDataUrl,
   generateVillageImage,
   resolveVillageImageConnectionId,
 } from "./image-generation.js";
-import { uploadVillageGalleryImage } from "./global-gallery.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments, villagesRuntimeEpoch } from "./runtime-host.js";
 import { prepareSignatureImage } from "./signature-image.js";
 import type { VillageVenueImage, VillageVillager } from "./types.js";
+import { mutateVillageState, readVillageAuthority } from "./village-store.js";
+import { createHash, randomUUID } from "node:crypto";
 
 const owner = randomUUID();
 const tasks = new Map<string, Promise<ResidentSignatureView>>();

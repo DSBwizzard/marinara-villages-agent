@@ -1,9 +1,8 @@
+import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { adoptedProfile } from "./owned-routine.js";
-import { VILLAGE_CLOCKS, VILLAGE_CLOCK_WINDOWS } from "./village-clock.js";
 import { boundText, isHousePlace, MAX_REMAP_HERE_LENGTH } from "./prompt-preset.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageDayBlock, VillageVenue } from "./types.js";
-import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { VILLAGE_CLOCK_WINDOWS, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 type Day = VillageAgenda["day"];
 

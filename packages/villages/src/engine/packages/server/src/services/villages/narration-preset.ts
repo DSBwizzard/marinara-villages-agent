@@ -1,3 +1,8 @@
+import { asRecord, asString, asTrimmedString } from "./coerce.js";
+import { villageEngineJson } from "./engine-transport.js";
+import { boundText, MAX_ENGINE_ID_LENGTH } from "./prompt-preset.js";
+import { villagesLogger } from "./runtime-host.js";
+
 // Villages — the player's own Engine preset, read as the voice of a villager.
 //
 // A village conversation used to be written by two prompt boxes: one for how
@@ -34,11 +39,6 @@
 // cannot be read is `null` rather than an error: a village whose preset was
 // deleted from the library still has to be able to hold a conversation, and the
 // shipped preset at the bottom of this file is what it falls back to.
-
-import { asRecord, asString, asTrimmedString } from "./coerce.js";
-import { villageEngineJson } from "./engine-loopback.js";
-import { villagesLogger } from "./package-runtime.js";
-import { boundText, MAX_ENGINE_ID_LENGTH } from "./prompt-preset.js";
 
 // ── Caps ─────────────────────────────────────────────────────────────────────
 

@@ -1,21 +1,21 @@
-import { createHash, randomUUID } from "node:crypto";
-import { PNG } from "pngjs";
 import { asRecord, asString } from "./coerce.js";
+import { deleteVillageSpriteFile, villageEngineBaseUrl, villageEngineJson } from "./engine-transport.js";
 import { badRequest, conflict, notFound } from "./errors.js";
-import { villageEngineBaseUrl, villageEngineJson, deleteVillageSpriteFile } from "./engine-loopback.js";
 import { decodeVillageImageDataUrl, inspectVillageImage } from "./image-files.js";
-import { mutateVillageState, readVillageState } from "./village-store.js";
-import { buildVillageSnapshot } from "./village.js";
-import { villagesLogger } from "./package-runtime.js";
+import { villagesLogger } from "./runtime-host.js";
 import {
   emptySpriteManager,
   isEngineSpriteFilename,
   type SpriteArtwork,
   type SpriteFrame,
-  type SpriteManagerState,
   type SpriteLibraryItem,
+  type SpriteManagerState,
 } from "./sprite-manager-model.js";
 import { initialSpriteFrame, renderSpritePixels, type SpritePixels } from "./sprite-manager-pixels.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { buildVillageSnapshot } from "./village.js";
+import { createHash, randomUUID } from "node:crypto";
+import { PNG } from "pngjs";
 
 const writes = new Map<string, Promise<unknown>>();
 function serialize<T>(id: string, action: () => Promise<T>): Promise<T> {

@@ -1,6 +1,6 @@
-import { WorkFailureError, coerceWorkFailure, type WorkFailure } from "./work-failure.js";
-import { pipelineSignal } from "./pipeline-metrics.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { pipelineSignal } from "./metrics-context.js";
+import { coerceWorkFailure, type WorkFailure, WorkFailureError } from "./work-failure.js";
 
 export const EXCHANGE_PROCESSING_VERSION = 1;
 export const EXCHANGE_DOMAINS = ["projects", "wishes", "memories", "relationships"] as const;

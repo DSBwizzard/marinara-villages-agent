@@ -1,6 +1,6 @@
+import type { VillageWish } from "./types.js";
 import { WorkFailureError } from "./work-failure.js";
 import { createHash } from "node:crypto";
-import type { VillageWish } from "./types.js";
 
 export type WishSize = "everyday" | "modest" | "larger";
 export const WISH_SYSTEM_VERSION = 3;

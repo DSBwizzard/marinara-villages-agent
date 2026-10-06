@@ -1,18 +1,20 @@
-// The route registration and refresh timer share one teardown path so a failed
-// activation or uninstall cannot leave either running.
-import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
-import type { FastifyPluginAsync } from "fastify";
 import { villagesRoutes } from "../../routes/villages.routes.js";
+import { configureVillagesRuntime } from "./application-runtime.js";
 import { startBackgroundWork } from "./background-work.js";
-import { startTownMapGeneration } from "./town-map-generation.js";
-import { readRuntimeDebug } from "./runtime-debug.js";
-import { configureVillagesRuntime, villagesLogger } from "./package-runtime.js";
 import { configureDecisionsAdapter } from "./decisions-adapter.js";
 import { stopInterpretationComparisons } from "./interpretation-diagnostics.js";
+import { readRuntimeDebug } from "./runtime-debug.js";
+import { villagesLogger } from "./runtime-host.js";
+import { startTownMapGeneration } from "./town-map-generation.js";
+import { stopVenueCoordinator } from "./venue-coordinator.js";
+import { recoverVenueSceneWork, startProgressRecovery } from "./venue-session.js";
 import { startVillageRefreshScheduler } from "./village-refresh-scheduler.js";
 import { readVillageState } from "./village-store.js";
-import { stopVenueCoordinator } from "./venue-coordinator.js";
-import { startProgressRecovery, recoverVenueSceneWork } from "./venue-session.js";
+import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
+import type { FastifyPluginAsync } from "fastify";
+
+// The route registration and refresh timer share one teardown path so a failed
+// activation or uninstall cannot leave either running.
 
 type ActivationContext = {
   app?: { db?: unknown };

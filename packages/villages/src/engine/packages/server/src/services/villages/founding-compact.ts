@@ -1,32 +1,27 @@
-import { selectWishSize, wishGenerationDirection, validateGeneratedWishWording } from "./wish-definition.js";
-import { validRoutineRhythm } from "./owned-routine.js";
-import { routineDay, type RoutineProfile } from "./owned-routine.js";
-import { renderPlayerRoleContext } from "./player-role.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import type { VillagePlayerRole } from "./types.js";
-import type { VillagerCard } from "./catalog.js";
-import { venueCardProfile, fitVenueWritingMessages } from "./venue-writing.js";
-import { villagesConnectionIdFor } from "./connections.js";
 import { villageAgendaDay } from "./agenda-plan.js";
+import type { VillagerCard } from "./catalog.js";
+import { villagesConnectionIdFor } from "./connections.js";
+import { extractJsonObject } from "./json-reply.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { remapBlocks, VILLAGE_UNTRANSLATED_ACTIVITY } from "./native-remap.js";
-import type { NativeWeekSchedule } from "./native-schedules.js";
-import {
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-  completeWithRoom,
-} from "./package-runtime.js";
+import { routineDay, type RoutineProfile, validRoutineRhythm } from "./owned-routine.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { renderPlayerRoleContext } from "./player-role.js";
 import { boundText, coerceWish, MAX_ROUTINE_SUMMARY_LENGTH, MAX_VILLAGER_WISHES } from "./prompt-preset.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import { randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { villagesDebugAgentsEnabled, villagesLogger } from "./runtime-host.js";
+import type { NativeWeekSchedule } from "./schedule-rules.js";
 import type {
   VillageAgenda,
   VillageCompletedWish,
+  VillagePlayerRole,
   VillageRemap,
   VillageRemapMove,
   VillageVenue,
   VillageWish,
 } from "./types.js";
+import { fitVenueWritingMessages, venueCardProfile } from "./venue-writing.js";
+import { randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { selectWishSize, validateGeneratedWishWording, wishGenerationDirection } from "./wish-definition.js";
 
 type PaletteEntry = {
   flexible: boolean;

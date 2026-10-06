@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
 import { interpretRoomReply } from "../packages/villages/src/engine/packages/server/src/services/villages/room-interpretation.js";

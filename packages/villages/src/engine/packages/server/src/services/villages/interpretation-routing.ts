@@ -1,6 +1,8 @@
-import type { InterpretationCheck, InterpretationTrace } from "./interpretation.js";
 import { asRecord } from "./coerce.js";
 import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
+import type { InterpretationTrace } from "./interpretation.js";
+import type { InterpretationCheck } from "./system-interpretation.js";
+
 type Context = {
   actorIds: string[];
   projectActors?: string[];

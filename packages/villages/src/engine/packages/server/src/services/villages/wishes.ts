@@ -1,3 +1,19 @@
+import type { VillagerCard } from "./catalog.js";
+import { condense } from "./coerce.js";
+import { villagesConnectionIdFor } from "./connections.js";
+import { extractJsonObject } from "./json-reply.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import {
+  boundText,
+  MAX_CHRONICLE_LENGTH,
+  MAX_JUDGE_REASON_LENGTH,
+  MAX_RESIDENT_SUMMARY_LENGTH,
+} from "./prompt-preset.js";
+import { villagesDebugAgentsEnabled, villagesLogger } from "./runtime-host.js";
+import type { VillageChatMessage, VillageChronicleEntry, VillageWish, VillageWishVerdict } from "./types.js";
+import { describeMoment, type VillageMoment } from "./village-clock.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+
 // Villages — deciding whether the player actually did something for somebody.
 //
 // This is one question and it is deliberately not asked of the villager. A
@@ -23,25 +39,6 @@
 //     including a reply that failed to parse at all.
 //
 // Nothing here writes anything. The caller decides what a yes means.
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import type { VillagerCard } from "./catalog.js";
-import { condense } from "./coerce.js";
-import { villagesConnectionIdFor } from "./connections.js";
-import {
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-  completeWithRoom,
-} from "./package-runtime.js";
-import {
-  boundText,
-  MAX_CHRONICLE_LENGTH,
-  MAX_JUDGE_REASON_LENGTH,
-  MAX_RESIDENT_SUMMARY_LENGTH,
-} from "./prompt-preset.js";
-import type { VillageChatMessage, VillageChronicleEntry, VillageWish, VillageWishVerdict } from "./types.js";
-import { describeMoment, type VillageMoment } from "./village-clock.js";
-import { extractJsonObject } from "./village-bootstrap.js";
 
 /**
  * Answering a wish is a judgement, not a scene, so the reply is short and the

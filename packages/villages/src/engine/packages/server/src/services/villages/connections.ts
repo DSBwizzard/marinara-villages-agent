@@ -1,3 +1,10 @@
+import { asRecord, asTrimmedString } from "./coerce.js";
+import { type DocumentSlot, mutateDocument } from "./document-store.js";
+import { villageEngineJson } from "./engine-transport.js";
+import { badRequest } from "./errors.js";
+import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "./package-runtime.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
+
 // Villages — which connection does the work, and which one draws.
 //
 // These are NOT village settings, and that is why they are not in the village
@@ -25,16 +32,6 @@
 // `/api/connections`, and the panel asks it there; a package that reached into
 // the connection store itself would be a second, silently diverging copy of the
 // Engine's own list.
-import { asRecord, asTrimmedString } from "./coerce.js";
-import { villageEngineJson } from "./engine-loopback.js";
-import { badRequest } from "./errors.js";
-import {
-  VILLAGES_PACKAGE_ID,
-  villagesAgentConnectionId,
-  villagesAgentImageConnectionId,
-  villagesDocuments,
-} from "./package-runtime.js";
-import { mutateDocument, type DocumentSlot } from "./village-store.js";
 
 const CONNECTIONS_DOC_ID = "villages-connections";
 const CONNECTIONS_DOC_KIND = "settings";

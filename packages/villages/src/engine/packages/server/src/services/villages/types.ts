@@ -1,4 +1,9 @@
+import type { VillageNarrationStyle } from "./narration-style.js";
+import type { ProgressTask } from "./progress-engine.js";
+import type { HomeBuildingKind, VillageBuildingOption, VillagePresetMacro } from "./prompt-preset.js";
 import type { SpriteManagerState } from "./sprite-manager-model.js";
+import type { VillagesTurnBeat } from "./turn-beats.js";
+
 // Villages — the shapes the server half of the package trades in.
 //
 // Everything the village remembers lives in Engine-owned `capability_documents`
@@ -17,11 +22,6 @@ import type { SpriteManagerState } from "./sprite-manager-model.js";
 // the card supplies the verb and the village supplies the noun. So the village
 // stores the world and nothing about any particular character — the card is
 // authoritative for who a villager IS, and the village caches only a name.
-
-import type { HomeBuildingKind, VillageBuildingOption, VillagePresetMacro } from "./prompt-preset.js";
-import type { VillageNarrationStyle } from "./narration-style.js";
-import type { ProgressTask } from "./progress-engine.js";
-import type { VillagesTurnBeat } from "./turn-beats.js";
 
 /** One stable desired outcome. Size controls scope/lifetime; intensity remains emotional attention.
  * Legacy tells stay readable but are excluded from Scene writing. Essential conditions are

@@ -1,3 +1,34 @@
+import { listResidents, readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
+import {
+  buildPromptContext,
+  buildSceneOpeningMessages,
+  EMPTY_PROMPT_CONTEXT,
+  MAX_MESSAGE_LENGTH,
+  type VillagePromptContext,
+} from "./chat.js";
+import { villageEngineJson } from "./engine-transport.js";
+import { badRequest, notFound, VillagesRequestError } from "./errors.js";
+import { builtInNarrationTurn } from "./narration-settings.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { boundText, MAX_ENGINE_ID_LENGTH, MAX_SPINOFF_NAME_LENGTH } from "./prompt-preset.js";
+import { villagesDebugAgentsEnabled, villagesLogger, villagesPersistence } from "./runtime-host.js";
+import { spinOffMessageId, writeSpinOffSnapshot } from "./spinoff-snapshot.js";
+import type {
+  VillageScene,
+  VillageSceneLockView,
+  VillageSpinOffChoiceSelections,
+  VillageSpinOffOriginView,
+  VillageSpinOffPresetOption,
+  VillageSpinOffPresetPickerView,
+  VillageSpinOffSpawnResult,
+  VillageSpinOffVariable,
+  VillageSpinOffVariableList,
+  VillageSpinOffVariableOption,
+  VillageState,
+} from "./types.js";
+import { readPlayerIdentity } from "./village-projections.js";
+import { listVillageScenes, readVillageState } from "./village-store.js";
+
 // Villages — the spin-off lane: one villager, in a chat the Engine owns, one way.
 //
 // Everywhere else in this package a villager's conversation is the village's own
@@ -70,41 +101,6 @@
 // Engine for after the chat exists are the villager's opening line and one
 // question about a chat's own metadata, and neither of them writes over anything
 // the player owns.
-import { listResidents, readEffectiveVillagerCard, type VillagerCard } from "./catalog.js";
-import {
-  buildPromptContext,
-  buildSceneOpeningMessages,
-  EMPTY_PROMPT_CONTEXT,
-  MAX_MESSAGE_LENGTH,
-  type VillagePromptContext,
-} from "./chat.js";
-import { badRequest, notFound, VillagesRequestError } from "./errors.js";
-import { villageEngineJson } from "./engine-loopback.js";
-import { builtInNarrationTurn } from "./narration-settings.js";
-import {
-  completeWithRoom,
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-  villagesPersistence,
-} from "./package-runtime.js";
-import { boundText, MAX_ENGINE_ID_LENGTH, MAX_SPINOFF_NAME_LENGTH, prependHappenings } from "./prompt-preset.js";
-import { spinOffMessageId, writeSpinOffSnapshot } from "./spinoff-snapshot.js";
-import type {
-  VillageScene,
-  VillageSceneLockView,
-  VillageSpinOffChoiceSelections,
-  VillageSpinOffOriginView,
-  VillageSpinOffPresetOption,
-  VillageSpinOffPresetPickerView,
-  VillageSpinOffSpawnResult,
-  VillageSpinOffVariable,
-  VillageSpinOffVariableList,
-  VillageSpinOffVariableOption,
-  VillageState,
-} from "./types.js";
-import { readPlayerIdentity } from "./village.js";
-import { listVillageScenes, readVillageState } from "./village-store.js";
 
 /**
  * A spin-off's chat is a roleplay chat. Not a constant the Engine reads, just the

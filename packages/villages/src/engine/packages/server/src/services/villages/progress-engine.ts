@@ -1,5 +1,7 @@
-/** Deterministic, model-free accounting for Villages tasks. Domain verifiers own the meaning of evidence. */
 import { asRecord, asTrimmedString } from "./coerce.js";
+
+/** Deterministic, model-free accounting for Villages tasks. Domain verifiers own the meaning of evidence. */
+
 export type ProgressOwner = { kind: "project" | "wish" | "test"; id: string };
 export type ProgressRoute = {
   id: string;

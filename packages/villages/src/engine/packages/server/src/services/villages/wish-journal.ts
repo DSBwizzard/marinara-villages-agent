@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { WISH_SYSTEM_VERSION } from "./wish-definition.js";
+import type { InterpretationEvidence } from "./system-interpretation.js";
 import type { VillageState, VillageWish } from "./types.js";
 import type { VenueLine } from "./venue-session.js";
-import type { InterpretationEvidence } from "./interpretation.js";
+import { WISH_SYSTEM_VERSION } from "./wish-definition.js";
+import { createHash } from "node:crypto";
 
 export type WishFactKind = "preference" | "concern" | "possibility" | "condition" | "result";
 export type WishFactCandidate = { kind: WishFactKind; quote: string; lineIds: string[]; supersedes?: string };

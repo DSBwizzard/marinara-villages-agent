@@ -1,8 +1,8 @@
-import { routineDay } from "./owned-routine.js";
-import { parseBlockRange, type NativeWeekSchedule } from "./native-schedules.js";
 import { lookupRemap, remapBlockKey } from "./native-remap.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { routineDay } from "./owned-routine.js";
+import { type NativeWeekSchedule, parseBlockRange } from "./schedule-rules.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "./types.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 /** A dated opportunity remains valid across unrelated edits and equivalent splits. */
 export function flexibleAgendaInterval(blocks: readonly VillageAgendaBlock[], start: number, end: number): boolean {

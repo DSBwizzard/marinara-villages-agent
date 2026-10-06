@@ -4,10 +4,8 @@ import {
   coordinateVenue,
   rejectVenueCompletion,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
-import {
-  completeWithRoom,
-  configureVillagesRuntime,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { completeWithRoom } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   buildTickMessages,
   proposeHappenings,

@@ -1,5 +1,5 @@
+import type { InterpretationEvidence } from "./system-interpretation.js";
 import type { VillageWish } from "./types.js";
-import type { InterpretationEvidence } from "./interpretation.js";
 import type { WishCriteria } from "./wish-interpretation.js";
 
 /** Hints route work; original Wish text remains the semantic judge's sole definition of the goal. */

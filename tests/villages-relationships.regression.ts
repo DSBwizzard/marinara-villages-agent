@@ -42,7 +42,8 @@ import {
   reconcileSocialPlans,
   processSocialOutbox,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-social.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import type {
   VillageVenue,
   VillageVillager,

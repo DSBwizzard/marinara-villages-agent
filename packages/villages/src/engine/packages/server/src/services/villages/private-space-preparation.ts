@@ -1,16 +1,17 @@
-import { renderResidentFoundingContext, RESIDENT_CONTINUITY_RULE } from "./resident-founding-context.js";
-import { randomUUID } from "node:crypto";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { readVillageState, mutateVillageState } from "./village-store.js";
-import { readVillageLore } from "./lorebooks.js";
-import { completeWithRoom, villagesLanguageModels, villagesLogger } from "./package-runtime.js";
-import { villagesConnectionIdFor } from "./connections.js";
-import { extractJsonObject } from "./village-bootstrap.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { villagesConnectionIdFor } from "./connections.js";
 import { safeFailureMessage } from "./errors.js";
 import { reportFoundingProgress } from "./founding-progress.js";
-import { venueZones, zoneControllerIds } from "./venue-zones.js";
+import { extractJsonObject } from "./json-reply.js";
+import { readVillageLore } from "./lorebooks.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { renderResidentFoundingContext, RESIDENT_CONTINUITY_RULE } from "./resident-founding-context.js";
+import { villagesLogger } from "./runtime-host.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "./types.js";
+import { venueZones, zoneControllerIds } from "./venue-zones.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { randomUUID } from "node:crypto";
 
 export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone): string {
   return JSON.stringify([

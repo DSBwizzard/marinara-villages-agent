@@ -1,35 +1,22 @@
+import { villageEngineJson } from "./engine-transport.js";
+import { coerceLoreTokenBudget, DEFAULT_LORE_TOKEN_BUDGET } from "./lore-policy.js";
+import { villagesLogger } from "./runtime-host.js";
+import { runInNewContext } from "node:vm";
+
+export { MIN_LORE_TOKEN_BUDGET, MAX_LORE_TOKEN_BUDGET } from "./lore-policy.js";
+
+export {
+  readLoreTokenBudget,
+  coerceLoreTokenBudget,
+  readSelectedLorebookIds,
+  coerceSelectedLorebookIds,
+  DEFAULT_LORE_TOKEN_BUDGET,
+} from "./lore-policy.js";
+
 // Live, read-only Engine lore for one Village generation. The village stores IDs,
 // never copies entry content, so edits in the Engine take effect on the next call.
-import { runInNewContext } from "node:vm";
-import { villageEngineJson } from "./engine-loopback.js";
-import { villagesLogger } from "./package-runtime.js";
-import { badRequest } from "./errors.js";
 
-const MAX_BOOKS = 24;
-export const DEFAULT_LORE_TOKEN_BUDGET = 1_600;
-export const MIN_LORE_TOKEN_BUDGET = 200;
-export const MAX_LORE_TOKEN_BUDGET = 3_200;
 const MAX_LORE_ENTRIES = 24;
-
-export function readLoreTokenBudget(value: unknown): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < MIN_LORE_TOKEN_BUDGET ||
-    value > MAX_LORE_TOKEN_BUDGET
-  )
-    throw badRequest(`Lorebook token budget must be between ${MIN_LORE_TOKEN_BUDGET} and ${MAX_LORE_TOKEN_BUDGET}.`);
-  return value;
-}
-
-export function coerceLoreTokenBudget(value: unknown): number {
-  return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= MIN_LORE_TOKEN_BUDGET &&
-    value <= MAX_LORE_TOKEN_BUDGET
-    ? value
-    : DEFAULT_LORE_TOKEN_BUDGET;
-}
 
 type EngineBook = { id: string; name: string; enabled: boolean; hiddenFromLibrary?: boolean };
 type EngineFolder = { id: string; parentFolderId: string | null; enabled: boolean };
@@ -49,25 +36,6 @@ type EngineEntry = {
   useRegex: boolean;
   order: number;
 };
-
-export function readSelectedLorebookIds(value: unknown): string[] {
-  if (!Array.isArray(value) || value.length > MAX_BOOKS) throw badRequest(`Choose at most ${MAX_BOOKS} lorebooks.`);
-  const ids = value.map((id) => (typeof id === "string" ? id.trim() : ""));
-  if (ids.some((id) => !id || id.length > 160)) throw badRequest("Lorebook IDs must be valid text.");
-  return [...new Set(ids)];
-}
-
-export function coerceSelectedLorebookIds(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return [
-    ...new Set(
-      value
-        .filter((id): id is string => typeof id === "string")
-        .map((id) => id.trim())
-        .filter((id) => id.length > 0 && id.length <= 160),
-    ),
-  ].slice(0, MAX_BOOKS);
-}
 
 export async function listVillageLorebooks(signal?: AbortSignal): Promise<EngineBook[]> {
   const books = await villageEngineJson<unknown>("/api/lorebooks", { signal });

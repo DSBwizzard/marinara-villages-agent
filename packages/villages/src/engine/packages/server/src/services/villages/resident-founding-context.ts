@@ -1,9 +1,10 @@
-import { badRequest } from "./errors.js";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   readResidentFoundingContext,
   type ResidentFoundingContext,
 } from "../../../../shared/src/villages/resident-founding-context.js";
+import { badRequest } from "./errors.js";
+
 export {
   renderResidentFoundingContext,
   RESIDENT_CONTINUITY_RULE,

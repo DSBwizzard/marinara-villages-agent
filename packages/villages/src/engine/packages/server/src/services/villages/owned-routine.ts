@@ -1,7 +1,7 @@
-import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { canOccupyZone, venueZones, zoneClosed, chooseAgendaZone } from "./venue-zones.js";
-import type { NativeWeekSchedule } from "./native-schedules.js";
+import type { NativeWeekSchedule } from "./schedule-rules.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "./types.js";
+import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 export const INFLUENCE_CATEGORIES = [
   "rhythm",

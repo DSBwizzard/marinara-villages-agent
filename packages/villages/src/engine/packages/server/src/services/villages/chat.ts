@@ -1,7 +1,55 @@
-import { renderResidentFoundingContext } from "./resident-founding-context.js";
+import { agendaAt, agendaDayPlan } from "./agenda-plan.js";
+import { residentsFromSnapshots, type VillagerCard } from "./catalog.js";
+import { condense } from "./coerce.js";
+import { villagesConnectionIdFor } from "./connections.js";
+import { extractJsonObject } from "./json-reply.js";
+import { readVillageLore } from "./lorebooks.js";
+import { selectPromptMemories } from "./memory-selection.js";
+import { assembleNarrationMessages, type NarrationPlayer } from "./narration-prompt.js";
+import type { VillageNarrationTurn } from "./narration-settings.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { relationshipWritingPrompt } from "./relationships.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { renderPlayerRoleContext } from "./player-role.js";
+import {
+  boundText,
+  buildPromptValues,
+  HAPPENING_RULES,
+  isCommittedStatus,
+  MAX_CHRONICLE_LENGTH,
+  MAX_CHRONICLE_PER_WRITE,
+  MAX_HAPPENINGS_PER_WRITE,
+  MAX_RESIDENT_SUMMARY_LENGTH,
+  remapVenues,
+  renderModeBlock,
+  renderVillagePrompt,
+  villageCurrentSetting,
+  type VillageHomeLine,
+  type VillagePresentGroup,
+  type VillagePromptValues,
+  villageRelevantOrigin,
+} from "./prompt-preset.js";
+import { relationshipWritingPrompt } from "./relationships.js";
+import { renderResidentFoundingContext } from "./resident-founding-context.js";
+import { villagesDebugAgentsEnabled, villagesLogger } from "./runtime-host.js";
+import type { NativeRoutine } from "./schedule-rules.js";
+import { describeSpriteExpressions } from "./sprite-expressions.js";
+import { VILLAGES_FAREWELL_MARK } from "./turn-beats.js";
+import type {
+  VillageAgenda,
+  VillageChatMessage,
+  VillageChatMode,
+  VillageChronicleEntry,
+  VillageDayBlock,
+  VillageHappening,
+  VillageRemap,
+  VillageState,
+} from "./types.js";
+import { readConversationVenueRequest, type VenueRequestCore } from "./venue-requests.js";
+import { coerceHappeningList } from "./village-bootstrap.js";
+import { deriveVillageMoment, describeMoment, randomVillageSeed, type VillageMoment } from "./village-clock.js";
+import { projectHomeLines, villagerPlaceView } from "./village-projections.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+
 // Villages — shared resident prompt and memory helpers.
 //
 // This is the package's own dialogue system. It borrows the *shape* of the
@@ -15,56 +63,6 @@ import { renderPlayerRoleContext } from "./player-role.js";
 //
 // `buildVillagerMessages` is pure: everything it needs is passed in, so the
 // prompt shape can be exercised without a runtime behind it.
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { residentsFromSnapshots, type VillagerCard } from "./catalog.js";
-import { condense } from "./coerce.js";
-import { villagesConnectionIdFor } from "./connections.js";
-import { readVillageLore } from "./lorebooks.js";
-import { selectPromptMemories } from "./memory-selection.js";
-import type { NativeRoutine } from "./native-schedules.js";
-import { agendaAt, agendaDayPlan } from "./agenda-plan.js";
-import { assembleNarrationMessages, type NarrationPlayer } from "./narration-prompt.js";
-import type { VillageNarrationTurn } from "./narration-settings.js";
-import {
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-  completeWithRoom,
-} from "./package-runtime.js";
-import {
-  boundText,
-  buildPromptValues,
-  HAPPENING_RULES,
-  isCommittedStatus,
-  MAX_CHRONICLE_LENGTH,
-  MAX_CHRONICLE_PER_WRITE,
-  MAX_HAPPENINGS_PER_WRITE,
-  MAX_RESIDENT_SUMMARY_LENGTH,
-  remapVenues,
-  renderModeBlock,
-  renderVillagePrompt,
-  type VillageHomeLine,
-  type VillagePresentGroup,
-  type VillagePromptValues,
-  villageCurrentSetting,
-  villageRelevantOrigin,
-} from "./prompt-preset.js";
-import { VILLAGES_FAREWELL_MARK } from "./turn-beats.js";
-import { describeSpriteExpressions } from "./sprite-expressions.js";
-import type {
-  VillageAgenda,
-  VillageChatMessage,
-  VillageChatMode,
-  VillageChronicleEntry,
-  VillageDayBlock,
-  VillageHappening,
-  VillageRemap,
-  VillageState,
-} from "./types.js";
-import { coerceHappeningList, extractJsonObject } from "./village-bootstrap.js";
-import { readConversationVenueRequest, type VenueRequestCore } from "./venue-requests.js";
-import { projectHomeLines, villagerPlaceView } from "./village.js";
-import { describeMoment, deriveVillageMoment, randomVillageSeed, type VillageMoment } from "./village-clock.js";
 
 // Venue greetings and replies are generated in venue-session.ts with
 // per-village narration controls. This module retains village background work.

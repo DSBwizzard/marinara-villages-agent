@@ -8,7 +8,8 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   coerceVillageState,
   readVillageState,

@@ -1,11 +1,12 @@
-// A completion checkpoint belongs to a background job, never to foreground dialogue.
-import { AsyncLocalStorage } from "node:async_hooks";
+import type { VillageCompletionOptions } from "./package-runtime.js";
 import type {
   CapabilityLanguageModelCompletion,
   CapabilityLanguageModelMessage,
   CapabilityResolvedLanguageModel,
 } from "@marinara-engine/shared";
-import type { VillageCompletionOptions } from "./package-runtime.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+// A completion checkpoint belongs to a background job, never to foreground dialogue.
 
 export type BackgroundCompletion = ((
   model: CapabilityResolvedLanguageModel,

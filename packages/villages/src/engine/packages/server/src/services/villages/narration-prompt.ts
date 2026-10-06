@@ -1,3 +1,13 @@
+import {
+  CHARACTER_FIELD_NAMES,
+  characterFieldValue,
+  type NarrationPreset,
+  type NarrationSection,
+  type NarrationWrapFormat,
+} from "./narration-preset.js";
+import { fillVillageMacros, type VillagePromptValues } from "./prompt-preset.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+
 // Villages — a villager's turn, assembled the way the Engine assembles one.
 //
 // The Engine has one prompt pipeline and it is a good one: a section list in the
@@ -42,16 +52,6 @@
 // the surface it was written for supplies elsewhere — and neither of them
 // overrules a preset that did supply it. A preset that names its own character
 // section gets exactly what it asked for.
-
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import {
-  CHARACTER_FIELD_NAMES,
-  characterFieldValue,
-  type NarrationPreset,
-  type NarrationSection,
-  type NarrationWrapFormat,
-} from "./narration-preset.js";
-import { fillVillageMacros, type VillagePromptValues } from "./prompt-preset.js";
 
 // ── What goes in, and what comes out ─────────────────────────────────────────
 

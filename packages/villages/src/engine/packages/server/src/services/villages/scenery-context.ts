@@ -1,8 +1,8 @@
-import { renderResidentFoundingContext } from "./resident-founding-context.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { resolveVenueZone } from "./venue-zones.js";
 import { badRequest } from "./errors.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
+import { renderResidentFoundingContext } from "./resident-founding-context.js";
 import type { VillageState, VillageVenue } from "./types.js";
+import { resolveVenueZone } from "./venue-zones.js";
 
 export const DEFAULT_SCENERY_STYLE =
   "Painted storybook illustration, coherent brushwork, soft lighting, and a consistent color palette.";

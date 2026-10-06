@@ -1,11 +1,11 @@
-import { WISH_SYSTEM_VERSION } from "./wish-definition.js";
-import { createHash } from "node:crypto";
-import { villagesDocuments, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
-import { readVillageState, mutateVillageState } from "./village-store.js";
 import { badRequest, notFound } from "./errors.js";
-import { WISH_PAGE_SIZE } from "./wish-policy.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
 import { coerceWishOutcome } from "./wish-coercion.js";
+import { WISH_SYSTEM_VERSION } from "./wish-definition.js";
+import { WISH_PAGE_SIZE } from "./wish-policy.js";
 import type { WishOutcome } from "./wish-types.js";
+import { createHash } from "node:crypto";
 
 function archivePrefix(seed: string, characterId: string): string {
   return `wish-history:${createHash("sha256").update(`wish-journal-v${WISH_SYSTEM_VERSION}\0${seed}\0${characterId}`).digest("hex")}`;

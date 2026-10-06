@@ -19,7 +19,8 @@ import {
   processSavedProgressSubmission,
   sendVenueTurn,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts";
 import {
   coerceVillageState,
   defaultVillageState,

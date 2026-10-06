@@ -1,7 +1,7 @@
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { type DocumentSlot, mutateDocument } from "./document-store.js";
 import { badRequest, notFound, safeFailureMessage } from "./errors.js";
-import { VILLAGES_PACKAGE_ID, villagesDocuments, villagesLogger } from "./package-runtime.js";
-import { mutateDocument, type DocumentSlot } from "./village-store.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments, villagesLogger } from "./runtime-host.js";
 import { generateVillageTownMap } from "./town-map-image.js";
 
 const DOCUMENT = "villages-town-map-generation";

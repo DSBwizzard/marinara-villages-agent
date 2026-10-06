@@ -1,13 +1,11 @@
 import { asRecord } from "./coerce.js";
+import { type DocumentSlot, mutateDocument } from "./document-store.js";
 import { badRequest } from "./errors.js";
-import { villagesDocuments, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
-import { mutateDocument, type DocumentSlot } from "./village-store.js";
+import { coerceInterpretationSettings, type InterpretationSettings } from "./interpretation-policy.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
 
-export type InterpretationSettings = { decisionsEnabled: boolean; compareSystem: boolean };
-export function coerceInterpretationSettings(value: unknown): InterpretationSettings {
-  const raw = asRecord(value);
-  return { decisionsEnabled: raw.decisionsEnabled === true, compareSystem: raw.compareSystem !== false };
-}
+export { coerceInterpretationSettings, type InterpretationSettings } from "./interpretation-policy.js";
+
 const slot: DocumentSlot<InterpretationSettings> = {
   kind: "settings",
   name: "Interpretation settings",

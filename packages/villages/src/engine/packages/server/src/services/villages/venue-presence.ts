@@ -1,7 +1,7 @@
 import { conflict } from "./errors.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "./types.js";
 import { venueResidentIds } from "./venue-model.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 /** Reject a schedule that would put a fifth villager in any Venue at once. */
 export function assertVillagePresence(state: VillageState, candidateId = "", candidate?: VillageAgenda): void {

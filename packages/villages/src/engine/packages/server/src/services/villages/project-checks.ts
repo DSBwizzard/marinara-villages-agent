@@ -1,20 +1,17 @@
-import { pipelineSignal } from "./pipeline-metrics.js";
-import { physicalVenueEvents } from "./venue-scene-state.js";
-import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
-import { boundInterpretationEvidence, contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
-import type { VillageState } from "./types.js";
-import type { VenueScene, VenueLine } from "./venue-session.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import {
-  interpretChecks,
-  type InterpretationBatch,
-  type InterpretationCheck,
-  type InterpretationEvidence,
-} from "./interpretation.js";
-import { projectSpeechContexts, type ProjectSpeechProposal } from "./project-interpretation.js";
-import { readVillageState, mutateVillageState } from "./village-store.js";
 import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
+import { boundInterpretationEvidence, contextualChecks, saveInterpretationContext } from "./interpretation-evidence.js";
+import { recordInterpretationRouting, routeInterpretationChecks } from "./interpretation-routing.js";
+import { type InterpretationBatch, interpretChecks } from "./interpretation.js";
+import { pipelineSignal } from "./metrics-context.js";
+import { projectSpeechContexts, type ProjectSpeechProposal } from "./project-interpretation.js";
 import { recordProjectProgress } from "./project-progress.js";
+import { sceneQueries } from "./scene-queries.js";
+import type { InterpretationCheck, InterpretationEvidence } from "./system-interpretation.js";
+import type { VillageState } from "./types.js";
+import { physicalVenueEvents } from "./venue-scene-state.js";
+import type { VenueLine, VenueScene } from "./venue-session.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
 
 function pickupRevision(state: VillageState, projectId: string) {
   return state.progressTasks.find(
@@ -465,7 +462,7 @@ export async function applyProjectPickup(sceneId: string, submissionId: string) 
     state.projectSourceClaims.some((claim) => claim.sourceId === event.id)
   )
     return;
-  const turn = await (await import("./venue-session.js")).readProjectTurnEvidence(sceneId, submissionId);
+  const turn = await sceneQueries().readProjectTurnEvidence(sceneId, submissionId);
   const checks: InterpretationCheck[] = state.projects.flatMap((project) =>
     project.lifecycle?.phase === "materials"
       ? project.lifecycle.requirements

@@ -1,11 +1,66 @@
-import { extractJsonObject, responseDiagnostics } from "./response-diagnostics.js";
-export { extractJsonObject } from "./response-diagnostics.js";
-import { WorkFailureError, completionFailure as typedCompletionFailure } from "./work-failure.js";
-import { agendaPromptDay, compressAgendaBlocks } from "./owned-routine.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { renderPlayerRoleContext } from "./player-role.js";
-import type { VillagePlayerRole } from "./types.js";
+import { villageAgendaDay } from "./agenda-plan.js";
+import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
 import { backgroundCalls } from "./background-context.js";
+import { condense } from "./coerce.js";
+import { villagesConnectionIdFor } from "./connections.js";
+import { badRequest } from "./errors.js";
+import { extractJsonObject } from "./json-reply.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
+import { agendaPromptDay, compressAgendaBlocks } from "./owned-routine.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { renderPlayerRoleContext } from "./player-role.js";
+import {
+  boundText,
+  describeStatus,
+  HAPPENING_RULES,
+  LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
+  MAX_CHRONICLE_LENGTH,
+  MAX_CHRONICLE_PER_WRITE,
+  MAX_HAPPENING_LENGTH,
+  MAX_HAPPENINGS_PER_WRITE,
+  MAX_LAPSES_PER_WRITE,
+  MAX_NOTICE_AUTHOR_LENGTH,
+  MAX_NOTICE_LENGTH,
+  MAX_NOTICES_PER_WRITE,
+  MAX_RESIDENT_SUMMARY_LENGTH,
+  MAX_RESIDENT_WEEK_NOTES,
+  MAX_ROUTINE_SUMMARY_LENGTH,
+  MAX_SETTING_LENGTH,
+  MAX_VENUE_DESCRIPTION_LENGTH,
+  MAX_VENUE_NAME_LENGTH,
+  MAX_VENUE_NOTE_LENGTH,
+  MAX_WISH_LENGTH,
+  renderVillageMemoryBlock,
+  wishWeightWords,
+} from "./prompt-preset.js";
+import { responseDiagnostics } from "./response-diagnostics.js";
+import { villagesDebugAgentsEnabled, villagesLogger } from "./runtime-host.js";
+import type {
+  VillageAgenda,
+  VillageChronicleActor,
+  VillageChronicleEntry,
+  VillageCompletedWish,
+  VillageDayBlock,
+  VillageHappening,
+  VillageNotice,
+  VillageOpportunity,
+  VillagePlayerRole,
+  VillageVenue,
+  VillageWish,
+} from "./types.js";
+import { readVenueRequestCore, type VenueRequestCore } from "./venue-requests.js";
+import { EVENT_MEMORY_GUIDANCE, fitVenueWritingMessages } from "./venue-writing.js";
+import {
+  describeMoment,
+  hashString,
+  randomVillageSeed,
+  VILLAGE_WEEKDAYS,
+  type VillageMoment,
+} from "./village-clock.js";
+import { completionFailure as typedCompletionFailure, WorkFailureError } from "./work-failure.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+
+export { extractJsonObject } from "./response-diagnostics.js";
 
 // Villages — the two model calls the package makes.
 //
@@ -31,59 +86,6 @@ import { backgroundCalls } from "./background-context.js";
 //     bounded through the same helpers the routes use, and the player can
 //     rewrite or delete any of it — which is why a failed or silly generation
 //     is an annoyance rather than a broken village.
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { condense } from "./coerce.js";
-import { EVENT_MEMORY_GUIDANCE, fitVenueWritingMessages } from "./venue-writing.js";
-import { villageAgendaDay } from "./agenda-plan.js";
-import { completeAgendaWeek, workingAgendaWeek } from "./agenda-week.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
-
-import { villagesConnectionIdFor } from "./connections.js";
-import { badRequest } from "./errors.js";
-import {
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-  completeWithRoom,
-} from "./package-runtime.js";
-import {
-  boundText,
-  describeStatus,
-  HAPPENING_RULES,
-  LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
-  MAX_CHRONICLE_LENGTH,
-  MAX_CHRONICLE_PER_WRITE,
-  MAX_HAPPENINGS_PER_WRITE,
-  MAX_HAPPENING_LENGTH,
-  MAX_LAPSES_PER_WRITE,
-  MAX_NOTICES_PER_WRITE,
-  MAX_NOTICE_AUTHOR_LENGTH,
-  MAX_NOTICE_LENGTH,
-  MAX_RESIDENT_SUMMARY_LENGTH,
-  MAX_SETTING_LENGTH,
-  MAX_RESIDENT_WEEK_NOTES,
-  MAX_ROUTINE_SUMMARY_LENGTH,
-  MAX_VENUE_NAME_LENGTH,
-  MAX_VENUE_NOTE_LENGTH,
-  MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_WISH_LENGTH,
-  renderVillageMemoryBlock,
-  wishWeightWords,
-} from "./prompt-preset.js";
-import type {
-  VillageAgenda,
-  VillageChronicleActor,
-  VillageChronicleEntry,
-  VillageCompletedWish,
-  VillageDayBlock,
-  VillageHappening,
-  VillageNotice,
-  VillageOpportunity,
-  VillageVenue,
-  VillageWish,
-} from "./types.js";
-import { describeMoment, hashString, randomVillageSeed, type VillageMoment } from "./village-clock.js";
-import { readVenueRequestCore, type VenueRequestCore } from "./venue-requests.js";
 
 // Room for a model that reasons before it answers, plus eight places described
 // in a sentence each: the thinking comes out of this budget. See

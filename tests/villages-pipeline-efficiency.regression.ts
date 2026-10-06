@@ -9,7 +9,8 @@ import {
   pipelineSignal,
   pipelineStorage,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/pipeline-metrics.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 async function run() {
   const memory = (id: string, text: string, audience = ["a"], weight = 1) =>
     ({

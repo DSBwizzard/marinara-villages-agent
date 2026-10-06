@@ -1,5 +1,5 @@
-import { mutateVillageState, readVillageState } from "./village-store.js";
 import type { VillageState } from "./types.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
 
 export type FoundingProgress = NonNullable<VillageState["foundingPreparation"]>;
 

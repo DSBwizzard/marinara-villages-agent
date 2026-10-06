@@ -1,8 +1,37 @@
+import { backgroundCalls, backgroundSetting } from "./background-context.js";
+import {
+  backgroundRevision,
+  backgroundStatus,
+  queueBackgroundJob,
+  registerBackgroundHandler,
+} from "./background-work.js";
+import { readEffectiveVillagerCard } from "./catalog.js";
+import { asRecord, asTrimmedString } from "./coerce.js";
+import type { DomainProcessing } from "./exchange-processing.js";
+import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
+import { outsideVenueOperation } from "./operation-context.js";
+import { createProgressTask, type ProgressTask, revealProgress, submitProgressEvidence } from "./progress-engine.js";
+import { sceneQueries } from "./scene-queries.js";
+import type { VillageState, VillageWish } from "./types.js";
+import type { VenueLine, VenueRecordEvent, VenueScene } from "./venue-session.js";
+import { deriveVillageMoment } from "./village-clock.js";
+import { readPlayerIdentity } from "./village-projections.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { localWishRequirements, wishEvidenceAdmission } from "./wish-admission.js";
 import { wishExpired } from "./wish-definition.js";
 import {
+  cachedWishCriteria,
+  interpretWishBatch,
+  matchingWishReceipts,
+  type WishCriteria,
+  wishFingerprint,
+  type WishInterpretationContext,
+  wishReceiptRecords,
+} from "./wish-interpretation.js";
+import {
+  addWishFacts,
   bindWishFacts,
   discloseWish,
-  addWishFacts,
   knownWish,
   rememberWishEvidence,
   setWishJournalStatus,
@@ -10,36 +39,8 @@ import {
   wishConditionRevision,
   type WishFactCandidate,
 } from "./wish-journal.js";
-import { backgroundCalls, backgroundSetting } from "./background-context.js";
-import { WorkFailureError, metadataFailure, type WorkFailure } from "./work-failure.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
-import { createProgressTask, revealProgress, submitProgressEvidence, type ProgressTask } from "./progress-engine.js";
-import {
-  backgroundRevision,
-  backgroundStatus,
-  queueBackgroundJob,
-  registerBackgroundHandler,
-} from "./background-work.js";
-import { outsideVenueOperation } from "./venue-coordinator.js";
-import {
-  interpretWishBatch,
-  wishFingerprint,
-  wishReceiptRecords,
-  matchingWishReceipts,
-  cachedWishCriteria,
-  type WishCriteria,
-  type WishInterpretationContext,
-} from "./wish-interpretation.js";
-import { localWishRequirements, wishEvidenceAdmission } from "./wish-admission.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
-import { mutateVillageState, readVillageState } from "./village-store.js";
-import { readEffectiveVillagerCard } from "./catalog.js";
-import { deriveVillageMoment } from "./village-clock.js";
-import { readPlayerIdentity } from "./village.js";
-import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
-import type { VillageState, VillageWish } from "./types.js";
-import type { VenueLine, VenueScene, VenueRecordEvent } from "./venue-session.js";
-import type { DomainProcessing } from "./exchange-processing.js";
+import { metadataFailure, type WorkFailure, WorkFailureError } from "./work-failure.js";
 
 export type ExchangeEffectReceipt = {
   committedAt?: string;
@@ -530,12 +531,12 @@ registerBackgroundHandler("wish-check", {
   },
   async afterApply(input: WishCheckInput | WishBatchInput) {
     if (input.sceneId.startsWith("project:")) return;
-    const { processSavedExchange } = await import("./venue-session.js");
+    const { processSavedExchange } = sceneQueries();
     await processSavedExchange(input.sceneId, input.submissionId);
   },
   async afterFailure(input: WishCheckInput | WishBatchInput | null) {
     if (!input || input.sceneId.startsWith("project:")) return;
-    const { processSavedExchange } = await import("./venue-session.js");
+    const { processSavedExchange } = sceneQueries();
     await processSavedExchange(input.sceneId, input.submissionId);
   },
 });

@@ -1,5 +1,5 @@
 import { readFile, realpath } from "node:fs/promises";
-import { dirname, join, basename } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 /** Audited runtime imports: never bundle Engine implementations into Villages. */

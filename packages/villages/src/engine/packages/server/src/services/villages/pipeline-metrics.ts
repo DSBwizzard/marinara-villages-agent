@@ -1,25 +1,8 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { active, type Metrics } from "./metrics-context.js";
 import { runtimeDebug } from "./runtime-debug.js";
-type Metrics = {
-  reads: number;
-  writes: number;
-  requests: number;
-  reportedInputTokens: number;
-  reportedOutputTokens: number;
-  unknownUsageRequests: number;
-  failedRequests: number;
-  modelLatencyMs: number;
-  signals: Record<string, number>;
-};
-const active = new AsyncLocalStorage<Metrics>();
-export function pipelineSignal(name: string, count = 1) {
-  const metrics = active.getStore();
-  if (metrics) metrics.signals[name] = (metrics.signals[name] ?? 0) + count;
-}
-export function pipelineStorage(kind: "reads" | "writes") {
-  const metrics = active.getStore();
-  if (metrics) metrics[kind]++;
-}
+
+export { pipelineSignal, pipelineStorage } from "./metrics-context.js";
+
 export async function measurePipeline<T>(
   name: string,
   tags: Record<string, unknown>,

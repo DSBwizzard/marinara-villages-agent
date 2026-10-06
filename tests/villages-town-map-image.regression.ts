@@ -258,7 +258,7 @@ async function main() {
     globalThis.fetch = originalFetch;
   }
   // Exercise the actual generation boundary, with a realistic PNG and no network.
-  const { configureVillagesRuntime } = await import(pathToFileURL(join(services, "package-runtime.ts")).href);
+  const { configureVillagesRuntime } = await import(pathToFileURL(join(services, "application-runtime.ts")).href);
   const { VILLAGE_SHARED_SETTING_RULE } = await import(pathToFileURL(join(services, "narrative-grounding.ts")).href);
   const documents = new Map<string, any>();
   const releaseRuntime = configureVillagesRuntime({

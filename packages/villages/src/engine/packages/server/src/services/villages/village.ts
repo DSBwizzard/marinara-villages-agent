@@ -1,64 +1,16 @@
-import {
-  initializeVenueAccess,
-  readAccessCommand,
-  applyAccessCommand,
-  projectVenueAccess,
-  projectZoneAccess,
-  managesAccess,
-  evaluateZoneAccess,
-} from "./venue-access.js";
-import { readFoundingResidentContexts } from "./resident-founding-context.js";
-import { sceneAccessContext } from "./venue-contact.js";
 import { residentSignature } from "../../../../shared/src/villages/resident-signature.js";
-import { assertVillageVenueCapacity, assertCanAddVillageVenue, villageVenueLimit } from "./venue-capacity.js";
-import { wishExpired, wishRetained } from "./wish-definition.js";
-import {
-  addRoutineIdea,
-  deriveInfluence,
-  influenceSettings,
-  INFLUENCE_CATEGORIES,
-  routineDay,
-  validateRoutineDay,
-} from "./owned-routine.js";
-import { settleBackgroundWork, backgroundStatus, retryBackgroundJob } from "./background-work.js";
-import { relationshipZoneController } from "./relationship-store.js";
-import { socialPlanCandidates, socialContinuationValid } from "./relationship-social.js";
-import { relationshipWritingPrompt, relationshipChangeNotices } from "./relationships.js";
-import { readBaseVenueLayout, assertResidencePrivateDestination } from "./venue-layout.js";
-import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
-import { outsideVenueOperation } from "./venue-coordinator.js";
-import { DEFAULT_SCENERY_STYLE, sceneryImageKey, readSceneryStyle } from "./scenery-context.js";
-import { preparePrivateSpaces, privatePreparationRooms } from "./private-space-preparation.js";
-import { reportFoundingProgress } from "./founding-progress.js";
-import { zoneControllerIds } from "./venue-zones.js";
-import { venueCardProfile } from "./venue-writing.js";
-import {
-  correctResidentWish,
-  expireResidentWishes,
-  reconcileWishLifecycle,
-  registerInitialWish,
-  reserveInitialWishAllowance,
-} from "./wish-lifecycle.js";
+import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "./agenda-plan.js";
+import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import {
   backgroundRevision,
+  backgroundStatus,
   backgroundWorkSummaries,
   queueBackgroundJob,
   registerBackgroundHandler,
   retireBackgroundResident,
+  retryBackgroundJob,
+  settleBackgroundWork,
 } from "./background-work.js";
-import {
-  venueZones,
-  resolveVenueZone,
-  legacyZoneId,
-  chooseAgendaZone,
-  canOccupyZone,
-  zoneClosed,
-} from "./venue-zones.js";
-// Villages — the village-level operations the routes call.
-//
-// Joining a village record to the live library lives here rather than in the
-// route file so the rule is stated once: a card is authoritative when it still
-// exists, and a remembered name stands in when it does not.
 import {
   captureMissingVillagerCardColors,
   findPlayerPersona,
@@ -70,73 +22,72 @@ import {
   type VillagerCard,
 } from "./catalog.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "./agenda-plan.js";
-import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
-import { readVillageConnectionSettings, validateVillageSetupConnections } from "./connections.js";
-import { villagesConnectionIdFor } from "./connections.js";
+import {
+  readVillageConnectionSettings,
+  validateVillageSetupConnections,
+  villagesConnectionIdFor,
+} from "./connections.js";
 import { badRequest, conflict, notFound, safeFailureMessage } from "./errors.js";
+import { parseCompactFoundingCompletion, proposeCompactFounding } from "./founding-compact.js";
+import { seedFoundingVenueDetails } from "./founding-drafts.js";
+import { reportFoundingProgress } from "./founding-progress.js";
+import { inspectVillageImage } from "./image-generation.js";
+import { extractJsonObject } from "./json-reply.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
   MAX_LORE_TOKEN_BUDGET,
   MIN_LORE_TOKEN_BUDGET,
   readLoreTokenBudget,
   readSelectedLorebookIds,
-  readVillageLore,
-} from "./lorebooks.js";
-
+} from "./lore-policy.js";
+import { readVillageLore } from "./lorebooks.js";
 import { selectPromptMemories } from "./memory-selection.js";
-import { readScenarioImprint, readWorldFacts } from "./scenario-imprint.js";
-import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-image.js";
-import { inspectVillageImage } from "./image-generation.js";
-
-import { readNativeScheduleSnapshot, type NativeRoutine } from "./native-schedules.js";
-import { completeWithRoom, villagesLanguageModels, villagesLogger } from "./package-runtime.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import { seedFoundingVenueDetails } from "./founding-drafts.js";
-import { reconcileBuildProjects } from "./build-projects.js";
-import { draftNewVenueProject, draftRenovationProject, reconcileProjectLifecycles } from "./project-lifecycle.js";
+import { readNativeScheduleSnapshot } from "./native-schedules.js";
+import { outsideVenueOperation } from "./operation-context.js";
 import {
-  defaultVenueSpace,
-  hasVenueClass,
-  venueAssignedCount,
-  venueCapacity,
-  venueResidentIds,
-  venueSpaces,
-  validVenueClasses,
-} from "./venue-model.js";
-import { queueSharedMoveConsent, queueVenueCounteroffer, respondDueVenueMail } from "./venue-mailbox.js";
-
+  addRoutineIdea,
+  deriveInfluence,
+  INFLUENCE_CATEGORIES,
+  influenceSettings,
+  routineDay,
+  validateRoutineDay,
+} from "./owned-routine.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { readLinkedPersona } from "./persona-service.js";
+import { assertPlayerRoleLocked, playerRoleForSetup } from "./player-role.js";
+import { preparePrivateSpaces, privatePreparationRooms } from "./private-space-preparation.js";
+import { draftNewVenueProject, draftRenovationProject, reconcileProjectLifecycles } from "./project-lifecycle.js";
+import { reconcileBuildProjects } from "./project-rules.js";
 import {
   boundText,
   DEFAULT_HOME_BUILDING,
+  DEFAULT_TOWN_MAP_VIEW,
   HOME_BUILDING_ORDER,
   HOME_BUILDINGS,
-  DEFAULT_TOWN_MAP_VIEW,
   homeBuildingOptions,
+  isGlobalGalleryRef,
   isHomeBuildingKind,
   isHousePlace,
-  isGlobalGalleryRef,
   isTownMapImage,
   LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
   MAX_CHRONICLE_ABOUT_ONE_VILLAGER,
   MAX_CHRONICLE_IN_PROMPT,
   MAX_CHRONICLE_LENGTH,
   MAX_HAPPENINGS,
-  MAX_NOTICEBOARD_NOTES,
   MAX_NOTICE_LENGTH,
-  MAX_PLAYER_PERSONA_ID_LENGTH,
+  MAX_NOTICEBOARD_NOTES,
+  MAX_PLACES,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
   MAX_PLAYER_PERSONA_NAME_LENGTH,
-  MAX_PLACES,
   MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
-  MAX_VILLAGE_NAME_LENGTH,
+  MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_IMAGE_BYTES,
   MAX_VENUE_IMAGE_ID_LENGTH,
   MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
-  MAX_VENUE_DESCRIPTION_LENGTH,
+  MAX_VILLAGE_NAME_LENGTH,
   prependHappenings,
   remapVenues,
   SETUP_MAX_VILLAGER_COUNT,
@@ -147,13 +98,22 @@ import {
   TOWN_MAP_ZOOM_MIN,
   TOWN_MAP_ZOOM_STEP,
   VILLAGE_PRESET_MACROS,
+  villageCurrentSetting,
+  villageFoundingSetting,
   VILLAGES_DEFAULT_KNOWLEDGE,
   VILLAGES_GALLERY_FOLDER_NAME,
   VILLAGES_PROMPT_BOX_MAX_LENGTH,
-  villageCurrentSetting,
-  villageFoundingSetting,
-  type VillageHomeLine,
 } from "./prompt-preset.js";
+import { relationshipZoneController } from "./relationship-rules.js";
+import { relationshipChangeNotices, relationshipWritingPrompt } from "./relationships.js";
+import { readFoundingResidentContexts } from "./resident-founding-context.js";
+import { villagesLogger } from "./runtime-host.js";
+import { readScenarioImprint, readWorldFacts } from "./scenario-rules.js";
+import { sceneQueries } from "./scene-queries.js";
+import { DEFAULT_SCENERY_STYLE, readSceneryStyle, sceneryImageKey } from "./scenery-context.js";
+import type { NativeRoutine } from "./schedule-rules.js";
+import { socialContinuationValid, socialPlanCandidates } from "./social-rules.js";
+import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-image.js";
 import type {
   VillageAgenda,
   VillageAgendaView,
@@ -162,34 +122,64 @@ import type {
   VillageChronicleEntryView,
   VillageMomentView,
   VillageOpportunity,
+  VillagePendingDecision,
   VillagePersonaEntry,
   VillagePersonaPreview,
   VillagePlaceView,
   VillagePlayerIdentity,
   VillageRecap,
   VillageResidence,
-  VillageStoryPace,
   VillageSettingsView,
   VillageSnapshot,
   VillageState,
+  VillageStoryPace,
   VillageVenue,
   VillageVenueClass,
   VillageVenueFeature,
-  VillagePendingDecision,
   VillageVenueImage,
   VillageVillager,
   VillageVillagerCardSnapshot,
   VillageVillagerRefreshPreview,
   VillageVillagerView,
 } from "./types.js";
-import { readVenueRequestCore, venueRequestDraft, type VenueRequestCore } from "./venue-requests.js";
-import { proposeCompactFounding, parseCompactFoundingCompletion } from "./founding-compact.js";
 import {
+  applyAccessCommand,
+  evaluateZoneAccess,
+  initializeVenueAccess,
+  managesAccess,
+  projectVenueAccess,
+  projectZoneAccess,
+  readAccessCommand,
+} from "./venue-access.js";
+import { assertCanAddVillageVenue, assertVillageVenueCapacity, villageVenueLimit } from "./venue-capacity.js";
+import { sceneAccessContext } from "./venue-contact.js";
+import { assertResidencePrivateDestination, readBaseVenueLayout } from "./venue-layout.js";
+import { queueSharedMoveConsent, queueVenueCounteroffer, respondDueVenueMail } from "./venue-mailbox.js";
+import {
+  defaultVenueSpace,
+  hasVenueClass,
+  validVenueClasses,
+  venueAssignedCount,
+  venueCapacity,
+  venueResidentIds,
+  venueSpaces,
+} from "./venue-model.js";
+import { readVenueRequestCore, type VenueRequestCore, venueRequestDraft } from "./venue-requests.js";
+import { venueCardProfile } from "./venue-writing.js";
+import {
+  canOccupyZone,
+  legacyZoneId,
+  resolveVenueZone,
+  venueZones,
+  zoneClosed,
+  zoneControllerIds,
+} from "./venue-zones.js";
+import {
+  draftVillageVenueDescriptions,
   proposeHappenings,
+  proposePublicVenueNames,
   proposeReaction,
   proposeVillage,
-  proposePublicVenueNames,
-  draftVillageVenueDescriptions,
   type VillageTickContext,
 } from "./village-bootstrap.js";
 import {
@@ -199,7 +189,31 @@ import {
   VILLAGE_WEEKDAYS,
   villageDateLabel,
 } from "./village-clock.js";
-import { coerceTownMapView, defaultVillageState, mutateVillageState, readVillageState } from "./village-store.js";
+import { coerceTownMapView, defaultVillageState } from "./village-codec.js";
+import { readBool, readPlayerIdentity, readVenueImageContext, villagerPlaceView } from "./village-projections.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { wishExpired, wishRetained } from "./wish-definition.js";
+import {
+  correctResidentWish,
+  expireResidentWishes,
+  reconcileWishLifecycle,
+  registerInitialWish,
+  reserveInitialWishAllowance,
+} from "./wish-lifecycle.js";
+
+export {
+  readPlayerIdentity,
+  projectHomeLines,
+  villagerPlaceView,
+  readVenueImageContext,
+  readLinkedPersona,
+} from "./village-projections.js";
+
+// Villages — the village-level operations the routes call.
+//
+// Joining a village record to the live library lives here rather than in the
+// route file so the rule is stated once: a card is authoritative when it still
+// exists, and a remembered name stands in when it does not.
 
 /** How many villagers a village will hold, so the tab keeps rendering sanely. */
 export const MAX_VILLAGERS = 12;
@@ -303,17 +317,6 @@ function exactSnapshotTransition(village: VillageState, now: Date): string {
  * addressing the player the way they have all along. What the player loses is
  * the notice in the tab, not their name.
  */
-export function readPlayerIdentity(village: VillageState): VillagePlayerIdentity {
-  if (village.playerPersonaId.length === 0) {
-    return { name: "", description: "", personaId: "", missing: false };
-  }
-  return {
-    name: village.playerPersonaName,
-    description: village.playerPersonaIdentity,
-    personaId: village.playerPersonaId,
-    missing: village.playerPersonaMissing,
-  };
-}
 
 /**
  * Bring the cached copy of the linked Persona up to date. Returns whether it
@@ -605,41 +608,6 @@ function isVillageFounded(village: VillageState): boolean {
  * guessed at, because a line invented for a place that is not a house would put
  * a building in the prompt that the village does not have.
  */
-export function projectHomeLines(
-  village: Pick<VillageState, "venues" | "villagers"> & Partial<Pick<VillageState, "homeBuildingNames">>,
-  names: ReadonlyMap<string, string>,
-): VillageHomeLine[] {
-  const occupants = new Map(
-    village.villagers.map((villager) => [
-      villager.characterId,
-      names.get(villager.characterId) ?? villager.cardSnapshot.name,
-    ]),
-  );
-  const lines: VillageHomeLine[] = [];
-  for (const place of village.venues) {
-    if (place.occupancy.playerHome) {
-      lines.push({
-        isPlayerHome: true,
-        occupant: "",
-        building: place.occupancy.homeKind,
-        buildingName: place.occupancy.homeKind ? village.homeBuildingNames?.[place.occupancy.homeKind] : undefined,
-        venueName: place.name,
-      });
-    }
-    for (const residentId of venueResidentIds(place)) {
-      const occupant = occupants.get(residentId) ?? names.get(residentId) ?? "";
-      if (!occupant) continue;
-      lines.push({
-        isPlayerHome: false,
-        occupant,
-        building: place.occupancy.homeKind,
-        buildingName: place.occupancy.homeKind ? village.homeBuildingNames?.[place.occupancy.homeKind] : undefined,
-        venueName: place.name,
-      });
-    }
-  }
-  return lines;
-}
 
 /** The village as the tab draws it: live library labels and adopted card colors. */
 export async function buildVillageSnapshot(now: Date = new Date()): Promise<VillageSnapshot> {
@@ -669,7 +637,7 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
     village = await readVillageState();
   }
   const player = readPlayerIdentity(village);
-  const { activeVenueSession } = await import("./venue-session.js");
+  const { activeVenueSession } = sceneQueries();
   const residenceAccess = await activeVenueSession();
   // ONE schedule read for the whole village, so every villager's pin and their
   // own drawer's plate are resolved off the same answer. Null when the Engine
@@ -1564,57 +1532,6 @@ export async function removeVillager(characterId: string): Promise<void> {
  * their own — and it is why this is a pure function over the record rather than
  * anything that reads a clock.
  */
-export function villagerPlaceView(
-  village: VillageState,
-  villager: VillageVillager,
-  _routine: NativeRoutine | null,
-  minuteOfDay = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() }).minuteOfDay,
-  at = new Date(),
-): VillagePlaceView | null {
-  const agenda = agendaAt(villager.agenda, minuteOfDay, at, villager.ingestSchedule !== false);
-  const venueId = agenda?.venueId ?? "";
-  // A translation can name a place that has since been deleted from the village,
-  // so the lookup is by id against the current list rather than by position into
-  // the one the translation was written from. A place that is gone reads as
-  // unplaced, which is where the fallback below picks the villager up.
-  const venue =
-    venueId.length > 0
-      ? village.venues.find(
-          (entry) =>
-            entry.id === venueId &&
-            (entry.constructionStatus === "worksite" ||
-              !isHousePlace(entry) ||
-              (entry.classes?.some((item) => item !== "residence") ?? false)),
-        )
-      : undefined;
-  if (venue) {
-    const zone = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village);
-    return {
-      id: venue.id,
-      name: venue.name,
-      image: venue.presentation.image,
-      kind: "venue",
-      zoneId: zone.id,
-      zoneName: zone.name,
-    };
-  }
-  // Where they are when nothing has sent them anywhere: their own house. Named
-  // after the BUILDING rather than after whoever lives there, because the name
-  // of the person is already on the plate in front of them and the tab reads
-  // that one — what this answers is only what kind of house it is.
-  const home = village.venues.find((entry) => venueResidentIds(entry).includes(villager.characterId));
-  if (!home) return null;
-  const building = homeBuildingOptions().find((option) => option.kind === home.occupancy.homeKind);
-  const zone = chooseAgendaZone(home, villager.characterId, agenda?.activity, agenda?.zoneId, village);
-  return {
-    id: home.id,
-    name: building?.name ?? home.name,
-    image: home.presentation.image,
-    kind: "home",
-    zoneId: zone.id,
-    zoneName: zone.name,
-  };
-}
 
 // ── Village settings ─────────────────────────────────────────────────────────
 // What a villager is told about the world beyond their own card. It used to be
@@ -1750,18 +1667,6 @@ export async function setVillageName(value: unknown): Promise<VillageSnapshot> {
  * side — storing it would put the village straight into the state the tab calls
  * a broken link, on the very turn the player was picking someone who exists.
  */
-export async function readLinkedPersona(personaId: unknown): Promise<{ id: string; name: string; identity: string }> {
-  if (typeof personaId !== "string") throw badRequest("Your Persona must be an id.");
-  const id = boundText(personaId, MAX_PLAYER_PERSONA_ID_LENGTH);
-  if (id.length === 0) throw badRequest("Choose a Persona — the village needs one to know who you are.");
-  const persona = await findPlayerPersona(id);
-  if (!persona) throw badRequest("That Persona is no longer in your library.");
-  return {
-    id,
-    name: boundText(persona.name, MAX_PLAYER_PERSONA_NAME_LENGTH),
-    identity: boundText(persona.identity, MAX_PLAYER_PERSONA_IDENTITY_LENGTH),
-  };
-}
 
 /**
  * Store who the player is: the Persona they are.
@@ -2094,7 +1999,7 @@ export async function assertVenueImageAccess(
       !zoneControllerIds(venue!, zone).includes("player") &&
       zone.ownerId !== "player"
     ) {
-      const { activeVenueSession } = await import("./venue-session.js");
+      const { activeVenueSession } = sceneQueries();
       const session = await activeVenueSession();
       const controllers = zoneControllerIds(venue!, zone);
       const grant = session?.zoneGrants?.find((entry) => entry.zoneId === zone.id);
@@ -2374,7 +2279,7 @@ export async function previewVillageVenueDeletion(venueId: string): Promise<Vill
 }
 
 async function activeVisitAtVenue(venueId: string): Promise<boolean> {
-  const { activeVenueSession } = await import("./venue-session.js");
+  const { activeVenueSession } = sceneQueries();
   return (await activeVenueSession())?.placeId === venueId;
 }
 
@@ -2404,7 +2309,7 @@ export function addVillageVenue(state: VillageState, draft: VillageVenue): void 
 export async function changeVenueAccess(venueId: string, value: unknown): Promise<VillageSnapshot> {
   const command = readAccessCommand(value);
   if ("sceneId" in command && command.sceneId) throw badRequest("The server resolves the active Scene.");
-  const { activeVenueSession } = await import("./venue-session.js");
+  const { activeVenueSession } = sceneQueries();
   const scene = await activeVenueSession();
   if (command.action === "refuse-entry" || command.action === "leave-now") {
     if (!scene || scene.placeId !== venueId)
@@ -2727,7 +2632,7 @@ export async function proposeResidenceSpaceEdit(venueId: string, value: unknown)
     throw conflict("Conflicting private space targets.");
   const zoneId = asTrimmedString(row.privateSpaceId ?? row.zoneId);
 
-  const { activeVenueSession } = await import("./venue-session.js");
+  const { activeVenueSession } = sceneQueries();
   const session = await activeVenueSession();
   if (
     !session ||
@@ -5332,18 +5237,6 @@ export async function removeNoticeAt(index: unknown): Promise<VillageSnapshot> {
   return buildVillageSnapshot();
 }
 
-function readBool(value: unknown): boolean {
-  if (typeof value !== "boolean") throw badRequest("Image context controls must be on or off.");
-  return value;
-}
-export function readVenueImageContext(value: unknown) {
-  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-  return {
-    useAssignedVillagerContext:
-      row.useAssignedVillagerContext === undefined ? true : readBool(row.useAssignedVillagerContext),
-    useVisualLore: row.useVisualLore === undefined ? true : readBool(row.useVisualLore),
-  };
-}
 export async function setScenerySettings(value: {
   sceneryArtStyle?: unknown;
   personalizeVenueImagesByDefault?: unknown;

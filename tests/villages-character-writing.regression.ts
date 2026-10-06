@@ -8,7 +8,8 @@ import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
 import { buildTickMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";

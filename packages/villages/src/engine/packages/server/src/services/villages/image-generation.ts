@@ -1,3 +1,9 @@
+import { asRecord, asTrimmedString } from "./coerce.js";
+import { villagesImageConnectionChoice } from "./connections.js";
+import { villageEngineJson } from "./engine-loopback.js";
+import { badRequest } from "./errors.js";
+import { type DecodedVillageImage, decodeVillageImageDataUrl } from "./image-files.js";
+
 // Villages — the shared boundary for user-triggered image generation.
 //
 // Every generated image in Villages comes through this file. It validates the
@@ -5,12 +11,6 @@
 // and validates the returned bytes before a caller stores them. Map art uses it
 // today; venue interiors share this path. Finished sprites use image-files.ts only.
 
-import { villagesImageConnectionChoice } from "./connections.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
-import { villageEngineJson } from "./engine-loopback.js";
-import { badRequest } from "./errors.js";
-
-import { decodeVillageImageDataUrl, type DecodedVillageImage } from "./image-files.js";
 export { decodeVillageImageDataUrl, inspectVillageImage } from "./image-files.js";
 
 const IMAGE_GENERATION_PATH = "/api/characters/avatar-generation";

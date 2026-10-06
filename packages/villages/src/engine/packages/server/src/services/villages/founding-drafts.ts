@@ -1,31 +1,26 @@
+import { findVillagerCard } from "./catalog.js";
+import { asTrimmedString } from "./coerce.js";
+import { villagesConnectionIdFor } from "./connections.js";
+import { badRequest } from "./errors.js";
+import type { FoundingProgress } from "./founding-progress.js";
+import { uploadVillageGalleryImage } from "./global-gallery.js";
+import { decodeVillageImageDataUrl, generateVillageImage } from "./image-generation.js";
+import { extractJsonObject } from "./json-reply.js";
+import { DEFAULT_LORE_TOKEN_BUDGET, readLoreTokenBudget, readSelectedLorebookIds } from "./lore-policy.js";
+import { readVillageLore, readVillageVisualLore } from "./lorebooks.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { readLinkedPersona } from "./persona-service.js";
+import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "./prompt-preset.js";
 import {
   readFoundingResidentContexts,
   renderResidentFoundingContext,
   RESIDENT_CONTINUITY_RULE,
 } from "./resident-founding-context.js";
-import { readSceneryStyle, sceneryPrompt, sceneryCardsContext } from "./scenery-context.js";
-import { readLinkedPersona } from "./village.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { findVillagerCard } from "./catalog.js";
-import { asTrimmedString } from "./coerce.js";
-import { badRequest } from "./errors.js";
-import { uploadVillageGalleryImage } from "./global-gallery.js";
-import { decodeVillageImageDataUrl, generateVillageImage } from "./image-generation.js";
-import {
-  readSelectedLorebookIds,
-  readVillageLore,
-  readVillageVisualLore,
-  readLoreTokenBudget,
-  DEFAULT_LORE_TOKEN_BUDGET,
-} from "./lorebooks.js";
-import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
-import { villagesConnectionIdFor } from "./connections.js";
-import { MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "./prompt-preset.js";
-import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-imprint.js";
-import { extractJsonObject } from "./village-bootstrap.js";
+import { coerceScenarioImprint, coerceWorldFacts } from "./scenario-rules.js";
+import { readSceneryStyle, sceneryCardsContext, sceneryPrompt } from "./scenery-context.js";
 import type { VillageState, VillageVenueImage } from "./types.js";
-import type { FoundingProgress } from "./founding-progress.js";
 import { fitVenueWritingMessages, venueCardProfile } from "./venue-writing.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 export type FoundingVenueSuggestion = {
   id: string;

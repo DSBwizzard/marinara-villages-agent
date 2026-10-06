@@ -1,26 +1,26 @@
-import { assertCanAddVillageVenue } from "./venue-capacity.js";
-import { assertResidencePrivateDestination } from "./venue-layout.js";
-import { venueZones } from "./venue-zones.js";
-import { renderPlayerRoleContext } from "./player-role.js";
-import { relationshipWritingPrompt } from "./relationships.js";
 import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "./background-work.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, conflict, notFound } from "./errors.js";
+import { extractJsonObject } from "./json-reply.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { renderPlayerRoleContext } from "./player-role.js";
+import {
+  applyProjectMailboxDecisions,
+  createRenovationProject,
+  draftNewVenueProject,
+  draftRenovationProject,
+} from "./project-lifecycle.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
-import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueMail, VillageResidence } from "./types.js";
+import { relationshipWritingPrompt } from "./relationships.js";
+import type { VillageResidence, VillageState, VillageVenue, VillageVenueClass, VillageVenueMail } from "./types.js";
+import { assertCanAddVillageVenue } from "./venue-capacity.js";
+import { assertResidencePrivateDestination } from "./venue-layout.js";
+import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import type { VenueRequestCore } from "./venue-requests.js";
+import { venueZones } from "./venue-zones.js";
 import { hashString, randomVillageSeed } from "./village-clock.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import {
-  createRenovationProject,
-  draftRenovationProject,
-  applyProjectMailboxDecisions,
-  draftNewVenueProject,
-} from "./project-lifecycle.js";
-import type { VenueRequestCore } from "./venue-requests.js";
-import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 function proposedCapacity(venue: VillageVenue, mail: VillageVenueMail): number {
   const base = mail.proposedCapacity ?? venue.residenceCapacity ?? 1;

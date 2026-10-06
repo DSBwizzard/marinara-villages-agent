@@ -1,6 +1,7 @@
-import type { VillageVenue, VillageVenueClass, VillageVenueZone, VillageZoneKind, VillageState } from "./types.js";
-import { defaultVenueSpace, venueResidentIds, venueSpaces } from "./venue-model.js";
 import { conflict } from "./errors.js";
+import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueZone, VillageZoneKind } from "./types.js";
+import { evaluateZoneAccess, mayInvite, zoneManagers } from "./venue-access.js";
+import { defaultVenueSpace, venueResidentIds, venueSpaces } from "./venue-model.js";
 
 export const ZONE_KINDS: readonly VillageZoneKind[] = [
   "exterior",
@@ -398,4 +399,3 @@ export function privateTarget(
   if (target && !resolveVenueZone(venue, target)) throw conflict("That space is no longer here.");
   return target;
 }
-import { evaluateZoneAccess, mayInvite, zoneManagers } from "./venue-access.js";

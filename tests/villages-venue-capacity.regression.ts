@@ -18,7 +18,8 @@ import {
   resetVillage,
   runVillageBootstrap,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village.ts";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts";
 import {
   createNewVenueProject,
   placeNewVenueProject,

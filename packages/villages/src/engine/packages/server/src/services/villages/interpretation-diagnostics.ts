@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { villagesDocuments, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
-import { mutateDocument, type DocumentSlot } from "./village-store.js";
+import { type DocumentSlot, mutateDocument } from "./document-store.js";
 import type { InterpretationBatch, InterpretationTrace } from "./interpretation.js";
-import { systemInterpretations } from "./interpretation.js";
-import { outsideVenueOperation } from "./venue-coordinator.js";
+import { outsideVenueOperation } from "./operation-context.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
+import { systemInterpretations } from "./system-interpretation.js";
+import { randomUUID } from "node:crypto";
 
 type DiagnosticTrace = InterpretationTrace & {
   comparisonAttempt?: { id: string; status: "dispatching" | "complete" | "unknown"; startedAt: string };

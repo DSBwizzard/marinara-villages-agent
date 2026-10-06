@@ -1,5 +1,5 @@
 import { asRecord } from "./coerce.js";
-import { villageEngineJson } from "./engine-loopback.js";
+import { villageEngineJson } from "./engine-transport.js";
 import { badRequest, VillagesRequestError } from "./errors.js";
 
 export type DecodedVillageImage = { dataUrl: string; mime: string; bytes: Uint8Array };

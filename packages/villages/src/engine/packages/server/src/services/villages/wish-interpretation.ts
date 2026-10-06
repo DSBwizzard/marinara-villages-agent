@@ -1,21 +1,21 @@
-import { wishCheckKnowledge } from "./wish-journal.js";
-import { createHash } from "node:crypto";
-import { physicalVenueEvents } from "./venue-scene-state.js";
-import type { VillageWish, VillageVenueEvent, VillageState } from "./types.js";
-import type { VenueScene } from "./venue-session.js";
-import type { VillageWishClaimContext, VillageWishVerdictResult } from "./wishes.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { villagesDocuments, VILLAGES_PACKAGE_ID } from "./package-runtime.js";
-import type { DocumentSlot } from "./village-store.js";
-import { localWishRequirements, wishEvidenceAdmission } from "./wish-admission.js";
+import type { DocumentSlot } from "./document-store.js";
+import { type InterpretationBatch, interpretChecks } from "./interpretation.js";
+import { VILLAGES_PACKAGE_ID, villagesDocuments } from "./runtime-host.js";
 import {
-  interpretChecks,
-  systemInterpretations,
-  type InterpretationBatch,
   type InterpretationCheck,
   type InterpretationEvidence,
   type InterpretationResult,
-} from "./interpretation.js";
+  systemInterpretations,
+} from "./system-interpretation.js";
+import type { VillageState, VillageVenueEvent, VillageWish } from "./types.js";
+import { physicalVenueEvents } from "./venue-scene-state.js";
+import type { VenueScene } from "./venue-session.js";
+import { localWishRequirements, wishEvidenceAdmission } from "./wish-admission.js";
+import { wishCheckKnowledge } from "./wish-journal.js";
+import type { VillageWishClaimContext, VillageWishVerdictResult } from "./wishes.js";
+import { createHash } from "node:crypto";
+
 export type WishCriteria = {
   conditionRevision?: number;
   conditionAt?: string;

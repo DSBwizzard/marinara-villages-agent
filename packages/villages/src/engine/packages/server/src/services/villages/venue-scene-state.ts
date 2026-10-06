@@ -1,7 +1,7 @@
-import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { badGateway, conflict } from "./errors.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH } from "./prompt-preset.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent } from "./types.js";
+import { resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
 /** Recent feed entries remain compatible; confirmed new effects survive feed trimming in the existing receipt store. */
 export function physicalVenueEvents(state: VillageState): VillageVenueEvent[] {

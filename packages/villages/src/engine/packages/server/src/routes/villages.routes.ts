@@ -1,31 +1,176 @@
-import { retireResidentWish } from "../services/villages/wish-lifecycle.js";
-import { readResidentSignature, generateResidentSignature } from "../services/villages/resident-signature.js";
 import {
-  readSpriteManager,
+  backgroundWorkSummaries,
+  retryBackgroundJob,
+  villageBackgroundPresence,
+} from "../services/villages/background-work.js";
+import { readVillageConnectionSettings, saveVillageConnections } from "../services/villages/connections.js";
+import { decisionAdapterStatus } from "../services/villages/decisions-adapter.js";
+import { badRequest, conflict, notFound, statusCodeOf } from "../services/villages/errors.js";
+import {
+  generateFoundingVenueImage,
+  suggestStartingVenues,
+  uploadFoundingVenueImage,
+} from "../services/villages/founding-drafts.js";
+import { readInterpretationDiagnostics } from "../services/villages/interpretation-diagnostics.js";
+import {
+  readInterpretationSettings,
+  saveInterpretationSettings,
+} from "../services/villages/interpretation-settings.js";
+import {
+  generateVillageLocationImage,
+  MAX_LOCATION_IMAGE_BASE64_LENGTH,
+  storeVillageVenueImage,
+} from "../services/villages/location-image.js";
+import { listVillageLorebooks } from "../services/villages/lorebooks.js";
+import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
+import { villagesDebugAgentsEnabled, villagesLogger } from "../services/villages/package-runtime.js";
+import { retryPrivateSpaces } from "../services/villages/private-space-preparation.js";
+import {
+  listProjectEvidenceCandidates,
+  reallocateHeldProjectSupply,
+  recordExistingProjectSource,
+  recordProjectSpokenEvidence,
+} from "../services/villages/project-evidence.js";
+import {
+  acceptProjectRequirements,
+  createNewVenueProject,
+  createRenovationProject,
+  debugCompleteProjectConstruction,
+  deliverProjectMaterial,
+  lockProjectBuilder,
+  openFinishedProject,
+  placeNewVenueProject,
+  renewRenovationApprovals,
+  requestProjectMailbox,
+  reviseRenovationProject,
+  startProjectConstruction,
+} from "../services/villages/project-lifecycle.js";
+import { MAX_SUBMISSION_ID_LENGTH, MAX_TOWN_MAP_IMAGE_LENGTH } from "../services/villages/prompt-preset.js";
+import { changeRelationshipCreator, readRelationshipsView } from "../services/villages/relationships.js";
+import { generateResidentSignature, readResidentSignature } from "../services/villages/resident-signature.js";
+import { readRuntimeDebug, runtimeDebug, saveRuntimeDebug } from "../services/villages/runtime-debug.js";
+import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
+import {
+  readChatSpinOff,
+  readSpinOffPresetPicker,
+  readSpinOffPresetVariables,
+  readVillageSceneLock,
+} from "../services/villages/spinoff.js";
+import {
+  adoptSpriteArtwork,
   importSpriteArtwork,
   listSpriteLibrary,
-  adoptSpriteArtwork,
+  readSpriteManager,
+  removeSpriteArtwork,
+  removeSpriteAssignment,
   saveSpriteArtwork,
   setSpriteDefault,
   setSpriteFraming,
-  removeSpriteArtwork,
-  removeSpriteAssignment,
 } from "../services/villages/sprite-manager.js";
-import { readRuntimeDebug, saveRuntimeDebug, runtimeDebug } from "../services/villages/runtime-debug.js";
-import { readRelationshipsView, changeRelationshipCreator } from "../services/villages/relationships.js";
+import { readTownMapGeneration, requestTownMapGeneration } from "../services/villages/town-map-generation.js";
+import { generateVillageTownMap } from "../services/villages/town-map-image.js";
+import type { VillageVenueClass } from "../services/villages/types.js";
+import { readUsageMeter, resetUsagePeriod, saveLinkApiGroup, saveUsageRate } from "../services/villages/usage-meter.js";
+import { previewVillageBurst } from "../services/villages/usage-preview.js";
 import { operationSummary, readVenueOperation, venueRefusal } from "../services/villages/venue-coordinator.js";
-import { setScenerySettings } from "../services/villages/village.js";
-import { retryPrivateSpaces } from "../services/villages/private-space-preparation.js";
-import { privateTarget } from "../services/villages/venue-zones.js";
-import { readVillageState as readPrivateTargetState } from "../services/villages/village-store.js";
 import {
-  villageBackgroundPresence,
-  retryBackgroundJob,
-  backgroundWorkSummaries,
-} from "../services/villages/background-work.js";
-import { moveVenueZone } from "../services/villages/venue-session.js";
+  decideVillagerVenueImprovement,
+  proposePlayerMove,
+  proposeVenueChange,
+} from "../services/villages/venue-mailbox.js";
+import { VENUE_CLASSES } from "../services/villages/venue-model.js";
+import {
+  activeVenueSession,
+  closeVenueSessionWithReceipts,
+  continueVenueWithoutGreeting,
+  deleteAllVenueVisits,
+  deleteVenueVisit,
+  discardVenueVisitDebug,
+  dismissSceneNotice,
+  enterResidencePrivateSpace,
+  enterVenue,
+  greetVenue,
+  leaveVenueSession,
+  listVenueVisitSummaries,
+  moveVenueZone,
+  progressBacklog,
+  publicSceneResponse,
+  readSceneChanges,
+  readVenueVisit,
+  replaySceneChanges,
+  resetVenueSessions,
+  retrySceneChangeInterpretation,
+  sendVenueTurn,
+  setVenueVisitRetention,
+  touchVenueSession,
+} from "../services/villages/venue-session.js";
+import { privateTarget } from "../services/villages/venue-zones.js";
+import { readVillageState as readPrivateTargetState, readVillageState } from "../services/villages/village-store.js";
+import {
+  addNotice,
+  addVillager,
+  applyVillagerRefresh,
+  approveVillageResidence,
+  assertFoundedVillageReady,
+  buildVillageAgendas,
+  buildVillageCatalog,
+  buildVillageMemories,
+  buildVillagePersonaCatalog,
+  buildVillageSnapshot,
+  buildVillageStory,
+  changeVenueAccess,
+  clearVillagerAgenda,
+  clearVillagerRemap,
+  completeVillageResidence,
+  correctCompletedWish,
+  createVillageVenue,
+  decideVillageHomeUpgrade,
+  decideVillageResidence,
+  decideVillageVenueRequest,
+  deleteVillageVenue,
+  draftVenueDescriptions,
+  foundingPreparationSnapshot,
+  previewVillagerRefresh,
+  previewVillageVenueDeletion,
+  proposeResidenceSpaceEdit,
+  proposeVillageResidence,
+  readVillagePersonaPreview,
+  readVillageTownMapImage,
+  reconcileVillage,
+  refreshPlayerPersona,
+  removeChronicleEntry,
+  removeNoticeAt,
+  removeVillager,
+  removeVillageRecollection,
+  replaceVillageTownMap,
+  resetVillage,
+  retryFoundedVillagePreparation,
+  retryResidencePrivateSpaceAdaptation,
+  runVillageSetup,
+  setScenerySettings,
+  setVillageCharacterSpeechColors,
+  setVillageHomeBuildingNames,
+  setVillageLoreSettings,
+  setVillageName,
+  setVillagePlayer,
+  setVillagePromptKnowledge,
+  setVillagerScheduleInfluence,
+  setVillagerScheduleIngestion,
+  setVillageSendOnEnter,
+  setVillageSetting,
+  setVillageSpriteCardFlipEnabled,
+  setVillageStoryPace,
+  setVillageVenueImage,
+  setVillageVenues,
+  suggestFoundingPlaces,
+  suggestFoundingVenueNames,
+  updateVillageVenue,
+  updateVillageZone,
+} from "../services/villages/village.js";
 import { readWishHistoryPage } from "../services/villages/wish-archive.js";
-import { updateVillageZone, changeVenueAccess } from "../services/villages/village.js";
+import { retireResidentWish } from "../services/villages/wish-lifecycle.js";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+
 // Villages — the package's privileged route surface, mounted at `/api/villages`.
 //
 // Everything behind this plugin is the Engine owner (the host authenticates
@@ -35,151 +180,6 @@ import { updateVillageZone, changeVenueAccess } from "../services/villages/villa
 // Scenes are village documents. Spinoff creation is NYI; existing
 // native Engine roleplays can still be identified through the read-only route
 // below. The retired scene lock remains exported for older extension surfaces.
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import {
-  activeVenueSession,
-  publicSceneResponse,
-  continueVenueWithoutGreeting,
-  closeVenueSessionWithReceipts,
-  leaveVenueSession,
-  enterResidencePrivateSpace,
-  enterVenue,
-  greetVenue,
-  listVenueVisitSummaries,
-  readVenueVisit,
-  readSceneChanges,
-  dismissSceneNotice,
-  replaySceneChanges,
-  retrySceneChangeInterpretation,
-  progressBacklog,
-  deleteVenueVisit,
-  deleteAllVenueVisits,
-  setVenueVisitRetention,
-  resetVenueSessions,
-  sendVenueTurn,
-  touchVenueSession,
-  discardVenueVisitDebug,
-} from "../services/villages/venue-session.js";
-import { readVillageConnectionSettings, saveVillageConnections } from "../services/villages/connections.js";
-import { readVillageWriting, saveVillageWriting } from "../services/villages/narration-settings.js";
-import {
-  readInterpretationSettings,
-  saveInterpretationSettings,
-} from "../services/villages/interpretation-settings.js";
-import { decisionAdapterStatus } from "../services/villages/decisions-adapter.js";
-import { readInterpretationDiagnostics } from "../services/villages/interpretation-diagnostics.js";
-import { badRequest, conflict, notFound, statusCodeOf } from "../services/villages/errors.js";
-import { VENUE_CLASSES } from "../services/villages/venue-model.js";
-import {
-  createNewVenueProject,
-  createRenovationProject,
-  placeNewVenueProject,
-  requestProjectMailbox,
-  lockProjectBuilder,
-  acceptProjectRequirements,
-  deliverProjectMaterial,
-  startProjectConstruction,
-  debugCompleteProjectConstruction,
-  openFinishedProject,
-  reviseRenovationProject,
-  renewRenovationApprovals,
-} from "../services/villages/project-lifecycle.js";
-import {
-  listProjectEvidenceCandidates,
-  recordExistingProjectSource,
-  reallocateHeldProjectSupply,
-  recordProjectSpokenEvidence,
-} from "../services/villages/project-evidence.js";
-import { readVillageState } from "../services/villages/village-store.js";
-import type { VillageVenueClass } from "../services/villages/types.js";
-import { listVillageLorebooks } from "../services/villages/lorebooks.js";
-import {
-  generateVillageLocationImage,
-  MAX_LOCATION_IMAGE_BASE64_LENGTH,
-  storeVillageVenueImage,
-} from "../services/villages/location-image.js";
-import { generateVillageTownMap } from "../services/villages/town-map-image.js";
-import { requestTownMapGeneration, readTownMapGeneration } from "../services/villages/town-map-generation.js";
-import { draftScenarioImprint } from "../services/villages/scenario-imprint.js";
-import {
-  generateFoundingVenueImage,
-  uploadFoundingVenueImage,
-  suggestStartingVenues,
-} from "../services/villages/founding-drafts.js";
-import { villagesLogger, villagesDebugAgentsEnabled } from "../services/villages/package-runtime.js";
-import { MAX_SUBMISSION_ID_LENGTH, MAX_TOWN_MAP_IMAGE_LENGTH } from "../services/villages/prompt-preset.js";
-import {
-  readChatSpinOff,
-  readSpinOffPresetPicker,
-  readSpinOffPresetVariables,
-  readVillageSceneLock,
-} from "../services/villages/spinoff.js";
-import {
-  addNotice,
-  addVillager,
-  applyVillagerRefresh,
-  buildVillageAgendas,
-  buildVillageCatalog,
-  buildVillagePersonaCatalog,
-  readVillagePersonaPreview,
-  buildVillageSnapshot,
-  assertFoundedVillageReady,
-  foundingPreparationSnapshot,
-  retryFoundedVillagePreparation,
-  buildVillageStory,
-  buildVillageMemories,
-  clearVillagerAgenda,
-  correctCompletedWish,
-  setVillagerScheduleIngestion,
-  setVillagerScheduleInfluence,
-  clearVillagerRemap,
-  createVillageVenue,
-  decideVillageVenueRequest,
-  decideVillageHomeUpgrade,
-  decideVillageResidence,
-  completeVillageResidence,
-  retryResidencePrivateSpaceAdaptation,
-  draftVenueDescriptions,
-  deleteVillageVenue,
-  approveVillageResidence,
-  previewVillageVenueDeletion,
-  previewVillagerRefresh,
-  proposeVillageResidence,
-  proposeResidenceSpaceEdit,
-  readVillageTownMapImage,
-  replaceVillageTownMap,
-  refreshPlayerPersona,
-  removeChronicleEntry,
-  removeVillageRecollection,
-  removeNoticeAt,
-  removeVillager,
-  resetVillage,
-  suggestFoundingPlaces,
-  suggestFoundingVenueNames,
-  runVillageSetup,
-  reconcileVillage,
-  setVillageName,
-  setVillagePlayer,
-  setVillagePromptKnowledge,
-  setVillageLoreSettings,
-  setVillageStoryPace,
-  setVillageCharacterSpeechColors,
-  setVillageSendOnEnter,
-  setVillageSpriteCardFlipEnabled,
-  setVillageSetting,
-  setVillageVenueImage,
-  setVillageHomeBuildingNames,
-  setVillageVenues,
-  updateVillageVenue,
-} from "../services/villages/village.js";
-import {
-  proposeVenueChange,
-  proposePlayerMove,
-  decideVillagerVenueImprovement,
-} from "../services/villages/venue-mailbox.js";
-
-import { previewVillageBurst } from "../services/villages/usage-preview.js";
-import { readUsageMeter, resetUsagePeriod, saveUsageRate, saveLinkApiGroup } from "../services/villages/usage-meter.js";
 
 /** Read one id off a route parameter without trusting its type. */
 function readCharacterId(value: unknown): string {

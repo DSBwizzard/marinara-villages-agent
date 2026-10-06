@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   defaultVillageState,
   readVillageState,

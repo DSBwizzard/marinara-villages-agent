@@ -33,7 +33,8 @@ import {
   retireResidentWish,
   expireResidentWishes,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-lifecycle.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { defaultRelationshipState } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
 import {
   projectRelationshipProfiles,

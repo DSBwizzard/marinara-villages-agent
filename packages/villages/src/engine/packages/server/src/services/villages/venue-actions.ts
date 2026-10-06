@@ -1,17 +1,19 @@
-import { venueCheckpoint, venueOperationSignal, assertVenueOwnership } from "./venue-coordinator.js";
-import { venueInZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { villagesConnectionIdFor } from "./connections.js";
 import { badRequest, notFound } from "./errors.js";
+import { extractJsonObject } from "./json-reply.js";
+import { assertVenueOwnership, venueOperationSignal } from "./operation-context.js";
 import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
 import { boundText, MAX_HAPPENING_LENGTH, MAX_VENUE_NOTE_LENGTH, prependHappenings } from "./prompt-preset.js";
 import type { VillageHappening, VillageVenue } from "./types.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import { mutateVillageState, readVillageState } from "./village-store.js";
-import { deriveVillageMoment } from "./village-clock.js";
-import { readPlayerIdentity, rollActiveAgendas } from "./village.js";
-import { activeVenueSession, recordVenueAction } from "./venue-session.js";
+import { venueCheckpoint } from "./venue-coordinator.js";
 import { venueInArea, venueResidentIds } from "./venue-model.js";
+import { activeVenueSession, recordVenueAction } from "./venue-session.js";
+import { resolveVenueZone, venueInZone, zoneClosed } from "./venue-zones.js";
+import { deriveVillageMoment } from "./village-clock.js";
+import { readPlayerIdentity } from "./village-projections.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { rollActiveAgendas } from "./village.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 export const MAX_VENUE_ACTION_LENGTH = 500;
 

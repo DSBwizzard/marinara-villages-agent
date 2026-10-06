@@ -1,32 +1,36 @@
+import { agendaBlocksFor, agendaDateKey, flexibleAgendaInterval } from "./agenda-week.js";
+import { backgroundCalls, backgroundSetting } from "./background-context.js";
+import {
+  backgroundRevision,
+  backgroundStatus,
+  queueBackgroundJob,
+  registerBackgroundHandler,
+  settleBackgroundWork,
+} from "./background-work.js";
+import { villagerCardFromSnapshot } from "./catalog.js";
+import { villagesConnectionIdFor } from "./connections.js";
+import { notFound } from "./errors.js";
+import { extractJsonObject } from "./json-reply.js";
+import { readVillageLore } from "./lorebooks.js";
+import { outsideVenueOperation } from "./operation-context.js";
+import { addRoutineIdea } from "./owned-routine.js";
+import { completeWithRoom, villagesLanguageModels } from "./package-runtime.js";
+import { coerceWish, villageCurrentSetting } from "./prompt-preset.js";
+import { villagesDebugAgentsEnabled, villagesLogger } from "./runtime-host.js";
+import type { VillageState, VillageVillager, VillageWish } from "./types.js";
+import { venueCardProfile } from "./venue-writing.js";
+import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { deriveVillageMoment, randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { mutateVillageState, readVillageState } from "./village-store.js";
+import { flushWishOutcomes, previousFulfilledNeed, readWishOutcome } from "./wish-archive.js";
 import {
   selectWishSize,
-  wishGenerationDirection,
-  wishExpired,
   validateGeneratedWishWording,
+  wishExpired,
+  wishGenerationDirection,
 } from "./wish-definition.js";
 import { setWishJournalStatus } from "./wish-journal.js";
-import { completionFailure, WorkFailureError } from "./work-failure.js";
-import { addRoutineIdea } from "./owned-routine.js";
-import type { CapabilityLanguageModelCompletion, CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { villagesConnectionIdFor } from "./connections.js";
 import {
-  completeWithRoom,
-  villagesDebugAgentsEnabled,
-  villagesLanguageModels,
-  villagesLogger,
-} from "./package-runtime.js";
-import { readVillageState, mutateVillageState } from "./village-store.js";
-import { venueCardProfile } from "./venue-writing.js";
-import { villagerCardFromSnapshot } from "./catalog.js";
-import { flexibleAgendaInterval, agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
-import { deriveVillageMoment, randomVillageSeed, VILLAGE_WEEKDAYS } from "./village-clock.js";
-import { coerceWish, villageCurrentSetting } from "./prompt-preset.js";
-import { extractJsonObject } from "./village-bootstrap.js";
-import { canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
-import { readVillageLore } from "./lorebooks.js";
-import { flushWishOutcomes, readWishOutcome, previousFulfilledNeed } from "./wish-archive.js";
-import {
-  WISH_DAY_MS,
   knownNeedBlocked,
   newWishLifecycle,
   normalWish,
@@ -36,20 +40,12 @@ import {
   routineRevision,
   selectWishNeeds,
   shortWishText,
+  WISH_DAY_MS,
   wishRevision,
 } from "./wish-policy.js";
-import type { VillageState, VillageVillager, VillageWish } from "./types.js";
 import type { WishActivity, WishAttempt } from "./wish-types.js";
-import { notFound } from "./errors.js";
-import { outsideVenueOperation } from "./venue-coordinator.js";
-import { backgroundCalls, backgroundSetting } from "./background-context.js";
-import {
-  backgroundRevision,
-  backgroundStatus,
-  queueBackgroundJob,
-  registerBackgroundHandler,
-  settleBackgroundWork,
-} from "./background-work.js";
+import { completionFailure, WorkFailureError } from "./work-failure.js";
+import type { CapabilityLanguageModelCompletion, CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 const clocks = new Map<string, () => Date>();
 const MAX_ACTIVE = 2;

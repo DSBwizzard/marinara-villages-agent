@@ -1,4 +1,4 @@
-import { extractJsonObject } from "./village-bootstrap.js";
+import { extractJsonObject } from "./json-reply.js";
 
 /** Keep complete narration when only trailing metadata was cut off. Never invent or repair JSON values. */
 export function extractSceneReply(content: string): Record<string, unknown> | null {

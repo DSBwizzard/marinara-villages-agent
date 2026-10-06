@@ -1,23 +1,18 @@
+import { agendaBlocksFor } from "./agenda-week.js";
 import { asRecord } from "./coerce.js";
 import { badRequest } from "./errors.js";
-import { readVillageState } from "./village-store.js";
-import { agendaBlocksFor } from "./agenda-week.js";
 import { readVillageLore } from "./lorebooks.js";
-import { relationshipScore, relationshipLabel } from "./relationship-policy.js";
-import {
-  relationshipFor,
-  relationshipKey,
-  neutralRelationship,
-  mutateRelationships,
-  reconcileRelationships,
-} from "./relationship-store.js";
+import { relationshipLabel, relationshipScore } from "./relationship-policy.js";
+import { neutralRelationship, reconcileRelationships, relationshipFor, relationshipKey } from "./relationship-rules.js";
+import { mutateRelationships } from "./relationship-store.js";
 import type {
-  RelationshipState,
-  RelationshipReceipt,
-  StartingTie,
   RelationshipKnowledge,
+  RelationshipReceipt,
+  RelationshipState,
+  StartingTie,
 } from "./relationship-types.js";
 import type { VillageState } from "./types.js";
+import { readVillageState } from "./village-store.js";
 
 /** Writing context describes particular relationships, never a replacement temperament. */
 export function relationshipWritingPrompt(village: VillageState, fromId: string): string {

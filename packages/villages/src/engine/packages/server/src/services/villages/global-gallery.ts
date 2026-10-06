@@ -1,3 +1,9 @@
+import { asRecord, asTrimmedString } from "./coerce.js";
+import { villageEngineForm, villageEngineJson } from "./engine-transport.js";
+import { badRequest, VillagesRequestError } from "./errors.js";
+import { globalGalleryRef, MAX_VENUE_IMAGE_URL_LENGTH, VILLAGES_GALLERY_FOLDER_NAME } from "./prompt-preset.js";
+import type { VillageVenueImage } from "./types.js";
+
 // Villages — the pictures the village asks the Engine to keep for it.
 //
 // A venue's picture is NOT stored in the village document. It is uploaded to
@@ -11,12 +17,6 @@
 // Filing is best-effort by design. A folder is an ornament — a picture at the
 // root of the gallery draws exactly as well — so nothing here is allowed to
 // fail an upload over it.
-
-import { asRecord, asTrimmedString } from "./coerce.js";
-import { villageEngineForm, villageEngineJson } from "./engine-loopback.js";
-import { badRequest, VillagesRequestError } from "./errors.js";
-import { globalGalleryRef, MAX_VENUE_IMAGE_URL_LENGTH, VILLAGES_GALLERY_FOLDER_NAME } from "./prompt-preset.js";
-import type { VillageVenueImage } from "./types.js";
 
 const FOLDERS_PATH = "/api/global-gallery/folders";
 const UPLOAD_PATH = "/api/global-gallery/upload";

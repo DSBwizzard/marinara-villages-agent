@@ -1,5 +1,5 @@
-import { renovationTerms } from "./project-lifecycle.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { renovationTerms } from "./project-terms.js";
 import type { VillageState } from "./types.js";
 
 /** Semantic proposals are weaker than physical evidence. Never interpret stock or construction. */

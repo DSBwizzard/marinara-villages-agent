@@ -1,4 +1,27 @@
-import { venueZones, canOccupyZone } from "./venue-zones.js";
+import { asRecord, condense } from "./coerce.js";
+import {
+  boundText,
+  describeStatus,
+  MAX_REMAP_HERE_LENGTH,
+  MAX_REMAP_SLOT_LENGTH,
+  MAX_ROUTINE_SUMMARY_LENGTH,
+  MAX_VENUES,
+  remapVenues,
+} from "./prompt-preset.js";
+import { type NativeDayBlock, type NativeRoutine, type NativeWeekSchedule, parseBlockRange } from "./schedule-rules.js";
+import type {
+  RemapBlock,
+  VillageDayBlock,
+  VillagePromptMessage,
+  VillageRemap,
+  VillageRemapMove,
+  VillageVenue,
+  VillageWish,
+} from "./types.js";
+import { canOccupyZone, venueZones } from "./venue-zones.js";
+import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+
 // Villages — translate the Engine's week into this village's own terms.
 //
 // This is the join between the two systems, and it exists because of one
@@ -57,30 +80,6 @@ import { venueZones, canOccupyZone } from "./venue-zones.js";
 // `day|time`, and the tab prints the Engine's sentence beside the village's, one
 // row per block. That is the only version of this a person can hold against the
 // card they wrote.
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-import { asRecord, condense } from "./coerce.js";
-
-import {
-  boundText,
-  describeStatus,
-  MAX_REMAP_HERE_LENGTH,
-  MAX_REMAP_SLOT_LENGTH,
-  MAX_ROUTINE_SUMMARY_LENGTH,
-  MAX_VENUES,
-  remapVenues,
-} from "./prompt-preset.js";
-import type { NativeDayBlock, NativeRoutine, NativeWeekSchedule } from "./native-schedules.js";
-import { parseBlockRange } from "./native-schedules.js";
-import type {
-  RemapBlock,
-  VillageDayBlock,
-  VillagePromptMessage,
-  VillageRemap,
-  VillageRemapMove,
-  VillageVenue,
-  VillageWish,
-} from "./types.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 /**
  * Output room for one bounded translation batch, including reasoning tokens.

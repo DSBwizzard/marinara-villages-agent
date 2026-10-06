@@ -1,7 +1,7 @@
 import { coerceWish } from "./prompt-preset.js";
+import type { VillageWish } from "./types.js";
 import { shortWishText, wishPolicy } from "./wish-policy.js";
 import type { WishActivity, WishAttempt, WishLifecycle, WishNeed, WishOutcome } from "./wish-types.js";
-import type { VillageWish } from "./types.js";
 
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};

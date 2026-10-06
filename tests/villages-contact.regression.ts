@@ -6,7 +6,8 @@ import {
   mutateVillageState,
 } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
 import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import {
   enterVenue,
   continueVenueWithoutGreeting,

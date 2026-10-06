@@ -1,20 +1,24 @@
-import { assertCanAddVillageVenue } from "./venue-capacity.js";
-import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
-import { outsideVenueOperation } from "./venue-coordinator.js";
-import { readVenueImageContext } from "./village.js";
-import { preparePrivateSpaces } from "./private-space-preparation.js";
-import { venueZones, effectiveVenueClasses } from "./venue-zones.js";
-import { randomUUID } from "node:crypto";
-
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict, notFound } from "./errors.js";
+import { outsideVenueOperation } from "./operation-context.js";
+import { preparePrivateSpaces } from "./private-space-preparation.js";
 import {
+  createProjectProgress,
+  progressProject,
+  projectProgressPhase,
+  recordProjectProgress,
+  renewProjectApprovalProgress,
+  reviseProjectProgress,
+} from "./project-progress.js";
+import { renovationTerms } from "./project-terms.js";
+import {
+  boundText,
+  isHomeBuildingKind,
+  isHousePlace,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_NAME_LENGTH,
-  boundText,
-  isHousePlace,
-  isHomeBuildingKind,
 } from "./prompt-preset.js";
+import { villagesDebugAgentsEnabled } from "./runtime-host.js";
 import type {
   VillageProject,
   VillageProjectLifecycle,
@@ -25,18 +29,15 @@ import type {
   VillageVenueImprovement,
   VillageZoneDraft,
 } from "./types.js";
+import { assertCanAddVillageVenue } from "./venue-capacity.js";
+import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "./venue-model.js";
+import { effectiveVenueClasses, venueZones } from "./venue-zones.js";
+import { readVenueImageContext } from "./village-projections.js";
 import { mutateVillageState } from "./village-store.js";
-import { villagesDebugAgentsEnabled } from "./package-runtime.js";
+import { randomUUID } from "node:crypto";
 
-import {
-  createProjectProgress,
-  progressProject,
-  projectProgressPhase,
-  recordProjectProgress,
-  reviseProjectProgress,
-  renewProjectApprovalProgress,
-} from "./project-progress.js";
+export { renovationTerms } from "./project-terms.js";
 
 const DAY_MS = 24 * 60 * 60_000;
 const categories = ["structure", "equipment", "finish"] as const;
@@ -474,43 +475,6 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
   state.projects.push(project);
   createProjectProgress(state, project, at);
   return project;
-}
-
-export function renovationTerms(change: NonNullable<VillageProjectLifecycle["change"]>): string {
-  return [
-    change.detail,
-    change.classes ? "Base Classes: " + change.classes.join(", ") : "",
-    change.capacity !== undefined ? "Residence capacity: " + change.capacity : "",
-    change.baseZones
-      ? "Base zones: " +
-        change.baseZones
-          .map(
-            (zone) =>
-              `${zone.name} (${zone.kind}, ${zone.venueClass})${zone.ownerId ? " assigned to " + zone.ownerId : ""}: ${zone.description || zone.purpose || ""}`,
-          )
-          .join("; ")
-      : "",
-    change.homeKind ? "Home tier: " + change.homeKind : "",
-    change.slot !== undefined ? "Upgrade slot " + (change.slot + 1) : "",
-    change.improvement === null
-      ? "Remove the existing Upgrade and archive its zones."
-      : change.improvement
-        ? [
-            change.improvement.title + ": " + change.improvement.description,
-            "Contributed Class: " + (change.improvement.classContribution ?? "none"),
-            "Extra beds: " + change.improvement.extraBeds,
-            change.improvement.spaceId ? "Modify existing zone: " + change.improvement.spaceId : "",
-            ...(change.improvement.zones ?? []).map(
-              (zone) =>
-                zone.name + " [" + zone.id + "; " + zone.kind + "; " + zone.venueClass + "]: " + zone.description,
-            ),
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
 }
 
 export async function requestProjectMailbox(id: string): Promise<void> {

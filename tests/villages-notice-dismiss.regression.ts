@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { villagesRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
 
 async function main() {

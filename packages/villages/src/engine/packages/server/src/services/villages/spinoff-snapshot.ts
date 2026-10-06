@@ -1,3 +1,10 @@
+import type { VillagerCard } from "./catalog.js";
+import { MAX_MESSAGE_LENGTH, renderSceneContextBlock, type VillagePromptContext } from "./chat.js";
+import { villageEngineJson } from "./engine-transport.js";
+import { boundText, MAX_ENGINE_ID_LENGTH, MAX_SPINOFF_NAME_LENGTH } from "./prompt-preset.js";
+import { villagesLogger, villagesPersistence } from "./runtime-host.js";
+import type { VillageState } from "./types.js";
+
 // Villages — the snapshot a spin-off is given, and the two places it is left.
 //
 // A spin-off is ONE WAY. The package takes the village, the villager and the
@@ -58,12 +65,6 @@
 // logs, and the worst outcome of a total failure is a spin-off where the villager
 // knows only what the Engine's own character card tells them — which is the
 // roleplay the player would have got by pressing "new chat" themselves.
-import { type VillagerCard } from "./catalog.js";
-import { MAX_MESSAGE_LENGTH, renderSceneContextBlock, type VillagePromptContext } from "./chat.js";
-import { villageEngineJson } from "./engine-loopback.js";
-import { villagesLogger, villagesPersistence } from "./package-runtime.js";
-import { boundText, MAX_ENGINE_ID_LENGTH, MAX_SPINOFF_NAME_LENGTH } from "./prompt-preset.js";
-import type { VillageState } from "./types.js";
 
 /** The Engine's own ceiling on a lorebook entry's name, which is not ours to pick. */
 const MAX_ENTRY_NAME_LENGTH = 200;

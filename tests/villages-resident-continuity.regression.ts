@@ -21,7 +21,8 @@ import {
 } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-writing.js";
 import { proposeStartingTies } from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
 import { defaultRelationshipState } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
 import { runVillageSetup } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
 import { suggestStartingVenues } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-drafts.js";
 import {

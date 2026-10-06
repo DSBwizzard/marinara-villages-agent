@@ -1,15 +1,16 @@
+import { agendaBlocksFor } from "./agenda-week.js";
+import { villagesLogger } from "./runtime-host.js";
+import type { VillageState } from "./types.js";
+import { nextClockChangeAt } from "./village-clock.js";
+import { readVillageState } from "./village-store.js";
+import { reconcileVillage } from "./village.js";
+import { wishRetained } from "./wish-definition.js";
+
 // Villages — arm one unreferenced wake for the next meaningful deadline.
 //
 // This timer is an optimization while Marinara is already running. Durable
 // time comes from `simulatedThrough`; after shutdown the same reconciliation
 // resumes from that instant when the package opens again.
-import { villagesLogger } from "./package-runtime.js";
-import { wishRetained } from "./wish-definition.js";
-import type { VillageState } from "./types.js";
-import { nextClockChangeAt } from "./village-clock.js";
-import { agendaBlocksFor } from "./agenda-week.js";
-import { readVillageState } from "./village-store.js";
-import { reconcileVillage } from "./village.js";
 
 export const REFRESH_MIN_DELAY_MS = 1_000;
 export const REFRESH_SETTLE_MS = 250;
