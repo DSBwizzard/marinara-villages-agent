@@ -416,7 +416,7 @@ async function main() {
     join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
     "utf8",
   );
-  for (const step of ["People", "Place", "Spaces", "Review"]) {
+  for (const step of ["People", "Place", "Venues", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/setup/town-map/generate"'));
