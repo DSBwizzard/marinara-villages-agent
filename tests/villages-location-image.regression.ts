@@ -65,8 +65,6 @@ async function collectSources(root: string): Promise<Array<{ path: string; sourc
 
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
-  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
   const services = "packages/villages/src/server";
 
@@ -106,31 +104,8 @@ async function main() {
     "the gallery folder is named after the package and nothing else",
   );
 
-  // ── The prompt id the Engine has to recognise ──────────────────────────────
-  // The Engine builds this key itself, in `characters.routes.ts`, and looks an
-  // override up BY it. A copy that has drifted does not fail — it is ignored,
-  // and the player pays for a portrait of a place. So the rule is read out of
-  // the Engine's own source and the copy is checked against what is there.
-  const engineRoutes = await readFile(join(engineRoot, "packages/server/src/routes/characters.routes.ts"), "utf8");
-  const squeeze = (text: string) => text.replace(/\s+/g, "");
-  const engineRule = squeeze(
-    `name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 120) || "character"`,
-  );
-  assert.ok(
-    squeeze(engineRoutes).includes(engineRule),
-    "the Engine's avatar prompt id rule moved; `avatarPromptId` in location-image.ts has to move with it",
-  );
-  assert.ok(
-    squeeze(engineRoutes).includes(squeeze(`\${purpose === "character-sheet" ? "character-sheet" : "avatar"}:\${`)),
-    "the Engine's avatar prompt id prefix moved",
-  );
-  assert.ok(
-    squeeze(engineRoutes).includes(
-      squeeze('promptOverrideById.get(avatarGenerationPromptId(body.name ?? "character", body.purpose))'),
-    ),
-    "the Engine stopped looking the override up by this key, which is the only reason the key matters",
-  );
-
+  // Current identifier behavior; the separate Engine contract suite checks the
+  // selected host's normalization, prefix and override lookup independently.
   const slugOf = (name: string) =>
     name
       .trim()
@@ -655,9 +630,7 @@ async function main() {
   const galleryCalls = (path: string) => engineCalls.filter((call) => call.path === path);
 
   // ── The host ──────────────────────────────────────────────────────────────
-  const Fastify = (
-    await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
-  ).default;
+  const Fastify = (await import("fastify")).default;
 
   const documentsByKey = new Map<string, any>();
   const keyOf = (packageId: string, id: string) => `${packageId}::${id}`;

@@ -42,11 +42,7 @@ const CONNECTIONS_DOC_ID = "villages-connections";
 
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
-  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
-  const Fastify = (
-    await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
-  ).default;
+  const Fastify = (await import("fastify")).default;
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
 
   const { activate } = await import(
@@ -206,7 +202,10 @@ async function main() {
   const post = (url: string, payload?: any) => app.inject({ method: "POST", url, payload });
   const put = (url: string, payload?: any) => app.inject({ method: "PUT", url, payload });
 
-  if (process.env.VILLAGES_TEST_PACKAGED) process.argv[1] = join(engineRoot, "packages/server/dist/index.js");
+  if (process.env.VILLAGES_TEST_PACKAGED) {
+    assert.ok(process.env.MARINARA_ENGINE_ROOT, "Packaged compatibility checks require an explicit Engine runtime.");
+    process.argv[1] = join(process.env.MARINARA_ENGINE_ROOT, "packages/server/dist/index.js");
+  }
   const deactivate = await activate(context);
   const originalSettings = await get("/api/villages/interpretation-settings");
   assert.equal(originalSettings.json().settings.decisionsEnabled, false);

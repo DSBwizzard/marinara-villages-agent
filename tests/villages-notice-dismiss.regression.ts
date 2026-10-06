@@ -7,11 +7,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 async function main() {
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
-  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT for the read-only Fastify dependency.");
-  const Fastify = (
-    await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
-  ).default;
+  const Fastify = (await import("fastify")).default;
   // Use the host router's default 100-character parameter ceiling.
   const app = Fastify();
   const sceneId = "3260cf01-1771-43b8-b72c-c050c713029d";
