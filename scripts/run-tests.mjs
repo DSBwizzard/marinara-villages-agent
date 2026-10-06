@@ -9,10 +9,25 @@ if (args.includes("--list")) {
   console.log(JSON.stringify(inventory, null, 2));
   process.exit(0);
 }
-if (!["regression", "browser", "engine", "all"].includes(group)) throw new Error(`Unknown test group: ${group}`);
+if (!["regression", "browser", "engine", "review", "all"].includes(group))
+  throw new Error(`Unknown test group: ${group}`);
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
+const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
+for (const arg of args) {
+  if (arg !== group && arg !== "--list" && !arg.startsWith("--filter=") && !arg.startsWith("--test="))
+    throw new Error(`Unknown test option: ${arg}`);
+}
+for (const path of selected) {
+  const test = inventory.find((test) => test.path === path);
+  if (!test) throw new Error(`Unknown test: ${path}`);
+  if (group === "review" && test.group === "engine")
+    throw new Error(`Use test:engine for the runtime-dependent test: ${path}`);
+}
 const tests = inventory.filter(
-  (test) => (group === "all" || test.group === group) && (!filter || test.path.includes(filter)),
+  (test) =>
+    (group === "all" || (group === "review" ? test.group !== "engine" : test.group === group)) &&
+    (!filter || test.path.includes(filter)) &&
+    (!selected.length || selected.includes(test.path)),
 );
 if (!tests.length) throw new Error("No tests matched; validation cannot pass an empty selection.");
 await mkdir(".build-tmp/test-results", { recursive: true });

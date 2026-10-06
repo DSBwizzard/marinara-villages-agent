@@ -36,136 +36,85 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
+      - name: Install browser test runtime
+        run: npx playwright install --with-deps chromium
+      - name: Validate maintained source and package
+        run: npm run validate
+      - name: Verify reproducible builds leave source unchanged
+        run: npm run verify:build
+      - name: Retain validated package and source receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: villages-validate
+          path: |
+            artifacts/
+            .build-tmp/package-build.json
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Retain validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-validate
+          path: .build-tmp/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
-      - name: Run formatting and lint checks
-        run: npm run check
+  validate-windows:
+    name: validate-windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Install browser test runtime
+        run: npx playwright install --with-deps chromium
+      - name: Validate maintained source and package
+        run: npm run validate
+      - name: Verify reproducible builds leave source unchanged
+        run: npm run verify:build
+      - name: Retain validated package and source receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: villages-validate-windows
+          path: |
+            artifacts/
+            .build-tmp/package-build.json
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Retain validation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-validate-windows
+          path: .build-tmp/test-results/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
-      - name: Verify Sprite Manager
-        run: |
-          npx tsx tests/villages-sprite-manager.regression.ts
-          npx tsx tests/villages-resident-sprites.regression.ts
-          npx tsx tests/villages-signatures.regression.ts
-
-      - name: Verify scene staging and reading pages
-        run: |
-          npx tsx tests/villages-scene-staging.regression.ts
-          npx tsx tests/villages-mobile-scene.regression.ts
-          npx tsx tests/villages-reading-pages.regression.ts
-          npx tsx tests/villages-asides.regression.ts
-
-      - name: Verify complete character identity and writing context
-        run: |
-          npx tsx tests/villages-character-writing.regression.ts
-          npx tsx tests/villages-scene-text.regression.ts
-          npx tsx tests/villages-dialogue-context.regression.ts
-
-      - name: Verify finite wishes and routine isolation
-        run: |
-          npx tsx tests/villages-wish-prevention.regression.ts
-          npx tsx tests/villages-live-wishes.regression.ts
-          npx tsx tests/villages-wish-lifecycle.regression.ts
-          npx tsx tests/villages-wish-interpretation.regression.ts
-          npx tsx tests/villages-wish-journal.regression.ts
-          npx tsx tests/villages-compact-founding.regression.ts
-          npx tsx tests/villages-owned-agendas.regression.ts
-          npx tsx tests/villages-generation-recovery.regression.ts
-          npx tsx tests/villages-schedule-remap.regression.ts
-
-      - name: Verify Progress Engine and automatic Project evidence
-        run: |
-          npx tsx tests/villages-live-memory.regression.ts
-          npx tsx tests/villages-exchange-processing.regression.ts
-          npx tsx tests/villages-response-format.regression.ts
-          npx tsx tests/villages-pipeline-efficiency.regression.ts
-          npx tsx tests/villages-progress-engine.regression.ts
-          npx tsx tests/villages-progress-projects.regression.ts
-          npx tsx tests/villages-project-interpretation.regression.ts
-          npx tsx tests/villages-project-checks.regression.ts
-          npx tsx tests/villages-zones.regression.ts
-          npx tsx tests/villages-scene-actions.regression.ts
-          npx tsx tests/villages-contact.regression.ts
-          npx tsx tests/villages-runtime-debug.regression.ts
-          npx tsx tests/villages-usage-meter.regression.ts
-          npx tsx tests/villages-linkapi-pricing.regression.ts
-          npx tsx tests/villages-usage-preview.regression.ts
-          npx tsx tests/villages-venue-model.regression.ts
-          npx tsx tests/villages-venue-session.regression.ts
-          npx tsx tests/villages-relationships.regression.ts
-          npx tsx tests/villages-venue-coordinator.regression.ts
-          npx tsx tests/villages-interpretation.regression.ts
-          npx tsx tests/villages-interpretation-evidence.regression.ts
-          npx tsx tests/villages-interpretation-routing.regression.ts
-          npx tsx tests/villages-room-events.regression.ts
-          npx tsx tests/villages-wish-batch.regression.ts
-          npx tsx tests/villages-check-cost-replay.regression.ts
-          npx tsx tests/villages-background-work.regression.ts
-          npx tsx tests/villages-automatic-refresh.regression.ts
-          npx tsx tests/villages-agenda-movement.regression.ts
-          npx tsx tests/villages-scene-staging.regression.ts
-
-      - name: Verify founding, scenery and private spaces
-        run: |
-          npx tsx tests/villages-client-scope.regression.ts
-          npx tsx tests/villages-founding-flow.regression.ts
-          npx tsx tests/villages-resident-continuity.regression.ts
-          npx tsx tests/villages-setting-grounding.regression.ts
-          npx tsx tests/villages-player-role.regression.ts
-          npx tsx tests/villages-private-spaces.regression.ts
-          npx tsx tests/villages-founding-preparation.regression.ts
-          npx tsx tests/villages-optional-layouts.regression.ts
-          npx tsx tests/villages-lorebooks.regression.ts
-          npx tsx tests/villages-town-map-image.regression.ts
-          npx tsx tests/villages-venue-capacity.regression.ts
-          npx tsx tests/villages-map-replacement.regression.ts
-
-      - name: Verify desktop and mobile founding
-        run: |
-          npx playwright install --with-deps chromium
-          node tests/villages-founding-layout.e2e.mjs
-          node tests/villages-founding-preparation.e2e.mjs
-          node tests/villages-venue-layout.e2e.mjs
-          npx tsx tests/villages-mobile-map.regression.ts
-          node tests/villages-mobile-exploration.e2e.mjs
-          node tests/villages-wish-journal.e2e.mjs
-          node tests/villages-dossier.e2e.mjs
-          node tests/villages-menu-layout.e2e.mjs
-          node tests/villages-menu-map.e2e.mjs
-          node tests/villages-player-role.e2e.mjs
-          node tests/villages-room-notices.e2e.mjs
-          node tests/villages-contact.e2e.mjs
-          node tests/villages-scene-actions.e2e.mjs
-          node --import tsx tests/villages-venue-coordination.e2e.mjs
-          node tests/villages-runtime-debug.e2e.mjs
-          node tests/villages-usage-meter.e2e.mjs
-          node tests/villages-usage-preview.e2e.mjs
-          node tests/villages-background-work.e2e.mjs
-          node tests/villages-owned-agendas.e2e.mjs
-          node tests/villages-sprite-manager.e2e.mjs
-          node tests/villages-scene-staging.e2e.mjs
-          node tests/villages-scene-controls.e2e.mjs
-          node tests/villages-reading-pages.e2e.mjs
-          node tests/villages-asides.e2e.mjs
-          node tests/villages-mobile-scene.e2e.mjs
-
-      - name: Verify greeting recovery without paid retries
-        run: node tests/villages-greeting-recovery.e2e.mjs
-
-      - name: Verify Scene sending and failure recovery
-        run: |
-          npx tsx tests/villages-venue-send.regression.ts
-          npx tsx tests/villages-remote-access.regression.ts
-          npx tsx tests/villages-settings-drift.regression.ts
-          node tests/villages-scene-send-recovery.e2e.mjs
+  package-parity:
+    name: package-parity
+    needs: [validate, validate-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: villages-*
+          path: .build-tmp/platforms
+      - name: Compare independently built Windows and Linux packages
+        run: node scripts/verify-platform-packages.mjs
