@@ -264,3 +264,5 @@ export function useFoundingState() {
     setupOfferedRef,
   };
 }
+
+export type FoundingState = ReturnType<typeof useFoundingState>;

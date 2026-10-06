@@ -1,20 +1,11 @@
 import type {
   CatalogEntry,
-  CatalogResponse,
   PersonaEntry,
-  PersonaResponse,
   ProgressDebugView,
-  SceneView,
-  SetupMapRequest,
   TownMapView,
-  VenueClass,
   VillageLorebookOption,
   VillageSnapshot,
-  VillageVenue,
-  VillageVenueImage,
-  VillageVillagerView,
 } from "../../shared/contracts/village.js";
-import { residentFoundingProblems } from "../../shared/helpers/resident-founding-context.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import {
@@ -30,18 +21,24 @@ import {
   useStartMapReplacement,
 } from "../features/exploration/actions.js";
 import {
+  calculateFramingMap,
+  calculatePanelMapView,
+  calculateSavedPins,
+  calculateSavedTownMapShape,
+  calculateSavedTownMapView,
+  calculateTownMapAdvice,
+  calculateTownMapShape,
+  calculateTownMapSrc,
+  calculateTownMapZoom,
+} from "../features/exploration/calculations.js";
+import {
   useExplorationOutsideClick,
   useMapNavigationReset,
   useRemovedVenueNavigation,
   useTownMapImage,
 } from "../features/exploration/controller-hooks.js";
-import {
-  defaultView,
-  pictureAdvice,
-  PROJECT_BLUEPRINT_IMAGE,
-  STANDING_PIN_STEP,
-} from "../features/exploration/MapStage.js";
 import { useExplorationState } from "../features/exploration/useExplorationState.js";
+import { createVenueExplorationActions } from "../features/exploration/venue-actions.js";
 import { useExplorationViewport } from "../features/exploration/villages-exploration";
 import {
   useFoundVillage,
@@ -53,6 +50,19 @@ import {
   useSuggestPlaces,
   useUpdateSetupMapRequest,
 } from "../features/founding/actions.js";
+import {
+  calculateDraftPins,
+  calculatePlaceCount,
+  calculateResidentContextProblem,
+  calculateSetupBeginningSourceKey,
+  calculateSetupHomeCount,
+  calculateSetupImageContextKey,
+  calculateSetupMapGenerationKey,
+  calculateSetupMapProgress,
+  calculateSetupMapSeconds,
+  calculateSetupMapShape,
+  calculateSetupMapSrc,
+} from "../features/founding/calculations.js";
 import {
   useFoundingAuthoredReference,
   useFoundingBeginningReference,
@@ -66,18 +76,32 @@ import {
   useFoundingSetupDraftData,
   useFoundingVenueReference,
 } from "../features/founding/controller-hooks.js";
-import { foundingScenario, requestSetupMapReceipt } from "../features/founding/FoundingPanels.js";
-import { useFoundingState } from "../features/founding/useFoundingState.js";
 import {
-  readFoundingDraft,
-  removeFoundingDraft,
-  type SavedFoundingDraft,
-  saveFoundingDraft,
-} from "../features/founding/villages-founding-draft.js";
-import { personalSpaceDraft } from "../features/founding/villages-founding-editor";
-import { emptyFoundingWorkspace } from "../features/founding/villages-founding-workspace-state";
-import { draftZonePolicy } from "../features/founding/villages-founding-zones";
-import { playerRoleProblem } from "../features/founding/villages-player-role.js";
+  createFoundingExitSetupDraft,
+  createFoundingNewSetupDraft,
+  createFoundingRestoreSetupDraft,
+  createFoundingRetrySetupSaving,
+  useFoundingDraftAutosave,
+  useFoundingDraftOffer,
+  useFoundingFlushSetupDraft,
+  useFoundingPersistSetupDraft,
+} from "../features/founding/draft-controller.js";
+import type { SetupDraftData } from "../features/founding/draft-model.js";
+import {
+  createFoundingGenerateSetupImage,
+  createFoundingSetupDraftRow,
+  createFoundingUploadSetupImage,
+  createFoundingWithSetupImage,
+  useFoundingGenerateSetupTownMap,
+} from "../features/founding/image-controller.js";
+import { useFoundingState } from "../features/founding/useFoundingState.js";
+import type { SavedFoundingDraft } from "../features/founding/villages-founding-draft.js";
+import {
+  createFoundingChooseSetupScenario,
+  createFoundingGotoSetupStep,
+  createFoundingSuggestSetupVenues,
+  useFoundingStartOver,
+} from "../features/founding/setup-controller.js";
 import { useProjectsState } from "../features/projects/useProjectsState.js";
 import {
   useAddVillager,
@@ -92,14 +116,24 @@ import {
   useSetAgendaScheduleIngestion,
 } from "../features/residents/actions.js";
 import {
+  calculateNeedle,
+  calculatePersonaPortraitId,
+  calculatePortraitWanted,
+  calculateVisibleCatalog,
+} from "../features/residents/calculations.js";
+import {
   useResidentAgendaPolling,
   useResidentInspection,
   useResidentsNameOfCharacter,
   useResidentsStandingAt,
 } from "../features/residents/controller-hooks.js";
-import { readPersonaPortrait, readPortraits } from "../features/residents/ResidentPanels.js";
 import { useResidentsState } from "../features/residents/useResidentsState.js";
-import type { DossierNavigation } from "../features/residents/villages-dossier.js";
+import {
+  usePersonaPortrait,
+  useResidentPickerLoad,
+  useResidentPortraits,
+  useResidentsLoadCatalog,
+} from "../features/residents/workflow-controller.js";
 import {
   useCloseRoom,
   useContinueRoomWithoutGreeting,
@@ -124,9 +158,9 @@ import {
   useSceneOperationPolling,
   useSceneSelectionReset,
 } from "../features/scenes/controller-hooks.js";
+import { useSceneRecord } from "../features/scenes/useSceneRecord.js";
 import { useScenesState } from "../features/scenes/useScenesState.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
-import { createVillagesClientId } from "../features/scenes/villages-venue-send";
 import {
   useAddNotice,
   useInsertMacro,
@@ -139,6 +173,7 @@ import {
   useSaveVisitRetention,
 } from "../features/settings/actions.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
+import { useKnowledgeCaret } from "../features/settings/workflow-controller.js";
 import {
   useAddVenue,
   useDecideVenueRequest,
@@ -149,30 +184,25 @@ import {
 } from "../features/venues/actions.js";
 import { useVenueRequestFocus } from "../features/venues/controller-hooks.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
-import { messageFrom, request } from "../shared/api.js";
-import { API_PATH, ELEMENT_TAG } from "../shared/constants.js";
+import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
 import {
-  pinText,
-  pinTone,
-  placeSpot,
-  playerDisplayName,
-  readFileAsDataUrl,
-  SHOW_CATCHING_UP_AFTER_MS,
-  VILLAGE_PULSE_MS,
-} from "../shared/presentation.js";
-import type {
-  FoundingScenarioId,
-  MapFrameShape,
-  MapPin,
-  MapZoomRange,
-  MenuPage,
-  Portrait,
-  SetupVenueDraft,
-} from "../shared/types.js";
-import { isHouse, venueClassesFor } from "../shared/venue.js";
+  useInitialVillageLoad,
+  useLoadLorebooks,
+  useLoadPersonas,
+  useLoadVillageSnapshot,
+  usePendingWorkPolling,
+  useReconcileVillage,
+  useSnapshotReference,
+  useVillagePolling,
+  useVillagePresence,
+  useVillageTransitions,
+  useWriteVillageEvent,
+} from "../shared/data-controller.js";
+import type { MapFrameShape, MapPin, MapZoomRange, MenuPage, Portrait } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
+import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
 import { menuCategory } from "./navigation.js";
-import { type SetStateAction, useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 export function useVillageController({ element }: { element: HTMLElement }) {
   const [mobile, setMobile] = useState(false);
@@ -364,23 +394,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPlaceProblem,
   } = useVenuesState();
 
-  useEffect(() => {
-    if (venueZoneKey === "exterior") return;
-    const venue = snapshot?.settings.venues.find((entry) => entry.id === venueId);
-    const available =
-      venue?.zones?.some((zone) => zone.id === venueZoneKey) ||
-      (venueZoneKey.startsWith("class:")
-        ? Boolean(venue && venueClassesFor(venue).includes(venueZoneKey.slice(6) as VenueClass))
-        : Boolean(
-            venue &&
-            venueZoneKey.startsWith("private:") &&
-            (
-              venue.residentIds ?? (venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [])
-            ).includes(venueZoneKey.slice(8)) &&
-            venue.privateSpaces?.some((space) => space.ownerId === venueZoneKey.slice(8)),
-          ));
-    if (!available) setVenueZoneKey("exterior");
-  }, [snapshot, venueId, venueZoneKey]);
+  useVenueZoneSelection({ setVenueZoneKey, snapshot, venueId, venueZoneKey });
   const {
     openPlaceId,
     setOpenPlaceId,
@@ -457,34 +471,18 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const menuSection = menuCategory(menuPage);
 
-  const openPerson = useCallback(
-    (navigation: DossierNavigation) => {
-      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
-      const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      const key = button?.getAttribute("data-exploration-row");
-      const label = button?.getAttribute("aria-label");
-      const selector = key
-        ? `[data-exploration-row="${CSS.escape(key)}"]`
-        : label
-          ? `[aria-label="${CSS.escape(label)}"]`
-          : "";
-      const scroll = [
-        ...element.querySelectorAll<HTMLElement>(`.${ELEMENT_TAG}-root, .${ELEMENT_TAG}-explore-list`),
-      ].map((current) => ({
-        selector: current.classList.contains(`${ELEMENT_TAG}-explore-list`)
-          ? `.${ELEMENT_TAG}-explore-list`
-          : `.${ELEMENT_TAG}-root`,
-        top: current.scrollTop,
-      }));
-      profileOrigin.current = { selector, scroll };
-      setError("");
-      setProfileInspection(null);
-      setSpriteManagerId(null);
-      setPersonProfile(navigation);
-      setScreen("person");
+  const openPerson = useNavigationOpenPerson({
+    element,
+    profileOrigin,
+    get setError() {
+      return setError;
     },
-    [element],
-  );
+    setPersonProfile,
+    setProfileInspection,
+    setScreen,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  });
   const {
     requestEdits,
     setRequestEdits,
@@ -661,43 +659,37 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupResidentContexts,
   });
 
-  const residentContextProblem =
-    !snapshot?.isFounded &&
-    Object.values(selectedResidentContexts).some((context) =>
-      Object.values(residentFoundingProblems(context)).some(Boolean),
-    )
-      ? "Complete the highlighted resident background fields in People."
-      : "";
+  const residentContextProblem = calculateResidentContextProblem({ selectedResidentContexts, snapshot });
 
-  const setupHomeCount = setupFoundingVillagerIds.length;
+  const setupHomeCount = calculateSetupHomeCount({ setupFoundingVillagerIds });
 
   const [, setSetupCompletedIds] = useState<string[]>([]);
 
   const [, setSetupNewVenueId] = useState("");
 
-  const setupBeginningSourceKey = JSON.stringify({
-    residentContexts: selectedResidentContexts,
-    scenario: setupFoundingReason,
-    premise: setupFoundingDetails.trim(),
-    direction: setupFoundingGuidance.trim(),
-    setting: setupSetting.trim(),
-    lorebooks: setupLorebookDraft,
-    loreBudget: setupLoreTokenBudgetDraft,
-    persona: personaDraft,
-    artStyle: sceneryStyle,
-    personalityDefault: personalizeHomes,
+  const setupBeginningSourceKey = calculateSetupBeginningSourceKey({
+    personaDraft,
+    personalizeHomes,
+    sceneryStyle,
+    selectedResidentContexts,
+    setupFoundingDetails,
+    setupFoundingGuidance,
+    setupFoundingReason,
+    setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
+    setupSetting,
     visualLoreDefault,
   });
 
   const setupBeginningSourceKeyRef = useRef(setupBeginningSourceKey);
 
-  const setupImageContextKey = JSON.stringify({
-    source: setupBeginningSourceKey,
-    name: setupName,
-    imprint: setupImprint,
-    worldFacts: setupWorldFacts,
-    persona: personaDraft,
+  const setupImageContextKey = calculateSetupImageContextKey({
+    personaDraft,
     personalizeHomes,
+    setupBeginningSourceKey,
+    setupImprint,
+    setupName,
+    setupWorldFacts,
     visualLoreDefault,
   });
 
@@ -711,27 +703,25 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useFoundingBeginningReference({ setupBeginningSourceKey, setupBeginningSourceKeyRef, snapshot });
 
-  const setupMapGenerationKey = JSON.stringify({
-    setting: setupSetting.trim(),
-    worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
-    lorebooks: setupLorebookDraft,
-    artStyle: sceneryStyle,
-    useVisualLore: mapVisualLore,
-    structure: setupMapPrompt,
-    negative: setupMapNegativePrompt,
-    options: setupMapOptions,
+  const setupMapGenerationKey = calculateSetupMapGenerationKey({
+    mapVisualLore,
+    sceneryStyle,
+    setupLorebookDraft,
+    setupMapNegativePrompt,
+    setupMapOptions,
+    setupMapPrompt,
+    setupSetting,
+    setupWorldFacts,
+    snapshot,
   });
 
   const updateSetupMapRequest = useUpdateSetupMapRequest({ setSetupMapRequest, setupMapRequestRef });
 
   useFoundingMapClock({ setSetupMapClock, setupMapBusy });
 
-  const setupMapSeconds = Math.max(
-    0,
-    Math.floor((setupMapClock - Date.parse(setupMapRequest?.startedAt ?? new Date().toISOString())) / 1000),
-  );
+  const setupMapSeconds = calculateSetupMapSeconds({ setupMapClock, setupMapRequest });
 
-  const setupMapProgress = `Waiting for map artwork — ${Math.floor(setupMapSeconds / 60)}m ${setupMapSeconds % 60}s. Image generation can take several minutes. You can continue editing.`;
+  const setupMapProgress = calculateSetupMapProgress({ setupMapSeconds });
 
   const [resetArmed, setResetArmed] = useState(false);
 
@@ -739,50 +729,34 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * The framing the village has saved. The map is drawn with this everywhere
    * except in the panel's own preview, which draws the draft being tried out.
    */
-  const savedTownMapView: TownMapView = snapshot?.settings.townMapView ?? defaultView("cover");
+  const savedTownMapView: TownMapView = calculateSavedTownMapView({ snapshot });
 
   /**
    * The shape a map is drawn at, as the settings give it. This is the one place
    * that answers "how big is a map", so the frame the picture is drawn in, the
    * advice beside the file box and the server all agree about it.
    */
-  const savedTownMapShape: MapFrameShape | null = snapshot
-    ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
-    : null;
+  const savedTownMapShape: MapFrameShape | null = calculateSavedTownMapShape({ snapshot });
 
-  const townMapShape: MapFrameShape | null = townMapPick?.size ?? savedTownMapShape;
+  const townMapShape: MapFrameShape | null = calculateTownMapShape({ savedTownMapShape, townMapPick });
 
-  const setupMapShape: MapFrameShape | null = snapshot
-    ? setupMapSource === "existing"
-      ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
-      : setupMapSize && setupMapImageSource === setupMapSource
-        ? setupMapSize
-        : { width: snapshot.settings.townMapGenerationWidth, height: snapshot.settings.townMapGenerationHeight }
-    : null;
+  const setupMapShape: MapFrameShape | null = calculateSetupMapShape({
+    setupMapImageSource,
+    setupMapSize,
+    setupMapSource,
+    snapshot,
+  });
 
   /** How far the picture may be magnified in the panel, and how far one press moves it. */
-  const townMapZoom: MapZoomRange = snapshot
-    ? {
-        min: snapshot.settings.townMapZoomMin,
-        max: snapshot.settings.townMapZoomMax,
-        step: snapshot.settings.townMapZoomStep,
-      }
-    : { min: 1, max: 1, step: 0.1 };
+  const townMapZoom: MapZoomRange = calculateTownMapZoom({ snapshot });
 
   /**
    * The map as it is drawn: the picture being previewed in the panel, or the
    * village's own picture, or the one the package ships.
    */
-  const townMapSrc = mapRemoveDraft ? null : townMapPick ? townMapPick.image : townMapImage || null;
+  const townMapSrc = calculateTownMapSrc({ mapRemoveDraft, townMapImage, townMapPick });
 
-  const setupMapSrc =
-    setupMapSource === "none"
-      ? null
-      : setupMapSource === "existing"
-        ? townMapImage || null
-        : setupMapImageSource === setupMapSource
-          ? setupMapImage || null
-          : null;
+  const setupMapSrc = calculateSetupMapSrc({ setupMapImage, setupMapImageSource, setupMapSource, townMapImage });
 
   const setupAuthoredFieldsRef = useRef(setupAuthoredFields);
 
@@ -837,318 +811,155 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     visualLoreDefault,
   });
 
-  type SetupDraftData = Omit<typeof setupDraftData, "workspace"> & {
-    workspace?: ReturnType<typeof emptyFoundingWorkspace>;
-  };
+  const persistSetupDraft = useFoundingPersistSetupDraft({
+    draftBlocked,
+    draftRevision,
+    draftSaveQueue,
+    pendingDraftSaves,
+    setDraftSavedAt,
+    setDraftSaveError,
+    setDraftSaving,
+    setSavedSetupDraft,
+  });
 
-  const persistSetupDraft = useCallback((data: SetupDraftData) => {
-    pendingDraftSaves.current += 1;
-    setDraftSaving(true);
-    const pending = draftSaveQueue.current.then(async () => {
-      if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
-      try {
-        const saved = await saveFoundingDraft(API_PATH, data, draftRevision.current);
-        draftRevision.current = saved.revision;
-        setSavedSetupDraft(saved);
-        setDraftSavedAt(saved.savedAt);
-        setDraftSaveError("");
-      } catch (cause) {
-        draftBlocked.current = true;
-        setDraftSaveError(messageFrom(cause, "Draft could not be saved. Keep this tab open."));
-        throw cause;
-      }
-    });
-    draftSaveQueue.current = pending.catch(() => undefined);
-    void pending
-      .finally(() => {
-        pendingDraftSaves.current -= 1;
-        if (!pendingDraftSaves.current) setDraftSaving(false);
-      })
-      .catch(() => undefined);
-    return pending;
-  }, []);
+  useFoundingDraftAutosave({ draftReady, persistSetupDraft, screen, setupDraftData, snapshot });
 
-  useEffect(() => {
-    if (draftReady && !snapshot?.isFounded && (screen === "setup" || screen === "resume"))
-      void persistSetupDraft(setupDraftData).catch(() => undefined);
-  }, [draftReady, persistSetupDraft, setupDraftData, snapshot?.isFounded, screen]);
+  const flushSetupDraft = useFoundingFlushSetupDraft({ draftBlocked, draftReady, persistSetupDraft, setupDraftData });
 
-  const flushSetupDraft = useCallback(async () => {
-    if (!draftReady) throw new Error("Draft storage is unavailable. Retry saving before leaving or founding.");
-    await persistSetupDraft(setupDraftData);
-    if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open.");
-  }, [draftReady, persistSetupDraft, setupDraftData]);
+  const restoreSetupDraft = createFoundingRestoreSetupDraft({
+    get loadCatalog() {
+      return loadCatalog;
+    },
+    get loadLorebooks() {
+      return loadLorebooks;
+    },
+    get loadPersonas() {
+      return loadPersonas;
+    },
+    setDraftReady,
+    setDraftSaveError,
+    setMapVisualLore,
+    setMovingSetupVenueId,
+    setPersonaDraft,
+    setPersonalizeHomes,
+    setSceneryStyle,
+    setScreen,
+    setSelectedSetupVenueId,
+    setSetupAuthoredFields,
+    setSetupEditorOpen,
+    setSetupFoundingDetails,
+    setSetupFoundingGuidance,
+    setSetupFoundingReason,
+    setSetupFoundingVillagerIds,
+    setSetupImprint,
+    setSetupKeyboardSpot,
+    setSetupLorebookDraft,
+    setSetupLoreTokenBudgetDraft,
+    setSetupMapBusy,
+    setSetupMapGeneratedKey,
+    setSetupMapImage,
+    setSetupMapImageSource,
+    setSetupMapNegativePrompt,
+    setSetupMapOptions,
+    setSetupMapProblem,
+    setSetupMapPrompt,
+    setSetupMapReviewed,
+    setSetupMapSize,
+    setSetupMapSource,
+    setSetupName,
+    setSetupPlayerRole,
+    setSetupProblem,
+    setSetupResidentContexts,
+    setSetupSetting,
+    setSetupStep,
+    setSetupSuggestionsKey,
+    setSetupVenues,
+    setSetupWorkspace,
+    setSetupWorldFacts,
+    setupEditorAuthoredOriginal,
+    setupEditorOriginal,
+    setupEditorZoneOriginal,
+    setupZoneDrafts,
+    setVisualLoreDefault,
+    updateSetupMapRequest,
+  });
 
-  const restoreSetupDraft = (data: SetupDraftData) => {
-    if (
-      !Array.isArray(data.venues) ||
-      !Array.isArray(data.roster) ||
-      data.roster.length > 3 ||
-      data.venues.length > 5 ||
-      data.venues.some((row) => !row.id || !row.presentation || !row.occupancy || typeof row.description !== "string")
-    ) {
-      setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
-      return;
-    }
-    setSetupStep(Math.max(0, Math.min(3, data.step)));
-    setSetupName(data.name);
-    setSetupSetting(data.setting);
-    setSetupFoundingReason(data.reason);
-    setSetupFoundingDetails(data.circumstances);
-    setSetupFoundingGuidance(data.direction);
-    setSetupPlayerRole(data.role);
-    setSetupImprint(data.imprint);
-    setSetupWorldFacts(data.worldFacts);
-    setSetupVenues(data.venues);
-    setupZoneDrafts.current = data.zoneDrafts ?? {};
-    setSetupFoundingVillagerIds(data.roster);
-    setSetupResidentContexts(data.residentContexts ?? {});
-    setPersonaDraft(data.persona);
-    setSetupLorebookDraft(data.lorebooks);
-    setSetupLoreTokenBudgetDraft(data.loreBudget);
-    setSceneryStyle(data.artStyle);
-    setPersonalizeHomes(data.personalizeHomes);
-    setVisualLoreDefault(data.visualLoreDefault);
-    setMapVisualLore(data.mapVisualLore);
-    setSetupMapSource(data.mapSource);
-    setSetupMapImage(data.mapImage);
-    setSetupMapImageSource(data.mapImageSource);
-    setSetupMapGeneratedKey(data.mapGeneratedKey);
-    setSetupMapSize(data.mapSize);
-    setSetupMapPrompt(data.mapPrompt);
-    setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapOptions(data.mapOptions);
-    setSetupMapReviewed(data.mapReviewed);
-    setSetupMapProblem(data.mapProblem ?? "");
-    const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
-    updateSetupMapRequest(mapRequest);
-    setSetupMapBusy(!!mapRequest);
-    setSetupAuthoredFields(data.authoredFields);
-    setSetupSuggestionsKey(data.suggestionsKey);
-    setSelectedSetupVenueId(data.selectedVenueId);
-    setMovingSetupVenueId(data.movingVenueId);
-    setSetupEditorOpen(false);
-    setSetupWorkspace(
-      data.workspace ?? {
-        ...emptyFoundingWorkspace(),
-        view: data.editorOpen ? "details" : "map",
-        paused: !!data.editorOpen,
-      },
-    );
-    setupEditorOriginal.current = data.editorOriginal;
-    setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
-    setupEditorZoneOriginal.current = data.editorZoneOriginal;
-    setSetupKeyboardSpot(data.keyboardSpot);
-    setSetupProblem(
-      data.interruptedGeneration
-        ? "A generation request was interrupted and may have been billed. Saved results are kept. Generate again only when you choose."
-        : "",
-    );
-    setDraftReady(true);
-    setScreen("setup");
-    void loadPersonas();
-    void loadLorebooks();
-    void loadCatalog();
-  };
+  const exitSetupDraft = createFoundingExitSetupDraft({
+    flushSetupDraft,
+    setScreen,
+    setSetupEditorOpen,
+    setSetupProblem,
+    setupImageClaim,
+    setupSuggestionsClaim,
+  });
 
-  const exitSetupDraft = async () => {
-    if (setupImageClaim.current || setupSuggestionsClaim.current) return;
-    try {
-      await flushSetupDraft();
-      if (setupImageClaim.current || setupSuggestionsClaim.current) return;
-      setSetupEditorOpen(false);
-      setScreen("resume");
-    } catch (cause) {
-      setSetupProblem(messageFrom(cause, "The draft has not been saved. Keep this tab open."));
-    }
-  };
+  const newSetupDraft = createFoundingNewSetupDraft({
+    draftBlocked,
+    draftRevision,
+    draftSaveQueue,
+    get openSetup() {
+      return openSetup;
+    },
+    savedSetupDraft,
+    setDraftReady,
+    setDraftSaveError,
+    setSavedSetupDraft,
+    setSetupAuthoredFields,
+    setSetupMapProblem,
+    setSetupMapReviewed,
+    setSetupSuggestionsKey,
+    setupMapBusy,
+    setupSuggestionsBusy,
+    setupVenueBusy,
+    setupZoneDrafts,
+    snapshot,
+    updateSetupMapRequest,
+  });
 
-  const newSetupDraft = async () => {
-    if (setupMapBusy || setupVenueBusy || setupSuggestionsBusy) return;
-    if (
-      savedSetupDraft &&
-      !window.confirm("Discard this saved founding draft and its artwork? Your founded village is unchanged.")
-    )
-      return;
-    try {
-      setDraftReady(false);
-      await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH);
-      draftRevision.current = 0;
-      draftBlocked.current = false;
-      setDraftSaveError("");
-      setSavedSetupDraft(null);
-      setSetupAuthoredFields({});
-      setSetupSuggestionsKey("");
-      setSetupMapReviewed(false);
-      updateSetupMapRequest(null);
-      setSetupMapProblem("");
-      setupZoneDrafts.current = {};
-      openSetup(true, snapshot);
-      setDraftReady(true);
-    } catch (cause) {
-      setDraftSaveError(messageFrom(cause, "The draft could not be cleared."));
-    }
-  };
-
-  const retrySetupSaving = async () => {
-    try {
-      const saved = await readFoundingDraft<SetupDraftData>(API_PATH);
-      if ((saved?.revision ?? 0) !== draftRevision.current)
-        throw new Error("This draft changed in another tab. Reload to resume the latest saved choices.");
-      draftBlocked.current = false;
-      setDraftReady(true);
-      await persistSetupDraft(setupDraftData);
-    } catch (cause) {
-      setDraftSaveError(messageFrom(cause, "Draft saving is unavailable."));
-    }
-  };
+  const retrySetupSaving = createFoundingRetrySetupSaving({
+    draftBlocked,
+    draftRevision,
+    persistSetupDraft,
+    setDraftReady,
+    setDraftSaveError,
+    setupDraftData,
+  });
 
   // Roster changes reconcile only the required graph; existing authored Venues survive.
   useFoundingRosterReconciliation({ catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot });
 
-  const suggestSetupVenues = async () => {
-    if (setupSuggestionsClaim.current || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
-    setupSuggestionsClaim.current = true;
-    const source = setupBeginningSourceKey;
-    const rows = setupVenues;
-    setSetupSuggestionsBusy(true);
-    setSetupProblem("");
-    try {
-      const result = await request<{
-        venues: Array<{
-          id: string;
-          name: string;
-          form: string;
-          description: string;
-          layout: "exterior" | "common" | "private" | "both";
-          commonName: string;
-          commonPurpose?: string;
-          venueType?: string;
-          commonDescription: string;
-          privateName: string;
-          privatePurpose: string;
-        }>;
-      }>("/setup/venues/suggest", {
-        method: "POST",
-        body: JSON.stringify({
-          setting: setupSetting,
-          foundingDetails: setupFoundingDetails,
-          playerPersonaId: personaDraft,
-          selectedLorebookIds: setupLorebookDraft,
-          loreTokenBudget: setupLoreTokenBudgetDraft,
-          foundingResidentContexts: selectedResidentContexts,
-          venues: rows.map((row) => ({
-            id: row.id,
-            name: row.name,
-            form: row.form,
-            description: row.description,
-            spaceDescription: row.spaces?.[0]?.description ?? "",
-            venueClass: row.category === "public-center" ? "gathering" : "residence",
-            residentCharacterId: row.occupancy.residentCharacterId ?? "",
-          })),
-        }),
-      });
-      if (
-        setupBeginningSourceKeyRef.current !== source ||
-        rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id))
-      )
-        throw new Error(
-          "The people or setting changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
-        );
-      setSetupVenues((currentRows) =>
-        currentRows.map((row) => {
-          const proposal = result.venues.find((item) => item.id === row.id);
-          const before = rows.find((item) => item.id === row.id);
-          if (
-            !proposal ||
-            !before ||
-            setupImageTargetRef.current?.venueId === row.id ||
-            JSON.stringify(row.occupancy) !== JSON.stringify(before.occupancy)
-          )
-            return row;
-          const changed: SetupVenueDraft = { ...row };
-          for (const key of ["name", "venueType", "form", "description"] as const)
-            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
-              changed[key] = proposal[key] ?? row[key];
-          const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
-            setupAuthoredFieldsRef.current[row.id]?.includes(key),
-          );
-          if (
-            !layoutEdited &&
-            ![...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some(
-              (zone) => zone.image || !["common:base", "private:base"].includes(zone.id),
-            ) &&
-            JSON.stringify(row.spaces) === JSON.stringify(before.spaces) &&
-            JSON.stringify(row.privateSpaces) === JSON.stringify(before.privateSpaces) &&
-            row.layout === before.layout
-          ) {
-            const role = row.category === "public-center" ? "gathering" : "residence";
-            changed.layout = proposal.layout;
-            changed.spaces =
-              proposal.layout === "common" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "common:base",
-                      ownerId: "",
-                      venueClass: role,
-                      name: proposal.commonName,
-                      purpose:
-                        proposal.commonPurpose ||
-                        (role === "residence" ? "Everyday home activities" : "Community gatherings"),
-                      access: draftZonePolicy(row, { venueClass: role }),
-                      description: proposal.commonDescription,
-                    },
-                  ]
-                : [];
-            changed.privateSpaces =
-              proposal.layout === "private" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "private:base",
-                      venueClass: role,
-                      ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
-                      name: proposal.privateName,
-                      purpose: proposal.privatePurpose,
-                      access: draftZonePolicy(
-                        row,
-                        {
-                          venueClass: role,
-                          ownerId: row.occupancy.playerHome ? "player" : row.occupancy.residentCharacterId || "",
-                        },
-                        true,
-                      ),
-                      controllerIds: role === "gathering" ? ["player"] : undefined,
-                    },
-                  ]
-                : [];
-          }
-          return changed;
-        }),
-      );
-      setSetupSuggestionsKey(source);
-    } catch (cause) {
-      setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
-    } finally {
-      setupSuggestionsClaim.current = false;
-      setSetupSuggestionsBusy(false);
-    }
-  };
+  const suggestSetupVenues = createFoundingSuggestSetupVenues({
+    personaDraft,
+    selectedResidentContexts,
+    setSetupProblem,
+    setSetupSuggestionsBusy,
+    setSetupSuggestionsKey,
+    setSetupVenues,
+    setupAuthoredFieldsRef,
+    setupBeginningSourceKey,
+    setupBeginningSourceKeyRef,
+    setupFoundingDetails,
+    setupImageTargetRef,
+    setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
+    setupSetting,
+    setupSuggestionsClaim,
+    setupVenues,
+    setupVenuesRef,
+  });
 
   /** Whether the panel is framing a picture: one just picked, or the saved one under revision. */
-  const framingMap = townMapPick !== null || reframingMap;
+  const framingMap = calculateFramingMap({ reframingMap, townMapPick });
 
   /**
    * The framing the panel draws. Everywhere else draws the saved one, so the
    * draft never leaks out of the panel and the village is never seen wearing a
    * framing that has not been agreed to.
    */
-  const panelMapView: TownMapView = framingMap ? (townMapDraft ?? savedTownMapView) : savedTownMapView;
+  const panelMapView: TownMapView = calculatePanelMapView({ framingMap, savedTownMapView, townMapDraft });
 
   /** What is true of the picture being previewed, if the panel is holding one. */
-  const townMapAdvice = townMapPick ? pictureAdvice(townMapPick.size) : null;
+  const townMapAdvice = calculateTownMapAdvice({ townMapPick });
 
   const [error, setError] = useState("");
 
@@ -1168,12 +979,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * `roomOpen` is a flag of its own for the same reason `chatOpen` is: the drawer
    * is animated by an attribute and a panel that is not there cannot slide.
    */
-  const [room, setRoom] = useReducer((current: SceneView | null, next: SetStateAction<SceneView | null>) => {
-    const candidate = typeof next === "function" ? next(current) : next;
-    if (current?.id && current.id === candidate?.id && (current.sceneRevision ?? 0) > (candidate.sceneRevision ?? 0))
-      return current;
-    return candidate;
-  }, null);
+  const [room, setRoom] = useSceneRecord();
 
   /** Accept each server receipt once, regardless of which visit-ending path returned it. */
   const receiveRoomRecordEvents = useReceiveRoomRecordEvents({
@@ -1227,14 +1033,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const pendingCaretRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    const caret = pendingCaretRef.current;
-    const node = knowledgeRef.current;
-    if (caret === null || !node) return;
-    pendingCaretRef.current = null;
-    node.focus();
-    node.setSelectionRange(caret, caret);
-  }, [knowledgeDraft]);
+  useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
   /**
    * Ask the village to write down whatever has happened since it last did.
@@ -1258,45 +1057,17 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const currentSnapshotRef = useRef(snapshot);
 
-  useEffect(() => {
-    currentSnapshotRef.current = snapshot;
-  }, [snapshot]);
+  useSnapshotReference({ currentSnapshotRef, snapshot });
 
   const storyActionRef = useRef<{ id: string; expectedAttempt: number } | null>(null);
 
-  const reconcile = useCallback(async (forceStory = false): Promise<VillageSnapshot | null> => {
-    if (reconcilingRef.current) return null;
-    reconcilingRef.current = true;
-    const notice = setTimeout(() => setCatchingUp(true), SHOW_CATCHING_UP_AFTER_MS);
-    try {
-      const next = await request<VillageSnapshot>("/reconcile", {
-        method: "POST",
-        body: forceStory
-          ? JSON.stringify({
-              forceStory: true,
-              ...(storyActionRef.current ??= {
-                id: createVillagesClientId(),
-                expectedAttempt:
-                  currentSnapshotRef.current?.backgroundWork?.find((job) => job.kind === "story")?.attempt ?? 0,
-              }),
-              actionId: storyActionRef.current.id,
-            })
-          : undefined,
-      });
-      setSnapshot(next);
-      if (forceStory) storyActionRef.current = null;
-      return next;
-    } catch {
-      // The village keeps whatever news it had and the tab keeps drawing it.
-      // Deterministic reconciliation is committed before optional narration;
-      // a later creative attempt can retry without replaying required state.
-      return null;
-    } finally {
-      clearTimeout(notice);
-      setCatchingUp(false);
-      reconcilingRef.current = false;
-    }
-  }, []);
+  const reconcile = useReconcileVillage({
+    currentSnapshotRef,
+    reconcilingRef,
+    setCatchingUp,
+    setSnapshot,
+    storyActionRef,
+  });
 
   /**
    * Ask for one creative village event right now, whatever Background events and wishes says.
@@ -1311,24 +1082,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * and a button that always said "done" would leave the player wondering
    * whether the feature was broken or the village was simply quiet.
    */
-  const writeItUpNow = useCallback(async () => {
-    const newest = snapshot?.happenings[0]?.id ?? "";
-    setWriteUpNote("Writing...");
-    const next = await reconcile(true);
-    if (!next) {
-      setWriteUpNote(
-        "The update request failed. Check the village again before retrying; time catch-up may already have run.",
-      );
-      return;
-    }
-    setWriteUpNote(
-      next.backgroundWork?.some((job) => job.kind === "story" && ["queued", "running", "paused"].includes(job.status))
-        ? "The event is queued. See Background work for progress."
-        : (next.happenings[0]?.id ?? "") === newest
-          ? "No new happening was added. Other village records may have changed during catch-up."
-          : "A new visual event was added. See Events.",
-    );
-  }, [snapshot, reconcile]);
+  const writeItUpNow = useWriteVillageEvent({ reconcile, setWriteUpNote, snapshot });
 
   /**
    * Read the village.
@@ -1339,71 +1093,16 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * reading on screen instead of blanking a village that is working perfectly
    * well.
    */
-  const loadSnapshot = useCallback(async (options: { signal?: AbortSignal; quiet?: boolean } = {}) => {
-    try {
-      const next = await request<VillageSnapshot>("", { signal: options.signal });
-      setSnapshot(next);
-      setError("");
-    } catch (cause) {
-      if (options.signal?.aborted || options.quiet) return;
-      setSnapshot(null);
-      setError(messageFrom(cause, "Could not read the village."));
-    }
-  }, []);
+  const loadSnapshot = useLoadVillageSnapshot({ setError, setSnapshot });
 
   const presenceSession = useRef("");
 
-  useEffect(() => {
-    if (!snapshot?.isFounded) return;
-    presenceSession.current ||= createVillagesClientId();
-    let heartbeatSequence = 0;
-    const heartbeat = async () => {
-      const sequence = ++heartbeatSequence;
-      const visible = document.visibilityState === "visible" && element.checkVisibility({ checkVisibilityCSS: true });
-      try {
-        const presence = await request<{ snapshot?: VillageSnapshot }>("/background/presence", {
-          method: "POST",
-          body: JSON.stringify({ sessionId: presenceSession.current, visible }),
-        });
-        if (visible && sequence === heartbeatSequence) {
-          if (presence.snapshot) setSnapshot(presence.snapshot);
-          else {
-            await reconcile();
-            await loadSnapshot({ quiet: true });
-          }
-        }
-      } catch {
-        /* A lost heartbeat expires on the server. */
-      }
-    };
-    void heartbeat();
-    const timer = window.setInterval(() => void heartbeat(), 30_000);
-    const changed = () => void heartbeat();
-    document.addEventListener("visibilitychange", changed);
-    const observer = new IntersectionObserver(changed);
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-      heartbeatSequence++;
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", changed);
-      void request("/background/presence", {
-        method: "POST",
-        body: JSON.stringify({ sessionId: presenceSession.current, visible: false }),
-      }).catch(() => {});
-    };
-  }, [snapshot?.isFounded, reconcile, loadSnapshot, element]);
+  useVillagePresence({ element, loadSnapshot, presenceSession, reconcile, setSnapshot, snapshot });
 
   const backgroundPending =
     snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false;
 
-  useEffect(() => {
-    if (!backgroundPending) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void loadSnapshot({ quiet: true });
-    }, 5_000);
-    return () => clearInterval(timer);
-  }, [backgroundPending, loadSnapshot]);
+  usePendingWorkPolling({ backgroundPending, loadSnapshot });
 
   /*
     Reconcile whenever the server's next meaningful transition changes.
@@ -1423,52 +1122,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     An unfounded village is shown and not reconciled. There is no durable village
     state to advance before founding.
   */
-  useEffect(() => {
-    const transition = snapshot?.village.nextTransitionAt ?? "";
-    if (transition.length === 0 || transition === transitionRef.current) return;
-    transitionRef.current = transition;
-    if (snapshot?.isFounded) void reconcile();
-  }, [snapshot, reconcile]);
+  useVillageTransitions({ reconcile, snapshot, transitionRef });
 
-  const loadCatalog = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<CatalogResponse>("/catalog", { signal });
-      setCatalog(response.characters);
-      setError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setError(messageFrom(cause, "Could not read your character library."));
-    }
-  }, []);
+  const loadCatalog = useResidentsLoadCatalog({ setCatalog, setError });
 
-  const loadPersonas = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<PersonaResponse>("/personas", { signal });
-      setPersonas(response.personas);
-      setPersonaDraft((current) => current || response.personas.find((persona) => persona.isActive)?.id || "");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      // A failed read settles on "none" rather than staying unsettled forever:
-      // the picker then offers the fields the player can still type into, and
-      // the message says what went wrong. A spinner that never resolves would
-      // hide the way out along with the problem.
-      setPersonas([]);
-      setError(messageFrom(cause, "Could not read your Personas."));
-    }
-  }, []);
+  const loadPersonas = useLoadPersonas({ setError, setPersonaDraft, setPersonas });
 
-  const loadLorebooks = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<{ books: VillageLorebookOption[] }>("/lorebooks", { signal });
-      setLorebooks(response.books);
-      setLorebooksError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setLorebooksError(
-        messageFrom(cause, "Could not read Engine lorebooks. Selected books will be skipped until available."),
-      );
-    }
-  }, []);
+  const loadLorebooks = useLoadLorebooks({ setLorebooks, setLorebooksError });
 
   const loadMemoryLibrary = useLoadMemoryLibrary({ setError, setMemoryLibrary });
 
@@ -1532,11 +1192,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({ setAgendas, setBusy, setError });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadSnapshot({ signal: controller.signal });
-    return () => controller.abort();
-  }, [loadSnapshot]);
+  useInitialVillageLoad({ loadSnapshot });
 
   /*
     Keep the tab in step with the village for as long as it is open.
@@ -1552,20 +1208,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     The read on the way back covers the time it was away in one batch, because
     that is what the server makes of a moment it has fallen behind on.
   */
-  useEffect(() => {
-    const onVisible = () => {
-      if (!document.hidden) void loadSnapshot({ quiet: true });
-    };
-    const timer = setInterval(() => {
-      if (document.hidden || reconcilingRef.current) return;
-      void loadSnapshot({ quiet: true });
-    }, VILLAGE_PULSE_MS);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [loadSnapshot]);
+  useVillagePolling({ loadSnapshot, reconcilingRef });
 
   useSceneSelectionReset({
     lastRoomActivitySentRef,
@@ -1641,12 +1284,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setOpenArchivedVisit,
   });
 
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const controller = new AbortController();
-    void loadCatalog(controller.signal);
-    return () => controller.abort();
-  }, [pickerOpen, loadCatalog]);
+  useResidentPickerLoad({ loadCatalog, pickerOpen });
 
   // Kept as its own effect, keyed on the stamp: the picture is fetched once and
   // re-fetched only when the server says the map changed, so the homepage never
@@ -1693,15 +1331,15 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  const goHome = useCallback(() => {
-    if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
-    setSpriteManagerId(null);
-    setExploreSheet(null);
-    setPickerOpen(false);
-    setSettingsError("");
-    setOpenPlaceId(null);
-    setScreen("home");
-  }, []);
+  const goHome = useNavigationGoHome({
+    setExploreSheet,
+    setOpenPlaceId,
+    setPickerOpen,
+    setScreen,
+    setSettingsError,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  });
 
   /** End an active Scene in place; a second press returns the completed scene to the map. */
   const closeRoom = useCloseRoom({
@@ -2001,76 +1639,26 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     updateSetupMapRequest,
   });
 
-  const generateSetupTownMap = useCallback(async () => {
-    if (setupMapRequestRef.current?.phase === "starting" || setupMapRequestRef.current?.phase === "waiting") return;
-    if (setupSetting.trim().length === 0) {
-      setSetupMapProblem("Describe what the village is like before generating its map.");
-      return;
-    }
-    setSetupMapBusy(true);
-    setSetupMapProblem("");
-    setSetupProblem("");
-    const pending: SetupMapRequest = {
-      id: createVillagesClientId(),
-      sourceKey: setupMapGenerationKey,
-      startedAt: new Date().toISOString(),
-      phase: "starting",
-    };
-    updateSetupMapRequest(pending);
-    setSetupMapClock(Date.now());
-    let dispatched = false;
-    try {
-      // Keep the receipt ID before the paid request, so a reload only retrieves it.
-      await persistSetupDraft({ ...setupDraftData, mapRequest: pending, mapProblem: "", interruptedGeneration: false });
-      dispatched = true;
-      const receipt = await requestSetupMapReceipt("/setup/town-map/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          actionId: pending.id,
-          sourceKey: pending.sourceKey,
-          structure: setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? undefined : setupMapPrompt,
-          negative:
-            setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
-          setting: setupSetting,
-          options: setupMapOptions,
-          selectedLorebookIds: setupLorebookDraft,
-          sceneryArtStyle: sceneryStyle,
-          useVisualLore: mapVisualLore,
-          scenarioImprint: snapshot?.isFounded
-            ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
-            : null,
-        }),
-      });
-      updateSetupMapRequest({
-        id: receipt.id,
-        sourceKey: receipt.sourceKey,
-        startedAt: receipt.startedAt,
-        phase: "waiting",
-      });
-    } catch (cause) {
-      setSetupMapProblem(
-        `${messageFrom(cause, "The village map could not be requested.")}${dispatched ? " Check map status before starting another attempt." : ""}`,
-      );
-      updateSetupMapRequest(dispatched ? { ...pending, phase: "paused" } : null);
-      setSetupMapBusy(false);
-    }
-  }, [
-    setupLorebookDraft,
-    setupMapNegativePrompt,
-    setupMapPrompt,
-    setupSetting,
-    setupMapOptions,
-    setupMapGenerationKey,
-    sceneryStyle,
+  const generateSetupTownMap = useFoundingGenerateSetupTownMap({
     mapVisualLore,
-    setupWorldFacts,
-    snapshot?.isFounded,
-    snapshot?.settings.townMapLayoutPrompt,
-    snapshot?.settings.townMapNegativePrompt,
     persistSetupDraft,
+    sceneryStyle,
+    setSetupMapBusy,
+    setSetupMapClock,
+    setSetupMapProblem,
+    setSetupProblem,
     setupDraftData,
+    setupLorebookDraft,
+    setupMapGenerationKey,
+    setupMapNegativePrompt,
+    setupMapOptions,
+    setupMapPrompt,
+    setupMapRequestRef,
+    setupSetting,
+    setupWorldFacts,
+    snapshot,
     updateSetupMapRequest,
-  ]);
+  });
 
   const pickSetupTownMap = usePickSetupTownMap({
     setSetupMapBusy,
@@ -2221,9 +1809,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * destinations as the panel currently has them. One count for one list, because
    * a house spends a place like anything else does.
    */
-  const placeCount =
-    (snapshot?.settings.venues.length ?? 0) +
-    venuesDraft.filter((draft) => !snapshot?.settings.venues.some((saved) => saved.id === draft.id)).length;
+  const placeCount = calculatePlaceCount({ snapshot, venuesDraft });
 
   const placeSetupPin = usePlaceSetupPin({
     movingSetupVenueId,
@@ -2246,16 +1832,15 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // The wizard collects place, shared circumstances, map, and residents before
   // writing the village. A half-answered setup never claims to be founded.
 
-  const chooseSetupScenario = (value: FoundingScenarioId) => {
-    if (snapshot?.isFounded) return;
-    if (value === setupFoundingReason) return;
-    const previousStarter = foundingScenario(setupFoundingReason).premise;
-    const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
-    setSetupFoundingReason(value);
-    if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
-    setSetupFoundingGuidance("");
-    setSetupProblem("");
-  };
+  const chooseSetupScenario = createFoundingChooseSetupScenario({
+    setSetupFoundingDetails,
+    setSetupFoundingGuidance,
+    setSetupFoundingReason,
+    setSetupProblem,
+    setupFoundingDetails,
+    setupFoundingReason,
+    snapshot,
+  });
 
   /**
    * Open the wizard.
@@ -2315,222 +1900,85 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     updateSetupMapRequest,
   });
 
-  const gotoSetupStep = (step: number) => {
-    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
-      setSetupProblem("Wait for the pending Venue request before Review.");
-      return;
-    }
-    if (step > setupStep) {
-      const peopleProblem =
-        !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
-          ? "Choose an available Persona."
-          : residentContextProblem ||
-            connectionSetupProblem ||
-            (!snapshot?.isFounded ? playerRoleProblem(setupPlayerRole) : "") ||
-            (!snapshot?.isFounded &&
-            (setupHomeCount < 1 ||
-              setupHomeCount > 3 ||
-              setupFoundingVillagerIds.some((id) => !catalog?.some((person) => person.id === id)))
-              ? "Choose one to three available founding villagers."
-              : "");
-      const placeProblem = !setupName.trim()
-        ? "Give the village a name."
-        : !setupSetting.trim()
-          ? "Describe where we are."
-          : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe what brings you together."
-            : "";
-      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 3 ? setupBlocker() : "");
-      if (problem) {
-        setSetupProblem(problem);
-        return;
-      }
-    }
-    setSetupProblem("");
-    setSetupStep(step);
-    setSetupEditorOpen(false);
-    void loadPersonas();
-    void loadCatalog();
-    void loadLorebooks();
-    setPlacingHome(false);
-    setPlacingPublicCenter(false);
-    setMovingSetupVenueId(null);
-  };
-
-  const setupDraftRow = (venue: SetupVenueDraft) => ({
-    id: venue.id,
-    name: venue.name,
-    venueType: venue.venueType,
-    form: venue.form ?? "",
-    description: venue.description,
-    spaceDescription: venue.spaces?.[0]?.description ?? "",
-    layout: venue.layout,
-    layoutVersion: venue.layoutVersion,
-    areas: [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].map((area) => ({
-      id: area.id,
-      name: "name" in area ? area.name : "Common Space",
-      purpose: "purpose" in area ? area.purpose : "",
-      venueClass: area.venueClass,
-    })),
-    venueClass: venue.classes?.includes("gathering") ? "gathering" : "residence",
-    residentCharacterId: venue.occupancy.residentCharacterId ?? "",
+  const gotoSetupStep = createFoundingGotoSetupStep({
+    catalog,
+    connectionSetupProblem,
+    loadCatalog,
+    loadLorebooks,
+    loadPersonas,
+    personaDraft,
+    personas,
+    residentContextProblem,
+    setMovingSetupVenueId,
+    setPlacingHome,
+    setPlacingPublicCenter,
+    setSetupEditorOpen,
+    setSetupProblem,
+    setSetupStep,
+    get setupBlocker() {
+      return setupBlocker;
+    },
+    setupFoundingDetails,
+    setupFoundingVillagerIds,
+    setupHomeCount,
+    setupName,
+    setupPlayerRole,
+    setupSetting,
+    setupStep,
+    setupSuggestionsBusy,
+    setupVenueBusy,
+    snapshot,
   });
 
-  const generateSetupImage = async (
-    venue: SetupVenueDraft,
-    area: "exterior" | "interior" | "private",
-    zoneId?: string,
-  ) => {
-    if (setupImageClaim.current) return;
-    const selectedArea = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find((zone) => zone.id === zoneId);
-    const description = selectedArea
-      ? selectedArea.description
-      : area === "private"
-        ? (venue.privateSpaces?.find((room) => room.ownerId === "player")?.description ?? "")
-        : area === "exterior"
-          ? venue.description
-          : (venue.spaces?.[0]?.description ?? "");
-    if (!description.trim()) {
-      setSelectedSetupVenueId(venue.id);
-      setSetupProblem(`Add an ${area} description before generating its image.`);
-      window.setTimeout(
-        () => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${area}-description`)?.focus(),
-        0,
-      );
-      return;
-    }
-    const sourceKey = setupImageContextKey;
-    const physicalImageKey = (row: VillageVenue | undefined) =>
-      row &&
-      JSON.stringify({
-        name: row.name,
-        venueType: row.venueType,
-        form: row.form,
-        description: row.description,
-        occupancy: row.occupancy,
-        imageContext: row.imageContext,
-        zone: [...(row.spaces ?? []), ...(row.privateSpaces ?? [])]
-          .filter((zone) => zone.id === zoneId)
-          .map(({ id, name, purpose, description, state }) => ({ id, name, purpose, description, state })),
-      });
-    const venueKey = physicalImageKey(venue);
-    setupImageClaim.current = true;
-    setupImageTargetRef.current = { venueId: venue.id, zoneId: zoneId ?? "exterior" };
-    setSetupImageTarget(setupImageTargetRef.current);
-    setSetupVenueBusy(true);
-    setSetupProblem("");
-    try {
-      const image = await request<VillageVenueImage>("/setup/venue-image/generate", {
-        method: "POST",
-        body: JSON.stringify({
-          venue: setupDraftRow(venue),
-          area,
-          zoneId,
-          zoneName: selectedArea?.name,
-          zonePurpose: selectedArea?.purpose,
-          zoneAppearance: selectedArea?.description,
-          privateOwnerId: area === "private" ? "player" : undefined,
-          privateDescription: description,
-          residentFoundingContext: venue.occupancy.residentCharacterId
-            ? selectedResidentContexts[venue.occupancy.residentCharacterId]
-            : undefined,
-          playerPersonaId: personaDraft,
-          sceneryArtStyle: sceneryStyle,
-          useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? personalizeHomes,
-          useVisualLore: venue.imageContext?.useVisualLore ?? visualLoreDefault,
-          villageName: setupName,
-          setting: setupSetting,
-          foundingDetails: setupFoundingDetails,
-          scenarioImprint: snapshot?.isFounded ? setupImprint : null,
-          worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
-          selectedLorebookIds: setupLorebookDraft,
-        }),
-      });
-      if (
-        setupImageContextKeyRef.current !== sourceKey ||
-        physicalImageKey(setupVenuesRef.current.find((row) => row.id === venue.id)) !== venueKey
-      ) {
-        setSetupProblem("The venue changed while its image was generated. Generate again.");
-        return;
-      }
-      setSetupVenues((rows) =>
-        rows.map((row) =>
-          row.id === venue.id && physicalImageKey(row) === venueKey ? withSetupImage(row, area, image, zoneId) : row,
-        ),
-      );
-    } catch (cause) {
-      setSetupProblem(messageFrom(cause, "Venue art could not be generated."));
-    } finally {
-      setSetupVenueBusy(false);
-      setupImageClaim.current = false;
-      setSetupImageTarget(null);
-      setupImageTargetRef.current = null;
-    }
-  };
+  const setupDraftRow = createFoundingSetupDraftRow({});
 
-  const uploadSetupImage = async (
-    venue: SetupVenueDraft,
-    area: "exterior" | "interior" | "private",
-    file?: File,
-    zoneId?: string,
-  ) => {
-    if (!file || setupImageClaim.current) return;
-    if (file.size > (snapshot?.settings.maxVenueImageBytes ?? 8_000_000)) {
-      setSetupProblem("That venue image is too large. Choose a smaller file.");
-      return;
-    }
-    setupImageClaim.current = true;
-    setupImageTargetRef.current = { venueId: venue.id, zoneId: zoneId ?? "exterior" };
-    setSetupImageTarget(setupImageTargetRef.current);
-    const sourceKey = setupBeginningSourceKey;
-    setSetupVenueBusy(true);
-    setSetupProblem("");
-    try {
-      const image = await request<VillageVenueImage>("/setup/venue-image", {
-        method: "PUT",
-        body: JSON.stringify({ name: venue.name, image: await readFileAsDataUrl(file) }),
-      });
-      if (
-        setupBeginningSourceKeyRef.current !== sourceKey ||
-        !setupVenuesRef.current.some(
-          (row) =>
-            row.id === venue.id &&
-            (!zoneId || [...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some((zone) => zone.id === zoneId)),
-        )
-      )
-        return;
-      patchSetupVenue(venue.id, (row) => withSetupImage(row, area, image, zoneId));
-    } catch (cause) {
-      setSetupProblem(messageFrom(cause, "That venue image could not be uploaded."));
-    } finally {
-      setSetupVenueBusy(false);
-      setupImageClaim.current = false;
-      setSetupImageTarget(null);
-      setupImageTargetRef.current = null;
-    }
-  };
+  const generateSetupImage = createFoundingGenerateSetupImage({
+    element,
+    personaDraft,
+    personalizeHomes,
+    sceneryStyle,
+    selectedResidentContexts,
+    setSelectedSetupVenueId,
+    setSetupImageTarget,
+    setSetupProblem,
+    setSetupVenueBusy,
+    setSetupVenues,
+    setupDraftRow,
+    setupFoundingDetails,
+    setupImageClaim,
+    setupImageContextKey,
+    setupImageContextKeyRef,
+    setupImageTargetRef,
+    setupImprint,
+    setupLorebookDraft,
+    setupName,
+    setupSetting,
+    setupVenuesRef,
+    setupWorldFacts,
+    snapshot,
+    visualLoreDefault,
+    get withSetupImage() {
+      return withSetupImage;
+    },
+  });
 
-  const withSetupImage = (
-    venue: SetupVenueDraft,
-    area: "exterior" | "interior" | "private",
-    image: VillageVenueImage,
-    zoneId?: string,
-  ): SetupVenueDraft =>
-    area === "exterior"
-      ? { ...venue, presentation: { ...venue.presentation, image } }
-      : area === "private"
-        ? {
-            ...venue,
-            privateSpaces: (venue.privateSpaces ?? [personalSpaceDraft()]).map((room) =>
-              (zoneId ? room.id === zoneId : room.ownerId === "player") ? { ...room, image } : room,
-            ),
-          }
-        : {
-            ...venue,
-            spaces: venue.spaces?.map((space, index) =>
-              (zoneId ? space.id === zoneId : index === 0) ? { ...space, image } : space,
-            ),
-          };
+  const uploadSetupImage = createFoundingUploadSetupImage({
+    patchSetupVenue,
+    setSetupImageTarget,
+    setSetupProblem,
+    setSetupVenueBusy,
+    setupBeginningSourceKey,
+    setupBeginningSourceKeyRef,
+    setupImageClaim,
+    setupImageTargetRef,
+    setupVenuesRef,
+    snapshot,
+    get withSetupImage() {
+      return withSetupImage;
+    },
+  });
+
+  const withSetupImage = createFoundingWithSetupImage({});
 
   /** Why the wizard cannot finish yet, or "" when it can. Checked here as well as on the server so the player is told before a request is made. */
   const setupBlocker = useFoundingSetupBlocker({
@@ -2591,56 +2039,32 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   /** The destructive half of the pair the General settings panel offers. */
-  const startOver = useCallback(async () => {
-    setBusy(true);
-    setSettingsError("");
-    try {
-      const next = await request<VillageSnapshot>("/setup/reset", { method: "POST" });
-      setSnapshot(next);
-      setCatalog(null);
-      // The offer to found the village is made again by hand: the player asked
-      // for the wizard by asking to start over.
-      await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH);
-      draftRevision.current = 0;
-      setSavedSetupDraft(null);
-      setDraftReady(true);
-      openSetup(true, next);
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "The village could not be reset."));
-    } finally {
-      setBusy(false);
-      setResetArmed(false);
-    }
-  }, [openSetup]);
+  const startOver = useFoundingStartOver({
+    draftRevision,
+    draftSaveQueue,
+    openSetup,
+    setBusy,
+    setCatalog,
+    setDraftReady,
+    setResetArmed,
+    setSavedSetupDraft,
+    setSettingsError,
+    setSnapshot,
+  });
 
-  useEffect(() => {
-    if (!snapshot || setupOfferedRef.current) return;
-    setupOfferedRef.current = true;
-    if (!snapshot.isFounded) {
-      void readFoundingDraft<SetupDraftData>(API_PATH)
-        .then((saved) => {
-          if (saved) {
-            draftRevision.current = saved.revision;
-            setSavedSetupDraft(saved);
-            setDraftSavedAt(saved.savedAt);
-            setScreen("resume");
-            void loadPersonas();
-            void loadCatalog();
-          } else {
-            openSetup(false, snapshot);
-            setDraftReady(true);
-          }
-        })
-        .catch((cause) => {
-          openSetup(false, snapshot);
-          setDraftSaveError(messageFrom(cause, "Draft storage is unavailable. Keep this tab open."));
-        });
-    } else {
-      void removeFoundingDraft(API_PATH).catch(() => undefined);
-      if (snapshot.foundingPreparation && snapshot.foundingPreparation.status !== "ready") setScreen("preparing");
-    }
-  }, [openSetup, snapshot, loadPersonas, loadCatalog]);
+  useFoundingDraftOffer({
+    draftRevision,
+    loadCatalog,
+    loadPersonas,
+    openSetup,
+    setDraftReady,
+    setDraftSavedAt,
+    setDraftSaveError,
+    setSavedSetupDraft,
+    setScreen,
+    setupOfferedRef,
+    snapshot,
+  });
 
   useFoundingPreparationPolling({ screen, setPreparationProblem, setScreen, setSnapshot });
 
@@ -2691,15 +2115,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const removeNotice = useRemoveNotice({ setBusy, setSettingsError, setSnapshot });
 
-  const needle = search.trim().toLowerCase();
+  const needle = calculateNeedle({ search });
 
-  const visibleCatalog = (catalog ?? []).filter(
-    (entry) =>
-      needle.length === 0 ||
-      entry.name.toLowerCase().includes(needle) ||
-      entry.comment.toLowerCase().includes(needle) ||
-      entry.tags.some((tag) => tag.toLowerCase().includes(needle)),
-  );
+  const visibleCatalog = calculateVisibleCatalog({ catalog, needle });
 
   /**
    * Everybody the tab can currently draw a face for, as one string.
@@ -2715,11 +2133,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * pictures for a list nobody is looking at is the one kind of work this could
    * do that the player would never see the result of.
    */
-  const portraitWanted = [
-    ...(snapshot?.villagers ?? []).map((villager) => villager.characterId),
-    ...(pickerOpen ? visibleCatalog.map((entry) => entry.id) : []),
-    ...(screen === "setup" && setupStep === 0 ? (catalog ?? []).map((entry) => entry.id) : []),
-  ].join("\n");
+  const portraitWanted = calculatePortraitWanted({ catalog, pickerOpen, screen, setupStep, snapshot, visibleCatalog });
 
   /**
    * The faces behind everybody the tab can draw.
@@ -2738,21 +2152,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * deleted from the library answers with no row and is remembered as having
    * been asked, so the absence is not re-asked for either.
    */
-  useEffect(() => {
-    const missing = portraitWanted.split("\n").filter((id) => id.length > 0 && !portraitsAsked.current.has(id));
-    if (missing.length === 0) return;
-    for (const id of missing) portraitsAsked.current.add(id);
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const read = await readPortraits(missing, controller.signal);
-        if (!controller.signal.aborted) setPortraits((current) => ({ ...current, ...read }));
-      } catch {
-        // The initial is already on screen, and it is the whole fallback.
-      }
-    })();
-    return () => controller.abort();
-  }, [portraitWanted]);
+  useResidentPortraits({ portraitsAsked, portraitWanted, setPortraits });
 
   /**
    * The picture of the Persona the player is being, or nothing.
@@ -2774,23 +2174,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * travels through `encodeURIComponent` inside the read itself, because it is a
    * stored value and this tab does not get to decide what is in it.
    */
-  const personaPortraitId = snapshot?.settings.playerPersonaId ?? "";
+  const personaPortraitId = calculatePersonaPortraitId({ snapshot });
 
-  useEffect(() => {
-    setPersonaPortrait(null);
-    if (personaPortraitId.length === 0) return;
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        const read = await readPersonaPortrait(personaPortraitId, controller.signal);
-        if (!controller.signal.aborted) setPersonaPortrait(read);
-      } catch {
-        // No Persona, no portrait, or nobody to ask: the mark is the fallback
-        // and it is already what is drawn.
-      }
-    })();
-    return () => controller.abort();
-  }, [personaPortraitId]);
+  usePersonaPortrait({ personaPortraitId, setPersonaPortrait });
 
   /**
    * The name behind a character id, for a home that is still being placed.
@@ -2806,115 +2192,30 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * Keep legacy MapPin identifiers for callers; the presentation is always a Polaroid.
    * Unplaced Venues remain available in play without guessing map coordinates.
    */
-  const venueExplorationActions = (place: VillageVenue): { label: string; onSelect: () => void }[] => {
-    const project = snapshot?.projects.find(
-      (entry) => entry.venueId === place.id && entry.lifecycle?.phase !== "complete",
-    );
-    return [
-      ...(project?.kind === "new-venue"
-        ? []
-        : [
-            { label: "Visit", onSelect: () => void openRoom(place) },
-            { label: "View venue", onSelect: () => openPlace(place) },
-          ]),
-      ...(project
-        ? [
-            {
-              label: "View Project",
-              onSelect: () => {
-                setExploreSheet(null);
-                openMenu("projects");
-                setFocusedProjectId(project.id);
-                setSiteProjectId(project.id);
-              },
-            },
-          ]
-        : []),
-    ];
-  };
+  const venueExplorationActions = createVenueExplorationActions({
+    openMenu,
+    openPlace,
+    openRoom,
+    setExploreSheet,
+    setFocusedProjectId,
+    setSiteProjectId,
+    snapshot,
+  });
 
-  const savedPins: MapPin[] = (() => {
-    const places = snapshot?.settings.venues ?? [];
-    const pins: MapPin[] = [];
-    // Everybody's current place, grouped by which place it is, so that two people
-    // at the harbour hang under the harbour rather than on top of each other.
-    const standing = new Map<string, VillageVillagerView[]>();
-    for (const villager of snapshot?.villagers ?? []) {
-      const id = villager.place?.id;
-      if (!id) continue;
-      const group = standing.get(id);
-      if (group) group.push(villager);
-      else standing.set(id, [villager]);
-    }
-    for (const place of places) {
-      const spot = placeSpot(place);
-      if (!spot) continue;
-      const project = snapshot?.projects.find(
-        (entry) => entry.venueId === place.id && entry.lifecycle?.phase !== "complete",
-      );
-      const occupant = place.occupancy.residentCharacterId;
-      const house = isHouse(place);
-      // Who the place is named after. A villager's own name, or the player's: the
-      // player's house is the one house with no villager in it, so the Persona is
-      // what stands in the same place rather than a rule of its own. See
-      // `houseLabel`, which is the one reader of what a name does to "house".
-      const resident = place.occupancy.playerHome ? playerDisplayName(snapshot) : nameOfCharacter(occupant);
-      pins.push({
-        id: place.id,
-        x: spot.x,
-        y: spot.y,
-        text: mobile ? place.name : house ? pinText(resident) : place.name,
-        image: project ? PROJECT_BLUEPRINT_IMAGE : (place.presentation.image?.url ?? null),
-        tone: house ? pinTone({ isPlayerHome: place.occupancy.playerHome, occupant }) : "venue",
-        selected: openPlaceId === place.id,
-        onSelect: () => openVenue(place),
-      });
-      // Who is here, under the building they are at. Drawn as a label rather than
-      // a button, because the place is what you walk into: who happens to be
-      // standing in it at this hour is a fact about the place and not a second
-      // door into it.
-      (standing.get(place.id) ?? []).forEach((villager, index) => {
-        pins.push({
-          id: `villager:${villager.characterId}`,
-          x: spot.x,
-          y: spot.y,
-          dy: STANDING_PIN_STEP * (index + 1),
-          text: villager.name,
-          tone: "resident",
-          kind: "person",
-          venueId: place.id,
-          selected: mobile && openPlaceId === place.id,
-          onSelect: mobile ? () => openVenue(place) : undefined,
-        });
-      });
-    }
-    return pins;
-  })();
+  const savedPins: MapPin[] = calculateSavedPins({ mobile, nameOfCharacter, openPlaceId, openVenue, snapshot });
 
-  const draftPins: MapPin[] = setupVenues.flatMap((venue, index) => {
-    const spot = placeSpot(venue);
-    if (!spot) return [];
-    return [
-      {
-        id: venue.id,
-        x: spot.x,
-        y: spot.y,
-        text: venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence"),
-        label: `${index + 1}. ${venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence")}`,
-        image: venue.presentation.image?.url ?? null,
-        tone: venue.category === "public-center" ? "venue" : venue.occupancy.playerHome ? "player" : "resident",
-        selected: selectedSetupVenueId === venue.id,
-        onSelect: () => {
-          setupEditorOriginal.current = structuredClone(venue);
-          setupEditorAuthoredOriginal.current = [...(setupAuthoredFields[venue.id] ?? [])];
-          setupEditorZoneOriginal.current = structuredClone(setupZoneDrafts.current[venue.id]);
-          setSelectedSetupVenueId(venue.id);
-          setSetupEditorOpen(false);
-          setMovingSetupVenueId(null);
-          setSetupWorkspace((current) => ({ ...current, paused: true, view: "details" }));
-        },
-      },
-    ];
+  const draftPins: MapPin[] = calculateDraftPins({
+    selectedSetupVenueId,
+    setMovingSetupVenueId,
+    setSelectedSetupVenueId,
+    setSetupEditorOpen,
+    setSetupWorkspace,
+    setupAuthoredFields,
+    setupEditorAuthoredOriginal,
+    setupEditorOriginal,
+    setupEditorZoneOriginal,
+    setupVenues,
+    setupZoneDrafts,
   });
   return {
     element,
@@ -3267,4 +2568,3 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     writeUpNote,
   };
 }
-export type VillageController = ReturnType<typeof useVillageController>;

@@ -2,7 +2,7 @@ import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/he
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { MapElementChoice, SetupVenueDraft } from "../../shared/types.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import { AgentConnections } from "../settings/SettingsPanels.js";
@@ -21,7 +21,7 @@ import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-wor
 import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary } from "./villages-player-role.js";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
 
-export function FoundingScreen({ controller }: { controller: VillageController }) {
+export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
   const {
     busy,
     catalog,

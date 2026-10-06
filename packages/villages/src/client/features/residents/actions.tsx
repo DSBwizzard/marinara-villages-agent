@@ -8,7 +8,7 @@ import type {
   VillageSnapshot,
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
-import { createVillagesClientId } from "../scenes/villages-venue-send";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { type SetStateAction, useCallback } from "react";
 
 export function useLoadMemoryLibrary(ports: {

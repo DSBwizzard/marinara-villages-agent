@@ -5,7 +5,7 @@ import { ResumeScreen } from "../features/founding/ResumeScreen.js";
 import { ResidentsScreen } from "../features/residents/ResidentsScreen.js";
 import { RosterScreen } from "../features/residents/RosterScreen.js";
 import { SceneScreen } from "../features/scenes/SceneScreen.js";
-import { MenuScreen } from "../features/settings/MenuScreen.js";
+import { MenuScreen } from "./MenuScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
 import { useVillageController } from "./useVillageController.js";
 

@@ -62,3 +62,5 @@ export function useSettingsState() {
     knowledgeRef,
   };
 }
+
+export type SettingsState = ReturnType<typeof useSettingsState>;

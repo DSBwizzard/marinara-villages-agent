@@ -1,8 +1,8 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { ResumeScreenController } from "./screen-contracts.js";
 import { SETUP_STEPS } from "./FoundingPanels.js";
 
-export function ResumeScreen({ controller }: { controller: VillageController }) {
+export function ResumeScreen({ controller }: { controller: ResumeScreenController }) {
   const {
     draftSaveError,
     draftSavedAt,

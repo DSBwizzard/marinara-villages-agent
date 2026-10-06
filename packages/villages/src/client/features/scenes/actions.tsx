@@ -9,6 +9,7 @@ import type {
   WishVerdict,
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SceneComposerMode } from "../../shared/types.js";
 import {
   completedGreetingAfterFailure,
@@ -19,7 +20,7 @@ import {
   sceneZoneLabel,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { createVillagesClientId, sceneResend } from "./villages-venue-send";
+import { sceneResend } from "./villages-venue-send";
 import { type SetStateAction, useCallback } from "react";
 
 export function useReceiveRoomRecordEvents(ports: {

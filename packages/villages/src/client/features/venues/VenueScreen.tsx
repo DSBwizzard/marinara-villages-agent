@@ -9,12 +9,12 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { buildingOf, playerDisplayName, venueTitle } from "../../shared/presentation.js";
 import type { VenueViewZone } from "../../shared/types.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { VenueScreenController } from "./screen-contracts.js";
 import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
 import { VENUE_CLASS_CHOICES, VenueDraftFields, VenueZoneEditor } from "./VenuePanels.js";
 import { VenueAccessPanel } from "./villages-venue-access";
 
-export function VenueScreen({ controller }: { controller: VillageController }) {
+export function VenueScreen({ controller }: { controller: VenueScreenController }) {
   const {
     busy,
     drawPlaceImage,

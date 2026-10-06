@@ -1,10 +1,10 @@
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/SettingsPanels.js";
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 
-export function PreparationScreen({ controller }: { controller: VillageController }) {
+export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
   const { preparationProblem, retryPreparation, screen, snapshot } = controller;
 
   // ── The founding wizard ────────────────────────────────────────────────────

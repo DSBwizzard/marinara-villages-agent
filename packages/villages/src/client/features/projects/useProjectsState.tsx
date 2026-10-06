@@ -20,3 +20,5 @@ export function useProjectsState() {
     setSiteProjectId,
   };
 }
+
+export type ProjectsState = ReturnType<typeof useProjectsState>;

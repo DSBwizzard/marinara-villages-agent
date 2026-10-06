@@ -1,6 +1,6 @@
 import type { BackgroundWork, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
-import { createVillagesClientId } from "../scenes/villages-venue-send";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { useCallback } from "react";
 
 export function useResidentsRetryWork(ports: {

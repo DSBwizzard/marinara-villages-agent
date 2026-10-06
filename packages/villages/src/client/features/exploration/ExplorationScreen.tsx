@@ -13,9 +13,9 @@ import { AvatarFace } from "../../features/residents/ResidentPanels.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { FullscreenToggle, HomeDateWeather } from "../../shared/presentation.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { ExplorationScreenController } from "./screen-contracts.js";
 
-export function ExplorationScreen({ controller }: { controller: VillageController }) {
+export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
   const {
     addNotice,
     addVenue,

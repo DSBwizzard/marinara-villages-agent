@@ -3,13 +3,13 @@ import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { SceneScreenController } from "./screen-contracts.js";
 import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import { MailboxImprovementEditor } from "../venues/VenuePanels.js";
 import { RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 
-export function SceneScreen({ controller }: { controller: VillageController }) {
+export function SceneScreen({ controller }: { controller: SceneScreenController }) {
   const {
     closeRoom,
     composerEditVersionRef,

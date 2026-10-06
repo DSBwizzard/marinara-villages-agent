@@ -2,14 +2,14 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { ResidentsScreenController } from "./screen-contracts.js";
 import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import { AvatarFace, VillagerMemoriesPanel, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
 
-export function ResidentsScreen({ controller }: { controller: VillageController }) {
+export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
   const {
     element,
     agendas,

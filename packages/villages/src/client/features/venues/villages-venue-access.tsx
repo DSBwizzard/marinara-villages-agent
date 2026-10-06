@@ -1,6 +1,6 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand, VisitorHours, ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
-import { createVillagesClientId } from "../scenes/villages-venue-send";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { useState } from "react";
 
 type Person = { id: string; name: string };

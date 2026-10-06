@@ -1,8 +1,8 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageController } from "../../shell/useVillageController.js";
+import type { RosterScreenController } from "./screen-contracts.js";
 import { AvatarFace } from "./ResidentPanels.js";
 
-export function RosterScreen({ controller }: { controller: VillageController }) {
+export function RosterScreen({ controller }: { controller: RosterScreenController }) {
   const {
     addVillager,
     busy,

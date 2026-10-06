@@ -6,9 +6,9 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { messageFrom } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VenueViewZone } from "../../shared/types.js";
 import { venueAssignedCountFor, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
-import { createVillagesClientId } from "../scenes/villages-venue-send";
 import { useState } from "react";
 
 export function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave: (body: unknown) => Promise<void> }) {

@@ -98,3 +98,5 @@ export function useVenuesState() {
     setPlaceProblem,
   };
 }
+
+export type VenuesState = ReturnType<typeof useVenuesState>;

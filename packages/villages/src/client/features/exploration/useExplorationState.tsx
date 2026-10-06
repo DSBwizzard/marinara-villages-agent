@@ -90,3 +90,5 @@ export function useExplorationState() {
     setReframingMap,
   };
 }
+
+export type ExplorationState = ReturnType<typeof useExplorationState>;

@@ -125,3 +125,5 @@ export function useResidentsState() {
     portraitsAsked,
   };
 }
+
+export type ResidentsState = ReturnType<typeof useResidentsState>;

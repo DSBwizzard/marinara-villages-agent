@@ -186,3 +186,5 @@ export function useScenesState() {
     setWriteUpNote,
   };
 }
+
+export type ScenesState = ReturnType<typeof useScenesState>;

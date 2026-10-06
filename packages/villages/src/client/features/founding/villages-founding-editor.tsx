@@ -1,5 +1,5 @@
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
-import { createVillagesClientId } from "../scenes/villages-venue-send";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { draftZonePolicy, FoundingZoneFields, foundingZoneProblem } from "./villages-founding-zones";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
