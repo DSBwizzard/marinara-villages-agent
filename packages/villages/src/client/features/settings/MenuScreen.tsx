@@ -1,3 +1,9 @@
+import type {
+  ProgressDebugView,
+  VillageSettings,
+  VillageSnapshot,
+  VillageStoryPace,
+} from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import {
@@ -10,13 +16,7 @@ import {
   VillageEvents,
   villagesSpeechPaintStyle,
 } from "../../shared/presentation.js";
-import type {
-  MapPin,
-  ProgressDebugView,
-  VillageSettings,
-  VillageSnapshot,
-  VillageStoryPace,
-} from "../../shared/types.js";
+import type { MapPin } from "../../shared/types.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import { FORCE_VILLAGE_UPDATE_NOTICE, MENU_PAGE_TITLES } from "../../shell/navigation.js";
 import type { VillageController } from "../../shell/useVillageController.js";

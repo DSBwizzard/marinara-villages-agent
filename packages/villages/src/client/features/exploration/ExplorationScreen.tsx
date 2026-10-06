@@ -1,3 +1,4 @@
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { MapStage } from "../../features/exploration/MapStage.js";
 import {
   BrowseList,
@@ -12,7 +13,6 @@ import { AvatarFace } from "../../features/residents/ResidentPanels.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { FullscreenToggle, HomeDateWeather } from "../../shared/presentation.js";
-import type { VillageSnapshot, VillageVenue } from "../../shared/types.js";
 import type { VillageController } from "../../shell/useVillageController.js";
 
 export function ExplorationScreen({ controller }: { controller: VillageController }) {

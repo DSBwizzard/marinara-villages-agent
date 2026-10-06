@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { proposeAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { proposeRemap } from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { proposeAgenda } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 let mode = "truncated",
   ceiling = 900,
   calls = 0;

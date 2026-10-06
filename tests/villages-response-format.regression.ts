@@ -1,24 +1,21 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
-  coordinateVenue,
-  rejectVenueCompletion,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
-import { completeWithRoom } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { coordinateVenue, rejectVenueCompletion } from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   buildTickMessages,
   proposeHappenings,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { buildVenueTextContract } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-response-contract.js";
-import { extractSceneReply } from "../packages/villages/src/engine/packages/server/src/services/villages/scene-reply-json.js";
+} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
+import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import {
   responseDiagnostics,
   sceneMissingFields,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/response-diagnostics.js";
-import { WorkFailureError } from "../packages/villages/src/engine/packages/server/src/services/villages/work-failure.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
+} from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   registerBackgroundHandler,
   queueBackgroundJob,
@@ -26,7 +23,7 @@ import {
   settleBackgroundWork,
   backgroundWorkSummaries,
   recoverBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
 
 async function main() {
   const state = defaultVillageState();

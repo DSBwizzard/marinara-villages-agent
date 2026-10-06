@@ -1,23 +1,24 @@
+import type { ProgressDebugView } from "../../shared/contracts/village.js";
 import { messageFrom, request } from "../shared/api.js";
 import { destinationPlaces } from "../shared/presentation.js";
-import type { MenuPage, ProgressDebugView } from "../shared/types.js";
+import type { MenuPage } from "../shared/types.js";
 import { useCallback } from "react";
 
 export function useScenesOpenMenu(ports: {
   loadCatalog: (signal?: AbortSignal) => Promise<void>;
   loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   loadPersonas: (signal?: AbortSignal) => Promise<void>;
-  menuPage: import("../shared/types").MenuPage;
+  menuPage: import("../shared/types.js").MenuPage;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setError: React.Dispatch<React.SetStateAction<string>>;
   setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;
   setKnowledgeDraft: React.Dispatch<React.SetStateAction<string>>;
   setLorebookDraft: React.Dispatch<React.SetStateAction<string[]>>;
   setLoreTokenBudgetDraft: React.Dispatch<React.SetStateAction<number>>;
-  setMenuPage: React.Dispatch<React.SetStateAction<import("../shared/types").MenuPage>>;
+  setMenuPage: React.Dispatch<React.SetStateAction<import("../shared/types.js").MenuPage>>;
   setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   setPersonalizeHomes: React.Dispatch<React.SetStateAction<boolean>>;
-  setProgressDebug: React.Dispatch<React.SetStateAction<import("../shared/types").ProgressDebugView>>;
+  setProgressDebug: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village.js").ProgressDebugView>>;
   setSceneryStyle: React.Dispatch<React.SetStateAction<string>>;
   setScreen: React.Dispatch<
     React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
@@ -25,9 +26,9 @@ export function useScenesOpenMenu(ports: {
   setSettingDraft: React.Dispatch<React.SetStateAction<string>>;
   setSettingsError: React.Dispatch<React.SetStateAction<string>>;
   setSiteProjectId: React.Dispatch<React.SetStateAction<string>>;
-  setVenuesDraft: React.Dispatch<React.SetStateAction<import("../shared/types").VillageVenue[]>>;
+  setVenuesDraft: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village.js").VillageVenue[]>>;
   setVisualLoreDefault: React.Dispatch<React.SetStateAction<boolean>>;
-  snapshot: import("../shared/types").VillageSnapshot;
+  snapshot: import("../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const {
     loadCatalog,

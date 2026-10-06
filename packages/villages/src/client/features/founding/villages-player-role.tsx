@@ -1,4 +1,5 @@
-export type PlayerRole = { enabled: boolean; title: string; explanation: string };
+import type { PlayerRole } from "../../../shared/contracts/player-role.js";
+
 export const DEFAULT_PLAYER_ROLE: Readonly<PlayerRole> = {
   enabled: true,
   title: "Project Coordinator",

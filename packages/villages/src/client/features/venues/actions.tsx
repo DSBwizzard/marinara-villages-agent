@@ -1,6 +1,7 @@
+import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
-import type { MenuPage, VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../shared/types.js";
+import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
 import { type SetStateAction, useCallback } from "react";

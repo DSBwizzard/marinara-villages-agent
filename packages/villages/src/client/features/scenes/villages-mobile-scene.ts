@@ -1,8 +1,4 @@
-import type {
-  StagingEvent,
-  StagingPosition,
-  StagingState,
-} from "../../../engine/packages/shared/src/villages/scene-staging.js";
+import type { StagingEvent, StagingPosition, StagingState } from "../../../shared/helpers/scene-staging.js";
 
 /** Mobile projection only. Never write these default groups back to Scene state. */
 export function mobileSceneLayout(ids: readonly string[], state: StagingState, events: readonly StagingEvent[]) {

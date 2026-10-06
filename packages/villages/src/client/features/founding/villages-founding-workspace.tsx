@@ -1,4 +1,4 @@
-import type { VillageVenue, VillageVenueImage } from "../../shared/types";
+import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { VenueLayoutFields } from "./villages-founding-editor";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state";
 import { FoundingZoneFields } from "./villages-founding-zones";

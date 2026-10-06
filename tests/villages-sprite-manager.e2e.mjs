@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 const { build } = require("esbuild");
 mkdirSync(".build-tmp/sprite-manager", { recursive: true });
 await build({
-  entryPoints: [resolve("packages/villages/src/engine/packages/server/src/services/villages/sprite-manager-pixels.ts")],
+  entryPoints: [resolve("packages/villages/src/shared/helpers/sprite-framing.ts")],
   bundle: true,
   platform: "node",
   format: "cjs",

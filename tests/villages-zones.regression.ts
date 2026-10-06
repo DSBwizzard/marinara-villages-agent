@@ -1,17 +1,16 @@
 import {
   addBuildSource,
   acquireBuildSource,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.js";
+} from "../packages/villages/src/server/features/projects/build-projects.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   venueZones,
   resolveVenueZone,
@@ -19,14 +18,14 @@ import {
   chooseAgendaZone,
   effectiveVenueClasses,
   zoneClosed,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import {
   draftRenovationProject,
   createRenovationProject,
   openFinishedProject,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.js";
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   enterVenue,
   greetVenue,
@@ -37,18 +36,12 @@ import {
   recoverVenueSceneWork,
   discardVenueVisitDebug,
   publicSceneResponse,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
-import { sceneLockedRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
-import { applyVenueSceneChange } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
-import {
-  buildVillageSnapshot,
-  setVillageVenueImage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { sceneLockedRoutes } from "../packages/villages/src/server/entry/routes.js";
+import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { buildVillageSnapshot, setVillageVenueImage } from "../packages/villages/src/server/features/world/village.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
 const now = new Date(),
   stamp = now.toISOString(),

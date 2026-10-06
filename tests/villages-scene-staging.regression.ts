@@ -8,9 +8,9 @@ import {
   stagingTranscriptEvents,
   type StagingCue,
   type StagingLine,
-} from "../packages/villages/src/engine/packages/shared/src/villages/scene-staging.js";
-import { parseVenueReply } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
-import { validateSpriteExpression } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-expressions.js";
+} from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { parseVenueReply } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { validateSpriteExpression } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { selectSpriteImage } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.js";
 
 const ids = ["mara", "eli", "lina", "taro"];

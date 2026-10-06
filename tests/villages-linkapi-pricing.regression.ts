@@ -1,22 +1,20 @@
 import assert from "node:assert/strict";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import {
-  isLinkApi,
-  parseLinkApiExpression,
-  linkApiQuote,
-  readExchangeRate,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/linkapi-pricing.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { linkApiQuote, readExchangeRate } from "../packages/villages/src/server/adapters/models/linkapi-pricing.js";
+import { isLinkApi, parseLinkApiExpression } from "../packages/villages/src/server/domain/rules/linkapi-pricing.js";
 import {
   readUsageMeter,
   resetUsagePeriod,
   saveUsageRate,
   saveLinkApiGroup,
+} from "../packages/villages/src/server/features/settings/usage-meter.js";
+import {
   trackUsage,
   quoteUsageRate,
   usageDollars,
   usageNativeCost,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/usage-meter.js";
+} from "../packages/villages/src/server/adapters/models/usage-ledger.js";
 const originalFetch = globalThis.fetch;
 const originalNow = Date.now;
 let failExchange = false,

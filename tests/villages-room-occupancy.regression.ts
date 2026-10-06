@@ -25,7 +25,7 @@
 import assert from "node:assert/strict";
 
 async function main() {
-  const { presentFor } = await import("../packages/villages/src/engine/packages/server/src/services/villages/chat.ts");
+  const { presentFor } = await import("../packages/villages/src/server/features/scenes/chat.js");
   const {
     MAX_PRESENT_PEOPLE_PER_PLACE,
     MAX_PRESENT_PLACES,
@@ -35,7 +35,7 @@ async function main() {
     renderPresentBlock,
     renderVillagePrompt,
     resolveVillagePrompt,
-  } = await import("../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts");
+  } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
 
   // ── Fixtures ───────────────────────────────────────────────────────────────
   // Only the fields `villagerPlaceView` reads, because that is the whole of what

@@ -13,14 +13,8 @@
       "results": [
         {
           "expression": "neutral",
-          "returnedGeometry": [
-            1024,
-            1536
-          ],
-          "exportGeometry": [
-            512,
-            768
-          ],
+          "returnedGeometry": [1024, 1536],
+          "exportGeometry": [512, 768],
           "facing": "Head and beak right; readable three-quarter stance.",
           "completeness": "Full head, feathered arms, hands and talon feet; no separate back wings.",
           "identity": "Chosen green vest, trousers and satchel established.",
@@ -29,14 +23,8 @@
         },
         {
           "expression": "embarrassed",
-          "returnedGeometry": [
-            1024,
-            1536
-          ],
-          "exportGeometry": [
-            512,
-            768
-          ],
+          "returnedGeometry": [1024, 1536],
+          "exportGeometry": [512, 768],
           "facing": "Head and beak right.",
           "completeness": "Full body, hands and talon feet visible.",
           "identity": "Outfit and bird design broadly consistent; cream shirt is not clearly retained.",
@@ -46,14 +34,8 @@
         },
         {
           "expression": "angry",
-          "returnedGeometry": [
-            1024,
-            1536
-          ],
-          "exportGeometry": [
-            512,
-            768
-          ],
+          "returnedGeometry": [1024, 1536],
+          "exportGeometry": [512, 768],
           "facing": "Head and beak right.",
           "completeness": "Full body, hands and talon feet visible.",
           "identity": "Outfit and bird design broadly consistent; cream shirt is not clearly retained.",

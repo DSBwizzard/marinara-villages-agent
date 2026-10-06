@@ -5,30 +5,30 @@ import {
   RESIDENT_STORY_ROLES,
   readResidentFoundingContext,
   renderResidentFoundingContext,
-} from "../packages/villages/src/engine/packages/shared/src/villages/resident-founding-context.js";
-import { readFoundingResidentContexts } from "../packages/villages/src/engine/packages/server/src/services/villages/resident-founding-context.js";
+} from "../packages/villages/src/shared/helpers/resident-founding-context.js";
+import { readFoundingResidentContexts } from "../packages/villages/src/server/domain/rules/resident-founding-context.js";
 import {
   readVillagerCard,
   readEffectiveVillagerCard,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/catalog.js";
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   fitVenueWritingMessages,
   venueCardProfile,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-writing.js";
-import { proposeStartingTies } from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
-import { defaultRelationshipState } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+} from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { proposeStartingTies } from "../packages/villages/src/server/features/residents/relationships.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { runVillageSetup } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { suggestStartingVenues } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-drafts.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { runVillageSetup } from "../packages/villages/src/server/features/world/village.js";
+import { suggestStartingVenues } from "../packages/villages/src/server/features/founding/founding-drafts.js";
 import {
   sceneryCharacterContext,
   sceneryImageKey,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";
+} from "../packages/villages/src/server/domain/rules/scenery-context.js";
 
 const context = {
   ...defaults,

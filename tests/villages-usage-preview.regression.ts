@@ -1,24 +1,21 @@
 import assert from "node:assert/strict";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { coerceVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { previewVillageBurst } from "../packages/villages/src/engine/packages/server/src/services/villages/usage-preview.js";
-import {
-  readUsageMeter,
-  saveUsageRate,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/usage-meter.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
 import {
   proposeRemap,
   remapBlocks,
   remapBlockKeys,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
-import { remapSignatureFor } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { proposeAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
+} from "../packages/villages/src/server/domain/rules/native-remap.js";
+import { remapSignatureFor } from "../packages/villages/src/server/features/world/village.js";
+import { proposeAgenda } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import {
   translationBatchSize,
   translationRequestCount,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/generation-budgets.js";
-import { resetNativeScheduleCache } from "../packages/villages/src/engine/packages/server/src/services/villages/native-schedules.js";
+} from "../packages/villages/src/server/domain/rules/generation-budgets.js";
+import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 const records = new Map<string, any>();
 let calls = 0,
   writes = 0,

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   coordinateVenue,
   coordinatedCompletion,
@@ -12,7 +12,7 @@ import {
   operationSummary,
   readVenueOperation,
   assertVenueOwnership,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.ts";
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
 
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({

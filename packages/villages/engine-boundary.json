@@ -11,7 +11,7 @@
   "privateEngineImports": [],
   "privateEngineRuntimeImports": [
     {
-      "source": "engine/packages/server/src/services/villages/decisions-adapter.ts",
+      "source": "server/adapters/engine/decisions-adapter.ts",
       "modules": [
         "services/decision/decision-default.js",
         "services/storage/connections.storage.js",

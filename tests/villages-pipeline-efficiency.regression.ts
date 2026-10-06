@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import {
   selectPromptMemories,
   selectPromptRecollections,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
+} from "../packages/villages/src/server/domain/rules/memory-selection.js";
 import {
   measurePipeline,
   measureModel,
+} from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
+import {
   pipelineSignal,
   pipelineStorage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/pipeline-metrics.js";
+} from "../packages/villages/src/server/adapters/observability/metrics-context.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 async function run() {
   const memory = (id: string, text: string, audience = ["a"], weight = 1) =>
     ({

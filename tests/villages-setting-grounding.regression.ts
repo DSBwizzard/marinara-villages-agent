@@ -2,26 +2,26 @@ import assert from "node:assert/strict";
 import {
   buildVillagerMessages,
   type VillagePromptContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/chat.js";
-import { readVillagerCard } from "../packages/villages/src/engine/packages/server/src/services/villages/catalog.js";
-import { proposeCompactFounding } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/engine/packages/server/src/services/villages/narrative-grounding.js";
-import { builtInNarrationTurn } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
+} from "../packages/villages/src/server/features/scenes/chat.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
+import { builtInNarrationTurn } from "../packages/villages/src/server/features/settings/narration-settings.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   villageCurrentSetting,
   villageFoundingSetting,
   villageRelevantOrigin,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.js";
-import { draftScenarioImprint } from "../packages/villages/src/engine/packages/server/src/services/villages/scenario-imprint.js";
-import { sceneryPrompt } from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";
-import { buildTownMapPrompt } from "../packages/villages/src/engine/packages/server/src/services/villages/town-map-image.js";
-import { buildTickMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
-import { coerceVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { validateFirstDayDescription } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { draftScenarioImprint } from "../packages/villages/src/server/features/founding/scenario-imprint.js";
+import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import { buildTownMapPrompt } from "../packages/villages/src/server/features/media/town-map-image.js";
+import { buildTickMessages } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { validateFirstDayDescription } from "../packages/villages/src/server/features/world/village.js";
 
 const scenarios = [
   [

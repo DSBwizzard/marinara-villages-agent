@@ -1,4 +1,5 @@
-import type { MemoryLibrary, PortraitMap, VillagerAgendaView, VillagerRefreshPreview } from "../../shared/types.js";
+import type { MemoryLibrary, VillagerAgendaView, VillagerRefreshPreview } from "../../../shared/contracts/village.js";
+import type { PortraitMap } from "../../shared/types.js";
 import type { DossierNavigation, DossierSection } from "./villages-dossier.js";
 import { useRef, useState } from "react";
 

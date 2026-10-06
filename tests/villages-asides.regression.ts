@@ -3,7 +3,7 @@ import {
   groupSceneAsides,
   sceneAsideAvailableHeight,
 } from "../packages/villages/src/client/features/scenes/villages-aside-layout.js";
-import { VENUE_SCENE_WRITING_FOUNDATION } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-style.js";
+import { VENUE_SCENE_WRITING_FOUNDATION } from "../packages/villages/src/server/domain/rules/narration-style.js";
 
 const asides = [
   { speakerId: "left-outer", text: "One" },

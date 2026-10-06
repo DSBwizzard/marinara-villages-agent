@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import {
   boundInterpretationEvidence,
   interpretationPayload,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-evidence.js";
-import type { InterpretationCheck } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
+} from "../packages/villages/src/server/features/generation/interpretation-evidence.js";
+import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 function check(count: number, actor = "a"): InterpretationCheck {
   return {
     id: actor,
@@ -73,17 +73,16 @@ console.log("Bounded deduplicated checking evidence passed");
 
 async function main() {
   const { systemInterpretations } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js");
+    await import("../packages/villages/src/server/features/generation/interpretation.js");
   assert.equal(
     (await systemInterpretations([huge]))[0].outcome,
     "unresolved",
     "overflow is refused before even resolving a model",
   );
   console.log("Essential overflow makes zero model requests");
-  const { configureVillagesRuntime } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js");
+  const { configureVillagesRuntime } = await import("../packages/villages/src/server/entry/runtime.js");
   const { contextualChecks, saveInterpretationContext } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/interpretation-evidence.js");
+    await import("../packages/villages/src/server/features/generation/interpretation-evidence.js");
   const records = new Map<string, any>();
   const release = configureVillagesRuntime({
     persistence: {

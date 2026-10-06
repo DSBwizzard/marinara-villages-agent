@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { villagesRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
+import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 async function main() {
   const engineRoot = process.env.MARINARA_ENGINE_ROOT;

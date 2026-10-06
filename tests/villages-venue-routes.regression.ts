@@ -7,15 +7,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const routes = readFileSync(
-  resolve(root, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),
-  "utf8",
-);
+const routes = readFileSync(resolve(root, "packages/villages/src/server/entry/routes.ts"), "utf8");
 const ui = clientImplementation();
-const session = readFileSync(
-  resolve(root, "packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts"),
-  "utf8",
-);
+const session = readFileSync(resolve(root, "packages/villages/src/server/features/scenes/venue-session.ts"), "utf8");
+const sceneModel = readFileSync(resolve(root, "packages/villages/src/server/domain/models/scene-model.ts"), "utf8");
 
 for (const path of [
   "/rooms/active",
@@ -79,6 +74,6 @@ assert.ok(
 );
 assert.match(ui, /Open transcript/u);
 assert.match(session, /const ACTIVE_ID = "villages-active-venue"/u);
-assert.match(session, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);
+assert.match(sceneModel, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);
 
 console.log("villages-venue-routes: ok");

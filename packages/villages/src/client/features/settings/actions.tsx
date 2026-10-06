@@ -1,5 +1,5 @@
+import type { VillageSettings, VillageSnapshot, VillageStoryPace } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
-import type { VillageSettings, VillageSnapshot, VillageStoryPace } from "../../shared/types.js";
 import { type SetStateAction, useCallback } from "react";
 
 export function useSaveSettings(ports: {

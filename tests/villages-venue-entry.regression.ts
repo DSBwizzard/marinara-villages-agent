@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.ts";
+import { readVenueActionResult } from "../packages/villages/src/server/features/venues/venue-actions.js";
 
 assert.deepEqual(readVenueActionResult(null), { happened: false, narration: "Nothing changes here." });
 assert.deepEqual(

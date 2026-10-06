@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import {
   captureMissingVillagerCardColors,
   readVillagerCard,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/catalog.js";
-import type { VillageVillagerCardSnapshot } from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
-import { coerceVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import type { VillageVillagerCardSnapshot } from "../packages/villages/src/server/domain/models/world.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const card = readVillagerCard({
   id: "resident",

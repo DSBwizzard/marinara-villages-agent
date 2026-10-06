@@ -1,12 +1,12 @@
-import { messageFrom } from "../../shared/api.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
 import type {
   VenueClass,
-  VenueViewZone,
   VillageSnapshot,
   VillageVenue,
   VillageVillagerView,
-} from "../../shared/types.js";
+} from "../../../shared/contracts/village.js";
+import { messageFrom } from "../../shared/api.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
+import type { VenueViewZone } from "../../shared/types.js";
 import { venueAssignedCountFor, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import { createVillagesClientId } from "../scenes/villages-venue-send";
 import { useState } from "react";

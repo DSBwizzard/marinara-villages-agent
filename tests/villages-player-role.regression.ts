@@ -6,7 +6,7 @@ import {
   assertPlayerRoleLocked,
   renderPlayerRoleContext,
   renderPlayerRoleWritingContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
+} from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   DEFAULT_PLAYER_ROLE as CLIENT_DEFAULT,
   playerRoleProblem,
@@ -14,20 +14,20 @@ import {
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   buildVillagerMessages,
   renderSceneContextBlock,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/chat.js";
-import { builtInNarrationTurn } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
+} from "../packages/villages/src/server/features/scenes/chat.js";
+import { builtInNarrationTurn } from "../packages/villages/src/server/features/settings/narration-settings.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   villageCurrentSetting,
   villageFoundingSetting,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.js";
-import { runVillageSetup } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { runVillageSetup } from "../packages/villages/src/server/features/world/village.js";
 
 async function main() {
   const custom = {

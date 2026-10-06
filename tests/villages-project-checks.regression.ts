@@ -3,21 +3,19 @@ import {
   projectInterpretationChecks,
   projectProposals,
   applyRecordedProjectPickup,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-checks.js";
-import {
-  readSystemInterpretations,
-  readDecisionInterpretation,
-  type InterpretationBatch,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/features/projects/project-checks.js";
+import { readSystemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
+import { readDecisionInterpretation } from "../packages/villages/src/server/features/generation/interpretation.js";
+import { type InterpretationBatch } from "../packages/villages/src/server/domain/models/interpretation-model.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   coerceProjectSpeech,
   validateProjectSpeech,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-interpretation.js";
+} from "../packages/villages/src/server/domain/rules/project-interpretation.js";
 import {
   createProjectProgress,
   recordProjectProgress,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-progress.js";
+} from "../packages/villages/src/server/domain/rules/project-progress.js";
 const state = defaultVillageState();
 state.progressEngineVersion = 1;
 state.villagers = [{ characterId: "a", cardSnapshot: { name: "Aqua" } }] as any;

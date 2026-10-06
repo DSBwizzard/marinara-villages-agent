@@ -1,6 +1,7 @@
+import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.js";
 import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
-import type { MapFrameShape, MapPin, MapZoomRange, PictureBox, TownMapFit, TownMapView } from "../../shared/types.js";
+import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
 import { MobileMarkers } from "./villages-exploration";
 import {
   focusedPhotoScale,

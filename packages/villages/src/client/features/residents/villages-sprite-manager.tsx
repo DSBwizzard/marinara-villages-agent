@@ -5,12 +5,8 @@ import {
   type SpriteLibraryItem,
   type SpriteManagerState,
   type SpriteView,
-} from "../../../engine/packages/server/src/services/villages/sprite-manager-model.js";
-import {
-  initialSpriteFrame,
-  renderSpritePixels,
-  type SpritePixels,
-} from "../../../engine/packages/server/src/services/villages/sprite-manager-pixels.js";
+} from "../../../shared/contracts/sprites.js";
+import { initialSpriteFrame, renderSpritePixels, type SpritePixels } from "../../../shared/helpers/sprite-framing.js";
 import { SPRITE_MANAGER_STYLES } from "./villages-sprite-manager-styles.js";
 import { useEffect, useRef, useState } from "react";
 

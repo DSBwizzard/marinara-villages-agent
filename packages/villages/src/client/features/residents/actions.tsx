@@ -1,4 +1,3 @@
-import { messageFrom, request } from "../../shared/api.js";
 import type {
   AgendaListResponse,
   BackgroundWork,
@@ -7,7 +6,8 @@ import type {
   VillagerAgendaView,
   VillagerRefreshPreview,
   VillageSnapshot,
-} from "../../shared/types.js";
+} from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
 import { createVillagesClientId } from "../scenes/villages-venue-send";
 import { type SetStateAction, useCallback } from "react";
 

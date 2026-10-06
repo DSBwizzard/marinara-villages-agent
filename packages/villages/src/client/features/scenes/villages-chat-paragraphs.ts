@@ -1,3 +1,5 @@
+import type { VillagesWalkBeat } from "../../../shared/contracts/scene-beat.js";
+
 // Villages — reading a villager's answer a paragraph at a time.
 //
 // The Engine's own roleplay chats draw a Visual Novel answer as a card with one
@@ -156,14 +158,6 @@ export function classifyVillagesParagraph(paragraph: string): VillagesParagraphS
  * distinguishable from speech by any punctuation — which is why the villager
  * marks them and why nothing here may guess at them.
  */
-export type VillagesWalkBeat = {
-  kind: "untagged" | "side" | "whisper";
-  /** The line itself, with the tag taken off. Never empty. */
-  text: string;
-  /** Who a whisper was aimed at, when the villager named somebody. */
-  target?: string;
-  expression?: string;
-};
 
 /**
  * One line that rides a step instead of being one, in the two registers a

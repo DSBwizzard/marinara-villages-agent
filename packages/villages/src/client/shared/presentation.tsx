@@ -1,18 +1,16 @@
-import { ELEMENT_TAG } from "./constants.js";
 import type {
-  EngineConnectionRow,
   SceneView,
   StoryEntry,
   VillageBuildingOption,
-  VillageConnectionOption,
   VillageHappening,
   VillagerAgendaView,
   VillageRecap,
   VillageSnapshot,
-  VillagesStyledNode,
   VillageStoryPace,
   VillageVenue,
-} from "./types.js";
+} from "../../shared/contracts/village.js";
+import { ELEMENT_TAG } from "./constants.js";
+import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
 import {

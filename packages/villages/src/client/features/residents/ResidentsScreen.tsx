@@ -1,7 +1,7 @@
+import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
-import type { VillageSnapshot } from "../../shared/types.js";
 import type { VillageController } from "../../shell/useVillageController.js";
 import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";

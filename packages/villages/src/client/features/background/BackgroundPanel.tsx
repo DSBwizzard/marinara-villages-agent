@@ -1,6 +1,6 @@
+import type { BackgroundWork } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { BackgroundWork } from "../../shared/types.js";
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import { useState } from "react";
 

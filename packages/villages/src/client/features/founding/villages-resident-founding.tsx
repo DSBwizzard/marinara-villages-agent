@@ -4,7 +4,7 @@ import {
   RESIDENT_STORY_ROLES,
   type ResidentFoundingContext,
   residentFoundingProblems,
-} from "../../../engine/packages/shared/src/villages/resident-founding-context.js";
+} from "../../../shared/helpers/resident-founding-context.js";
 import { type ReactNode, useState } from "react";
 
 export function ResidentFoundingEditors({

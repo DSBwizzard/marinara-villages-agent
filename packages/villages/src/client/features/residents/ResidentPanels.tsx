@@ -1,3 +1,10 @@
+import type {
+  MemoryCategory,
+  MemoryLibrary,
+  MemoryPerson,
+  SceneView,
+  WishHistoryPage,
+} from "../../../shared/contracts/village.js";
 import { messageFrom, request, requestHost } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { renderVillagesMarkdown, stampTime, storyTime } from "../../shared/presentation.js";
@@ -5,13 +12,8 @@ import type {
   AvatarCrop,
   EngineCharacterSummary,
   EnginePersonaRow,
-  MemoryCategory,
-  MemoryLibrary,
-  MemoryPerson,
   Portrait,
   PortraitMap,
-  SceneView,
-  WishHistoryPage,
 } from "../../shared/types.js";
 import { type CSSProperties, useState } from "react";
 

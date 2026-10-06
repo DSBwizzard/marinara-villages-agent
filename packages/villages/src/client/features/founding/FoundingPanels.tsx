@@ -1,19 +1,21 @@
+import type {
+  CatalogEntry,
+  PersonaEntry,
+  ScenarioImprint,
+  SetupMapReceipt,
+  VillageLorebookOption,
+} from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type {
-  CatalogEntry,
   FoundingScenarioId,
   IdentityChoice,
   IdentityPreview,
-  PersonaEntry,
   PersonaPreview,
   Portrait,
   PortraitMap,
-  ScenarioImprint,
-  SetupMapReceipt,
   SetupVenueDraft,
   TownMapOptions,
-  VillageLorebookOption,
 } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { useEffect, useState } from "react";

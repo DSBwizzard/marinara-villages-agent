@@ -48,7 +48,7 @@ async function main() {
     translateBlock,
     translateRoutine,
     VILLAGE_UNTRANSLATED_ACTIVITY,
-  } = await import("../packages/villages/src/engine/packages/server/src/services/villages/native-remap.ts");
+  } = await import("../packages/villages/src/server/domain/rules/native-remap.js");
   const {
     coerceWish,
     describeStatus,
@@ -61,12 +61,12 @@ async function main() {
     renderDoingBlock,
     remapVenues,
     wishLifetimeDays,
-  } = await import("../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts");
-  const { doingFor } = await import("../packages/villages/src/engine/packages/server/src/services/villages/chat.ts");
+  } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
+  const { doingFor } = await import("../packages/villages/src/server/features/scenes/chat.js");
   const { renderResidentsBlock } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.ts");
+    await import("../packages/villages/src/server/features/founding/village-bootstrap.js");
   const { coerceRemap: readStoredRemap } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts");
+    await import("../packages/villages/src/server/features/world/village-store.js");
 
   const schedule = (days: Record<string, any[]>, weekStart = "2026-09-07") => ({
     characterId: "character-ives",
@@ -1419,7 +1419,7 @@ async function main() {
   // refused them are the same `remap: null`, and until this existed the tab could
   // only report the first. What was needed was something that survives a restart,
   // because the failure happens on a tick nobody is watching.
-  const store = await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts");
+  const store = await import("../packages/villages/src/server/features/world/village-store.js");
   const refusals = store.coerceVillageState({
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",

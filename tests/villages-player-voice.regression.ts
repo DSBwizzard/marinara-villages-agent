@@ -4,10 +4,10 @@ import {
   buildLeavingMessages,
   buildSceneOpeningMessages,
   buildVillagerMessages,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/chat.js";
-import { builtInNarrationTurn } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/features/scenes/chat.js";
+import { builtInNarrationTurn } from "../packages/villages/src/server/features/settings/narration-settings.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const village = defaultVillageState();
 village.playerName = "Robin";

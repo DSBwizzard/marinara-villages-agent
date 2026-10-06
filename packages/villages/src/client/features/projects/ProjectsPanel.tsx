@@ -1,6 +1,3 @@
-import { messageFrom, request } from "../../shared/api.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
-import { readFileAsDataUrl } from "../../shared/presentation.js";
 import type {
   BuildProject,
   SceneView,
@@ -8,7 +5,10 @@ import type {
   VillageSnapshot,
   VillageVenue,
   VillageVenueImage,
-} from "../../shared/types.js";
+} from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
+import { readFileAsDataUrl } from "../../shared/presentation.js";
 import { BaseZoneFields, venueHasCommon, VenueLayoutFields } from "../founding/villages-founding-editor";
 import { FoundingZoneFields, foundingZoneProblem } from "../founding/villages-founding-zones";
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
@@ -342,7 +342,9 @@ export function ProjectsPanelV2({
   const [changeKind, setChangeKind] = useState<"class" | "capacity" | "layout" | "upgrade" | "remove-upgrade">(
     "upgrade",
   );
-  const [baseZoneDrafts, setBaseZoneDrafts] = useState<NonNullable<VillageVenue["zones"]>>([]);
+  const [baseZoneDrafts, setBaseZoneDrafts] = useState<
+    import("../../../shared/contracts/village.js").VillageZoneDraft[]
+  >([]);
   const [baseClasses, setBaseClasses] = useState<VenueClass[]>(["gathering"]);
   const [upgradeTarget, setUpgradeTarget] = useState("");
   const [capacity, setCapacity] = useState(2);

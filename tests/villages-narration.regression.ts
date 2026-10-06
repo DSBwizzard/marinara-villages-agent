@@ -29,7 +29,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const load = (relative: string) => import(pathToFileURL(join(repoRoot, relative)).href);
-  const services = "packages/villages/src/engine/packages/server/src/services/villages";
+  const services = "packages/villages/src/server";
 
   const {
     CHARACTER_FIELD_NAMES,
@@ -44,8 +44,10 @@ async function main() {
     readNarrationPreset,
     readNarrationPresetPicker,
     resolveNarrationChoices,
-  } = await load(`${services}/narration-preset.ts`);
-  const { assembleNarrationMessages, wrapContent, wrapGroup } = await load(`${services}/narration-prompt.ts`);
+  } = await load(`${services}/features/settings/narration-preset.ts`);
+  const { assembleNarrationMessages, wrapContent, wrapGroup } = await load(
+    `${services}/features/generation/narration-prompt.ts`,
+  );
   const {
     DEFAULT_VILLAGE_VOICE_GUIDANCE,
     builtInNarrationTurn,
@@ -56,8 +58,8 @@ async function main() {
     saveVillageNarration,
     saveVillageNarrationSettings,
     villageNarrationForTurn,
-  } = await load(`${services}/narration-settings.ts`);
-  const { activate, selfCheck } = await load(`${services}/server-entry.ts`);
+  } = await load(`${services}/features/settings/narration-settings.ts`);
+  const { activate, selfCheck } = await load(`${services}/entry/index.ts`);
 
   // ── The Engine double ──────────────────────────────────────────────────────
   //

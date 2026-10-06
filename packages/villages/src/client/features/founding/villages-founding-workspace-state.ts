@@ -1,4 +1,4 @@
-import type { VillageVenue } from "../../shared/types";
+import type { VillageVenue } from "../../../shared/contracts/village.js";
 
 export type FoundingWorkspaceState = {
   view: "map" | "details";

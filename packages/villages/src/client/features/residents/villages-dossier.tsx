@@ -1,7 +1,4 @@
-import type {
-  ResidentSignature,
-  ResidentSignatureImage,
-} from "../../../engine/packages/shared/src/villages/resident-signature.js";
+import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
 import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
 import { VillagerSignature } from "./villages-signature.js";

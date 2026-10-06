@@ -1,6 +1,6 @@
+import type { TownMapView, VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { measureImage, placeSpot, readFileAsDataUrl } from "../../shared/presentation.js";
-import type { TownMapView, VenueClass, VillageSnapshot, VillageVenue } from "../../shared/types.js";
 import { defaultView } from "./MapStage.js";
 import type { ExplorationSheet, ExplorationTab } from "./villages-exploration.js";
 import { type SetStateAction, useCallback } from "react";

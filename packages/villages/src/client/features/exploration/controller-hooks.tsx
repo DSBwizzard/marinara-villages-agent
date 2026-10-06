@@ -4,8 +4,8 @@ import { useEffect } from "react";
 
 export function useMapNavigationReset(ports: {
   explorationMapKey: string;
-  setExploreSheet: React.Dispatch<React.SetStateAction<import("./villages-exploration").ExplorationSheet>>;
-  setNavigationView: React.Dispatch<React.SetStateAction<import("./villages-mobile-map").MobileMapView>>;
+  setExploreSheet: React.Dispatch<React.SetStateAction<import("./villages-exploration.js").ExplorationSheet>>;
+  setNavigationView: React.Dispatch<React.SetStateAction<import("./villages-mobile-map.js").MobileMapView>>;
 }) {
   const { explorationMapKey, setExploreSheet, setNavigationView } = ports;
   useEffect(() => {
@@ -17,10 +17,10 @@ export function useMapNavigationReset(ports: {
 export function useExplorationOutsideClick(ports: {
   closeExploration: () => void;
   element: HTMLElement;
-  exploreSheet: import("./villages-exploration").ExplorationSheet;
+  exploreSheet: import("./villages-exploration.js").ExplorationSheet;
   openPlaceId: string;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
-  setExploreSheet: React.Dispatch<React.SetStateAction<import("./villages-exploration").ExplorationSheet>>;
+  setExploreSheet: React.Dispatch<React.SetStateAction<import("./villages-exploration.js").ExplorationSheet>>;
   setOpenPlaceId: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const { closeExploration, element, exploreSheet, openPlaceId, screen, setExploreSheet, setOpenPlaceId } = ports;
@@ -55,7 +55,7 @@ export function useExplorationOutsideClick(ports: {
 export function useRemovedVenueNavigation(ports: {
   closeExploration: () => void;
   openPlaceId: string;
-  snapshot: import("../../shared/types").VillageSnapshot;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const { closeExploration, openPlaceId, snapshot } = ports;
   useEffect(() => {

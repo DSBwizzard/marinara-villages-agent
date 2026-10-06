@@ -1,18 +1,16 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import {
-  defaultVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
-import { createExchangeProcessing } from "../packages/villages/src/engine/packages/server/src/services/villages/exchange-processing.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
 import {
   bindLiveProposals,
   memoryVersion,
   processLiveRelationships,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/live-memory.js";
+} from "../packages/villages/src/server/features/residents/live-memory.js";
 import {
   processSavedExchange,
   closeVenueSession,
@@ -23,14 +21,12 @@ import {
   dismissSceneNotice,
   deleteVenueVisit,
   retrySceneChangeInterpretation,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
-import { responseDiagnostics } from "../packages/villages/src/engine/packages/server/src/services/villages/response-diagnostics.js";
-import { extractSceneReply } from "../packages/villages/src/engine/packages/server/src/services/villages/scene-reply-json.js";
-import { selectPromptMemories } from "../packages/villages/src/engine/packages/server/src/services/villages/memory-selection.js";
-import {
-  relationshipFor,
-  mutateRelationships,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { responseDiagnostics } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
+import { selectPromptMemories } from "../packages/villages/src/server/domain/rules/memory-selection.js";
+import { relationshipFor } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 
 async function main() {
   const at = new Date().toISOString(),

@@ -30,9 +30,14 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
       lib: ["lib.esnext.d.ts", "lib.dom.d.ts"],
     },
   );
-  const diagnostics = pin.files.flatMap((f) =>
-    program.getSemanticDiagnostics(program.getSourceFile(join(output, f.path))),
-  );
+  const diagnostics = [
+    ...program.getOptionsDiagnostics(),
+    ...program.getGlobalDiagnostics(),
+    ...pin.files.flatMap((f) => {
+      const source = program.getSourceFile(join(output, f.path));
+      return [...program.getSyntacticDiagnostics(source), ...program.getSemanticDiagnostics(source)];
+    }),
+  ];
   if (diagnostics.length)
     throw Error(
       ts.formatDiagnostics(diagnostics, {
@@ -51,6 +56,12 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
     throw Error("Refreshing requires --revision with the exact upstream commit.");
   if (!args.includes("--from"))
     throw Error("--refresh requires --from with a read-only upstream declaration directory");
+  const oldPin = JSON.parse(await readFile(join(output, "pin.json"), "utf8"));
+  const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
+  const engineVersion = option("--engine-version") ?? (revision === oldPin.revision ? oldPin.engineVersion : undefined);
+  const capabilityApi = option("--capability-api") ?? (revision === oldPin.revision ? oldPin.capabilityApi : undefined);
+  if (args.includes("--refresh") && (!engineVersion || !capabilityApi))
+    throw Error("A new upstream revision requires --engine-version and --capability-api to keep provenance accurate.");
   const paths = (await files(from)).filter((f) => f.endsWith(".d.ts"));
   const program = ts.createProgram(paths, {
       target: ts.ScriptTarget.ESNext,
@@ -164,13 +175,14 @@ if (!args.includes("--refresh") && !args.includes("--check")) {
     await mkdir(dirname(join(output, file.path)), { recursive: true });
     await writeFile(join(output, file.path), file.content);
   }
-  const oldPin = JSON.parse(await readFile(join(output, "pin.json"), "utf8"));
   await writeFile(
     join(output, "pin.json"),
     JSON.stringify(
       {
         ...oldPin,
         revision,
+        engineVersion,
+        capabilityApi,
         roots: names,
         files: outputs
           .sort((a, b) => a.path.localeCompare(b.path))

@@ -1,4 +1,4 @@
-import type { VillageVenue, VillageVenueImage } from "../../shared/types";
+import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../scenes/villages-venue-send";
 import { draftZonePolicy, FoundingZoneFields, foundingZoneProblem } from "./villages-founding-zones";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -182,9 +182,9 @@ export function BaseZoneFields({
   onChange,
 }: {
   venue: VillageVenue;
-  zones: NonNullable<VillageVenue["zones"]>;
+  zones: import("../../../shared/contracts/village.js").VillageZoneDraft[];
   people?: { id: string; name: string }[];
-  onChange(zones: NonNullable<VillageVenue["zones"]>): void;
+  onChange(zones: import("../../../shared/contracts/village.js").VillageZoneDraft[]): void;
 }) {
   const add = (personal: boolean) => {
     const role = venue.classes?.[0] ?? "other";

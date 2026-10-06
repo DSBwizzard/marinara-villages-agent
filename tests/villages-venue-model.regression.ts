@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
-import { assertVillagePresence } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-presence.ts";
-import { applyVenueSceneChange } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.ts";
+import { assertVillagePresence } from "../packages/villages/src/server/domain/rules/venue-presence.js";
+import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import {
   defaultVenueSpace,
   venueCapacity,
   venueInArea,
   venueInSpace,
   validVenueClasses,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.ts";
+} from "../packages/villages/src/server/domain/rules/venue-model.js";
 
 assert.equal(validVenueClasses(["residence", "workplace"]), true);
 assert.equal(validVenueClasses(["residence", "workplace", "gathering"]), false);

@@ -1,15 +1,15 @@
-import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import type {
   RoomLine,
   RoomOperation,
   RoomRecordEvent,
-  SceneComposerMode,
   SceneView,
   VenueClass,
   VillageSnapshot,
   VillageVenue,
   WishVerdict,
-} from "../../shared/types.js";
+} from "../../../shared/contracts/village.js";
+import { messageFrom, request, VillageApiError } from "../../shared/api.js";
+import type { SceneComposerMode } from "../../shared/types.js";
 import {
   completedGreetingAfterFailure,
   completedRoomAfterFailure,

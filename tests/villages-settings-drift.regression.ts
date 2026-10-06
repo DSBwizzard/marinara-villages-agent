@@ -31,7 +31,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SERVICES = "packages/villages/src/engine/packages/server/src/services/villages";
+const SERVICES = "packages/villages/src/server";
 const CLIENT = "packages/villages/src/client/entry/index.tsx";
 
 const read = (relative: string) => readFileSync(resolve(repoRoot, relative), "utf8");
@@ -67,7 +67,7 @@ const stripComments = (source: string) =>
 
 const clientSource = stripComments(clientImplementation());
 
-const serverView = declaredFields(read(`${SERVICES}/types.ts`), "VillageSettingsView");
+const serverView = declaredFields(read(`${SERVICES}/domain/models/world.ts`), "VillageSettingsView");
 const clientCopy = declaredFields(clientSource, "VillageSettings");
 const clientReads = [
   ...new Set(

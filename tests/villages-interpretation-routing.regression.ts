@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { routeInterpretationChecks } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-routing.js";
-import type { InterpretationCheck } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
+import { routeInterpretationChecks } from "../packages/villages/src/server/features/generation/interpretation-routing.js";
+import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 const context = { actorIds: ["a", "b"] };
 function check(domain: "room" | "project" = "room", text = "I like the autumn weather."): InterpretationCheck {
   return {
@@ -97,12 +97,9 @@ for (const residents of [1, 4, 8]) {
 console.log("Conservative narration routing: irrelevant skipped; ambiguous, witnessed and pending events retained");
 
 async function integration() {
-  const { configureVillagesRuntime } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js");
-  const { defaultVillageState } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.js");
-  const { interpretProjectDraft } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/project-checks.js");
+  const { configureVillagesRuntime } = await import("../packages/villages/src/server/entry/runtime.js");
+  const { defaultVillageState } = await import("../packages/villages/src/server/features/world/village-store.js");
+  const { interpretProjectDraft } = await import("../packages/villages/src/server/features/projects/project-checks.js");
   const records = new Map<string, any>();
   let calls = 0;
   const release = configureVillagesRuntime({

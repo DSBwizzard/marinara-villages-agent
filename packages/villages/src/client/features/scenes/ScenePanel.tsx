@@ -1,24 +1,15 @@
+import type { ResidentSprite, RoomLine, RoomRecordEvent, SceneView } from "../../../shared/contracts/village.js";
 import {
   initialStaging,
   lineStagingCues,
   replayStaging,
   stagingBoundaries,
   stagingLayout,
-} from "../../../engine/packages/shared/src/villages/scene-staging.js";
+} from "../../../shared/helpers/scene-staging.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
-import type {
-  Portrait,
-  PortraitMap,
-  ResidentSprite,
-  RoomLine,
-  RoomRecordEvent,
-  RoomStep,
-  SceneComposerMode,
-  SceneView,
-  VillageBeatRegister,
-} from "../../shared/types.js";
+import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";

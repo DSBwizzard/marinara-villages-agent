@@ -2,32 +2,31 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   assertCanAddVillageVenue,
   assertVillageVenueCapacity,
   villageVenueLimit,
   villageVenueUsage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-capacity.ts";
+} from "../packages/villages/src/server/domain/rules/venue-capacity.js";
 import {
   addVillageVenue,
   setVillageVenues,
   setVillageName,
   resetVillage,
   runVillageBootstrap,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.ts";
+} from "../packages/villages/src/server/features/world/village.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   createNewVenueProject,
   placeNewVenueProject,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
-import { draftBuildProject } from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.ts";
-import { queueVenueCounteroffer } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-mailbox.ts";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.ts";
-import type { VillageVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { draftBuildProject } from "../packages/villages/src/server/features/projects/build-projects.js";
+import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 
 async function main() {
   const venue = (index: number, residential = true): VillageVenue => ({

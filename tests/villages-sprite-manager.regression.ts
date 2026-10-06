@@ -2,11 +2,9 @@ import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import {
-  coerceVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   readSpriteManager,
   importSpriteArtwork,
@@ -18,17 +16,14 @@ import {
   removeSpriteArtwork,
   removeSpriteAssignment,
   decodeSpriteImage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-manager.js";
-import { coerceSpriteManager } from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-manager-model.js";
-import {
-  renderSpritePixels,
-  initialSpriteFrame,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-manager-pixels.js";
+} from "../packages/villages/src/server/features/media/sprite-manager.js";
+import { coerceSpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
+import { renderSpritePixels, initialSpriteFrame } from "../packages/villages/src/shared/helpers/sprite-framing.js";
 import {
   describeSpriteExpressions,
   validateSpriteExpression,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-expressions.js";
-import { villagesRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
+} from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
+import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 
 const records = new Map<string, any>(),
   files = new Map<string, string>();

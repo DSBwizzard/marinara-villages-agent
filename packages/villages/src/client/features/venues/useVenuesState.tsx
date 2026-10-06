@@ -1,4 +1,4 @@
-import type { VenueClass, VillageVenue } from "../../shared/types.js";
+import type { VenueClass, VillageVenue } from "../../../shared/contracts/village.js";
 import { useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */

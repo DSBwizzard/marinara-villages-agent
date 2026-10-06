@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { safeFailureMessage } from "../packages/villages/src/engine/packages/server/src/services/villages/errors.js";
+import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   coordinateVenue,
   coordinatedCompletion,
@@ -9,9 +9,9 @@ import {
   cancelVenueOperation,
   recoverVenueOperations,
   readVenueOperation,
-  assertVenueOwnership,
   stopVenueCoordinator,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { assertVenueOwnership } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 
 const records = new Map<string, any>();
 const documents = {

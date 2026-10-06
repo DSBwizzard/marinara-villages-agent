@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   enterVenue,
   continueVenueWithoutGreeting,
@@ -16,7 +16,7 @@ import {
   activeVenueSession,
   publicSceneResponse,
   discardVenueVisitDebug,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
   contactNeighbors,
   contactPath,
@@ -26,13 +26,10 @@ import {
   readContactDelivery,
   contactDevice,
   contactReach,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-contact.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
-import { coordinateVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
+} from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 
 const now = new Date(),
   stamp = now.toISOString(),

@@ -10,7 +10,7 @@ export const villagesDefinition = {
   kind: ["agent"],
   modes: ["conversation", "roleplay", "game"],
   permissions: ["network", "routes", "storage", "ui", "chat-read", "chat-write"],
-  serverImport: "src/engine/packages/server/src/services/villages/server-entry.ts",
+  serverImport: "src/server/entry/index.ts",
   serverEntry: true,
   clientImport: "src/client/entry/index.tsx",
   agent: {

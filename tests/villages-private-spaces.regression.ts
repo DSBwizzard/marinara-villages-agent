@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  readVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   canOccupyZone,
   canInviteToZone,
@@ -13,31 +12,28 @@ import {
   resolveVenueZone,
   privateTarget,
   zoneClosed,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   preparePrivateSpaces,
   retryPrivateSpaces,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/private-space-preparation.js";
+} from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   sceneryPrompt,
   sceneryCharacterContext,
   sceneryImageKey,
   readSceneryStyle,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";
+} from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import {
   villageSettings,
   assertVenueImageAccess,
   applyResidenceEditApproval,
   setVillageVenueImage,
   readCreationPrivateZones,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/engine/packages/server/src/services/villages/location-image.js";
-import type {
-  VillageVenue,
-  VillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/features/world/village.js";
+import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
+import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();
 function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): VillageVenue {
   return {
@@ -346,7 +342,7 @@ async function main() {
       await generateFirstPrivateSpaceImage("own", "player");
       assert.equal(draws, 0, "the player's known personal space keeps image generation optional");
       const { saveVillageConnections } =
-        await import("../packages/villages/src/engine/packages/server/src/services/villages/connections.js");
+        await import("../packages/villages/src/server/features/settings/connections.js");
       await saveVillageConnections({ imageConnectionId: "fixture-image" });
       await mutateVillageState((current) => {
         current.venues[2].playerInvitations = [
@@ -354,7 +350,7 @@ async function main() {
         ];
       });
       const { enterVenue, activeVenueSession } =
-        await import("../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js");
+        await import("../packages/villages/src/server/features/scenes/venue-session.js");
       const visit = await enterVenue("bank", undefined, "", undefined, "staff");
       assert.equal(visit.privateSpaceId, "staff");
       await Promise.all([

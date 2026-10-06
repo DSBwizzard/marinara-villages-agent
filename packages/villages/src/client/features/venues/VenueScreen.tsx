@@ -1,13 +1,13 @@
-import { messageFrom, request } from "../../shared/api.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
-import { buildingOf, playerDisplayName, venueTitle } from "../../shared/presentation.js";
 import type {
   VenueClass,
-  VenueViewZone,
   VillageSnapshot,
   VillageVenue,
   VillageVenueImage,
-} from "../../shared/types.js";
+} from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
+import { buildingOf, playerDisplayName, venueTitle } from "../../shared/presentation.js";
+import type { VenueViewZone } from "../../shared/types.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { VillageController } from "../../shell/useVillageController.js";
 import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";

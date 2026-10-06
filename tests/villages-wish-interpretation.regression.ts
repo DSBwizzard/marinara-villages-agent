@@ -1,7 +1,7 @@
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   interpretWishClaim,
   wishInterpretationCheck,
@@ -11,16 +11,16 @@ import {
   wishFingerprint,
   wishReceiptRecords,
   coerceWishApplicationProof,
-  type WishInterpretationContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
+} from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { type WishInterpretationContext } from "../packages/villages/src/server/domain/models/wish-interpretation-model.js";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
-import { coordinateVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
-import { saveInterpretationSettings } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-settings.js";
-import { publicSceneResponse } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVenueActionResult } from "../packages/villages/src/server/features/venues/venue-actions.js";
+import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { saveInterpretationSettings } from "../packages/villages/src/server/features/settings/interpretation-settings.js";
+import { publicSceneResponse } from "../packages/villages/src/server/features/scenes/venue-session.js";
 const records = new Map<string, any>();
 let preparations = 0,
   interpretations = 0;

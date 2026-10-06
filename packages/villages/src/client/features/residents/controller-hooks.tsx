@@ -1,14 +1,14 @@
-import type { VillageVillagerView } from "../../shared/types.js";
+import type { VillageVillagerView } from "../../../shared/contracts/village.js";
 import { useCallback, useEffect } from "react";
 
 export function useResidentInspection(ports: {
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
   loadMemoryLibrary: (signal?: AbortSignal) => Promise<void>;
-  personProfile: import("./villages-dossier").DossierNavigation;
-  profileInspection: import("./villages-dossier").DossierSection;
+  personProfile: import("./villages-dossier.js").DossierNavigation;
+  profileInspection: import("./villages-dossier.js").DossierSection;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
-  setAgendas: React.Dispatch<React.SetStateAction<import("../../shared/types").VillagerAgendaView[]>>;
-  setMemoryLibrary: React.Dispatch<React.SetStateAction<import("../../shared/types").MemoryLibrary>>;
+  setAgendas: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillagerAgendaView[]>>;
+  setMemoryLibrary: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").MemoryLibrary>>;
 }) {
   const { loadAgendas, loadMemoryLibrary, personProfile, profileInspection, screen, setAgendas, setMemoryLibrary } =
     ports;
@@ -28,10 +28,10 @@ export function useResidentInspection(ports: {
 }
 
 export function useResidentAgendaPolling(ports: {
-  agendas: import("../../shared/types").VillagerAgendaView[];
+  agendas: import("../../../shared/contracts/village.js").VillagerAgendaView[];
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
-  personProfile: import("./villages-dossier").DossierNavigation;
-  profileInspection: import("./villages-dossier").DossierSection;
+  personProfile: import("./villages-dossier.js").DossierNavigation;
+  profileInspection: import("./villages-dossier.js").DossierSection;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
 }) {
   const { agendas, loadAgendas, personProfile, profileInspection, screen } = ports;
@@ -56,7 +56,9 @@ export function useResidentAgendaPolling(ports: {
   }, [agendas, loadAgendas, profileInspection, personProfile, screen]);
 }
 
-export function useResidentsStandingAt(ports: { snapshot: import("../../shared/types").VillageSnapshot }) {
+export function useResidentsStandingAt(ports: {
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
+}) {
   const { snapshot } = ports;
   return useCallback(
     (placeId: string): VillageVillagerView[] =>
@@ -66,8 +68,8 @@ export function useResidentsStandingAt(ports: { snapshot: import("../../shared/t
 }
 
 export function useResidentsNameOfCharacter(ports: {
-  catalog: import("../../shared/types").CatalogEntry[];
-  snapshot: import("../../shared/types").VillageSnapshot;
+  catalog: import("../../../shared/contracts/village.js").CatalogEntry[];
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const { catalog, snapshot } = ports;
   return useCallback(

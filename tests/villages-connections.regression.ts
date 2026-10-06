@@ -53,7 +53,7 @@ async function main() {
     moduleUrl(
       process.env.VILLAGES_TEST_PACKAGED
         ? "packages/villages/server.mjs"
-        : "packages/villages/src/engine/packages/server/src/services/villages/server-entry.ts",
+        : "packages/villages/src/server/entry/index.ts",
     )
   );
   const {
@@ -61,7 +61,7 @@ async function main() {
     validateVillageSetupConnections,
     villagesConnectionIdFor,
     villagesImageConnectionChoice,
-  } = await import(moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/connections.ts"));
+  } = await import(moduleUrl("packages/villages/src/server/features/settings/connections.ts"));
 
   // ── Document store double ──────────────────────────────────────────────────
   // Same semantics as the Engine's own store and as the chat regression's: a
@@ -434,8 +434,14 @@ async function main() {
   // that one call — which is exactly the bug this rewiring was for. So the
   // accessor is pinned to its two legitimate readers: its own definition, and
   // the resolver that makes up the chain.
-  const servicesRoot = join(repoRoot, "packages/villages/src/engine/packages/server/src/services/villages");
-  for (const relativePath of ["chat.ts", "village-bootstrap.ts", "native-remap.ts", "wishes.ts", "village.ts"]) {
+  const servicesRoot = join(repoRoot, "packages/villages/src/server");
+  for (const relativePath of [
+    "features/scenes/chat.ts",
+    "features/founding/village-bootstrap.ts",
+    "domain/rules/native-remap.ts",
+    "features/residents/wishes/wishes.ts",
+    "features/world/village.ts",
+  ]) {
     const source = await readFile(join(servicesRoot, relativePath), "utf8");
     assert.equal(
       source.includes("villagesAgentConnectionId("),

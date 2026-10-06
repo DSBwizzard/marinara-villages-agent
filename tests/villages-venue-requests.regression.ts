@@ -3,27 +3,24 @@ import {
   readConversationVenueRequest,
   readVenueRequestCore,
   venueRequestDraft,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-requests.ts";
+} from "../packages/villages/src/server/domain/rules/venue-requests.js";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   addVillageVenue,
   applyVillageVenueDecision,
   queueVillageVenueRequest,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.ts";
-import { remapVenues } from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts";
+} from "../packages/villages/src/server/features/world/village.js";
+import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   readHousingRequests,
   readTickVenueRequests,
   type VillageTickContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.ts";
+} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
 const at = "2026-09-22T12:00:00.000Z";
 const core = { name: "The Glasshouse", classes: ["gathering"] as ["gathering"] };

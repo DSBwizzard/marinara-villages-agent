@@ -3,11 +3,7 @@ import {
   mobileSceneLayout,
   mobileReadingCounter,
 } from "../packages/villages/src/client/features/scenes/villages-mobile-scene.js";
-import {
-  initialStaging,
-  replayStaging,
-  stagingLayout,
-} from "../packages/villages/src/engine/packages/shared/src/villages/scene-staging.js";
+import { initialStaging, replayStaging, stagingLayout } from "../packages/villages/src/shared/helpers/scene-staging.js";
 
 const ids = ["a", "b", "c", "d"];
 for (const [count, expected] of [

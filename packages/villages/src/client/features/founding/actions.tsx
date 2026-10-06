@@ -1,18 +1,16 @@
-import type { ResidentFoundingContext } from "../../../engine/packages/shared/src/villages/resident-founding-context.js";
-import { messageFrom, request } from "../../shared/api.js";
-import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
-import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
+import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type {
-  FoundingScenarioId,
   ScenarioImprint,
   SetupMapRequest,
-  SetupMapSource,
-  SetupVenueDraft,
-  TownMapOptions,
   TownMapView,
   VillageSnapshot,
   VillageVenue,
-} from "../../shared/types.js";
+} from "../../../shared/contracts/village.js";
+import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
+import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
+import type { FoundingScenarioId, SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import {
   DEFAULT_TOWN_MAP_OPTIONS,
@@ -26,7 +24,7 @@ import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
-import { DEFAULT_PLAYER_ROLE, type PlayerRole } from "./villages-player-role.js";
+import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
 import { type SetStateAction, useCallback } from "react";
 
 export function useUpdateSetupMapRequest(ports: {

@@ -1,6 +1,6 @@
+import type { VillageSpinOffOriginView } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageSpinOffOriginView } from "../../shared/types.js";
 import { useEffect, useRef, useState } from "react";
 
 /** A house with a way back into it. The only icon in the package's chrome. */

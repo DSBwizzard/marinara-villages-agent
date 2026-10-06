@@ -1,4 +1,4 @@
-import type { VenueClass, VillageVenue } from "./types.js";
+import type { VenueClass, VillageVenue } from "../../shared/contracts/village.js";
 
 export function isHouse(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
   return (

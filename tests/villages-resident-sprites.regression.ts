@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { parseVenueReply } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
+import { parseVenueReply } from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
   describeSpriteExpressions,
   validateSpriteExpression,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-expressions.ts";
+} from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,11 +16,11 @@ import {
 import {
   parseVillagesTurnBeats,
   renderVillagesTurnBeats,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/turn-beats.ts";
+} from "../packages/villages/src/server/domain/rules/turn-beats.js";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 const answer = `[expression:happy] "Welcome home."\n\n[expression:unknown] "Maybe."\n\n[side] "Quiet now."`;
 const beats = parseVillagesTurnBeats(answer);
 assert.ok(beats);

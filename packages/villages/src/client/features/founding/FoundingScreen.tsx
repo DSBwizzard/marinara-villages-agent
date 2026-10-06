@@ -1,7 +1,4 @@
-import {
-  RESIDENT_HISTORY_MODES,
-  RESIDENT_STORY_ROLES,
-} from "../../../engine/packages/shared/src/villages/resident-founding-context.js";
+import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { MapElementChoice, SetupVenueDraft } from "../../shared/types.js";

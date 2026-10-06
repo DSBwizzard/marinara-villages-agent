@@ -1,5 +1,10 @@
+import type {
+  ArchiveVisitSummary,
+  RoomOperation,
+  RoomRecordEvent,
+  SceneView,
+} from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
-import type { ArchiveVisitSummary, RoomOperation, RoomRecordEvent, SceneView } from "../../shared/types.js";
 import {
   completedGreetingAfterFailure,
   currentRoom,
@@ -12,11 +17,13 @@ import { useEffect } from "react";
 
 export function useSceneChangesPolling(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
-  receiveRoomRecordEvents: (events: readonly import("../../shared/types").RoomRecordEvent[]) => void;
-  room: import("../../shared/types").SceneView;
+  receiveRoomRecordEvents: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
+  room: import("../../../shared/contracts/village.js").SceneView;
   roomChangeStatus: { pending: number; failed: number; rejected: number };
   setRoomChangeStatus: React.Dispatch<React.SetStateAction<{ pending: number; failed: number; rejected: number }>>;
-  setRoomNotices: React.Dispatch<React.SetStateAction<import("../../shared/types").RoomRecordEvent[]>>;
+  setRoomNotices: React.Dispatch<
+    React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
+  >;
   setRoomUnresolvedChanges: React.Dispatch<
     React.SetStateAction<{ submissionId: string; domain: string; reason?: string }[]>
   >;
@@ -76,16 +83,18 @@ export function useSceneSelectionReset(ports: {
   lastRoomDeliberateAtRef: React.RefObject<number>;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   observedRoomIdRef: React.RefObject<string>;
-  room: import("../../shared/types").SceneView;
+  room: import("../../../shared/contracts/village.js").SceneView;
   roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomMoveOperationIdRef: React.RefObject<string>;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   seenRoomEventIdsRef: React.RefObject<Set<string>>;
   setLastSceneEnding: React.Dispatch<React.SetStateAction<string>>;
-  setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../shared/types").SceneView>]>;
+  setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomMoveZoneId: React.Dispatch<React.SetStateAction<string>>;
-  setRoomNotices: React.Dispatch<React.SetStateAction<import("../../shared/types").RoomRecordEvent[]>>;
+  setRoomNotices: React.Dispatch<
+    React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
+  >;
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setRoomTargetId: React.Dispatch<React.SetStateAction<string>>;
   setScreen: React.Dispatch<
@@ -199,7 +208,7 @@ export function useSceneSelectionReset(ports: {
 }
 
 export function useSceneOpeningWarning(ports: {
-  room: import("../../shared/types").SceneView;
+  room: import("../../../shared/contracts/village.js").SceneView;
   roomGreetingError: { sessionId: string; message: string };
   setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
 }) {
@@ -211,9 +220,9 @@ export function useSceneOpeningWarning(ports: {
 }
 
 export function useSceneOperationPolling(ports: {
-  room: import("../../shared/types").SceneView;
+  room: import("../../../shared/contracts/village.js").SceneView;
   roomBusy: boolean;
-  setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../shared/types").SceneView>]>;
+  setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomEnded: React.Dispatch<React.SetStateAction<boolean>>;
   setRoomError: React.Dispatch<React.SetStateAction<string>>;
 }) {
@@ -248,12 +257,12 @@ export function useSceneOperationPolling(ports: {
 export function useSceneInterruptedSubmission(ports: {
   composerEditVersionRef: React.RefObject<number>;
   restoredSceneDraftRef: React.RefObject<string>;
-  room: import("../../shared/types").SceneView;
+  room: import("../../../shared/contracts/village.js").SceneView;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
   setRoomDraft: React.Dispatch<React.SetStateAction<string>>;
-  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types").SceneComposerMode>>;
+  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SceneComposerMode>>;
   setRoomMoveZoneId: React.Dispatch<React.SetStateAction<string>>;
   setRoomTargetId: React.Dispatch<React.SetStateAction<string>>;
 }) {
@@ -325,10 +334,10 @@ export function useSceneInterruptedSubmission(ports: {
 
 export function useActiveSceneRestoration(ports: {
   setDebugDiscardEnabled: React.Dispatch<React.SetStateAction<boolean>>;
-  setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../shared/types").SceneView>]>;
+  setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setRoomGreetingError: React.Dispatch<React.SetStateAction<{ sessionId: string; message: string }>>;
-  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types").SceneComposerMode>>;
+  setRoomMode: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SceneComposerMode>>;
   setRoomOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setScreen: React.Dispatch<
     React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
@@ -390,11 +399,13 @@ export function useSceneArchive(ports: {
   archiveVenueId: string;
   archiveVersion: number;
   archiveVillagerId: string;
-  menuPage: import("../../shared/types").MenuPage;
+  menuPage: import("../../shared/types.js").MenuPage;
   setArchiveError: React.Dispatch<React.SetStateAction<string>>;
   setArchiveTotal: React.Dispatch<React.SetStateAction<number>>;
-  setVenueVisits: React.Dispatch<React.SetStateAction<import("../../shared/types").ArchiveVisitSummary[]>>;
-  snapshot: import("../../shared/types").VillageSnapshot;
+  setVenueVisits: React.Dispatch<
+    React.SetStateAction<import("../../../shared/contracts/village.js").ArchiveVisitSummary[]>
+  >;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const {
     archiveOffset,

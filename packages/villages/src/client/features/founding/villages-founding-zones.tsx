@@ -1,5 +1,5 @@
-import type { ZoneAccessPolicy } from "../../../engine/packages/shared/src/villages/venue-access.js";
-import type { VillageVenue } from "../../shared/types";
+import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 import { ZonePolicyFields } from "../venues/villages-venue-access";
 import type { ReactNode } from "react";
 

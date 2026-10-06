@@ -1,4 +1,5 @@
-import type { ArchiveVisitSummary, RoomRecordEvent, SceneComposerMode, SceneView } from "../../shared/types.js";
+import type { ArchiveVisitSummary, RoomRecordEvent, SceneView } from "../../../shared/contracts/village.js";
+import type { SceneComposerMode } from "../../shared/types.js";
 import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */

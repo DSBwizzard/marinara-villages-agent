@@ -9,14 +9,13 @@ import {
   withinVisitorHours,
   projectZoneAccess,
   projectVenueAccess,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-access.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   enterVenue,
   activeVenueSession,
@@ -28,44 +27,39 @@ import {
   recordSpokenInvitation,
   savedAccessEvents,
   processSavedExchange,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
-import { roomInterpretationChecks } from "../packages/villages/src/engine/packages/server/src/services/villages/room-interpretation.js";
-import { selectRoomEventChecks } from "../packages/villages/src/engine/packages/server/src/services/villages/room-events.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { roomInterpretationChecks } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
+import { selectRoomEventChecks } from "../packages/villages/src/server/domain/rules/room-events.js";
+import { socialPlanValid } from "../packages/villages/src/server/domain/rules/social-rules.js";
+import { processSocialOutbox } from "../packages/villages/src/server/features/residents/relationship-social.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { processLiveRelationships } from "../packages/villages/src/server/features/residents/live-memory.js";
+import { validateRoutineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 import {
-  socialPlanValid,
-  processSocialOutbox,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-social.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import { processLiveRelationships } from "../packages/villages/src/engine/packages/server/src/services/villages/live-memory.js";
-import { validateRoutineDay } from "../packages/villages/src/engine/packages/server/src/services/villages/owned-routine.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
-import {
-  mutateRelationships,
   neutralRelationship,
   relationshipKey,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
-import { accessManagementChecks } from "../packages/villages/src/engine/packages/server/src/services/villages/access-speech.js";
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { accessManagementChecks } from "../packages/villages/src/server/domain/rules/access-speech.js";
 import {
   writeInterpretationDiagnostics,
   readInterpretationDiagnostics,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-diagnostics.js";
-import { mayInvite } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-access.js";
+} from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
+import { mayInvite } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import {
   changeVenueAccess,
   completeVillageResidence,
   updateVillageZone,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/features/world/village.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { contactPath } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-contact.js";
-import { villageSettings } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { sceneryImageKey } from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";
-import { privatePreparationKey } from "../packages/villages/src/engine/packages/server/src/services/villages/private-space-preparation.js";
-import type {
-  VillageVenue,
-  VillageVenueZone,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
-import type { AccessCommand } from "../packages/villages/src/engine/packages/shared/src/villages/venue-access.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { villageSettings } from "../packages/villages/src/server/features/world/village.js";
+import { sceneryImageKey } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
+import type { VillageVenue, VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
+import type { AccessCommand } from "../packages/villages/src/shared/helpers/venue-access.js";
 
 const known = ["player", "jim", "mara", "trina", "employee", "visitor"],
   stamp = new Date().toISOString();

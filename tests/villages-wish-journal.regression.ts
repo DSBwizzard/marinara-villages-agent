@@ -2,15 +2,14 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  readVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { coerceWish } from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { coerceWish } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   selectWishSize,
   wishExpired,
   wishGenerationDirection,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-definition.js";
+} from "../packages/villages/src/server/domain/rules/wish-definition.js";
 import {
   discloseWish,
   knownWish,
@@ -18,29 +17,29 @@ import {
   bindWishFacts,
   rememberWishEvidence,
   wishCheckKnowledge,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-journal.js";
+} from "../packages/villages/src/server/domain/rules/wish-journal.js";
 import {
   bindWishProposals,
   processWishExchange,
   applyPreparedWishVerdict,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-progress.js";
+} from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import {
   wishFingerprint,
   interpretWishBatch,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
-import { localWishRequirements } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-admission.js";
+} from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { localWishRequirements } from "../packages/villages/src/server/domain/rules/wish-admission.js";
 import {
   retireResidentWish,
   expireResidentWishes,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-lifecycle.js";
+} from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import { defaultRelationshipState } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
   projectRelationshipProfiles,
   readRelationshipsView,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
-import { createExchangeProcessing } from "../packages/villages/src/engine/packages/server/src/services/villages/exchange-processing.js";
+} from "../packages/villages/src/server/features/residents/relationships.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 
 async function main() {

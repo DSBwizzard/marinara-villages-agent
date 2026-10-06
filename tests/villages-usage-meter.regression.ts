@@ -1,19 +1,18 @@
 import assert from "node:assert/strict";
-import { completeWithRoom, villagesLanguageModels } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { villagesLanguageModels } from "../packages/villages/src/server/adapters/models/language-models.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   readUsageMeter,
   resetUsagePeriod,
   saveUsageRate,
-  usageDollars,
-  catalogRate,
-  trackUsage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/usage-meter.js";
+} from "../packages/villages/src/server/features/settings/usage-meter.js";
+import { usageDollars, catalogRate, trackUsage } from "../packages/villages/src/server/adapters/models/usage-ledger.js";
 import {
   readRuntimeDebug,
   saveRuntimeDebug,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/runtime-debug.js";
-import { villageEngineJson } from "../packages/villages/src/engine/packages/server/src/services/villages/engine-loopback.js";
+} from "../packages/villages/src/server/adapters/observability/runtime-debug.js";
+import { villageEngineJson } from "../packages/villages/src/server/adapters/engine/engine-loopback.js";
 const records = new Map<string, any>();
 const originalFetch = globalThis.fetch;
 let imageCalls = 0;

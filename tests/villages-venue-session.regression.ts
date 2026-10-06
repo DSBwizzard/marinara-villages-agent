@@ -1,9 +1,9 @@
-import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
-import { wishReceiptRecords } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
-import { physicalVenueEvents } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
-import { measurePipeline } from "../packages/villages/src/engine/packages/server/src/services/villages/pipeline-metrics.js";
+import { wishReceiptRecords } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { measurePipeline } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
 function fixtureJson(value: any) {
   return JSON.stringify(
@@ -21,35 +21,35 @@ import {
   DEFAULT_PLAYER_ROLE,
   renderPlayerRoleContext,
   renderPlayerRoleWritingContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
-import { requestProjectMailbox } from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import { proposeHappenings } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
-import { _proposeWishVerdict } from "../packages/villages/src/engine/packages/server/src/services/villages/wishes.js";
-import { readVenueActionResult } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-actions.js";
+} from "../packages/villages/src/server/domain/rules/player-role.js";
+import { requestProjectMailbox } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { _proposeWishVerdict } from "../packages/villages/src/server/features/residents/wishes/wishes.js";
+import { readVenueActionResult } from "../packages/villages/src/server/features/venues/venue-actions.js";
 import {
   venueReplyIntegrity,
   venueSceneHistory,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-turn-integrity.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/engine/packages/server/src/services/villages/location-image.js";
+} from "../packages/villages/src/server/domain/rules/venue-turn-integrity.js";
+import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
 import {
   decideVillagerVenueImprovement,
   proposeVenueChange,
   queueVenueCounteroffer,
   recordVillagerVenueImprovement,
   respondDueVenueMail,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-mailbox.js";
+} from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   readVillageWriting,
   saveVillageWriting,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
+} from "../packages/villages/src/server/features/settings/narration-settings.js";
 import {
   VENUE_SCENE_WRITING_FOUNDATION,
   WRITING_GUIDANCE_MAX_LENGTH,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/narration-style.js";
+} from "../packages/villages/src/server/domain/rules/narration-style.js";
 import {
   activeVenueSession,
   continueVenueWithoutGreeting,
@@ -66,18 +66,17 @@ import {
   readVenueVisit,
   readProjectTurnEvidence,
   parseVenueReply,
-  venueCardProfile,
   resetVenueSessions,
   sendVenueTurn as sendVenueTurnRaw,
   touchVenueSession,
   discardVenueVisitDebug,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { venueCardProfile } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import {
   coerceVillageState,
   defaultVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   reconcileVillage,
   resetVillage,
@@ -87,7 +86,7 @@ import {
   proposeResidenceSpaceEdit,
   setVillageVenueImage,
   setVillageSendOnEnter,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/features/world/village.js";
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
 async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {

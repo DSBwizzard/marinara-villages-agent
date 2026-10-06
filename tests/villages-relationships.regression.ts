@@ -2,13 +2,10 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
-import {
-  resolveVenueZone,
-  canInviteToZone,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { resolveVenueZone, canInviteToZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
@@ -17,14 +14,16 @@ import {
   applyRelationshipReview,
   reconcileRelationships,
   relationshipZoneController,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
   mutateRelationships,
   readRelationshipState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+} from "../packages/villages/src/server/features/residents/relationship-store.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
   substantiveContact,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-review.js";
+} from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   captureRelationshipKnowledge,
   projectRelationshipProfiles,
@@ -33,25 +32,22 @@ import {
   filterRelationshipNotices,
   readRelationshipsView,
   changeRelationshipCreator,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
+} from "../packages/villages/src/server/features/residents/relationships.js";
 import {
   socialPlanCandidates,
   socialPlanValid,
   socialContinuationValid,
   projectSocialActivities,
   reconcileSocialPlans,
-  processSocialOutbox,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-social.js";
+} from "../packages/villages/src/server/domain/rules/social-rules.js";
+import { processSocialOutbox } from "../packages/villages/src/server/features/residents/relationship-social.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 import type {
   RelationshipChange,
   RelationshipEvidenceLine,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-types.js";
+} from "../packages/villages/src/server/domain/models/relationship-types.js";
 
 const now = new Date(),
   stamp = now.toISOString(),

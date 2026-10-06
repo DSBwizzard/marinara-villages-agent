@@ -2,7 +2,7 @@ import type {
   ResidentSignature,
   ResidentSignatureImage,
   ResidentSignatureView,
-} from "../../../engine/packages/shared/src/villages/resident-signature.js";
+} from "../../../shared/helpers/resident-signature.js";
 import { useEffect, useState } from "react";
 
 const P = "marinara-capability-villages";

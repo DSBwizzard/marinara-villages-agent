@@ -1,7 +1,7 @@
-import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../../../engine/packages/shared/src/villages/resident-founding-context.js";
+import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../../../shared/helpers/resident-founding-context.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { freshRowKey, measureImage } from "../../shared/presentation.js";
-import type { VillageSnapshot } from "../../shared/types.js";
 import {
   newSetupVenue,
   requestSetupMapReceipt,
@@ -16,7 +16,7 @@ export function useFoundingSelectedResidentContexts(ports: {
   setupFoundingVillagerIds: string[];
   setupResidentContexts: Record<
     string,
-    import("../../../engine/packages/shared/src/villages/resident-founding-context").ResidentFoundingContext
+    import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext
   >;
 }) {
   const { setupFoundingVillagerIds, setupResidentContexts } = ports;
@@ -43,8 +43,8 @@ export function useFoundingImageContext(ports: {
 }
 
 export function useFoundingVenueReference(ports: {
-  setupVenues: import("../../shared/types").VillageVenue[];
-  setupVenuesRef: React.RefObject<import("../../shared/types").VillageVenue[]>;
+  setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
+  setupVenuesRef: React.RefObject<import("../../../shared/contracts/village.js").VillageVenue[]>;
 }) {
   const { setupVenues, setupVenuesRef } = ports;
   useEffect(() => {
@@ -55,7 +55,7 @@ export function useFoundingVenueReference(ports: {
 export function useFoundingBeginningReference(ports: {
   setupBeginningSourceKey: string;
   setupBeginningSourceKeyRef: React.RefObject<string>;
-  snapshot: import("../../shared/types").VillageSnapshot;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const { setupBeginningSourceKey, setupBeginningSourceKeyRef, snapshot } = ports;
   useEffect(() => {
@@ -97,19 +97,19 @@ export function useFoundingSetupDraftData(ports: {
   setupAuthoredFields: Record<string, string[]>;
   setupEditorAuthoredOriginal: React.RefObject<string[]>;
   setupEditorOpen: boolean;
-  setupEditorOriginal: React.RefObject<import("../../shared/types").VillageVenue>;
+  setupEditorOriginal: React.RefObject<import("../../../shared/contracts/village.js").VillageVenue>;
   setupEditorZoneOriginal: React.RefObject<{
     common?: {
       id: string;
       name?: string;
       ownerId?: string;
       purpose?: string;
-      access?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessView;
+      access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
+      accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       venueClass: "residence" | "workplace" | "gathering" | "other";
       description: string;
-      image: import("../../shared/types").VillageVenueImage;
+      image: import("../../../shared/contracts/village.js").VillageVenueImage;
       state: {
         condition: string;
         items: string[];
@@ -124,12 +124,12 @@ export function useFoundingSetupDraftData(ports: {
       name?: string;
       ownerId?: string;
       purpose?: string;
-      access?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessView;
+      access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
+      accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       venueClass: "residence" | "workplace" | "gathering" | "other";
       description: string;
-      image: import("../../shared/types").VillageVenueImage;
+      image: import("../../../shared/contracts/village.js").VillageVenueImage;
       state: {
         condition: string;
         items: string[];
@@ -142,8 +142,8 @@ export function useFoundingSetupDraftData(ports: {
       ownerId: string;
       name?: string;
       purpose?: string;
-      access?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessView;
+      access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
+      accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
       adaptationPending?: boolean;
       initialImageAttemptedAt?: string;
@@ -153,7 +153,7 @@ export function useFoundingSetupDraftData(ports: {
   setupFoundingGuidance: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
   setupFoundingVillagerIds: string[];
-  setupImprint: import("../../shared/types").ScenarioImprint;
+  setupImprint: import("../../../shared/contracts/village.js").ScenarioImprint;
   setupKeyboardSpot: { x: number; y: number };
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
@@ -162,26 +162,26 @@ export function useFoundingSetupDraftData(ports: {
   setupMapImage: string;
   setupMapImageSource: "generate" | "upload";
   setupMapNegativePrompt: string;
-  setupMapOptions: import("../../shared/types").TownMapOptions;
+  setupMapOptions: import("../../shared/types.js").TownMapOptions;
   setupMapProblem: string;
   setupMapPrompt: string;
-  setupMapRequest: import("../../shared/types").SetupMapRequest;
+  setupMapRequest: import("../../../shared/contracts/village.js").SetupMapRequest;
   setupMapReviewed: boolean;
   setupMapSize: { width: number; height: number };
-  setupMapSource: import("../../shared/types").SetupMapSource;
+  setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupName: string;
-  setupPlayerRole: import("./villages-player-role").PlayerRole;
+  setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
   setupResidentContexts: Record<
     string,
-    import("../../../engine/packages/shared/src/villages/resident-founding-context").ResidentFoundingContext
+    import("../../../shared/helpers/resident-founding-context.js").ResidentFoundingContext
   >;
   setupSetting: string;
   setupStep: number;
   setupSuggestionsBusy: boolean;
   setupSuggestionsKey: string;
   setupVenueBusy: boolean;
-  setupVenues: import("../../shared/types").VillageVenue[];
-  setupWorkspace: import("./villages-founding-workspace-state").FoundingWorkspaceState;
+  setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
+  setupWorkspace: import("./villages-founding-workspace-state.js").FoundingWorkspaceState;
   setupWorldFacts: string[];
   setupZoneDrafts: React.RefObject<
     Record<
@@ -192,12 +192,12 @@ export function useFoundingSetupDraftData(ports: {
           name?: string;
           ownerId?: string;
           purpose?: string;
-          access?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessView;
+          access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
+          accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
           controllerIds?: string[];
           venueClass: "residence" | "workplace" | "gathering" | "other";
           description: string;
-          image: import("../../shared/types").VillageVenueImage;
+          image: import("../../../shared/contracts/village.js").VillageVenueImage;
           state: {
             condition: string;
             items: string[];
@@ -212,12 +212,12 @@ export function useFoundingSetupDraftData(ports: {
           name?: string;
           ownerId?: string;
           purpose?: string;
-          access?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessView;
+          access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
+          accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
           controllerIds?: string[];
           venueClass: "residence" | "workplace" | "gathering" | "other";
           description: string;
-          image: import("../../shared/types").VillageVenueImage;
+          image: import("../../../shared/contracts/village.js").VillageVenueImage;
           state: {
             condition: string;
             items: string[];
@@ -230,8 +230,8 @@ export function useFoundingSetupDraftData(ports: {
           ownerId: string;
           name?: string;
           purpose?: string;
-          access?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../engine/packages/shared/src/villages/venue-access").ZoneAccessView;
+          access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
+          accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
           controllerIds?: string[];
           adaptationPending?: boolean;
           initialImageAttemptedAt?: string;
@@ -378,12 +378,12 @@ export function useFoundingSetupDraftData(ports: {
 }
 
 export function useFoundingRosterReconciliation(ports: {
-  catalog: import("../../shared/types").CatalogEntry[];
+  catalog: import("../../../shared/contracts/village.js").CatalogEntry[];
   draftReady: boolean;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
-  setSetupVenues: React.Dispatch<React.SetStateAction<import("../../shared/types").VillageVenue[]>>;
+  setSetupVenues: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageVenue[]>>;
   setupFoundingVillagerIds: string[];
-  snapshot: import("../../shared/types").VillageSnapshot;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const { catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot } = ports;
   useEffect(() => {
@@ -422,8 +422,8 @@ export function useFoundingMapReceipt(ports: {
   setSetupMapProblem: React.Dispatch<React.SetStateAction<string>>;
   setSetupMapReviewed: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupMapSize: React.Dispatch<React.SetStateAction<{ width: number; height: number }>>;
-  setupMapRequest: import("../../shared/types").SetupMapRequest;
-  updateSetupMapRequest: (value: import("../../shared/types").SetupMapRequest) => void;
+  setupMapRequest: import("../../../shared/contracts/village.js").SetupMapRequest;
+  updateSetupMapRequest: (value: import("../../../shared/contracts/village.js").SetupMapRequest) => void;
 }) {
   const {
     screen,
@@ -489,7 +489,7 @@ export function useFoundingMapReceipt(ports: {
 }
 
 export function useFoundingSetupBlocker(ports: {
-  catalog: import("../../shared/types").CatalogEntry[];
+  catalog: import("../../../shared/contracts/village.js").CatalogEntry[];
   personaDraft: string;
   setupFoundingDetails: string;
   setupFoundingVillagerIds: string[];
@@ -498,14 +498,14 @@ export function useFoundingSetupBlocker(ports: {
   setupMapGeneratedKey: string;
   setupMapGenerationKey: string;
   setupMapReviewed: boolean;
-  setupMapSource: import("../../shared/types").SetupMapSource;
+  setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupMapSrc: string;
   setupName: string;
-  setupPlayerRole: import("./villages-player-role").PlayerRole;
+  setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
   setupSetting: string;
-  setupVenues: import("../../shared/types").VillageVenue[];
+  setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorldFacts: string[];
-  snapshot: import("../../shared/types").VillageSnapshot;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const {
     catalog,
@@ -618,7 +618,7 @@ export function useFoundingPreparationPolling(ports: {
   setScreen: React.Dispatch<
     React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
   >;
-  setSnapshot: React.Dispatch<React.SetStateAction<import("../../shared/types").VillageSnapshot>>;
+  setSnapshot: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageSnapshot>>;
 }) {
   const { screen, setPreparationProblem, setScreen, setSnapshot } = ports;
   useEffect(() => {

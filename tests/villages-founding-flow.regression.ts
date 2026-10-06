@@ -6,27 +6,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const clientRoot = join(root, "packages/villages/src/engine/packages/client/src");
-  const serverRoot = join(root, "packages/villages/src/engine/packages/server/src");
+  const serverRoot = join(root, "packages/villages/src/server");
   const { foundingPhotoOverlaps } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
   );
-  const { coerceVillageState } = await import(
-    pathToFileURL(join(serverRoot, "services/villages/village-store.ts")).href
-  );
+  const { coerceVillageState } = await import(pathToFileURL(join(serverRoot, "features/world/village-store.ts")).href);
   const {
     parsePlace,
     runVillageSetup,
     assertFoundingScenarioLocked,
     validateFirstDayDescription,
     validateFoundingRoster,
-  } = await import(pathToFileURL(join(serverRoot, "services/villages/village.ts")).href);
+  } = await import(pathToFileURL(join(serverRoot, "features/world/village.ts")).href);
   const { readScenarioImprint } = await import(
-    pathToFileURL(join(serverRoot, "services/villages/scenario-imprint.ts")).href
+    pathToFileURL(join(serverRoot, "features/founding/scenario-imprint.ts")).href
   );
-  const { readPersona } = await import(pathToFileURL(join(serverRoot, "services/villages/catalog.ts")).href);
+  const { readPersona } = await import(pathToFileURL(join(serverRoot, "adapters/engine/catalog.ts")).href);
   const { parseFoundingVenueSuggestions } = await import(
-    pathToFileURL(join(serverRoot, "services/villages/founding-drafts.ts")).href
+    pathToFileURL(join(serverRoot, "features/founding/founding-drafts.ts")).href
   );
   const { evenlySpacedFoundingPins } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-draft.ts")).href
@@ -305,9 +302,9 @@ async function main() {
   );
 
   const client = await clientImplementation();
-  const routes = await readFile(join(serverRoot, "routes/villages.routes.ts"), "utf8");
-  const village = await readFile(join(serverRoot, "services/villages/village.ts"), "utf8");
-  const drafts = await readFile(join(serverRoot, "services/villages/founding-drafts.ts"), "utf8");
+  const routes = await readFile(join(serverRoot, "entry/routes.ts"), "utf8");
+  const village = await readFile(join(serverRoot, "features/world/village.ts"), "utf8");
+  const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts.ts"), "utf8");
   assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
   assert.ok(client.includes("Where are we?"));
   assert.ok(client.includes("What brings you together?"));

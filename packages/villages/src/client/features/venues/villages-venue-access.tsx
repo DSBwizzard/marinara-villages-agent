@@ -1,9 +1,5 @@
-import type {
-  AccessCommand,
-  VisitorHours,
-  ZoneAccessPolicy,
-} from "../../../engine/packages/shared/src/villages/venue-access.js";
-import type { VillageVenue } from "../../shared/types";
+import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { AccessCommand, VisitorHours, ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 import { createVillagesClientId } from "../scenes/villages-venue-send";
 import { useState } from "react";
 

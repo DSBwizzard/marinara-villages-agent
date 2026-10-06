@@ -11,30 +11,23 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
-  const routesSource = readFileSync(
-    join(repoRoot, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),
-    "utf8",
-  );
+  const routesSource = readFileSync(join(repoRoot, "packages/villages/src/server/entry/routes.ts"), "utf8");
   const clientSource = clientImplementation();
   assert.match(routesSource, /"\/reconcile"/u);
   assert.doesNotMatch(routesSource, /"\/tick"/u);
   assert.match(clientSource, /request<VillageSnapshot>\("\/reconcile"/u);
-  const { configureVillagesRuntime } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/application-runtime.ts")
-  );
+  const { configureVillagesRuntime } = await import(moduleUrl("packages/villages/src/server/entry/runtime.ts"));
   const {
     startBackgroundWork,
     settleBackgroundWork,
     villageBackgroundPresence,
     backgroundWorkSummaries,
     retryBackgroundJob,
-  } = await import(moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/background-work.ts"));
+  } = await import(moduleUrl("packages/villages/src/server/jobs/background-work.ts"));
   const { coerceVillageState, mutateVillageState, readVillageState } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village-store.ts")
+    moduleUrl("packages/villages/src/server/features/world/village-store.ts")
   );
-  const { deriveVillageMoment } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village-clock.ts")
-  );
+  const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
   const {
     reconcileVillage,
     rollActiveAgendas,
@@ -47,17 +40,11 @@ async function main() {
     decideVillageHomeUpgrade,
     updateVillageVenue,
     projectHomeLines,
-  } = await import(moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village.ts"));
-  const { workingAgendaWeek } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/agenda-week.ts")
-  );
-  const { renderHomesBlock } = await import(
-    moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts")
-  );
+  } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
+  const { workingAgendaWeek } = await import(moduleUrl("packages/villages/src/server/domain/rules/agenda-week.ts"));
+  const { renderHomesBlock } = await import(moduleUrl("packages/villages/src/server/domain/rules/prompt-preset.ts"));
   const { REFRESH_MAX_DELAY_MS, REFRESH_MIN_DELAY_MS, startVillageRefreshScheduler, villageSchedulerDelayMs } =
-    await import(
-      moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/village-refresh-scheduler.ts")
-    );
+    await import(moduleUrl("packages/villages/src/server/jobs/village-refresh-scheduler.ts"));
 
   const at = (hour: number, minute: number, second = 0) => new Date(2026, 8, 22, hour, minute, second, 0);
   const before = deriveVillageMoment({ foundedAt: "2026-09-01T00:00:00.000Z", seed: "fixture", now: at(11, 59) });

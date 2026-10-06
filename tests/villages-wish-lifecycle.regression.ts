@@ -5,21 +5,15 @@ import {
   backgroundWorkSummaries,
   retryBackgroundJob,
   recoverBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import {
-  coerceVillageState,
-  readVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import {
-  workingAgendaWeek,
-  agendaBlocksFor,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import { coerceWish } from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { workingAgendaWeek, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { coerceWish } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   newWishLifecycle,
   knownNeedBlocked,
@@ -30,7 +24,7 @@ import {
   recordWishOutcome,
   pruneWishActivities,
   WISH_DAY_MS,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-policy.js";
+} from "../packages/villages/src/server/domain/rules/wish-policy.js";
 import {
   registerInitialWish,
   reserveInitialWishAllowance,
@@ -42,26 +36,17 @@ import {
   correctResidentWish,
   wishSlots,
   canApplyWishActivity,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-lifecycle.js";
+} from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
 import {
   flushWishOutcomes,
   readWishHistoryPage,
   readWishOutcome,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-archive.js";
-import { remapSignature } from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
-import {
-  coordinateVenue,
-  venueOperationSignal,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
-import type {
-  VillageState,
-  VillageVenue,
-  VillageWish,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
-import type {
-  WishActivity,
-  WishNeed,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-types.js";
+} from "../packages/villages/src/server/features/residents/wishes/wish-archive.js";
+import { remapSignature } from "../packages/villages/src/server/domain/rules/native-remap.js";
+import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { venueOperationSignal } from "../packages/villages/src/server/adapters/operations/operation-context.js";
+import type { VillageState, VillageVenue, VillageWish } from "../packages/villages/src/server/domain/models/world.js";
+import type { WishActivity, WishNeed } from "../packages/villages/src/server/domain/models/wish-types.js";
 
 type Document = {
   id: string;

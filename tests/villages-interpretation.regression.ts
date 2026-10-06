@@ -4,40 +4,40 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   configureDecisionsAdapter,
   loadDecisionEngineModules,
   decisionAdapterStatus,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/decisions-adapter.js";
+} from "../packages/villages/src/server/adapters/engine/decisions-adapter.js";
 import {
   coordinateVenue,
   venueCheckpoint,
   coordinatedOptionalCompletion,
   venueInterpretationSettings,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import {
   saveInterpretationSettings,
   readInterpretationSettings,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-settings.js";
+} from "../packages/villages/src/server/features/settings/interpretation-settings.js";
 import {
   interpretChecks,
   readDecisionInterpretation,
-  readSystemInterpretations,
-  type InterpretationCheck,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
+} from "../packages/villages/src/server/features/generation/interpretation.js";
+import { readSystemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
+import { type InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 import {
   readInterpretationDiagnostics,
   writeInterpretationDiagnostics,
   scheduleSystemComparisons,
   stopInterpretationComparisons,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-diagnostics.js";
-import { applyInterpretedRoomEvents } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+} from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
+import { applyInterpretedRoomEvents } from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
   roomInterpretationChecks,
   dismissalDestination,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/room-interpretation.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/features/scenes/room-interpretation.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const records = new Map<string, any>();
 const documents = {

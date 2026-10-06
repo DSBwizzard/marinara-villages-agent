@@ -1,8 +1,8 @@
-import { contactNeighborIds } from "../../../engine/packages/shared/src/villages/zone-contact.js";
+import type { RoomOperation, VillageSnapshot } from "../../../shared/contracts/village.js";
+import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
-import type { RoomOperation, VillageSnapshot } from "../../shared/types.js";
 import type { VillageController } from "../../shell/useVillageController.js";
 import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";

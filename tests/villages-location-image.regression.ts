@@ -68,10 +68,10 @@ async function main() {
   const engineRoot = process.env.MARINARA_ENGINE_ROOT;
   assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
-  const services = "packages/villages/src/engine/packages/server/src/services/villages";
+  const services = "packages/villages/src/server";
 
   const { avatarPromptId, buildLocationPrompt, decodeImageDataUrl, MAX_LOCATION_IMAGE_BASE64_LENGTH } = await import(
-    moduleUrl(`${services}/location-image.ts`)
+    moduleUrl(`${services}/features/media/location-image.ts`)
   );
   const {
     GLOBAL_GALLERY_REF_PREFIX,
@@ -82,12 +82,12 @@ async function main() {
     MAX_PLACES,
     MAX_SETTING_LENGTH,
     VILLAGES_GALLERY_FOLDER_NAME,
-  } = await import(moduleUrl(`${services}/prompt-preset.ts`));
+  } = await import(moduleUrl(`${services}/domain/rules/prompt-preset.ts`));
   const { coerceVillageState, readVillageState, mutateVillageState } = await import(
-    moduleUrl(`${services}/village-store.ts`)
+    moduleUrl(`${services}/features/world/village-store.ts`)
   );
-  const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/engine-loopback.ts`));
-  const { describeMoment } = await import(moduleUrl(`${services}/village-clock.ts`));
+  const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/adapters/engine/engine-loopback.ts`));
+  const { describeMoment } = await import(moduleUrl(`${services}/domain/rules/village-clock.ts`));
 
   // ── The one number two codebases have to agree on ──────────────────────────
   // The tab refuses a file before encoding it, the package refuses a data url
@@ -775,7 +775,7 @@ async function main() {
   const patch = (url: string, payload?: any) => app.inject({ method: "PATCH", url, payload });
   const del = (url: string, payload?: any) => app.inject({ method: "DELETE", url, payload });
 
-  const { activate } = await import(moduleUrl(`${services}/server-entry.ts`));
+  const { activate } = await import(moduleUrl(`${services}/entry/index.ts`));
   await activate(context);
 
   // ── Founding a village costs nothing ──────────────────────────────────────
@@ -921,7 +921,7 @@ async function main() {
       ]),
     );
   });
-  const addedSnapshot = (await import(moduleUrl(`${services}/village.ts`))).buildVillageSnapshot;
+  const addedSnapshot = (await import(moduleUrl(`${services}/features/world/village.ts`))).buildVillageSnapshot;
   assert.deepEqual(
     (await addedSnapshot()).settings.venues
       .filter((venue: any) => ["mill", "ridge"].includes(venue.id))
@@ -1153,24 +1153,24 @@ async function main() {
   assert.deepEqual(
     canDraw,
     [
-      "engine/packages/server/src/routes/villages.routes.ts",
-      "engine/packages/server/src/services/villages/engine-loopback.ts",
-      "engine/packages/server/src/services/villages/image-generation.ts",
-      "engine/packages/server/src/services/villages/location-image.ts",
-    ],
+      "server/entry/routes.ts",
+      "server/adapters/engine/engine-loopback.ts",
+      "server/features/media/image-generation.ts",
+      "server/features/media/location-image.ts",
+    ].sort(),
     "only explicit scenery draws and their metered shared transport reach image providers",
   );
   for (const silent of [
-    "village.ts",
-    "village-store.ts",
-    "village-bootstrap.ts",
-    "village-clock.ts",
-    "village-refresh-scheduler.ts",
-    "native-remap.ts",
-    "native-schedules.ts",
-    "chat.ts",
-    "wishes.ts",
-    "catalog.ts",
+    "features/world/village.ts",
+    "features/world/village-store.ts",
+    "features/founding/village-bootstrap.ts",
+    "domain/rules/village-clock.ts",
+    "jobs/village-refresh-scheduler.ts",
+    "domain/rules/native-remap.ts",
+    "adapters/engine/native-schedules.ts",
+    "features/scenes/chat.ts",
+    "features/residents/wishes/wishes.ts",
+    "adapters/engine/catalog.ts",
   ]) {
     const source = await readFile(join(repoRoot, services, silent), "utf8");
     assert.equal(
@@ -1202,8 +1202,8 @@ async function main() {
     /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId, zoneId\)\}/,
     "and wired to a click on the screen that stands in a place",
   );
-  const imageService = await readFile(join(repoRoot, services, "location-image.ts"), "utf8");
-  const venueSession = await readFile(join(repoRoot, services, "venue-session.ts"), "utf8");
+  const imageService = await readFile(join(repoRoot, services, "features/media/location-image.ts"), "utf8");
+  const venueSession = await readFile(join(repoRoot, services, "features/scenes/venue-session.ts"), "utf8");
   assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
   assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
 

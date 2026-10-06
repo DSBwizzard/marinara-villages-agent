@@ -1,4 +1,20 @@
-import { residentFoundingProblems } from "../../engine/packages/shared/src/villages/resident-founding-context.js";
+import type {
+  CatalogEntry,
+  CatalogResponse,
+  PersonaEntry,
+  PersonaResponse,
+  ProgressDebugView,
+  SceneView,
+  SetupMapRequest,
+  TownMapView,
+  VenueClass,
+  VillageLorebookOption,
+  VillageSnapshot,
+  VillageVenue,
+  VillageVenueImage,
+  VillageVillagerView,
+} from "../../shared/contracts/village.js";
+import { residentFoundingProblems } from "../../shared/helpers/resident-founding-context.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
 import {
@@ -145,27 +161,13 @@ import {
   VILLAGE_PULSE_MS,
 } from "../shared/presentation.js";
 import type {
-  CatalogEntry,
-  CatalogResponse,
   FoundingScenarioId,
   MapFrameShape,
   MapPin,
   MapZoomRange,
   MenuPage,
-  PersonaEntry,
-  PersonaResponse,
   Portrait,
-  ProgressDebugView,
-  SceneView,
-  SetupMapRequest,
   SetupVenueDraft,
-  TownMapView,
-  VenueClass,
-  VillageLorebookOption,
-  VillageSnapshot,
-  VillageVenue,
-  VillageVenueImage,
-  VillageVillagerView,
 } from "../shared/types.js";
 import { isHouse, venueClassesFor } from "../shared/venue.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";

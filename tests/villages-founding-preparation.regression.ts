@@ -1,30 +1,27 @@
 import assert from "node:assert/strict";
 
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
-import {
-  coerceVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   preparePrivateSpaces,
   retryPrivateSpaces,
   privatePreparationRooms,
   startPrivateSpacePreparation,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/private-space-preparation.js";
+} from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   prepareFoundedVillage,
   retryFoundedVillagePreparation,
   foundingPreparationSnapshot,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/features/world/village.js";
 import {
   startBackgroundWork,
   retryBackgroundJob,
   settleBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
-import { previewVillageBurst } from "../packages/villages/src/engine/packages/server/src/services/villages/usage-preview.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
 
 const rows = new Map<string, any>();
 const calls: string[] = [];

@@ -1,5 +1,6 @@
 // Explicit paid evaluation only with --live; durable journal caps this run at 16 requests.
 import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createDecipheriv } from "node:crypto";
@@ -254,8 +255,21 @@ async function main() {
   const report = probes ? JSON.parse(await readFile(join(output, "report.json"), "utf8")) : initialReport;
   for (const arm of probes ? ["candidate-sizing-probe"] : ["baseline", "candidate"]) {
     const armRoot = arm === "baseline" ? baseline : root;
-    const dir = join(armRoot, "packages/villages/src/engine/packages/server/src/services/villages");
-    const load = async (name) => import(pathToFileURL(join(dir, name + ".ts")).href);
+    const modern = existsSync(join(armRoot, "packages/villages/src/server/entry/runtime.ts"));
+    const paths = {
+      "package-runtime": "entry/runtime",
+      "village-store": "features/world/village-store",
+      "wish-interpretation": "features/residents/wishes/wish-interpretation",
+      "wish-lifecycle": "features/residents/wishes/wish-lifecycle",
+      "background-work": "jobs/background-work",
+      "agenda-plan": "domain/rules/agenda-plan",
+      "wish-policy": "domain/rules/wish-policy",
+    };
+    const dir = join(
+      armRoot,
+      modern ? "packages/villages/src/server" : "packages/villages/src/engine/packages/server/src/services/villages",
+    );
+    const load = async (name) => import(pathToFileURL(join(dir, (modern ? paths[name] : name) + ".ts")).href);
     const runtime = await load("package-runtime"),
       store = await load("village-store"),
       interpretation = await load("wish-interpretation");

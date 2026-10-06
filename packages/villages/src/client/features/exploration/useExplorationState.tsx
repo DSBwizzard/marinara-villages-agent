@@ -1,4 +1,4 @@
-import type { TownMapView } from "../../shared/types.js";
+import type { TownMapView } from "../../../shared/contracts/village.js";
 import type { ExplorationSheet, ExplorationTab } from "./villages-exploration";
 import type { MobileMapView } from "./villages-mobile-map";
 import { useRef, useState } from "react";

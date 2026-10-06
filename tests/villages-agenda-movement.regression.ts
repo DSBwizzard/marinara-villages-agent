@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  agendaAt,
-  agendaDayPlan,
-  villageAgendaDay,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
+import { agendaAt, agendaDayPlan, villageAgendaDay } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   agendaBlocksFor,
   agendaDateKey,
@@ -14,16 +10,16 @@ import {
   replaceRemainingAgendaDay,
   scheduleInformedWeek,
   workingAgendaWeek,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import { doingFor } from "../packages/villages/src/engine/packages/server/src/services/villages/chat.js";
-import { villagerPlaceView } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { coerceVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { doingFor } from "../packages/villages/src/server/features/scenes/chat.js";
+import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type {
   VillageAgenda,
   VillageState,
   VillageVenue,
   VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/domain/models/world.js";
 
 function place(id: string, residentCharacterId: string | null = null): VillageVenue {
   return {
@@ -267,10 +263,7 @@ assert.equal(villagerPlaceView(village, villager, null, 1080)?.id, "home");
 assert.equal(doingFor(null, null, { hour: 9, minute: 0 }, agenda).activity, "watering flowers");
 assert.equal(doingFor(null, null, { hour: 9, minute: 0 }, agenda).today.length, 4);
 
-const venueSource = readFileSync(
-  resolve("packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts"),
-  "utf8",
-);
+const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/venue-session.ts"), "utf8");
 assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, new Date\(\)\)/u);
 assert.match(venueSource, /activeIds: participants\.map\(\(person\) => person\.characterId\)/u);
 assert.doesNotMatch(venueSource, /roomPresenceLines|repairRoomMirrors/u);

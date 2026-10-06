@@ -4,7 +4,7 @@ import {
   coerceExchangeProcessing,
   dispatchExchange,
   unfinishedExchange,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/exchange-processing.ts";
+} from "../packages/villages/src/server/features/scenes/exchange-processing.js";
 
 const exchange = () =>
   createExchangeProcessing({

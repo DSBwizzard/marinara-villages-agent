@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { completeWithRoom, villagesLogger } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/application-runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { villagesLogger } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   readRuntimeDebug,
   saveRuntimeDebug,
   runtimeDebug,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/runtime-debug.js";
-import { backgroundCalls } from "../packages/villages/src/engine/packages/server/src/services/villages/background-context.js";
+} from "../packages/villages/src/server/adapters/observability/runtime-debug.js";
+import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
 
 const records = new Map<string, any>();
 const logs: string[] = [];
