@@ -1,4 +1,6 @@
 import { VenueAccessPanel } from "./villages-venue-access";
+import { FoundingWorkspace } from "./villages-founding-workspace";
+import { emptyFoundingWorkspace, foundingVenueIssues, type FoundingIssue } from "./villages-founding-workspace-state";
 import { foundingZoneProblem, FoundingZoneFields, draftZonePolicy } from "./villages-founding-zones";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
 import {
@@ -49,7 +51,6 @@ import {
   type PlayerRole,
 } from "./villages-player-role.js";
 import {
-  FoundingVenueEditor,
   VenueLayoutFields,
   BaseZoneFields,
   venueHasCommon,
@@ -200,7 +201,7 @@ const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "a
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
-const SETUP_STEPS = ["People", "Place", "Spaces", "Review"] as const;
+const SETUP_STEPS = ["People", "Place", "Venues", "Review"] as const;
 const SETUP_MIN_VILLAGER_COUNT = 1;
 const SETUP_MAX_VILLAGER_COUNT = 3;
 
@@ -8148,6 +8149,8 @@ function MapStage({
   navigationView,
   onNavigationView,
   compactPhotos = false,
+  onMovePin,
+  onMoveInvalid,
   placementCursor,
   children,
 }: {
@@ -8191,6 +8194,13 @@ function MapStage({
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
   compactPhotos?: boolean;
+  onMovePin?(
+    id: string,
+    x: number,
+    y: number,
+    size: { width: number; height: number; photoWidth: number; photoHeight: number },
+  ): void;
+  onMoveInvalid?(): void;
   placementCursor?: { x: number; y: number };
   /**
    * Anything that belongs on the picture rather than beside it. Drawn inside the
@@ -8204,6 +8214,19 @@ function MapStage({
   const framing = onView !== undefined;
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const pinDrag = useRef<{
+    id: string;
+    pointer: number;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressPinClick = useRef(false);
+  const [pinOffset, setPinOffset] = useState<{ id: string; x: number; y: number } | null>(null);
   // Both measurements are tagged with the map they belong to, so picking a new
   // picture measures it afresh instead of holding the previous map's shape for
   // a beat and sliding every pin under it.
@@ -8366,11 +8389,19 @@ function MapStage({
       onPlace(round4(x), round4(y), {
         width: picture.width,
         height: picture.height,
-        photoWidth: photoRect?.width ?? 58,
-        photoHeight: photoRect?.height ?? 58,
+        photoWidth:
+          photoRect?.width ??
+          (compactPhotos
+            ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 88
+            : 58),
+        photoHeight:
+          photoRect?.height ??
+          (compactPhotos
+            ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 88
+            : 58),
       });
     },
-    [onPlace, picking, picture],
+    [onPlace, picking, picture, compactPhotos],
   );
 
   const handlePointerDown = useCallback(
@@ -8548,6 +8579,8 @@ function MapStage({
       data-mobile={mobile ? "true" : "false"}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
       data-photo-pins="true"
+      data-picture-width={picture?.width}
+      data-picture-height={picture?.height}
       data-compact-photos={compactPhotos ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
@@ -8666,10 +8699,10 @@ function MapStage({
                 className={`${ELEMENT_TAG}-pin-holder`}
                 data-selected={pin.selected ? "true" : "false"}
                 style={{
-                  left: `${picture.left + pin.x * picture.width}px`,
+                  left: `${picture.left + pin.x * picture.width + (pinOffset?.id === pin.id ? pinOffset.x : 0)}px`,
                   // The step down is part of the fraction rather than a margin, so
                   // a pin hung under another one still hangs under it at any size.
-                  top: `${picture.top + (pin.y + (mobile && pin.kind !== "person" ? 0 : (pin.dy ?? 0))) * picture.height}px`,
+                  top: `${picture.top + (pin.y + (mobile && pin.kind !== "person" ? 0 : (pin.dy ?? 0))) * picture.height + (pinOffset?.id === pin.id ? pinOffset.y : 0)}px`,
                 }}
               >
                 <button
@@ -8683,10 +8716,80 @@ function MapStage({
                   disabled={pin.onSelect === undefined}
                   title={pin.label ?? pin.text}
                   aria-label={pin.label}
+                  onPointerDown={(event) => {
+                    if (!onMovePin || event.button !== 0 || !event.isPrimary) return;
+                    event.stopPropagation();
+                    suppressPinClick.current = false;
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    pinDrag.current = {
+                      id: pin.id,
+                      pointer: event.pointerId,
+                      startX: event.clientX,
+                      startY: event.clientY,
+                      x: pin.x,
+                      y: pin.y,
+                      width: picture.width,
+                      height: picture.height,
+                      moved: false,
+                    };
+                  }}
+                  onPointerMove={(event) => {
+                    const drag = pinDrag.current;
+                    if (!drag || drag.id !== pin.id || drag.pointer !== event.pointerId) return;
+                    event.stopPropagation();
+                    const x = event.clientX - drag.startX,
+                      y = event.clientY - drag.startY;
+                    if (Math.hypot(x, y) >= 8) drag.moved = true;
+                    if (drag.moved) {
+                      event.preventDefault();
+                      setPinOffset({ id: pin.id, x, y });
+                    }
+                  }}
+                  onPointerUp={(event) => {
+                    const drag = pinDrag.current;
+                    if (!drag || drag.id !== pin.id || drag.pointer !== event.pointerId) return;
+                    event.stopPropagation();
+                    pinDrag.current = null;
+                    setPinOffset(null);
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                    if (!drag.moved) return;
+                    suppressPinClick.current = true;
+                    const x = drag.x + (event.clientX - drag.startX) / drag.width;
+                    const y = drag.y + (event.clientY - drag.startY) / drag.height;
+                    if (
+                      x < 0 ||
+                      x > 1 ||
+                      y < 0 ||
+                      y > 1 ||
+                      drag.width !== picture.width ||
+                      drag.height !== picture.height
+                    ) {
+                      onMoveInvalid?.();
+                      return;
+                    }
+                    const photo = event.currentTarget
+                      .querySelector<HTMLElement>(`.${ELEMENT_TAG}-pin-photo`)
+                      ?.getBoundingClientRect();
+                    onMovePin?.(pin.id, round4(x), round4(y), {
+                      width: picture.width,
+                      height: picture.height,
+                      photoWidth: photo?.width ?? 88,
+                      photoHeight: photo?.height ?? 88,
+                    });
+                  }}
+                  onPointerCancel={() => {
+                    pinDrag.current = null;
+                    setPinOffset(null);
+                    suppressPinClick.current = true;
+                  }}
                   onClick={(event) => {
                     // Otherwise a click on a pin would also read as a click on the
                     // map underneath it while the wizard is placing homes.
                     event.stopPropagation();
+                    if (suppressPinClick.current) {
+                      suppressPinClick.current = false;
+                      return;
+                    }
                     pin.onSelect?.();
                   }}
                 >
@@ -13390,8 +13493,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const setupHomeCount = setupFoundingVillagerIds.length;
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
   const [setupEditorOpen, setSetupEditorOpen] = useState(false);
-  const [setupCompletedIds, setSetupCompletedIds] = useState<string[]>([]);
-  const [setupNewVenueId, setSetupNewVenueId] = useState("");
+  const [, setSetupCompletedIds] = useState<string[]>([]);
+  const [, setSetupNewVenueId] = useState("");
   const setupEditorOriginal = useRef<SetupVenueDraft | null>(null);
   const setupEditorAuthoredOriginal = useRef<string[]>([]);
   const setupEditorZoneOriginal = useRef<AreaDraftCache["current"] | undefined>(undefined);
@@ -13400,6 +13503,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   const [visualLoreDefault, setVisualLoreDefault] = useState(true);
   const [mapVisualLore, setMapVisualLore] = useState(true);
   const [selectedSetupVenueId, setSelectedSetupVenueId] = useState<string | null>(null);
+  const [setupWorkspace, setSetupWorkspace] = useState(emptyFoundingWorkspace);
+  const [setupShowIssues, setSetupShowIssues] = useState(false);
+  const [setupFocusIssue, setSetupFocusIssue] = useState<FoundingIssue | null>(null);
+  const [setupImageTarget, setSetupImageTarget] = useState<{ venueId: string; zoneId: string } | null>(null);
+  const setupImageTargetRef = useRef<{ venueId: string; zoneId: string } | null>(null);
+  const setupImageClaim = useRef(false);
   const [movingSetupVenueId, setMovingSetupVenueId] = useState<string | null>(null);
   const [setupVenueBusy, setSetupVenueBusy] = useState(false);
   const [setupPlacementError, setSetupPlacementError] = useState("");
@@ -13425,6 +13534,19 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     visualLoreDefault,
   });
   const setupBeginningSourceKeyRef = useRef(setupBeginningSourceKey);
+  const setupImageContextKey = JSON.stringify({
+    source: setupBeginningSourceKey,
+    name: setupName,
+    imprint: setupImprint,
+    worldFacts: setupWorldFacts,
+    persona: personaDraft,
+    personalizeHomes,
+    visualLoreDefault,
+  });
+  const setupImageContextKeyRef = useRef(setupImageContextKey);
+  useEffect(() => {
+    setupImageContextKeyRef.current = setupImageContextKey;
+  }, [setupImageContextKey]);
   const setupVenuesRef = useRef(setupVenues);
   useEffect(() => {
     setupVenuesRef.current = setupVenues;
@@ -13548,8 +13670,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           : null;
   const [setupMapReviewed, setSetupMapReviewed] = useState(false);
   const [setupAuthoredFields, setSetupAuthoredFields] = useState<Record<string, string[]>>({});
+  const setupAuthoredFieldsRef = useRef(setupAuthoredFields);
+  useEffect(() => {
+    setupAuthoredFieldsRef.current = setupAuthoredFields;
+  }, [setupAuthoredFields]);
   const [setupSuggestionsKey, setSetupSuggestionsKey] = useState("");
   const [setupSuggestionsBusy, setSetupSuggestionsBusy] = useState(false);
+  const setupSuggestionsClaim = useRef(false);
   const [draftReady, setDraftReady] = useState(false);
   const [draftSaveError, setDraftSaveError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
@@ -13596,6 +13723,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       authoredFields: setupAuthoredFields,
       suggestionsKey: setupSuggestionsKey,
       selectedVenueId: selectedSetupVenueId,
+      workspace: setupWorkspace,
       movingVenueId: movingSetupVenueId,
       editorOpen: setupEditorOpen,
       editorOriginal: setupEditorOriginal.current,
@@ -13606,6 +13734,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     }),
     [
       setupStep,
+      setupWorkspace,
       setupName,
       setupSetting,
       setupFoundingReason,
@@ -13646,7 +13775,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setupSuggestionsBusy,
     ],
   );
-  type SetupDraftData = typeof setupDraftData;
+  type SetupDraftData = Omit<typeof setupDraftData, "workspace"> & {
+    workspace?: ReturnType<typeof emptyFoundingWorkspace>;
+  };
   const persistSetupDraft = useCallback((data: SetupDraftData) => {
     pendingDraftSaves.current += 1;
     setDraftSaving(true);
@@ -13730,7 +13861,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setSetupSuggestionsKey(data.suggestionsKey);
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
-    setSetupEditorOpen(data.editorOpen);
+    setSetupEditorOpen(false);
+    setSetupWorkspace(
+      data.workspace ?? {
+        ...emptyFoundingWorkspace(),
+        view: data.editorOpen ? "details" : "map",
+        paused: !!data.editorOpen,
+      },
+    );
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;
@@ -13747,8 +13885,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     void loadCatalog();
   };
   const exitSetupDraft = async () => {
+    if (setupImageClaim.current || setupSuggestionsClaim.current) return;
     try {
       await flushSetupDraft();
+      if (setupImageClaim.current || setupSuggestionsClaim.current) return;
       setSetupEditorOpen(false);
       setScreen("resume");
     } catch (cause) {
@@ -13821,7 +13961,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     });
   }, [screen, snapshot?.isFounded, draftReady, setupFoundingVillagerIds, catalog]);
   const suggestSetupVenues = async () => {
-    if (setupSuggestionsBusy || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
+    if (setupSuggestionsClaim.current || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
+    setupSuggestionsClaim.current = true;
     const source = setupBeginningSourceKey;
     const rows = setupVenues;
     setSetupSuggestionsBusy(true);
@@ -13872,16 +14013,25 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         currentRows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);
           const before = rows.find((item) => item.id === row.id);
-          if (!proposal || !before) return row;
+          if (
+            !proposal ||
+            !before ||
+            setupImageTargetRef.current?.venueId === row.id ||
+            JSON.stringify(row.occupancy) !== JSON.stringify(before.occupancy)
+          )
+            return row;
           const changed: SetupVenueDraft = { ...row };
           for (const key of ["name", "venueType", "form", "description"] as const)
-            if (!setupAuthoredFields[row.id]?.includes(key) && row[key] === before[key])
+            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
           const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
-            setupAuthoredFields[row.id]?.includes(key),
+            setupAuthoredFieldsRef.current[row.id]?.includes(key),
           );
           if (
             !layoutEdited &&
+            ![...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some(
+              (zone) => zone.image || !["common:base", "private:base"].includes(zone.id),
+            ) &&
             JSON.stringify(row.spaces) === JSON.stringify(before.spaces) &&
             JSON.stringify(row.privateSpaces) === JSON.stringify(before.privateSpaces) &&
             row.layout === before.layout
@@ -13935,6 +14085,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
     } finally {
+      setupSuggestionsClaim.current = false;
       setSetupSuggestionsBusy(false);
     }
   };
@@ -16270,12 +16421,14 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       x: number,
       y: number,
       pictureSize?: { width: number; height: number; photoWidth: number; photoHeight: number },
+      draggedVenueId?: string,
     ) => {
       const rows = setupVenuesRef.current;
-      const target =
-        rows.find((row) => row.id === movingSetupVenueId) ??
-        rows.find((row) => row.presentation.x === null || row.presentation.y === null);
-      if (!target || setupEditorOpen) return;
+      const target = draggedVenueId
+        ? rows.find((row) => row.id === draggedVenueId)
+        : (rows.find((row) => row.id === movingSetupVenueId) ??
+          rows.find((row) => row.presentation.x === null || row.presentation.y === null));
+      if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
       if (setupMapSource !== "none" && (!setupMapSrc || setupMapBusy)) {
         setSetupPlacementError("Wait for the selected artwork before placing Venue photographs, or use Simple map.");
         return;
@@ -16294,11 +16447,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         row.id === target.id ? { ...row, presentation: { ...row.presentation, x, y } } : row,
       );
       setSetupVenues(next);
+      if (draggedVenueId || (movingSetupVenueId && target.presentation.x !== null && target.presentation.y !== null))
+        setSetupWorkspace((state) => ({ ...state, paused: true }));
       setMovingSetupVenueId(null);
       setSetupPlacementError("");
       if (next.every((row) => row.presentation.x !== null && row.presentation.y !== null)) setSetupMapReviewed(true);
     },
-    [movingSetupVenueId, setupEditorOpen, setupMapSource, setupMapSrc, setupMapBusy],
+    [movingSetupVenueId, setupEditorOpen, setupWorkspace.paused, setupMapSource, setupMapSrc, setupMapBusy],
   );
 
   const patchSetupVenue = useCallback((id: string, next: (venue: SetupVenueDraft) => SetupVenueDraft) => {
@@ -16306,7 +16461,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       rows.map((row) => {
         if (row.id !== id) return row;
         const changed = next(row);
-        const fields = ["name", "form", "description", "layout", "spaces", "privateSpaces"] as const;
+        const fields = ["name", "venueType", "form", "description", "layout", "spaces", "privateSpaces"] as const;
         const edited = fields.filter((field) => JSON.stringify(row[field]) !== JSON.stringify(changed[field]));
         if (edited.length)
           setSetupAuthoredFields((current) => ({
@@ -16316,14 +16471,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         return changed;
       }),
     );
-  }, []);
-
-  const removeSetupVenue = useCallback((id: string) => {
-    setSetupVenues((rows) => {
-      const kept = rows.filter((row) => row.id !== id);
-      return kept;
-    });
-    setSelectedSetupVenueId((current) => (current === id ? null : current));
   }, []);
 
   // ── Founding the village ───────────────────────────────────────────────────
@@ -16356,6 +16503,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setPickerOpen(false);
       setSearch("");
       setSetupStep(0);
+      setSetupWorkspace(emptyFoundingWorkspace());
+      setSetupShowIssues(false);
+      setSetupFocusIssue(null);
       setSetupName(fresh ? "" : (village?.village.name ?? ""));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
@@ -16455,6 +16605,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
   );
 
   const gotoSetupStep = (step: number) => {
+    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
+      setSetupProblem("Wait for the pending Venue request before Review.");
+      return;
+    }
     if (step > setupStep) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
@@ -16492,7 +16646,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     setMovingSetupVenueId(null);
   };
 
-  const selectedSetupVenue = setupVenues.find((venue) => venue.id === selectedSetupVenueId) ?? null;
   const setupDraftRow = (venue: SetupVenueDraft) => ({
     id: venue.id,
     name: venue.name,
@@ -16517,7 +16670,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     area: "exterior" | "interior" | "private",
     zoneId?: string,
   ) => {
-    if (setupVenueBusy) return;
+    if (setupImageClaim.current) return;
     const selectedArea = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find((zone) => zone.id === zoneId);
     const description = selectedArea
       ? selectedArea.description
@@ -16535,7 +16688,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       );
       return;
     }
-    const sourceKey = setupBeginningSourceKey;
+    const sourceKey = setupImageContextKey;
     const physicalImageKey = (row: VillageVenue | undefined) =>
       row &&
       JSON.stringify({
@@ -16550,6 +16703,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           .map(({ id, name, purpose, description, state }) => ({ id, name, purpose, description, state })),
       });
     const venueKey = physicalImageKey(venue);
+    setupImageClaim.current = true;
+    setupImageTargetRef.current = { venueId: venue.id, zoneId: zoneId ?? "exterior" };
+    setSetupImageTarget(setupImageTargetRef.current);
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -16580,7 +16736,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         }),
       });
       if (
-        setupBeginningSourceKeyRef.current !== sourceKey ||
+        setupImageContextKeyRef.current !== sourceKey ||
         physicalImageKey(setupVenuesRef.current.find((row) => row.id === venue.id)) !== venueKey
       ) {
         setSetupProblem("The venue changed while its image was generated. Generate again.");
@@ -16595,6 +16751,9 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupProblem(messageFrom(cause, "Venue art could not be generated."));
     } finally {
       setSetupVenueBusy(false);
+      setupImageClaim.current = false;
+      setSetupImageTarget(null);
+      setupImageTargetRef.current = null;
     }
   };
 
@@ -16604,11 +16763,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     file?: File,
     zoneId?: string,
   ) => {
-    if (!file || setupVenueBusy) return;
+    if (!file || setupImageClaim.current) return;
     if (file.size > (snapshot?.settings.maxVenueImageBytes ?? 8_000_000)) {
       setSetupProblem("That venue image is too large. Choose a smaller file.");
       return;
     }
+    setupImageClaim.current = true;
+    setupImageTargetRef.current = { venueId: venue.id, zoneId: zoneId ?? "exterior" };
+    setSetupImageTarget(setupImageTargetRef.current);
+    const sourceKey = setupBeginningSourceKey;
     setSetupVenueBusy(true);
     setSetupProblem("");
     try {
@@ -16616,11 +16779,23 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         method: "PUT",
         body: JSON.stringify({ name: venue.name, image: await readFileAsDataUrl(file) }),
       });
+      if (
+        setupBeginningSourceKeyRef.current !== sourceKey ||
+        !setupVenuesRef.current.some(
+          (row) =>
+            row.id === venue.id &&
+            (!zoneId || [...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some((zone) => zone.id === zoneId)),
+        )
+      )
+        return;
       patchSetupVenue(venue.id, (row) => withSetupImage(row, area, image, zoneId));
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "That venue image could not be uploaded."));
     } finally {
       setSetupVenueBusy(false);
+      setupImageClaim.current = false;
+      setSetupImageTarget(null);
+      setupImageTargetRef.current = null;
     }
   };
 
@@ -16645,70 +16820,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               (zoneId ? space.id === zoneId : index === 0) ? { ...space, image } : space,
             ),
           };
-  const resumeSetupPlacement = (_rows: SetupVenueDraft[], _completedIds?: string[]) => {
-    setSetupEditorOpen(false);
-    setSelectedSetupVenueId(null);
-    setSetupNewVenueId("");
-    setMovingSetupVenueId(null);
-    setPlacingHome(false);
-    setPlacingPublicCenter(false);
-  };
-  const finishSetupVenue = () => {
-    if (!selectedSetupVenue) return;
-    if (
-      selectedSetupVenue.classes?.includes("residence") &&
-      !selectedSetupVenue.occupancy.playerHome &&
-      !selectedSetupVenue.occupancy.residentCharacterId
-    ) {
-      setSetupProblem("Choose a villager.");
-      return;
-    }
-    if (
-      !selectedSetupVenue.name.trim() ||
-      !selectedSetupVenue.form?.trim() ||
-      !selectedSetupVenue.description.trim() ||
-      (!snapshot?.isFounded && selectedSetupVenue.layoutVersion === 1 && !selectedSetupVenue.layout) ||
-      foundingZoneProblem(selectedSetupVenue)
-    ) {
-      setSetupProblem(
-        foundingZoneProblem(selectedSetupVenue) || "Complete the Venue name, physical form and Entrance appearance.",
-      );
-      return;
-    }
-    if (
-      selectedSetupVenue.privateSpaces?.some(
-        (room) =>
-          !room.access &&
-          (!room.name?.trim() ||
-            !room.purpose?.trim() ||
-            (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
-      )
-    ) {
-      setSetupProblem("Give each Private Space a name, purpose, and controller.");
-      return;
-    }
-    setSetupCompletedIds((ids) => [...new Set([...ids, selectedSetupVenue.id])]);
-    setSetupProblem("");
-    resumeSetupPlacement(setupVenues, [...setupCompletedIds, selectedSetupVenue.id]);
-  };
-  const cancelSetupVenue = () => {
-    if (selectedSetupVenueId) {
-      const id = selectedSetupVenueId;
-      setSetupAuthoredFields((fields) => ({ ...fields, [id]: setupEditorAuthoredOriginal.current }));
-      if (setupEditorZoneOriginal.current)
-        setupZoneDrafts.current[id] = structuredClone(setupEditorZoneOriginal.current);
-      else delete setupZoneDrafts.current[id];
-    }
-    const rows =
-      setupNewVenueId === selectedSetupVenueId
-        ? setupVenues.filter((venue) => venue.id !== setupNewVenueId)
-        : setupVenues.map((venue) =>
-            venue.id === setupEditorOriginal.current?.id ? setupEditorOriginal.current : venue,
-          );
-    setSetupVenues(rows);
-    setSetupProblem("");
-    resumeSetupPlacement(rows);
-  };
   /** Why the wizard cannot finish yet, or "" when it can. Checked here as well as on the server so the player is told before a request is made. */
   const setupBlocker = useCallback((): string => {
     if (setupName.trim().length === 0) return "Give the village a name.";
@@ -17432,14 +17543,15 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         label: `${index + 1}. ${venue.name || (venue.category === "public-center" ? "Gathering Place" : "Residence")}`,
         image: venue.presentation.image?.url ?? null,
         tone: venue.category === "public-center" ? "venue" : venue.occupancy.playerHome ? "player" : "resident",
-        selected: setupEditorOpen && selectedSetupVenueId === venue.id,
+        selected: selectedSetupVenueId === venue.id,
         onSelect: () => {
           setupEditorOriginal.current = structuredClone(venue);
           setupEditorAuthoredOriginal.current = [...(setupAuthoredFields[venue.id] ?? [])];
           setupEditorZoneOriginal.current = structuredClone(setupZoneDrafts.current[venue.id]);
           setSelectedSetupVenueId(venue.id);
-          setSetupEditorOpen(true);
-          setSetupProblem("");
+          setSetupEditorOpen(false);
+          setMovingSetupVenueId(null);
+          setSetupWorkspace((current) => ({ ...current, paused: true, view: "details" }));
         },
       },
     ];
@@ -21545,14 +21657,39 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin =
       setupVenues.find((venue) => venue.id === movingSetupVenueId) ??
-      setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null);
-    const editVenue = (venue: SetupVenueDraft) => {
-      setupEditorOriginal.current = structuredClone(venue);
-      setupEditorAuthoredOriginal.current = [...(setupAuthoredFields[venue.id] ?? [])];
-      setupEditorZoneOriginal.current = structuredClone(setupZoneDrafts.current[venue.id]);
+      (setupWorkspace.paused
+        ? undefined
+        : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
+    const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false);
+    const openIssue = (issue: FoundingIssue) => {
+      setSelectedSetupVenueId(issue.venueId);
+      setSetupFocusIssue(issue);
+      setSetupWorkspace((state) => ({
+        ...state,
+        view: issue.field === "placement" ? "map" : "details",
+        paused: issue.field !== "placement",
+        sections: {
+          ...state.sections,
+          [issue.venueId]:
+            issue.zoneId || issue.field === "description" || issue.field === "layout" ? "zones" : "venue",
+        },
+        zones: { ...state.zones, [issue.venueId]: issue.zoneId ?? "exterior" },
+      }));
+      setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
+    };
+    const selectVenue = (venue: SetupVenueDraft) => {
+      const unplaced = venue.presentation.x === null || venue.presentation.y === null;
       setSelectedSetupVenueId(venue.id);
-      setSetupEditorOpen(true);
-      setSetupProblem("");
+      setSetupFocusIssue(null);
+      setMovingSetupVenueId(unplaced ? venue.id : null);
+      setSetupWorkspace((state) => ({ ...state, view: unplaced ? "map" : "details", paused: !unplaced }));
+      setSetupEditorOpen(false);
+    };
+    const moveVenue = (venue: SetupVenueDraft) => {
+      setSelectedSetupVenueId(venue.id);
+      setMovingSetupVenueId(venue.id);
+      setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+      setSetupPlacementError("");
     };
     const mapReady = setupMapSource === "none" || (!!setupMapSrc && !setupMapBusy);
     const map = (interactive: boolean) => (
@@ -21562,17 +21699,13 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             {setupMapProblem}
           </p>
         ) : null}
-        {interactive ? (
+        {interactive && !mapReady ? (
           <p className="villages-forging-placement" role="status">
-            {!mapReady
-              ? setupMapBusy
-                ? setupMapProgress
-                : setupMapProblem
-                  ? "Map artwork failed. Return to Place to review the error and try again, or select Simple map."
-                  : "Choose map artwork on Place, or select Simple map."
-              : nextPin
-                ? `Next: click where ${nextPin.name || "this Venue"} is`
-                : `${placed} of ${setupVenues.length} photographs placed`}
+            {setupMapBusy
+              ? setupMapProgress
+              : setupMapProblem
+                ? "Map artwork failed. Return to Place to review the error and try again, or select Simple map."
+                : "Choose map artwork on Place, or select Simple map."}
           </p>
         ) : null}
         <div
@@ -21584,7 +21717,17 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               return;
             if (event.key === "Enter") {
               event.preventDefault();
-              placeSetupPin(setupKeyboardSpot.x, setupKeyboardSpot.y);
+              const stage = event.currentTarget.querySelector<HTMLElement>(`.${ELEMENT_TAG}-stage`);
+              const photo = stage?.querySelector<HTMLElement>(`.${ELEMENT_TAG}-pin-photo`)?.getBoundingClientRect();
+              const photoSize = stage
+                ? parseFloat(getComputedStyle(stage).getPropertyValue("--founding-photo-width")) || 88
+                : 88;
+              placeSetupPin(setupKeyboardSpot.x, setupKeyboardSpot.y, {
+                width: Number(stage?.dataset.pictureWidth) || 1000,
+                height: Number(stage?.dataset.pictureHeight) || 700,
+                photoWidth: photo?.width ?? photoSize,
+                photoHeight: photo?.height ?? photoSize,
+              });
             } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
               event.preventDefault();
               setSetupKeyboardSpot((spot) => ({
@@ -21608,11 +21751,30 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             alt={`Map of ${setupName || "your village"}`}
             pins={draftPins}
             placing={interactive && !!nextPin && mapReady && !setupEditorOpen && !snapshot?.isFounded}
-            view={setupMapSource === "existing" ? savedTownMapView : defaultView("contain")}
+            view={
+              interactive
+                ? defaultView("contain")
+                : setupMapSource === "existing"
+                  ? savedTownMapView
+                  : defaultView("contain")
+            }
             shape={setupMapShape}
             onPlace={interactive && !snapshot?.isFounded ? placeSetupPin : undefined}
             compact={false}
             mobile={false}
+            fitToRoom={interactive}
+            compactPhotos={interactive}
+            onMovePin={
+              interactive && !snapshot?.isFounded && mapReady
+                ? (id, x, y, size) => {
+                    setSelectedSetupVenueId(id);
+                    placeSetupPin(x, y, size, id);
+                  }
+                : undefined
+            }
+            onMoveInvalid={() =>
+              setSetupPlacementError("Drop the photograph inside the map. Its original position is kept.")
+            }
             placementCursor={interactive ? setupKeyboardSpot : undefined}
           />
         </div>
@@ -21621,22 +21783,6 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             <p>
               Select a Venue’s Move button, then click its new spot. Arrow keys and Enter also place Venue photographs.
             </p>
-            {setupMapSource === "none" && !snapshot?.isFounded ? (
-              <button
-                type="button"
-                onClick={() => {
-                  const spots = evenlySpacedFoundingPins(setupVenues.length);
-                  setSetupVenues((rows) =>
-                    rows.map((row, index) => ({ ...row, presentation: { ...row.presentation, ...spots[index] } })),
-                  );
-                  setSetupMapReviewed(true);
-                  setMovingSetupVenueId(null);
-                  setSetupPlacementError("");
-                }}
-              >
-                Arrange automatically
-              </button>
-            ) : null}
             {setupMapSource === "none" ? (
               <p>Spaces Venue photographs evenly on this logical map.</p>
             ) : placed === setupVenues.length && !setupMapReviewed ? (
@@ -21654,7 +21800,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       setSetupProblem("");
     };
     return (
-      <div className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}>
+      <div
+        className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
+        data-step={setupStep}
+      >
         <header className={`${ELEMENT_TAG}-setup-heading`}>
           <h1>
             Villages <span>· Village Forging</span>
@@ -21667,7 +21816,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
               type="button"
               aria-current={index === setupStep ? "step" : undefined}
               data-active={index === setupStep}
-              disabled={busy || setupVenueBusy || setupEditorOpen}
+              disabled={busy || setupEditorOpen || (index === 3 && (setupVenueBusy || setupSuggestionsBusy))}
               onClick={() => gotoSetupStep(index)}
             >
               {index + 1} {label}
@@ -22014,7 +22163,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                       ) : null}
                       {setupMapSource === "none" ? (
                         <p>
-                          A logical map keeps Venue positions without artwork. Automatic spacing is available on Spaces.
+                          A logical map keeps Venue positions without artwork. Automatic spacing is available on Venues.
                         </p>
                       ) : setupMapSrc ? (
                         <figure>
@@ -22065,86 +22214,54 @@ export function VillagesView({ element }: { element: HTMLElement }) {
             </>
           ) : null}
           {setupStep === 2 ? (
-            <>
-              <h2>Place your starting spaces</h2>
-              <p>Suggested details are editable. You choose where each Venue is on artwork.</p>
-              {setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey ? (
-                <p className="villages-forging-notice">
-                  Your people or setting changed. Review the existing suggestions or request fresh ones. Your edited
-                  text is kept.
-                </p>
-              ) : null}
-              <div className="villages-forging-columns villages-forging-spaces">
-                <section className="villages-forging-card">
+            <FoundingWorkspace
+              venues={setupVenues}
+              people={wizardVillagers}
+              selectedId={selectedSetupVenueId}
+              placementId={nextPin?.id ?? null}
+              state={setupWorkspace}
+              map={
+                <>
                   {map(true)}
                   {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-                </section>
-                <section className="villages-forging-card">
-                  <h3>Starting Venues</h3>
-                  {!snapshot?.isFounded ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={setupSuggestionsBusy || busy || setupVenues.length < 3}
-                        onClick={() => void suggestSetupVenues()}
-                      >
-                        {setupSuggestionsBusy
-                          ? "Preparing suggestions…"
-                          : setupSuggestionsKey
-                            ? "Refresh suggestions"
-                            : "Suggest names & descriptions"}
-                      </button>
-                      <p>
-                        Drafts names, forms, descriptions, and Zone layouts. Keeps your edited text and photograph
-                        positions.
-                      </p>
-                    </>
-                  ) : null}
-                  {setupVenues.map((venue, index) => (
-                    <section key={venue.id} className="villages-forging-venue">
-                      <h4>
-                        {index + 1}. {venue.name}
-                      </h4>
-                      <p>
-                        {venue.occupancy.playerHome
-                          ? "You"
-                          : (wizardVillagers.find((person) => person.id === venue.occupancy.residentCharacterId)
-                              ?.name ?? "Community")}{" "}
-                        · {venue.form || "Physical form needed"}
-                      </p>
-                      <p>
-                        {venue.presentation.x === null || venue.presentation.y === null
-                          ? "Waiting for placement"
-                          : "✓ Photograph placed"}{" "}
-                        · Exterior{venueHasCommon(venue) ? " · Common" : ""}
-                        {venueHasPrivate(venue) ? " · Private" : ""}
-                      </p>
-                      <p>{venue.description || "Describe the entrance and approach."}</p>
-                      <div className="villages-forging-actions">
-                        <button type="button" onClick={() => editVenue(venue)}>
-                          Edit {venue.name}
-                        </button>
-                        {!snapshot?.isFounded ? (
-                          <button
-                            type="button"
-                            disabled={!mapReady}
-                            onClick={() => {
-                              setMovingSetupVenueId(venue.id);
-                              setSetupEditorOpen(false);
-                            }}
-                          >
-                            Move {venue.name}
-                          </button>
-                        ) : null}
-                      </div>
-                    </section>
-                  ))}
-                  <p>
-                    {placed} of {setupVenues.length} photographs placed
-                  </p>
-                </section>
-              </div>
-            </>
+                </>
+              }
+              existing={snapshot?.isFounded ?? false}
+              mapReady={mapReady}
+              issues={setupIssues}
+              showIssues={setupShowIssues}
+              focusIssue={setupFocusIssue}
+              imageTarget={setupImageTarget}
+              imageBusy={setupVenueBusy}
+              suggestionsBusy={setupSuggestionsBusy}
+              suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
+              usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
+              onState={setSetupWorkspace}
+              onSelect={selectVenue}
+              onMove={moveVenue}
+              onContinue={() => {
+                setMovingSetupVenueId(null);
+                setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+              }}
+              onArrange={
+                setupMapSource === "none" && !snapshot?.isFounded
+                  ? () => {
+                      const spots = evenlySpacedFoundingPins(setupVenues.length);
+                      setSetupVenues((rows) =>
+                        rows.map((row, index) => ({ ...row, presentation: { ...row.presentation, ...spots[index] } })),
+                      );
+                      setSetupMapReviewed(true);
+                      setMovingSetupVenueId(null);
+                      setSetupPlacementError("");
+                    }
+                  : undefined
+              }
+              onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
+              onDraft={() => void suggestSetupVenues()}
+              onIssue={openIssue}
+              onGenerate={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
+              onUpload={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
+            />
           ) : null}
           {setupStep === 3 ? (
             <>
@@ -22205,7 +22322,7 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                     <div className="villages-forging-card-heading">
                       <h3>Starting Venues</h3>
                       <button type="button" onClick={() => gotoSetupStep(2)}>
-                        Change starting spaces
+                        Change starting Venues
                       </button>
                     </div>
                     {setupVenues.map((venue, index) => (
@@ -22292,16 +22409,28 @@ export function VillagesView({ element }: { element: HTMLElement }) {
           </span>
           <button
             type="button"
-            disabled={busy || setupEditorOpen}
-            onClick={() => (snapshot?.isFounded ? setScreen("home") : void exitSetupDraft())}
+            disabled={busy || setupEditorOpen || setupVenueBusy || setupSuggestionsBusy}
+            onClick={() => {
+              if (setupImageClaim.current || setupSuggestionsClaim.current) return;
+              if (snapshot?.isFounded) setScreen("home");
+              else void exitSetupDraft();
+            }}
           >
             {snapshot?.isFounded ? "Cancel changes" : "Save & exit"}
           </button>
           <button
             type="button"
             className="villages-forging-primary"
-            disabled={busy || setupEditorOpen || setupSuggestionsBusy}
-            onClick={() => (setupStep === 3 ? void foundVillage() : gotoSetupStep(setupStep + 1))}
+            disabled={busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError}
+            onClick={() => {
+              if (setupStep === 2 && setupIssues.length) {
+                setSetupShowIssues(true);
+                openIssue(setupIssues[0]);
+                return;
+              }
+              if (setupStep === 3) void foundVillage();
+              else gotoSetupStep(setupStep + 1);
+            }}
           >
             {busy
               ? "Saving village…"
@@ -22312,42 +22441,10 @@ export function VillagesView({ element }: { element: HTMLElement }) {
                 : setupStep === 2
                   ? "Review village"
                   : setupStep === 1
-                    ? "Continue to spaces"
+                    ? "Continue to Venues"
                     : "Continue to place"}
           </button>
         </footer>
-        {setupEditorOpen && selectedSetupVenue ? (
-          <FoundingVenueEditor
-            key={selectedSetupVenue.id}
-            venue={selectedSetupVenue}
-            zoneDrafts={{ current: (setupZoneDrafts.current[selectedSetupVenue.id] ??= {}) }}
-            existing={snapshot?.isFounded ?? false}
-            tag={ELEMENT_TAG}
-            people={wizardVillagers}
-            assignedIds={setupVenues
-              .filter((venue) => venue.id !== selectedSetupVenue.id)
-              .map((venue) => venue.occupancy.residentCharacterId ?? "")}
-            busy={setupVenueBusy}
-            problem={setupProblem}
-            onPatch={(venue) => {
-              patchSetupVenue(venue.id, () => venue);
-              setSetupProblem("");
-            }}
-            onDone={finishSetupVenue}
-            onCancel={cancelSetupVenue}
-            onMove={() => {
-              setMovingSetupVenueId(selectedSetupVenue.id);
-              setSetupEditorOpen(false);
-            }}
-            onRemove={() => {
-              removeSetupVenue(selectedSetupVenue.id);
-              setSetupEditorOpen(false);
-            }}
-            usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
-            onGenerate={(area, zoneId) => void generateSetupImage(selectedSetupVenue, area, zoneId)}
-            onUpload={(area, file, zoneId) => void uploadSetupImage(selectedSetupVenue, area, file, zoneId)}
-          />
-        ) : null}
       </div>
     );
   }

@@ -1,5 +1,13 @@
 # Villages
 
+## Founding Venue workspace (0.6.169)
+
+Step 3 is now Venues: place photographs successively on a fitted map, then refine details in an independently scrolling inspector. Narrow tabs switch between Map and Details. Drag a photograph, use Move, or place with arrow keys and Enter; rejected moves keep their original coordinates. Photographs retain their size on selection and hover.
+
+Venue and individual Zone fields save into the existing device-local draft as they change. A complete suggested draft can proceed directly through placement to Review without confirming each Venue. Review lists missing fields and opens the matching Venue and Zone. Artwork stays optional and deliberate; unrelated navigation and placement remain available during a single image operation. Draft conflicts and save failures retain their recovery controls, and legacy editor checkpoints keep their saved edits.
+
+The founding-layout browser regression uses mocked requests and synthetic artwork to exercise desktop/phone layouts, direct autosave, placement, optional artwork, request races and draft recovery. Packaged runtime verification uses isolated provider-free storage.
+
 ## Venue and Zone access (0.6.168)
 
 Venues distinguish Venue Type from Physical form. Each Zone has its own name, use, appearance, and access; Entrance is always Unrestricted. Public and Permission required policies support hours, independent managers, delegated invitations, members, bans, scoped exceptions, and explicit destinations across multiple personal Zones. See [the model and maintenance guide](venue-zones.md).
