@@ -38,7 +38,7 @@ const server = await build({
   },
   platform: "node",
   target: "node22",
-  outfile: join(packageRoot, "server.mjs"),
+  outfile: join(packageRoot, feature.entrypoints.server),
   banner: {
     js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);",
   },
@@ -48,7 +48,7 @@ const client = await build({
   ...common,
   entryPoints: [join(packageRoot, feature.clientImport)],
   platform: "browser",
-  outfile: join(packageRoot, "client.js"),
+  outfile: join(packageRoot, feature.entrypoints.client),
   jsx: "automatic",
   define: {
     "process.env.NODE_ENV": '"production"',
@@ -85,9 +85,9 @@ const agents = [
     execution: feature.agent?.execution ?? "feature",
   },
 ];
-await writeFile(join(packageRoot, "agents.json"), `${JSON.stringify(agents, null, 2)}\n`);
+await writeFile(join(packageRoot, feature.entrypoints.agents), `${JSON.stringify(agents, null, 2)}\n`);
 const payloads = await Promise.all(
-  ["agents.json", "server.mjs", "client.js", ...(feature.assetPaths ?? [])].map(async (path) => {
+  [...Object.values(feature.entrypoints), ...(feature.assetPaths ?? [])].map(async (path) => {
     if (
       path.startsWith("/") ||
       path.includes("\\") ||
@@ -107,7 +107,7 @@ const manifest = {
   description,
   engine: { min: feature.minEngineVersion, maxExclusive: feature.maxEngineExclusive },
   kind: feature.kind,
-  entrypoints: { agents: "agents.json", server: "server.mjs", client: "client.js" },
+  entrypoints: feature.entrypoints,
   ...(feature.contributions ? { contributions: feature.contributions } : {}),
   files: payloads.map(({ name, data }) => ({ path: name, sha256: sha256(data), bytes: data.byteLength })),
   permissions: feature.permissions,

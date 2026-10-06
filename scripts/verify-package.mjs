@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import AdmZip from "adm-zip";
 import { villagesDefinition } from "../packages/villages/package-definition.mjs";
 
@@ -34,11 +35,17 @@ export async function verifyPackage(root, archivePath) {
     manifest.version !== villagesDefinition.version
   )
     throw new Error("Unexpected package identity/version");
-  if (manifest.schemaVersion !== 2 || manifest.capabilityApi?.major !== 1 || manifest.capabilityApi?.minor !== 14)
+  if (
+    manifest.schemaVersion !== 2 ||
+    !isDeepStrictEqual(manifest.capabilityApi, villagesDefinition.capabilityApi) ||
+    !isDeepStrictEqual(manifest.entrypoints, villagesDefinition.entrypoints) ||
+    manifest.engine?.min !== villagesDefinition.minEngineVersion ||
+    manifest.engine?.maxExclusive !== villagesDefinition.maxEngineExclusive
+  )
     throw new Error("Unexpected package contract");
   if (
-    JSON.stringify(manifest.contributions) !== JSON.stringify(villagesDefinition.contributions) ||
-    JSON.stringify(manifest.permissions) !== JSON.stringify(villagesDefinition.permissions)
+    !isDeepStrictEqual(manifest.contributions, villagesDefinition.contributions) ||
+    !isDeepStrictEqual(manifest.permissions, villagesDefinition.permissions)
   )
     throw new Error("Permissions/contributions differ from the authoritative definition");
   const archive = await readFile(archivePath ?? join(root, "artifacts", `villages-${manifest.version}.zip`));
@@ -61,27 +68,37 @@ export async function verifyPackage(root, archivePath) {
       entry.header.size > 50 * 1024 * 1024
     )
       throw new Error(`Unsafe/duplicate archive member: ${name}`);
-    members.set(key, entry.getData());
+    members.set(key, { path: name, bytes: entry.getData() });
   }
   const expected = new Set(["manifest.json"]);
-  if (!members.get("manifest.json")?.equals(manifestBytes))
+  const foldedPaths = new Set(expected);
+  const declaredPayloads = [...Object.values(villagesDefinition.entrypoints), ...villagesDefinition.assetPaths];
+  const archivedManifest = members.get("manifest.json");
+  if (archivedManifest?.path !== "manifest.json" || !archivedManifest.bytes.equals(manifestBytes))
     throw new Error("Archive manifest differs from the built manifest");
   for (const file of manifest.files ?? []) {
-    if (!portablePackagePath(file.path) || expected.has(file.path.toLowerCase()))
+    if (!portablePackagePath(file.path) || foldedPaths.has(file.path.toLowerCase()))
       throw new Error(`Invalid declared path: ${file.path}`);
-    expected.add(file.path.toLowerCase());
+    if (!declaredPayloads.includes(file.path))
+      throw new Error("Package inventory differs from the authoritative definition");
+    foldedPaths.add(file.path.toLowerCase());
+    expected.add(file.path);
     const bytes = await readFile(join(packageRoot, file.path));
+    const archived = members.get(file.path.toLowerCase());
     if (
       !Number.isSafeInteger(file.bytes) ||
       file.bytes !== bytes.length ||
       file.sha256 !== hash(bytes) ||
-      !members.get(file.path.toLowerCase())?.equals(bytes)
+      archived?.path !== file.path ||
+      !archived.bytes.equals(bytes)
     )
       throw new Error(`Package bytes do not match: ${file.path}`);
   }
   for (const path of Object.values(manifest.entrypoints ?? {}))
     if (!expected.has(path)) throw new Error(`Undeclared entrypoint: ${path}`);
-  if (members.size !== expected.size || [...members.keys()].some((name) => !expected.has(name)))
+  if (expected.size !== declaredPayloads.length + 1 || declaredPayloads.some((path) => !expected.has(path)))
+    throw new Error("Package inventory differs from the authoritative definition");
+  if (members.size !== expected.size || [...members.values()].some((entry) => !expected.has(entry.path)))
     throw new Error("Archive contains undeclared members");
   return { version: manifest.version, sha256: hash(archive), files: manifest.files.length };
 }

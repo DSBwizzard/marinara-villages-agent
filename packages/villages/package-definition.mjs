@@ -13,6 +13,7 @@ export const villagesDefinition = {
   serverImport: "src/server/entry/index.ts",
   serverEntry: true,
   clientImport: "src/client/entry/index.tsx",
+  entrypoints: { agents: "agents.json", server: "server.mjs", client: "client.js" },
   agent: {
     runtimeDisabled: false,
   },
