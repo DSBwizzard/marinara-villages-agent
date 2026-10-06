@@ -1,5 +1,9 @@
 # Villages
 
+## Venue and Zone access (0.6.168)
+
+Venues distinguish Venue Type from Physical form. Each Zone has its own name, use, appearance, and access; Entrance is always Unrestricted. Public and Permission required policies support hours, independent managers, delegated invitations, members, bans, scoped exceptions, and explicit destinations across multiple personal Zones. See [the model and maintenance guide](venue-zones.md).
+
 ## Scenery-only map prompts (0.6.167)
 
 Map generation requests a continuous, edge-to-edge overhead illustration on a 3:2 landscape canvas. Prompts describe readable rooms, outdoor spaces and routes without asking the model to reserve places for Venue photographs. Exclusions target blank annotation panels and photograph frames while allowing rectangular architecture. Provider output may still differ from the requested aspect ratio; existing artwork is unchanged.

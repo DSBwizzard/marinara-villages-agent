@@ -201,6 +201,7 @@ const REMAP_SYSTEM_PROMPT = [
  */
 export type VillageRemapContext = {
   characterId?: string;
+  relationships?: import("./venue-access.js").AccessContext["relationships"];
   village: string;
   setting: string;
   lore: readonly string[];
@@ -425,7 +426,11 @@ function buildRemapMessages(context: VillageRemapContext): CapabilityLanguageMod
             venue.id +
             ": " +
             venueZones(venue)
-              .filter((zone) => !context.characterId || canOccupyZone(venue, zone, context.characterId))
+              .filter(
+                (zone) =>
+                  !context.characterId ||
+                  canOccupyZone(venue, zone, context.characterId, { relationships: context.relationships }),
+              )
               .map((zone) => zone.id + " (" + zone.name + "; " + zone.kind + ")")
               .join("; "),
         )

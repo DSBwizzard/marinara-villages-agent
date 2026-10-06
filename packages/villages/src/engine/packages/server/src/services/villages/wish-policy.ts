@@ -97,7 +97,10 @@ export function pruneWishActivities(state: VillageState, now: Date): void {
         !!venue &&
         !!zone &&
         venue.constructionStatus !== "worksite" &&
-        canOccupyZone(venue, zone, resident.characterId) &&
+        canOccupyZone(venue, zone, resident.characterId, {
+          relationships: state.relationshipContext,
+          at: new Date(new Date(activity.dateKey + "T00:00:00").setMinutes(activity.startMinute)),
+        }) &&
         !zoneClosed(state, venue, zone)
       );
     });

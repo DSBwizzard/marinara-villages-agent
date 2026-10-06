@@ -1,5 +1,6 @@
 import type { VillageState, VillageVenue } from "./types.js";
 import type { VenueScene, VenueLine } from "./venue-session.js";
+import { evaluateZoneAccess, type AccessContext } from "./venue-access.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { venueZones, zoneClosed, canOccupyZone, canInviteToZone, venueInZone } from "./venue-zones.js";
 import { contactNeighborIds } from "../../../../shared/src/villages/zone-contact.js";
@@ -82,13 +83,35 @@ export function contactPosition(scene: VenueScene, characterId: string): string 
     ""
   );
 }
+export function sceneAccessContext(scene: VenueScene, state: VillageState): AccessContext {
+  return {
+    sceneId: scene.id,
+    at: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
+    relationships: state.relationshipContext,
+    positions: {
+      ...Object.fromEntries((scene.sceneAttendance?.occupants ?? []).map((row) => [row.characterId, row.zoneId])),
+      ...Object.fromEntries((scene.accompanying ?? []).map((row) => [row.characterId, row.zoneId])),
+      ...Object.fromEntries((scene.departedIds ?? []).map((actor) => [actor, ""])),
+      player: scene.zoneId ?? "exterior",
+    },
+  };
+}
 export function contactCanEnter(
   state: VillageState,
   venue: VillageVenue,
   zoneId: string,
   characterId: string,
+  scene?: VenueScene,
 ): boolean {
   const zone = venueZones(venue).find((entry) => entry.id === zoneId);
+  if (venue.access)
+    return (
+      !!zone &&
+      evaluateZoneAccess(venue, zone, characterId, {
+        ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
+        unavailable: !!zone && zoneClosed(state, venue, zone),
+      }).allowed
+    );
   return (
     !!zone &&
     !zoneClosed(state, venue, zone) &&
@@ -104,13 +127,14 @@ export function contactCanEnter(
       ))
   );
 }
-/** Breadth-first search has no hop cutoff; every traversed destination must admit this actor. */
+/** Entrance egress follows physical doorways even when an intermediate Zone denies entry. */
 export function contactPath(
   state: VillageState,
   venue: VillageVenue,
   from: string,
   to: string,
   actor: string,
+  scene?: VenueScene,
 ): string[] | null {
   if (!from || !to) return null;
   const queue = [[from]],
@@ -120,7 +144,7 @@ export function contactPath(
       last = path.at(-1)!;
     if (last === to) return path;
     for (const next of contactNeighbors(venue, last)) {
-      if (seen.has(next) || !contactCanEnter(state, venue, next, actor)) continue;
+      if (seen.has(next) || (to !== "exterior" && !contactCanEnter(state, venue, next, actor, scene))) continue;
       seen.add(next);
       queue.push([...path, next]);
     }
@@ -176,7 +200,7 @@ export function readContactMoves(
       actor = asTrimmedString(row.characterId),
       destination = asTrimmedString(row.zoneId),
       quote = asTrimmedString(row.quote);
-    const path = contactPath(state, venue, contactPosition(scene, actor), destination, actor);
+    const path = contactPath(state, venue, contactPosition(scene, actor), destination, actor, scene);
     if (
       !allowed.includes(actor) ||
       seen.has(actor) ||
@@ -217,7 +241,7 @@ export function readContactRelay(
     return null;
   // A messenger can approach the target's door without trespassing into the target's room.
   const candidates = [targetZone, ...contactNeighbors(venue, targetZone)]
-    .map((zone) => contactPath(state, venue, contactPosition(scene, actor), zone, actor))
+    .map((zone) => contactPath(state, venue, contactPosition(scene, actor), zone, actor, scene))
     .filter((path): path is string[] => !!path)
     .sort((a, b) => a.length - b.length);
   const path = candidates[0];

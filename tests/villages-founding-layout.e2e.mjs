@@ -376,14 +376,15 @@ try {
     await first.getByRole("button", { name: /^Edit / }).click();
     const dialog = root.getByRole("dialog");
     await dialog.getByLabel("Venue name", { exact: true }).fill("My observatory quarters");
-    await dialog.getByLabel("Venue form", { exact: true }).fill("Converted observatory room");
+    await dialog.getByLabel("Physical form", { exact: true }).fill("Converted observatory room");
+    await dialog.getByLabel("Venue Type", { exact: true }).fill("Home");
     await dialog.getByLabel("Exterior description", { exact: true }).fill("A blue door beside the telescope corridor.");
     await dialog
-      .getByLabel("Common Space description", { exact: true })
+      .getByLabel("Zone appearance", { exact: true })
+      .first()
       .fill("A quiet sitting room overlooking the sea.");
-    await dialog
-      .getByLabel("Your personal-space description", { exact: true })
-      .fill("My hammock and traveling journal.");
+    await dialog.getByLabel("Zone appearance", { exact: true }).nth(1).fill("My hammock and traveling journal.");
+    await dialog.getByLabel("Zone used for", { exact: true }).first().fill("Relaxing together");
     await dialog.getByRole("button", { name: "Use these details", exact: true }).click();
     await forward("Refresh suggestions").click();
     await expect(root.getByRole("button", { name: "Refresh suggestions", exact: true })).toBeEnabled();
@@ -430,28 +431,23 @@ try {
     await expect(root.locator(".villages-forging-venue").first()).toContainText("My observatory quarters");
     assert.equal(suggestionCalls, 2, "reload never repeats generation");
     if (width === 1366) {
-      // Optional Zone drafts survive hiding them and a reload.
-      await root
-        .locator(".villages-forging-venue")
-        .first()
-        .getByRole("button", { name: /^Edit / })
-        .click();
-      await root.getByRole("dialog").getByRole("button", { name: "Add a Common Space", exact: true }).click();
-      await root.getByRole("dialog").getByRole("button", { name: "Use these details", exact: true }).click();
+      // Named Zones and their separate use/appearance persist across reload.
+      await first.getByRole("button", { name: /^Edit / }).click();
+      await dialog.getByRole("button", { name: "Add Zone", exact: true }).click();
+      await dialog.getByLabel("Zone name", { exact: true }).nth(1).fill("Study");
+      await dialog.getByLabel("Zone used for", { exact: true }).nth(1).fill("Reading and writing");
+      await dialog.getByLabel("Zone appearance", { exact: true }).nth(1).fill("A desk by the window.");
+      await dialog.getByRole("button", { name: "Use these details", exact: true }).click();
       await forward("Save & exit").click();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-      await root
-        .locator(".villages-forging-venue")
-        .first()
-        .getByRole("button", { name: /^Edit / })
-        .click();
-      await root.getByRole("dialog").getByRole("button", { name: "Add a Common Space", exact: true }).click();
-      await expect(root.getByRole("dialog").getByLabel("Common Space description", { exact: true })).toHaveValue(
-        "A quiet sitting room overlooking the sea.",
-      );
-      await root.getByRole("dialog").getByRole("button", { name: "Use these details", exact: true }).click();
+      await first.getByRole("button", { name: /^Edit / }).click();
+      const study = dialog.getByRole("heading", { name: "Study", exact: true }).locator("..");
+      await expect(study.getByLabel("Zone used for", { exact: true })).toHaveValue("Reading and writing");
+      await expect(study.getByLabel("Zone appearance", { exact: true })).toHaveValue("A desk by the window.");
+      await study.getByRole("button", { name: "Remove Zone", exact: true }).click();
+      await dialog.getByRole("button", { name: "Use these details", exact: true }).click();
       await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
       // Quota errors keep the current choices visible and prevent a false saved claim.
       await page.evaluate(() => {

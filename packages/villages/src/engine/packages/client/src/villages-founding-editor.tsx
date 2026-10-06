@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { FoundingZoneFields, draftZonePolicy, foundingZoneProblem } from "./villages-founding-zones";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { VillageVenue, VillageVenueImage } from "./villages-package-entry";
 import { createVillagesClientId } from "./villages-venue-send";
@@ -59,166 +60,71 @@ export type AreaDraftCache = {
   };
 };
 export function VenueLayoutFields({
-  drafts,
-  compact = false,
   venue,
   onChange,
-  onReveal,
 }: {
   venue: VillageVenue;
   onChange(venue: VillageVenue): void;
-  onReveal?(area: "common" | "private", layout: VenueLayout): void;
-  drafts?: AreaDraftCache;
   compact?: boolean;
+  drafts?: AreaDraftCache;
+  onReveal?(area: "common" | "private", layout: VenueLayout): void;
 }) {
-  const savedCommon = useRef(venue.spaces?.[0] ?? drafts?.current.common);
-  const savedPrivate = useRef(venue.privateSpaces?.[0] ?? drafts?.current.personal);
-  const choose = (layout: VenueLayout, reveal?: "common" | "private") => {
-    savedCommon.current = venue.spaces?.[0] ?? savedCommon.current;
-    savedPrivate.current = venue.privateSpaces?.[0] ?? savedPrivate.current;
-    if (drafts) {
-      drafts.current.common = savedCommon.current;
-      drafts.current.personal = savedPrivate.current;
-    }
+  const add = (personal: boolean) => {
     const role = venue.classes?.[0] ?? "other";
-    const owner = venue.occupancy.playerHome ? "player" : venue.occupancy.residentCharacterId || "";
-    const common = savedCommon.current ?? {
+    const area = {
       ...personalSpaceDraft(),
-      id: "common:base",
+      id: "zone:" + createVillagesClientId(),
+      name: "New Zone",
+      purpose: "",
       venueClass: role,
-      ownerId: "",
-      name: "Common Space",
+      ownerId:
+        personal && role === "residence"
+          ? venue.occupancy.playerHome
+            ? "player"
+            : venue.occupancy.residentCharacterId || ""
+          : "",
     };
-    const personal = savedPrivate.current ?? {
-      ...personalSpaceDraft(),
-      id: "private:base",
-      venueClass: role,
-      ownerId: role === "residence" ? owner : "",
-      name: "Private Space",
-      purpose: "Personal area appropriate to this venue",
-      controllerIds: [],
-    };
+    const zone = { ...area, access: draftZonePolicy(venue, area, personal) };
+    const spaces = personal ? (venue.spaces ?? []) : [...(venue.spaces ?? []), zone];
+    const privateSpaces = personal ? [...(venue.privateSpaces ?? []), zone] : (venue.privateSpaces ?? []);
     onChange({
       ...venue,
       layoutVersion: 1,
-      layout,
-      spaces: layout === "common" || layout === "both" ? [common] : [],
-      privateSpaces: layout === "private" || layout === "both" ? [personal] : [],
+      spaces,
+      privateSpaces,
+      layout: spaces.length
+        ? privateSpaces.length
+          ? "both"
+          : "common"
+        : privateSpaces.length
+          ? "private"
+          : "exterior",
     });
-    if (reveal) onReveal?.(reveal, layout);
   };
-  if (compact)
-    return (
-      <fieldset className="villages-scenery-fields villages-layout-fields">
-        <legend>Venue layout</legend>
-        <span className="villages-layout-exterior">✓ Exterior</span>
-        <p>Exterior is always included.</p>
-        <div className="villages-layout-toggles">
-          <button
-            type="button"
-            className="villages-layout-choice"
-            aria-pressed={venueHasCommon(venue)}
-            onClick={() =>
-              choose(
-                venueHasCommon(venue)
-                  ? venueHasPrivate(venue)
-                    ? "private"
-                    : "exterior"
-                  : venueHasPrivate(venue)
-                    ? "both"
-                    : "common",
-              )
-            }
-          >
-            Add a Common Space
-          </button>
-          <button
-            type="button"
-            className="villages-layout-choice"
-            aria-pressed={venueHasPrivate(venue)}
-            onClick={() =>
-              choose(
-                venueHasPrivate(venue)
-                  ? venueHasCommon(venue)
-                    ? "common"
-                    : "exterior"
-                  : venueHasCommon(venue)
-                    ? "both"
-                    : "private",
-              )
-            }
-          >
-            Add a Private Space
-          </button>
-        </div>
-        <p>Select or deselect each interior space. Resident capacity is separate.</p>
-      </fieldset>
-    );
   return (
-    <fieldset className="villages-scenery-fields">
-      <legend>Venue layout</legend>
-      <p>Every venue has an Exterior. Choose whether an interior exists and how it is used.</p>
-      {(
-        [
-          ["exterior", "Exterior only"],
-          ["common", "Common Space only"],
-          ["private", "Private Space only"],
-          ["both", "Common Space and Private Space"],
-        ] as const
-      ).map(([value, label]) => (
-        <label key={value}>
-          <input
-            type="radio"
-            name={"layout:" + venue.id}
-            checked={venue.layout === value}
-            onChange={() => choose(value)}
-          />
-          {label}
-        </label>
-      ))}
-      <p role="status">
-        Exterior · {venueHasCommon(venue) ? "1" : "0"} Common Spaces · {venueHasPrivate(venue) ? "1" : "0"} Private
-        Spaces
+    <fieldset className="villages-scenery-fields villages-layout-fields">
+      <legend>Zones</legend>
+      <p>Entrance · Unrestricted, 24/7. Every Venue includes this arrival and departure point.</p>
+      <button
+        type="button"
+        onClick={() => onChange({ ...venue, layoutVersion: 1, layout: "exterior", spaces: [], privateSpaces: [] })}
+      >
+        Use Entrance only
+      </button>
+      <p>
+        {(venue.spaces?.length ?? 0) + (venue.privateSpaces?.length ?? 0)} additional Zones. Each has its own use,
+        appearance, and access.
       </p>
-      {venue.layout ? (
-        <div>
-          <button
-            type="button"
-            onClick={() =>
-              choose(
-                venueHasCommon(venue)
-                  ? venueHasPrivate(venue)
-                    ? "private"
-                    : "exterior"
-                  : venueHasPrivate(venue)
-                    ? "both"
-                    : "common",
-                venueHasCommon(venue) ? undefined : "common",
-              )
-            }
-          >
-            {venueHasCommon(venue) ? "Remove Common Space" : "Add Common Space"}
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              choose(
-                venueHasPrivate(venue)
-                  ? venueHasCommon(venue)
-                    ? "common"
-                    : "exterior"
-                  : venueHasCommon(venue)
-                    ? "both"
-                    : "private",
-                venueHasPrivate(venue) ? undefined : "private",
-              )
-            }
-          >
-            {venueHasPrivate(venue) ? "Remove Private Space" : "Add Private Space"}
-          </button>
-        </div>
-      ) : null}
-      <p>A new venue has at most one of each. Renovations can add further zones. Resident capacity is separate.</p>
+      <button type="button" onClick={() => add(false)}>
+        Add Zone
+      </button>
+      <button type="button" onClick={() => add(true)}>
+        Add personal Zone
+      </button>
+      <p>
+        “Personal” preselects the assigned resident as manager. You can choose Public or Permission required for any
+        added Zone.
+      </p>
     </fieldset>
   );
 }
@@ -596,9 +502,9 @@ type FoundingVenueEditorProps = {
   onDone(): void;
   onCancel(): void;
   onMove(): void;
-  onGenerate(area: "exterior" | "interior" | "private"): void;
+  onGenerate(area: "exterior" | "interior" | "private", zoneId?: string): void;
   usagePreview?: ReactNode;
-  onUpload(area: "exterior" | "interior" | "private", file: File): void;
+  onUpload(area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   onRemove(): void;
 };
 
@@ -624,7 +530,6 @@ export function FoundingVenueEditor({
   const [validation, setValidation] = useState("");
   const residence = venue.classes?.includes("residence") ?? false;
   const owner = venue.occupancy.playerHome ? "player" : (venue.occupancy.residentCharacterId ?? "");
-  const role = residence ? "residence" : "gathering";
   useLayoutEffect(() => {
     const previous = document.activeElement;
     dialog.current?.querySelector<HTMLInputElement>("input")?.focus();
@@ -632,11 +537,15 @@ export function FoundingVenueEditor({
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, []);
-  const imageFields = (area: "exterior" | "interior" | "private", image: VillageVenueImage | null | undefined) => (
+  const imageFields = (
+    area: "exterior" | "interior" | "private",
+    image: VillageVenueImage | null | undefined,
+    zoneId?: string,
+  ) => (
     <div>
       {image ? <img src={image.url} alt={`${area} of ${venue.name}`} /> : <p>No image added · optional</p>}
       <div className="villages-forging-actions">
-        <button type="button" disabled={busy} onClick={() => onGenerate(area)}>
+        <button type="button" disabled={busy} onClick={() => onGenerate(area, zoneId)}>
           {image ? "Generate again" : "Generate image"}
         </button>
         {usagePreview}
@@ -650,7 +559,7 @@ export function FoundingVenueEditor({
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              if (file) onUpload(area, file);
+              if (file) onUpload(area, file, zoneId);
             }}
           />
         </label>
@@ -665,12 +574,14 @@ export function FoundingVenueEditor({
                   : area === "interior"
                     ? {
                         ...venue,
-                        spaces: venue.spaces?.map((room, index) => (index === 0 ? { ...room, image: null } : room)),
+                        spaces: venue.spaces?.map((room, index) =>
+                          (zoneId ? room.id === zoneId : index === 0) ? { ...room, image: null } : room,
+                        ),
                       }
                     : {
                         ...venue,
                         privateSpaces: venue.privateSpaces?.map((room) =>
-                          room.ownerId === "player" ? { ...room, image: null } : room,
+                          (zoneId ? room.id === zoneId : room.ownerId === "player") ? { ...room, image: null } : room,
                         ),
                       },
               )
@@ -685,18 +596,19 @@ export function FoundingVenueEditor({
   const complete = () => {
     const error =
       !venue.name.trim() || !venue.form?.trim()
-        ? "Add a Venue name and form."
+        ? "Add a Venue name and physical form."
         : !venue.description.trim()
-          ? "Describe the Exterior entrance and approach."
-          : venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()
-            ? "Describe the Common Space."
+          ? "Describe the Entrance appearance."
+          : foundingZoneProblem(venue)
+            ? foundingZoneProblem(venue)
             : !venue.occupancy.playerHome && residence && !owner
               ? "Assign a resident."
               : venue.privateSpaces?.some(
                     (room) =>
-                      !room.name?.trim() ||
-                      !room.purpose?.trim() ||
-                      (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length),
+                      !room.access &&
+                      (!room.name?.trim() ||
+                        !room.purpose?.trim() ||
+                        (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
                   )
                 ? "Give each Private Space a name, purpose, and controller."
                 : "";
@@ -746,9 +658,19 @@ export function FoundingVenueEditor({
               />
             </label>
             <label>
-              Form
+              Venue Type
               <input
-                aria-label="Venue form"
+                aria-label="Venue Type"
+                maxLength={100}
+                value={venue.venueType ?? ""}
+                placeholder="Home, bakery, church, campsite…"
+                onChange={(event) => onPatch({ ...venue, venueType: event.target.value })}
+              />
+            </label>
+            <label>
+              Physical form
+              <input
+                aria-label="Physical form"
                 maxLength={240}
                 value={venue.form ?? ""}
                 disabled={busy}
@@ -787,10 +709,10 @@ export function FoundingVenueEditor({
           {!existing ? <VenueLayoutFields compact venue={venue} drafts={zoneDrafts} onChange={onPatch} /> : null}
           <div className="villages-forging-zone-grid">
             <section>
-              <h4>Exterior · required</h4>
+              <h4>Entrance · Unrestricted, 24/7</h4>
               <p>The entrance and approach, including corridors for indoor Venues.</p>
               <label>
-                Exterior description
+                Entrance appearance
                 <textarea
                   aria-label="Exterior description"
                   maxLength={1000}
@@ -801,152 +723,7 @@ export function FoundingVenueEditor({
               </label>
               {imageFields("exterior", venue.presentation.image)}
             </section>
-            {venueHasCommon(venue) ? (
-              <section>
-                <h4>Common Space</h4>
-                <label>
-                  Common Space name
-                  <input
-                    aria-label="Common Space name"
-                    value={venue.spaces?.[0]?.name ?? "Common Space"}
-                    maxLength={100}
-                    disabled={busy}
-                    onChange={(event) =>
-                      onPatch({
-                        ...venue,
-                        spaces: venue.spaces?.map((room, index) =>
-                          index === 0 ? { ...room, name: event.target.value } : room,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                <label>
-                  Common Space description
-                  <textarea
-                    aria-label="Common Space description"
-                    maxLength={1000}
-                    value={venue.spaces?.[0]?.description ?? ""}
-                    disabled={busy}
-                    onChange={(event) =>
-                      onPatch({
-                        ...venue,
-                        spaces: venue.spaces?.map((room, index) =>
-                          index === 0 ? { ...room, description: event.target.value } : room,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                {imageFields("interior", venue.spaces?.[0]?.image)}
-              </section>
-            ) : null}
-            {venueHasPrivate(venue) ? (
-              <section>
-                <h4>Private Space</h4>
-                {venue.privateSpaces?.map((room) => (
-                  <fieldset key={room.id}>
-                    <label>
-                      Private Space name
-                      <input
-                        aria-label="Private Space name"
-                        value={room.name}
-                        maxLength={100}
-                        disabled={busy}
-                        onChange={(event) =>
-                          onPatch({
-                            ...venue,
-                            privateSpaces: venue.privateSpaces?.map((item) =>
-                              item.id === room.id ? { ...item, name: event.target.value } : item,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <label>
-                      Purpose
-                      <input
-                        aria-label="Private Space purpose"
-                        value={room.purpose ?? ""}
-                        maxLength={240}
-                        disabled={busy}
-                        onChange={(event) =>
-                          onPatch({
-                            ...venue,
-                            privateSpaces: venue.privateSpaces?.map((item) =>
-                              item.id === room.id ? { ...item, purpose: event.target.value } : item,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <p>
-                      Controller:{" "}
-                      {room.ownerId === "player" || room.controllerIds?.includes("player")
-                        ? "You"
-                        : (people.find((person) => person.id === room.ownerId)?.name ?? "Selected controllers")}
-                    </p>
-                    {role === "gathering" ? (
-                      <fieldset>
-                        <legend>Room controllers</legend>
-                        {[{ id: "player", name: "You" }, ...people].map((person) => (
-                          <label key={person.id}>
-                            <input
-                              type="checkbox"
-                              disabled={busy}
-                              checked={room.controllerIds?.includes(person.id) ?? false}
-                              onChange={(event) =>
-                                onPatch({
-                                  ...venue,
-                                  privateSpaces: venue.privateSpaces?.map((item) =>
-                                    item.id === room.id
-                                      ? {
-                                          ...item,
-                                          controllerIds: event.target.checked
-                                            ? [...(item.controllerIds ?? []), person.id]
-                                            : item.controllerIds?.filter((id) => id !== person.id),
-                                        }
-                                      : item,
-                                  ),
-                                })
-                              }
-                            />
-                            {person.name}
-                          </label>
-                        ))}
-                      </fieldset>
-                    ) : null}
-                    {venue.occupancy.playerHome ? (
-                      <>
-                        <label>
-                          Your personal-space description
-                          <textarea
-                            aria-label="Your personal-space description"
-                            maxLength={1000}
-                            value={room.description}
-                            disabled={busy}
-                            onChange={(event) =>
-                              onPatch({
-                                ...venue,
-                                privateSpaces: venue.privateSpaces?.map((item) =>
-                                  item.id === room.id ? { ...item, description: event.target.value } : item,
-                                ),
-                              })
-                            }
-                          />
-                        </label>
-                        {imageFields("private", room.image)}
-                      </>
-                    ) : (
-                      <p>
-                        Private descriptions are prepared after founding and stay hidden until invited. Private images
-                        are drawn only on first invited entry.
-                      </p>
-                    )}
-                  </fieldset>
-                ))}
-              </section>
-            ) : null}
+            <FoundingZoneFields venue={venue} people={people} busy={busy} onPatch={onPatch} imageFields={imageFields} />
           </div>
           <details>
             <summary>Artwork context</summary>

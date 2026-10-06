@@ -3,7 +3,7 @@ import type { InterpretationCheck } from "./interpretation.js";
 import type { VenueScene } from "./venue-session.js";
 
 const access =
-  /\b(?:come (?:in|inside|into|over|upstairs)|(?:allow|grant|deny|refuse|no) entry|invite you|visit me|welcome (?:in|inside|to)|you (?:can|may) (?:use|go|enter|visit)|my (?:room|bedroom|place)|get out|go away|leave (?:here|now|this|my|the)|please leave)\b|^(?:leave|enter)[.!]?$/iu;
+  /\b(?:come (?:in|inside|into|over|upstairs)|(?:allow|grant|deny|refuse|no) entry|ban|banned|barred|outside hours|after closing|invite you|visit me|welcome (?:in|inside|to)|you (?:can|may) (?:use|go|enter|visit)|my (?:room|bedroom|place)|get out|go away|leave (?:here|now|this|my|the)|please leave)\b|^(?:leave|enter)[.!]?$/iu;
 const entryRequest =
   /\b(?:may|can|could|shall) (?:I|we)\b[^?\n]{0,100}\b(?:enter|come|go|visit|use|inside|room|door)\b|\blet (?:me|us) (?:in|inside)\b/iu;
 const gesture = /\b(?:nods?|beckons?|gestures?|motions?|steps? aside|points?)\b/iu;
@@ -45,14 +45,28 @@ export function selectRoomEventChecks(
   for (const value of rows) {
     const row = asRecord(value);
     if (!Array.isArray(row.evidence) || !row.evidence.length || row.evidence.length > 4) continue;
-    if (!["invite-now", "invite-later", "refuse", "dismiss", "revoke", "uncertain"].includes(String(row.kind)))
+    if (
+      ![
+        "invite-now",
+        "invite-later",
+        "refuse",
+        "dismiss",
+        "revoke",
+        "ban-zone",
+        "ban-venue",
+        "invite-outside-hours",
+        "uncertain",
+      ].includes(String(row.kind))
+    )
       continue;
     const candidates = checks.filter((check) => {
       const facts = asRecord(check.facts);
       return (
         facts.actorId === row.actorId &&
         facts.venueId === row.venueId &&
-        (!row.zoneId || facts.zoneId === row.zoneId) &&
+        (row.kind === "ban-venue"
+          ? facts.zoneId === null
+          : typeof facts.zoneId === "string" && (!row.zoneId || facts.zoneId === row.zoneId)) &&
         row.evidence.every(
           (index) =>
             Number.isInteger(index) &&
@@ -78,7 +92,10 @@ export function selectRoomEventChecks(
     const candidates = checks.filter((check) => {
       const f = asRecord(check.facts);
       return (
-        f.actorId === offer.residentId && f.venueId === offer.venueId && (!offer.zoneId || f.zoneId === offer.zoneId)
+        typeof f.zoneId === "string" &&
+        f.actorId === offer.residentId &&
+        f.venueId === offer.venueId &&
+        (!offer.zoneId || f.zoneId === offer.zoneId)
       );
     });
     const ids =
@@ -106,7 +123,10 @@ export function selectRoomEventChecks(
     )
       continue;
     const candidates = checks.filter(
-      (check) => asRecord(check.facts).actorId === row.actorId && asRecord(check.facts).zoneId === row.targetIds[0],
+      (check) =>
+        typeof asRecord(check.facts).zoneId === "string" &&
+        asRecord(check.facts).actorId === row.actorId &&
+        asRecord(check.facts).zoneId === row.targetIds[0],
     );
     const ids =
       candidates[0]?.evidence
@@ -122,8 +142,11 @@ export function selectRoomEventChecks(
   }
   const actors = new Set(checks.map((check) => String(asRecord(check.facts).actorId)));
   for (const actor of actors) {
-    const controlled = checks.filter((check) => asRecord(check.facts).actorId === actor);
-    if (controlled.some((check) => selected.has(check.id))) continue;
+    const controlled = checks.filter(
+      (check) => asRecord(check.facts).actorId === actor && typeof asRecord(check.facts).zoneId === "string",
+    );
+    if (!controlled.length) continue;
+    if (checks.some((check) => asRecord(check.facts).actorId === actor && selected.has(check.id))) continue;
     const sample = controlled[0];
     const request = sample.evidence.find((line) => line.id === "player-input")?.content ?? "";
     const own = sample.evidence.filter((line) => line.current && line.speakerId === actor && line.kind !== "narration");

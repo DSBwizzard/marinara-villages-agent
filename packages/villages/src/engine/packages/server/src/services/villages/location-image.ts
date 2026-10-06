@@ -23,7 +23,7 @@ import { venueInZone, resolveVenueZone } from "./venue-zones.js";
 // Manual draw errors reach the player. The automatic private-room draw catches
 // and logs failures, leaving the player a manual Draw image action.
 
-import { notFound } from "./errors.js";
+import { notFound, conflict } from "./errors.js";
 import { uploadVillageGalleryImage } from "./global-gallery.js";
 import { decodeVillageImageDataUrl, generateVillageImage, imagePromptId } from "./image-generation.js";
 import { readVillageVisualLore } from "./lorebooks.js";
@@ -235,8 +235,9 @@ export async function generateVillageLocationImage(
   const targetZone = zoneId
     ? resolveVenueZone(found.venue, zoneId)
     : privateOwnerId
-      ? venueZones(found.venue).find((zone) => zone.kind === "private-residence" && zone.ownerId === privateOwnerId)
+      ? resolveVenueZone(found.venue, legacyZoneId(found.venue, "private", "residence", privateOwnerId))
       : undefined;
+  if (privateOwnerId && !targetZone) throw conflict("Choose the exact personal Zone before drawing its image.");
   const character = sceneryCharacterContext(
     village,
     found.venue,
@@ -286,7 +287,11 @@ export async function generateVillageLocationImage(
   );
 
   const prompt = sceneryPrompt(
-    [basePrompt, character.includes("## Starting background:") ? `Occupant context: ${character}` : ""],
+    [
+      `Venue Type: ${venue.venueType || venue.name}. Physical form: ${venue.form || "unspecified"}. Selected Zone: ${targetZone?.name || "Entrance"}. Used for: ${targetZone?.purpose || "arrival and approach"}. Appearance: ${venue.description}.`,
+      basePrompt,
+      character.includes("## Starting background:") ? `Occupant context: ${character}` : "",
+    ],
     [
       character && !character.includes("## Starting background:")
         ? `Occupant context, reflect preferences without depicting people: ${character}`

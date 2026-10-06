@@ -9,6 +9,21 @@ type DiagnosticTrace = InterpretationTrace & {
   comparisonAttempt?: { id: string; status: "dispatching" | "complete" | "unknown"; startedAt: string };
 };
 type Diagnostics = { checks: DiagnosticTrace[] };
+function safeAccessTrace<T extends InterpretationTrace>(trace: T): T {
+  if (!trace.id.includes("access-speech:")) return trace;
+  return {
+    ...trace,
+    question: "Check witnessed access-management speech",
+    result: {
+      outcome: trace.result.outcome,
+      source: trace.result.source,
+      evidenceIds: trace.result.evidenceIds,
+      reason: "Exact speech and current authority checked.",
+    },
+    system: { ...trace.system, ...(trace.system.reason ? { reason: "Grounded access check completed." } : {}) },
+    decisions: { ...trace.decisions, ...(trace.decisions.reason ? { reason: "Access check routing recorded." } : {}) },
+  };
+}
 const controllers = new Map<string, AbortController>();
 const documentId = (sceneId: string) => `villages-interpretation-${sceneId}`;
 const slot: DocumentSlot<Diagnostics> = {
@@ -34,11 +49,12 @@ export async function readInterpretationDiagnostics(sceneId: string): Promise<Di
     ) {
       trace.system = { status: "unknown", reason: "Comparison was interrupted; it was not retried" };
     }
-  return data;
+  return { checks: data.checks.map(safeAccessTrace) };
 }
 export async function writeInterpretationDiagnostics(sceneId: string, traces: InterpretationTrace[]) {
   await mutateDocument(documentId(sceneId), slot, (state) => {
-    for (const original of traces) {
+    for (const raw of traces) {
+      const original = safeAccessTrace(raw);
       const selected = original.evidence
         .filter(
           (line, index, lines) =>

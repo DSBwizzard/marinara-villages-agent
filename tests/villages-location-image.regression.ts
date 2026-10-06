@@ -397,6 +397,7 @@ async function main() {
   assert.deepEqual(
     Object.keys(placesOf([house("bram-house", "character-bram")])[0]!).sort(),
     [
+      "access",
       "archivedPrivateSpaces",
       "archivedZones",
       "baseClasses",
@@ -406,6 +407,7 @@ async function main() {
       "classes",
       "constructionStatus",
       "description",
+      "destinations",
       "editProposals",
       "exteriorState",
       "form",
@@ -426,6 +428,7 @@ async function main() {
       "spaces",
       "state",
       "usedInvitationIds",
+      "venueType",
       "workerIds",
       "zones",
     ],
@@ -1059,12 +1062,12 @@ async function main() {
     "the override carries the scene the body also carries, so what is drawn is what was asked for",
   );
   assert.ok(
-    request.appearance.startsWith(
+    request.appearance.includes(
       "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.",
     ),
     "the picture is of the place, with its own note",
   );
-  assert.ok(request.appearance.includes("Venue form: where the grain is ground."));
+  assert.ok(request.appearance.includes("Physical form: where the grain is ground."));
   assert.ok(request.appearance.includes(settingText), "and it knows which village it stands in");
   assert.match(request.appearance, /It is .+, and the weather is .+\./, "and what the weather is doing right now");
   assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
@@ -1269,6 +1272,16 @@ async function main() {
   );
   assert.match(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
   assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof/u);
+
+  const specificZone = await post("/api/villages/setup/venue-image/generate", {
+    ...foundingImageInput,
+    area: "interior",
+    venue: foundingVenue,
+    zoneAppearance: "A brass workbench below a frosted skylight.",
+  });
+  assert.equal(specificZone.statusCode, 200, specificZone.body);
+  assert.match(draws().at(-1)?.body?.appearance ?? "", /brass workbench/u);
+  assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
 
   // One saved style applies to maps, founding areas and later venue areas.
   await mutateVillageState((state) => {

@@ -1,4 +1,5 @@
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { evaluateZoneAccess, settleStandingAccess } from "./venue-access.js";
 import { routineRevision } from "./wish-policy.js";
 import { canOccupyZone, venueZones, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import {
@@ -24,9 +25,18 @@ export type SocialOutboxEntry = {
   requiredPlanId?: string;
   processed?: boolean;
 };
-function canEnter(village: VillageState, venueId: string, zoneId: string, actorId: string): boolean {
+function canEnter(village: VillageState, venueId: string, zoneId: string, actorId: string, at = new Date()): boolean {
   const venue = village.venues.find((place) => place.id === venueId),
     zone = venue && resolveVenueZone(venue, zoneId);
+  if (venue?.access)
+    return (
+      !!zone &&
+      evaluateZoneAccess(venue, zone, actorId, {
+        at,
+        relationships: village.relationshipContext,
+        unavailable: !!zone && zoneClosed(village, venue, zone),
+      }).allowed
+    );
   return (
     !!venue &&
     !!zone &&
@@ -72,7 +82,17 @@ export function socialPlanValid(
   return plan.actorIds.every((actorId) => {
     const actor = village.villagers.find((person) => person.characterId === actorId),
       agenda = actor?.agenda;
-    if (!agenda || !canEnter(village, plan.venueId, plan.zoneId, actorId)) return false;
+    if (
+      !agenda ||
+      !canEnter(
+        village,
+        plan.venueId,
+        plan.zoneId,
+        actorId,
+        new Date(new Date(plan.dateKey + "T00:00:00").setMinutes(plan.startMinute)),
+      )
+    )
+      return false;
     const blocks = agendaBlocksFor({ ...agenda, socialActivities: [] }, actor!.ingestSchedule !== false, now);
     let covered = plan.startMinute;
     for (const block of blocks.filter(
@@ -123,7 +143,15 @@ export function socialPlanCandidates(village: VillageState, now = new Date()): S
               ({ venue, zone }) =>
                 (meeting || venue.id !== left.venueId) &&
                 zone.kind !== "exterior" &&
-                actorIds.every((actorId) => canEnter(village, venue.id, zone.id, actorId)),
+                actorIds.every((actorId) =>
+                  canEnter(
+                    village,
+                    venue.id,
+                    zone.id,
+                    actorId,
+                    new Date(new Date(dateKey + "T00:00:00").setMinutes(startMinute)),
+                  ),
+                ),
             );
           if (!location) continue;
           const plan: SocialPlan = {
@@ -240,7 +268,8 @@ function readEncounter(value: unknown, entry: SocialOutboxEntry, village: Villag
     return null;
   const venue = village.venues.find((place) => place.id === entry.opportunity.venueId),
     zoneId = entry.opportunity.zoneId ?? "exterior";
-  if (!venue || !actors.every((actorId) => canEnter(village, venue.id, zoneId, actorId))) return null;
+  if (!venue || !actors.every((actorId) => canEnter(village, venue.id, zoneId, actorId, new Date(entry.at))))
+    return null;
   const at = new Date(entry.at),
     minute = at.getHours() * 60 + at.getMinutes();
   if (agendaDateKey(at) !== agendaDateKey(new Date()) || Date.now() - at.getTime() > 15 * 60_000) return null;
@@ -379,6 +408,25 @@ export async function processSocialOutbox(village: VillageState): Promise<boolea
     });
     await mutateVillageState((state) => {
       if (state.seed !== entry.seed) return;
+      // Only an encounter accepted by the relationship transaction can settle access.
+      // Its captured evidence survives retries after the original encounter window ends.
+      const encounter = state.relationshipContext?.socialEncounters.find((row) => row.id === entry.id);
+      if (encounter) {
+        const fresh = parseRelationshipProposals(
+          { changes: [], disclosures: [], permissions: encounter.review.permissions },
+          encounter.id,
+          encounter.lines,
+          state,
+        );
+        for (const permission of fresh.review.permissions) {
+          const venue = state.venues.find((venue) => venue.id === permission.venueId);
+          if (venue?.access)
+            settleStandingAccess(venue, permission, encounter.at, [
+              "player",
+              ...state.villagers.map((resident) => resident.characterId),
+            ]);
+        }
+      }
       const saved = state.socialOutbox?.find((row) => row.id === entry.id);
       if (saved) saved.processed = true;
       state.socialOutbox = state.socialOutbox?.filter((row) => !row.processed);

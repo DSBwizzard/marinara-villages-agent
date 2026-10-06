@@ -5,7 +5,8 @@ import { validateProjectSpeech } from "./project-interpretation.js";
 import { progressProject, projectProgressPhase, recordProjectProgress } from "./project-progress.js";
 import { rejectProgressEvidence, type ProgressEvidence } from "./progress-engine.js";
 import type { VillageProject, VillageState } from "./types.js";
-import { readProjectTurnEvidence } from "./venue-session.js";
+import { readProjectTurnEvidence, activeVenueSession } from "./venue-session.js";
+import { sceneAccessContext } from "./venue-contact.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 
 const negative = /\b(?:not|never|don't|can't|won't|refuse|maybe|perhaps|if)\b/iu;
@@ -507,6 +508,7 @@ export async function recordExistingProjectSource(projectId: string, value: unkn
   const requirementId = asTrimmedString(input.requirementId);
   const venueId = asTrimmedString(input.venueId);
   const zoneId = asTrimmedString(input.zoneId);
+  const scene = await activeVenueSession();
   await mutateVillageState((state) => {
     const project = projectFor(state, projectId);
     const flow = project.lifecycle!;
@@ -528,7 +530,10 @@ export async function recordExistingProjectSource(projectId: string, value: unkn
     if (
       zone &&
       ((!zone.seen && zone.kind !== "exterior" && !(venue.occupancy.playerHome && zone.kind === "shared-residence")) ||
-        !canOccupyZone(venue, zone, "player") ||
+        !canOccupyZone(venue, zone, "player", {
+          ...(scene?.placeId === venue.id ? sceneAccessContext(scene, state) : {}),
+          relationships: state.relationshipContext,
+        }) ||
         zoneClosed(state, venue, zone))
     )
       throw conflict("This supply is in a restricted or closed zone. Obtain an evidenced handoff from its controller.");

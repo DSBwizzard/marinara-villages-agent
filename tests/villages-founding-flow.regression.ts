@@ -299,9 +299,9 @@ async function main() {
   assert.ok(client.includes("resumeSetupPlacement"));
   assert.ok(client.includes("Review village"));
   assert.ok(editor.includes("Assigned villager"));
-  assert.ok(editor.includes("Venue form"));
+  assert.ok(editor.includes("Physical form"));
   assert.ok(editor.includes("Private Space"));
-  assert.ok(client.includes("generateSetupImage(selectedSetupVenue, area)"));
+  assert.ok(client.includes("generateSetupImage(selectedSetupVenue, area, zoneId)"));
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));

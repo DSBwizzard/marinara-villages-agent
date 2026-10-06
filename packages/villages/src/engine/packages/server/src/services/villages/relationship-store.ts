@@ -189,7 +189,7 @@ export function reconcileRelationships(
   }
   for (const venue of village.venues)
     for (const zone of venueZones(venue)) {
-      if (zone.kind !== "shared-residence") continue;
+      if (venue.access || zone.kind !== "shared-residence") continue;
       for (const edge of Object.values(state.edges)) {
         if (
           !residents.has(edge.fromId) ||
@@ -221,7 +221,7 @@ export function relationshipZoneController(
   zone: VillageVenueZone,
   visitorId: string,
 ): string | null {
-  if (!state || zoneClosed(village, venue, zone)) return null;
+  if (venue.access || !state || zoneClosed(village, venue, zone)) return null;
   return (
     Object.values(state.grants).find(
       (grant) =>
@@ -340,6 +340,7 @@ export function applyRelationshipReview(
     if (state.applied[permission.id]) continue;
     const venue = village.venues.find((place) => place.id === permission.venueId);
     const zone = venue && resolveVenueZone(venue, permission.zoneId);
+    if (venue?.access) continue;
     if (
       !venue ||
       !zone ||

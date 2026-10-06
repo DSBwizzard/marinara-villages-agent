@@ -85,35 +85,25 @@ try {
       await page.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
       await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
       const editor = page.locator(".marinara-capability-villages-project-finish-visit");
-      await editor.getByLabel("Form", { exact: true }).fill("A tent, or a mat beneath a tree");
-      await editor.getByLabel("Exterior description", { exact: true }).fill("A sheltered patch beneath a tree.");
+      await editor.getByLabel("Physical form", { exact: true }).fill("A tent, or a mat beneath a tree");
+      await editor.getByLabel("Entrance appearance", { exact: true }).fill("A sheltered patch beneath a tree.");
       await expect(editor.getByRole("button", { name: "Open Venue", exact: true })).toBeDisabled();
-      const labels = {
-        exterior: "Exterior only",
-        common: "Common Space only",
-        private: "Private Space only",
-        both: "Common Space and Private Space",
-      };
-      await editor.getByRole("radio", { name: labels[layout], exact: true }).check();
+      if (layout === "exterior") await editor.getByRole("button", { name: "Use Entrance only", exact: true }).click();
       if (layout === "common" || layout === "both") {
-        await editor.getByLabel("Common Space description", { exact: true }).fill("A canvas gathering chamber.");
-        await editor.getByRole("button", { name: "Remove Common Space", exact: true }).click();
-        await expect(editor.getByLabel("Common Space description", { exact: true })).toHaveCount(0);
-        await editor.getByRole("button", { name: "Add Common Space", exact: true }).click();
-        await expect(editor.getByLabel("Common Space description", { exact: true })).toBeFocused();
-        await expect(editor.getByLabel("Common Space description", { exact: true })).toHaveValue(
-          "A canvas gathering chamber.",
-        );
-        await editor.getByLabel("Common Space Class", { exact: true }).selectOption("workplace");
-      } else await expect(editor.getByLabel("Common Space description", { exact: true })).toHaveCount(0);
+        await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
+        await editor.getByLabel("Zone name", { exact: true }).first().fill("Workshop");
+        await editor.getByLabel("Zone used for", { exact: true }).first().fill("Making things");
+        await editor.getByLabel("Zone appearance", { exact: true }).first().fill("A canvas workshop.");
+        await editor
+          .getByLabel(/^Zone role/)
+          .first()
+          .selectOption("workplace");
+      }
       if (layout === "private" || layout === "both") {
-        await expect(editor.getByText(/Contents remain hidden until/)).toBeVisible();
-        await expect(editor.getByLabel("Description · optional")).toHaveCount(0);
-        await editor.getByLabel("Zone name", { exact: true }).fill("Sleeping alcove");
-        await editor.getByRole("button", { name: "Remove Private Space", exact: true }).click();
-        await editor.getByRole("button", { name: "Add Private Space", exact: true }).click();
-        await expect(editor.getByLabel("Zone name", { exact: true })).toBeFocused();
-        await expect(editor.getByLabel("Zone name", { exact: true })).toHaveValue("Sleeping alcove");
+        await editor.getByRole("button", { name: "Add personal Zone", exact: true }).click();
+        await editor.getByLabel("Zone name", { exact: true }).last().fill("Sleeping alcove");
+        await editor.getByLabel("Zone used for", { exact: true }).last().fill("Sleeping");
+        await expect(editor.getByText(/Appearance is prepared for the assigned resident/)).toBeVisible();
       }
       await editor.getByRole("button", { name: "Open Venue", exact: true }).click();
       await expect.poll(() => submitted).toBeTruthy();
@@ -130,7 +120,7 @@ try {
       await page.close();
     }
   console.log(
-    "Desktop and phone new-venue layouts: deliberate selection, conditional fields, draft retention, focus, class association, and submissions passed.",
+    "Desktop and phone new-venue layouts: Entrance-only and multiple Zone selection, separated name/use/appearance, class association, and submissions passed.",
   );
 } finally {
   await browser.close();

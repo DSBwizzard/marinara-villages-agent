@@ -88,9 +88,10 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
           )
       : [],
     venue.name,
+    venue.venueType,
     venue.form,
     venue.layoutVersion,
-    venue.zones?.map((area) => [area.id, area.kind, area.venueClass, area.ownerId, area.purpose]),
+    venue.zones?.map((area) => [area.id, area.kind, area.venueClass]),
     venue.residentIds,
     venue.workerIds,
     venue.imageContext,

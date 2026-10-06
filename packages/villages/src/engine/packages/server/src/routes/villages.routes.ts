@@ -25,7 +25,7 @@ import {
 } from "../services/villages/background-work.js";
 import { moveVenueZone } from "../services/villages/venue-session.js";
 import { readWishHistoryPage } from "../services/villages/wish-archive.js";
-import { updateVillageZone } from "../services/villages/village.js";
+import { updateVillageZone, changeVenueAccess } from "../services/villages/village.js";
 // Villages — the package's privileged route surface, mounted at `/api/villages`.
 //
 // Everything behind this plugin is the Engine owner (the host authenticates
@@ -842,6 +842,13 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return await buildVillageSnapshot();
     } catch (error) {
       return fail(reply, error, "preparing private spaces");
+    }
+  });
+  app.post<{ Params: { venueId: string }; Body: unknown }>("/venues/:venueId/access", async (request, reply) => {
+    try {
+      return await changeVenueAccess(readPlaceId(request.params.venueId), request.body);
+    } catch (error) {
+      return fail(reply, error, "changing access");
     }
   });
   app.put<{ Params: { venueId: string; zoneId: string }; Body: unknown }>(

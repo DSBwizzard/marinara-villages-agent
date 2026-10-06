@@ -103,7 +103,7 @@ assert.throws(
       { ...draft("private"), privateSpaces: [...draft("private").privateSpaces, ...draft("private").privateSpaces] },
       true,
     ),
-  /zero or one/,
+  /distinct ID/,
 );
 const privateOnly = place("private");
 assert.equal(chooseAgendaZone(privateOnly, "a", "Sleep").id, "personal");
@@ -374,7 +374,12 @@ async function main() {
     assert.equal(chamber.ownerId, undefined);
     assert.equal(chamber.preparation, undefined);
     assert.equal(venueCapacity(expanded), 2);
-    assert.equal(canOccupyZone(expanded, chamber, "a"), false);
+    assert.equal(
+      canOccupyZone(expanded, chamber, "a"),
+      false,
+      "Residence alone does not give management of a vacant personal Zone.",
+    );
+    assert.equal(canOccupyZone(expanded, chamber, expanded.access!.managerIds[0]), true);
     const reserved = structuredClone(current);
     reserved.residences.push({
       characterId: "b",

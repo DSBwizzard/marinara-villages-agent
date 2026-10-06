@@ -594,6 +594,8 @@ export type PrivateSpacePreparation = {
   attempt?: number;
 };
 export type VillageVenueZone = VillageVenueSpace & {
+  access?: import("../../../../shared/src/villages/venue-access.js").ZoneAccessPolicy;
+  accessView?: import("../../../../shared/src/villages/venue-access.js").ZoneAccessView;
   relationshipAccess?: boolean;
   purpose?: string;
   controllerIds?: string[];
@@ -629,7 +631,7 @@ export type VillageVenueEditProposal = {
   zoneId?: string;
   ownerId: string;
   baseUpdatedAt: string;
-  proposed: VillageVenueSpace;
+  proposed: VillageVenueSpace & { name?: string; purpose?: string };
   requiredIds: string[];
   approvedIds: string[];
   declined: boolean;
@@ -650,6 +652,10 @@ export type VillageVenueImprovement = {
 };
 
 export type VillageVenue = {
+  venueType?: string;
+  access?: import("../../../../shared/src/villages/venue-access.js").VenueAccessState;
+  accessView?: import("../../../../shared/src/villages/venue-access.js").VenueAccessView;
+  destinations?: Record<string, { home?: string; sleep?: string; work?: string }>;
   /** Explicit layouts never synthesize absent interiors. */
   layoutVersion?: 1;
   imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };

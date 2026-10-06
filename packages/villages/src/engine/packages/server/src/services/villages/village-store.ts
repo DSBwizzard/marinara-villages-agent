@@ -1,3 +1,4 @@
+import { readVenueAccess, readZonePolicy, reconcileVenueAccess, initializeVenueAccess } from "./venue-access.js";
 import { readResidentFoundingContext } from "../../../../shared/src/villages/resident-founding-context.js";
 import { WISH_SYSTEM_VERSION, wishSize } from "./wish-definition.js";
 import { coerceWishKnowledge, resetLegacyWishRecords } from "./wish-journal.js";
@@ -929,6 +930,18 @@ function coerceVenue(value: unknown): VillageVenue | null {
     return null;
   }
   const venue: VillageVenue = {
+    access: readVenueAccess(raw.access),
+    venueType: boundText(raw.venueType, 100),
+    destinations: Object.fromEntries(
+      Object.entries(asRecord(raw.destinations)).map(([actor, value]) => [
+        actor,
+        {
+          home: asTrimmedString(asRecord(value).home) || undefined,
+          sleep: asTrimmedString(asRecord(value).sleep) || undefined,
+          work: asTrimmedString(asRecord(value).work) || undefined,
+        },
+      ]),
+    ),
     imageContext: {
       useAssignedVillagerContext: asRecord(raw.imageContext).useAssignedVillagerContext !== false,
       useVisualLore: asRecord(raw.imageContext).useVisualLore !== false,
@@ -1006,6 +1019,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
                 ownerId,
                 baseUpdatedAt: asIsoString(entry.baseUpdatedAt) ?? "",
                 proposed: {
+                  name: boundText(proposed.name, MAX_VENUE_NAME_LENGTH) || undefined,
+                  purpose: boundText(proposed.purpose, 240) || undefined,
                   id: asTrimmedString(proposed.id) || (target === "private" ? `private:${ownerId}` : "residence"),
                   venueClass: "residence" as const,
                   description: boundText(proposed.description, MAX_VENUE_DESCRIPTION_LENGTH),
@@ -1098,6 +1113,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
       state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
       purpose: boundText(row.purpose, 240),
+      ...(row.access === undefined ? {} : { access: readZonePolicy(row.access) }),
       controllerIds: coerceVenueIds(row.controllerIds),
       preparation: ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
         ? {
@@ -2740,7 +2756,8 @@ export function coerceVillageState(value: unknown): VillageState {
   for (const villager of state.villagers) {
     for (const move of villager.remap?.moves ?? []) {
       const venue = state.venues.find((entry) => entry.id === move.venueId);
-      if (venue) move.zoneId = chooseAgendaZone(venue, villager.characterId, move.here, move.zoneId, state).id;
+      if (venue && !venue.access)
+        move.zoneId = chooseAgendaZone(venue, villager.characterId, move.here, move.zoneId, state).id;
     }
     const agenda = villager.agenda;
     if (!agenda) continue;
@@ -2754,7 +2771,8 @@ export function coerceVillageState(value: unknown): VillageState {
       const venue =
         state.venues.find((entry) => entry.id === block.venueId) ??
         state.venues.find((entry) => venueResidentIds(entry).includes(villager.characterId));
-      if (venue) block.zoneId = chooseAgendaZone(venue, villager.characterId, block.activity, block.zoneId, state).id;
+      if (venue && !venue.access)
+        block.zoneId = chooseAgendaZone(venue, villager.characterId, block.activity, block.zoneId, state).id;
     }
   }
   resetLegacyWishRecords(state);
@@ -2886,10 +2904,17 @@ export async function readVillageState(): Promise<VillageState> {
  */
 export async function mutateVillageState(mutate: (state: VillageState) => void): Promise<VillageState> {
   let next = defaultVillageState();
-  await mutateDocument(VILLAGE_DOC_ID, villageSlot, (state) => {
+  await mutateDocument(VILLAGE_DOC_ID, villageSlot, async (state) => {
+    const relationshipSeed = state.seed;
+    if (relationshipSeed) {
+      const { readRelationshipState, reconcileRelationships } = await import("./relationship-store.js");
+      state.relationshipContext = await readRelationshipState(relationshipSeed);
+      reconcileRelationships(state.relationshipContext, state);
+    }
     const previousVenues = new Map(state.venues.map((venue) => [venue.id, structuredClone(venue)]));
     const previousCapacity = villageVenueUsage(state);
     mutate(state);
+    if (state.seed !== relationshipSeed) delete state.relationshipContext;
     const capacity = villageVenueUsage(state);
     if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)
       assertVillageVenueCapacity(state);
@@ -2909,10 +2934,48 @@ export async function mutateVillageState(mutate: (state: VillageState) => void):
         receipt.noticeSequence = ++state.noticeSequence;
         receipt.committedAt = new Date().toISOString();
       }
-    for (const venue of state.venues) synchronizeVenueZones(venue, previousVenues.get(venue.id));
+    for (const venue of state.venues) {
+      synchronizeVenueZones(venue, previousVenues.get(venue.id));
+      if (!previousVenues.has(venue.id) && state.venues.some((entry) => entry.access)) initializeVenueAccess(venue);
+      else if (venue.access) initializeVenueAccess(venue);
+      reconcileVenueAccess(venue, ["player", ...state.villagers.map((person) => person.characterId)]);
+      const previous = previousVenues.get(venue.id);
+      const semanticAccess = (entry: VillageVenue) =>
+        JSON.stringify({
+          managers: entry.access?.managerIds,
+          hours: entry.access?.visitorHours,
+          zones: entry.zones?.map((zone) => ({ id: zone.id, ownerId: zone.ownerId, policy: zone.access })),
+          residents: entry.residentIds,
+          workers: entry.workerIds,
+          playerHome: entry.occupancy.playerHome,
+          permissions: entry.access?.permissions.map(({ sceneId: _scene, ...permission }) => permission),
+          bans: entry.access?.bans,
+          exceptions: entry.access?.exceptions,
+          denials: entry.access?.visitDenials,
+        });
+      if (
+        previous?.access &&
+        venue.access &&
+        previous.access.revision === venue.access.revision &&
+        semanticAccess(previous) !== semanticAccess(venue)
+      ) {
+        venue.access.revision++;
+        venue.access.changes.push({
+          id: randomVillageSeed(),
+          revision: venue.access.revision,
+          actorId: "system",
+          zoneId: null,
+          action: "lifecycle",
+          at: new Date().toISOString(),
+          sourceLineIds: [],
+        });
+      }
+    }
     pruneWishActivities(state, new Date());
     if (state.foundedAt.length === 0) state.foundedAt = new Date().toISOString();
     if (state.seed.length === 0) state.seed = randomVillageSeed();
+    // Relationship authority lives in its own seed-scoped document, never the village DTO.
+    delete state.relationshipContext;
     next = state;
   });
   const { persistRelationshipAuthority } = await import("./relationship-store.js");

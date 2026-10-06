@@ -1,4 +1,14 @@
+import {
+  initializeVenueAccess,
+  readAccessCommand,
+  applyAccessCommand,
+  projectVenueAccess,
+  projectZoneAccess,
+  managesAccess,
+  evaluateZoneAccess,
+} from "./venue-access.js";
 import { readFoundingResidentContexts } from "./resident-founding-context.js";
+import { sceneAccessContext } from "./venue-contact.js";
 import { residentSignature } from "../../../../shared/src/villages/resident-signature.js";
 import { assertVillageVenueCapacity, assertCanAddVillageVenue, villageVenueLimit } from "./venue-capacity.js";
 import { wishExpired, wishRetained } from "./wish-definition.js";
@@ -59,7 +69,7 @@ import {
   toCatalogEntry,
   type VillagerCard,
 } from "./catalog.js";
-import { asTrimmedString } from "./coerce.js";
+import { asRecord, asTrimmedString } from "./coerce.js";
 import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "./agenda-plan.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "./agenda-week.js";
 import { readVillageConnectionSettings, validateVillageSetupConnections } from "./connections.js";
@@ -359,6 +369,7 @@ export function villageSettings(
     privateOwnerId: string;
     zoneId?: string;
   } | null,
+  accessContext?: import("./venue-access.js").AccessContext,
 ): VillageSettingsView {
   return {
     visitRetention: village.visitRetention,
@@ -401,10 +412,43 @@ export function villageSettings(
     townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     settingMaxLength: MAX_SETTING_LENGTH,
     venues: village.venues.map((venue) => {
+      const previewAt = accessContext?.at ?? new Date();
+      const context =
+        residenceAccess?.placeId === venue.id
+          ? accessContext
+          : {
+              at: previewAt,
+              positions: Object.fromEntries(
+                village.villagers.flatMap((resident) => {
+                  const destination = villagerPlaceView(
+                    village,
+                    resident,
+                    null,
+                    deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: previewAt })
+                      .minuteOfDay,
+                    previewAt,
+                  );
+                  return destination?.id === venue.id && destination.zoneId
+                    ? [[resident.characterId, destination.zoneId]]
+                    : [];
+                }),
+              ),
+            };
       const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
       const zones = venueZones(venue).map((originalZone) => {
         const zone = {
           ...originalZone,
+          access: undefined,
+          controllerIds: venue.access ? undefined : originalZone.controllerIds,
+          accessView: venue.access
+            ? projectZoneAccess(venue, originalZone, "player", {
+                ...context,
+                sceneId: context?.sceneId ?? "next-visit-preview",
+                accepting: true,
+                unavailable: zoneClosed(village, venue, originalZone),
+                relationships: village.relationshipContext,
+              })
+            : undefined,
           relationshipAccess: !!relationshipZoneController(
             village.relationshipContext,
             village,
@@ -448,6 +492,8 @@ export function villageSettings(
       );
       return {
         ...venue,
+        access: undefined,
+        accessView: projectVenueAccess(venue, "player"),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],
@@ -471,13 +517,23 @@ export function villageSettings(
           upgrade
             ? {
                 ...upgrade,
-                zones: upgrade.zones?.map((zone) => (visibleIds.has(zone.id) ? zone : { ...zone, description: "" })),
+                zones: upgrade.zones?.map((zone) => ({
+                  ...zone,
+                  access: undefined,
+                  controllerIds: venue.access ? undefined : zone.controllerIds,
+                  description: visibleIds.has(zone.id) ? zone.description : "",
+                })),
               }
             : null,
         ),
-        editProposals: venue.editProposals?.filter((proposal) =>
-          visibleIds.has(proposal.zoneId ?? legacyZoneId(venue, proposal.target, "residence", proposal.ownerId)),
-        ),
+        editProposals: venue.editProposals
+          ?.filter((proposal) =>
+            visibleIds.has(proposal.zoneId ?? legacyZoneId(venue, proposal.target, "residence", proposal.ownerId)),
+          )
+          .map((proposal) => ({
+            ...proposal,
+            proposed: { ...proposal.proposed, access: undefined, accessView: undefined, controllerIds: undefined },
+          })),
       };
     }),
     homeBuildingNames: village.homeBuildingNames,
@@ -625,7 +681,24 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
     const companion = residenceAccess?.accompanying?.find((entry) => entry.characterId === villager.characterId);
     const companionVenue = companion && village.venues.find((entry) => entry.id === residenceAccess?.placeId);
     const companionZone = companionVenue && resolveVenueZone(companionVenue, companion!.zoneId);
+    if (residenceAccess && village.venues.some((venue) => venue.id === residenceAccess.placeId && venue.access)) {
+      const position = sceneAccessContext(residenceAccess, village).positions?.[villager.characterId];
+      if (position && position !== residenceAccess.zoneId) destination = null;
+      else if (position) {
+        const sceneVenue = village.venues.find((venue) => venue.id === residenceAccess.placeId)!;
+        const sceneZone = resolveVenueZone(sceneVenue, position)!;
+        destination = {
+          id: sceneVenue.id,
+          name: sceneVenue.name,
+          image: sceneZone.image,
+          kind: "venue",
+          zoneId: position,
+          zoneName: sceneZone.name,
+        };
+      }
+    }
     if (
+      !companionVenue?.access &&
       companionVenue &&
       companionZone &&
       canOccupyZone(companionVenue, companionZone, villager.characterId) &&
@@ -638,6 +711,22 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
         kind: "venue",
         zoneId: companionZone.id,
         zoneName: companionZone.name,
+      };
+    const destinationVenue = destination && village.venues.find((venue) => venue.id === destination.id);
+    if (
+      destinationVenue?.access &&
+      destination &&
+      destination.zoneId !== "exterior" &&
+      !(
+        residenceAccess?.placeId === destinationVenue.id &&
+        sceneAccessContext(residenceAccess, village).positions?.[villager.characterId] === residenceAccess.zoneId
+      )
+    )
+      destination = {
+        ...destination,
+        zoneId: undefined,
+        zoneName: undefined,
+        image: destinationVenue.presentation.image,
       };
     return projectVillager(
       villager,
@@ -739,7 +828,12 @@ export async function buildVillageSnapshot(now: Date = new Date()): Promise<Vill
       (person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId),
     ),
     isFounded: isVillageFounded(village),
-    settings: villageSettings(village, player, residenceAccess),
+    settings: villageSettings(
+      village,
+      player,
+      residenceAccess,
+      residenceAccess ? sceneAccessContext(residenceAccess, village) : undefined,
+    ),
     recap: null,
     backgroundWork: await backgroundWorkSummaries(),
   };
@@ -1018,8 +1112,11 @@ function applyAgenda(
       : "No initial wish today.";
   }
   if (villager.agenda.week)
-    for (const weekday of VILLAGE_WEEKDAYS)
-      villager.agenda.week[weekday] = validateRoutineDay(villager.agenda.week[weekday]!, villager, state);
+    for (const weekday of VILLAGE_WEEKDAYS) {
+      const date = new Date(now);
+      date.setDate(now.getDate() + ((VILLAGE_WEEKDAYS.indexOf(weekday) - ((now.getDay() + 6) % 7) + 7) % 7));
+      villager.agenda.week[weekday] = validateRoutineDay(villager.agenda.week[weekday]!, villager, state, date);
+    }
   if (!previous?.activeDay || previous.activeDay.dateKey !== agendaDateKey(now)) {
     villager.agenda.activeDay = undefined;
     planRoutineDays(state, now);
@@ -1040,7 +1137,7 @@ function planRoutineDays(state: VillageState, now: Date): void {
         continue;
       }
       if (agenda.plannedDays[key]) {
-        if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state);
+        if (offset > 0) agenda.plannedDays[key] = validateRoutineDay(agenda.plannedDays[key]!, resident, state, date);
         continue;
       }
       let blocks = validateRoutineDay(
@@ -1053,6 +1150,7 @@ function planRoutineDays(state: VillageState, now: Date): void {
         ),
         resident,
         state,
+        date,
       );
       blocks = blocks.map((block) => {
         if (!block.venueId) return block;
@@ -1108,7 +1206,7 @@ function activateVillagerDay(villager: VillageVillager, now: Date, state: Villag
     weekday,
     blocks:
       agenda.plannedDays?.[agendaDateKey(now)] ??
-      validateRoutineDay(agendaBlocksFor(agenda, false, now), villager, state),
+      validateRoutineDay(agendaBlocksFor(agenda, false, now), villager, state, now),
     scheduleInformed: false,
   };
 }
@@ -1390,15 +1488,19 @@ export async function removeVillager(characterId: string): Promise<void> {
         const at = new Date().toISOString();
         venue.zones ??= venueZones(venue);
         venue.layoutVersion = 1;
-        const personal = venue.privateSpaces?.find((space) => space.ownerId === characterId);
-        if (personal)
+        const personal = venue.privateSpaces?.filter((space) => space.ownerId === characterId) ?? [];
+        if (personal.length)
           venue.archivedPrivateSpaces = [
             ...(venue.archivedPrivateSpaces ?? []),
-            { ownerId: characterId, archivedAt: at, space: structuredClone(personal) },
+            ...personal.map((space) => ({ ownerId: characterId, archivedAt: at, space: structuredClone(space) })),
           ].slice(-32);
-        const zone = venue.zones.find((zone) => zone.kind === "private-residence" && zone.ownerId === characterId);
-        if (zone) {
+        for (const zone of venue.zones.filter((zone) => zone.ownerId === characterId)) {
           zone.ownerId = undefined;
+          if (zone.access) {
+            zone.access.managerIds = null;
+            zone.access.inviterIds = [];
+            zone.access.memberIds = [];
+          }
           zone.seen = false;
           zone.preparation = undefined;
           zone.adaptationPending = false;
@@ -2298,6 +2400,30 @@ export function addVillageVenue(state: VillageState, draft: VillageVenue): void 
   });
 }
 
+/** Host authentication identifies the player; the request cannot impersonate an NPC. */
+export async function changeVenueAccess(venueId: string, value: unknown): Promise<VillageSnapshot> {
+  const command = readAccessCommand(value);
+  if ("sceneId" in command && command.sceneId) throw badRequest("The server resolves the active Scene.");
+  const { activeVenueSession } = await import("./venue-session.js");
+  const scene = await activeVenueSession();
+  if (command.action === "refuse-entry" || command.action === "leave-now") {
+    if (!scene || scene.placeId !== venueId)
+      throw conflict("Open a Scene in this Venue before changing permission for this visit.");
+    command.sceneId = scene.id;
+  }
+  if (command.action === "invite" && scene?.placeId === venueId) command.sceneId = scene.id;
+  await mutateVillageState((state) => {
+    const venue = state.venues.find((row) => row.id === venueId);
+    if (!venue) throw notFound("That Venue is no longer here.");
+    applyAccessCommand(venue, command, "player", new Date().toISOString(), [
+      "player",
+      ...state.villagers.map((person) => person.characterId),
+    ]);
+  });
+  await activeVenueSession(); // Reconcile recorded exits before returning the next snapshot.
+  return buildVillageSnapshot();
+}
+
 /** Save only an explicit, grounded request. All sources share this deduplication rule. */
 export function queueVillageVenueRequest(
   state: VillageState,
@@ -2516,7 +2642,7 @@ export async function updateVillageVenue(venueId: string, value: unknown): Promi
     const posted =
       value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
     const disallowed = Object.keys(posted).filter(
-      (key) => !["id", "name", "description", "imageContext"].includes(key),
+      (key) => !["id", "name", "venueType", "description", "imageContext"].includes(key),
     );
     if (disallowed.length)
       throw badRequest(
@@ -2539,6 +2665,7 @@ export async function updateVillageVenue(venueId: string, value: unknown): Promi
     )
       throw conflict("That name is reserved by a build project.");
     current.name = name;
+    current.venueType = boundText(posted.venueType ?? current.venueType, 100);
     current.description = description;
     if (posted.imageContext !== undefined) current.imageContext = readVenueImageContext(posted.imageContext);
   });
@@ -2547,7 +2674,7 @@ export async function updateVillageVenue(venueId: string, value: unknown): Promi
 
 export async function updateVillageZone(venueId: string, zoneId: string, value: unknown): Promise<VillageSnapshot> {
   const row = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  if (Object.keys(row).some((key) => !["name", "description", "state"].includes(key)))
+  if (Object.keys(row).some((key) => !["name", "purpose", "description", "state"].includes(key)))
     throw badRequest("Structural zone changes need a Renovation.");
   const village = await readVillageState(),
     venue = village.venues.find((entry) => entry.id === venueId),
@@ -2567,10 +2694,16 @@ export async function updateVillageZone(venueId: string, zoneId: string, value: 
   await mutateVillageState((state) => {
     const currentVenue = state.venues.find((entry) => entry.id === venueId)!,
       current = resolveVenueZone(currentVenue, zoneId)!;
+    if (
+      !current ||
+      (currentVenue.access && !managesAccess(currentVenue, current.kind === "exterior" ? null : zoneId, "player"))
+    )
+      throw conflict("The Zone's managers changed. Reload before editing.");
     const scene = row.state && typeof row.state === "object" ? (row.state as Record<string, unknown>) : {};
     if (Object.keys(scene).some((key) => !["condition", "items", "publicFacts", "features"].includes(key)))
       throw badRequest("That scene field cannot be edited here.");
     current.name = venueFieldText(row.name, current.name, MAX_VENUE_NAME_LENGTH).trim();
+    current.purpose = venueFieldText(row.purpose, current.purpose ?? "", 240).trim();
     current.description = venueFieldText(row.description, current.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
     if (!current.name || !current.description) throw badRequest("Give the zone a name and description.");
     current.state = {
@@ -2609,7 +2742,7 @@ export async function proposeResidenceSpaceEdit(venueId: string, value: unknown)
   await mutateVillageState((state) => {
     const venue = state.venues.find((entry) => entry.id === venueId);
     if (!venue) throw notFound("That Venue is no longer here.");
-    if (zoneId && ownerId && zoneId !== legacyZoneId(venue, "private", "residence", ownerId))
+    if (zoneId && ownerId && resolveVenueZone(venue, zoneId)?.ownerId !== ownerId)
       throw conflict("Conflicting private space targets.");
     const current = zoneId
       ? resolveVenueZone(venue, zoneId)
@@ -2620,7 +2753,12 @@ export async function proposeResidenceSpaceEdit(venueId: string, value: unknown)
     if (zoneId) {
       const zone = resolveVenueZone(venue, zoneId)!;
       const grant = session.zoneGrants?.find((entry) => entry.zoneId === zoneId);
-      if (zoneClosed(state, venue, zone) || (grant && !zoneControllerIds(venue, zone).includes(grant.controllerId)))
+      if (
+        zoneClosed(state, venue, zone) ||
+        (venue.access
+          ? !evaluateZoneAccess(venue, zone, "player", sceneAccessContext(session, state)).allowed
+          : grant && !zoneControllerIds(venue, zone).includes(grant.controllerId))
+      )
         throw conflict("This space's invitation is no longer valid.");
     }
     const requiredIds = zoneId
@@ -2635,6 +2773,8 @@ export async function proposeResidenceSpaceEdit(venueId: string, value: unknown)
         : {};
     const proposed = {
       ...current,
+      name: venueFieldText(row.name, "name" in current ? String(current.name) : "Zone", MAX_VENUE_NAME_LENGTH).trim(),
+      purpose: venueFieldText(row.purpose, "purpose" in current ? String(current.purpose ?? "") : "", 240).trim(),
       description: venueFieldText(row.description, current.description, MAX_VENUE_DESCRIPTION_LENGTH).trim(),
       state: {
         ...current.state,
@@ -2707,6 +2847,8 @@ export async function applyResidenceEditApproval(
       const zone = resolveVenueZone(venue, proposal.zoneId);
       if (!zone) return;
       zone.description = applied.description;
+      zone.name = applied.name ?? zone.name;
+      zone.purpose = applied.purpose ?? zone.purpose;
       zone.state = applied.state;
     } else if (proposal.target === "shared") {
       venue.spaces = venueSpaces(venue).map((space) =>
@@ -2903,7 +3045,7 @@ export async function completeVillageResidence(
       old.layoutVersion = 1;
     }
     const archivedAt = new Date(now).toISOString();
-    const oldPrivate = old?.privateSpaces?.find((space) => space.ownerId === characterId);
+    const oldPrivate = old && personalDestinationSpace(old, characterId);
     const needsAdaptation = Boolean(
       oldPrivate &&
       (oldPrivate.state.items.length ||
@@ -2911,15 +3053,17 @@ export async function completeVillageResidence(
         oldPrivate.description !== `A private space for this resident at ${old?.name}.`),
     );
     if (old) {
-      if (oldPrivate) {
+      const allOwned = old.privateSpaces?.filter((space) => space.ownerId === characterId) ?? [];
+      if (allOwned.length) {
         old.archivedPrivateSpaces = [
           ...(old.archivedPrivateSpaces ?? []),
-          { ownerId: characterId, archivedAt, space: structuredClone(oldPrivate) },
+          ...allOwned
+            .sort((a, b) => Number(b.id === oldPrivate?.id) - Number(a.id === oldPrivate?.id))
+            .map((space) => ({ ownerId: characterId, archivedAt, space: structuredClone(space) })),
         ].slice(-32);
         old.privateSpaces = (old.privateSpaces ?? []).filter((space) => space.ownerId !== characterId);
         if (old.layoutVersion === 1) {
-          const zone = old.zones?.find((zone) => zone.id === oldPrivate.id);
-          if (zone) {
+          for (const zone of old.zones?.filter((zone) => zone.ownerId === characterId) ?? []) {
             zone.ownerId = undefined;
             zone.seen = false;
             zone.state.publicFacts = [];
@@ -2930,19 +3074,23 @@ export async function completeVillageResidence(
             zone.image = null;
             zone.description = zone.purpose || "Vacant residential Private Space.";
           }
-          old.playerInvitations = old.playerInvitations?.filter((invitation) => invitation.zoneId !== oldPrivate.id);
-          old.editProposals = old.editProposals?.filter((proposal) => proposal.zoneId !== oldPrivate.id);
+          const ownedIds = new Set(allOwned.map((space) => space.id));
+          old.playerInvitations = old.playerInvitations?.filter((invitation) => !ownedIds.has(invitation.zoneId ?? ""));
+          old.editProposals = old.editProposals?.filter((proposal) => !ownedIds.has(proposal.zoneId ?? ""));
         }
       }
       old.residentIds = venueResidentIds(old).filter((id) => id !== characterId);
       old.playerSeenPrivateIds = (old.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
       old.occupancy.residentCharacterId = old.residentIds[0] ?? null;
+      if (old.destinations) delete old.destinations[characterId];
     }
     destination.residentIds = [...venueResidentIds(destination), characterId];
     destination.playerSeenPrivateIds = (destination.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
     if (destination.layoutVersion === 1 && residence.proposedPrivateZoneId) {
       const zone = destination.zones!.find((zone) => zone.id === residence.proposedPrivateZoneId)!;
       zone.ownerId = characterId;
+      destination.destinations ??= {};
+      destination.destinations[characterId] = { sleep: zone.id };
       zone.seen = false;
       zone.preparation = needsAdaptation ? undefined : { status: "pending" };
       zone.adaptationPending = needsAdaptation;
@@ -2965,8 +3113,12 @@ export async function completeVillageResidence(
   return buildVillageSnapshot(now);
 }
 
+function personalDestinationSpace(venue: VillageVenue, characterId: string) {
+  const id = legacyZoneId(venue, "private", "residence", characterId);
+  return venue.privateSpaces?.find((space) => space.id === id);
+}
 function adaptationRevision(venue: VillageVenue, characterId: string): string {
-  const room = venue.privateSpaces?.find((space) => space.ownerId === characterId);
+  const room = personalDestinationSpace(venue, characterId);
   return backgroundRevision([
     venue.id,
     venue.name,
@@ -2982,7 +3134,7 @@ export async function retryResidencePrivateSpaceAdaptation(characterValue: unkno
   const characterId = residenceCharacterId(characterValue);
   const village = await readVillageState();
   const destination = village.venues.find((venue) => venueResidentIds(venue).includes(characterId));
-  const room = destination?.privateSpaces?.find((space) => space.ownerId === characterId);
+  const room = destination && personalDestinationSpace(destination, characterId);
   if (!destination || !room || !room.adaptationPending) return buildVillageSnapshot();
   const archive = village.venues
     .flatMap((venue) => venue.archivedPrivateSpaces ?? [])
@@ -3076,7 +3228,7 @@ registerBackgroundHandler("adaptation", {
     const { description, items, features } = result;
 
     const currentVenue = state.venues.find((venue) => venue.id === destination.id);
-    const current = currentVenue?.privateSpaces?.find((space) => space.ownerId === characterId);
+    const current = currentVenue && personalDestinationSpace(currentVenue, characterId);
     if (!current?.adaptationPending || current.adaptationSourceArchiveAt !== archive.archivedAt) return;
     current.description = description;
     current.state.items = currentVenue?.layoutVersion === 1 ? [...new Set([...current.state.items, ...items])] : items;
@@ -3097,6 +3249,9 @@ registerBackgroundHandler("adaptation", {
 
 /** A place as it comes out of a request body, once it has been checked over. */
 type ParsedPlace = {
+  venueType?: string;
+  access?: VillageVenue["access"];
+  destinations?: VillageVenue["destinations"];
   layoutVersion?: 1;
   zones?: VillageVenue["zones"];
   privateSpaces?: VillageVenue["privateSpaces"];
@@ -3256,7 +3411,8 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     record.layoutVersion === 1 && founding
       ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage)
       : undefined;
-  return {
+  const result: ParsedPlace = {
+    venueType: boundText(record.venueType, 100),
     layoutVersion: record.layoutVersion === 1 ? 1 : undefined,
     zones: explicitZones ?? (founding ? readCreationPrivateZones(record.privateSpaces, classes) : undefined),
     privateSpaces:
@@ -3317,6 +3473,28 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     capabilities: [],
     state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
   };
+  if (founding) {
+    initializeVenueAccess(result);
+    for (const [actor, destinations] of Object.entries(asRecord(record.destinations))) {
+      if (!result.destinations?.[actor])
+        throw badRequest("Choose destinations only for assigned residents or workers.");
+      const selected = asRecord(destinations);
+      for (const role of ["home", "sleep", "work"] as const) {
+        const destination = asTrimmedString(selected[role]);
+        if (!destination) continue;
+        const zone = result.zones?.find((zone) => zone.id === destination);
+        if (
+          !zone ||
+          zone.kind === "exterior" ||
+          zone.venueClass !== (role === "work" ? "workplace" : "residence") ||
+          (zone.ownerId && zone.ownerId !== actor)
+        )
+          throw badRequest("Choose a suitable Zone for each destination.");
+        result.destinations[actor][role] = destination;
+      }
+    }
+  }
+  return result;
 }
 
 /**

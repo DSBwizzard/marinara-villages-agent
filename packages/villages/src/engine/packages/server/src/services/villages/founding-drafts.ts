@@ -31,9 +31,11 @@ export type FoundingVenueSuggestion = {
   id: string;
   name: string;
   form: string;
+  venueType?: string;
   description: string;
   layout: "exterior" | "common" | "private" | "both";
   commonName: string;
+  commonPurpose?: string;
   commonDescription: string;
   privateName: string;
   privatePurpose: string;
@@ -60,9 +62,11 @@ export function parseFoundingVenueSuggestions(value: unknown, ids: readonly stri
       id,
       name: text("name", 100, true),
       form: text("form", 240, true),
+      venueType: text("venueType", 100),
       description: text("description", 1000, true),
       layout: layout as FoundingVenueSuggestion["layout"],
       commonName: text("commonName", 100, layout === "common" || layout === "both"),
+      commonPurpose: text("commonPurpose", 240),
       commonDescription: text("commonDescription", 1000, layout === "common" || layout === "both"),
       privateName: text("privateName", 100, layout === "private" || layout === "both"),
       privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
@@ -115,7 +119,7 @@ export async function suggestStartingVenues(value: unknown): Promise<{ venues: F
           "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
           "Exterior is each Venue's entrance and approach, including an indoor corridor if appropriate. Common and Private Space are independent optional areas; choose a fitting layout.",
           "Only suggest Private Space names and structural purposes. Never return private descriptions, images, objects or resident secrets. A Gathering Place with a Private Space is controlled by the player.",
-          'Return JSON only: {"venues":[{"id":"...","name":"...","form":"...","description":"entrance and approach","layout":"exterior|common|private|both","commonName":"...","commonDescription":"...","privateName":"...","privatePurpose":"..."}]}.',
+          'Venue Type identifies the place (home, bakery, church); Physical form describes its structure. Every Zone needs a concrete use, independent of access. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","layout":"exterior|common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone"}]}.',
           "Use short concrete descriptions, names at most 100 characters, form/purpose at most 240 and descriptions at most 1000. Supply every requested Venue exactly once.",
         ].join("\n"),
       },
@@ -168,6 +172,7 @@ function rowsOf(value: unknown): DraftRow[] {
     return {
       id,
       name: asTrimmedString(row.name).slice(0, 100),
+      venueType: asTrimmedString(row.venueType).slice(0, 100),
       form: asTrimmedString(row.form).slice(0, 240),
       description: asTrimmedString(row.description).slice(0, 1000),
       spaceDescription: asTrimmedString(row.spaceDescription).slice(0, 1000),
@@ -315,12 +320,14 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
           row.residentCharacterId,
         ])[row.residentCharacterId];
   const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
+  const selectedAppearance = asTrimmedString(input.zoneAppearance).slice(0, 1000);
   const areaDescription =
-    area === "private"
+    selectedAppearance ||
+    (area === "private"
       ? asTrimmedString(input.privateDescription).slice(0, 1000)
       : area === "exterior"
         ? row.description
-        : row.spaceDescription;
+        : row.spaceDescription);
   if (area === "private" && input.privateOwnerId !== "player")
     throw badRequest("Hidden personal spaces are drawn only after an invited entry.");
   const personality = input.useAssignedVillagerContext !== false;
@@ -365,13 +372,14 @@ export async function generateFoundingVenueImage(value: unknown): Promise<Villag
       personality && row.resident && foundingContext
         ? renderResidentFoundingContext(row.resident.name, foundingContext)
         : "",
+      `Venue Type: ${row.venueType || row.venueClass}. Physical form: ${row.form}. Selected Zone: ${asTrimmedString(input.zoneName) || "Entrance"}. Used for: ${asTrimmedString(input.zonePurpose).slice(0, 240) || "Arrival and approach"}.`,
       `Wide, empty ${area === "private" ? "interior" : area} view of ${row.name || "a village venue"}, a ${row.form || row.venueClass} in ${asTrimmedString(input.villageName) || "a village"}.`,
       area === "exterior"
         ? "Show the described Venue entrance and approach, not its enterable interior. A room's approach can be a corridor within a larger building; do not invent a detached building or outdoor surroundings."
         : "Show the described enterable space from inside, not the exterior.",
       `${area} description, follow closely: ${areaDescription}.`,
       row.layout
-        ? `Selected layout: ${row.layout}. Only these areas exist: ${JSON.stringify(row.areas ?? [])}. Do not invent other interiors or adjoining rooms. Do not reveal hidden private contents.`
+        ? `Selected layout: ${row.layout}. Only these areas exist: ${JSON.stringify(Array.isArray(row.areas) ? row.areas.map((area) => ({ id: record(area).id, name: record(area).name })) : [])}. Do not invent other interiors or adjoining rooms. Do not reveal hidden private contents.`
         : "",
       "No people, lettering, numerals, signs, labels, or interface graphics.",
     ],
