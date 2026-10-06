@@ -1,14 +1,11 @@
-import { createExchangeProcessing } from "../../domain/decoding/exchange-codec.js";
 import { coerceActive, coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
 import { notFound } from "../../domain/rules/errors.js";
-import { sceneFingerprint } from "../../domain/rules/scene-record.js";
+import { applySceneMutation } from "../../domain/rules/scene-mutation.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "../engine/runtime-host.js";
 import { type DocumentSlot, mutateDocument } from "./document-store.js";
 
-/** One document is both the active transcript and the player's durable Scene archive. */
-
-/** Compatibility name for existing package integrations and saved Scene workflows. */
+/** Scene document identifiers and revision-safe storage operations. */
 
 export const ACTIVE_ID = "villages-active-venue";
 export const SESSION_PREFIX = "villages-venue-visit-";
@@ -39,38 +36,9 @@ export async function readSession(id: string): Promise<VenueScene> {
 export async function changeSession(id: string, change: (session: VenueScene) => void): Promise<VenueScene> {
   let result: VenueScene | null = null;
   await mutateDocument(`${SESSION_PREFIX}${id}`, sessionSlot, (session) => {
-    if (session.id !== id) throw notFound("That Scene is no longer available.");
-    const snapshot = JSON.stringify(session);
-    const before = sceneFingerprint(session);
-    const priorChanges = new Map(
-      session.submissions.map((turn) => [
-        turn.id,
-        JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]),
-      ]),
-    );
-    change(session);
-    if (session.processingVersion === 1 && session.villageSeed)
-      session.submissions.forEach((turn, order) => {
-        if (turn.movement || turn.processing || !turn.at || (turn.mode === "act" && !turn.actionReplyDone)) return;
-        turn.processing = createExchangeProcessing({
-          seed: session.villageSeed!,
-          sceneId: id,
-          submissionId: turn.id,
-          order,
-          lineIds: session.lines
-            .filter((line) => turn.replyLineIds?.includes(line.id) || (line.role === "user" && line.at === turn.at))
-            .map((line) => line.id),
-          actionReceiptIds: turn.action?.happened
-            ? [turn.physicalOutcomeVersion ? `venue-chat:${id}:${turn.id}` : `venue-action:${turn.id}`]
-            : [],
-        });
-      });
-    for (const turn of session.submissions)
-      if (priorChanges.get(turn.id) !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
-        turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
-    if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
+    const changed = applySceneMutation(session, id, change);
     result = session;
-    if (snapshot === JSON.stringify(session)) return false;
+    return changed;
   });
   return result!;
 }
