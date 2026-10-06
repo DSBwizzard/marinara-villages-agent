@@ -20,7 +20,6 @@ import {
   enterVenue,
   activeVenueSession,
   moveVenueZone,
-  publicSceneResponse,
   endVenueSession,
   recordRoomAccessEvents,
   readSceneChanges,
@@ -28,6 +27,7 @@ import {
   savedAccessEvents,
   processSavedExchange,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { roomInterpretationChecks } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
 import { selectRoomEventChecks } from "../packages/villages/src/server/domain/rules/room-events.js";
 import { socialPlanValid } from "../packages/villages/src/server/domain/rules/social-rules.js";

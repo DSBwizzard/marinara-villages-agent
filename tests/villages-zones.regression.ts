@@ -35,9 +35,9 @@ import {
   endVenueSession,
   recoverVenueSceneWork,
   discardVenueVisitDebug,
-  publicSceneResponse,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
-import { sceneLockedRoutes } from "../packages/villages/src/server/features/spinoff/legacy-route-lock.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { buildVillageSnapshot, setVillageVenueImage } from "../packages/villages/src/server/features/world/village.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
@@ -456,17 +456,48 @@ async function sceneAttendanceChecks() {
       "polling cannot reconcile background attendance",
     );
 
-    let routeHandler: any;
-    const routes = sceneLockedRoutes({
-      get(_path: string, handler: any) {
-        routeHandler = handler;
-      },
-    } as any);
-    routes.get("/rooms/active", async () => ({ session: scene }));
-    const browserResponse = await routeHandler({}, {});
+    const routeHandlers = new Map<string, (request: any, reply: any) => any>();
+    const collector = Object.fromEntries(
+      ["get", "post", "put", "patch", "delete"].map((method) => [
+        method,
+        (_path: string, optionsOrHandler: any, handler?: any) => {
+          routeHandlers.set(method + " " + _path, typeof optionsOrHandler === "function" ? optionsOrHandler : handler);
+        },
+      ]),
+    );
+    await villagesRoutes(collector as any);
+    const callsBeforeProjection = paidCalls;
+    const preservedScene = structuredClone(scene);
+    const browserResponse = await routeHandlers.get("get /rooms/active")!({}, {});
     assert.equal(browserResponse.session.sceneAttendance, undefined, "route responses hide the whole-Venue snapshot");
     assert.doesNotMatch(JSON.stringify(browserResponse), /captured activity resident/);
     assert.equal(scene.sceneAttendance!.occupants.length, 3, "projection cannot mutate durable attendance");
+    const archiveId = "privacy-archive-" + scene.id;
+    const archiveKey = "villages-venue-visit-" + archiveId;
+    records.set(archiveKey, {
+      id: archiveKey,
+      kind: "venue-visit",
+      revision: 1,
+      data: { ...structuredClone(scene), id: archiveId, status: "closed", endedAt: stamp },
+    });
+    try {
+      const archiveResponse = await routeHandlers.get("get /rooms/archive/:id")!({ params: { id: archiveId } }, {});
+      assert.equal(
+        archiveResponse.visit.sceneAttendance,
+        undefined,
+        "the actual archive handler hides whole-Venue attendance",
+      );
+      assert.doesNotMatch(JSON.stringify(archiveResponse), /captured activity resident/);
+      assert.equal(
+        records.get(archiveKey).data.sceneAttendance.occupants.length,
+        3,
+        "archive projection preserves private saved data",
+      );
+    } finally {
+      records.delete(archiveKey);
+    }
+    assert.equal(paidCalls, callsBeforeProjection, "Scene response projection never requests a model");
+    assert.deepEqual(scene, preservedScene, "Scene response projection does not change its input");
     const nested = publicSceneResponse({
       session: scene,
       operation: { snapshot: scene, checkpoints: { saved: scene } },

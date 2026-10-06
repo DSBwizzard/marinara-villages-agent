@@ -1,4 +1,5 @@
 import { operationSummary } from "../operations/operation-context.js";
+import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import type { VillageRouteHandler } from "./route-support.js";
 import type { FastifyInstance } from "fastify";
 
@@ -13,8 +14,9 @@ export function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;
           for (const key of ["session", "visit"]) {
-            const scene = payload[key] as Record<string, unknown> | undefined;
-            if (scene)
+            const saved = payload[key] as Record<string, unknown> | undefined;
+            if (saved) {
+              const scene = publicSceneResponse(saved);
               payload[key] = {
                 ...scene,
                 relationshipReview: scene.relationshipReview
@@ -27,6 +29,7 @@ export function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
                   scene.operation as import("../../domain/models/operation-model.js").VenueOperation | undefined,
                 ),
               };
+            }
           }
         }
         return result;

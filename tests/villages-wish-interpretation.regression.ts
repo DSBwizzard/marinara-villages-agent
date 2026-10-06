@@ -20,7 +20,7 @@ import {
 import { readVenueActionResult } from "../packages/villages/src/server/features/venues/venue-actions.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { saveInterpretationSettings } from "../packages/villages/src/server/features/settings/interpretation-settings.js";
-import { publicSceneResponse } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 const records = new Map<string, any>();
 let preparations = 0,
   interpretations = 0;

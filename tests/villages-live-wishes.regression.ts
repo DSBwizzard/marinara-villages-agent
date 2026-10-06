@@ -20,9 +20,9 @@ import { createExchangeProcessing } from "../packages/villages/src/server/featur
 import {
   readSceneChanges,
   processSavedExchange,
-  publicSceneResponse,
   retrySceneChangeInterpretation,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 
 async function main() {
   const at = new Date().toISOString(),

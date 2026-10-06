@@ -1,7 +1,7 @@
 import { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import { fail, type VillageRouteHandler } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { publicSceneResponse } from "../scenes/venue-session.js";
+import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import { readVillageSceneLock } from "./spinoff.js";
 import type { FastifyInstance } from "fastify";
 

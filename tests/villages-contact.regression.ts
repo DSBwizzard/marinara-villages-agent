@@ -14,9 +14,9 @@ import {
   sendVenueTurn as submitTurn,
   moveVenueZone,
   activeVenueSession,
-  publicSceneResponse,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
   contactNeighbors,
   contactPath,
