@@ -55,7 +55,22 @@ async function main() {
     [{ ...suggestion, privatePurpose: "" }],
   ])
     assert.throws(() => parseFoundingVenueSuggestions({ venues }, ["one"]));
+  assert.throws(() => parseFoundingVenueSuggestions(null, ["one"]), /readable Venue suggestions/);
   for (const count of [3, 4, 5]) {
+    const ids = Array.from({ length: count }, (_, index) => `venue-${index}`);
+    const suggestions = ids.map((id) => ({ ...suggestion, id }));
+    assert.deepEqual(
+      parseFoundingVenueSuggestions({ venues: [...suggestions].reverse() }, ids).map((venue: any) => venue.id),
+      ids,
+      "all starting Venues are matched by id, independent of model order",
+    );
+    for (const venues of [
+      suggestions.slice(1),
+      [...suggestions, { ...suggestion, id: "extra" }],
+      [{ ...suggestions[0], id: "wrong" }, ...suggestions.slice(1)],
+      [suggestions[1], ...suggestions.slice(1)],
+    ])
+      assert.throws(() => parseFoundingVenueSuggestions({ venues }, ids), /every starting Venue exactly once/);
     const pins = evenlySpacedFoundingPins(count);
     assert.equal(pins.length, count);
     assert.equal(new Set(pins.map((pin) => `${pin.x}:${pin.y}`)).size, count);

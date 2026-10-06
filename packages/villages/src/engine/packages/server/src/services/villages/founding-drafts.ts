@@ -44,9 +44,16 @@ export type FoundingVenueSuggestion = {
 /** Suggestions never carry positions, assignments, private contents, or gameplay effects. */
 export function parseFoundingVenueSuggestions(value: unknown, ids: readonly string[]): FoundingVenueSuggestion[] {
   const payload = record(value);
-  const rows = Array.isArray(payload.venues) ? payload.venues : [];
-  if (rows.length !== ids.length || new Set(rows.map((row) => record(row).id)).size !== ids.length)
-    throw badRequest("The suggestions must include every starting Venue exactly once.");
+  if (!Array.isArray(payload.venues))
+    throw badRequest(
+      "The System model did not return readable Venue suggestions. Your draft is unchanged; retry when ready.",
+    );
+  const rows = payload.venues;
+  const returnedIds = new Set(rows.map((row) => record(row).id));
+  if (rows.length !== ids.length || returnedIds.size !== ids.length || ids.some((id) => !returnedIds.has(id)))
+    throw badRequest(
+      "The System model did not return every starting Venue exactly once with its supplied id. Your draft is unchanged; retry when ready.",
+    );
   return ids.map((id) => {
     const row = record(rows.find((candidate) => record(candidate).id === id));
     const text = (key: string, max: number, required = false) => {
@@ -120,21 +127,47 @@ export async function suggestStartingVenues(value: unknown): Promise<{ venues: F
           "Exterior is each Venue's entrance and approach, including an indoor corridor if appropriate. Common and Private Space are independent optional areas; choose a fitting layout.",
           "Only suggest Private Space names and structural purposes. Never return private descriptions, images, objects or resident secrets. A Gathering Place with a Private Space is controlled by the player.",
           'Venue Type identifies the place (home, bakery, church); Physical form describes its structure. Every Zone needs a concrete use, independent of access. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","layout":"exterior|common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone"}]}.',
-          "Use short concrete descriptions, names at most 100 characters, form/purpose at most 240 and descriptions at most 1000. Supply every requested Venue exactly once.",
+          "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 1000.",
+          `Return exactly ${rows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Do not omit the player's living space or the Gathering Place.`,
         ].join("\n"),
       },
       { text: persona ? `Player Persona: ${persona.name}\n${persona.identity}` : "" },
       ...cards.map((card) => ({ text: venueCardProfile(card!) })),
       ...lore.map((text) => ({ text, optional: "lore" as const })),
     ],
-    JSON.stringify({ setting, circumstances, venues: rows }),
+    JSON.stringify({
+      setting,
+      circumstances,
+      venues: rows,
+      responseTemplate: {
+        venues: rows.map((row) => ({
+          id: row.id,
+          name: "",
+          venueType: "",
+          form: "",
+          description: "",
+          layout: "exterior|common|private|both",
+          commonName: "",
+          commonPurpose: "",
+          commonDescription: "",
+          privateName: "",
+          privatePurpose: "",
+        })),
+      },
+    }),
     Math.min(model.maxOutputTokens ?? 4000, 4000),
     "System",
   );
   const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 4000, {
     temperature: 0.7,
+    reasoningEffort: "none",
+    retryEmpty: false,
     debugMode: false,
   });
+  if (["length", "max_tokens"].includes(completion.finishReason ?? ""))
+    throw badRequest(
+      "The System model ran out of output room while drafting Venues. Your draft is unchanged; check the connection's output and thinking settings or choose another model, then retry.",
+    );
   return {
     venues: parseFoundingVenueSuggestions(
       extractJsonObject(completion.content ?? ""),
