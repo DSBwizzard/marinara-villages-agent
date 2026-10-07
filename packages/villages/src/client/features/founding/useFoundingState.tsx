@@ -1,8 +1,9 @@
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type { ScenarioImprint, SetupMapRequest } from "../../../shared/contracts/village.js";
 import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
-import type { FoundingScenarioId, SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
+import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
 import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint } from "./FoundingPanels.js";
+import type { FoundingScenarioId } from "./scenarios.js";
 import { type AreaDraftCache, SCENERY_STYLES } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";

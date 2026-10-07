@@ -10,15 +10,15 @@ import type { ResidentFoundingContext } from "../../../shared/helpers/resident-f
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
-import type { FoundingScenarioId, SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
+import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import {
   DEFAULT_TOWN_MAP_OPTIONS,
   emptyScenarioImprint,
-  FOUNDING_SCENARIOS,
   foundingScenario,
   LEGACY_FOUNDING_REASONS,
 } from "./FoundingPanels.js";
+import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";

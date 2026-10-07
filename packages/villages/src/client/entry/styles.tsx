@@ -3,7 +3,7 @@ import { VILLAGES_FORGING_STYLES } from "../features/founding/villages-forging-s
 import { DOSSIER_STYLES } from "../features/residents/villages-dossier-styles.js";
 import { SCENE_ASIDE_STYLES } from "../features/scenes/villages-scene-asides.js";
 import { VILLAGES_SCENE_STYLES } from "../features/scenes/villages-scene-styles.js";
-import { ELEMENT_TAG, STYLE_ID } from "./constants.js";
+import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 
 const VILLAGES_STYLES = `
 /*

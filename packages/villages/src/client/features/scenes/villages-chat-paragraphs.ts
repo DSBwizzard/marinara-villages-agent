@@ -1,4 +1,5 @@
 import type { VillagesWalkBeat } from "../../../shared/contracts/scene-beat.js";
+import type { VillagesWalkAside } from "../../shared/types.js";
 
 // Villages — reading a villager's answer a paragraph at a time.
 //
@@ -158,24 +159,6 @@ export function classifyVillagesParagraph(paragraph: string): VillagesParagraphS
  * distinguishable from speech by any punctuation — which is why the villager
  * marks them and why nothing here may guess at them.
  */
-
-/**
- * One line that rides a step instead of being one, in the two registers a
- * villager can produce.
- *
- * The names are the drawing's rather than the tag's, and the reason is that the
- * card's own two registers are `speech` and `narration`: an aside is not a third
- * and fourth way of drawing the plate, it is a thing shown beside the plate. So
- * this type carries the bubble's registers and the walk below never lets one of
- * these become a step.
- */
-export type VillagesWalkAside = {
-  register: "side" | "whisper";
-  /** The words, with the tag taken off. */
-  text: string;
-  /** The listener, on a whisper. Absent when the villager did not name one. */
-  target?: string;
-};
 
 /** What the card walks: its steps, and the lines riding each of them. */
 export type VillagesWalk = {

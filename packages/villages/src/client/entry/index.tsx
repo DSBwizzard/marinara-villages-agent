@@ -1,7 +1,7 @@
 import { VillagesUsageMeter } from "../features/settings/villages-usage-meter.js";
 import { request } from "../shared/api.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
-import { syncVillagesStyles } from "../shared/styles.js";
+import { syncVillagesStyles } from "./styles.js";
 import { VillagesView } from "../shell/VillagesApp.js";
 import { Component, type ReactNode, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";

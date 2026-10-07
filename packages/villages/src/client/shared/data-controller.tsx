@@ -1,6 +1,4 @@
 import type { PersonaResponse, VillageLorebookOption, VillageSnapshot } from "../../shared/contracts/village.js";
-import type { ScenesState } from "../features/scenes/useScenesState.js";
-import type { SettingsState } from "../features/settings/useSettingsState.js";
 import { messageFrom, request } from "./api.js";
 import { SHOW_CATCHING_UP_AFTER_MS, VILLAGE_PULSE_MS } from "./presentation.js";
 import { createVillagesClientId } from "./request-id.js";
@@ -76,7 +74,7 @@ export function useReconcileVillage(ports: {
  */
 export function useWriteVillageEvent(ports: {
   readonly reconcile: (forceStory?: boolean) => Promise<import("../../shared/contracts/village").VillageSnapshot>;
-  readonly setWriteUpNote: ScenesState["setWriteUpNote"];
+  readonly setWriteUpNote: React.Dispatch<React.SetStateAction<string>>;
   readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
 }) {
   return useCallback(async () => {
@@ -231,7 +229,7 @@ export function useVillageTransitions(ports: {
 
 export function useLoadPersonas(ports: {
   readonly setError: React.Dispatch<React.SetStateAction<string>>;
-  readonly setPersonaDraft: SettingsState["setPersonaDraft"];
+  readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonas: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").PersonaEntry[]>>;
 }) {
   return useCallback(async (signal?: AbortSignal, selectActive = true) => {

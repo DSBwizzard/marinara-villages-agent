@@ -8,12 +8,12 @@ import { AvatarFace } from "../residents/ResidentPanels.js";
 import { AgentConnections } from "../settings/SettingsPanels.js";
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import {
-  FOUNDING_SCENARIOS,
   FoundingPersonaSelector,
   FoundingVillagerPicker,
   SETUP_STEPS,
   VillageLorebookPicker,
 } from "./FoundingPanels.js";
+import { FOUNDING_SCENARIOS } from "./scenarios.js";
 import { evenlySpacedFoundingPins } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";

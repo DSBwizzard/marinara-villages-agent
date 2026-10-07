@@ -1,9 +1,8 @@
 import type { VillageConnectionSettings, VillageWritingView } from "../../../shared/contracts/village.js";
 import { messageFrom, request, requestHost } from "../../shared/api.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
+import { ELEMENT_TAG, VILLAGES_IMAGE_CONNECTION_DISABLED } from "../../shared/constants.js";
 import { connectionOptionsFrom } from "../../shared/presentation.js";
 import type { EngineConnectionRow, VillageConnectionOption } from "../../shared/types.js";
-import { VILLAGES_IMAGE_CONNECTION_DISABLED } from "../founding/FoundingPanels.js";
 import { useCallback, useEffect, useState } from "react";
 
 export function VillagesRuntimeDebug() {

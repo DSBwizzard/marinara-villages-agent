@@ -1,9 +1,10 @@
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
-import type { FoundingScenarioId, SetupVenueDraft } from "../../shared/types.js";
+import type { SetupVenueDraft } from "../../shared/types.js";
 import type { SettingsState } from "../settings/useSettingsState.js";
 import { foundingScenario } from "./FoundingPanels.js";
+import type { FoundingScenarioId } from "./scenarios.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { personalSpaceDraft } from "./villages-founding-editor";

@@ -1,10 +1,6 @@
 import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
 import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
-import { FOUNDING_SCENARIOS } from "../features/founding/FoundingPanels.js";
-import type { VillagesWalkAside } from "../features/scenes/villages-chat-paragraphs";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
-
-export type FoundingScenarioId = (typeof FOUNDING_SCENARIOS)[number]["value"];
 
 export type MapElementChoice = "auto" | "include" | "exclude";
 
@@ -252,6 +248,15 @@ export type IdentityPreview = IdentityChoice & {
   overview: string;
   details: { label: string; text: string }[];
   context: string;
+};
+
+/** One line attached to a Scene paragraph instead of becoming a separate step. */
+export type VillagesWalkAside = {
+  register: "side" | "whisper";
+  /** The words, with the tag taken off. */
+  text: string;
+  /** The listener, on a whisper. Absent when the villager did not name one. */
+  target?: string;
 };
 
 /** One paragraph in a Scene, with its speaker and attached asides. */

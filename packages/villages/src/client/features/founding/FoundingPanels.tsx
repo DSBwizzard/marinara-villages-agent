@@ -8,7 +8,6 @@ import type {
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type {
-  FoundingScenarioId,
   IdentityChoice,
   IdentityPreview,
   PersonaPreview,
@@ -18,36 +17,8 @@ import type {
   TownMapOptions,
 } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
+import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { useEffect, useState } from "react";
-
-export const FOUNDING_SCENARIOS = [
-  {
-    value: "rebuild",
-    label: "Starting over",
-    description: "A change brings people together.",
-    icon: "⌂",
-    premise:
-      "Housing elsewhere is no longer available, and an unused shopping mall offers somewhere for you and the others to stay.",
-  },
-  {
-    value: "pioneer",
-    label: "Arriving somewhere new",
-    description: "Different reasons, a shared destination.",
-    icon: "△",
-    premise:
-      "You and the others have been assigned accommodation aboard a remote station. Each of you has your own reason for accepting the posting.",
-  },
-  {
-    value: "prosper",
-    label: "A shared undertaking",
-    description: "Something puts you in the same place.",
-    icon: "▥",
-    premise:
-      "You and the others are staying onsite at a server facility because its operation requires a resident team.",
-  },
-  { value: "custom", label: "Custom", description: "Write your own shared circumstances.", icon: "✦", premise: "" },
-  { value: "none", label: "No preset", description: "Start without an example.", icon: "∞", premise: "" },
-] as const;
 
 export const emptyScenarioImprint = (): ScenarioImprint => ({
   origin: "",
@@ -79,8 +50,6 @@ export const SETUP_STEPS = ["People", "Place", "Venues", "Review"] as const;
 export const SETUP_MIN_VILLAGER_COUNT = 1;
 
 export const SETUP_MAX_VILLAGER_COUNT = 3;
-
-export const VILLAGES_IMAGE_CONNECTION_DISABLED = "__villages_image_disabled__";
 
 export function newSetupVenue(
   id: string,
