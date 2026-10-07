@@ -1,3 +1,12 @@
+import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
+import { configureFoundingSetup } from "../features/founding/founding-setup.js";
+import { readTownMapSubmission } from "../features/media/town-map-review.js";
+import { readVillageConnectionSettings, validateVillageSetupConnections } from "../features/settings/connections.js";
+import {
+  proposeVillage,
+  proposePublicVenueNames,
+  draftVillageVenueDescriptions,
+} from "../features/founding/village-bootstrap.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview } from "../features/media/town-map-review.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
@@ -133,9 +142,9 @@ import {
 } from "../adapters/engine/catalog.js";
 import { createVillageSettings } from "../features/settings/village-settings-service.js";
 import { configureVillageSettings } from "../features/settings/village-settings.js";
-import { runVillageBootstrap } from "../features/world/village.js";
+import { runVillageBootstrap } from "../features/founding/founding-setup.js";
 import { createFoundingPreparation } from "../features/founding/preparation-service.js";
-import { configureFoundingPreparation } from "../features/founding/preparation.js";
+import { configureFoundingPreparation, prepareFoundedVillage } from "../features/founding/preparation.js";
 import { seedFoundingVenueDetails } from "../features/founding/founding-drafts.js";
 import { preparePrivateSpaces } from "../jobs/private-space-preparation.js";
 import {
@@ -303,6 +312,25 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       uploadVillageGalleryImage,
     }),
   );
+  const releaseFoundingSetup = configureFoundingSetup(
+    createFoundingSetup({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      readTownMapSubmission,
+      readVillageConnectionSettings,
+      validateVillageSetupConnections,
+      readLinkedPersona,
+      listVillagerCards,
+      prepareFoundedVillage,
+      queueVillagerAgenda,
+      queueMicrotask,
+      readVillageLore,
+      proposeVillage,
+      proposePublicVenueNames,
+      draftVillageVenueDescriptions,
+    }),
+  );
   const releaseSettings = configureVillageSettings(
     createVillageSettings({
       mutateVillageState,
@@ -378,6 +406,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseGraph = () => {
+    releaseSettings();
+    releaseFoundingSetup();
     releaseFounding();
     releasePrivateSpaces();
     releaseBackground();
@@ -385,7 +415,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseTownMap();
     releaseZoneEdits();
     releaseVenueCommands();
-    releaseSettings();
     releaseSignatures();
     releaseSprites();
     releaseTownMapReview();

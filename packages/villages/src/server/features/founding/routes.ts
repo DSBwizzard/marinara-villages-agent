@@ -1,3 +1,4 @@
+import { resetVillage } from "../world/village.js";
 import { fail, SETTINGS_BODY_LIMIT, VENUE_IMAGE_BODY_LIMIT } from "../../adapters/http/route-support.js";
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
 import { generateVillageTownMap } from "../media/town-map-image.js";
@@ -5,11 +6,10 @@ import { resetVenueSessions } from "../scenes/venue-session.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   draftVenueDescriptions,
-  resetVillage,
   runVillageSetup,
   suggestFoundingPlaces,
   suggestFoundingVenueNames,
-} from "../world/village.js";
+} from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
 import { draftScenarioImprint } from "./scenario-imprint.js";

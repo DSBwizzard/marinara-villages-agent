@@ -12,7 +12,30 @@ async function main() {
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
   );
   const { coerceVillageState } = await import(pathToFileURL(join(serverRoot, "features/world/village-store.ts")).href);
-  const { runVillageSetup } = await import(pathToFileURL(join(serverRoot, "features/world/village.ts")).href);
+  const { createFoundingSetup } = await import(
+    pathToFileURL(join(serverRoot, "features/founding/founding-setup-service.ts")).href
+  );
+  // These deliberately invalid inputs fail before a connection is needed.
+  const unexpected = () => {
+    throw Error("Unexpected connection in a setup validation probe.");
+  };
+  const { runVillageSetup } = createFoundingSetup({
+    readVillageState: unexpected,
+    mutateVillageState: unexpected,
+    buildVillageSnapshot: unexpected,
+    readTownMapSubmission: unexpected,
+    readVillageConnectionSettings: unexpected,
+    validateVillageSetupConnections: unexpected,
+    readLinkedPersona: unexpected,
+    listVillagerCards: unexpected,
+    prepareFoundedVillage: unexpected,
+    queueVillagerAgenda: unexpected,
+    queueMicrotask: unexpected,
+    readVillageLore: unexpected,
+    proposeVillage: unexpected,
+    proposePublicVenueNames: unexpected,
+    draftVillageVenueDescriptions: unexpected,
+  });
   const { parsePlace } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { assertFoundingScenarioLocked } =
     await import("../packages/villages/src/server/domain/rules/founding-record.ts");
@@ -306,6 +329,7 @@ async function main() {
   const routes = villageRouteSource();
   const village =
     (await readFile(join(serverRoot, "features/world/village.ts"), "utf8")) +
+    (await readFile(join(serverRoot, "features/founding/founding-setup-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts.ts"), "utf8");

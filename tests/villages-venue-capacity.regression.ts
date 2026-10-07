@@ -11,7 +11,8 @@ import {
   villageVenueLimit,
   villageVenueUsage,
 } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
-import { resetVillage, runVillageBootstrap } from "../packages/villages/src/server/features/world/village.js";
+import { resetVillage } from "../packages/villages/src/server/features/world/village.js";
+import { runVillageBootstrap } from "../packages/villages/src/server/features/founding/founding-setup.js";
 import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
 import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 

@@ -23,7 +23,7 @@ import { proposeStartingTies } from "../packages/villages/src/server/features/re
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { runVillageSetup } from "../packages/villages/src/server/features/world/village.js";
+import { runVillageSetup } from "../packages/villages/src/server/features/founding/founding-setup.js";
 import { suggestStartingVenues } from "../packages/villages/src/server/features/founding/founding-drafts.js";
 import {
   sceneryCharacterContext,

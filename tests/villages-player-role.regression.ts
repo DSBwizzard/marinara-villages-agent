@@ -27,7 +27,7 @@ import {
   villageCurrentSetting,
   villageFoundingSetting,
 } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { runVillageSetup } from "../packages/villages/src/server/features/world/village.js";
+import { runVillageSetup } from "../packages/villages/src/server/features/founding/founding-setup.js";
 
 async function main() {
   const custom = {
