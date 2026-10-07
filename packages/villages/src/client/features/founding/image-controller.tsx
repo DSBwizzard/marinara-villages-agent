@@ -4,7 +4,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
-import type { SettingsState } from "../settings/useSettingsState.js";
+
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 import { requestSetupMapReceipt } from "./FoundingPanels.js";
 import type { FoundingState } from "./useFoundingState.js";
@@ -147,7 +147,7 @@ export function createFoundingSetupDraftRow(ports: {}) {
 }
 export function createFoundingGenerateSetupImage(ports: {
   readonly element: HTMLElement;
-  readonly personaDraft: SettingsState["personaDraft"];
+  readonly personaDraft: string;
   readonly personalizeHomes: FoundingState["personalizeHomes"];
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly selectedResidentContexts: {

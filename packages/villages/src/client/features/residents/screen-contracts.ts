@@ -1,34 +1,27 @@
+import type { BackgroundWork, VillageVenue } from "../../../shared/contracts/village.js";
+import type { MenuPage } from "../../shared/types.js";
+import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
+import type { DossierNavigation } from "./villages-dossier.js";
+
 import type { ResidentsState } from "./useResidentsState.js";
 
 import type { useApplyVillagerRefresh } from "./actions.js";
 
 import type { useCorrectCompletedWish } from "./actions.js";
 
-import type { ExplorationState } from "../exploration/useExplorationState.js";
-
 import type { useForgetMemory } from "./actions.js";
 
 import type { useLoadMemoryLibrary } from "./actions.js";
-
-import type { useScenesOpenMenu } from "../../shell/navigation-actions.js";
-
-import type { useOpenVenue } from "../venues/actions.js";
 
 import type { usePreviewVillagerRefresh } from "./actions.js";
 
 import type { useRemoveVillager } from "./actions.js";
 
-import type { useResidentsRetryWork } from "../background/actions.js";
-
 import type { useRewriteAgenda } from "./actions.js";
 
 import type { useSetAgendaScheduleIngestion } from "./actions.js";
 
-import type { ProjectsState } from "../projects/useProjectsState.js";
-
 import type { useAddVillager } from "./actions.js";
-
-import type { useNavigationOpenPerson } from "../../shell/navigation-controller.js";
 
 /** Values and actions used by ResidentsScreen; independent of shell implementation. */
 export type ResidentsScreenController = {
@@ -38,12 +31,12 @@ export type ResidentsScreenController = {
   readonly correctCompletedWish: ReturnType<typeof useCorrectCompletedWish>;
   readonly element: HTMLElement;
   readonly error: string;
-  readonly explorationReturnTab: ExplorationState["explorationReturnTab"];
+  readonly explorationReturnTab: React.RefObject<ExplorationTab>;
   readonly forgetMemory: ReturnType<typeof useForgetMemory>;
   readonly loadMemoryLibrary: ReturnType<typeof useLoadMemoryLibrary>;
   readonly memoryLibrary: ResidentsState["memoryLibrary"];
-  readonly openMenu: ReturnType<typeof useScenesOpenMenu>;
-  readonly openVenue: ReturnType<typeof useOpenVenue>;
+  readonly openMenu: (tab: MenuPage) => void;
+  readonly openVenue: (place: VillageVenue) => void;
   readonly personProfile: ResidentsState["personProfile"];
   readonly portraits: ResidentsState["portraits"];
   readonly previewVillagerRefresh: ReturnType<typeof usePreviewVillagerRefresh>;
@@ -51,13 +44,13 @@ export type ResidentsScreenController = {
   readonly refreshBusyId: ResidentsState["refreshBusyId"];
   readonly refreshPreviews: ResidentsState["refreshPreviews"];
   readonly removeVillager: ReturnType<typeof useRemoveVillager>;
-  readonly retryWork: ReturnType<typeof useResidentsRetryWork>;
+  readonly retryWork: (job: BackgroundWork) => Promise<void>;
   readonly rewriteAgenda: ReturnType<typeof useRewriteAgenda>;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
   readonly setAgendaScheduleIngestion: ReturnType<typeof useSetAgendaScheduleIngestion>;
-  readonly setExploreSheet: ExplorationState["setExploreSheet"];
-  readonly setFocusedProjectId: ProjectsState["setFocusedProjectId"];
-  readonly setFocusedRequestId: ProjectsState["setFocusedRequestId"];
+  readonly setExploreSheet: React.Dispatch<React.SetStateAction<ExplorationSheet | null>>;
+  readonly setFocusedProjectId: (id: string) => void;
+  readonly setFocusedRequestId: React.Dispatch<React.SetStateAction<string>>;
   readonly setMemoryLibrary: ResidentsState["setMemoryLibrary"];
   readonly setMenuPage: React.Dispatch<React.SetStateAction<import("../../shared/types").MenuPage>>;
   readonly setPersonProfile: ResidentsState["setPersonProfile"];
@@ -65,7 +58,7 @@ export type ResidentsScreenController = {
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
   >;
-  readonly setSiteProjectId: ProjectsState["setSiteProjectId"];
+  readonly setSiteProjectId: React.Dispatch<React.SetStateAction<string>>;
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
   >;
@@ -83,7 +76,7 @@ export type RosterScreenController = {
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly error: string;
   readonly menuPage: import("../../shared/types").MenuPage;
-  readonly openPerson: ReturnType<typeof useNavigationOpenPerson>;
+  readonly openPerson: (navigation: DossierNavigation) => void;
   readonly pickerOpen: boolean;
   readonly portraits: ResidentsState["portraits"];
   readonly rosterSearch: ResidentsState["rosterSearch"];

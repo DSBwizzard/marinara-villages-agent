@@ -1,3 +1,5 @@
+import type { PortraitMap } from "../../shared/types.js";
+
 import type { createFoundingChooseSetupScenario } from "./setup-controller.js";
 
 import type { FoundingState } from "./useFoundingState.js";
@@ -12,17 +14,11 @@ import type { useFoundingGenerateSetupTownMap } from "./image-controller.js";
 
 import type { createFoundingGotoSetupStep } from "./setup-controller.js";
 
-import type { useResidentsNameOfCharacter } from "../residents/controller-hooks.js";
-
 import type { usePatchSetupVenue } from "./actions.js";
-
-import type { SettingsState } from "../settings/useSettingsState.js";
 
 import type { usePickSetupTownMap } from "./actions.js";
 
 import type { usePlaceSetupPin } from "./actions.js";
-
-import type { ResidentsState } from "../residents/useResidentsState.js";
 
 import type { createFoundingRetrySetupSaving } from "./draft-controller.js";
 
@@ -59,13 +55,13 @@ export type FoundingScreenController = {
   readonly lorebooksError: string;
   readonly mapVisualLore: FoundingState["mapVisualLore"];
   readonly movingSetupVenueId: FoundingState["movingSetupVenueId"];
-  readonly nameOfCharacter: ReturnType<typeof useResidentsNameOfCharacter>;
+  readonly nameOfCharacter: (characterId: string | null) => string;
   readonly patchSetupVenue: ReturnType<typeof usePatchSetupVenue>;
-  readonly personaDraft: SettingsState["personaDraft"];
+  readonly personaDraft: string;
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
   readonly pickSetupTownMap: ReturnType<typeof usePickSetupTownMap>;
   readonly placeSetupPin: ReturnType<typeof usePlaceSetupPin>;
-  readonly portraits: ResidentsState["portraits"];
+  readonly portraits: PortraitMap;
   readonly retrySetupSaving: ReturnType<typeof createFoundingRetrySetupSaving>;
   readonly savedTownMapView: import("../../../shared/contracts/village").TownMapView;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
@@ -75,7 +71,7 @@ export type FoundingScreenController = {
   readonly setConnectionSetupProblem: FoundingState["setConnectionSetupProblem"];
   readonly setMapVisualLore: FoundingState["setMapVisualLore"];
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
-  readonly setPersonaDraft: SettingsState["setPersonaDraft"];
+  readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
@@ -108,7 +104,7 @@ export type FoundingScreenController = {
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
   readonly setSetupWorldFacts: FoundingState["setSetupWorldFacts"];
-  readonly settingsError: SettingsState["settingsError"];
+  readonly settingsError: string;
   readonly setupBeginningSourceKey: string;
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
   readonly setupFocusIssue: FoundingState["setupFocusIssue"];

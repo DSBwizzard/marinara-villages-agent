@@ -1,6 +1,6 @@
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
-import type { SettingsState } from "../settings/useSettingsState.js";
+
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
@@ -94,7 +94,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setMapVisualLore: FoundingState["setMapVisualLore"];
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
-  readonly setPersonaDraft: SettingsState["setPersonaDraft"];
+  readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonalizeHomes: FoundingState["setPersonalizeHomes"];
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
   readonly setScreen: React.Dispatch<

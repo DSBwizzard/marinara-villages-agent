@@ -1,5 +1,5 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
-import type { ProjectsState } from "../projects/useProjectsState.js";
+
 import type { ExplorationState } from "./useExplorationState.js";
 
 /**
@@ -18,8 +18,8 @@ export function createVenueExplorationActions(ports: {
     zoneId?: string,
   ) => Promise<void>;
   readonly setExploreSheet: ExplorationState["setExploreSheet"];
-  readonly setFocusedProjectId: ProjectsState["setFocusedProjectId"];
-  readonly setSiteProjectId: ProjectsState["setSiteProjectId"];
+  readonly setFocusedProjectId: (id: string) => void;
+  readonly setSiteProjectId: React.Dispatch<React.SetStateAction<string>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
   return (place: VillageVenue): { label: string; onSelect: () => void }[] => {

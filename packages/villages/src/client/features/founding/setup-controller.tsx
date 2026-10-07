@@ -2,7 +2,7 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
-import type { SettingsState } from "../settings/useSettingsState.js";
+
 import { foundingScenario } from "./FoundingPanels.js";
 import type { FoundingScenarioId } from "./scenarios.js";
 import type { FoundingState } from "./useFoundingState.js";
@@ -13,7 +13,7 @@ import { playerRoleProblem } from "./villages-player-role.js";
 import { useCallback } from "react";
 
 export function createFoundingSuggestSetupVenues(ports: {
-  readonly personaDraft: SettingsState["personaDraft"];
+  readonly personaDraft: string;
   readonly selectedResidentContexts: {
     [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
   };
@@ -224,7 +224,7 @@ export function createFoundingGotoSetupStep(ports: {
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
   readonly loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
-  readonly personaDraft: SettingsState["personaDraft"];
+  readonly personaDraft: string;
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
   readonly residentContextProblem: "" | "Complete the highlighted resident background fields in People.";
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
@@ -328,7 +328,7 @@ export function useFoundingStartOver(ports: {
   readonly setSavedSetupDraft: React.Dispatch<
     React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
   >;
-  readonly setSettingsError: SettingsState["setSettingsError"];
+  readonly setSettingsError: React.Dispatch<React.SetStateAction<string>>;
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
   >;

@@ -1,3 +1,7 @@
+import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { MenuPage, PortraitMap } from "../../shared/types.js";
+import type { DossierNavigation } from "../residents/villages-dossier.js";
+
 import type { useCloseRoom } from "./actions.js";
 
 import type { ScenesState } from "./useScenesState.js";
@@ -8,8 +12,6 @@ import type { useDiscardRoomDebug } from "./actions.js";
 
 import type { useDismissRoomNotice } from "./actions.js";
 
-import type { useNavigationGoHome } from "../../shell/navigation-controller.js";
-
 import type { useGreetRoom } from "./actions.js";
 
 import type { useLeaveRoom } from "./actions.js";
@@ -18,23 +20,11 @@ import type { useLoadVillageSnapshot } from "../../shared/data-controller.js";
 
 import type { useMoveRoom } from "./actions.js";
 
-import type { useResidentsNameOfCharacter } from "../residents/controller-hooks.js";
-
-import type { useScenesOpenMenu } from "../../shell/navigation-actions.js";
-
-import type { useNavigationOpenPerson } from "../../shell/navigation-controller.js";
-
 import type { useOpenRoom } from "./actions.js";
-
-import type { ResidentsState } from "../residents/useResidentsState.js";
 
 import type { useRetrySavedScene } from "./actions.js";
 
-import type { useSaveSpriteCardFlip } from "../settings/actions.js";
-
 import type { useSendRoom } from "./actions.js";
-
-import type { VenuesState } from "../venues/useVenuesState.js";
 
 /** Values and actions used by SceneScreen; independent of shell implementation. */
 export type SceneScreenController = {
@@ -45,19 +35,19 @@ export type SceneScreenController = {
   readonly debugDiscardEnabled: ScenesState["debugDiscardEnabled"];
   readonly discardRoomDebug: ReturnType<typeof useDiscardRoomDebug>;
   readonly dismissRoomNotice: ReturnType<typeof useDismissRoomNotice>;
-  readonly goHome: ReturnType<typeof useNavigationGoHome>;
+  readonly goHome: () => void;
   readonly greetRoom: ReturnType<typeof useGreetRoom>;
   readonly leaveRoom: ReturnType<typeof useLeaveRoom>;
   readonly loadSnapshot: ReturnType<typeof useLoadVillageSnapshot>;
   readonly mailboxOpen: ScenesState["mailboxOpen"];
   readonly mobile: boolean;
   readonly moveRoom: ReturnType<typeof useMoveRoom>;
-  readonly nameOfCharacter: ReturnType<typeof useResidentsNameOfCharacter>;
-  readonly openMenu: ReturnType<typeof useScenesOpenMenu>;
-  readonly openPerson: ReturnType<typeof useNavigationOpenPerson>;
+  readonly nameOfCharacter: (characterId: string | null) => string;
+  readonly openMenu: (tab: MenuPage) => void;
+  readonly openPerson: (navigation: DossierNavigation) => void;
   readonly openRoom: ReturnType<typeof useOpenRoom>;
   readonly personaPortrait: import("../../shared/types").Portrait;
-  readonly portraits: ResidentsState["portraits"];
+  readonly portraits: PortraitMap;
   readonly retrySavedScene: ReturnType<typeof useRetrySavedScene>;
   readonly room: import("../../../shared/contracts/village").SceneView;
   readonly roomBusy: ScenesState["roomBusy"];
@@ -78,7 +68,7 @@ export type SceneScreenController = {
   readonly roomSubmissionIdRef: ScenesState["roomSubmissionIdRef"];
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
-  readonly saveSpriteCardFlip: ReturnType<typeof useSaveSpriteCardFlip>;
+  readonly saveSpriteCardFlip: (spriteCardFlipEnabled: boolean) => Promise<void>;
   readonly sendRoom: ReturnType<typeof useSendRoom>;
   readonly setMailboxOpen: ScenesState["setMailboxOpen"];
   readonly setRoom: React.ActionDispatch<
@@ -98,10 +88,10 @@ export type SceneScreenController = {
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
   >;
-  readonly setVenueEditDraft: VenuesState["setVenueEditDraft"];
-  readonly setVenueId: VenuesState["setVenueId"];
+  readonly setVenueEditDraft: React.Dispatch<React.SetStateAction<VillageVenue | null>>;
+  readonly setVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly spriteFlipDraft: ResidentsState["spriteFlipDraft"];
-  readonly spriteFlipError: ResidentsState["spriteFlipError"];
-  readonly spriteFlipSaving: ResidentsState["spriteFlipSaving"];
+  readonly spriteFlipDraft: boolean | null;
+  readonly spriteFlipError: string;
+  readonly spriteFlipSaving: boolean;
 };
