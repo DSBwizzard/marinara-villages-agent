@@ -171,3 +171,28 @@ export const serverFeatureInterfaces = Object.freeze({
     "removeVillageRecollection",
   ],
 });
+
+/** Named client presentation contracts; entry and shell assemble private feature implementations. */
+export const clientFeatureInterfaces = Object.freeze({
+  "background/BackgroundPanel.tsx": ["BackgroundWorkPanel"],
+  "exploration/MapStage.tsx": ["defaultView", "MapStage", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],
+  "exploration/villages-venue-polaroid.tsx": ["VenuePolaroid"],
+  "exploration/villages-exploration.tsx": ["ExplorationSheet", "ExplorationTab"],
+  "founding/FoundingPanels.tsx": ["PlayerIdentityEditor", "VillageLorebookPicker"],
+  "founding/villages-founding-editor.tsx": [
+    "BaseZoneFields",
+    "SceneryStyleFields",
+    "venueHasCommon",
+    "VenueLayoutFields",
+  ],
+  "founding/villages-founding-zones.tsx": ["FoundingZoneFields", "foundingZoneProblem"],
+  "founding/villages-player-role.tsx": ["PlayerRoleSummary"],
+  "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
+  "residents/villages-dossier.tsx": ["DossierNavigation"],
+  "settings/SettingsPanels.tsx": ["AgentConnections"],
+  "settings/villages-burst-preview.tsx": ["VillagesBurstPreview"],
+  "settings/villages-decisions-control.tsx": ["DecisionsControl"],
+  "settings/villages-saved-changes.tsx": ["SavedChangesDiagnostics"],
+  "venues/VenuePanels.tsx": ["MailboxImprovementEditor", "VENUE_CLASS_CHOICES", "VenueDraftFields"],
+  "venues/villages-venue-access.tsx": ["ZonePolicyFields"],
+});

@@ -5,14 +5,14 @@ import { dirname, join } from "node:path";
 import { analyzeArchitecture } from "../scripts/check-architecture.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "villages-boundaries-"));
-async function fixture(name, files, compilerOptions = {}, featureInterfaces) {
+async function fixture(name, files, compilerOptions = {}, featureInterfaces, clientFeatureInterfaces) {
   const sourceRoot = join(root, name);
   for (const [file, source] of Object.entries(files)) {
     const target = join(sourceRoot, file);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, source);
   }
-  return analyzeArchitecture({ sourceRoot, compilerOptions, featureInterfaces });
+  return analyzeArchitecture({ sourceRoot, compilerOptions, featureInterfaces, clientFeatureInterfaces });
 }
 try {
   const privateServices = await fixture("private-services", {
@@ -166,6 +166,152 @@ try {
       namedContracts.failures.some((message) => message.startsWith(`server/features/world/denied-${name}.ts:`)),
       `denied ${name}`,
     );
+  const clientContracts = await fixture(
+    "client-named-contracts",
+    {
+      "client/features/media/sprite-manager.ts": publicModule,
+      "client/features/media/private-helper.ts": "export const secret = 1; export type Secret = {};",
+      ...Object.fromEntries(
+        Object.entries(allowedForms).map(([name, source]) => [`client/features/world/allowed-${name}.ts`, source]),
+      ),
+      ...Object.fromEntries(
+        Object.entries(deniedForms).map(([name, source]) => [`client/features/world/denied-${name}.ts`, source]),
+      ),
+      ...Object.fromEntries(
+        Object.entries(privateForms).map(([name, source]) => [`client/features/world/private-${name}.ts`, source]),
+      ),
+    },
+    { baseUrl: join(root, "client-named-contracts"), paths: { "@private/*": ["client/features/media/*"] } },
+    undefined,
+    approved,
+  );
+  for (const name of Object.keys(allowedForms))
+    assert(
+      !clientContracts.failures.some((message) => message.startsWith(`client/features/world/allowed-${name}.ts:`)),
+      `approved client ${name}`,
+    );
+  for (const name of Object.keys(deniedForms))
+    assert(
+      clientContracts.failures.some((message) => message.startsWith(`client/features/world/denied-${name}.ts:`)),
+      `denied client ${name}`,
+    );
+  for (const name of Object.keys(privateForms))
+    assert(
+      clientContracts.failures.some((message) =>
+        message.startsWith(`client/features/world/private-${name}.ts: private feature implementation`),
+      ),
+      `private client ${name}`,
+    );
+
+  const clientLayers = await fixture(
+    "client-layers",
+    {
+      "client/features/media/sprite-manager.ts": publicModule,
+      "client/features/media/private-helper.ts": "export const secret = 1; export type Secret = {};",
+      "server/features/media/private-helper.ts": "export const secret = 2; export type Secret = {};",
+      "client/features/media/owned.ts": 'export * from "./private-helper.js";',
+      "client/entry/runtime.ts":
+        'import * as internal from "../features/media/private-helper.js"; export const assembly = internal;',
+      "client/shell/runtime.ts":
+        'import * as internal from "../features/media/private-helper.js"; export const assembly = internal; export type Shell = {};',
+      "client/features/world/public-alias.ts":
+        'import { sprites as run } from "@public/sprite-manager"; export { run }; export type Commands = import("@public/sprite-manager").SpriteCommands;',
+      "client/features/world/private-alias.ts": 'export type Leak = import("@private/private-helper").Secret;',
+      "client/shared/feature.ts":
+        'import { sprites } from "../features/media/sprite-manager.js"; export const leak = sprites;',
+      "client/shared/shell.ts": 'export type Leak = import("../shell/runtime.js").Shell;',
+      "client/features/world/shell-type.ts": 'export type Leak = import("../../shell/runtime.js").Shell;',
+      "client/features/world/shell-runtime.ts": 'export { assembly } from "../../shell/runtime.js";',
+      "client/features/world/shell-lazy.ts": 'export const leak = () => import("../../shell/runtime.js");',
+      "client/features/media/server.ts":
+        'export type Leak = import("../../../server/features/media/private-helper.js").Secret;',
+      "server/features/media/client.ts":
+        'export type Leak = import("../../../client/features/media/private-helper.js").Secret;',
+      "server/entry/client.ts": 'export type Leak = import("../../client/features/media/private-helper.js").Secret;',
+      "client/entry/server.ts": 'export type Leak = import("../../server/features/media/private-helper.js").Secret;',
+      "client/shell/server.ts": 'export type Leak = import("../../server/features/media/private-helper.js").Secret;',
+      "server/jobs/client.ts": 'export type Leak = import("../../client/features/media/private-helper.js").Secret;',
+    },
+    {
+      baseUrl: join(root, "client-layers"),
+      paths: { "@public/*": ["client/features/media/*"], "@private/*": ["client/features/media/*"] },
+    },
+    undefined,
+    approved,
+  );
+  for (const source of [
+    "client/features/media/owned.ts",
+    "client/entry/runtime.ts",
+    "client/shell/runtime.ts",
+    "client/features/world/public-alias.ts",
+  ])
+    assert(
+      !clientLayers.failures.some((message) => message.startsWith(`${source}:`)),
+      `valid client ownership ${source}`,
+    );
+  for (const source of ["client/shared/feature.ts", "client/shared/shell.ts"])
+    assert(
+      clientLayers.failures.includes(`${source}: shared client support cannot import feature or shell implementation`),
+      source,
+    );
+  for (const kind of ["type", "runtime", "lazy"])
+    assert(
+      clientLayers.failures.includes(
+        `client/features/world/shell-${kind}.ts: client features cannot import shell assembly`,
+      ),
+      kind,
+    );
+  for (const source of [
+    "client/features/world/private-alias.ts",
+    "client/features/media/server.ts",
+    "server/features/media/client.ts",
+    "server/entry/client.ts",
+    "client/entry/server.ts",
+    "client/shell/server.ts",
+    "server/jobs/client.ts",
+  ])
+    assert(
+      clientLayers.failures.some((message) => message.startsWith(`${source}: private feature implementation`)),
+      `private surface ${source}`,
+    );
+  for (const source of ["client/features/media/server.ts", "client/entry/server.ts", "client/shell/server.ts"])
+    assert(clientLayers.failures.includes(`${source}: client cannot import server-owned code or records`), source);
+  for (const source of ["server/features/media/client.ts", "server/entry/client.ts", "server/jobs/client.ts"])
+    assert(clientLayers.failures.includes(`${source}: server cannot import client implementation`), source);
+
+  const independentMaps = await fixture(
+    "independent-maps",
+    {
+      "client/features/media/sprite-manager.ts": publicModule,
+      "server/features/media/sprite-manager.ts": publicModule,
+      "client/features/world/consumer.ts": allowedForms.named,
+      "server/features/world/consumer.ts": allowedForms.named,
+    },
+    {},
+    approved,
+    approved,
+  );
+  assert.deepEqual(independentMaps.failures, [], "client and server overrides remain independent");
+  const serverOverride = await fixture(
+    "server-override-client-default",
+    {
+      "client/features/background/BackgroundPanel.tsx":
+        "export const BackgroundWorkPanel = () => null; export const privateHook = () => null;",
+      "client/features/world/public.ts": 'export { BackgroundWorkPanel } from "../background/BackgroundPanel.js";',
+      "client/features/world/private.ts": 'export { privateHook } from "../background/BackgroundPanel.js";',
+      "server/features/media/sprite-manager.ts": publicModule,
+      "server/features/world/consumer.ts": allowedForms.named,
+    },
+    {},
+    approved,
+  );
+  assert.deepEqual(
+    serverOverride.failures,
+    [
+      "client/features/world/private.ts: private feature export client/features/background/BackgroundPanel.tsx#privateHook",
+    ],
+    "a server override retains the default client gate",
+  );
   const privateWorld = await fixture("private-world", {
     "client/screen.ts": 'import type { SavedWorld } from "../server/domain/world.js"; export type Leak = SavedWorld;',
     "server/domain/world.ts": "export type SavedWorld = { unseenResidents: string[] };",

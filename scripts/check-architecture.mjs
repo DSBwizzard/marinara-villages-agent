@@ -3,7 +3,10 @@ import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { transform } from "esbuild";
 import ts from "typescript";
-import { serverFeatureInterfaces } from "./feature-interfaces.mjs";
+import {
+  clientFeatureInterfaces as defaultClientFeatureInterfaces,
+  serverFeatureInterfaces,
+} from "./feature-interfaces.mjs";
 
 async function sourceFiles(root) {
   const files = [];
@@ -16,7 +19,10 @@ async function sourceFiles(root) {
   return files;
 }
 const canonical = (path) => resolve(path).replaceAll("\\", "/");
-const featureOwner = (path) => /^server\/features\/([^/]+)\//.exec(path)?.[1];
+const featureOwner = (path) => {
+  const match = /^(client|server)\/features\/([^/]+)\//.exec(path);
+  return match && `${match[1]}/${match[2]}`;
+};
 
 function imports(source) {
   const found = [];
@@ -144,6 +150,7 @@ export async function analyzeArchitecture({
   sourceRoot,
   compilerOptions = {},
   featureInterfaces = serverFeatureInterfaces,
+  clientFeatureInterfaces = defaultClientFeatureInterfaces,
 }) {
   const root = canonical(sourceRoot);
   const files = await sourceFiles(root);
@@ -180,12 +187,14 @@ export async function analyzeArchitecture({
         continue;
       }
       const destination = label(to);
-      if (
-        featureOwner(destination) &&
-        !from.startsWith("server/entry/") &&
-        featureOwner(from) !== featureOwner(destination)
-      ) {
-        const allowed = featureInterfaces[destination.slice("server/features/".length)];
+      const owner = featureOwner(destination);
+      const clientFeature = destination.startsWith("client/features/");
+      const assembly = clientFeature
+        ? from.startsWith("client/entry/") || from.startsWith("client/shell/")
+        : destination.startsWith("server/features/") && from.startsWith("server/entry/");
+      if (owner && !assembly && featureOwner(from) !== owner) {
+        const interfaces = clientFeature ? clientFeatureInterfaces : featureInterfaces;
+        const allowed = interfaces[destination.split("/").slice(2).join("/")];
         const requested = featureNames(request, shadowedPick);
         if (!allowed)
           failures.push(
@@ -201,6 +210,10 @@ export async function analyzeArchitecture({
         failures.push(`${from}: client cannot import server-owned code or records`);
       if (from.startsWith("server/") && destination.startsWith("client/"))
         failures.push(`${from}: server cannot import client implementation`);
+      if (from.startsWith("client/shared/") && (clientFeature || destination.startsWith("client/shell/")))
+        failures.push(`${from}: shared client support cannot import feature or shell implementation`);
+      if (from.startsWith("client/features/") && destination.startsWith("client/shell/"))
+        failures.push(`${from}: client features cannot import shell assembly`);
       if (from.startsWith("shared/") && !destination.startsWith("shared/"))
         failures.push(`${from}: shared contracts/helpers cannot import application implementation`);
       if (
