@@ -15,10 +15,8 @@ import {
   placeNewVenueProject,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { recordExistingProjectSource } from "../packages/villages/src/server/features/projects/project-evidence.js";
-import {
-  processSavedProgressSubmission,
-  sendVenueTurn,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { sendVenueTurn } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { processSavedProgressSubmission } from "../packages/villages/src/server/features/scenes/progress.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {

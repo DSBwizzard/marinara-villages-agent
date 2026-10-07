@@ -20,9 +20,9 @@ import { bindLiveProposals } from "../packages/villages/src/server/features/resi
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import {
   readSceneChanges,
-  processSavedExchange,
   retrySceneChangeInterpretation,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 
 async function main() {

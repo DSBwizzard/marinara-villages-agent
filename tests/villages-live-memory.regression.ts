@@ -13,7 +13,6 @@ import {
   processLiveRelationships,
 } from "../packages/villages/src/server/features/residents/live-memory.js";
 import {
-  processSavedExchange,
   closeVenueSession,
   endVenueSessionWithReceipts,
   readSceneChanges,
@@ -21,6 +20,7 @@ import {
   dismissSceneNotice,
   retrySceneChangeInterpretation,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
 import { deleteVenueVisit } from "../packages/villages/src/server/features/scenes/archive.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { responseDiagnostics } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";

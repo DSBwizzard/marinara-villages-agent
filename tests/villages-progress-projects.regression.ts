@@ -23,12 +23,12 @@ import {
   revealProgress,
   visibleProgress,
 } from "../packages/villages/src/server/domain/rules/progress-engine.js";
+import { readSceneChanges } from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
   processSavedProgressSubmission,
   processSavedExchange,
-  readSceneChanges,
   startProgressRecovery,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
+} from "../packages/villages/src/server/features/scenes/progress.js";
 import { progressBacklog } from "../packages/villages/src/server/features/scenes/services.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";

@@ -8,7 +8,8 @@ import {
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { stopInterpretationComparisons } from "../features/generation/interpretation-diagnostics.js";
-import { recoverVenueSceneWork, startProgressRecovery } from "../features/scenes/venue-session.js";
+import { recoverVenueSceneWork } from "../features/scenes/venue-session.js";
+import { startProgressRecovery } from "../features/scenes/progress.js";
 import { readVillageState } from "../features/world/village-store.js";
 import { startBackgroundWork } from "../jobs/background-work.js";
 import { startTownMapGeneration } from "../jobs/town-map-generation.js";

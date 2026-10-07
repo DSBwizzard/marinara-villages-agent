@@ -1,3 +1,14 @@
+import { processProjectWishOutbox } from "../features/residents/wishes/wish-progress.js";
+import { dispatchExchange } from "../features/scenes/exchange-processing.js";
+import { processLiveRelationships } from "../features/residents/live-memory.js";
+import { processLiveMemories } from "../features/residents/live-memory.js";
+import { processWishExchange } from "../features/residents/wishes/wish-progress.js";
+import { applyProjectPickup } from "../features/projects/project-checks.js";
+import { createLiveEvidenceContext } from "../features/residents/live-memory.js";
+import { processProjectSpeechTurn } from "../features/projects/project-evidence.js";
+import { createSceneProgress } from "../features/scenes/progress-service.js";
+import { configureSceneProgress } from "../features/scenes/progress.js";
+import { sceneReplayEffects } from "../features/scenes/venue-session.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import { configureLiveScenes } from "../features/scenes/live-session.js";
 import { hasVenueOperation } from "../jobs/venue-coordinator.js";
@@ -12,7 +23,7 @@ import {
 } from "../adapters/storage/scene-store.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
-import { processSavedProgressSubmission } from "../features/scenes/venue-session.js";
+import { processSavedProgressSubmission } from "../features/scenes/progress.js";
 import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
 import { relationshipWritingPrompt } from "../domain/rules/relationship-presentation.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
@@ -126,7 +137,7 @@ import { persistRelationshipAuthority, readRelationshipState } from "../features
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork } from "../features/scenes/scene-work.js";
-import { processSavedExchange } from "../features/scenes/venue-session.js";
+import { processSavedExchange } from "../features/scenes/progress.js";
 import { activeVenueSession } from "../features/scenes/live-session.js";
 import { listVenueVisits } from "../features/scenes/archive.js";
 import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
@@ -263,6 +274,27 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       readVillageState,
       mutateVillageState,
+    }),
+  );
+  const releaseSceneProgress = configureSceneProgress(
+    createSceneProgress({
+      readVillageState,
+      readSession,
+      processProjectSpeechTurn,
+      mutateVillageState,
+      changeSession,
+      measurePipeline,
+      createLiveEvidenceContext,
+      applyProjectPickup,
+      processWishExchange,
+      processLiveMemories,
+      processLiveRelationships,
+      runtimeDebug,
+      dispatchExchange,
+      processProjectWishOutbox,
+      sceneQueries,
+      villagesLogger,
+      ...sceneReplayEffects(),
     }),
   );
   const releaseSceneArchive = configureSceneArchive(
@@ -512,6 +544,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseResidentAgendas();
+    releaseSceneProgress();
     releaseQueries();
     releaseSceneArchive();
     releaseLiveScenes();

@@ -24,8 +24,8 @@ import {
   recordRoomAccessEvents,
   readSceneChanges,
   recordSpokenInvitation,
-  processSavedExchange,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
 import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { savedAccessEvents } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";

@@ -6,7 +6,7 @@ export interface SceneQueries {
   readProjectTurnEvidence: import("./scene-query-service.js").SceneQueryService["readProjectTurnEvidence"];
   progressBacklog: import("./scene-query-service.js").SceneQueryService["progressBacklog"];
   listVenueVisits: typeof import("./archive.js").listVenueVisits;
-  processSavedExchange: typeof import("./venue-session.js").processSavedExchange;
+  processSavedExchange: typeof import("./progress.js").processSavedExchange;
 }
 const queriesBinding = createActivationBinding<SceneQueries>("Villages Scene queries are not configured.");
 export function configureSceneQueries(queries: SceneQueries) {
