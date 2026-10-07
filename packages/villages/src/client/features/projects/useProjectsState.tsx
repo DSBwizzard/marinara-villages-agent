@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useProjectsState() {
-  const [focusedProjectId, setFocusedProjectId] = useState("");
+  const [focus, setFocus] = useState({ id: "", request: 0 });
+  const setFocusedProjectId = useCallback((id: string) => {
+    setFocus((previous) => ({ id, request: previous.request + 1 }));
+  }, []);
 
   const [focusedRequestId, setFocusedRequestId] = useState("");
 
@@ -10,7 +13,8 @@ export function useProjectsState() {
 
   const [siteProjectId, setSiteProjectId] = useState("");
   return {
-    focusedProjectId,
+    focusedProjectId: focus.id,
+    projectFocusRequest: focus.request,
     setFocusedProjectId,
     focusedRequestId,
     setFocusedRequestId,

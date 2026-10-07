@@ -1,10 +1,4 @@
-import type {
-  BuildProject,
-  SceneView,
-  VenueClass,
-  VillageSnapshot,
-  VillageVenue,
-} from "../../../shared/contracts/village.js";
+import type { SceneView, VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { BaseZoneFields, venueHasCommon, VenueLayoutFields } from "../founding/villages-founding-editor";
@@ -12,7 +6,7 @@ import { FoundingZoneFields, foundingZoneProblem } from "../founding/villages-fo
 import { VillagesBurstPreview } from "../settings/villages-burst-preview.js";
 import { VENUE_CLASS_CHOICES } from "../venues/VenuePanels.js";
 import { useEffect, useRef, useState } from "react";
-import { useProjectsController } from "./useProjectsController.js";
+import type { ProjectsController } from "./useProjectsController.js";
 
 const PROJECT_PHASES = [
   "concept",
@@ -37,19 +31,16 @@ const PROJECT_PHASE_NAMES: Record<(typeof PROJECT_PHASES)[number], string> = {
 function RenovationRevisionEditor({
   venue,
   people,
-  project,
+  revision,
   busy,
-  onSave,
 }: {
-  project: BuildProject;
+  revision: NonNullable<ProjectsController["revisionEditor"]>;
   venue?: VillageVenue;
   people: { id: string; name: string }[];
   busy: boolean;
-  onSave: (body: unknown) => Promise<unknown>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(project.title);
-  const [change, setChange] = useState(() => structuredClone(project.lifecycle!.change!));
+  const { editing, title, change } = revision.draft;
+  const { setEditing, setTitle, setChange, save: onSave } = revision;
   const upgrade = change.improvement;
   if (!editing)
     return (
@@ -312,24 +303,22 @@ function RenovationRevisionEditor({
 export function ProjectsPanelV2({
   snapshot,
   room,
-  onSnapshot,
   onReturn,
   onMap,
   onPlaceOnMap,
   mobile,
   debugEnabled,
-  focusProjectId,
+  controller,
   siteProjectId,
 }: {
   snapshot: VillageSnapshot;
   room: SceneView | null;
-  onSnapshot: (next: VillageSnapshot) => void;
   onReturn: () => void;
   onMap: () => void;
   onPlaceOnMap: (projectId: string) => void;
   mobile: boolean;
   debugEnabled: boolean;
-  focusProjectId: string;
+  controller: ProjectsController;
   siteProjectId: string;
 }) {
   const {
@@ -394,7 +383,6 @@ export function ProjectsPanelV2({
     selectedVenue,
     openingVenue,
     patchOpeningLayout,
-    run,
     action,
     create,
     openingImageKey,
@@ -403,7 +391,8 @@ export function ProjectsPanelV2({
     phase,
     uploadZoneImage,
     openVenue,
-  } = useProjectsController({ snapshot, onSnapshot, focusProjectId });
+    revisionEditor,
+  } = controller;
   const [openingFocusArea, setOpeningFocusArea] = useState<"common" | "private">();
   const openingEditors = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1009,14 +998,15 @@ export function ProjectsPanelV2({
             )}
           </nav>
           <main className={`${ELEMENT_TAG}-project-card`}>
-            {project.kind === "renovation" && !["construction", "finishing", "complete"].includes(phase ?? "") ? (
+            {project.kind === "renovation" &&
+            revisionEditor &&
+            !["construction", "finishing", "complete"].includes(phase ?? "") ? (
               <RenovationRevisionEditor
                 key={project.id + project.updatedAt}
-                project={project}
+                revision={revisionEditor}
                 venue={target}
                 people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
                 busy={busy}
-                onSave={(body) => run(`/projects/${encodeURIComponent(project.id)}/revise`, body)}
               />
             ) : null}
             {phase === "concept" ? (

@@ -29,7 +29,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     deleteArchivedVisits,
     discardTownMapDraft,
     error,
-    focusedProjectId,
+    projectsController,
     framingMap,
     generateReplacementMap,
     goHome,
@@ -385,7 +385,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             {menuPage === "projects" && snapshot
               ? renderProjectsPage({
                   debugDiscardEnabled,
-                  focusedProjectId,
+                  projectsController,
                   goHome,
                   mobile,
                   room,
@@ -393,7 +393,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                   setPlacingProjectId,
                   setScreen,
                   setSiteProjectId,
-                  setSnapshot,
                   siteProjectId,
                   snapshot,
                 })

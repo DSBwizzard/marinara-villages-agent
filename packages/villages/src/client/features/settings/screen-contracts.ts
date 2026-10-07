@@ -66,8 +66,11 @@ import type { useSuggestPlaces } from "../founding/actions.js";
 
 import type { useWriteVillageEvent } from "../../shared/data-controller.js";
 
+import type { ProjectsController } from "../projects/useProjectsController.js";
+
 /** Values and actions used by MenuScreen; independent of shell implementation. */
 export type MenuScreenController = {
+  readonly projectsController: ProjectsController;
   readonly addNotice: ReturnType<typeof useAddNotice>;
   readonly addVenue: ReturnType<typeof useAddVenue>;
   readonly archiveError: ScenesState["archiveError"];

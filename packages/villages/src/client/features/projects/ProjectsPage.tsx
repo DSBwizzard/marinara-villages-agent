@@ -5,7 +5,7 @@ export function renderProjectsPage(
   ports: Pick<
     MenuScreenController,
     | "debugDiscardEnabled"
-    | "focusedProjectId"
+    | "projectsController"
     | "goHome"
     | "mobile"
     | "room"
@@ -13,14 +13,13 @@ export function renderProjectsPage(
     | "setPlacingProjectId"
     | "setScreen"
     | "setSiteProjectId"
-    | "setSnapshot"
     | "siteProjectId"
     | "snapshot"
   >,
 ) {
   const {
     debugDiscardEnabled,
-    focusedProjectId,
+    projectsController,
     goHome,
     mobile,
     room,
@@ -28,7 +27,6 @@ export function renderProjectsPage(
     setPlacingProjectId,
     setScreen,
     setSiteProjectId,
-    setSnapshot,
     siteProjectId,
     snapshot,
   } = ports;
@@ -36,7 +34,6 @@ export function renderProjectsPage(
     <ProjectsPanelV2
       snapshot={snapshot}
       room={room}
-      onSnapshot={setSnapshot}
       onReturn={() => setScreen("room")}
       onMap={() => {
         setSiteProjectId("");
@@ -49,7 +46,7 @@ export function renderProjectsPage(
       }}
       mobile={mobile}
       debugEnabled={debugDiscardEnabled}
-      focusProjectId={focusedProjectId}
+      controller={projectsController}
       siteProjectId={siteProjectId}
     />
   );

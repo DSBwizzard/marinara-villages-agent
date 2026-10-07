@@ -102,6 +102,7 @@ import {
   createFoundingSuggestSetupVenues,
   useFoundingStartOver,
 } from "../features/founding/setup-controller.js";
+import { useProjectsController } from "../features/projects/useProjectsController.js";
 import { useProjectsState } from "../features/projects/useProjectsState.js";
 import {
   useAddVillager,
@@ -352,6 +353,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useSceneViewport(element, screen === "room");
   const {
     focusedProjectId,
+    projectFocusRequest,
     setFocusedProjectId,
     focusedRequestId,
     setFocusedRequestId,
@@ -360,6 +362,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     siteProjectId,
     setSiteProjectId,
   } = useProjectsState();
+  const projectsController = useProjectsController({
+    snapshot,
+    onSnapshot: setSnapshot,
+    focusProjectId: focusedProjectId,
+    focusProjectRequest: projectFocusRequest,
+  });
 
   const {
     venueId,
@@ -2259,6 +2267,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     explorationSearch,
     exploreSheet,
     focusedProjectId,
+    projectsController,
     forgetMemory,
     foundVillage,
     framingMap,
