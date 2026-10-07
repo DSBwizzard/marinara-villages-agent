@@ -4,7 +4,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { replaceVillageTownMap } from "../packages/villages/src/server/features/world/village.js";
+import { replaceVillageTownMap } from "../packages/villages/src/server/features/media/town-map-review.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 
 const at = "2026-09-29T12:00:00.000Z";

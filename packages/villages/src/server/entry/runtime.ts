@@ -1,3 +1,5 @@
+import { createTownMapReview } from "../features/media/town-map-review-service.js";
+import { configureTownMapReview } from "../features/media/town-map-review.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
 import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import { draftNewVenueProject, draftRenovationProject } from "../features/projects/project-lifecycle.js";
@@ -271,6 +273,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       queueVenueCounteroffer,
     }),
   );
+  const releaseTownMapReview = configureTownMapReview(
+    createTownMapReview({ readVillageState, mutateVillageState, buildVillageSnapshot, inspectVillageImage }),
+  );
   const releaseSprites = configureSpriteManager(
     createSpriteManager({
       readVillageState,
@@ -383,6 +388,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSettings();
     releaseSignatures();
     releaseSprites();
+    releaseTownMapReview();
     releaseVenueRequests();
     releaseResidentRoster();
     releaseResidentCards();

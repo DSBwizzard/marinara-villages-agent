@@ -9,7 +9,7 @@ import {
 } from "../../adapters/http/route-support.js";
 import { imageTarget } from "../venues/image-target.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { readVillageTownMapImage, replaceVillageTownMap } from "../world/village.js";
+import { readVillageTownMapImage, replaceVillageTownMap } from "./town-map-review.js";
 import { setVillageVenueImage } from "../venues/services.js";
 import { generateVillageLocationImage, storeVillageVenueImage } from "./location-image.js";
 import {
