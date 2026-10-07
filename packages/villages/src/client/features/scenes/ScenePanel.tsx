@@ -78,30 +78,44 @@ export async function completedGreetingAfterFailure(sessionId: string): Promise<
   }
 }
 
-export async function refreshSceneAfterFailure(sessionId: string, submissionId?: string): Promise<SceneView | null> {
+export async function refreshSceneAfterFailure(
+  sessionId: string,
+  submissionId?: string,
+  owns = () => true,
+): Promise<SceneView | null> {
   try {
+    if (!owns()) return null;
     if (submissionId)
       await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
         signal: AbortSignal.timeout(5_000),
       });
+    if (!owns()) return null;
     const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
     });
+    if (!owns()) return null;
     if (session?.id === sessionId) return session;
     const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
       signal: AbortSignal.timeout(5_000),
     });
+    if (!owns()) return null;
     return visit;
   } catch {
     return null;
   }
 }
 
-export async function completedRoomAfterFailure(sessionId: string, submissionId: string): Promise<SceneView | null> {
+export async function completedRoomAfterFailure(
+  sessionId: string,
+  submissionId: string,
+  owns = () => true,
+): Promise<SceneView | null> {
   try {
+    if (!owns()) return null;
     const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
       signal: AbortSignal.timeout(5_000),
     });
+    if (!owns()) return null;
     return hasCompletedRoomSubmission(visit, submissionId) ? currentRoom(visit) : null;
   } catch {
     return null;

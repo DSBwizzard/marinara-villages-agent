@@ -21,6 +21,7 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { sceneResend } from "./villages-venue-send";
+import { useSceneSendLifetime } from "./send-lifetime.js";
 import { type SetStateAction, useCallback } from "react";
 
 export function useReceiveRoomRecordEvents(ports: {
@@ -538,6 +539,15 @@ export function useSendRoom(ports: {
     setScreen,
     snapshot,
   } = ports;
+  const lifetime = useSceneSendLifetime({
+    sceneId: room?.id,
+    isFounded: snapshot?.isFounded,
+    ended: roomEnded || room?.status === "closed",
+    inFlight: roomSendInFlightRef,
+    submission: roomSubmissionIdRef,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+  });
   return useCallback(async () => {
     const venue = snapshot?.settings.venues.find((place) => place.id === room?.placeId);
     const targetZone = venue?.zones?.find((zone) => zone.id === roomContactBoundary);
@@ -545,15 +555,19 @@ export function useSendRoom(ports: {
     const text =
       roomDraft.trim() || (roomMode === "contact" ? `I try to get someone’s attention toward ${contactLabel}.` : "");
     if (room === null || !room.id || roomEnded || roomBusy || roomSendInFlightRef.current || text.length === 0) return;
-    roomSendInFlightRef.current = true;
+    const claim = lifetime.begin(room.id);
+    if (!claim) return;
+    const owns = () => lifetime.owns(claim);
     let submissionId = roomSubmissionIdRef.current ?? createVillagesClientId();
     let resend: ReturnType<typeof sceneResend>;
     const before = room;
     try {
       await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
+      if (!owns()) return;
       const { operation } = await request<{ operation: RoomOperation | null }>(
         `/rooms/${encodeURIComponent(room.id)}/operation`,
       );
+      if (!owns()) return;
       resend = sceneResend(
         operation,
         {
@@ -568,8 +582,9 @@ export function useSendRoom(ports: {
       );
       submissionId = resend.submissionId;
       roomSubmissionIdRef.current = submissionId;
+      claim.submission = submissionId;
     } catch (cause) {
-      roomSendInFlightRef.current = false;
+      if (!lifetime.finish(claim)) return;
       const staleReason = staleVenueReason(cause);
       if (staleReason) {
         setRoom(null);
@@ -594,10 +609,12 @@ export function useSendRoom(ports: {
       at: new Date().toISOString(),
     };
     setRoomBusy(true);
+    claim.busy = true;
     setRoomError("");
     setRoomDraft("");
     setRoom({ ...room, lines: [...room.lines, mine] });
     roomCompletionRef.current = { roomId: room.id, submissionId };
+    claim.completion = roomCompletionRef.current;
     try {
       const answer = await request<{
         session: SceneView;
@@ -619,9 +636,13 @@ export function useSendRoom(ports: {
         }),
         signal: AbortSignal.timeout(300_000),
       });
+      if (!owns()) return;
       setRoom(currentRoom(answer.session));
       setRoomEnded(answer.session.status === "closed");
-      if (answer.session.status !== "closed") roomCompletionRef.current = null;
+      if (answer.session.status !== "closed") {
+        roomCompletionRef.current = null;
+        claim.completion = null;
+      }
       receiveRoomRecordEvents(answer.recordEvents ?? []);
       if (roomMode === "contact") {
         setRoomTargetId("");
@@ -631,15 +652,20 @@ export function useSendRoom(ports: {
       setRoomRuling(answer.verdict?.reason ?? "");
       if (roomMode !== "contact") setRoomMode("chat");
       roomSubmissionIdRef.current = null;
+      claim.submission = null;
       setRoomGreetingNotice("");
       void loadSnapshot();
     } catch (cause) {
-      const latest = await refreshSceneAfterFailure(room.id, submissionId);
-      if (latest) setRoom(currentRoom(latest));
+      if (!owns()) return;
+      const latest = await refreshSceneAfterFailure(room.id, submissionId, owns);
+      if (!owns()) return;
+      // Resolve recovery before publishing a closed record that retires this selection.
       const recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
         ? latest
-        : await completedRoomAfterFailure(room.id, submissionId);
+        : await completedRoomAfterFailure(room.id, submissionId, owns);
+      if (!owns()) return;
       if (recovered) {
+        if (latest) setRoom(currentRoom(latest));
         setRoom(currentRoom(recovered));
         setRoomEnded(recovered.status === "closed");
         setRoomError("");
@@ -649,13 +675,16 @@ export function useSendRoom(ports: {
           setRoomContactKind("call");
         }
         roomSubmissionIdRef.current = null;
+        claim.submission = null;
         setRoomGreetingNotice("");
         void loadSnapshot();
         return;
       }
       roomCompletionRef.current = null;
+      claim.completion = null;
       const staleReason = staleVenueReason(cause);
       if (staleReason) {
+        if (latest) setRoom(currentRoom(latest));
         setRoom(null);
         setRoomOpen(false);
         setRoomNotices([]);
@@ -669,16 +698,18 @@ export function useSendRoom(ports: {
         void loadSnapshot();
         return;
       }
-      const authoritative = await refreshSceneAfterFailure(room.id, submissionId);
+      const authoritative = await refreshSceneAfterFailure(room.id, submissionId, owns);
+      if (!owns()) return;
+      if (latest) setRoom(currentRoom(latest));
       if (authoritative) setRoom(currentRoom(authoritative));
       else setRoom(before);
       if (cause instanceof VillageApiError && (cause.code === "SCENE_BUSY" || cause.code === "SCENE_STALE"))
         roomSubmissionIdRef.current = null;
+      claim.submission = roomSubmissionIdRef.current;
       setRoomDraft((current) => current || text);
       setRoomError(messageFrom(cause, "That line could not be sent."));
     } finally {
-      roomSendInFlightRef.current = false;
-      setRoomBusy(false);
+      if (lifetime.finish(claim)) setRoomBusy(false);
     }
   }, [
     loadSnapshot,
@@ -692,6 +723,7 @@ export function useSendRoom(ports: {
     roomContactKind,
     roomTargetId,
     snapshot?.settings.venues,
+    lifetime,
   ]);
 }
 
