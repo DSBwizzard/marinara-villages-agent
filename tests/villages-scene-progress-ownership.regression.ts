@@ -267,33 +267,37 @@ function fixture(name: string) {
 }
 function automaticTask(f: ReturnType<typeof fixture>) {
   f.world.progressTasks.push(
-    createProgressTask({
-      id: "evidence",
-      revision: 1,
-      owner: { kind: "test", id: "evidence" },
-      resolver: "progress.noop",
-      phases: [
-        {
-          id: "heard",
-          title: "Hear",
-          requirements: [
-            {
-              id: "line",
-              title: "Line",
-              routes: [
-                {
-                  id: "saved",
-                  verifier: "core.saved-event",
-                  params: { venueId: "venue", speakerId: "mara" },
-                  automatic: true,
-                  evidenceKinds: ["saved-resident-line"],
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    }),
+    createProgressTask(
+      {
+        id: "evidence",
+        revision: 1,
+        owner: { kind: "test", id: "evidence" },
+        resolver: "progress.noop",
+        phases: [
+          {
+            id: "heard",
+            title: "Hear",
+            requirements: [
+              {
+                id: "line",
+                title: "Line",
+                routes: [
+                  {
+                    id: "saved",
+                    verifier: "core.saved-event",
+                    params: { venueId: "venue", speakerId: "mara" },
+                    automatic: true,
+                    evidenceKinds: ["saved-resident-line"],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      "",
+      f.saved.startedAt,
+    ),
   );
 }
 async function main() {
