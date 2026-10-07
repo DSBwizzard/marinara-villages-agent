@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   relationshipPrompt,
   relationshipWritingPrompt,

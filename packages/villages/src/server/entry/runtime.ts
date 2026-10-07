@@ -1,3 +1,12 @@
+import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
+import { wishFingerprint } from "../features/residents/wishes/wish-interpretation.js";
+import { rejectVenueCompletion } from "../jobs/venue-coordinator.js";
+import { venueOperationSignal } from "../adapters/operations/operation-context.js";
+import { venueOperationInput } from "../adapters/operations/operation-context.js";
+import { venueOperationId } from "../adapters/operations/operation-context.js";
+import { refreshZoneParticipants } from "../features/scenes/live-session.js";
+import { createSceneWriting } from "../features/scenes/writing-service.js";
+import { configureSceneWriting } from "../features/scenes/writing.js";
 import { processProjectWishOutbox } from "../features/residents/wishes/wish-progress.js";
 import { dispatchExchange } from "../features/scenes/exchange-processing.js";
 import { processLiveRelationships } from "../features/residents/live-memory.js";
@@ -280,6 +289,26 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       readVillageState,
       mutateVillageState,
+    }),
+  );
+  const releaseSceneWriting = configureSceneWriting(
+    createSceneWriting({
+      refreshZoneParticipants,
+      readEffectiveVillagerCard,
+      readVillageLore,
+      villagesLogger,
+      villagesLanguageModels,
+      measurePipeline,
+      runtimeDebug,
+      venueOperationId,
+      venueOperationInput,
+      venueOperationSignal,
+      rejectVenueCompletion,
+      completeWithRoom,
+      wishFingerprint,
+      villagesConnectionIdFor,
+      readVillageState,
+      interpretRoomReply,
     }),
   );
   const releaseSceneProgress = configureSceneProgress(
@@ -573,6 +602,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseResidentAgendas();
+    releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();
     releaseVillageSnapshot();
