@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { configureRuntimeHost } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
+import { villagesLanguageModels } from "../packages/villages/src/server/adapters/models/language-models.js";
+import type { CapabilityResolvedLanguageModel, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import { createUsageLedger } from "../packages/villages/src/server/adapters/models/usage-ledger-service.js";
 import {
   configureUsageLedger,
@@ -116,6 +120,7 @@ const meta = { connectionId: "same-connection", model: "same-model" };
 const completion = () =>
   Promise.resolve({
     content: "private text never stored",
+    finishReason: "stop",
     usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
   });
 async function queuesAndRates() {
@@ -353,11 +358,222 @@ async function scopedContexts() {
     ownerB.dispose();
   }
 }
+function accountingRuntime(
+  languageModels: CapabilityRuntimeHost["languageModels"],
+  logger: CapabilityRuntimeHost["logger"],
+): CapabilityRuntimeHost {
+  return {
+    achievements: null,
+    embeddings: null,
+    resolveEmbeddings: async () => null,
+    getAgentConfig: async () => null,
+    isDebugAgentsEnabled: () => false,
+    json: null,
+    languageModels,
+    logger,
+    persistence: null,
+    resources: null,
+  };
+}
+async function escapedModelAccounting() {
+  for (const method of ["resolve", "resolveForRequest"] as const) {
+    for (const pause of ["resolver", "provider", "none"]) {
+      const ownerA = createActivationScope(),
+        ownerB = createActivationScope();
+      const a = fixture("google", 1),
+        b = fixture("anthropic", 10);
+      a.seed();
+      b.seed();
+      const enteredResolve = deferred(),
+        releaseResolve = deferred(),
+        enteredProvider = deferred(),
+        releaseProvider = deferred();
+      const events: { stage: string; owner: unknown }[] = [],
+        spansA: Metrics[] = [];
+      let providerCalls = 0;
+      const messages = [{ role: "user" as const, content: "private text never stored" }],
+        options = { maxTokens: 17 };
+      const provider: CapabilityResolvedLanguageModel = {
+        name: "A",
+        connectionId: meta.connectionId,
+        model: meta.model,
+        maxContext: 4096,
+        maxOutputTokens: 64,
+        async chatComplete(receivedMessages, receivedOptions) {
+          providerCalls++;
+          events.push({ stage: "provider", owner: activationScope() });
+          assert.equal(receivedMessages, messages);
+          assert.equal(receivedOptions, options);
+          enteredProvider.resolve();
+          if (pause === "provider") await releaseProvider.promise;
+          return completion();
+        },
+        fitContext(receivedMessages) {
+          events.push({ stage: "fit", owner: activationScope() });
+          return { messages: receivedMessages, estimatedTokensBefore: 2, estimatedTokensAfter: 2, trimmed: false };
+        },
+      };
+      async function resolveModel() {
+        events.push({ stage: "resolve-enter", owner: activationScope() });
+        enteredResolve.resolve();
+        if (pause === "resolver") await releaseResolve.promise;
+        events.push({ stage: "resolve-return", owner: activationScope() });
+        return provider;
+      }
+      const runtime = accountingRuntime(
+        { resolve: resolveModel, resolveForRequest: resolveModel },
+        a.ports.villagesLogger(),
+      );
+      const metricsA = createMetricsContext();
+      const runMetricsA = metricsA.run.bind(metricsA);
+      metricsA.run = (store, work, ...args) => {
+        spansA.push(store);
+        return runMetricsA(store, work, ...args);
+      };
+      const releaseHostA = ownerA.run(() => configureRuntimeHost(runtime));
+      const releaseLedgerA = ownerA.run(() => configureUsageLedger(a.service));
+      const releaseLedgerB = ownerB.run(() => configureUsageLedger(b.service));
+      const releaseMetricsA = ownerA.run(() => configureMetricsContext(metricsA));
+      const releaseMetricsB = ownerB.run(() => configureMetricsContext(createMetricsContext()));
+      const clearA = installDefaultActivation(ownerA, () => {});
+      let clearB: (() => void) | undefined;
+      try {
+        const adapter = villagesLanguageModels();
+        const escapedResolve = () =>
+          method === "resolve"
+            ? adapter.resolve(meta.connectionId)
+            : adapter.resolveForRequest({ connectionId: meta.connectionId });
+        let resolving = pause === "resolver" ? escapedResolve() : undefined;
+        if (resolving) await enteredResolve.promise;
+        clearB = installDefaultActivation(ownerB, () => {});
+        resolving ??= escapedResolve();
+        releaseResolve.resolve();
+        const model = await resolving,
+          escapedComplete = model.chatComplete;
+        assert.equal(model.fitContext(messages).messages, messages);
+        const countB = counters();
+        const pending = active.run(countB, () => escapedComplete(messages, options));
+        await enteredProvider.promise;
+        releaseProvider.resolve();
+        await pending;
+        assert.equal(providerCalls, 1);
+        assert.equal((await a.service.readUsageLedger()).totals.requests, 1);
+        assert.equal(
+          (await b.service.readUsageLedger()).totals.requests,
+          0,
+          "B never accounts for A's escaped provider",
+        );
+        assert(
+          events.every((event) => event.owner === ownerA),
+          "resolver, fitter and escaped provider retain A",
+        );
+        assert.equal(countB.requests, 0, "B's active pipeline does not count A's request");
+        assert.equal(spansA.length, 1);
+        assert.equal(spansA[0]!.requests, 1);
+        assert.equal(spansA[0]!.reportedInputTokens, 10);
+        assert.equal(spansA[0]!.reportedOutputTokens, 5);
+        assert.equal(a.row().data.requests[0].status, "complete");
+        assert(!JSON.stringify(a.row()).includes("private text"));
+        releaseHostA();
+        await assert.rejects(async () => escapedComplete(messages, options), /runtime is not configured/);
+        const beforeResolver = events.length;
+        await assert.rejects(escapedResolve, /runtime is not configured/);
+        assert.equal(events.length, beforeResolver, "invalidated resolver refuses before reading the captured Engine");
+        assert.equal(providerCalls, 1, "an invalidated host refuses before accounting or provider dispatch");
+        assert.equal((await a.service.readUsageLedger()).totals.requests, 1);
+        releaseLedgerA();
+        ownerA.dispose();
+        await assert.rejects(async () => escapedComplete(messages, options), /not configured/);
+        assert.equal(providerCalls, 1, "retired ownership refuses before provider dispatch");
+        assert.equal((await b.service.readUsageLedger()).totals.requests, 0);
+      } finally {
+        releaseResolve.resolve();
+        releaseProvider.resolve();
+        releaseHostA();
+        releaseLedgerA();
+        releaseLedgerB();
+        releaseMetricsA();
+        releaseMetricsB();
+        clearB?.();
+        clearA();
+        ownerA.dispose();
+        ownerB.dispose();
+      }
+    }
+  }
+  const owner = createActivationScope(),
+    replacement = createActivationScope();
+  const a = fixture("google", 1),
+    b = fixture("anthropic", 10);
+  a.holdCreate();
+  b.seed();
+  let providerCalls = 0;
+  const provider: CapabilityResolvedLanguageModel = {
+    name: "A",
+    connectionId: meta.connectionId,
+    model: meta.model,
+    maxContext: 4096,
+    maxOutputTokens: 64,
+    async chatComplete() {
+      providerCalls++;
+      return completion();
+    },
+    fitContext(messages) {
+      return { messages, estimatedTokensBefore: 0, estimatedTokensAfter: 0, trimmed: false };
+    },
+  };
+  const releaseHost = owner.run(() =>
+    configureRuntimeHost(
+      accountingRuntime(
+        { resolve: async () => provider, resolveForRequest: async () => provider },
+        a.ports.villagesLogger(),
+      ),
+    ),
+  );
+  const releaseA = owner.run(() => configureUsageLedger(a.service));
+  const releaseB = replacement.run(() => configureUsageLedger(b.service));
+  const clearA = installDefaultActivation(owner, () => {});
+  let clearB: (() => void) | undefined;
+  try {
+    const model = await villagesLanguageModels().resolve(meta.connectionId);
+    const pending = model.chatComplete([]);
+    // Observe rejection immediately, then invalidate the host while claim storage waits.
+    const refused = assert.rejects(pending, /runtime is not configured/);
+    await a.entered.promise;
+    assert.equal(providerCalls, 0);
+    clearB = installDefaultActivation(replacement, () => {});
+    releaseHost();
+    a.gate.resolve();
+    await refused;
+    assert.equal(providerCalls, 0, "retirement during claim storage refuses before provider dispatch");
+    assert.equal((await b.service.readUsageLedger()).totals.requests, 0);
+    const ledgerA = await a.service.readUsageLedger();
+    assert.equal(ledgerA.totals.requests, 1);
+    assert.equal(
+      ledgerA.requests[0]!.status,
+      "unknown",
+      "the existing conservative failed-claim accounting is retained",
+    );
+  } finally {
+    a.gate.resolve();
+    releaseHost();
+    releaseA();
+    releaseB();
+    clearB?.();
+    clearA();
+    owner.dispose();
+    replacement.dispose();
+  }
+  console.log(
+    "Escaped model resolvers/completions keep their provider, usage receipts and pipeline metrics on the selected activation.",
+  );
+}
 async function main() {
   await queuesAndRates();
   await periodAndRestart();
   await overlappingSameStore();
   await scopedContexts();
+  await escapedModelAccounting();
   console.log(
     "Usage queues, connection prices, CAS counts, recovery, purpose and pipeline contexts remain independently owned.",
   );
