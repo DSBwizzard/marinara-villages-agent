@@ -72,13 +72,6 @@ export const MAX_NOTICE_AUTHOR_LENGTH = 60;
  * who simply does not know.
  */
 export const MAX_HAPPENINGS = 40;
-/**
- * The current Events feed is visual prose only. Until it is retooled as
- * structured Events, neither its lines nor their model-proposed side effects
- * may change village reality or become grounding for another model call.
- */
-export const LEGACY_EVENTS_CAN_AFFECT_VILLAGE = false;
-export const MAX_HAPPENINGS_IN_PROMPT = 8;
 /** How long one happening may be, and how many one write may add. */
 export const MAX_HAPPENING_LENGTH = 320;
 export const MAX_HAPPENINGS_PER_WRITE = 3;
@@ -93,19 +86,6 @@ export const MAX_CHRONICLE_ABOUT_ONE_VILLAGER = 3;
 /** How long one memory may be, and how many one write may add. */
 export const MAX_CHRONICLE_LENGTH = 320;
 export const MAX_CHRONICLE_PER_WRITE = 3;
-/** How many notes the villagers may pin on one write. */
-export const MAX_NOTICES_PER_WRITE = 3;
-/**
- * How many wishes one write-up may say the world has made impossible.
- *
- * The only list a reply can write that REMOVES something, which is why it is
- * capped rather than left to the model: the other three grow the village and are
- * bounded by what a page holds, while this one decides how much of what people
- * are carrying stops being true. Three, like the others, and an ordinary reply
- * leaves it empty — see the rules in `buildTickMessages`, where restraint is the
- * hardest part of the instruction to write.
- */
-export const MAX_LAPSES_PER_WRITE = 3;
 /**
  * How many conversations are kept for one villager.
  *
@@ -891,26 +871,6 @@ function chronologicalLine(
 }
 
 /**
- * What the village has been doing, as a villager knows it.
- *
- * Rendered oldest first, the way the events happened, even though the record
- * and the window hold it newest first: a villager reads their week forwards.
- * Only the most recent few are shown, so a long-lived village does not push the
- * setting and the roster out of the prompt in favour of its own history.
- */
-export function renderHappeningsBlock(
-  happenings: readonly VillageHappening[],
-  stamp: { foundedAt: string; moment: VillageMoment },
-): string {
-  const recent = happenings.slice(0, MAX_HAPPENINGS_IN_PROMPT);
-  if (recent.length === 0) return "";
-  return [
-    "What has been happening here lately, oldest first:",
-    ...recent.reverse().map((entry) => chronologicalLine(entry, stamp)),
-  ].join("\n");
-}
-
-/**
  * The rules about a happening, said the same way to every writer that can add one.
  *
  * Three calls can now put something into the live window: the narrator writing a
@@ -960,35 +920,6 @@ export function renderMemoryBlock(
   return [
     "## What you remember",
     "Things you know happened here, oldest first. They are in the past; do not describe them as happening now.",
-    ...[...kept].reverse().map((entry) => chronologicalLine(entry, stamp)),
-  ].join("\n");
-}
-
-/**
- * What the VILLAGE remembers, as the narrator about to write its next day reads it.
- *
- * This is the other half of `renderMemoryBlock`, and the two exist separately
- * because they go to two different readers. A villager is handed their own
- * private lines plus the shared story, because a villager knows what they were
- * told in confidence. The narrator is handed the shared story ALONE — the
- * private lines reach it only through the resident they belong to and nowhere
- * else, which is the whole of what the chronicle's scope is for.
- *
- * It is what closes the loop the happenings window cannot: news falls out of a
- * forty-line window in a handful of real days, and a memory of what the village
- * did not forget is the only thing there is to write the next day FROM. Without
- * it the narrator can write an event and then never mention it again, which is
- * the difference between a village with a past and one with a feed.
- */
-export function renderVillageMemoryBlock(
-  entries: readonly VillageChronicleEntry[],
-  stamp: { foundedAt: string; moment: VillageMoment },
-): string {
-  const kept = entries.slice(0, MAX_CHRONICLE_IN_PROMPT);
-  if (kept.length === 0) return "";
-  return [
-    "## What the village remembers",
-    "The things worth still knowing about here, oldest first, as opposed to the news above. They are in the past: do not re-narrate them, and do not contradict them.",
     ...[...kept].reverse().map((entry) => chronologicalLine(entry, stamp)),
   ].join("\n");
 }
@@ -1602,7 +1533,7 @@ export function buildPromptValues(input: {
     // Resident-authored notices came from the legacy Events writer. They can
     // remain visible on the board, but only player-pinned notes are prompt data.
     noticeboard: renderNoticeboardBlock(input.noticeboard.filter((notice) => !notice.author)),
-    happenings: LEGACY_EVENTS_CAN_AFFECT_VILLAGE ? renderHappeningsBlock(input.happenings, stamp) : "",
+    happenings: "",
     memory: renderMemoryBlock(input.memory, stamp),
     lore: renderLoreBlock(input.lore),
   };

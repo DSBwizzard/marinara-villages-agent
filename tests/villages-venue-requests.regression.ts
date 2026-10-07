@@ -19,7 +19,6 @@ import { addVillageVenue } from "../packages/villages/src/server/domain/rules/ve
 import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   readHousingRequests,
-  readTickVenueRequests,
   type VillageTickContext,
 } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
@@ -93,17 +92,6 @@ assert.equal(
   ]),
   null,
   "a room participant cannot file another villager's request as their own",
-);
-assert.deepEqual(readTickVenueRequests([{ who: "Rosa", ...core }], [{ characterId: "rosa", name: "Rosa" }], []), [
-  { characterId: "rosa", core },
-]);
-assert.deepEqual(
-  readTickVenueRequests([{ who: "A stranger", ...core }], [{ characterId: "rosa", name: "Rosa" }], []),
-  [],
-);
-assert.deepEqual(
-  readTickVenueRequests([{ who: "Rosa", ...core }], [{ characterId: "rosa", name: "Rosa" }], [core.name]),
-  [],
 );
 const housingContext = {
   residents: [{ characterId: "rosa", name: "Rosa" }],

@@ -2848,8 +2848,8 @@ async function main() {
     }
     const visualProposal = await proposeHappenings(featureContext() as any);
     assert.equal(visualProposal.happenings.length, 1);
-    assert.deepEqual(visualProposal.featureEdits, [], "visual Events cannot edit venue features");
-    assert.deepEqual(visualProposal.memory, [], "visual Events cannot create memory");
+    assert.equal(Object.hasOwn(visualProposal, "featureEdits"), false, "visual Events cannot edit venue features");
+    assert.equal(Object.hasOwn(visualProposal, "memory"), false, "visual Events cannot create memory");
     creativeActorIds = ["tina"];
     featureProposal = null;
     const natural = await greetVenue((await enterVenue("park")).id);

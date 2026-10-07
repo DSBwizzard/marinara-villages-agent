@@ -187,11 +187,6 @@ function fixture(name: string) {
       await modelPause();
       return {
         happenings: story,
-        memory: [],
-        notices: [],
-        venueRequests: [],
-        featureEdits: [],
-        lapsed: [],
         housingRequests: [],
         model: name,
       };

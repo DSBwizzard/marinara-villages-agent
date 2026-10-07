@@ -320,6 +320,19 @@ async function main() {
     await recoverBackgroundWork();
     await backgroundWorkSummaries();
     assert.equal(calls, beforeRead);
+    const routineIdea = {
+      characterId: "a",
+      activity: "Read quietly",
+      venueId: "park",
+      zoneId: "exterior",
+      flexible: true,
+    };
+    const social = { planId: "offered-plan" };
+    const supportedContext = {
+      ...context,
+      venues: [{ id: "destination", name: "Open home", occupancy: { playerHome: false, residentCharacterId: null } }],
+      social: { candidates: [{ id: "offered-plan" }], relationships: [] },
+    };
     output = JSON.stringify({
       happenings: [
         {
@@ -330,11 +343,25 @@ async function main() {
           narration: "Ada rests beside the gate.",
         },
       ],
-      housingRequests: [],
+      housingRequests: [{ who: "a", kind: "move", venueId: "destination" }],
+      routineIdea,
+      social,
+      memory: [{ text: "A private fact was invented", who: ["Ada"], private: true }],
+      notices: [{ author: "Ada", text: "A notice was invented" }],
+      venueRequests: [{ who: "Ada", name: "Unrequested hall", classes: ["gathering"] }],
+      featureEdits: [{ who: "Ada", venueId: "park", featureId: "wall", text: "An invented change" }],
+      lapsed: [{ who: "Ada", wish: "An invented loss" }],
     });
-    const valid = await proposeHappenings(context);
+    const beforeValid = calls;
+    const valid = await proposeHappenings(supportedContext);
     assert.equal(valid.happenings.length, 1);
     assert.equal(valid.happenings[0].text, "Ada rests beside the gate.");
+    assert.equal(calls - beforeValid, 1, "supported Events use one completion without repair");
+    assert.deepEqual(valid.housingRequests, [{ characterId: "a", kind: "move", venueId: "destination" }]);
+    assert.deepEqual(valid.routineIdea, routineIdea);
+    assert.deepEqual(valid.social, social);
+    for (const key of ["memory", "notices", "venueRequests", "featureEdits", "lapsed"])
+      assert.equal(Object.hasOwn(valid, key), false, `Events never admit the unsupported ${key} effect channel`);
     providerError = true;
     const beforeError = calls;
     await assert.rejects(

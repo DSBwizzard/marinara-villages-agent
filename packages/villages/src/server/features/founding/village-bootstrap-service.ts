@@ -7,7 +7,6 @@ import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
 import {
   boundText,
-  LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
   MAX_HAPPENINGS_PER_WRITE,
   MAX_SETTING_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
@@ -34,7 +33,6 @@ import {
   coerceHappeningList,
   coerceOpportunityHappenings,
   readHousingRequests,
-  coerceTickProposal,
   REACTION_MAX_TOKENS,
   REACTION_TEMPERATURE,
   type VillageReactionContext,
@@ -226,36 +224,25 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
         responseDiagnostics: { ...diagnostics, missingFields: missing ? ["happenings"] : [] },
       });
     if (!payload) throw fail();
-    const proposal = LEGACY_EVENTS_CAN_AFFECT_VILLAGE
-      ? coerceTickProposal(payload, context.moment, context, context.recent)
-      : {
-          // An old model or crafted reply may still send legacy effect keys.
-          // Visual Events never promote them to an actionable proposal.
-          happenings: coerceOpportunityHappenings(
-            payload.happenings,
-            new Set(context.recent.map((line) => line.trim().toLowerCase())),
-            context.moment,
-            context.opportunities,
-          ),
-          memory: [],
-          notices: [],
-          venueRequests: [],
-          featureEdits: [],
-          routineIdea:
-            payload.routineIdea && typeof payload.routineIdea === "object" && !Array.isArray(payload.routineIdea)
-              ? (payload.routineIdea as VillageTickProposal["routineIdea"])
-              : undefined,
-          housingRequests: readHousingRequests(payload.housingRequests, context),
-          social:
-            context.social && payload.social && typeof payload.social === "object"
-              ? (payload.social as VillageTickProposal["social"])
-              : undefined,
-          lapsed: [],
-        };
-    // Only the happenings are required. A reply that wrote news and remembered
-    // nothing is a perfectly good afternoon, and failing it would cost the player
-    // the news as well — so the memory list is allowed to be empty and the
-    // happenings list is not.
+    const proposal = {
+      // Admit only current visual and structured proposal fields.
+      happenings: coerceOpportunityHappenings(
+        payload.happenings,
+        new Set(context.recent.map((line) => line.trim().toLowerCase())),
+        context.moment,
+        context.opportunities,
+      ),
+      routineIdea:
+        payload.routineIdea && typeof payload.routineIdea === "object" && !Array.isArray(payload.routineIdea)
+          ? (payload.routineIdea as VillageTickProposal["routineIdea"])
+          : undefined,
+      housingRequests: readHousingRequests(payload.housingRequests, context),
+      social:
+        context.social && payload.social && typeof payload.social === "object"
+          ? (payload.social as VillageTickProposal["social"])
+          : undefined,
+    };
+    // A usable visual entry is required; structured proposals are optional.
     if (proposal.happenings.length === 0) throw fail(true);
     return { ...proposal, model: model.model };
   }
