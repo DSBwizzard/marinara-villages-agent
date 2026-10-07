@@ -8,7 +8,7 @@ import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js
 import { renderNoticeboardPage } from "../features/world/NoticeboardPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
 import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
-import type { MenuScreenController } from "../features/settings/screen-contracts.js";
+import type { MenuScreenController } from "./menu-contracts.js";
 import { VillagesRuntimeDebug } from "../features/settings/SettingsPanels.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 

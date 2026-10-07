@@ -1,12 +1,7 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { MenuScreenController } from "../settings/screen-contracts.js";
+import type { NoticeboardPagePorts } from "./page-contracts.js";
 
-export function renderNoticeboardPage(
-  ports: Pick<
-    MenuScreenController,
-    "addNotice" | "busy" | "noticeDraft" | "removeNotice" | "setNoticeDraft" | "snapshot"
-  >,
-) {
+export function renderNoticeboardPage(ports: NoticeboardPagePorts) {
   const { addNotice, busy, noticeDraft, removeNotice, setNoticeDraft, snapshot } = ports;
   return (
     <div className={`${ELEMENT_TAG}-overlay`}>

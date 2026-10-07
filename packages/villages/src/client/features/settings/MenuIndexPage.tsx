@@ -1,9 +1,7 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { MenuScreenController } from "./screen-contracts.js";
+import type { MenuIndexPagePorts } from "./page-contracts.js";
 
-export function renderMenuIndexPage(
-  ports: Pick<MenuScreenController, "backgroundPanel" | "busy" | "openMenu" | "snapshot">,
-) {
+export function renderMenuIndexPage(ports: MenuIndexPagePorts) {
   const { backgroundPanel, busy, openMenu, snapshot } = ports;
   return (
     <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content ${ELEMENT_TAG}-menu-welcome`} role="main">

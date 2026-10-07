@@ -1,22 +1,7 @@
-import type { MenuScreenController } from "../settings/screen-contracts.js";
+import type { ProjectsPagePorts } from "./page-contracts.js";
 import { ProjectsPanelV2 } from "./ProjectsPanel.js";
 
-export function renderProjectsPage(
-  ports: Pick<
-    MenuScreenController,
-    | "debugDiscardEnabled"
-    | "projectsController"
-    | "goHome"
-    | "mobile"
-    | "room"
-    | "setFocusedProjectId"
-    | "setPlacingProjectId"
-    | "setScreen"
-    | "setSiteProjectId"
-    | "siteProjectId"
-    | "snapshot"
-  >,
-) {
+export function renderProjectsPage(ports: ProjectsPagePorts) {
   const {
     debugDiscardEnabled,
     projectsController,

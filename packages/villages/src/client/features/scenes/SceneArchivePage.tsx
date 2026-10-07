@@ -5,28 +5,9 @@ import {
   stampTime,
   villagesSpeechPaintStyle,
 } from "../../shared/presentation.js";
-import type { MenuScreenController } from "../settings/screen-contracts.js";
+import type { SceneArchivePagePorts } from "./page-contracts.js";
 
-export function renderSceneArchivePage(
-  ports: Pick<
-    MenuScreenController,
-    | "archiveError"
-    | "archiveOffset"
-    | "archiveTotal"
-    | "archiveVenueId"
-    | "archiveVillagerId"
-    | "busy"
-    | "deleteArchivedVisits"
-    | "openArchivedVisit"
-    | "openVisit"
-    | "setArchiveOffset"
-    | "setArchiveVenueId"
-    | "setArchiveVillagerId"
-    | "setOpenArchivedVisit"
-    | "snapshot"
-    | "venueVisits"
-  >,
-) {
+export function renderSceneArchivePage(ports: SceneArchivePagePorts) {
   const {
     archiveError,
     archiveOffset,

@@ -1,25 +1,10 @@
 import type { VillageSettings, VillageStoryPace } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { storyPaceSummary } from "../../shared/presentation.js";
-import type { MenuScreenController } from "./screen-contracts.js";
+import type { GeneralSettingsPagePorts } from "./page-contracts.js";
 import { AgentConnections } from "./SettingsPanels.js";
 
-export function renderGeneralSettingsPage(
-  ports: Pick<
-    MenuScreenController,
-    | "backgroundPanel"
-    | "busy"
-    | "resetArmed"
-    | "saveCharacterSpeechColors"
-    | "saveSendOnEnter"
-    | "saveStoryPace"
-    | "saveVisitRetention"
-    | "setResetArmed"
-    | "settingsError"
-    | "snapshot"
-    | "startOver"
-  >,
-) {
+export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
   const {
     backgroundPanel,
     busy,

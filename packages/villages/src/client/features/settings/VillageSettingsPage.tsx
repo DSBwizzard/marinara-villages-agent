@@ -8,83 +8,11 @@ import { PlayerIdentityEditor, VillageLorebookPicker } from "../founding/Foundin
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
 import { PlayerRoleSummary } from "../founding/villages-player-role.js";
 import { VenueDraftFields } from "../venues/VenuePanels.js";
-import type { MenuScreenController } from "./screen-contracts.js";
+import type { VillageSettingsPagePorts } from "./page-contracts.js";
 import { VillageWritingSettings } from "./SettingsPanels.js";
 import { VillagesBurstPreview } from "./villages-burst-preview.js";
 
-export function renderVillageSettingsPage(
-  ports: Pick<
-    MenuScreenController,
-    | "addVenue"
-    | "backgroundPanel"
-    | "busy"
-    | "discardTownMapDraft"
-    | "framingMap"
-    | "generateReplacementMap"
-    | "insertMacro"
-    | "knowledgeDraft"
-    | "knowledgeRef"
-    | "loreTokenBudgetDraft"
-    | "lorebookDraft"
-    | "lorebooks"
-    | "lorebooksError"
-    | "mapGenerating"
-    | "mapPinDraft"
-    | "mapRemoveDraft"
-    | "mapReplaceOpen"
-    | "mobile"
-    | "nameOfCharacter"
-    | "openPlace"
-    | "openSetup"
-    | "panelMapView"
-    | "personaDraft"
-    | "personalizeHomes"
-    | "personas"
-    | "pickTownMap"
-    | "placeCount"
-    | "placingMapVenueId"
-    | "reframingMap"
-    | "removeVenue"
-    | "saveScenerySettings"
-    | "saveSettings"
-    | "saveTownMap"
-    | "saveVenue"
-    | "sceneryStyle"
-    | "selectedMapVenueId"
-    | "setKnowledgeDraft"
-    | "setLoreTokenBudgetDraft"
-    | "setLorebookDraft"
-    | "setMapPinDraft"
-    | "setMapRemoveDraft"
-    | "setPersonaDraft"
-    | "setPersonalizeHomes"
-    | "setPlacingMapVenueId"
-    | "setReframingMap"
-    | "setSceneryStyle"
-    | "setSelectedMapVenueId"
-    | "setSettingDraft"
-    | "setTownMapDraft"
-    | "setTownMapPick"
-    | "setVenueEditDraft"
-    | "setVenueSearch"
-    | "setVisualLoreDefault"
-    | "settingDraft"
-    | "settingsError"
-    | "snapshot"
-    | "startMapReplacement"
-    | "suggestPlaces"
-    | "townMapAdvice"
-    | "townMapImage"
-    | "townMapPick"
-    | "townMapShape"
-    | "townMapSrc"
-    | "townMapZoom"
-    | "venueEditDraft"
-    | "venueSearch"
-    | "venuesDraft"
-    | "visualLoreDefault"
-  >,
-) {
+export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
   const {
     addVenue,
     backgroundPanel,

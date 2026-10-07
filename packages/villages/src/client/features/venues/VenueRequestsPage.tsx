@@ -1,23 +1,9 @@
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { MenuScreenController } from "../settings/screen-contracts.js";
+import type { VenueRequestsPagePorts } from "./page-contracts.js";
 
-export function renderVenueRequestsPage(
-  ports: Pick<
-    MenuScreenController,
-    | "busy"
-    | "decideVenueRequest"
-    | "nameOfCharacter"
-    | "requestEdits"
-    | "setBusy"
-    | "setRequestEdits"
-    | "setSettingsError"
-    | "setSnapshot"
-    | "settingsError"
-    | "snapshot"
-  >,
-) {
+export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
   const {
     busy,
     decideVenueRequest,

@@ -1,11 +1,9 @@
 import type { ProgressDebugView } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { MenuScreenController } from "../settings/screen-contracts.js";
+import type { ProgressDebugPagePorts } from "./page-contracts.js";
 
-export function renderProgressDebugPage(
-  ports: Pick<MenuScreenController, "error" | "progressDebug" | "setProgressDebug">,
-) {
+export function renderProgressDebugPage(ports: ProgressDebugPagePorts) {
   const { error, progressDebug, setProgressDebug } = ports;
   return (
     <div className={`${ELEMENT_TAG}-panel`}>
