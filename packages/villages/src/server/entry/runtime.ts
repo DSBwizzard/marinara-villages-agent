@@ -1,4 +1,13 @@
-import { configureRuntimeHost, villagesDocuments, villagesLogger } from "../adapters/engine/runtime-host.js";
+import {
+  configureRuntimeHost,
+  villagesDocuments,
+  villagesLogger,
+  villagesResources,
+} from "../adapters/engine/runtime-host.js";
+import { configureNativeSchedules } from "../adapters/engine/native-schedules.js";
+import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
+import { configureGlobalGallery } from "../adapters/engine/global-gallery.js";
+import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -8,7 +17,7 @@ import { createVillageRepository } from "../adapters/storage/village-repository.
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { configureUsageLedger, withUsagePurpose, usageProcessOwner } from "../adapters/models/usage-ledger.js";
 import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
-import { villageEngineJson } from "../adapters/engine/engine-transport.js";
+import { villageEngineJson, villageEngineForm } from "../adapters/engine/engine-transport.js";
 import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
 import { configureMetricsContext } from "../adapters/observability/metrics-context.js";
 import { createMetricsContext } from "../adapters/observability/metrics-context-service.js";
@@ -80,6 +89,8 @@ import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 function connectVillagesRuntime(next: CapabilityRuntimeHost) {
   const releaseMetrics = configureMetricsContext(createMetricsContext());
   const release = configureRuntimeHost(next);
+  const releaseNativeSchedules = configureNativeSchedules(createNativeSchedules({ villagesResources, villagesLogger }));
+  const releaseGallery = configureGlobalGallery(createGlobalGallery({ villageEngineJson, villageEngineForm }));
   const background = createBackgroundContext();
   const releaseBackgroundContext = configureBackgroundContext(background);
   const operations = createVenueOperationContext(villagesLogger);
@@ -202,6 +213,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
     releaseUsage();
     releaseOperations();
     releaseBackgroundContext();
+    releaseGallery();
+    releaseNativeSchedules();
     release();
     releaseMetrics();
   };
