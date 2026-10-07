@@ -2132,7 +2132,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const { generateRequestDescription, decideHomeUpgrade, completeResidenceMove, decideResidenceMove } =
-    useVenueRequestCommands({ setBusy, setSettingsError, setSnapshot, setRequestEdits });
+    useVenueRequestCommands({ snapshot, setBusy, setSettingsError, setSnapshot, setRequestEdits });
 
   /**
    * Drop a macro in at the caret of the prompt box, then put the caret back
