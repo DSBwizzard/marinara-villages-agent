@@ -50,7 +50,8 @@ import { processLiveMemories } from "../features/residents/live-memory.js";
 import { processWishExchange } from "../features/residents/wishes/wish-progress.js";
 import { applyProjectPickup } from "../features/projects/project-checks.js";
 import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
-import { processProjectSpeechTurn } from "../features/projects/project-evidence.js";
+import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
+import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress } from "../features/scenes/progress.js";
 import { createSceneChanges } from "../features/scenes/changes-service.js";
@@ -460,6 +461,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     listVenueVisits,
     processSavedExchange,
   });
+  const releaseProjectEvidence = configureProjectEvidence(
+    createProjectEvidence({ readVillageState, mutateVillageState, sceneQueries }),
+  );
   const releaseVillageSnapshot = configureVillageSnapshot(
     createVillageSnapshot({
       readVillageState,
@@ -706,6 +710,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();
+    releaseProjectEvidence();
     releaseVillageSnapshot();
     releaseQueries();
     releaseSceneArchive();
