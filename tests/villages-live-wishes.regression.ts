@@ -14,7 +14,7 @@ import {
   backgroundWorkSummaries,
   recoverBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";

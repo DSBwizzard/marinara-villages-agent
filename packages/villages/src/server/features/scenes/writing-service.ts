@@ -84,7 +84,7 @@ export interface SceneWritingPorts {
   venueOperationSignal: typeof import("../../adapters/operations/operation-context.js").venueOperationSignal;
   rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
-  wishFingerprint: typeof import("../residents/wishes/wish-interpretation.js").wishFingerprint;
+  wishFingerprint: typeof import("../../domain/rules/wish-interpretation-rules.js").wishFingerprint;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   interpretRoomReply: typeof import("./room-interpretation.js").interpretRoomReply;

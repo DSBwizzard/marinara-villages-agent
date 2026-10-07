@@ -23,10 +23,8 @@ import {
   processWishExchange,
   applyPreparedWishVerdict,
 } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
-import {
-  wishFingerprint,
-  interpretWishBatch,
-} from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+import { interpretWishBatch } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
 import { localWishRequirements } from "../packages/villages/src/server/domain/rules/wish-admission.js";
 import {
   retireResidentWish,

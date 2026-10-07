@@ -3,7 +3,7 @@ import { setVillageSendOnEnter } from "../packages/villages/src/server/features/
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
-import { wishReceiptRecords } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishReceiptRecords } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { measurePipeline } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.

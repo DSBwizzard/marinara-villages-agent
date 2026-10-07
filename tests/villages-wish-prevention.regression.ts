@@ -9,7 +9,7 @@ import {
 import { systemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
 import { interpretationPayload } from "../packages/villages/src/server/domain/rules/interpretation-evidence-rules.js";
 import { completionFailure } from "../packages/villages/src/server/domain/rules/work-failure.js";
-import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import {

@@ -8,6 +8,12 @@ import {
 } from "../packages/villages/src/server/jobs/background-work.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import {
+  activationScope,
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { WISH_SYSTEM_VERSION } from "../packages/villages/src/server/domain/rules/wish-definition.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -41,6 +47,7 @@ import {
   flushWishOutcomes,
   readWishHistoryPage,
   readWishOutcome,
+  previousFulfilledNeed,
 } from "../packages/villages/src/server/features/residents/wishes/wish-archive.js";
 import { remapSignature } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
@@ -74,6 +81,330 @@ let comparisonId = "";
 let unavailableGenerationUsage = false;
 let debugEnabled = false;
 const now = new Date(2026, 8, 30, 8);
+
+async function archiveConnectionOwnership() {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  const prefix =
+    "wish-history:" +
+    createHash("sha256").update(`wish-journal-v${WISH_SYSTEM_VERSION}\0equal-archive-seed\0a`).digest("hex");
+  const pageId = prefix + ":page:0",
+    pointerId = prefix + ":wish:" + createHash("sha256").update("equal-wish").digest("hex");
+  function fixture(label: string, stage?: string) {
+    const scope = createActivationScope(),
+      entered = deferred(),
+      gate = deferred(),
+      at = new Date().toISOString();
+    const state = coerceVillageState({
+      seed: "equal-archive-seed",
+      wishSystemVersion: WISH_SYSTEM_VERSION,
+      setupAt: at,
+      foundedAt: at,
+      villagers: [
+        {
+          characterId: "a",
+          cardSnapshot: { id: "a", name: label, revision: 1, sourceStatus: "available", capturedAt: at },
+          completedWishes: [],
+          wishLifecycle: newWishLifecycle(),
+        },
+      ],
+    });
+    const outcome = recordWishOutcome(
+      state.villagers[0],
+      freshWish("equal-wish", label + " flowers"),
+      at,
+      label + "-receipt",
+      "fulfilled",
+    );
+    const records = new Map<string, any>([
+      ["villages-village", { id: "villages-village", kind: "village", revision: 1, data: state }],
+    ]);
+    const writes: string[] = [],
+      calls: string[] = [];
+    let held = false,
+      pageConflicts = 0,
+      pointerConflicts = 0,
+      providerAccess = 0;
+    let failure: Error | undefined,
+      failureStage: string | undefined,
+      afterSave = false;
+    async function pause(candidate: string) {
+      if (!held && stage === candidate) {
+        held = true;
+        entered.resolve();
+        await gate.promise;
+      }
+    }
+    function owner() {
+      assert.equal(activationScope(), scope, label + " native store owner");
+    }
+    function candidate(id: string, save: boolean) {
+      return id === "villages-village"
+        ? save
+          ? "ack"
+          : "world"
+        : id.includes(":page:")
+          ? save
+            ? "pageSave"
+            : "pageRead"
+          : save
+            ? "pointerSave"
+            : "pointerRead";
+    }
+    const documents = {
+      async getById(_packageId: string, id: string) {
+        owner();
+        calls.push("read:" + id);
+        const target = candidate(id, false);
+        await pause(target);
+        if (failure && failureStage === target) throw failure;
+        return structuredClone(records.get(id) ?? null);
+      },
+      async list() {
+        throw new Error("Wish archives must use direct pages");
+      },
+      async create(input: any) {
+        owner();
+        calls.push("create:" + input.id);
+        const target = candidate(input.id, true);
+        await pause(target);
+        if (failure && failureStage === target && !afterSave) throw failure;
+        if (records.has(input.id)) throw new Error("Duplicate");
+        const row = { ...structuredClone(input), revision: 1 };
+        records.set(input.id, row);
+        writes.push(input.id);
+        if (failure && failureStage === target && afterSave) throw failure;
+        return structuredClone(row);
+      },
+      async update(input: any) {
+        owner();
+        calls.push("update:" + input.id);
+        const target = candidate(input.id, true);
+        await pause(target);
+        if (failure && failureStage === target && !afterSave) throw failure;
+        const old = records.get(input.id);
+        if (input.id === pageId && pageConflicts-- > 0) {
+          const concurrent = {
+            ...structuredClone(outcome),
+            sequence: 1,
+            memoryId: label + "-concurrent",
+            wish: { ...outcome.wish, id: "concurrent-wish" },
+          };
+          records.set(input.id, { ...old, revision: old.revision + 1, data: { entries: [concurrent] } });
+          records.get("villages-village").data.villagers[0].wishLifecycle.outcomeCount = 2;
+          return null;
+        }
+        if (input.id === pointerId && pointerConflicts-- > 0) {
+          records.set(input.id, { ...old, revision: old.revision + 1 });
+          return null;
+        }
+        if (!old || old.revision !== input.expectedRevision) return null;
+        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+        records.set(input.id, row);
+        writes.push(input.id);
+        if (failure && failureStage === target && afterSave) throw failure;
+        return structuredClone(row);
+      },
+      async remove() {
+        return false;
+      },
+    };
+    const release = scope.run(() =>
+      configureVillagesRuntime({
+        persistence: { documents },
+        getAgentConfig: async () => {
+          providerAccess++;
+          throw new Error("Archiving must not resolve a model");
+        },
+        logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
+      } as any),
+    );
+    assert.deepEqual(writes, [], "assembly performs no archive work");
+    return {
+      scope,
+      entered,
+      gate,
+      records,
+      writes,
+      calls,
+      release,
+      outcome,
+      providerAccess: () => providerAccess,
+      conflict(page: boolean) {
+        if (page) {
+          pageConflicts = 1;
+          records.set(pageId, {
+            id: pageId,
+            kind: "wish-history-page",
+            name: "Page",
+            description: "Page",
+            revision: 1,
+            data: { entries: [] },
+          });
+        } else {
+          pointerConflicts = 1;
+          records.set(pointerId, {
+            id: pointerId,
+            kind: "wish-history-pointer",
+            name: "Pointer",
+            description: "Pointer",
+            revision: 1,
+            data: { sequence: -1 },
+          });
+        }
+      },
+      fail(error?: Error, target?: string, lostAck = false) {
+        failure = error;
+        failureStage = target;
+        afterSave = lostAck;
+      },
+    };
+  }
+  for (const stage of ["world", "pageRead", "pageSave", "pointerRead", "pointerSave", "ack"]) {
+    const a = fixture("A", stage),
+      b = fixture("B"),
+      clearA = installDefaultActivation(a.scope, () => {});
+    let clearB = () => {};
+    if (stage === "pageSave") a.conflict(true);
+    if (stage === "pointerSave") a.conflict(false);
+    try {
+      const pending = flushWishOutcomes();
+      await Promise.race([
+        a.entered.promise,
+        pending.then(() => assert.fail("Flush completed before controlled " + stage + " pause")),
+      ]);
+      clearB = installDefaultActivation(b.scope, () => {});
+      await flushWishOutcomes();
+      clearA();
+      a.gate.resolve();
+      await pending;
+      for (const owned of [a, b]) {
+        const label = owned === a ? "A" : "B";
+        assert.equal(owned.records.get("villages-village").data.villagers[0].wishLifecycle.pendingOutcomes.length, 0);
+        const entries = owned.records.get(pageId).data.entries;
+        assert.equal(entries.find((entry: any) => entry.sequence === 0).memoryId, label + "-receipt");
+        assert.equal(owned.records.get(pointerId).data.sequence, 0);
+        assert(owned.writes.indexOf(pageId) < owned.writes.indexOf(pointerId));
+        assert(owned.writes.indexOf(pointerId) < owned.writes.indexOf("villages-village"));
+        const before = owned.writes.length;
+        await owned.scope.run(() => flushWishOutcomes());
+        assert.equal(owned.writes.length, before, "durable archive replay performs no new write");
+        const saved = await owned.scope.run(() => readWishOutcome("a", "equal-wish"));
+        assert.equal(saved?.memoryId, label + "-receipt");
+        const history = await owned.scope.run(() => readWishHistoryPage("a"));
+        assert(history.entries.every((entry) => entry.memoryId.startsWith(label + "-")));
+        assert.equal(
+          (await owned.scope.run(() => previousFulfilledNeed("a", owned.outcome.needId, 1)))?.memoryId,
+          label + "-receipt",
+        );
+        assert.equal(owned.providerAccess(), 0);
+      }
+      if (stage === "pageSave")
+        assert(
+          a.records.get(pageId).data.entries.some((entry: any) => entry.memoryId === "A-concurrent"),
+          "CAS retry keeps another durable outcome",
+        );
+      console.log("Owned Wish archive stage passed:", stage);
+    } finally {
+      a.gate.resolve();
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+    }
+  }
+  for (const target of ["pageSave", "pointerSave", "ack"]) {
+    const owned = fixture("A"),
+      clear = installDefaultActivation(owned.scope, () => {});
+    try {
+      const exact = new Error("exact archive " + target + " failure");
+      owned.fail(exact, target);
+      await assert.rejects(flushWishOutcomes(), (error) => error === exact);
+      assert.equal(owned.records.get("villages-village").data.villagers[0].wishLifecycle.pendingOutcomes.length, 1);
+      assert.equal(owned.records.has(pageId), target !== "pageSave");
+      assert.equal(owned.records.has(pointerId), target === "ack");
+      if (target !== "ack")
+        assert.equal(
+          owned.calls.filter((call) => call === "create:" + (target === "pageSave" ? pageId : pointerId)).length,
+          8,
+          "creation failure respects its eight-attempt limit",
+        );
+      const pageRevision = owned.records.get(pageId)?.revision;
+      owned.fail();
+      await flushWishOutcomes();
+      if (pageRevision !== undefined)
+        assert.equal(owned.records.get(pageId).revision, pageRevision, "pointer/ack recovery keeps the durable page");
+      assert.equal(owned.records.get("villages-village").data.villagers[0].wishLifecycle.pendingOutcomes.length, 0);
+    } finally {
+      clear();
+      owned.release();
+      owned.scope.dispose();
+    }
+  }
+  for (const target of ["pageSave", "pointerSave", "ack"]) {
+    const owned = fixture("A"),
+      clear = installDefaultActivation(owned.scope, () => {});
+    try {
+      owned.fail(new Error("lost " + target + " acknowledgement"), target, true);
+      if (target === "ack") await assert.rejects(flushWishOutcomes(), /lost ack acknowledgement/);
+      else await flushWishOutcomes();
+      assert.equal(owned.records.get("villages-village").data.villagers[0].wishLifecycle.pendingOutcomes.length, 0);
+      const before = owned.writes.length;
+      owned.fail();
+      await flushWishOutcomes();
+      assert.equal(owned.writes.length, before);
+      assert.equal(owned.records.get(pageId).data.entries.length, 1);
+    } finally {
+      clear();
+      owned.release();
+      owned.scope.dispose();
+    }
+  }
+  const a = fixture("A"),
+    b = fixture("B"),
+    clearA = installDefaultActivation(a.scope, () => {});
+  let clearB = () => {};
+  try {
+    const exact = new Error("exact archive read failure");
+    a.fail(exact, "world");
+    await assert.rejects(readWishOutcome("a", "equal-wish"), (error) => error === exact);
+    a.fail();
+    assert.equal(
+      (await readWishOutcome("a", "equal-wish"))?.memoryId,
+      "A-receipt",
+      "pending outcome precedes durable lookup",
+    );
+    assert(!a.calls.some((call) => call.includes(":page:")));
+    await assert.rejects(readWishHistoryPage("a", "-1"), /cursor/);
+    clearB = installDefaultActivation(b.scope, () => {});
+    a.scope.dispose();
+    await assert.rejects(
+      a.scope.run(() => flushWishOutcomes()),
+      /not configured/,
+    );
+    await assert.rejects(
+      a.scope.run(() => readWishOutcome("a", "equal-wish")),
+      /not configured/,
+    );
+    assert.deepEqual(b.writes, []);
+    await flushWishOutcomes();
+    assert.equal(b.records.get(pageId).data.entries[0].memoryId, "B-receipt");
+  } finally {
+    clearA();
+    clearB();
+    a.release();
+    b.release();
+    a.scope.dispose();
+    b.scope.dispose();
+  }
+}
 function freshWish(
   id: string,
   text = "Fresh flowers",
@@ -1007,8 +1338,9 @@ async function run() {
     stopBackground?.();
     release();
   }
+  await archiveConnectionOwnership();
 }
-run().catch((error) => {
+await run().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

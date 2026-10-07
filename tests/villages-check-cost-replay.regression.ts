@@ -7,7 +7,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { interpretRoomReply } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
 import { processWishExchange } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
-import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 

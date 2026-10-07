@@ -16,7 +16,7 @@ import {
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
   let resolve!: () => void;

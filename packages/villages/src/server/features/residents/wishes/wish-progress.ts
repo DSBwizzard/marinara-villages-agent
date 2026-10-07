@@ -39,13 +39,12 @@ import { backgroundRevision, backgroundStatus, queueBackgroundJob } from "../../
 import { writeInterpretationDiagnostics } from "../../generation/interpretation-diagnostics.js";
 import { sceneQueries } from "../../scenes/services.js";
 import { mutateVillageState, readVillageState } from "../../world/village-store.js";
+import { cachedWishCriteria, interpretWishBatch } from "./wish-interpretation.js";
 import {
-  cachedWishCriteria,
-  interpretWishBatch,
   matchingWishReceipts,
   wishFingerprint,
   wishReceiptRecords,
-} from "./wish-interpretation.js";
+} from "../../../domain/rules/wish-interpretation-rules.js";
 import { fulfillResidentWish } from "./wish-lifecycle.js";
 
 export type {

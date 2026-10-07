@@ -1,3 +1,7 @@
+import { createWishArchive } from "../features/residents/wishes/wish-archive-service.js";
+import { configureWishArchive } from "../features/residents/wishes/wish-archive.js";
+import { createWishInterpretation } from "../features/residents/wishes/wish-interpretation-service.js";
+import { configureWishInterpretation } from "../features/residents/wishes/wish-interpretation.js";
 import { createRelationshipStore } from "../features/residents/relationship-store-service.js";
 import { configureRelationshipStore, mutateRelationships } from "../features/residents/relationship-store.js";
 import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
@@ -58,7 +62,7 @@ import { interpretRoomDraft } from "../features/scenes/writing.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
 import { configureSceneCommands } from "../features/scenes/venue-session.js";
 import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
-import { wishFingerprint } from "../features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../domain/rules/wish-interpretation-rules.js";
 import { rejectVenueCompletion } from "../jobs/venue-coordinator.js";
 import { venueOperationSignal } from "../adapters/operations/operation-context.js";
 import { venueOperationInput } from "../adapters/operations/operation-context.js";
@@ -387,6 +391,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
     }),
   );
+  const releaseWishInterpretation = configureWishInterpretation(
+    createWishInterpretation({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      interpretChecks,
+      systemInterpretations,
+      bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
+    }),
+  );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
   const releaseWishClocks = configureWishAttemptClocks(createWishAttemptClocks());
   const releaseRelationshipStore = configureRelationshipStore(
@@ -415,6 +428,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseWishArchive = configureWishArchive(
+    createWishArchive({ VILLAGES_PACKAGE_ID, villagesDocuments, readVillageState, mutateVillageState }),
   );
   const releaseProjectLifecycle = configureProjectLifecycle(
     createProjectLifecycle({
@@ -845,12 +861,14 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseLiveScenes();
     releaseLiveMemory();
     releaseRelationshipViews();
+    releaseWishArchive();
     releaseVillageState();
     releaseRelationships();
     releaseRelationshipSocial();
     releaseRelationshipStore();
     releaseWishClocks();
     releaseSceneWork();
+    releaseWishInterpretation();
     releaseInterpretation();
     releaseSystemInterpretation();
     releaseInterpretationEvidence();
