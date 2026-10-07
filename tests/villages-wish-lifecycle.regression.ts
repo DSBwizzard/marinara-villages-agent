@@ -1124,20 +1124,6 @@ async function run() {
     assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 1);
     assert.deepEqual((docs.get("villages-venue-visit-background-wish")!.data as any).operation.attempts, {});
 
-    // A legacy recorded provider failure becomes retryable, without an automatic daily repair.
-    const legacyFailureState = seed();
-    registerInitialWish(legacyFailureState.villagers[0]!, new Date(now.getTime() - 2 * WISH_DAY_MS));
-    const legacyAttempt = legacyFailureState.villagers[0]!.wishLifecycle!.attempt!;
-    legacyAttempt.calls = 1;
-    legacyAttempt.reason = "provider unavailable";
-    legacyAttempt.revision = wishRevision(legacyFailureState.villagers[0]!, legacyFailureState);
-    put(legacyFailureState);
-    await reconcileWishLifecycle(now, false, () => now);
-    assert.equal(modelCalls.length, 0);
-    assert.equal((await backgroundWorkSummaries()).find((entry) => entry.kind === "wish")!.status, "failed");
-    await reconcileWishLifecycle(nextDay, false, () => nextDay);
-    assert.equal(modelCalls.length, 0, "legacy failures remain blocked across dates");
-
     // Interrupted provider calls are not silently sent again; persisted candidates and verdicts replay.
     seed();
     let job = (await reserveWishAttempts(now))[0]!;
@@ -1159,11 +1145,7 @@ async function run() {
       attempt.revision = wishRevision(resident, live);
     });
     await processWishAttempt(job.characterId, job.id, now, () => now);
-    assert.equal(
-      modelCalls.length,
-      0,
-      "legacy generated proposals without a matching verdict never spend a repair request",
-    );
+    assert.equal(modelCalls.length, 0, "generated proposals without a matching verdict never spend a repair request");
     assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0);
     seed();
     job = (await reserveWishAttempts(now))[0]!;
@@ -1177,17 +1159,6 @@ async function run() {
     await processWishAttempt(job.characterId, job.id, now, () => now);
     assert.equal(modelCalls.length, 0);
     assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 1);
-    seed();
-    job = (await reserveWishAttempts(now))[0]!;
-    await mutateVillageState((live) => {
-      const attempt = live.villagers[0]!.wishLifecycle!.attempt!;
-      attempt.stage = "comparing";
-      attempt.calls = 2;
-      attempt.candidate = freshWish("interrupted-compare");
-    });
-    await processWishAttempt(job.characterId, job.id, now, () => now);
-    assert.equal(modelCalls.length, 0);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.wishes.length, 0);
     seed();
     onModel = async () => {
       await mutateVillageState((live) => {

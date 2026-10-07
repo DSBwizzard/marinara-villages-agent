@@ -786,7 +786,7 @@ async function main() {
   const founded = await post("/api/villages/setup", {
     name: "Ashcroft",
     setting: settingText,
-    foundingReason: "fresh-start",
+    foundingReason: "pioneer",
     foundingDetails: "The group arrives at the riverside and opens the first shared path.",
     playerPersonaId: "persona-robin",
     venues: [

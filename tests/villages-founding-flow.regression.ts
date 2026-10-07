@@ -40,7 +40,7 @@ async function main() {
   const { foundingPhotoOverlaps } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
   );
-  const { coerceVillageState } = await import(pathToFileURL(join(serverRoot, "features/world/village-store.ts")).href);
+  const { coerceVillageState } = await import(pathToFileURL(join(serverRoot, "domain/decoding/village-codec.ts")).href);
   const { createFoundingSetup } = await import(
     pathToFileURL(join(serverRoot, "features/founding/founding-setup-service.ts")).href
   );
@@ -283,6 +283,19 @@ async function main() {
     /locked/,
   );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
+  for (const foundingReason of [
+    "fresh-start",
+    "refuge",
+    "shared-project",
+    "discovery",
+    "homecoming",
+    "something-else",
+  ]) {
+    await assert.rejects(
+      runVillageSetup({ ...identity, foundingReason, foundingDetails: "They gather at dawn." }),
+      /Choose a founding scenario/,
+    );
+  }
   assert.doesNotThrow(() => validateFirstDayDescription("We share the rent.", true));
   assert.throws(() => validateFirstDayDescription("", true), /Describe what brings you and the others together here/);
   assert.doesNotThrow(() => validateFirstDayDescription("They gather at dawn.", true));

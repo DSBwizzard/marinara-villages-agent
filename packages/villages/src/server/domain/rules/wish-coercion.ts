@@ -120,9 +120,7 @@ export function coerceWishLifecycle(value: unknown): WishLifecycle | undefined {
   let attempt: WishAttempt | undefined;
   if (shortWishText(job.id) && instant(job.at)) {
     const stage =
-      job.stage === "reserved" || job.stage === "generated" || job.stage === "comparing" || job.stage === "validated"
-        ? job.stage
-        : "done";
+      job.stage === "reserved" || job.stage === "generated" || job.stage === "validated" ? job.stage : "done";
     attempt = {
       id: shortWishText(job.id),
       ...(job.resetRefill === true ? { resetRefill: true as const } : {}),

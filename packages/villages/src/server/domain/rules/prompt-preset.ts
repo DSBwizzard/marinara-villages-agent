@@ -453,27 +453,12 @@ export const LEGACY_TOWN_MAP_HEIGHT = 832;
 export const TOWN_MAP_EXPECTED_WIDTH = 1536;
 export const TOWN_MAP_EXPECTED_HEIGHT = 1024;
 
-const FOUNDING_REASONS: Readonly<Record<string, string>> = {
-  "fresh-start": "People founded this village for a fresh start.",
-  refuge: "People founded this village as a refuge.",
-  "shared-project": "People founded this village as a shared project.",
-  discovery: "People founded this village to explore a discovery.",
-  homecoming: "People founded this village as a homecoming.",
-  "something-else": "People founded this village for another reason.",
-};
-export function villageCurrentSetting(village: {
-  setting: string;
-  worldFacts?: readonly string[];
-  villageCapabilities?: readonly string[];
-}): string {
+export function villageCurrentSetting(village: { setting: string; worldFacts?: readonly string[] }): string {
   const facts = village.worldFacts?.filter(Boolean) ?? [];
   return [
     village.setting.trim(),
     VILLAGE_SHARED_SETTING_RULE,
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
-    village.villageCapabilities?.length
-      ? `Completed village capabilities: ${village.villageCapabilities.join(", ")}.`
-      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -548,10 +533,9 @@ export function villageRelevantOrigin(
     (word) => !ordinaryWords.has(word) && queryWords.has(word),
   );
   if (!asksHistory && !asksPurpose && !distinctive) return "";
-  const reason = FOUNDING_REASONS[village.foundingReason];
   return village.scenarioImprint?.origin
     ? `Earlier background: ${origin} Current verified world and venue state takes precedence.`
-    : `Original shared starting circumstances (history, not a description of today): ${[reason, origin].filter(Boolean).join(" ")} This is shared background for their purpose, not an instruction that all residents share one ambition or personality. Current verified world and venue state takes precedence.`;
+    : `Original shared starting circumstances (history, not a description of today): ${origin} This is shared background for their purpose, not an instruction that all residents share one ambition or personality. Current verified world and venue state takes precedence.`;
 }
 
 /**

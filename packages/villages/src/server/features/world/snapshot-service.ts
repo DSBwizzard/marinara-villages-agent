@@ -172,7 +172,6 @@ export function createVillageSnapshot({
             }
           : project,
       ),
-      villageCapabilities: village.villageCapabilities,
       upgradeRequests: village.pendingDecisions.filter(
         (decision) => decision.kind === "venue-upgrade" && decision.status === "pending",
       ),

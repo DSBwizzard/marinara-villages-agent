@@ -12,12 +12,7 @@ import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
-import {
-  DEFAULT_TOWN_MAP_OPTIONS,
-  emptyScenarioImprint,
-  foundingScenario,
-  LEGACY_FOUNDING_REASONS,
-} from "./FoundingPanels.js";
+import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
@@ -342,29 +337,14 @@ export function useOpenSetup(ports: {
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
       const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
-      const reason: FoundingScenarioId = isCurrentScenario
-        ? (storedReason as FoundingScenarioId)
-        : storedReason
-          ? "custom"
-          : "custom";
-      const legacyReason = LEGACY_FOUNDING_REASONS[storedReason] ?? storedReason;
+      const reason: FoundingScenarioId = isCurrentScenario ? (storedReason as FoundingScenarioId) : "custom";
       const savedDetails = village?.settings.foundingDetails ?? "";
-      const legacyPremise = [legacyReason, savedDetails].filter(Boolean).join(" ");
-      const legacyOverflow = legacyPremise.length > (village?.settings.foundingDetailsMaxLength ?? 500);
       const details = village?.isFounded
         ? savedDetails
-        : storedReason && !isCurrentScenario
-          ? legacyOverflow
-            ? savedDetails
-            : legacyPremise
-          : fresh || !storedReason
-            ? foundingScenario(reason).premise
-            : savedDetails;
-      const guidance = fresh
-        ? ""
-        : village?.isFounded
-          ? (village.settings.foundingGuidance ?? "")
-          : [legacyOverflow ? legacyReason : "", village?.settings.foundingGuidance ?? ""].filter(Boolean).join(" ");
+        : fresh || !storedReason
+          ? foundingScenario(reason).premise
+          : savedDetails;
+      const guidance = fresh ? "" : (village?.settings.foundingGuidance ?? "");
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
       setSetupFoundingGuidance(reason === "none" ? "" : guidance);

@@ -211,19 +211,12 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     }
   }
 
-  async function generateWish(input: {
-    state: VillageState;
-    characterId: string;
-    now: string;
-    outputContractVersion?: 2;
-  }): Promise<WishAttempt> {
+  async function generateWish(input: { state: VillageState; characterId: string; now: string }): Promise<WishAttempt> {
     const state = structuredClone(input.state),
       characterId = input.characterId,
       now = new Date(input.now);
     const resident = state.villagers.find((entry) => entry.characterId === characterId)!;
     const job = resident.wishLifecycle!.attempt!;
-    // Legacy unconfirmed attempts require an explicit retry before this generator is admitted.
-    if (job.stage === "comparing") job.stage = "generated";
     if (job.stage === "reserved") job.calls = 0;
     if (job.stage === "reserved") {
       const slots = job.resetRefill ? [] : wishSlots(resident, state, now),
@@ -300,8 +293,7 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
         },
       ];
       job.calls = 1;
-      // New generation reserves reasoning space; retained requests keep their old layout.
-      const payload = await ask(job, messages, input.outputContractVersion === 2 ? 4096 : 1500),
+      const payload = await ask(job, messages, 4096),
         raw = payload?.wish;
       const candidate =
         raw && typeof raw === "object" && !Array.isArray(raw)
@@ -435,9 +427,9 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     const existingStatus = await backgroundStatus("wish", characterId, id);
     if (["failed", "interrupted"].includes(existingStatus ?? "") && wishRevision(resident, state) === job.revision)
       return;
-    const legacyInterrupted = job.stage === "comparing" || (job.stage === "reserved" && job.calls > 0);
+    const interrupted = job.stage === "reserved" && job.calls > 0;
     if (
-      !legacyInterrupted &&
+      !interrupted &&
       (wishRevision(resident, state) !== job.revision || (!job.resetRefill && job.dateKey !== agendaDateKey(now)))
     ) {
       await mutateVillageState((live) => {
@@ -450,7 +442,6 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       return;
     }
     if (clock) clocks.remember(id, clock);
-    const interrupted = legacyInterrupted;
     if (interrupted)
       await mutateVillageState((live) => {
         const attempt = live.villagers.find((entry) => entry.characterId === characterId)?.wishLifecycle?.attempt;
@@ -467,7 +458,6 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
       label: resident.cardSnapshot.name + (job.resetRefill ? "'s replacement wish" : "'s next wish"),
       legacyError: interrupted ? "Interrupted wish request: outcome unknown; deliberate retry required." : undefined,
       input: {
-        outputContractVersion: 2,
         state,
         characterId,
         id,
@@ -496,18 +486,6 @@ export function createWishLifecycle(ports: WishLifecyclePorts) {
     let work: { characterId: string; id: string }[] = [];
     await mutateVillageState((state) => {
       work = [];
-      // Older releases recorded provider failures as "done"; retain their allowance and expose explicit recovery.
-      for (const resident of state.villagers) {
-        const attempt = resident.wishLifecycle?.attempt;
-        if (
-          attempt?.stage === "done" &&
-          attempt.calls > 0 &&
-          !/^(No new wish today|Local identity check|Bounded semantic comparison accepted|Repeated need or uncertain comparison|Active duplicate or settled need|State changed before commit|The proposal's day|Initial wish granted|No initial wish today|Daily wish allowance consumed)/.test(
-            attempt.reason,
-          )
-        )
-          attempt.stage = attempt.candidate ? "comparing" : "reserved";
-      }
       if (state.foundingPreparation && state.foundingPreparation.status !== "ready") return;
       const dateKey = agendaDateKey(now),
         moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now }),

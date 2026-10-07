@@ -27,15 +27,6 @@ export const emptyScenarioImprint = (): ScenarioImprint => ({
   visualCues: [],
 });
 
-export const LEGACY_FOUNDING_REASONS: Readonly<Record<string, string>> = {
-  "fresh-start": "People founded this village for a fresh start.",
-  refuge: "People founded this village as a refuge.",
-  "shared-project": "People founded this village as a shared project.",
-  discovery: "People founded this village to explore a discovery.",
-  homecoming: "People founded this village as a homecoming.",
-  "something-else": "People founded this village for another reason.",
-};
-
 export const foundingScenario = (value: FoundingScenarioId) =>
   FOUNDING_SCENARIOS.find((scenario) => scenario.value === value)!;
 

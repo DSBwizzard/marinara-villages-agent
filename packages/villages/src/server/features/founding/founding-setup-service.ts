@@ -99,21 +99,7 @@ export function createFoundingSetup({
     const setting = readVillageSetting(input.setting);
     if (setting.length === 0) throw badRequest("Describe the place and world before founding.");
     const foundingReason = asTrimmedString(input.foundingReason);
-    if (
-      ![
-        "rebuild",
-        "pioneer",
-        "prosper",
-        "custom",
-        "none",
-        "fresh-start",
-        "refuge",
-        "shared-project",
-        "discovery",
-        "homecoming",
-        "something-else",
-      ].includes(foundingReason)
-    ) {
+    if (!["rebuild", "pioneer", "prosper", "custom", "none"].includes(foundingReason)) {
       throw badRequest("Choose a founding scenario.");
     }
     if (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000) {

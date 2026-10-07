@@ -200,7 +200,6 @@ export function defaultVillageState(): VillageState {
     progressTasks: [],
     narrativeItems: [],
     projectSourceClaims: [],
-    villageCapabilities: [],
     pendingDecisions: [],
     venueMail: [],
     villagers: [],
@@ -2148,13 +2147,6 @@ export function coerceVillageState(value: unknown): VillageState {
           return key && projectId && sourceId && submissionId ? [{ key, projectId, sourceId, submissionId }] : [];
         })
       : [],
-    villageCapabilities: [
-      ...new Set(
-        asStringArray(raw.villageCapabilities)
-          .map((item) => boundText(item, MAX_VENUE_NOTE_LENGTH))
-          .filter(Boolean),
-      ),
-    ],
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
     venueMail: coerceVenueMail(raw.venueMail),
     villagers: villagers

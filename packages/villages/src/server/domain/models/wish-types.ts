@@ -38,7 +38,7 @@ export type WishAttempt = {
   id: string;
   dateKey: string;
   at: string;
-  stage: "reserved" | "generated" | "comparing" | "validated" | "done";
+  stage: "reserved" | "generated" | "validated" | "done";
   candidate?: VillageWish;
   activity?: WishActivity;
   accepted?: boolean;

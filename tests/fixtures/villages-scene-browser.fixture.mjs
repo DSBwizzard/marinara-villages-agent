@@ -57,7 +57,6 @@ const snapshot = {
   noticeboard: [{ id: "note-1", text: "Market today", author: "Mara", at: now }],
   venueRequests: [],
   projects: [],
-  villageCapabilities: [],
   upgradeRequests: [],
   residences: [],
   happenings: [],

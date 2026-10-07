@@ -160,7 +160,6 @@ export type VillageSnapshot = {
   noticeboard: VillageNotice[];
   venueRequests: VenueRequest[];
   projects: BuildProject[];
-  villageCapabilities: string[];
   upgradeRequests: {
     id: string;
     venueId?: string;

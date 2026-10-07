@@ -28,7 +28,7 @@ async function main() {
     villageRelevantOrigin,
   } = await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
   const { defaultVillageState, coerceVillageState } = await import(
-    pathToFileURL(join(services, "features/world/village-store.ts")).href
+    pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href
   );
   const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 

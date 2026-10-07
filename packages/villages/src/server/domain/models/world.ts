@@ -1321,8 +1321,6 @@ export type VillageState = {
   narrativeItems: { venueId: string; zoneId?: string; itemName: string }[];
   /** Finite resident source yields already transferred into a project. */
   projectSourceClaims: { key: string; projectId: string; sourceId: string; submissionId: string }[];
-  /** Outcomes established by completed projects, independently of narration and lore. */
-  villageCapabilities: string[];
   pendingDecisions: VillagePendingDecision[];
   venueMail: VillageVenueMail[];
   villagers: VillageVillager[];
@@ -1828,7 +1826,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];
   projects: VillageProject[];
-  villageCapabilities: string[];
   upgradeRequests: VillagePendingDecision[];
   residences: VillageResidence[];
   venueMail: VillageVenueMail[];
