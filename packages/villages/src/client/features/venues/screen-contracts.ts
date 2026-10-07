@@ -1,3 +1,4 @@
+import type { useVenueScreenCommands } from "./screen-commands.js";
 import type {
   BackgroundWork,
   VenueClass,
@@ -50,19 +51,12 @@ export type VenueScreenController = {
   readonly room: import("../../../shared/contracts/village").SceneView;
   readonly roomBusy: boolean;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
-  readonly setBusy: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setMovePrivateZoneId: VenuesState["setMovePrivateZoneId"];
   readonly setMoveTargetId: VenuesState["setMoveTargetId"];
-  readonly setPlaceProblem: VenuesState["setPlaceProblem"];
   readonly setPlayerMovePrivateZoneId: VenuesState["setPlayerMovePrivateZoneId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
   >;
-  readonly setSettingsError: React.Dispatch<React.SetStateAction<string>>;
-  readonly setSnapshot: React.Dispatch<
-    React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
-  >;
-  readonly setVenueEditBusy: VenuesState["setVenueEditBusy"];
   readonly setVenueEditDraft: VenuesState["setVenueEditDraft"];
   readonly setVenueEditError: VenuesState["setVenueEditError"];
   readonly setVenueEditNotice: VenuesState["setVenueEditNotice"];
@@ -79,4 +73,4 @@ export type VenueScreenController = {
   readonly venuePage: VenuesState["venuePage"];
   readonly venueProposalDraft: VenuesState["venueProposalDraft"];
   readonly venueZoneKey: VenuesState["venueZoneKey"];
-};
+} & ReturnType<typeof useVenueScreenCommands>;

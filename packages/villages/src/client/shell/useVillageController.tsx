@@ -179,6 +179,7 @@ import {
   useSaveVenue,
 } from "../features/venues/actions.js";
 import { useVenueRequestFocus } from "../features/venues/controller-hooks.js";
+import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenueRequestCommands } from "../features/venues/request-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
@@ -2134,6 +2135,18 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const { generateRequestDescription, decideHomeUpgrade, completeResidenceMove, decideResidenceMove } =
     useVenueRequestCommands({ snapshot, setBusy, setSettingsError, setSnapshot, setRequestEdits });
 
+  const venueScreenCommands = useVenueScreenCommands({
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+    setVenueEditBusy,
+    setVenueEditError,
+    setVenueEditNotice,
+    setVenueEditDraft,
+    setVenueProposalDraft,
+    setPlaceProblem,
+  });
+
   /**
    * Drop a macro in at the caret of the prompt box, then put the caret back
    * where it was.
@@ -2250,6 +2263,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
   });
   return {
+    ...venueScreenCommands,
     element,
     addNotice,
     addVenue,

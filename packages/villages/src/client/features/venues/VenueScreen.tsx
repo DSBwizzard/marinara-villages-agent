@@ -1,10 +1,5 @@
-import type {
-  VenueClass,
-  VillageSnapshot,
-  VillageVenue,
-  VillageVenueImage,
-} from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import type { VenueClass, VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
+import { editableVenueFields } from "./edit-fields.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { buildingOf, playerDisplayName, venueTitle } from "../../shared/presentation.js";
 import type { VenueViewZone } from "../../shared/types.js";
@@ -17,6 +12,15 @@ import { VenueAccessPanel } from "./villages-venue-access";
 export function VenueScreen({ controller }: { controller: VenueScreenController }) {
   const {
     busy,
+    saveVenueImageContext,
+    saveVenueDetails,
+    proposeRoomEdit,
+    requestPlayerMove,
+    changeVenueAccess,
+    retryPrivateSpacePreparation,
+    saveVenueZone,
+    proposeResidenceMove,
+    submitVenueProposal,
     drawPlaceImage,
     dropPlaceImage,
     homeBuildings,
@@ -33,15 +37,10 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     room,
     roomBusy,
     screen,
-    setBusy,
     setMovePrivateZoneId,
     setMoveTargetId,
-    setPlaceProblem,
     setPlayerMovePrivateZoneId,
     setScreen,
-    setSettingsError,
-    setSnapshot,
-    setVenueEditBusy,
     setVenueEditDraft,
     setVenueEditError,
     setVenueEditNotice,
@@ -326,19 +325,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       place.imageContext?.useVisualLore ?? snapshot.settings.useVisualLoreByDefault !== false,
                     [key]: event.target.checked,
                   };
-                  setBusy(true);
-                  try {
-                    setSnapshot(
-                      await request<VillageSnapshot>("/locations/venue/" + encodeURIComponent(place.id), {
-                        method: "PUT",
-                        body: JSON.stringify({ name: place.name, description: place.description, imageContext }),
-                      }),
-                    );
-                  } catch (cause) {
-                    setSettingsError(messageFrom(cause, "Image context could not be saved."));
-                  } finally {
-                    setBusy(false);
-                  }
+                  await saveVenueImageContext(place, imageContext);
                 }}
               />
               {key === "useVisualLore" ? "Use selected visual lore" : "Use assigned villagers’ personality"}
@@ -384,35 +371,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         </div>
       </section>
     );
-    const editableFields = (venue: VillageVenue) => ({
-      name: venue.name,
-      venueType: venue.venueType,
-      form: venue.form,
-      workerIds: venue.workerIds,
-      position: { x: venue.presentation.x, y: venue.presentation.y },
-      spaces: (venue.layoutVersion === 1 ? (venue.spaces ?? []).map((space) => space.venueClass) : classes).map(
-        (item) => {
-          const space = venueSpaceFor(venue, item);
-          return {
-            description: space.description,
-            condition: space.state.condition,
-            items: space.state.items,
-            publicFacts: space.state.publicFacts,
-            features: space.state.features.map(({ id, text, locked }) => ({ id, text, locked })),
-          };
-        },
-      ),
-      privateSpaces: venue.privateSpaces?.map((space) => ({
-        ownerId: space.ownerId,
-        description: space.description,
-        condition: space.state.condition,
-        items: space.state.items,
-        publicFacts: space.state.publicFacts,
-        features: space.state.features.map(({ id, text, locked }) => ({ id, text, locked })),
-      })),
-    });
+
     const editorDirty = Boolean(
-      venueEditDraft && JSON.stringify(editableFields(venueEditDraft)) !== JSON.stringify(editableFields(place)),
+      venueEditDraft &&
+      JSON.stringify(editableVenueFields(venueEditDraft, classes)) !==
+        JSON.stringify(editableVenueFields(place, classes)),
     );
     const proposalDirty = Boolean(
       venueProposalDraft &&
@@ -433,92 +396,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
       setVenueEditError("");
       setVenueEditNotice("");
     };
-    const refreshEditor = (next: VillageSnapshot, notice: string) => {
-      setSnapshot(next);
-      const updated = next.settings.venues.find((entry) => entry.id === place.id);
-      if (updated) setVenueEditDraft(structuredClone(updated));
-      setVenueEditNotice(notice);
-    };
-    const saveVenueDetails = async () => {
-      if (!venueEditDraft) return;
-      if (
-        venueEditDraft.form !== place.form ||
-        JSON.stringify(venueEditDraft.classes) !== JSON.stringify(place.classes) ||
-        JSON.stringify(venueEditDraft.workerIds ?? []) !== JSON.stringify(place.workerIds ?? []) ||
-        JSON.stringify(venueEditDraft.state) !== JSON.stringify(place.state) ||
-        venueEditDraft.presentation.x !== place.presentation.x ||
-        venueEditDraft.presentation.y !== place.presentation.y
-      ) {
-        setVenueEditError("Physical edits and map moves need an earned route. Edit only the name or description here.");
-        return;
-      }
-      if (occupiedResidence) {
-        const draftFields = editableFields(venueEditDraft);
-        const currentFields = editableFields(place);
-        const sharedIndex = classes.indexOf("residence");
-        const roomChanges =
-          (sharedIndex >= 0 &&
-            JSON.stringify(draftFields.spaces[sharedIndex]) !== JSON.stringify(currentFields.spaces[sharedIndex])) ||
-          JSON.stringify(draftFields.privateSpaces) !== JSON.stringify(currentFields.privateSpaces);
-        if (roomChanges && !window.confirm("Saving Venue details will discard unsaved Zone changes. Continue?")) return;
-      }
-      setVenueEditBusy(true);
-      setVenueEditError("");
-      setVenueEditNotice("");
-      try {
-        const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            name: venueEditDraft.name,
-            venueType: venueEditDraft.venueType,
-            description: venueEditDraft.description,
-          }),
-        });
-        refreshEditor(next, "Venue details saved.");
-      } catch (cause) {
-        setVenueEditError(messageFrom(cause, "The Venue could not be saved."));
-      } finally {
-        setVenueEditBusy(false);
-      }
-    };
-    const proposeRoomEdit = async (target: "shared" | "private", ownerId = "") => {
-      if (!venueEditDraft) return;
-      const space =
-        target === "private"
-          ? venueEditDraft.privateSpaces?.find((entry) => entry.ownerId === ownerId)
-          : venueSpaceFor(venueEditDraft, "residence");
-      if (!space) return;
-      const remainingDraft = structuredClone(venueEditDraft);
-      if (target === "shared")
-        remainingDraft.spaces = remainingDraft.spaces?.map((entry) =>
-          entry.venueClass === "residence" ? venueSpaceFor(place, "residence") : entry,
-        );
-      else
-        remainingDraft.privateSpaces = remainingDraft.privateSpaces?.map((entry) =>
-          entry.ownerId === ownerId
-            ? (place.privateSpaces?.find((current) => current.ownerId === ownerId) ?? entry)
-            : entry,
-        );
-      if (
-        JSON.stringify(editableFields(remainingDraft)) !== JSON.stringify(editableFields(place)) &&
-        !window.confirm("Submitting this Zone edit will discard other unsaved changes. Continue?")
-      )
-        return;
-      setVenueEditBusy(true);
-      setVenueEditError("");
-      setVenueEditNotice("");
-      try {
-        const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}/edit-proposals`, {
-          method: "POST",
-          body: JSON.stringify({ target, ownerId, description: space.description, state: space.state }),
-        });
-        refreshEditor(next, `${target === "private" ? "Private Space" : "Common Space"} edit proposed.`);
-      } catch (cause) {
-        setVenueEditError(messageFrom(cause, "That Zone edit could not be proposed."));
-      } finally {
-        setVenueEditBusy(false);
-      }
-    };
+
     const title = venueTitle(place, occupant);
     return (
       <div className={`${ELEMENT_TAG}-root`} data-venue-view={venuePage === "view" ? "true" : undefined}>
@@ -588,20 +466,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       <button
                         type="button"
                         className={`${ELEMENT_TAG}-button`}
-                        onClick={() => {
-                          setVenueEditError("");
-                          void request<VillageSnapshot>(
-                            `/locations/venue/${encodeURIComponent(place.id)}/player-move`,
-                            {
-                              method: "POST",
-                              body: JSON.stringify({ privateZoneId: playerMovePrivateZoneId }),
-                            },
-                          )
-                            .then(setSnapshot)
-                            .catch((cause) =>
-                              setVenueEditError(messageFrom(cause, "The move could not be requested.")),
-                            );
-                        }}
+                        onClick={() => void requestPlayerMove(place.id, playerMovePrivateZoneId)}
                       >
                         Request to live here
                       </button>
@@ -699,14 +564,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       { id: "player", name: "You" },
                       ...snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name })),
                     ]}
-                    onCommand={async (command) => {
-                      setSnapshot(
-                        await request<VillageSnapshot>("/venues/" + encodeURIComponent(place.id) + "/access", {
-                          method: "POST",
-                          body: JSON.stringify(command),
-                        }),
-                      );
-                    }}
+                    onCommand={(command) => changeVenueAccess(place.id, command)}
                   />
                 ) : null}
                 <div className={ELEMENT_TAG + "-venue-zone-stat"}>
@@ -742,20 +600,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   <p role="status">
                     Private space {privatePreparation.status === "failed" ? "preparation failed" : "is being prepared"}.
                     {privatePreparation.status === "failed" ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={async () => {
-                          setBusy(true);
-                          try {
-                            setSnapshot(await request<VillageSnapshot>("/private-spaces/retry", { method: "POST" }));
-                          } catch (cause) {
-                            setSettingsError(messageFrom(cause, "Private preparation failed."));
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                      >
+                      <button type="button" disabled={busy} onClick={() => retryPrivateSpacePreparation()}>
                         Retry private-space preparation
                       </button>
                     ) : null}
@@ -856,19 +701,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
               <VenueZoneEditor
                 key={selectedZone.zoneId}
                 zone={selectedZone}
-                onSave={async (body) => {
-                  try {
-                    setSnapshot(
-                      await request<VillageSnapshot>(
-                        `/venues/${encodeURIComponent(place.id)}/zones/${encodeURIComponent(selectedZone.zoneId!)}`,
-                        { method: "PUT", body: JSON.stringify(body) },
-                      ),
-                    );
-                  } catch (cause) {
-                    setPlaceProblem({ id: place.id, text: messageFrom(cause, "The zone could not be saved.") });
-                    throw cause;
-                  }
-                }}
+                onSave={(body) => saveVenueZone(place.id, selectedZone.zoneId!, body)}
               />
             ) : null}
             {venueEditDraft ? (
@@ -892,7 +725,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                     type="button"
                     className={`${ELEMENT_TAG}-button`}
                     disabled={venueEditBusy || !venueEditDraft.name.trim()}
-                    onClick={() => void saveVenueDetails()}
+                    onClick={() => void saveVenueDetails(place, venueEditDraft, occupiedResidence, classes)}
                   >
                     Save Venue details
                   </button>
@@ -901,7 +734,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       type="button"
                       className={`${ELEMENT_TAG}-button`}
                       disabled={venueEditBusy || !venueSpaceFor(venueEditDraft, "residence").description.trim()}
-                      onClick={() => void proposeRoomEdit("shared")}
+                      onClick={() => void proposeRoomEdit(place, venueEditDraft, classes, "shared")}
                     >
                       Propose Common Space edit
                     </button>
@@ -1025,7 +858,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       type="button"
                       className={`${ELEMENT_TAG}-button`}
                       disabled={venueEditBusy || !space.description.trim()}
-                      onClick={() => void proposeRoomEdit("private", space.ownerId)}
+                      onClick={() => void proposeRoomEdit(place, venueEditDraft, classes, "private", space.ownerId)}
                     >
                       Propose Private Space edit
                     </button>
@@ -1101,22 +934,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                           type="button"
                           className={`${ELEMENT_TAG}-button`}
                           disabled={!moveTargetId || venueEditBusy}
-                          onClick={() => {
-                            setVenueEditBusy(true);
-                            void request<VillageSnapshot>("/residences/proposals", {
-                              method: "POST",
-                              body: JSON.stringify({
-                                characterId: residentId,
-                                venueId: moveTargetId,
-                                privateZoneId: movePrivateZoneId,
-                              }),
-                            })
-                              .then(setSnapshot)
-                              .catch((cause) =>
-                                setVenueEditError(messageFrom(cause, "The move could not be requested.")),
-                              )
-                              .finally(() => setVenueEditBusy(false));
-                          }}
+                          onClick={() => void proposeResidenceMove(residentId, moveTargetId, movePrivateZoneId)}
                         >
                           Ask to move
                         </button>
@@ -1247,37 +1065,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                       venueProposalDraft.classes.length < 1 ||
                       (venueProposalDraft.title.trim().length > 0 && !venueProposalDraft.description.trim())
                     }
-                    onClick={() => {
-                      setVenueEditBusy(true);
-                      setVenueEditError("");
-                      void request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}/proposals`, {
-                        method: "POST",
-                        body: JSON.stringify({
-                          classes: venueProposalDraft.classes,
-                          capacity: venueProposalDraft.capacity,
-                          ...(venueProposalDraft.title.trim()
-                            ? {
-                                slot: venueProposalDraft.slot,
-                                improvement: {
-                                  title: venueProposalDraft.title,
-                                  description: venueProposalDraft.description,
-                                  extraBeds: venueProposalDraft.extraBeds,
-                                },
-                              }
-                            : {}),
-                          title: venueProposalDraft.title || `Change ${place.name}`,
-                          detail:
-                            venueProposalDraft.description || `Change Venue Classes or capacity at ${place.name}.`,
-                        }),
-                      })
-                        .then((next) => {
-                          setSnapshot(next);
-                          setVenueProposalDraft(null);
-                          setVenueEditNotice("Proposal submitted.");
-                        })
-                        .catch((cause) => setVenueEditError(messageFrom(cause, "The proposal could not be saved.")))
-                        .finally(() => setVenueEditBusy(false));
-                    }}
+                    onClick={() => void submitVenueProposal(place, venueProposalDraft)}
                   >
                     Submit proposal
                   </button>
