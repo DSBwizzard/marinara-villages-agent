@@ -46,6 +46,8 @@ import type { useSaveCharacterSpeechColors } from "./actions.js";
 
 import type { useSaveSendOnEnter } from "./actions.js";
 
+import type { useSaveScenerySettings } from "./actions.js";
+
 import type { useSaveSettings } from "./actions.js";
 
 import type { useSaveStoryPace } from "./actions.js";
@@ -127,6 +129,7 @@ export type MenuScreenController = {
   readonly room: import("../../../shared/contracts/village").SceneView;
   readonly saveCharacterSpeechColors: ReturnType<typeof useSaveCharacterSpeechColors>;
   readonly saveSendOnEnter: ReturnType<typeof useSaveSendOnEnter>;
+  readonly saveScenerySettings: ReturnType<typeof useSaveScenerySettings>;
   readonly saveSettings: ReturnType<typeof useSaveSettings>;
   readonly saveStoryPace: ReturnType<typeof useSaveStoryPace>;
   readonly saveTownMap: ReturnType<typeof useSaveTownMap>;

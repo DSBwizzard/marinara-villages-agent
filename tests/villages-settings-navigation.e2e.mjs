@@ -288,11 +288,16 @@ async function checkHooks(width) {
 
 async function checkPackage(width) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }),
-    errors = [];
+    errors = [],
+    scenerySaves = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const snapshot = initialSnapshot();
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/settings") && route.request().method() === "PATCH") {
+      scenerySaves.push(route);
+      return;
+    }
     if (route.request().method() !== "GET" && !path.endsWith("/presence") && !path.endsWith("/reconcile"))
       throw Error(`Unexpected mutation: ${path}`);
     const body =
@@ -343,6 +348,28 @@ async function checkPackage(width) {
   await expect(page.getByLabel("The information villagers know", { exact: true })).toHaveValue(
     "Packaged retained draft",
   );
+  await page.getByLabel("Scenery style description", { exact: true }).fill("Packaged scenery save");
+  await page.getByLabel("Personalize new venue images by default", { exact: true }).uncheck();
+  await page.getByLabel("Use visual lore by default", { exact: true }).check();
+  await page.getByRole("button", { name: "Save scenery settings", exact: true }).click();
+  await expect.poll(() => scenerySaves.length).toBe(1);
+  assert.deepEqual(scenerySaves[0].request().postDataJSON(), {
+    sceneryArtStyle: "Packaged scenery save",
+    personalizeVenueImagesByDefault: false,
+    useVisualLoreByDefault: true,
+  });
+  await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeDisabled();
+  await page.getByLabel("Scenery style description", { exact: true }).fill("Newer packaged scenery draft");
+  await page.getByRole("button", { name: "Back to menu", exact: true }).click();
+  const saved = structuredClone(snapshot);
+  Object.assign(saved.settings, scenerySaves[0].request().postDataJSON());
+  await scenerySaves[0].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeEnabled();
+  await expect(page.getByLabel("Scenery style description", { exact: true })).toHaveValue(
+    "Newer packaged scenery draft",
+  );
+  assert.equal(scenerySaves.length, 1);
   assert.deepEqual(errors, []);
   await page.close();
 }

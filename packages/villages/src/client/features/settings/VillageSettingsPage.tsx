@@ -1,5 +1,4 @@
-import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
 import type { MapPin } from "../../shared/types.js";
@@ -46,12 +45,12 @@ export function renderVillageSettingsPage(
     | "placingMapVenueId"
     | "reframingMap"
     | "removeVenue"
+    | "saveScenerySettings"
     | "saveSettings"
     | "saveTownMap"
     | "saveVenue"
     | "sceneryStyle"
     | "selectedMapVenueId"
-    | "setBusy"
     | "setKnowledgeDraft"
     | "setLoreTokenBudgetDraft"
     | "setLorebookDraft"
@@ -64,8 +63,6 @@ export function renderVillageSettingsPage(
     | "setSceneryStyle"
     | "setSelectedMapVenueId"
     | "setSettingDraft"
-    | "setSettingsError"
-    | "setSnapshot"
     | "setTownMapDraft"
     | "setTownMapPick"
     | "setVenueEditDraft"
@@ -119,12 +116,12 @@ export function renderVillageSettingsPage(
     placingMapVenueId,
     reframingMap,
     removeVenue,
+    saveScenerySettings,
     saveSettings,
     saveTownMap,
     saveVenue,
     sceneryStyle,
     selectedMapVenueId,
-    setBusy,
     setKnowledgeDraft,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
@@ -137,8 +134,6 @@ export function renderVillageSettingsPage(
     setSceneryStyle,
     setSelectedMapVenueId,
     setSettingDraft,
-    setSettingsError,
-    setSnapshot,
     setTownMapDraft,
     setTownMapPick,
     setVenueEditDraft,
@@ -180,30 +175,7 @@ export function renderVillageSettingsPage(
           />
           Use visual lore by default
         </label>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            setSettingsError("");
-            try {
-              setSnapshot(
-                await request<VillageSnapshot>("/settings", {
-                  method: "PATCH",
-                  body: JSON.stringify({
-                    sceneryArtStyle: sceneryStyle,
-                    personalizeVenueImagesByDefault: personalizeHomes,
-                    useVisualLoreByDefault: visualLoreDefault,
-                  }),
-                }),
-              );
-            } catch (cause) {
-              setSettingsError(messageFrom(cause, "Scenery settings could not be saved."));
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
+        <button type="button" disabled={busy} onClick={() => void saveScenerySettings()}>
           Save scenery settings
         </button>
       </section>

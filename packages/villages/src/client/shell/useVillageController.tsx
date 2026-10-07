@@ -166,6 +166,7 @@ import {
   useInsertMacro,
   useRemoveNotice,
   useSaveCharacterSpeechColors,
+  useSaveScenerySettings,
   useSaveSendOnEnter,
   useSaveSettings,
   useSaveSpriteCardFlip,
@@ -1631,6 +1632,16 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     acceptSavedSettings,
   });
 
+  const saveScenerySettings = useSaveScenerySettings({
+    sceneryStyle,
+    personalizeHomes,
+    visualLoreDefault,
+    snapshot,
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+  });
+
   const saveSpriteCardFlip = useSaveSpriteCardFlip({
     snapshot,
     setSnapshot,
@@ -2404,6 +2415,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomUnresolvedChanges,
     rosterSearch,
     saveCharacterSpeechColors,
+    saveScenerySettings,
     saveSendOnEnter,
     saveSettings,
     saveSpriteCardFlip,

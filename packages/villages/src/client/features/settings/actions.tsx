@@ -55,6 +55,40 @@ export function useSaveSettings(ports: {
   }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft, acceptSavedSettings, lifetime]);
 }
 
+export function useSaveScenerySettings(ports: {
+  sceneryStyle: string;
+  personalizeHomes: boolean;
+  visualLoreDefault: boolean;
+  snapshot: VillageSnapshot | null;
+  setBusy: React.Dispatch<SetStateAction<boolean>>;
+  setSettingsError: React.Dispatch<SetStateAction<string>>;
+  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
+}) {
+  const { sceneryStyle, personalizeHomes, visualLoreDefault, setBusy, setSettingsError, setSnapshot } = ports;
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  return useCallback(async () => {
+    const claim = lifetime.begin();
+    if (!claim) return;
+    setBusy(true);
+    setSettingsError("");
+    try {
+      const saved = await request<VillageSnapshot>("/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          sceneryArtStyle: sceneryStyle,
+          personalizeVenueImagesByDefault: personalizeHomes,
+          useVisualLoreByDefault: visualLoreDefault,
+        }),
+      });
+      if (lifetime.owns(claim)) setSnapshot(saved);
+    } catch (cause) {
+      if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Scenery settings could not be saved."));
+    } finally {
+      if (lifetime.finish(claim)) setBusy(false);
+    }
+  }, [sceneryStyle, personalizeHomes, visualLoreDefault, setBusy, setSettingsError, setSnapshot, lifetime]);
+}
+
 export function useSaveSpriteCardFlip(ports: {
   snapshot: VillageSnapshot | null;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
