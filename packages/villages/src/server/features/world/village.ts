@@ -1,64 +1,45 @@
-import { queueVillageVenueRequest } from "../venues/venue-requests.js";
 import { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
 import { backfillAgendas, refreshVillagerRemaps } from "../residents/resident-agendas.js";
 import type { Handler } from "../../domain/models/background-model.js";
-import { findVillagerCard, listVillagerCards, readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
+import { listVillagerCards, readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import { readVillageLore } from "../../adapters/engine/lorebooks.js";
 
 import { villagesLogger } from "../../adapters/engine/runtime-host.js";
 
 import { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
-import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type {
   VillageChronicleEntry,
   VillageChronicleEntryView,
   VillageOpportunity,
   VillageResidence,
   VillageSnapshot,
-  VillageState,
   VillageVenue,
 } from "../../domain/models/world.js";
 import { agendaAt, agendaDayPlan } from "../../domain/rules/agenda-plan.js";
 
 import { asTrimmedString } from "../../domain/rules/coerce.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { badRequest, notFound } from "../../domain/rules/errors.js";
 
 import { selectPromptMemories } from "../../domain/rules/memory-selection.js";
 import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
 import { reconcileBuildProjects } from "../../domain/rules/project-rules.js";
 import {
   boundText,
-  isHousePlace,
-  LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
   MAX_CHRONICLE_LENGTH,
   MAX_HAPPENINGS,
-  MAX_NOTICEBOARD_NOTES,
-  MAX_VENUE_DESCRIPTION_LENGTH,
   prependHappenings,
-  remapVenues,
   villageCurrentSetting,
 } from "../../domain/rules/prompt-preset.js";
 
 import type { NativeRoutine } from "../../domain/rules/schedule-rules.js";
 import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
 
-import { venueDraft } from "../../domain/rules/venue-authoring.js";
-
 import { venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
-import {
-  deriveVillageMoment,
-  randomVillageSeed,
-  VILLAGE_WEEKDAYS,
-  villageDateLabel,
-} from "../../domain/rules/village-clock.js";
-import {
-  readPlayerIdentity,
-  readVenueImageContext,
-  villagerPlaceView,
-} from "../../domain/rules/village-projections.js";
-import { wishExpired, wishRetained } from "../../domain/rules/wish-definition.js";
+import { deriveVillageMoment, VILLAGE_WEEKDAYS, villageDateLabel } from "../../domain/rules/village-clock.js";
+import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
+import { wishExpired } from "../../domain/rules/wish-definition.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import {
   buildReturnRecap,
@@ -108,7 +89,7 @@ export async function resetVillage(): Promise<VillageSnapshot> {
 /**
  * Advance the village from its durable high-water mark to one exact instant.
  * Required local state is committed before optional narration is requested, so
- * an unavailable model can never stop time, schedules, wishes or migrations.
+ * an unavailable model can never stop time, schedules or wishes.
  */
 export async function reconcileVillage(
   options: { forceStory?: boolean; now?: Date; actionId?: string; expectedAttempt?: number } = {},
@@ -500,95 +481,7 @@ export const storyBackgroundHandler: Handler = {
         else state.residences[index] = next;
       }
     }
-    // The prose Events feed may still update its panel, but must not write
-    // memories, notices, venue requests/features, or wish state. Structured
-    // Events will replace this boundary; old saved prose remains visual only.
-    if (LEGACY_EVENTS_CAN_AFFECT_VILLAGE) {
-      // The chronicle is trimmed by weight rather than from the tail. Ordinary
-      // material is still forgotten oldest-first — nothing here is evicted until
-      // the record is genuinely full, which is many real days of play away — but
-      // what the player DID for somebody is kept ahead of it, because the record
-      // of a favour is not the same kind of thing as the record of a Tuesday.
-      if (proposal.memory.length > 0) {
-        state.chronicle = [...proposal.memory, ...state.chronicle];
-      }
-      // Notices are only ever added while there is room. Trimming the oldest to
-      // make space would take the player's own pins off the board before the
-      // village's, and the player cannot tell which was which once it is gone.
-      const room = Math.max(0, MAX_NOTICEBOARD_NOTES - state.noticeboard.length);
-      state.noticeboard = [...state.noticeboard, ...proposal.notices.slice(0, room)];
-      for (const request of proposal.venueRequests) {
-        queueVillageVenueRequest(state, request.core, request.characterId, "background", opportunityId, moment.instant);
-      }
-      for (const edit of proposal.featureEdits) {
-        const venue = state.venues.find((place) => place.id === edit.venueId);
-        const resident = state.villagers.find((person) => person.characterId === edit.characterId);
-        if (
-          !venue ||
-          !resident ||
-          opportunity.venueId !== venue.id ||
-          !opportunity.actorIds.includes(resident.characterId)
-        )
-          continue;
-        if (
-          venue.occupancy.residentCharacterId !== resident.characterId &&
-          !venue.workerIds?.includes(resident.characterId)
-        )
-          continue;
-        if (villagerPlaceView(state, resident, null, moment.minuteOfDay, now)?.id !== venue.id) continue;
-        const features = venue.state.features ?? [];
-        const prior = features.find((feature) => feature.id === edit.featureId);
-        if (edit.featureId) {
-          if (!prior || prior.locked) continue;
-          venue.state.features = edit.text
-            ? features.map((feature) =>
-                feature.id === prior.id
-                  ? {
-                      ...feature,
-                      text: edit.text,
-                      sourceCharacterId: resident.characterId,
-                      updatedAt: moment.instant,
-                    }
-                  : feature,
-              )
-            : features.filter((feature) => feature.id !== prior.id);
-        } else if (edit.text && features.length < 5) {
-          venue.state.features = [
-            ...features,
-            {
-              id: randomVillageSeed(),
-              text: edit.text,
-              sourceCharacterId: resident.characterId,
-              locked: false,
-              updatedAt: moment.instant,
-            },
-          ];
-        } else continue;
-        venue.state.updatedAt = moment.instant;
-      }
-      // A wish the village has just decided the world will not allow goes here
-      // rather than in the proposal pass, because this is the only place that
-      // holds the whole reply and writes it in one go: a wish taken off the list
-      // by a pass that then failed to write its news would leave a villager
-      // without something the village never agreed to take.
-      //
-      // Nothing is written ABOUT it. A wish is the villager's own, and the day it
-      // becomes impossible is not the village's news — it is the absence of a
-      // small ordinary thing in brackets, which is how a wish is supposed to be
-      // visible in the first place.
-      //
-      // Taken off by ID, not by the words, even though the words are what the
-      // model wrote: the words were the handle it used to point at the list it
-      // was shown, and this is the village's own copy of that wish. A villager
-      // who has meanwhile answered it, or had it taken off by age, is a villager
-      // with nothing to take.
-      for (const lapse of proposal.lapsed) {
-        const entry = state.villagers.find((villager) => villager.characterId === lapse.characterId);
-        if (!entry?.agenda) continue;
-        const kept = entry.agenda.wishes.filter((wish) => wish.id !== lapse.wishId || wishRetained(wish));
-        if (kept.length !== entry.agenda.wishes.length) entry.agenda = { ...entry.agenda, wishes: kept };
-      }
-    }
+    // Prose Events update the feed only; structured commands own durable effects.
     if (state.lastCreativeDate < dateKey) state.lastCreativeDate = dateKey;
     if (!state.processedOpportunityIds.includes(opportunityId)) {
       state.processedOpportunityIds = [...state.processedOpportunityIds, opportunityId].slice(-256);
