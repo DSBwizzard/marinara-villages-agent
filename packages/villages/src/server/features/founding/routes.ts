@@ -5,13 +5,12 @@ import { resetVenueSessions } from "../scenes/venue-session.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   draftVenueDescriptions,
-  foundingPreparationSnapshot,
   resetVillage,
-  retryFoundedVillagePreparation,
   runVillageSetup,
   suggestFoundingPlaces,
   suggestFoundingVenueNames,
 } from "../world/village.js";
+import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
 import { draftScenarioImprint } from "./scenario-imprint.js";
 import type { FastifyInstance } from "fastify";

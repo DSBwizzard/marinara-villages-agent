@@ -15,7 +15,7 @@ import {
   prepareFoundedVillage,
   retryFoundedVillagePreparation,
   foundingPreparationSnapshot,
-} from "../packages/villages/src/server/features/world/village.js";
+} from "../packages/villages/src/server/features/founding/preparation.js";
 import {
   startBackgroundWork,
   retryBackgroundJob,

@@ -37,6 +37,7 @@ import {
   agendaBackgroundHandler,
   adaptationBackgroundHandler,
   storyBackgroundHandler,
+  residentAgendaCommands,
 } from "../features/world/village.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
 import { wishBackgroundHandler } from "../features/residents/wishes/wish-lifecycle.js";
@@ -55,6 +56,16 @@ import { villagesLanguageModels } from "../adapters/models/language-models.js";
 import { reportFoundingProgress } from "../features/founding/founding-progress.js";
 import { completeWithRoom } from "../features/generation/model-requests.js";
 import { villagesConnectionIdFor } from "../features/settings/connections.js";
+import { createFoundingPreparation } from "../features/founding/preparation-service.js";
+import { configureFoundingPreparation } from "../features/founding/preparation.js";
+import { seedFoundingVenueDetails } from "../features/founding/founding-drafts.js";
+import { preparePrivateSpaces } from "../jobs/private-space-preparation.js";
+import {
+  backgroundStatus,
+  backgroundWorkSummaries,
+  retryBackgroundJob,
+  settleBackgroundWork,
+} from "../jobs/background-work.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 /** Connect an application without starting jobs; activation owns the returned release. */
@@ -131,7 +142,24 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
       readVillageState,
     }),
   );
+  const releaseFounding = configureFoundingPreparation(
+    createFoundingPreparation({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      villagesLogger,
+      seedFoundingVenueDetails,
+      reportFoundingProgress,
+      preparePrivateSpaces,
+      backgroundStatus,
+      backgroundWorkSummaries,
+      retryBackgroundJob,
+      settleBackgroundWork,
+      queueVillagerAgenda: residentAgendaCommands.queueVillagerAgenda,
+    }),
+  );
   const releaseGraph = () => {
+    releaseFounding();
     releasePrivateSpaces();
     releaseBackground();
     releaseCoordinator();

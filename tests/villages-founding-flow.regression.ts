@@ -335,11 +335,12 @@ async function main() {
   assert.ok(routes.includes('"/setup/venue-image"'));
   assert.ok(routes.includes('"/setup/preparation/retry"'));
   assert.ok(village.includes("image: foundingImage(row.image)"));
-  assert.ok(village.includes("seedFoundingVenueDetails(initial,"));
-  assert.ok(village.includes("marker.completedIds.includes(villager.characterId)"));
+  const preparation = await readFile(join(serverRoot, "features/founding/preparation-service.ts"), "utf8");
+  assert.ok(preparation.includes("seedFoundingVenueDetails(initial,"));
+  assert.ok(preparation.includes("marker.completedIds.includes(villager.characterId)"));
   assert.ok(village.includes("await proposeCompactFounding("));
   assert.equal(village.includes("await storeRemap(id, remap, schedule)"), false);
-  assert.ok(village.includes("await queueVillagerAgenda(villager.characterId, true)"));
+  assert.ok(preparation.includes("await queueVillagerAgenda(villager.characterId, true)"));
   assert.ok(village.includes("snapshot.cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
   assert.ok(drafts.includes("foundingDetails"));
