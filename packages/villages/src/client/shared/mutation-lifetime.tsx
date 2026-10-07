@@ -8,12 +8,16 @@ function release(key: object, claim: SaveClaim): boolean {
   return true;
 }
 
-/** A save owns its response and cleanup until reset or disposal retires it. */
-export function useVillageMutationLifetime(isFounded: boolean | undefined, admissionKey?: object) {
+/** A save owns its response and cleanup until reset, semantic selection or disposal retires it. */
+export function useVillageMutationLifetime(
+  isFounded: boolean | undefined,
+  admissionKey?: object,
+  selectionKey?: object,
+) {
   const localKey = useRef<object>({});
   const key = admissionKey ?? localKey.current;
   const unfounded = isFounded === false;
-  const selection = useMemo(() => ({ unfounded }), [unfounded]);
+  const selection = useMemo(() => ({ unfounded, selectionKey }), [unfounded, selectionKey]);
   const selected = useRef(selection);
   const active = useRef(true);
   const pending = useRef<SaveClaim | null>(null);

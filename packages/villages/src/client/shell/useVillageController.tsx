@@ -2136,6 +2136,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     useVenueRequestCommands({ snapshot, setBusy, setSettingsError, setSnapshot, setRequestEdits });
 
   const venueScreenCommands = useVenueScreenCommands({
+    snapshot,
+    screen,
+    venueId,
+    venuePage,
+    venueZoneKey,
     setBusy,
     setSettingsError,
     setSnapshot,

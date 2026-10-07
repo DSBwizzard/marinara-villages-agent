@@ -5,19 +5,34 @@ import type {
   VillageVillagerView,
 } from "../../../shared/contracts/village.js";
 import { messageFrom } from "../../shared/api.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VenueViewZone } from "../../shared/types.js";
 import { venueAssignedCountFor, venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
-export function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave: (body: unknown) => Promise<void> }) {
+export function VenueZoneEditor({
+  zone,
+  onSave,
+  isFounded,
+}: {
+  zone: VenueViewZone;
+  onSave: (body: unknown) => Promise<void | boolean>;
+  isFounded?: boolean;
+}) {
   const [name, setName] = useState(zone.label);
   const [purpose, setPurpose] = useState(zone.purpose ?? "");
   const [description, setDescription] = useState(zone.description);
   const [features, setFeatures] = useState(zone.state?.features.map((feature) => feature.text).join("\n") ?? "");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const lifetime = useVillageMutationLifetime(isFounded, setBusy);
+  const draftKey = JSON.stringify([name, purpose, description, features]);
+  const committedDraftKey = useRef(draftKey);
+  useLayoutEffect(() => {
+    committedDraftKey.current = draftKey;
+  }, [draftKey]);
   return (
     <section className={ELEMENT_TAG + "-venue-card"}>
       <h2>{zone.label} details</h2>
@@ -47,10 +62,14 @@ export function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave:
         className={ELEMENT_TAG + "-button"}
         disabled={busy || !description.trim()}
         onClick={async () => {
+          const claim = lifetime.begin();
+          if (!claim) return;
+          claim.onRetire = () => setBusy(false);
+          const submitted = draftKey;
           setBusy(true);
           setNotice("");
           try {
-            await onSave({
+            const applied = await onSave({
               name,
               purpose,
               description,
@@ -62,15 +81,16 @@ export function VenueZoneEditor({ zone, onSave }: { zone: VenueViewZone; onSave:
                   .map((text) => ({ ...zone.state?.features.find((feature) => feature.text === text), text })),
               },
             });
+            if (!lifetime.owns(claim) || applied === false || committedDraftKey.current !== submitted) return;
             setNotice(
               zone.area === "shared" || zone.area === "private"
                 ? "Saved. Any required resident approvals appear in the Venue."
                 : "Zone saved.",
             );
           } catch {
-            setNotice("The zone could not be saved. See the message above.");
+            if (lifetime.owns(claim)) setNotice("The zone could not be saved. See the message above.");
           } finally {
-            setBusy(false);
+            if (lifetime.finish(claim)) setBusy(false);
           }
         }}
       >

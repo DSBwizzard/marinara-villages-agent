@@ -1,6 +1,7 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand, VisitorHours, ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { useState } from "react";
 
 type Person = { id: string; name: string };
@@ -310,11 +311,13 @@ export function VenueAccessPanel({
   zoneId,
   people,
   onCommand,
+  isFounded,
 }: {
   venue: VillageVenue;
   zoneId: string;
   people: Person[];
-  onCommand(command: AccessCommand): Promise<void>;
+  onCommand(command: AccessCommand): Promise<void | boolean>;
+  isFounded?: boolean;
 }) {
   const zone = venue.zones?.find((row) => row.id === zoneId),
     view = zone?.accessView,
@@ -330,8 +333,12 @@ export function VenueAccessPanel({
     [outsideHours, setOutsideHours] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const lifetime = useVillageMutationLifetime(isFounded, setBusy);
   if (!view || !venueView) return null;
   const send = async (action: Action, scope: string | null = zoneId) => {
+    const claim = lifetime.begin();
+    if (!claim) return;
+    claim.onRetire = () => setBusy(false);
     setBusy(true);
     setError("");
     try {
@@ -342,9 +349,9 @@ export function VenueAccessPanel({
         operationId: createVillagesClientId(),
       } as AccessCommand);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Access change failed.");
+      if (lifetime.owns(claim)) setError(cause instanceof Error ? cause.message : "Access change failed.");
     } finally {
-      setBusy(false);
+      if (lifetime.finish(claim)) setBusy(false);
     }
   };
   const name = (actor: string) => people.find((person) => person.id === actor)?.name ?? actor;

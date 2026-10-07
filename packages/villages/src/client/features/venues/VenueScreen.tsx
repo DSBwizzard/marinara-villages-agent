@@ -557,8 +557,9 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                 <p>{selectedZone.subtitle}</p>
                 {place.accessView && selectedZone.zoneId ? (
                   <VenueAccessPanel
-                    key={place.accessView.revision + ":" + selectedZone.zoneId}
+                    key={JSON.stringify([place.id, place.accessView.revision, selectedZone.zoneId])}
                     venue={place}
+                    isFounded={snapshot.isFounded}
                     zoneId={selectedZone.zoneId}
                     people={[
                       { id: "player", name: "You" },
@@ -699,8 +700,9 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
             ) : null}
             {selectedZone.zoneId && !selectedZone.locked ? (
               <VenueZoneEditor
-                key={selectedZone.zoneId}
+                key={JSON.stringify([place.id, selectedZone.zoneId])}
                 zone={selectedZone}
+                isFounded={snapshot.isFounded}
                 onSave={(body) => saveVenueZone(place.id, selectedZone.zoneId!, body)}
               />
             ) : null}
