@@ -5,13 +5,8 @@ import type { NativeWeekSchedule, NativeRoutine } from "../../domain/rules/sched
 import type { NativeScheduleSnapshot } from "./native-schedules-service.js";
 export type { NativeScheduleSnapshot } from "./native-schedules-service.js";
 
-export {
-  parseBlockRange,
-  activityAt,
-  NativeRoutine,
-  NativeDayBlock,
-  NativeWeekSchedule,
-} from "../../domain/rules/schedule-rules.js";
+export { parseBlockRange, activityAt } from "../../domain/rules/schedule-rules.js";
+export type { NativeRoutine, NativeDayBlock, NativeWeekSchedule } from "../../domain/rules/schedule-rules.js";
 const binding = createActivationBinding<NativeSchedules>("Villages native-schedules is not configured.");
 const standalone = createNativeSchedules({ villagesResources, villagesLogger });
 function selected(): NativeSchedules {

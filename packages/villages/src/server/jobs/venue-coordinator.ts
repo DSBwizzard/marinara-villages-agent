@@ -2,8 +2,8 @@ import { bindActivationService, createActivationBinding } from "../adapters/engi
 import type { VenueCoordinatorService } from "./venue-coordinator-service.js";
 import type { InterpretationSettings } from "../domain/rules/interpretation-policy.js";
 import type { VenueOperation } from "../domain/models/operation-model.js";
+export type { VenueOperation } from "../adapters/operations/operation-context.js";
 export {
-  VenueOperation,
   venueRefusal,
   operationSummary,
   outsideVenueOperation,

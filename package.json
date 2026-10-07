@@ -2,6 +2,7 @@
   "name": "marinara-villages-agent",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "Villages optional Marinara agent; repository-owned build and validation tools.",
   "engines": {
     "node": ">=24"
