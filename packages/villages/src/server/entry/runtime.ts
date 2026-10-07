@@ -3,7 +3,16 @@ import { queueVillageVenueRequest } from "../features/venues/venue-requests.js";
 import { recordVillagerVenueImprovement } from "../features/venues/venue-mailbox.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../features/residents/wishes/wish-progress.js";
 import { bindWishProposals } from "../features/residents/wishes/wish-progress.js";
-import { projectProposals } from "../features/projects/project-checks.js";
+import { projectProposals } from "../domain/rules/project-check-rules.js";
+import { createProjectChecks } from "../features/projects/project-check-service.js";
+import { configureProjectChecks } from "../features/projects/project-checks.js";
+import { pipelineSignal } from "../adapters/observability/metrics-context.js";
+import { boundInterpretationEvidence, contextualChecks } from "../features/generation/interpretation-evidence.js";
+import {
+  routeInterpretationChecks,
+  recordInterpretationRouting,
+} from "../features/generation/interpretation-routing.js";
+import { interpretChecks } from "../features/generation/interpretation.js";
 import { interpretProjectDraft } from "../features/projects/project-checks.js";
 import { finalizeProjectDiagnostics } from "../features/projects/project-checks.js";
 import { saveInterpretationContext } from "../features/generation/interpretation-evidence.js";
@@ -461,6 +470,21 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     listVenueVisits,
     processSavedExchange,
   });
+  const releaseProjectChecks = configureProjectChecks(
+    createProjectChecks({
+      readVillageState,
+      mutateVillageState,
+      sceneQueries,
+      pipelineSignal,
+      contextualChecks,
+      boundInterpretationEvidence,
+      routeInterpretationChecks,
+      recordInterpretationRouting,
+      interpretChecks,
+      saveInterpretationContext,
+      writeInterpretationDiagnostics,
+    }),
+  );
   const releaseProjectEvidence = configureProjectEvidence(
     createProjectEvidence({ readVillageState, mutateVillageState, sceneQueries }),
   );
@@ -710,6 +734,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();
+    releaseProjectChecks();
     releaseProjectEvidence();
     releaseVillageSnapshot();
     releaseQueries();

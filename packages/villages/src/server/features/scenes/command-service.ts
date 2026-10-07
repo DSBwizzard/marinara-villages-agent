@@ -156,7 +156,7 @@ export interface SceneCommandPorts {
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
   finalizeProjectDiagnostics: typeof import("../projects/project-checks.js").finalizeProjectDiagnostics;
   interpretProjectDraft: typeof import("../projects/project-checks.js").interpretProjectDraft;
-  projectProposals: typeof import("../projects/project-checks.js").projectProposals;
+  projectProposals: typeof import("../../domain/rules/project-check-rules.js").projectProposals;
   rollActiveAgendas: typeof import("../residents/agenda-roll.js").rollActiveAgendas;
   wishFingerprint: typeof import("../residents/wishes/wish-interpretation.js").wishFingerprint;
   bindWishProposals: typeof import("../residents/wishes/wish-progress.js").bindWishProposals;
