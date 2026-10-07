@@ -1,11 +1,6 @@
 import { prepareFoundedVillage } from "../founding/preparation.js";
 import type { Handler } from "../../domain/models/background-model.js";
-import {
-  findPlayerPersona,
-  findVillagerCard,
-  listVillagerCards,
-  readEffectiveVillagerCard,
-} from "../../adapters/engine/catalog.js";
+import { findVillagerCard, listVillagerCards, readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import { readNativeScheduleSnapshot } from "../../adapters/engine/native-schedules.js";
@@ -62,8 +57,6 @@ import {
   MAX_CHRONICLE_LENGTH,
   MAX_HAPPENINGS,
   MAX_NOTICEBOARD_NOTES,
-  MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
-  MAX_PLAYER_PERSONA_NAME_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
@@ -176,63 +169,6 @@ export {
   villagerPlaceView,
   readVenueImageContext,
 } from "../../domain/rules/village-projections.js";
-
-/**
- * Who the player is, as the prompt layer is told it.
- *
- * Read straight off the village record and nothing else. A village has exactly
- * one answer to this question now, and it is the Persona: the copy of that
- * Persona's name and prose which the village cached the last time it wrote them.
- * That is why this can be synchronous. The version before it went to the
- * Engine's Persona library — on every chat turn — to find out whether the player
- * had renamed themselves, which is a great deal of latency to spend on a
- * question the village had already been given the answer to.
- *
- * A Persona that has been deleted is NOT read as "no Persona". The link survives
- * with `missing` set and the cached copy still answers, so the villagers go on
- * addressing the player the way they have all along. What the player loses is
- * the notice in the tab, not their name.
- */
-
-/**
- * Bring the cached copy of the linked Persona up to date. Returns whether it
- * wrote.
- *
- * This is the only writer of the cache, and it is deliberately off the chat
- * path: the tab asks for it when the village tab opens and when its settings
- * open, and a send asks for nothing at all. Chat turns read the copy.
- *
- * The write is gated on a diff, and that diff is the part worth being careful
- * about. The candidate is built through the same caps the record is coerced
- * with, so the comparison is between two already-bounded strings. Comparing raw
- * resolved text against a bounded stored one would make a Persona whose prose
- * runs past the cap look changed on every single refresh, and re-write the
- * record forever.
- *
- * A Persona that has gone missing keeps its cached copy and only flips the flag.
- * A refresh is not the moment to forget who the player was.
- */
-export async function refreshPlayerPersona(): Promise<boolean> {
-  const village = await readVillageState();
-  if (village.playerPersonaId.length === 0) return false;
-  const persona = await findPlayerPersona(village.playerPersonaId);
-  const next = {
-    name: persona ? boundText(persona.name, MAX_PLAYER_PERSONA_NAME_LENGTH) : village.playerPersonaName,
-    identity: persona ? boundText(persona.identity, MAX_PLAYER_PERSONA_IDENTITY_LENGTH) : village.playerPersonaIdentity,
-    missing: persona === null,
-  };
-  const unchanged =
-    next.name === village.playerPersonaName &&
-    next.identity === village.playerPersonaIdentity &&
-    next.missing === village.playerPersonaMissing;
-  if (unchanged) return false;
-  await mutateVillageState((state) => {
-    state.playerPersonaName = next.name;
-    state.playerPersonaIdentity = next.identity;
-    state.playerPersonaMissing = next.missing;
-  });
-  return true;
-}
 
 /**
  * Write, or re-write, what one villager is after.

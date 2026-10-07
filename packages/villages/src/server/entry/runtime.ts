@@ -1,3 +1,5 @@
+import { createPersonaCache } from "../features/settings/persona-cache-service.js";
+import { configurePersonaCache } from "../features/settings/persona-cache.js";
 import { createResidentCards } from "../features/residents/resident-card-service.js";
 import { configureResidentCards } from "../features/residents/resident-cards.js";
 import {
@@ -192,6 +194,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
   );
+  const releasePersonaCache = configurePersonaCache(
+    createPersonaCache({ readVillageState, mutateVillageState, findPlayerPersona }),
+  );
   const releaseResidentCards = configureResidentCards(
     createResidentCards({
       readVillageState,
@@ -315,6 +320,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSignatures();
     releaseSprites();
     releaseResidentCards();
+    releasePersonaCache();
     releaseVillageState();
     releaseRelationships();
     releaseQueries();
