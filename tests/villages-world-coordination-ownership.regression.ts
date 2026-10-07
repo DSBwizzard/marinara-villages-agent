@@ -426,6 +426,45 @@ await assert.rejects(retiring, /Original world is unavailable/);
 assert.deepEqual(retired.state.happenings, []);
 assert.deepEqual(b.state.happenings, []);
 
+// Reset/founding identity must fence responses from the former world within
+// one still-active application, including replacement during a save retry.
+for (const replacement of ["reset", "new-world", "save-retry"] as const) {
+  const race = fixture(`Reset race ${replacement}`),
+    owner = install(race);
+  race.state.setupAt = race.state.foundedAt = stamp;
+  race.pauseModel();
+  const oldReaction = owner.scope.run(() =>
+    runVillageReaction({ villagerName: "A", playerName: "Player", deed: "Old world deed" }),
+  );
+  await race.modelEntered.promise;
+  const replace = (state: VillageState) => {
+    Object.assign(state, defaultVillageState());
+    if (replacement !== "reset") {
+      state.seed = "new-world";
+      state.name = "New world";
+      state.setupAt = state.foundedAt = "2026-10-07T12:00:00.000Z";
+      state.happenings = [event("New world's own event")];
+    }
+  };
+  if (replacement === "save-retry") race.retry(replace);
+  else if (replacement === "reset") await owner.scope.run(resetVillage);
+  else replace(race.state);
+  race.modelGate.resolve();
+  await oldReaction;
+  assert.deepEqual(
+    race.state.happenings.map((e) => e.text),
+    replacement === "reset" ? [] : ["New world's own event"],
+    `${replacement} cannot receive an old world's reaction`,
+  );
+  assert.equal(
+    race.calls.filter((call) => call === "reaction:Old world deed").length,
+    1,
+    "reset discards a reply without repeating provider work",
+  );
+  owner.release();
+  owner.scope.dispose();
+}
+
 // Explicit reset operates only on its selected owner and returns that owner's snapshot.
 await B.scope.run(resetVillage);
 assert.deepEqual(b.state, defaultVillageState());

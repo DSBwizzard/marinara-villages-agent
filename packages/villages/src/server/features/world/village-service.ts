@@ -584,6 +584,10 @@ export function createWorldCoordination({
     );
     if (happenings.length === 0) return;
     await mutateVillageState((state) => {
+      // A reset or new founding within this activation retires the old world's
+      // response. Check the authoritative identity on every save attempt.
+      if (state.seed !== village.seed || state.setupAt !== village.setupAt || state.foundedAt !== village.foundedAt)
+        return;
       // Deduped against the window as it stands rather than the copy read before
       // the call, because a narrator batch can land while the model is thinking
       // and the same line reaching the window twice reads as a village repeating
