@@ -17,7 +17,13 @@ import { createVillageRepository } from "../adapters/storage/village-repository.
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { configureUsageLedger, withUsagePurpose, usageProcessOwner } from "../adapters/models/usage-ledger.js";
 import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
-import { villageEngineJson, villageEngineForm } from "../adapters/engine/engine-transport.js";
+import {
+  villageEngineJson,
+  villageEngineForm,
+  villageEngineBaseUrl,
+  deleteVillageSpriteFile,
+} from "../adapters/engine/engine-transport.js";
+import { inspectVillageImage } from "../adapters/engine/image-files.js";
 import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
 import { configureMetricsContext } from "../adapters/observability/metrics-context.js";
 import { createMetricsContext } from "../adapters/observability/metrics-context-service.js";
@@ -34,6 +40,10 @@ import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
 import { processSocialOutbox } from "../features/residents/relationship-social.js";
 import { generateVillageTownMap } from "../features/media/town-map-image.js";
+import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
+import { createSpriteManager } from "../features/media/sprite-manager-service.js";
+import { configureSpriteManager } from "../features/media/sprite-manager.js";
+import { createSpriteWrites, type SpriteWrites } from "../features/media/sprite-writes.js";
 import { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
 import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
@@ -99,6 +109,16 @@ import {
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 const navigationByStore = new WeakMap<object, SceneNavigation>();
+const spriteWritesByStore = new WeakMap<object, SpriteWrites>();
+function spriteWritesFor(identity: object | undefined): SpriteWrites {
+  if (!identity) return createSpriteWrites();
+  let writes = spriteWritesByStore.get(identity);
+  if (!writes) {
+    writes = createSpriteWrites();
+    spriteWritesByStore.set(identity, writes);
+  }
+  return writes;
+}
 function sceneNavigationFor(identity: object | undefined): SceneNavigation {
   if (!identity) return createSceneNavigation();
   let navigation = navigationByStore.get(identity);
@@ -168,6 +188,19 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseSprites = configureSpriteManager(
+    createSpriteManager({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      decodeSpriteImage: createSpriteImageDecoder(inspectVillageImage),
+      villageEngineJson,
+      readSpriteFile: (url) => fetch(villageEngineBaseUrl() + url),
+      deleteVillageSpriteFile,
+      villagesLogger,
+      writes: spriteWritesFor(navigationIdentity ?? next.persistence?.documents),
+    }),
   );
   const releaseSettings = configureVillageSettings(
     createVillageSettings({
@@ -252,6 +285,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
     releaseZoneEdits();
     releaseVenueCommands();
     releaseSettings();
+    releaseSprites();
     releaseVillageState();
     releaseRelationships();
     releaseQueries();
