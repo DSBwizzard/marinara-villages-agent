@@ -144,7 +144,13 @@ async function integration() {
     const state = defaultVillageState();
     state.villagers = [{ characterId: "a", cardSnapshot: { name: "A" } }] as any;
     state.projects = [
-      { id: "p", title: "Garden", status: "draft", lifecycle: { phase: "builder", affectedIds: [], requirements: [] } },
+      {
+        id: "p",
+        kind: "new-venue",
+        title: "Garden",
+        status: "draft",
+        lifecycle: { version: 2, phase: "builder", affectedIds: [], requirements: [] },
+      },
     ] as any;
     state.progressTasks = [
       { definition: { owner: { kind: "project", id: "p" }, revision: 1 }, transitions: [], resolvedAt: "" },

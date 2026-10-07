@@ -205,8 +205,7 @@ export type VenueReplyFailureKind =
   | "repeated-question"
   | "residence-consent"
   | "construction-worksite"
-  | "unsupported-physical-claim"
-  | "reserved-project-item";
+  | "unsupported-physical-claim";
 export type VenueReplyLine = {
   kind: NonNullable<VenueLine["kind"]>;
   speakerId: string;

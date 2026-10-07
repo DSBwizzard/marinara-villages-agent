@@ -413,6 +413,15 @@ async function main() {
     assert.equal(state.projectSourceClaims.length, 1);
     const task = state.progressTasks.find((entry) => entry.definition.owner.id === projectId)!;
     assert.equal(task.receipts.filter((receipt) => receipt.requirementId.startsWith("acquired:")).length, 2);
+    const storedMaterials = JSON.parse(JSON.stringify(state));
+    const reloadedMaterials = coerceVillageState(storedMaterials);
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(reloadedMaterials.projects)),
+      storedMaterials.projects,
+      "current accepted requirements and acquired sources survive save/reload",
+    );
+    assert.deepEqual(reloadedMaterials.progressTasks, state.progressTasks);
+    assert.deepEqual(reloadedMaterials.projectSourceClaims, state.projectSourceClaims);
     const replacement = saveTurn("Will you build Lantern House instead?", "I will build Lantern House.", "ivo");
     await recordProjectSpokenEvidence(projectId, { kind: "builder", ...replacement });
     await lockProjectBuilder(projectId, { residentId: "ivo" });

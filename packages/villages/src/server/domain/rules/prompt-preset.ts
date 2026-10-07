@@ -513,24 +513,14 @@ export function villageCurrentSetting(village: {
   setting: string;
   worldFacts?: readonly string[];
   villageCapabilities?: readonly string[];
-  projects?: readonly {
-    kind?: string;
-    title: string;
-    status: string;
-    plan?: { blockedReason: string; need: string };
-  }[];
 }): string {
   const facts = village.worldFacts?.filter(Boolean) ?? [];
-  const builds = (village.projects ?? []).filter((project) => project.kind === "build-venue").slice(-8);
   return [
     village.setting.trim(),
     VILLAGE_SHARED_SETTING_RULE,
     facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
     village.villageCapabilities?.length
       ? `Completed village capabilities: ${village.villageCapabilities.join(", ")}.`
-      : "",
-    builds.length
-      ? `Current build-project ledger (authoritative over older lore, memory, and scene prose):\n${builds.map((project) => `- ${project.title}: ${project.status}; need: ${project.plan?.need ?? "unspecified"}${project.plan?.blockedReason ? ` (${project.plan.blockedReason})` : ""}`).join("\n")}`
       : "",
   ]
     .filter(Boolean)

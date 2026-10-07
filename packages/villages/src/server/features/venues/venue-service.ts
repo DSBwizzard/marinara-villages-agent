@@ -160,15 +160,6 @@ export function createVenueCommands({
               throw conflict("A worksite's identity belongs to its active project.");
             continue;
           }
-          if (
-            state.projects.some(
-              (project) =>
-                project.kind === "build-venue" &&
-                project.status !== "complete" &&
-                project.venueDraft?.name.toLowerCase() === place.name.toLowerCase(),
-            )
-          )
-            throw conflict("That name is reserved by a build project.");
           current.name = place.name;
           current.description = place.description;
         }
@@ -433,7 +424,7 @@ export function createVenueCommands({
       if (
         state.projects.some(
           (project) =>
-            (project.kind === "build-venue" || project.kind === "new-venue") &&
+            project.kind === "new-venue" &&
             project.status !== "complete" &&
             project.venueDraft?.name.toLowerCase() === name.toLowerCase(),
         )

@@ -2378,61 +2378,6 @@ async function main() {
       await continueVenueWithoutGreeting(group.id);
     }
     for (const stage of ["effect", "bookkeeping"]) {
-      if (stage === "effect") {
-        await stock("reserved plank");
-        await mutateVillageState((state) =>
-          state.projects.push({
-            id: "reserved-stock-fixture",
-            kind: "build-venue",
-            title: "Reserved stock",
-            venueId: "park",
-            participantIds: [],
-            progress: 0,
-            status: "active",
-            updatedAt: new Date().toISOString(),
-            plan: {
-              revision: 1,
-              sources: [
-                {
-                  id: "plank-source",
-                  requirementId: "plank",
-                  kind: "existing-item",
-                  venueId: "park",
-                  zoneId: chatRepair.session.zoneId,
-                  itemName: "reserved plank",
-                  remaining: 1,
-                },
-              ],
-            },
-          } as any),
-        );
-        sceneActionFixture = {
-          happened: true,
-          narration: "The reserved plank is taken.",
-          removeItem: "reserved plank",
-          transferTo: "player",
-        };
-        await assert.rejects(
-          () =>
-            sendVenueTurn({
-              sessionId: group.id,
-              message: "I pick up the reserved plank",
-              mode: "chat",
-              targetId: "",
-              submissionId: "reserved-stock",
-            }),
-          /reserved-project-item/,
-        );
-        assert.ok(
-          (await readVillageState()).venues
-            .find((venue) => venue.id === "park")!
-            .state.furniture.includes("reserved plank"),
-        );
-        await continueVenueWithoutGreeting(group.id);
-        await mutateVillageState((state) => {
-          state.projects = state.projects.filter((project) => project.id !== "reserved-stock-fixture");
-        });
-      }
       const id = `physical-interruption-${stage}`;
       await stock("spare cup");
       sceneActionFixture = {

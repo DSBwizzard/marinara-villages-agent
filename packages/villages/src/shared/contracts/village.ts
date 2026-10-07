@@ -240,7 +240,7 @@ export type BuildProject = {
   requesterCharacterId?: string;
   participantIds?: string[];
   updatedAt: string;
-  kind?: "build-venue" | "new-venue" | "renovation";
+  kind: "new-venue" | "renovation";
   title: string;
   venueId: string;
   status: "draft" | "active" | "building" | "blocked" | "finishing" | "complete" | "abandoned";
@@ -298,40 +298,6 @@ export type BuildProject = {
     workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
     blockedReason: string;
     completedAt: string;
-  };
-  plan?: {
-    revision: number;
-    agreedAt: string;
-    need: string;
-    requirements: { id: string; title: string; routeIds: string[] }[];
-    sources: {
-      id: string;
-      requirementId: string;
-      kind: "existing-item" | "limited-opportunity";
-      venueId: string;
-      itemName: string;
-      supplierId: string;
-      remaining: number;
-      cost: string;
-      prerequisite: string;
-      magic: boolean;
-    }[];
-    receipts: {
-      id: string;
-      submissionId: string;
-      kind: "promise" | "acquired" | "committed" | "released" | "installed" | "builder-agreement";
-      requirementId: string;
-      sourceId: string;
-      residentId: string;
-      sourceLineId: string;
-      quote: string;
-    }[];
-    builderId: string;
-    workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
-    outcomeAt: string;
-    capability: string;
-    siteVenueId: string;
-    blockedReason: string;
   };
 };
 

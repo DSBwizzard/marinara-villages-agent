@@ -20,6 +20,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import {
   createNewVenueProject,
   draftNewVenueProject,
+  draftRenovationProject,
   placeNewVenueProject,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
@@ -71,6 +72,35 @@ async function main() {
   draftNewVenueProject(currentBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
   assert.equal(villageVenueUsage(currentBuild).total, 16, "current drafts reserve one place");
   assert.throws(() => assertCanAddVillageVenue(currentBuild, ["gathering"]), /maximum 16/);
+  draftRenovationProject(currentBuild, currentBuild.venues[0]!.id, {
+    title: "Room Renovation",
+    detail: "Adjust the existing residence.",
+    classes: ["residence"],
+  });
+  const storedCurrent = JSON.parse(JSON.stringify(currentBuild));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(coerceVillageState(storedCurrent).projects)),
+    storedCurrent.projects,
+    "current New Venue and Renovation drafts survive save/reload",
+  );
+  const currentDraft = storedCurrent.projects[0];
+  const unsupported = [
+    { ...currentDraft, id: "old-build", kind: "build-venue", plan: { revision: 1, need: "Old timber" } },
+    { ...currentDraft, id: "unknown-project", kind: "unknown" },
+    { ...currentDraft, id: "untagged-project", kind: undefined },
+    { ...currentDraft, id: "missing-lifecycle", lifecycle: undefined },
+    { ...currentDraft, id: "old-lifecycle", lifecycle: { ...currentDraft.lifecycle, version: 1 } },
+  ];
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        coerceVillageState({ ...storedCurrent, projects: [...storedCurrent.projects, ...unsupported] }).projects,
+      ),
+    ),
+    storedCurrent.projects,
+    "unsupported rows are discarded without conversion into generic Projects",
+  );
+  assert.equal(villageVenueUsage(coerceVillageState(storedCurrent)).total, 16);
   const requestState = defaultVillageState();
   requestState.setupAt = currentBuild.setupAt;
   requestState.venues = Array.from({ length: 15 }, (_, i) => venue(i));

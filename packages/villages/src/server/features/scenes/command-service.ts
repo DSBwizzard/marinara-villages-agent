@@ -2359,23 +2359,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         state.villagers.map((person) => person.characterId),
       );
       if (!change) return;
-      if (
-        change.removeItem &&
-        state.projects.some(
-          (project) =>
-            project.kind === "build-venue" &&
-            project.status !== "complete" &&
-            project.plan?.sources.some(
-              (source) =>
-                source.kind === "existing-item" &&
-                source.venueId === session.placeId &&
-                (!source.zoneId || source.zoneId === zoneId) &&
-                source.itemName === change.removeItem &&
-                source.remaining > 0,
-            ),
-        )
-      )
-        return; // A project receipt, not a scene edit, must debit this recorded item.
       const at = submission.at || new Date().toISOString();
       applyVenueSceneChange(
         state,

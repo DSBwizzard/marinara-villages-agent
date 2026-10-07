@@ -16,7 +16,7 @@ export function villageVenueUsage(state: VillageState, venues = state.venues, ex
   const pending = state.projects.filter(
     (project) =>
       project.id !== exceptProjectId &&
-      (project.kind === "new-venue" || project.kind === "build-venue") &&
+      project.kind === "new-venue" &&
       project.status !== "complete" &&
       project.status !== "abandoned" &&
       !venues.some((venue) => venue.id === project.venueId || venue.buildProjectId === project.id),

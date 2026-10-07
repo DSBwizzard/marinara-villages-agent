@@ -1039,23 +1039,6 @@ export function createSceneWriting({
           )
         )
           throw new VenueReplyFailure("unsupported-physical-claim");
-        if (
-          reply.sceneChange.removeItem &&
-          currentVillage.projects.some(
-            (project) =>
-              project.kind === "build-venue" &&
-              project.status !== "complete" &&
-              project.plan?.sources.some(
-                (source) =>
-                  source.kind === "existing-item" &&
-                  source.venueId === session.placeId &&
-                  (!source.zoneId || source.zoneId === session.zoneId) &&
-                  source.itemName === reply.sceneChange!.removeItem &&
-                  source.remaining > 0,
-              ),
-          )
-        )
-          throw new VenueReplyFailure("reserved-project-item");
       }
       const currentSession = await refreshZoneParticipants(session, true);
       if (

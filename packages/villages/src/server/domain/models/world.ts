@@ -1025,59 +1025,6 @@ export type VillageRelationship = {
   updatedAt: string;
 };
 
-export type VillageBuildRequirement = {
-  id: string;
-  title: string;
-  routeIds: string[];
-};
-
-export type VillageBuildSource = {
-  zoneId?: string;
-  id: string;
-  requirementId: string;
-  kind: "existing-item" | "limited-opportunity";
-  venueId: string;
-  itemName: string;
-  supplierId: string;
-  remaining: number;
-  /** A visible social or physical cost, never a claim of owned stock. */
-  cost: string;
-  prerequisite: string;
-  magic: boolean;
-  loreEvidence?: string;
-};
-
-export type VillageBuildReceipt = {
-  id: string;
-  submissionId: string;
-  kind: "promise" | "acquired" | "committed" | "released" | "installed" | "builder-agreement";
-  requirementId: string;
-  sourceId: string;
-  residentId: string;
-  sourceLineId: string;
-  quote: string;
-  at: string;
-  planRevision: number;
-};
-
-export type VillageBuildPlan = {
-  revision: number;
-  agreedAt: string;
-  need: string;
-  revisions: { revision: number; agreedAt: string; sourceIds: string[] }[];
-  requirements: VillageBuildRequirement[];
-  sources: VillageBuildSource[];
-  /** Literal furniture available when this project was drafted, before later scene claims. */
-  recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
-  receipts: VillageBuildReceipt[];
-  builderId: string;
-  workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
-  outcomeAt: string;
-  capability: string;
-  siteVenueId: string;
-  blockedReason: string;
-};
-
 export type VillageProjectPhase =
   "concept" | "approval" | "builder" | "requirements" | "materials" | "construction" | "finishing" | "complete";
 
@@ -1156,10 +1103,9 @@ export type VillageProject = {
   progress: number;
   status: "draft" | "active" | "building" | "blocked" | "finishing" | "complete" | "abandoned";
   updatedAt: string;
-  kind?: "build-venue" | "new-venue" | "renovation";
+  kind: "new-venue" | "renovation";
   venueDraft?: VillageVenueDraft;
   requesterCharacterId?: string;
-  plan?: VillageBuildPlan;
   lifecycle?: VillageProjectLifecycle;
 };
 

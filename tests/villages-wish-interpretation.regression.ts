@@ -203,11 +203,12 @@ async function main() {
     state.projects = [
       {
         id: "project",
+        kind: "renovation",
         title: "Greenhouse",
         venueId: "garden",
         status: "finishing",
         updatedAt: at,
-        lifecycle: { phase: "finishing", completedAt: at, builderId: "a" },
+        lifecycle: { version: 2, phase: "finishing", completedAt: at, builderId: "a" },
       },
     ] as any;
     state.venues = [{ id: "garden", name: "Garden" }] as any;

@@ -170,24 +170,7 @@ export function createVillageSnapshot({
                 }),
               },
             }
-          : project.plan
-            ? {
-                ...project,
-                plan: {
-                  ...project.plan,
-                  recordedItems: project.plan.recordedItems.filter((item) => {
-                    const venue = village.venues.find((entry) => entry.id === item.venueId);
-                    const zone = venue && resolveVenueZone(venue, item.zoneId ?? legacyZoneId(venue, "public"));
-                    return (
-                      !!zone &&
-                      (zone.seen ||
-                        zone.kind === "exterior" ||
-                        (venue!.occupancy.playerHome && zone.kind === "shared-residence"))
-                    );
-                  }),
-                },
-              }
-            : project,
+          : project,
       ),
       villageCapabilities: village.villageCapabilities,
       upgradeRequests: village.pendingDecisions.filter(

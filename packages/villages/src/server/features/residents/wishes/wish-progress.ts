@@ -512,9 +512,8 @@ export async function processProjectWishOutbox(): Promise<void> {
     const project = state.projects.find((project) => project.id === event.projectId && project.status === "complete");
     if (project) {
       const routingWords = (
-        `${project.title} ${project.plan?.need ?? ""} ${project.venueDraft?.description ?? ""}`
-          .toLocaleLowerCase()
-          .match(/[\p{L}\p{N}]{4,}/gu) ?? []
+        `${project.title} ${project.venueDraft?.description ?? ""}`.toLocaleLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ??
+        []
       ).filter(
         (word) =>
           ![

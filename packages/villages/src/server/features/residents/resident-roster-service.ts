@@ -127,16 +127,6 @@ export function createResidentRoster({
             project.status = "blocked";
             project.updatedAt = now.toISOString();
           }
-          if (
-            project.kind !== "build-venue" ||
-            !project.plan ||
-            project.plan.builderId !== characterId ||
-            project.status === "complete"
-          )
-            continue;
-          project.status = "blocked";
-          project.plan.blockedReason = "The builder left; recruit a new resident to continue.";
-          if (project.plan.workOrder) project.plan.workOrder.pausedAt = new Date().toISOString();
         }
       state.villagers = remaining;
       state.residences = state.residences.filter((move) => move.characterId !== characterId);

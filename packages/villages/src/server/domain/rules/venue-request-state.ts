@@ -25,7 +25,7 @@ export function queueVillageVenueRequest(
     state.venues.some((venue) => venue.name.trim().toLowerCase() === key) ||
     state.projects.some(
       (project) =>
-        (project.kind === "build-venue" || project.kind === "new-venue") &&
+        project.kind === "new-venue" &&
         project.status !== "complete" &&
         project.venueDraft?.name.trim().toLowerCase() === key,
     ) ||

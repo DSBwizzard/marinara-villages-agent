@@ -51,6 +51,7 @@ try {
     village.projects = [
       {
         id: "mara-project",
+        kind: "renovation",
         title: "Mara's work",
         status: "active",
         requesterCharacterId: "mara",
@@ -58,6 +59,7 @@ try {
         venueId: "mill",
         updatedAt: now,
         progress: 0,
+        lifecycle: { phase: "builder" },
       },
     ];
     village.venueRequests = [
