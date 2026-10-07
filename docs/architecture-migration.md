@@ -47,3 +47,11 @@ The Decisions compatibility adapter has an instance factory owning its database,
 ## Activation dispatch ownership
 
 Production assembly captures an activation scope for host-backed connections, supported service dispatch, actual route handlers, cleanup and self-check. Interleaved asynchronous requests retain their originating storage/services; missing or disposed owners cannot borrow the legacy default. Direct configuration remains synchronous and preserves runtime-epoch replacement fences and standalone service tests. The separate correction and compatibility limits are documented in [activation dispatch ownership](activation-dispatch-ownership.md). Queue and cache factories remain open; scoped dispatch alone does not isolate their mutable state.
+
+## Town-map job ownership
+
+`jobs/town-map-service.ts` owns each application's map admission queue, active attempt, lifecycle fence and enabled state. Entry assembly supplies document access, compare-and-swap mutation, image generation and logging ports. The existing job interface selects the scoped instance; its registration cannot be cleared by another activation's cleanup.
+
+The extraction preserves all original function bodies and saved document metadata. Claims are still saved before image dispatch, replayed IDs and concurrent tabs join existing attempts, retired IDs cannot spend again, interrupted attempts require a deliberate new request, and late results retain their lifecycle fence. Provider-free tests exercise independent queues and stores, identical IDs in separate activations, paused continuations, old cleanup and receipt recovery. The existing image-generation regression still covers prompt/result validation and mocked provider dispatch.
+
+This owner does not complete the remaining background, Scene, preparation or cache factories. Repeated cleanup after restarting the same map service is a separate lifecycle correction, rather than part of this extraction.

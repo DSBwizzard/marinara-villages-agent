@@ -1,14 +1,16 @@
-import { configureRuntimeHost, villagesDocuments } from "../adapters/engine/runtime-host.js";
+import { configureRuntimeHost, villagesDocuments, villagesLogger } from "../adapters/engine/runtime-host.js";
 import {
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../adapters/engine/activation-scope.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
+import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { resetRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
 import { processSocialOutbox } from "../features/residents/relationship-social.js";
+import { generateVillageTownMap } from "../features/media/town-map-image.js";
 import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import {
@@ -25,6 +27,8 @@ import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
 import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
 import { buildVillageSnapshot } from "../features/world/snapshot.js";
 import { configureVillageStateService, mutateVillageState, readVillageState } from "../features/world/village-store.js";
+import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
+import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 /** Connect an application without starting jobs; activation owns the returned release. */
@@ -54,7 +58,16 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
   const releaseZoneEdits = configureVenueZoneEdits(
     createVenueZoneEdits({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
   );
+  const releaseTownMap = configureTownMapGeneration(
+    createTownMapGeneration({
+      villagesDocuments,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+      generateVillageTownMap,
+      villagesLogger,
+    }),
+  );
   const releaseGraph = () => {
+    releaseTownMap();
     releaseZoneEdits();
     releaseVenueCommands();
     releaseVillageState();
