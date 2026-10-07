@@ -16,7 +16,6 @@ import { readVenueOperation } from "../../jobs/venue-coordinator.js";
 import { imageTarget } from "../venues/image-target.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
 import {
-  activeVenueSession,
   closeVenueSessionWithReceipts,
   continueVenueWithoutGreeting,
   discardVenueVisitDebug,
@@ -30,8 +29,8 @@ import {
   replaySceneChanges,
   retrySceneChangeInterpretation,
   sendVenueTurn,
-  touchVenueSession,
 } from "./venue-session.js";
+import { activeVenueSession, touchVenueSession } from "./live-session.js";
 import { deleteAllVenueVisits, deleteVenueVisit, listVenueVisitSummaries, readVenueVisit } from "./archive.js";
 import type { FastifyInstance } from "fastify";
 

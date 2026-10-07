@@ -11,7 +11,7 @@ import { mutateVillageState, readVillageState } from "../world/village-store.js"
 
 const readProjectTurnEvidence: import("../scenes/services.js").SceneQueries["readProjectTurnEvidence"] = (...args) =>
   sceneQueries().readProjectTurnEvidence(...args);
-const activeVenueSession: typeof import("../scenes/venue-session.js").activeVenueSession = () =>
+const activeVenueSession: import("../scenes/services.js").SceneQueries["activeVenueSession"] = () =>
   sceneQueries().activeVenueSession();
 
 const negative = /\b(?:not|never|don't|can't|won't|refuse|maybe|perhaps|if)\b/iu;

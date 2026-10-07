@@ -349,8 +349,8 @@ async function main() {
           { residentId: "b", zoneId: "staff", recordedAt: stamp, sourceLineId: "visit-vault" },
         ];
       });
-      const { enterVenue, activeVenueSession } =
-        await import("../packages/villages/src/server/features/scenes/venue-session.js");
+      const { enterVenue } = await import("../packages/villages/src/server/features/scenes/venue-session.js");
+      const { activeVenueSession } = await import("../packages/villages/src/server/features/scenes/live-session.js");
       const visit = await enterVenue("bank", undefined, "", undefined, "staff");
       assert.equal(visit.privateSpaceId, "staff");
       await Promise.all([

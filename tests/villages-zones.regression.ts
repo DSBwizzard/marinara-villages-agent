@@ -31,11 +31,11 @@ import {
   greetVenue,
   sendVenueTurn,
   moveVenueZone,
-  activeVenueSession,
   endVenueSession,
   recoverVenueSceneWork,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";

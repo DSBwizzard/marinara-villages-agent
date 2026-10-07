@@ -2,7 +2,7 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 
 /** Narrow Scene query interface, bound by each application activation. */
 export interface SceneQueries {
-  activeVenueSession: typeof import("./venue-session.js").activeVenueSession;
+  activeVenueSession: typeof import("./live-session.js").activeVenueSession;
   readProjectTurnEvidence: import("./scene-query-service.js").SceneQueryService["readProjectTurnEvidence"];
   progressBacklog: import("./scene-query-service.js").SceneQueryService["progressBacklog"];
   listVenueVisits: typeof import("./archive.js").listVenueVisits;

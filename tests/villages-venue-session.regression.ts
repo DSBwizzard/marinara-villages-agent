@@ -53,7 +53,6 @@ import {
   WRITING_GUIDANCE_MAX_LENGTH,
 } from "../packages/villages/src/server/domain/rules/narration-style.js";
 import {
-  activeVenueSession,
   continueVenueWithoutGreeting,
   endVenueSession as endVenueSessionRaw,
   closeVenueSessionWithReceipts,
@@ -64,9 +63,9 @@ import {
   leaveVenueSession,
   greetVenue as greetVenueRaw,
   sendVenueTurn as sendVenueTurnRaw,
-  touchVenueSession,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { activeVenueSession, touchVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
 import {
   resetVenueSessions,

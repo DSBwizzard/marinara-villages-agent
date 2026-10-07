@@ -1,6 +1,15 @@
+import { createLiveScenes } from "../features/scenes/live-session-service.js";
+import { configureLiveScenes } from "../features/scenes/live-session.js";
+import { hasVenueOperation } from "../jobs/venue-coordinator.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
-import { configureSceneRepository, readActive, readSession } from "../adapters/storage/scene-store.js";
+import {
+  configureSceneRepository,
+  readActive,
+  readSession,
+  changeSession,
+  clearActivePointer,
+} from "../adapters/storage/scene-store.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
 import { processSavedProgressSubmission } from "../features/scenes/venue-session.js";
@@ -117,7 +126,8 @@ import { persistRelationshipAuthority, readRelationshipState } from "../features
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork } from "../features/scenes/scene-work.js";
-import { activeVenueSession, processSavedExchange } from "../features/scenes/venue-session.js";
+import { processSavedExchange } from "../features/scenes/venue-session.js";
+import { activeVenueSession } from "../features/scenes/live-session.js";
 import { listVenueVisits } from "../features/scenes/archive.js";
 import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
 import { createVillageStateService } from "../features/world/village-state-service.js";
@@ -242,6 +252,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseLiveScenes = configureLiveScenes(
+    createLiveScenes({
+      readActive,
+      readSession,
+      changeSession,
+      clearActivePointer,
+      hasVenueOperation,
+      villagesDocuments,
+      readVillageState,
+      mutateVillageState,
+    }),
   );
   const releaseSceneArchive = configureSceneArchive(
     createSceneArchive({
@@ -492,6 +514,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseResidentAgendas();
     releaseQueries();
     releaseSceneArchive();
+    releaseLiveScenes();
     releaseVillageState();
     releaseRelationships();
     releaseWishClocks();

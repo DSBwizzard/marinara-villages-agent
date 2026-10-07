@@ -25,7 +25,7 @@ import { randomUUID } from "node:crypto";
 
 const readProjectTurnEvidence: import("../scenes/services.js").SceneQueries["readProjectTurnEvidence"] = (...args) =>
   sceneQueries().readProjectTurnEvidence(...args);
-const activeVenueSession: typeof import("../scenes/venue-session.js").activeVenueSession = () =>
+const activeVenueSession: import("../scenes/services.js").SceneQueries["activeVenueSession"] = () =>
   sceneQueries().activeVenueSession();
 
 export { reconcileBuildProjects } from "../../domain/rules/project-rules.js";
