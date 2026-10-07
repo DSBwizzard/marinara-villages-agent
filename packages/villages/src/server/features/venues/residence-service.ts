@@ -160,6 +160,8 @@ export function createResidences(ports: ResidencePorts) {
     const characterId = residenceCharacterId(characterValue);
     let moved = false;
     await mutateVillageState((state) => {
+      // Only the winning mutation attempt can authorize post-save preparation.
+      moved = false;
       const residence = state.residences.find((entry) => entry.characterId === characterId);
       if (!residence || residence.status !== "moving") throw badRequest("That villager is not moving.");
       if (!force && Date.parse(residence.completesAt ?? "") > now.getTime()) return;

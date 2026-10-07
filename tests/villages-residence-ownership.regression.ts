@@ -208,6 +208,42 @@ assert.equal(
   "A destination occupied during retry cannot commit an earlier proposal.",
 );
 assert(!changed.calls.includes("snapshot"));
+const postponed = fixture("Postponed"),
+  attemptClock = new Date("2026-10-06T12:00:00Z");
+postponed.state.residences = [
+  {
+    characterId: "same",
+    venueId: "",
+    proposedVenueId: "destination",
+    status: "moving",
+    requestedAt: "2026-10-05T12:00:00Z",
+    requestedBy: "player",
+    villagerDecision: "approved",
+    completesAt: "2026-10-06T11:00:00Z",
+  },
+];
+postponed.retryWith((state) => {
+  state.residences[0]!.completesAt = "2026-10-07T12:00:00Z";
+});
+await postponed.service.completeVillageResidence("same", false, attemptClock);
+assert.equal(postponed.state.residences[0]!.status, "moving");
+assert.equal(postponed.state.venues[0]!.occupancy.residentCharacterId, null);
+assert.equal(
+  postponed.preparations,
+  0,
+  "A losing completion attempt cannot authorize private preparation after its winning retry postpones the move.",
+);
+assert.deepEqual(postponed.calls, ["mutate", "snapshot"]);
+const completedRetry = fixture("Completed retry");
+completedRetry.state.residences = [{ ...postponed.state.residences[0]!, completesAt: "2026-10-06T11:00:00Z" }];
+completedRetry.retryWith((state) => {
+  state.name = "Concurrent metadata";
+});
+await completedRetry.service.completeVillageResidence("same", false, attemptClock);
+assert.equal(completedRetry.state.residences[0]!.status, "current");
+assert.equal(completedRetry.state.name, "Concurrent metadata");
+assert.equal(completedRetry.preparations, 1, "A genuinely completed winning retry still prepares once after saving.");
+assert.equal(completedRetry.calls.filter((operation) => operation === "outside").length, 1);
 const invalid = fixture("Invalid");
 await assert.rejects(invalid.service.proposeVillageResidence("absent", "destination"), /not in this village/);
 assert(!invalid.calls.includes("models"));
