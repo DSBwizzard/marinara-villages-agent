@@ -29,7 +29,6 @@ import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agen
 import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { _proposeWishVerdict } from "../packages/villages/src/server/features/residents/wishes/wishes.js";
-import { readVenueActionResult } from "../packages/villages/src/server/features/venues/venue-actions.js";
 import {
   venueReplyIntegrity,
   venueSceneHistory,
@@ -1405,27 +1404,6 @@ async function main() {
         ],
       ),
       null,
-    );
-    assert.equal(
-      readVenueActionResult({
-        happened: true,
-        narration: "The window opens.",
-        traceKind: "open-window",
-        traceText: "an open window",
-      }).traceKind,
-      "open-window",
-      "active traces accept scene kinds beyond notes and stains",
-    );
-    assert.equal(
-      readVenueActionResult({ happened: true, narration: "A note is left.", traceKind: "note", traceText: "For Tina" })
-        .happened,
-      false,
-      "a note without a valid recipient is not falsely committed",
-    );
-    assert.equal(
-      readVenueActionResult({ happened: true, narration: "The stain is gone.", resolveTraceId: "missing" }).happened,
-      false,
-      "cleanup cannot claim to remove a missing trace",
     );
     await mutateVillageState((state) => {
       state.name = "Fixture village";

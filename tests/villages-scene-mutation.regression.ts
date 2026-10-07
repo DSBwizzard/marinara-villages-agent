@@ -84,11 +84,30 @@ applySceneMutation(recorded, "scene", (saved) => {
 assert.equal(recorded.changeSequence, 6, "committed domain bookkeeping advances the notice cursor");
 assert.equal(recorded.submissions[0]!.changeSequence, 6);
 
-const unfinishedAction = scene();
-applySceneMutation(unfinishedAction, "scene", (saved) => {
-  saved.submissions.push(scene([{ id: "act", mode: "act", at: stamp, message: "Act" }]).submissions[0]!);
+const currentAction = scene();
+applySceneMutation(currentAction, "scene", (saved) => {
+  saved.submissions.push(
+    scene([
+      {
+        id: "act",
+        mode: "chat",
+        requestMode: "act",
+        at: stamp,
+        message: "Act",
+        action: { happened: true },
+        physicalOutcomeVersion: 1,
+      },
+    ]).submissions[0]!,
+  );
 });
-assert.equal(unfinishedAction.submissions[0]!.processing, undefined, "unfinished action waits for its saved reply");
+assert.ok(currentAction.submissions[0]!.processing, "current Act alias starts saved exchange processing");
+assert.deepEqual(currentAction.submissions[0]!.processing!.actionReceiptIds, ["venue-chat:scene:act"]);
+const currentProcessing = structuredClone(currentAction.submissions[0]!.processing);
+assert.equal(
+  applySceneMutation(currentAction, "scene", () => {}),
+  false,
+);
+assert.deepEqual(currentAction.submissions[0]!.processing, currentProcessing);
 console.log(
-  "Scene mutation domain passed: no-op, identity, revision, notice ordering, replayable processing and unfinished action admission; no Engine or providers.",
+  "Scene mutation domain passed: no-op, identity, revision, notice ordering, replayable processing and current Act admission; no Engine or providers.",
 );

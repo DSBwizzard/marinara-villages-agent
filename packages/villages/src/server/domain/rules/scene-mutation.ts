@@ -21,7 +21,7 @@ export function applySceneMutation(
   change(session);
   if (session.processingVersion === 1 && session.villageSeed)
     session.submissions.forEach((turn, order) => {
-      if (turn.movement || turn.processing || !turn.at || (turn.mode === "act" && !turn.actionReplyDone)) return;
+      if (turn.movement || turn.processing || !turn.at) return;
       turn.processing = createExchangeProcessing({
         seed: session.villageSeed!,
         sceneId: id,

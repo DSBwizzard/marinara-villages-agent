@@ -612,8 +612,6 @@ export async function processProjectWishOutbox(): Promise<void> {
 export async function processWishExchange(scene: VenueScene, submissionId: string): Promise<Partial<DomainProcessing>> {
   const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
   let state = await readVillageState();
-  if (turn.mode === "act" && !turn.actionReplyDone)
-    return { status: "pending", reason: "Waiting for saved action narration" };
   if (state.seed !== scene.villageSeed) return { status: "rejected", reason: "Village identity changed" };
   const lineIndex = new Map(scene.lines.map((line) => [line.id, line]));
   const proposals = [

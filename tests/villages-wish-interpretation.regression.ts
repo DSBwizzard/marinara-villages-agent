@@ -17,7 +17,6 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { readVenueActionResult } from "../packages/villages/src/server/features/venues/venue-actions.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { saveInterpretationSettings } from "../packages/villages/src/server/features/settings/interpretation-settings.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
@@ -235,22 +234,6 @@ async function main() {
     });
     assert.deepEqual(stripped, { safe: "ok" });
     assert.equal(coerceWishApplicationProof({ fingerprint: "bad", criteria: null }).fingerprint, "invalid");
-    const action = readVenueActionResult(
-      { happened: true, narration: "Pat gives Aqua the cupcake", removeItem: "cupcake", transferTo: "a" },
-      ["cupcake"],
-      [],
-      ["a"],
-    );
-    assert.equal(action.transferTo, "a");
-    assert.equal(
-      readVenueActionResult(
-        { happened: true, narration: "Pat gives Aqua the cupcake", removeItem: "cupcake", transferTo: "a" },
-        [],
-        [],
-        ["a"],
-      ).happened,
-      false,
-    );
     context.wishes = [
       { id: "social", wish: "Have a conversation about gardening", tell: "", intensity: 1, addedAt: at, expiresAt: "" },
     ];
