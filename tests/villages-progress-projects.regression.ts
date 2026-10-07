@@ -27,9 +27,9 @@ import {
   processSavedProgressSubmission,
   processSavedExchange,
   readSceneChanges,
-  progressBacklog,
   startProgressRecovery,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { progressBacklog } from "../packages/villages/src/server/features/scenes/services.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 

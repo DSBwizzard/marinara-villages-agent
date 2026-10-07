@@ -3,7 +3,8 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 /** Narrow Scene query interface, bound by each application activation. */
 export interface SceneQueries {
   activeVenueSession: typeof import("./venue-session.js").activeVenueSession;
-  readProjectTurnEvidence: typeof import("./venue-session.js").readProjectTurnEvidence;
+  readProjectTurnEvidence: import("./scene-query-service.js").SceneQueryService["readProjectTurnEvidence"];
+  progressBacklog: import("./scene-query-service.js").SceneQueryService["progressBacklog"];
   listVenueVisits: typeof import("./archive.js").listVenueVisits;
   processSavedExchange: typeof import("./venue-session.js").processSavedExchange;
 }
@@ -13,4 +14,12 @@ export function configureSceneQueries(queries: SceneQueries) {
 }
 export function sceneQueries(): SceneQueries {
   return queriesBinding.get();
+}
+
+/** Full server-only Scene evidence; never a client projection. */
+export async function readProjectTurnEvidence(...args: Parameters<SceneQueries["readProjectTurnEvidence"]>) {
+  return queriesBinding.get().readProjectTurnEvidence(...args);
+}
+export async function progressBacklog(...args: Parameters<SceneQueries["progressBacklog"]>) {
+  return queriesBinding.get().progressBacklog(...args);
 }

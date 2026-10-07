@@ -1,3 +1,4 @@
+import { sceneQueries } from "./services.js";
 import { pruneVenueVisits } from "./archive.js";
 import { decideVillageResidence, proposeVillageResidence } from "../venues/residences.js";
 import { activationScope } from "../../adapters/engine/activation-scope.js";
@@ -90,7 +91,7 @@ import {
 import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { isInactive } from "../../domain/rules/scene-inactivity.js";
 import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
-import { appendLine, heardLines, pendingProgressTurns } from "../../domain/rules/scene-record.js";
+import { appendLine, heardLines } from "../../domain/rules/scene-record.js";
 import { extractSceneReply } from "../../domain/rules/scene-reply-json.js";
 import { parseVenueReply, quietContactReply, savedAccessEvents } from "../../domain/rules/scene-reply.js";
 import { applyInterpretedRoomEvents } from "../../domain/rules/scene-room-application.js";
@@ -243,70 +244,6 @@ export { venueCardProfile } from "../../domain/rules/venue-writing.js";
 function explicitSceneActions(): boolean {
   const input = venueOperationInput();
   return !input || input.interactionScopeVersion === 1;
-}
-
-/** Server-only positions for one Scene across every Zone of its Venue. */
-
-/** Immutable room evidence for project accounting; a model verdict alone is never a receipt. */
-export async function readProjectTurnEvidence(sessionId: string, submissionId: string) {
-  const session = await readSession(sessionId);
-  const submission = session.submissions.find((entry) => entry.id === submissionId);
-  if (!submission) throw notFound("That roleplay turn was not recorded.");
-  const venue = (await readVillageState()).venues.find((entry) => entry.id === session.placeId);
-  const zoneId =
-    submission.zoneIdAtTurn ??
-    session.zoneId ??
-    (venue
-      ? legacyZoneId(
-          venue,
-          submission.areaAtTurn ?? session.area,
-          session.spaceClass,
-          submission.privateOwnerIdAtTurn ?? session.privateOwnerId,
-        )
-      : undefined);
-  return {
-    sessionId,
-    venueId: session.placeId,
-    zoneId,
-    submissionId,
-    mode: submission.mode,
-    message: submission.message,
-    at: submission.at ?? "",
-    areaAtTurn: submission.areaAtTurn ?? session.area,
-    activeIdsAtTurn: [
-      ...new Set([
-        ...(submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId)),
-        ...(submission.speechIdsAtTurn ?? []),
-      ]),
-    ],
-    action: submission.action ?? null,
-    projectContexts: submission.projectContexts ?? [],
-    projectSpeech: submission.projectSpeech ?? [],
-    contextualInterpretation: submission.projectInterpretationVersion === 1,
-    contextLines: session.lines
-      .slice(
-        0,
-        Math.max(
-          0,
-          session.lines.findIndex((line) => submission.replyLineIds?.includes(line.id)),
-        ),
-      )
-      .filter((line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper"),
-    lines: session.lines.filter((line) =>
-      submission.replyLineIds?.length
-        ? submission.replyLineIds.includes(line.id) &&
-          line.role === "assistant" &&
-          (submission.activeIdsAtTurn?.includes(line.speakerId) ||
-            submission.speechIdsAtTurn?.includes(line.speakerId)) &&
-          !line.contactHidden &&
-          !line.contactReport
-        : line.at === submission.at &&
-          line.role === "assistant" &&
-          !line.contactHidden &&
-          !line.contactReport &&
-          session.participants.some((participant) => participant.characterId === line.speakerId),
-    ),
-  };
 }
 const VENUE_REPLY_MAX_TOKENS = 4_096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
@@ -863,27 +800,6 @@ async function retrySceneChangeInterpretationOnce(
   return readSceneChanges(id);
 }
 
-export async function progressBacklog() {
-  const village = await readVillageState();
-  const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
-  return records.flatMap((record) => {
-    const session = coerceSession(record.data);
-    if (session.processingVersion === 1 && session.villageSeed !== village.seed) return [];
-    return session.submissions
-      .filter((turn) =>
-        turn.processing
-          ? unfinishedExchange(turn.processing)
-          : pendingProgressTurns(session, village.foundedAt).includes(turn),
-      )
-      .map((turn) => ({
-        sessionId: session.id,
-        submissionId: turn.id,
-        at: turn.at,
-        error: turn.progressError ?? "",
-      }));
-  });
-}
-
 /** One startup scan, then bounded asynchronous batches; never part of the minute snapshot. */
 export function startProgressRecovery(): () => void {
   let stopped = false;
@@ -891,7 +807,7 @@ export function startProgressRecovery(): () => void {
   const start = async () => {
     try {
       await processProjectWishOutbox();
-      const queue = await progressBacklog();
+      const queue = await sceneQueries().progressBacklog();
       const batch = async () => {
         for (const turn of queue.splice(0, 8)) {
           if (stopped) return;

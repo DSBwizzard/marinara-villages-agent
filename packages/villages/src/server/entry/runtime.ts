@@ -1,3 +1,4 @@
+import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
 import { configureSceneRepository, readSession } from "../adapters/storage/scene-store.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
@@ -116,7 +117,7 @@ import { persistRelationshipAuthority, readRelationshipState } from "../features
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork } from "../features/scenes/scene-work.js";
-import { activeVenueSession, processSavedExchange, readProjectTurnEvidence } from "../features/scenes/venue-session.js";
+import { activeVenueSession, processSavedExchange } from "../features/scenes/venue-session.js";
 import { listVenueVisits } from "../features/scenes/archive.js";
 import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
 import { createVillageStateService } from "../features/world/village-state-service.js";
@@ -231,12 +232,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
   const releaseWishClocks = configureWishAttemptClocks(createWishAttemptClocks());
-  const releaseQueries = configureSceneQueries({
-    activeVenueSession,
-    readProjectTurnEvidence,
-    listVenueVisits,
-    processSavedExchange,
-  });
   const releaseRelationships = configureWorldRelationships({
     readRelationshipState,
     reconcileRelationships,
@@ -258,6 +253,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       removeInterpretationDiagnostics,
     }),
   );
+  const releaseQueries = configureSceneQueries({
+    ...createSceneQueryService({ readSession, readVillageState, villagesDocuments }),
+    activeVenueSession,
+    listVenueVisits,
+    processSavedExchange,
+  });
   const residentAgendas = createResidentAgendas({
     readVillageState,
     mutateVillageState,

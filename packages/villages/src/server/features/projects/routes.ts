@@ -1,7 +1,7 @@
 import { villagesDebugAgentsEnabled } from "../../adapters/engine/runtime-host.js";
 import { fail, readVenueId } from "../../adapters/http/route-support.js";
 import { notFound } from "../../domain/rules/errors.js";
-import { progressBacklog } from "../scenes/venue-session.js";
+import { progressBacklog } from "../scenes/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
 import {

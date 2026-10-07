@@ -9,7 +9,7 @@ import { canOccupyZone, resolveVenueZone, zoneClosed } from "../../domain/rules/
 import { sceneQueries } from "../scenes/services.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
 
-const readProjectTurnEvidence: typeof import("../scenes/venue-session.js").readProjectTurnEvidence = (...args) =>
+const readProjectTurnEvidence: import("../scenes/services.js").SceneQueries["readProjectTurnEvidence"] = (...args) =>
   sceneQueries().readProjectTurnEvidence(...args);
 const activeVenueSession: typeof import("../scenes/venue-session.js").activeVenueSession = () =>
   sceneQueries().activeVenueSession();
