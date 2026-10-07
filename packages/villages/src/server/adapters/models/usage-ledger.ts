@@ -7,8 +7,6 @@ import { linkApiQuote, readExchangeRate } from "./linkapi-pricing.js";
 import { createUsageLedger, type UsageLedger } from "./usage-ledger-service.js";
 import type { UsagePurpose } from "../../domain/models/usage-model.js";
 import { randomUUID } from "node:crypto";
-export type { UsagePurpose, UsageRate, UsageRequest, Totals, Ledger } from "../../domain/models/usage-model.js";
-export { catalogRate, usageNativeCost, usageDollars } from "./usage-accounting.js";
 const binding = createActivationBinding<UsageLedger>("Villages usage accounting is not configured.");
 /** Recovery distinguishes earlier processes, including overlapping live activations of one store. */
 export const usageProcessOwner = randomUUID();

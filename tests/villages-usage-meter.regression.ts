@@ -8,7 +8,8 @@ import {
   resetUsagePeriod,
   saveUsageRate,
 } from "../packages/villages/src/server/features/settings/usage-meter.js";
-import { usageDollars, catalogRate, trackUsage } from "../packages/villages/src/server/adapters/models/usage-ledger.js";
+import { trackUsage } from "../packages/villages/src/server/adapters/models/usage-ledger.js";
+import { usageDollars, catalogRate } from "../packages/villages/src/server/adapters/models/usage-accounting.js";
 import {
   readRuntimeDebug,
   saveRuntimeDebug,

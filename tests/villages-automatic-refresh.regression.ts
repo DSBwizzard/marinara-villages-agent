@@ -25,12 +25,16 @@ async function main() {
     backgroundWorkSummaries,
     retryBackgroundJob,
   } = await import(moduleUrl("packages/villages/src/server/jobs/background-work.ts"));
-  const { coerceVillageState, mutateVillageState, readVillageState } = await import(
+  const { coerceVillageState } = await import(
+    moduleUrl("packages/villages/src/server/domain/decoding/village-codec.ts")
+  );
+  const { mutateVillageState, readVillageState } = await import(
     moduleUrl("packages/villages/src/server/features/world/village-store.ts")
   );
   const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
-  const { reconcileVillage, projectHomeLines } = await import(
-    moduleUrl("packages/villages/src/server/features/world/village.ts")
+  const { reconcileVillage } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
+  const { projectHomeLines } = await import(
+    moduleUrl("packages/villages/src/server/domain/rules/village-projections.ts")
   );
   const { requestVillageHomeUpgrade, decideVillageHomeUpgrade } = await import(
     moduleUrl("packages/villages/src/server/features/venues/venue-requests.ts")

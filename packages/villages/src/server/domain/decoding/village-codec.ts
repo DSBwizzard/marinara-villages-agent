@@ -235,7 +235,7 @@ export function defaultVillageState(): VillageState {
     townMapView: { ...DEFAULT_TOWN_MAP_VIEW },
   };
 }
-export function coerceVillager(value: unknown, venues: readonly VillageVenue[]): VillageVillager | null {
+function coerceVillager(value: unknown, venues: readonly VillageVenue[]): VillageVillager | null {
   const raw = asRecord(value);
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
@@ -272,7 +272,7 @@ export function coerceVillager(value: unknown, venues: readonly VillageVenue[]):
     remapFailure: coerceRemapFailure(raw.remapFailure),
   };
 }
-export function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot | null {
+function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardSnapshot | null {
   const raw = asRecord(value);
   const id = asTrimmedString(raw.id);
   const revision =
@@ -302,14 +302,14 @@ export function coerceVillagerCardSnapshot(value: unknown): VillageVillagerCardS
     capturedAt,
   };
 }
-export function coerceRemapFailure(value: unknown): VillageRemapFailure | null {
+function coerceRemapFailure(value: unknown): VillageRemapFailure | null {
   const raw = asRecord(value);
   const at = asIsoString(raw.at);
   const message = boundText(raw.message, MAX_REMAP_FAILURE_LENGTH);
   if (!at || message.length === 0) return null;
   return { at, message };
 }
-export function coerceWish(value: unknown): VillageWish | null {
+function coerceWish(value: unknown): VillageWish | null {
   const raw = asRecord(value);
   const wish = boundText(raw.wish, MAX_WISH_LENGTH);
   if (wish.length === 0) return null;
@@ -350,7 +350,7 @@ export function coerceWish(value: unknown): VillageWish | null {
       : {}),
   };
 }
-export function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
+function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value.flatMap((entry): VillageCompletedWish[] => {
@@ -363,7 +363,7 @@ export function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
     return [{ wish, fulfilledAt, memoryId }];
   });
 }
-export function coerceAgenda(
+function coerceAgenda(
   value: unknown,
   venues: readonly VillageVenue[],
   name: string,
@@ -543,7 +543,7 @@ export function coerceRemap(value: unknown): VillageRemap | null {
     generatedAt: asIsoString(raw.generatedAt) ?? "",
   };
 }
-export function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove } | null {
+function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove } | null {
   const raw = asRecord(value);
   const day = boundText(raw.day, MAX_REMAP_SLOT_LENGTH);
   const time = boundText(raw.time, MAX_REMAP_SLOT_LENGTH);
@@ -564,7 +564,7 @@ export function coerceRemapMove(value: unknown): { key: string; move: VillageRem
     },
   };
 }
-export function coerceVenue(value: unknown): VillageVenue | null {
+function coerceVenue(value: unknown): VillageVenue | null {
   const raw = asRecord(value);
   const name = boundText(raw.name, MAX_VENUE_NAME_LENGTH);
   const description = boundText(raw.description, MAX_VENUE_DESCRIPTION_LENGTH);
@@ -990,7 +990,7 @@ export function coerceVenue(value: unknown): VillageVenue | null {
   });
   return venue;
 }
-export function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
+function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.flatMap((entry) => {
     const row = asRecord(entry),
@@ -1021,7 +1021,7 @@ export function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined
     ];
   });
 }
-export function coerceVenueStringList(value: unknown): string[] {
+function coerceVenueStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((entry): entry is string => typeof entry === "string")
@@ -1029,11 +1029,11 @@ export function coerceVenueStringList(value: unknown): string[] {
     .filter(Boolean)
     .slice(0, 24);
 }
-export function coerceVenueIds(value: unknown): string[] {
+function coerceVenueIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 60);
 }
-export function coerceVenueFeatures(value: unknown): VillageVenueFeature[] {
+function coerceVenueFeatures(value: unknown): VillageVenueFeature[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value
@@ -1055,7 +1055,7 @@ export function coerceVenueFeatures(value: unknown): VillageVenueFeature[] {
     })
     .slice(0, 5);
 }
-export function coerceVenueTraces(value: unknown): VillageVenueTrace[] {
+function coerceVenueTraces(value: unknown): VillageVenueTrace[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value
@@ -1079,7 +1079,7 @@ export function coerceVenueTraces(value: unknown): VillageVenueTrace[] {
     })
     .slice(0, 16);
 }
-export function coerceResidentSignature(value: unknown) {
+function coerceResidentSignature(value: unknown) {
   const raw = asRecord(value);
   const image = coerceVenueImage(raw.image),
     original = coerceVenueImage(raw.original);
@@ -1087,7 +1087,7 @@ export function coerceResidentSignature(value: unknown) {
     generatedAt = asIsoString(raw.generatedAt);
   return image && original && name && generatedAt ? { image, original, name, generatedAt } : null;
 }
-export function coerceVenueImage(value: unknown): VillageVenueImage | null {
+function coerceVenueImage(value: unknown): VillageVenueImage | null {
   const raw = asRecord(value);
   const ref = asTrimmedString(raw.ref);
   if (!isGlobalGalleryRef(ref)) return null;
@@ -1099,7 +1099,7 @@ export function coerceVenueImage(value: unknown): VillageVenueImage | null {
     id: asTrimmedString(raw.id) || ref.slice(GLOBAL_GALLERY_REF_PREFIX.length),
   };
 }
-export function coerceVenues(value: unknown): VillageVenue[] {
+function coerceVenues(value: unknown): VillageVenue[] {
   if (!Array.isArray(value)) return [];
   const venues: VillageVenue[] = [];
   const seenIds = new Set<string>();
@@ -1120,7 +1120,7 @@ export function coerceVenues(value: unknown): VillageVenue[] {
   }
   return venues;
 }
-export function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
+function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
   const raw = asRecord(value);
   const receipt = asRecord(raw.actionReceipt);
   const id = asTrimmedString(raw.id) || randomVillageSeed();
@@ -1186,14 +1186,14 @@ export function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
       : {}),
   };
 }
-export function coerceVenueEvents(value: unknown): VillageVenueEvent[] {
+function coerceVenueEvents(value: unknown): VillageVenueEvent[] {
   if (!Array.isArray(value)) return [];
   return value
     .map(coerceVenueEvent)
     .filter((entry): entry is VillageVenueEvent => entry !== null)
     .slice(0, MAX_VENUE_EVENTS);
 }
-export function coerceResidence(value: unknown): VillageResidence | null {
+function coerceResidence(value: unknown): VillageResidence | null {
   const raw = asRecord(value);
   const venueId = asTrimmedString(raw.venueId);
   const characterId = asTrimmedString(raw.characterId);
@@ -1213,7 +1213,7 @@ export function coerceResidence(value: unknown): VillageResidence | null {
     completesAt: asIsoString(raw.completesAt) ?? "",
   };
 }
-export function coerceResidences(value: unknown): VillageResidence[] {
+function coerceResidences(value: unknown): VillageResidence[] {
   if (!Array.isArray(value)) return [];
   const residences: VillageResidence[] = [];
   const seenCharacters = new Set<string>();
@@ -1225,7 +1225,7 @@ export function coerceResidences(value: unknown): VillageResidence[] {
   }
   return residences.slice(0, MAX_PLACES);
 }
-export function coerceNotice(value: unknown): VillageNotice | null {
+function coerceNotice(value: unknown): VillageNotice | null {
   if (typeof value === "string") {
     const text = boundText(value, MAX_NOTICE_LENGTH);
     return text.length > 0 ? { author: "", text } : null;
@@ -1235,14 +1235,14 @@ export function coerceNotice(value: unknown): VillageNotice | null {
   if (text.length === 0) return null;
   return { author: boundText(raw.author, MAX_NOTICE_AUTHOR_LENGTH), text };
 }
-export function coerceNotices(value: unknown): VillageNotice[] {
+function coerceNotices(value: unknown): VillageNotice[] {
   if (!Array.isArray(value)) return [];
   return value
     .map(coerceNotice)
     .filter((entry): entry is VillageNotice => entry !== null)
     .slice(0, MAX_NOTICEBOARD_NOTES);
 }
-export function legacyOccurrence(
+function legacyOccurrence(
   foundedAt: string,
   dayIndex: number,
   clock: string,
@@ -1264,7 +1264,7 @@ export function legacyOccurrence(
   );
   return { occurredAt: migrated.toISOString(), timePrecision: "phase" };
 }
-export function coerceHappening(value: unknown, foundedAt: string): VillageHappening | null {
+function coerceHappening(value: unknown, foundedAt: string): VillageHappening | null {
   const raw = asRecord(value);
   const text = boundText(raw.narration, MAX_HAPPENING_LENGTH) || boundText(raw.text, MAX_HAPPENING_LENGTH);
   if (text.length === 0) return null;
@@ -1290,14 +1290,14 @@ export function coerceHappening(value: unknown, foundedAt: string): VillageHappe
     text,
   };
 }
-export function coerceHappenings(value: unknown, foundedAt: string): VillageHappening[] {
+function coerceHappenings(value: unknown, foundedAt: string): VillageHappening[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => coerceHappening(entry, foundedAt))
     .filter((entry): entry is VillageHappening => entry !== null)
     .slice(0, MAX_HAPPENINGS);
 }
-export function coerceChronicleActor(value: unknown): VillageChronicleActor | null {
+function coerceChronicleActor(value: unknown): VillageChronicleActor | null {
   if (typeof value === "string") {
     const name = boundText(value, MAX_NOTICE_AUTHOR_LENGTH);
     return name.length > 0 ? { id: "", name } : null;
@@ -1307,7 +1307,7 @@ export function coerceChronicleActor(value: unknown): VillageChronicleActor | nu
   if (name.length === 0) return null;
   return { id: asTrimmedString(raw.id), name };
 }
-export function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronicleEntry | null {
+function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronicleEntry | null {
   const raw = asRecord(value);
   const text = boundText(raw.text, MAX_MEMORY_LENGTH);
   if (text.length === 0) return null;
@@ -1373,13 +1373,13 @@ export function coerceChronicleEntry(value: unknown, foundedAt: string): Village
     text,
   };
 }
-export function coerceChronicle(value: unknown, foundedAt: string): VillageChronicleEntry[] {
+function coerceChronicle(value: unknown, foundedAt: string): VillageChronicleEntry[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((entry) => coerceChronicleEntry(entry, foundedAt))
     .filter((entry): entry is VillageChronicleEntry => entry !== null);
 }
-export function coerceRecollections(value: unknown): VillageRecollection[] {
+function coerceRecollections(value: unknown): VillageRecollection[] {
   if (!Array.isArray(value)) return [];
   return value
     .map((value): VillageRecollection | null => {
@@ -1428,14 +1428,11 @@ export function coerceRecollections(value: unknown): VillageRecollection[] {
     })
     .filter((entry): entry is VillageRecollection => entry !== null);
 }
-export function coerceTownMapImage(value: unknown): string {
+function coerceTownMapImage(value: unknown): string {
   const image = asString(value);
   return image.length <= MAX_TOWN_MAP_IMAGE_LENGTH && isTownMapImage(image) ? image : "";
 }
-export function coerceTownMapCanvas(
-  raw: Record<string, unknown>,
-  legacyCanvas: boolean,
-): { width: number; height: number } {
+function coerceTownMapCanvas(raw: Record<string, unknown>, legacyCanvas: boolean): { width: number; height: number } {
   if (legacyCanvas) return { width: LEGACY_TOWN_MAP_WIDTH, height: LEGACY_TOWN_MAP_HEIGHT };
   const width = raw.townMapCanvasWidth;
   const height = raw.townMapCanvasHeight;
@@ -1454,7 +1451,7 @@ export function coerceTownMapCanvas(
   }
   return { width: TOWN_MAP_EXPECTED_WIDTH, height: TOWN_MAP_EXPECTED_HEIGHT };
 }
-export function coerceRefreshClocks(value: unknown): string[] {
+function coerceRefreshClocks(value: unknown): string[] {
   if (!Array.isArray(value)) return [...VILLAGE_CLOCKS];
   const wanted = new Set<string>();
   for (const entry of value) {
@@ -1465,11 +1462,11 @@ export function coerceRefreshClocks(value: unknown): string[] {
   // order the stored list happened to be in.
   return VILLAGE_CLOCKS.filter((clock) => wanted.has(clock));
 }
-export function asFocus(value: unknown): number | null {
+function asFocus(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return value >= TOWN_MAP_FOCUS_MIN && value <= TOWN_MAP_FOCUS_MAX ? value : null;
 }
-export function asZoom(value: unknown): number | null {
+function asZoom(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return value >= TOWN_MAP_ZOOM_MIN && value <= TOWN_MAP_ZOOM_MAX ? value : null;
 }
@@ -1482,9 +1479,9 @@ export function coerceTownMapView(value: unknown): VillageTownMapView {
     zoom: asZoom(raw.zoom) ?? DEFAULT_TOWN_MAP_VIEW.zoom,
   };
 }
-export const STORY_PACES: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
-export const MAX_SIMULATION_RECORDS = 256;
-export function coerceStoryPace(raw: Record<string, unknown>): VillageStoryPace {
+const STORY_PACES: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
+const MAX_SIMULATION_RECORDS = 256;
+function coerceStoryPace(raw: Record<string, unknown>): VillageStoryPace {
   if (typeof raw.storyPace === "string" && STORY_PACES.includes(raw.storyPace as VillageStoryPace)) {
     return raw.storyPace as VillageStoryPace;
   }
@@ -1492,7 +1489,7 @@ export function coerceStoryPace(raw: Record<string, unknown>): VillageStoryPace 
   if (raw.backgroundRefreshesEnabled === false || clocks.length === 0) return "off";
   return clocks.length === 1 ? "quiet" : "balanced";
 }
-export function legacySimulatedThrough(foundedAt: string, key: unknown): string {
+function legacySimulatedThrough(foundedAt: string, key: unknown): string {
   const [dayText, clock] = asTrimmedString(key).split(":");
   const dayIndex = Number(dayText);
   const window = VILLAGE_AGENDA_WINDOWS.find((entry) => entry.legacyClock === clock);
@@ -1502,7 +1499,7 @@ export function legacySimulatedThrough(foundedAt: string, key: unknown): string 
   at.setMinutes(window.endMinute);
   return at.toISOString();
 }
-export function coerceOpportunities(value: unknown): VillageOpportunity[] {
+function coerceOpportunities(value: unknown): VillageOpportunity[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {
@@ -1533,7 +1530,7 @@ export function coerceOpportunities(value: unknown): VillageOpportunity[] {
     })
     .slice(-MAX_SIMULATION_RECORDS);
 }
-export function coerceScheduledEvents(value: unknown): VillageScheduledEvent[] {
+function coerceScheduledEvents(value: unknown): VillageScheduledEvent[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {
@@ -1559,7 +1556,7 @@ export function coerceScheduledEvents(value: unknown): VillageScheduledEvent[] {
     })
     .slice(-MAX_SIMULATION_RECORDS);
 }
-export function coerceRelationships(value: unknown): VillageRelationship[] {
+function coerceRelationships(value: unknown): VillageRelationship[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {
@@ -1581,7 +1578,7 @@ export function coerceRelationships(value: unknown): VillageRelationship[] {
     })
     .slice(0, MAX_SIMULATION_RECORDS);
 }
-export function coerceProjects(value: unknown): VillageProject[] {
+function coerceProjects(value: unknown): VillageProject[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap<VillageProject>((entry) => {
     const raw = asRecord(entry);
@@ -1829,7 +1826,7 @@ export function coerceProjects(value: unknown): VillageProject[] {
     return [];
   });
 }
-export function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
+function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {
@@ -1889,7 +1886,7 @@ export function coercePendingDecisions(value: unknown): VillagePendingDecision[]
     })
     .slice(-MAX_SIMULATION_RECORDS);
 }
-export function coerceVenueMail(value: unknown): VillageVenueMail[] {
+function coerceVenueMail(value: unknown): VillageVenueMail[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {

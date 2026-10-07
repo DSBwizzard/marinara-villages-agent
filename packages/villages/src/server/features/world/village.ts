@@ -4,12 +4,6 @@ const binding = createActivationBinding<WorldCoordination>("World coordination i
 export function configureWorldCoordination(service: WorldCoordination): () => void {
   return binding.configure(bindActivationService(service));
 }
-export {
-  readPlayerIdentity,
-  projectHomeLines,
-  villagerPlaceView,
-  readVenueImageContext,
-} from "../../domain/rules/village-projections.js";
 export async function resetVillage(...args: Parameters<WorldCoordination["resetVillage"]>) {
   return binding.get().resetVillage(...args);
 }

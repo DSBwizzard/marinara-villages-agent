@@ -65,7 +65,7 @@ async function main() {
   const { buildTickMessages } = await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const { coerceRemap: readStoredRemap } =
-    await import("../packages/villages/src/server/features/world/village-store.js");
+    await import("../packages/villages/src/server/domain/decoding/village-codec.js");
 
   const schedule = (days: Record<string, any[]>, weekStart = "2026-09-07") => ({
     characterId: "character-ives",
@@ -1363,7 +1363,7 @@ async function main() {
   // refused them are the same `remap: null`, and until this existed the tab could
   // only report the first. What was needed was something that survives a restart,
   // because the failure happens on a tick nobody is watching.
-  const store = await import("../packages/villages/src/server/features/world/village-store.js");
+  const store = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const refusals = store.coerceVillageState({
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",

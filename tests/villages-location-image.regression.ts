@@ -103,7 +103,8 @@ async function main() {
     MAX_SETTING_LENGTH,
     VILLAGES_GALLERY_FOLDER_NAME,
   } = await import(moduleUrl(`${services}/domain/rules/prompt-preset.ts`));
-  const { coerceVillageState, readVillageState, mutateVillageState } = await import(
+  const { coerceVillageState } = await import(moduleUrl(`${services}/domain/decoding/village-codec.ts`));
+  const { readVillageState, mutateVillageState } = await import(
     moduleUrl(`${services}/features/world/village-store.ts`)
   );
   const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/adapters/engine/engine-loopback.ts`));

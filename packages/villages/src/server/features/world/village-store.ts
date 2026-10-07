@@ -1,15 +1,7 @@
 import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { VillageStateService } from "./village-state-service.js";
 
-export { type DocumentSlot, mutateDocument } from "../../adapters/storage/document-store.js";
-export {
-  defaultVillageState,
-  coerceRemap,
-  coerceTownMapView,
-  coerceVillageState,
-} from "../../domain/decoding/village-codec.js";
-
-// Transitional route dispatch; the factory owns state coordination, not this binding.
+// World state commands delegate to the activation's owned service.
 const stateBinding = createActivationBinding<VillageStateService>("Villages state service is not configured.");
 export function configureVillageStateService(service: VillageStateService): () => void {
   return stateBinding.configure(bindActivationService(service));

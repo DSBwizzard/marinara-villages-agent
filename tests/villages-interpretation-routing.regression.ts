@@ -102,7 +102,7 @@ console.log("Conservative narration routing: irrelevant skipped; ambiguous, witn
 
 async function integration() {
   const { configureVillagesRuntime } = await import("../packages/villages/src/server/entry/runtime.js");
-  const { defaultVillageState } = await import("../packages/villages/src/server/features/world/village-store.js");
+  const { defaultVillageState } = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const { interpretProjectDraft } = await import("../packages/villages/src/server/features/projects/project-checks.js");
   const records = new Map<string, any>();
   let calls = 0;
