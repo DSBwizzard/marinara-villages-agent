@@ -148,6 +148,56 @@ async function independentFactories() {
   }
 }
 
+async function restartedServiceCleanup() {
+  const f = fixture("restarted-image");
+  const service = createTownMapGeneration(f.ports);
+  const oldStop = service.startTownMapGeneration();
+  oldStop();
+  const currentStop = service.startTownMapGeneration();
+  try {
+    const paused = f.pauseRead();
+    const pending = service.requestTownMapGeneration(attempt());
+    await paused.entered.promise;
+    oldStop();
+    paused.resume.resolve();
+    const request = await pending;
+    oldStop();
+    assert.equal(
+      (await service.readTownMapGeneration(request.id)).status,
+      "running",
+      "stale cleanup cannot interrupt current admission or provider work",
+    );
+    assert.equal(f.generated.length, 1);
+    f.gate.resolve();
+    const complete = await untilComplete(() => service.readTownMapGeneration(request.id));
+    assert.equal(complete.status, "complete");
+    assert.equal(complete.result?.image, "restarted-image");
+    currentStop();
+    currentStop();
+    await assert.rejects(service.requestTownMapGeneration(attempt("after-current-stop")), /restarting/);
+    assert.equal(f.generated.length, 1, "current stop still closes admission without another provider call");
+    const laterStop = service.startTownMapGeneration();
+    try {
+      oldStop();
+      currentStop();
+      assert.equal(
+        (await service.readTownMapGeneration(request.id)).status,
+        "complete",
+        "restart retains saved results",
+      );
+      const later = await service.requestTownMapGeneration(attempt("later-restart-attempt"));
+      assert.equal((await untilComplete(() => service.readTownMapGeneration(later.id))).status, "complete");
+      assert.equal(f.generated.length, 2, "only deliberate new admission dispatches");
+    } finally {
+      laterStop();
+    }
+  } finally {
+    f.gate.resolve();
+    oldStop();
+    currentStop();
+  }
+}
+
 async function scopedDispatch() {
   const a = fixture("scoped-image-A"),
     b = fixture("scoped-image-B");
@@ -200,6 +250,7 @@ async function scopedDispatch() {
 }
 async function main() {
   await independentFactories();
+  await restartedServiceCleanup();
   await scopedDispatch();
   console.log(
     "Town-map owners passed: independent queues/stores/receipts, scoped late continuations, replacement cleanup and no automatic provider retries (synthetic ports).",

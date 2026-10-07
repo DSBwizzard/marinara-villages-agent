@@ -46,11 +46,12 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
   let lifecycle = 0;
   let enabled = false;
   function startTownMapGeneration(): () => void {
-    lifecycle++;
+    const token = ++lifecycle;
     enabled = true;
     activeId = "";
     admission = Promise.resolve();
     return () => {
+      if (token !== lifecycle) return;
       lifecycle++;
       enabled = false;
       activeId = "";
