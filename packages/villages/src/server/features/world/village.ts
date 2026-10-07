@@ -3,7 +3,6 @@ import type { Handler } from "../../domain/models/background-model.js";
 import {
   findPlayerPersona,
   findVillagerCard,
-  listPlayerPersonas,
   listVillagerCards,
   readEffectiveVillagerCard,
   toCatalogEntry,
@@ -24,8 +23,6 @@ import type {
   VillageChronicleEntryView,
   VillageOpportunity,
   VillagePendingDecision,
-  VillagePersonaEntry,
-  VillagePersonaPreview,
   VillageResidence,
   VillageSnapshot,
   VillageState,
@@ -171,7 +168,7 @@ import {
   validateVillageSetupConnections,
   villagesConnectionIdFor,
 } from "../settings/connections.js";
-import { readLinkedPersona } from "../settings/persona-service.js";
+import { readLinkedPersona } from "../settings/personas.js";
 import { queueSharedMoveConsent, queueVenueCounteroffer, respondDueVenueMail } from "../venues/venue-mailbox.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
@@ -182,7 +179,6 @@ export {
   villagerPlaceView,
   readVenueImageContext,
 } from "../../domain/rules/village-projections.js";
-export { readLinkedPersona } from "../settings/persona-service.js";
 
 /**
  * Who the player is, as the prompt layer is told it.
@@ -246,42 +242,6 @@ export async function buildVillageCatalog(): Promise<VillageCatalogEntry[]> {
   const [village, cards] = await Promise.all([readVillageState(), listVillagerCards()]);
   const resident = new Set(village.villagers.map((villager) => villager.characterId));
   return cards.map((card) => toCatalogEntry(card, resident.has(card.id)));
-}
-
-/**
- * Every Persona the player could be, for the picker.
- *
- * Narrowed to what a chooser needs: the full identity text is what a villager
- * is told, and sending a library's worth of it down to fill a card strip would
- * be paying for prose nobody reads on the way.
- */
-export async function buildVillagePersonaCatalog(): Promise<VillagePersonaEntry[]> {
-  const personas = await listPlayerPersonas();
-  return personas.map((persona) => ({
-    id: persona.id,
-    name: persona.name,
-    summary: persona.summary,
-    isActive: persona.isActive,
-    avatarPath: persona.avatarPath,
-    avatarCrop: persona.avatarCrop,
-  }));
-}
-
-/** Read only the chosen Persona's authored fields for the Founding preview. */
-export async function readVillagePersonaPreview(personaId: string): Promise<VillagePersonaPreview | null> {
-  const persona = await findPlayerPersona(personaId);
-  // Some Engine readers return the first library record for an unknown id.
-  if (!persona || persona.id !== personaId) return null;
-  return {
-    id: persona.id,
-    name: persona.name,
-    description: persona.description,
-    appearance: persona.appearance,
-    personality: persona.personality,
-    backstory: persona.backstory,
-    avatarPath: persona.avatarPath,
-    avatarCrop: persona.avatarCrop,
-  };
 }
 
 /**

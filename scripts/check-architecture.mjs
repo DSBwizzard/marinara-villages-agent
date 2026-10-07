@@ -15,6 +15,7 @@ async function sourceFiles(root) {
   return files;
 }
 const canonical = (path) => resolve(path).replaceAll("\\", "/");
+const featureOwner = (path) => /^server\/features\/([^/]+)\//.exec(path)?.[1];
 
 function imports(source) {
   const found = [];
@@ -62,6 +63,17 @@ export async function analyzeArchitecture({ sourceRoot, compilerOptions = {} }) 
         continue;
       }
       const destination = label(to);
+      // Feature factories are assembled at entry or used inside their owner.
+      // Public feature bindings carry collaboration contracts instead.
+      if (
+        featureOwner(destination) &&
+        /-service\.(?:ts|tsx|js|mjs)$/.test(destination) &&
+        !from.startsWith("server/entry/") &&
+        featureOwner(from) !== featureOwner(destination)
+      )
+        failures.push(
+          `${from}: private service implementation ${destination} must be connected by entry or its owning feature`,
+        );
       if (from.startsWith("client/") && destination.startsWith("server/"))
         failures.push(`${from}: client cannot import server-owned code or records`);
       if (from.startsWith("server/") && destination.startsWith("client/"))

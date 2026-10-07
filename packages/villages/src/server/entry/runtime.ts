@@ -101,7 +101,9 @@ import { configureInterpretationDiagnostics } from "../features/generation/inter
 import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
 import { systemInterpretations } from "../features/generation/system-interpretation.js";
 import { villagesConnectionIdFor } from "../features/settings/connections.js";
-import { readLinkedPersona } from "../features/settings/persona-service.js";
+import { createPersonaQueries } from "../features/settings/persona-service.js";
+import { configurePersonaQueries, readLinkedPersona } from "../features/settings/personas.js";
+import { findPlayerPersona, listPlayerPersonas } from "../adapters/engine/catalog.js";
 import { createVillageSettings } from "../features/settings/village-settings-service.js";
 import { configureVillageSettings } from "../features/settings/village-settings.js";
 import { runVillageBootstrap } from "../features/world/village.js";
@@ -127,6 +129,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const backendWork = backendWorkFor(backendIdentity ?? next.persistence?.documents);
   const releaseMetrics = configureMetricsContext(createMetricsContext());
   const release = configureRuntimeHost(next);
+  const releasePersonas = configurePersonaQueries(createPersonaQueries({ findPlayerPersona, listPlayerPersonas }));
   const releaseNativeSchedules = configureNativeSchedules(createNativeSchedules({ villagesResources, villagesLogger }));
   const releaseGallery = configureGlobalGallery(createGlobalGallery({ villageEngineJson, villageEngineForm }));
   const background = createBackgroundContext();
@@ -305,6 +308,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseBackgroundContext();
     releaseGallery();
     releaseNativeSchedules();
+    releasePersonas();
     release();
     releaseMetrics();
   };

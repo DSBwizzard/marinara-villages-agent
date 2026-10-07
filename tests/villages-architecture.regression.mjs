@@ -5,16 +5,55 @@ import { dirname, join } from "node:path";
 import { analyzeArchitecture } from "../scripts/check-architecture.mjs";
 
 const root = await mkdtemp(join(tmpdir(), "villages-boundaries-"));
-async function fixture(name, files) {
+async function fixture(name, files, compilerOptions = {}) {
   const sourceRoot = join(root, name);
   for (const [file, source] of Object.entries(files)) {
     const target = join(sourceRoot, file);
     await mkdir(dirname(target), { recursive: true });
     await writeFile(target, source);
   }
-  return analyzeArchitecture({ sourceRoot });
+  return analyzeArchitecture({ sourceRoot, compilerOptions });
 }
 try {
+  const privateServices = await fixture("private-services", {
+    "server/features/media/sprite-manager-service.ts":
+      "export const createSprites = () => ({}); export type Sprites = {};",
+    "server/features/world/value.ts":
+      'import { createSprites } from "../media/sprite-manager-service.js"; export const sprites = createSprites;',
+    "server/features/world/types.ts":
+      'import type { Sprites } from "../media/sprite-manager-service.js"; export type Leak = Sprites;',
+    "server/features/world/reexport.ts": 'export * from "../media/sprite-manager-service.js";',
+    "server/features/world/delayed.ts": 'export const later = () => import("../media/sprite-manager-service.js");',
+  });
+  for (const source of ["value", "types", "reexport", "delayed"])
+    assert(
+      privateServices.failures.some((message) =>
+        message.includes(`world/${source}.ts: private service implementation`),
+      ),
+    );
+  const publicServices = await fixture("public-services", {
+    "server/features/media/sprite-manager-service.ts":
+      "export const createSprites = () => ({}); export type Sprites = {};",
+    "server/features/media/sprite-manager.ts":
+      'import type { Sprites } from "./sprite-manager-service.js"; export type SpriteCommands = Sprites; export const sprites = () => ({});',
+    "server/features/world/commands.ts":
+      'import { sprites, type SpriteCommands } from "../media/sprite-manager.js"; export const query = sprites; export type Commands = SpriteCommands;',
+    "server/entry/runtime.ts":
+      'import { createSprites } from "../features/media/sprite-manager-service.js"; export const assembly = createSprites;',
+  });
+  assert.deepEqual(publicServices.failures, [], "public contracts, owning feature and entry assembly remain valid");
+  const serviceAlias = await fixture(
+    "private-service-alias",
+    {
+      "server/features/media/sprite-manager-service.ts": "export type Sprites = {};",
+      "server/features/world/consumer.ts": 'export type Leak = import("@private/sprite-manager-service").Sprites;',
+    },
+    { baseUrl: join(root, "private-service-alias"), paths: { "@private/*": ["server/features/media/*"] } },
+  );
+  assert(
+    serviceAlias.failures.some((message) => message.includes("private service implementation")),
+    "aliases and import types cannot bypass private factories",
+  );
   const privateWorld = await fixture("private-world", {
     "client/screen.ts": 'import type { SavedWorld } from "../server/domain/world.js"; export type Leak = SavedWorld;',
     "server/domain/world.ts": "export type SavedWorld = { unseenResidents: string[] };",

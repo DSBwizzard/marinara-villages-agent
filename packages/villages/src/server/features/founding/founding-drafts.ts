@@ -24,7 +24,7 @@ import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/ve
 import { completeWithRoom } from "../generation/model-requests.js";
 import { generateVillageImage } from "../media/image-generation.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
-import { readLinkedPersona } from "../settings/persona-service.js";
+import { readLinkedPersona } from "../settings/personas.js";
 import type { FoundingProgress } from "./founding-progress.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
