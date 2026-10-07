@@ -2306,7 +2306,7 @@ type VenueTurnInput = {
 };
 
 function matchesSavedTurnMode(turn: VenueSubmission, mode: VenueTurnInput["mode"]) {
-  return (turn.requestMode ?? turn.mode) === mode || (!turn.requestMode && turn.mode === "chat" && mode === "fulfill");
+  return (turn.requestMode ?? turn.mode) === mode;
 }
 
 export async function sendVenueTurn(input: VenueTurnInput) {
@@ -2319,9 +2319,7 @@ export async function sendVenueTurn(input: VenueTurnInput) {
     mode: input.mode,
     targetId: input.targetId,
     ...(input.contact ? { contact: input.contact } : {}),
-    ...((scene.operation?.id === input.submissionId ? scene.operation.input.interactionScopeVersion : 1) === 1
-      ? { interactionScopeVersion: 1 }
-      : {}),
+    interactionScopeVersion: 1,
   };
   if (prior && JSON.stringify(prior.contact ?? null) !== JSON.stringify(input.contact ?? null))
     throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different contact attempt.");

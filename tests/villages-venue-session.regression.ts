@@ -108,6 +108,9 @@ const key = (packageId: string, id: string) => `${packageId}:${id}`;
 const relationshipDecisions = false;
 const failRelationshipStorage = false;
 const failMemoryStorageForVisit = "";
+let documentWriteCalls = 0,
+  providerCalls = 0,
+  providerResolves = 0;
 const documents = {
   async getById(packageId: string, id: string) {
     return records.get(key(packageId, id)) ?? null;
@@ -116,6 +119,7 @@ const documents = {
     return [...records.values()].filter((row) => row.packageId === packageId && row.kind === kind);
   },
   async create(input: any) {
+    documentWriteCalls++;
     if (failRelationshipStorage && input.id.startsWith("villages-relationships-"))
       throw new Error("relationship storage unavailable");
     const id = key(input.packageId, input.id);
@@ -129,6 +133,7 @@ const documents = {
     return row;
   },
   async update(input: any) {
+    documentWriteCalls++;
     if (
       input.id === "villages-village" &&
       failEffectWriteFor &&
@@ -159,6 +164,7 @@ const documents = {
     return row;
   },
   async remove(packageId: string, id: string, expectedRevision: number) {
+    documentWriteCalls++;
     const stored = key(packageId, id);
     if (records.get(stored)?.revision !== expectedRevision) return false;
     return records.delete(stored);
@@ -275,6 +281,7 @@ const release = configureVillagesRuntime({
   },
   languageModels: {
     async resolveForRequest() {
+      providerResolves++;
       return {
         model: "fixture",
         maxOutputTokens: 4096,
@@ -287,6 +294,7 @@ const release = configureVillagesRuntime({
           };
         },
         async chatComplete(messages: any[], options: any) {
+          providerCalls++;
           if (
             String(messages[0]?.content).includes("Response format and evidence metadata") ||
             String(messages[0]?.content).startsWith("Interpret the meaning of witnessed Scene evidence")
@@ -2483,125 +2491,93 @@ async function main() {
       );
     }
     sceneActionFixture = null;
-    const oldAt = new Date(Date.now() - 300).toISOString();
-    const oldAction = { happened: true, narration: "The player set down an old jug.", addItem: "old jug" };
-    await stock("old jug");
-    await mutateVillageState((state) => {
-      state.venueEvents.unshift({
-        id: "venue-action:legacy-pending",
-        venueId: "park",
-        venueName: "The Park",
-        zoneId: chatRepair.session.zoneId,
-        text: oldAction.narration,
-        at: oldAt,
-        actionReceipt: { ...oldAction, submissionId: "legacy-pending", witnessIds: ["bob", "tina"] },
+    await settleBackgroundWork();
+    const fixtureKey = key("villages", `villages-venue-visit-${group.id}`);
+    const originalRecords = structuredClone([...records]);
+    const currentRecord = structuredClone(records.get(fixtureKey)!);
+    try {
+      const bareChat = structuredClone(currentRecord);
+      bareChat.data.submissions.push({
+        ...structuredClone(bareChat.data.submissions.at(-1)),
+        id: "bare-chat",
+        message: "Saved bare Chat",
+        mode: "chat",
+        requestMode: undefined,
+        targetId: "",
       });
-      state.venueEvents.unshift({
-        id: `venue-chat:${group.id}:legacy-settled-chat`,
-        venueId: "park",
-        venueName: "The Park",
-        zoneId: chatRepair.session.zoneId,
-        text: "Old saved result",
-        at: oldAt,
+      records.set(fixtureKey, bareChat);
+      const beforeChat = structuredClone([...records]);
+      const beforeChatCalls = [documentWriteCalls, providerCalls, providerResolves];
+      await assert.rejects(
+        sendVenueTurnRaw({
+          sessionId: group.id,
+          message: "Saved bare Chat",
+          mode: "fulfill",
+          targetId: "",
+          submissionId: "bare-chat",
+        }),
+        (error: any) => error.code === "SUBMISSION_MISMATCH",
+      );
+      assert.deepEqual([...records], beforeChat);
+      assert.deepEqual(
+        [documentWriteCalls, providerCalls, providerResolves],
+        beforeChatCalls,
+        "bare Chat cannot become Fulfill through recovery",
+      );
+
+      const unversioned = structuredClone(currentRecord);
+      const oldAction = { happened: true, narration: "The player set down an old jug.", addItem: "old jug" };
+      unversioned.data.submissions.push({
+        ...structuredClone(unversioned.data.submissions.at(-1)),
+        id: "old-admission",
+        message: "Saved old action",
+        mode: "act",
+        requestMode: undefined,
+        targetId: "",
+        action: oldAction,
+        actionReplyDone: false,
       });
-    });
-    const legacyScene = records.get(key("villages", `villages-venue-visit-${group.id}`))!.data;
-    legacyScene.lines.push({
-      id: "legacy-player",
-      role: "user",
-      speakerId: "",
-      name: "",
-      content: "Saved legacy action",
-      at: oldAt,
-      heardBy: ["bob", "tina"],
-      zoneId: legacyScene.zoneId,
-    });
-    legacyScene.submissions.push({
-      id: "legacy-pending",
-      message: "Saved legacy action",
-      mode: "act",
-      targetId: "",
-      verdict: null,
-      wishId: "",
-      wishMemory: "",
-      action: oldAction,
-      actionReplyDone: false,
-      at: oldAt,
-      activeIdsAtTurn: ["bob", "tina"],
-      zoneIdAtTurn: legacyScene.zoneId,
-    });
-    legacyScene.submissions.push({
-      id: "legacy-settled-chat",
-      message: "Old saved chat",
-      mode: "chat",
-      targetId: "",
-      verdict: null,
-      wishId: "",
-      wishMemory: "",
-      at: oldAt,
-      sceneChange: { narration: "Old saved result", addItem: "old jug" },
-      zoneIdAtTurn: legacyScene.zoneId,
-    });
-    legacyScene.submissions.push({
-      ...structuredClone(legacyScene.submissions.at(-1)),
-      id: "legacy-settled-fulfill",
-      message: "Old saved Fulfill",
-      sceneChange: undefined,
-    });
-    legacyScene.operation = {
-      ...legacyScene.operation,
-      id: "legacy-pending",
-      kind: "turn",
-      status: "interrupted",
-      attemptId: "legacy-pending-attempt",
-      checkpoints: {},
-      attempts: {},
-      input: { message: "Saved legacy action", mode: "act", targetId: "" },
-      snapshot: structuredClone({ ...legacyScene, operation: undefined }),
-    };
-    const beforeLegacyRecovery = venueReplyCalls;
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "Saved legacy action",
-      mode: "act",
-      targetId: "",
-      submissionId: "legacy-pending",
-    });
-    assert.equal(
-      venueReplyCalls - beforeLegacyRecovery,
-      1,
-      "unfinished legacy reaction uses its saved physical outcome",
-    );
-    assert.equal((await activeVenueSession())!.submissions.find((turn) => turn.id === "legacy-pending")!.mode, "act");
-    const beforeSettledReplay = calls;
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "Saved legacy action",
-      mode: "act",
-      targetId: "",
-      submissionId: "legacy-pending",
-    });
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "Old saved chat",
-      mode: "chat",
-      targetId: "",
-      submissionId: "legacy-settled-chat",
-    });
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "Old saved Fulfill",
-      mode: "fulfill",
-      targetId: "",
-      submissionId: "legacy-settled-fulfill",
-    });
-    assert.equal(calls, beforeSettledReplay);
-    assert.equal(
-      (await readVillageState()).venueEvents.find((event) => event.id === `venue-chat:${group.id}:legacy-settled-chat`)!
-        .actionReceipt,
-      undefined,
-      "settled Chat history is not converted to new physical proof",
-    );
+      unversioned.data.operation = {
+        ...unversioned.data.operation,
+        id: "old-admission",
+        kind: "turn",
+        status: "interrupted",
+        attemptId: "old-admission-attempt",
+        checkpoints: {},
+        attempts: {},
+        input: { message: "Saved old action", mode: "act", targetId: "" },
+        snapshot: structuredClone({ ...unversioned.data, operation: undefined }),
+      };
+      records.set(fixtureKey, unversioned);
+      const beforeOld = structuredClone([...records]);
+      const beforeOldCalls = [documentWriteCalls, providerCalls, providerResolves];
+      for (const retryOfAttemptId of [undefined, "old-admission-attempt"]) {
+        await assert.rejects(
+          sendVenueTurnRaw({
+            sessionId: group.id,
+            message: "Saved old action",
+            mode: "act",
+            targetId: "",
+            submissionId: "old-admission",
+            retryOfAttemptId,
+          }),
+          (error: any) => error.code === "SUBMISSION_MISMATCH",
+        );
+        assert.deepEqual(
+          [...records],
+          beforeOld,
+          "unversioned admission rejection must retain all document bytes and revisions",
+        );
+        assert.deepEqual(
+          [documentWriteCalls, providerCalls, providerResolves],
+          beforeOldCalls,
+          "old admission cannot write or request any provider, including interpretation",
+        );
+      }
+    } finally {
+      records.clear();
+      for (const [id, record] of originalRecords) records.set(id, record);
+    }
     await sendVenueTurn({
       sessionId: group.id,
       message: "I moved the tables",
