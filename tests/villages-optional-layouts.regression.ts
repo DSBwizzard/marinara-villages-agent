@@ -11,7 +11,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import { removeVillager } from "../packages/villages/src/server/features/world/village.js";
+import { removeVillager } from "../packages/villages/src/server/features/residents/resident-roster.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";

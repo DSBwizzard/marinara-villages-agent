@@ -1,3 +1,5 @@
+import { createResidentRoster } from "../features/residents/resident-roster-service.js";
+import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidences } from "../features/venues/residence-service.js";
 import { configureResidences } from "../features/venues/residences.js";
 import { queueSharedMoveConsent } from "../features/venues/venue-mailbox.js";
@@ -103,7 +105,7 @@ import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
 import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
 import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
-import { configureBackgroundWork, queueBackgroundJob } from "../jobs/background-work.js";
+import { configureBackgroundWork, queueBackgroundJob, retireBackgroundResident } from "../jobs/background-work.js";
 import { createBackgroundWork } from "../jobs/background-service.js";
 import { configurePrivateSpacePreparation } from "../jobs/private-space-preparation.js";
 import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
@@ -248,6 +250,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       toCatalogEntry,
     }),
   );
+  const releaseResidentRoster = configureResidentRoster(
+    createResidentRoster({
+      readVillageState,
+      mutateVillageState,
+      findVillagerCard,
+      queueVillagerAgenda,
+      retireBackgroundResident,
+    }),
+  );
   const releaseSprites = configureSpriteManager(
     createSpriteManager({
       readVillageState,
@@ -360,6 +371,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSettings();
     releaseSignatures();
     releaseSprites();
+    releaseResidentRoster();
     releaseResidentCards();
     releasePersonaCache();
     releaseResidences();

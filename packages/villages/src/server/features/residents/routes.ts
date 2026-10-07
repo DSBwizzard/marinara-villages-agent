@@ -8,7 +8,7 @@ import { previewVillagerRefresh, applyVillagerRefresh } from "./resident-cards.j
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { addVillager, removeVillager } from "../world/village.js";
+import { addVillager, removeVillager } from "./resident-roster.js";
 import { changeRelationshipCreator, readRelationshipsView } from "./relationships.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
 import { readWishHistoryPage } from "./wishes/wish-archive.js";
