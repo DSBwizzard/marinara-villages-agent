@@ -31,3 +31,11 @@ This extraction preserves existing function bodies, request contracts, Scene rec
 Direct Zone editing, resident-controlled edit proposals and witnessed approval application live together in `zone-edit-service.ts`, with their own read/mutation, snapshot and private Scene query ports. The Scene coordinator consumes this service; its approval/evidence ordering remains unchanged. Invitation checks, proposal baselines, controller approval, stale-edit rejection and image preservation stay inside their original mutation callbacks. The private access-context rule accepts only the Scene fields it consumes.
 
 The route dispatch bindings are transitional. Runtime/queue ownership across overlapping activations remains open. Residence moves/adaptation, venue requests/projects, founding and resident agendas are separate remaining services; these extractions do not mark the architecture milestone complete.
+
+## Village storage and state ownership
+
+`adapters/storage/village-repository.ts` owns the raw Village document identifier, decoding, encoding and compare-and-swap operations. Its lazy document connection is captured once per operation, including retries. The generic document mutator retains its existing retry, create-race and ownership-check ordering.
+
+`features/world/village-state-service.ts` owns relationship hydration, social-outbox reconciliation and relationship persistence after the Village write. Its constructor receives a raw repository and relationship ports. Raw reads remain separate from hydrated snapshots; hydrated reads retain the existing outbox refresh and object identity. Mutation retries hydrate from each attempt's relationship seed, and relationship persistence errors still surface after the Village write rather than rolling it back.
+
+Provider-free tests cover these ordering and failure boundaries, including interleaved document connections and retries. The active legacy Scene-link scan remains in its storage adapter for spin-off access checks; obsolete Scene-link writers were removed after checking consumers. No saved documents or stored identifiers were removed or changed. The remaining generic/codec exports and runtime dispatch binding are temporary compatibility paths, pending consumer and activation ownership work.

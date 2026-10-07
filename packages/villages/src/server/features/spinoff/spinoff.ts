@@ -28,7 +28,8 @@ import {
   type VillagePromptContext,
 } from "../scenes/chat.js";
 import { builtInNarrationTurn } from "../settings/narration-settings.js";
-import { listVillageScenes, readVillageState } from "../world/village-store.js";
+import { readVillageState } from "../world/village-store.js";
+import { listVillageScenes } from "../../adapters/storage/legacy-scene-links.js";
 import { spinOffMessageId, writeSpinOffSnapshot } from "./spinoff-snapshot.js";
 
 // Villages — the spin-off lane: one villager, in a chat the Engine owns, one way.
