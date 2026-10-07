@@ -163,6 +163,7 @@ async function productionHandlers() {
     const paused = a.engine.inject({ url: "/api/villages/interpretation-settings" });
     await entered.promise;
     b = await activate("application-B", true);
+    assert.equal(requireHost(), b.runtime, "direct helpers select the latest successful activation");
     const responseB = await b.engine.inject({ url: "/api/villages/interpretation-settings" });
     assert.equal(responseB.statusCode, 200);
     assert.equal(responseB.json().settings.compareSystem, true);
@@ -174,6 +175,22 @@ async function productionHandlers() {
       false,
       "actual late handler retains its original document store",
     );
+    const failedSetup = new Error("synthetic route admission failed");
+    let failedOwner: ReturnType<typeof activationScope>;
+    await assert.rejects(
+      startVillagesApplication({
+        api: {
+          runtime: fixture("failed-replacement", false).runtime,
+          async registerPrivilegedRoutes() {
+            failedOwner = activationScope();
+            throw failedSetup;
+          },
+        },
+      }),
+      (error) => error === failedSetup,
+    );
+    assert.equal(failedOwner?.active, false);
+    assert.equal(requireHost(), b.runtime, "failed production setup never replaces the successful default");
     const beforeA = a.reads.length,
       beforeB = b.reads.length;
     await a.application.selfCheck();
@@ -186,6 +203,7 @@ async function productionHandlers() {
     assert.equal(a.application.stop(), stopped, "disposed owner preserves repeated stop identity");
     assert.equal(a.owner.active, false);
     assert.equal(b.owner.active, true);
+    assert.equal(requireHost(), b.runtime, "old production cleanup cannot clear the new default");
     await assert.rejects(a.application.selfCheck(), /state service is not configured/);
     await b.application.selfCheck();
     const stillB = await b.engine.inject({ url: "/api/villages/interpretation-settings" });

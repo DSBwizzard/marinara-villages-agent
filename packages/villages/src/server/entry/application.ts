@@ -2,6 +2,7 @@ import { configureDecisionsAdapter } from "../adapters/engine/decisions-adapter.
 import {
   bindActivationService,
   createActivationScope,
+  installDefaultActivation,
   type ActivationScope,
 } from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
@@ -84,6 +85,7 @@ async function assembleApplication(
   scope?: ActivationScope,
 ) {
   const cleanups: Cleanup[] = [];
+  const defaultRegistration: { clear?: () => void } = {};
   let stopping: Promise<void> | undefined;
   const unwind = () => {
     // Memoize before calling any disposer, including a synchronous one.
@@ -100,6 +102,7 @@ async function assembleApplication(
         }
       } finally {
         scope?.dispose();
+        defaultRegistration.clear?.();
       }
       if (failures.length) throw new AggregateError(failures, "Villages cleanup failed");
     });
@@ -139,5 +142,9 @@ async function assembleApplication(
       await services.readVillageState();
     },
   };
-  return scope ? bindActivationService(application) : application;
+  if (!scope) return application;
+  // Supported direct helpers select the latest successful assembly. Explicit
+  // production owners coexist; replacing this pointer does not stop an owner.
+  defaultRegistration.clear = installDefaultActivation(scope, () => {});
+  return bindActivationService(application);
 }
