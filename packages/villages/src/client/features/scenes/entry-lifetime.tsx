@@ -105,10 +105,14 @@ export function useSceneEntryLifetime(ports: {
   }, [lifetime]);
   return useMemo(
     () => ({
+      isCurrent: () => active.current && !selection.unfounded && selected.current === selection,
       begin: (zoneOnly = false) => lifetime.begin(selection, zoneOnly),
       owns: lifetime.owns,
       handoff: lifetime.handoff,
       finish: lifetime.finish,
+      cancel: (claim: EntryClaim) => {
+        if (pending.current === claim) lifetime.retire();
+      },
     }),
     [lifetime, selection],
   );

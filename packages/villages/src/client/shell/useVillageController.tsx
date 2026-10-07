@@ -1247,6 +1247,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // An app reload does not end a Scene. The server owns the one active
   // session; the client restores it instead of opening another conversation.
   useActiveSceneRestoration({
+    isFounded: snapshot?.isFounded,
+    room,
+    roomEnded,
+    roomCompletionRef,
+    roomSendInFlightRef,
     setDebugDiscardEnabled,
     setRoom,
     setRoomBusy,

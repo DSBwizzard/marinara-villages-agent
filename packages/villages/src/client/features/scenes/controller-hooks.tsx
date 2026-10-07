@@ -13,6 +13,7 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { isLocalRoomCompletion } from "./villages-room-reading";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import { useEffect } from "react";
 
 export function useSceneChangesPolling(ports: {
@@ -333,6 +334,11 @@ export function useSceneInterruptedSubmission(ports: {
 }
 
 export function useActiveSceneRestoration(ports: {
+  isFounded: boolean | undefined;
+  room: SceneView;
+  roomEnded: boolean;
+  roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
+  roomSendInFlightRef: React.RefObject<boolean>;
   setDebugDiscardEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
   setRoomBusy: React.Dispatch<React.SetStateAction<boolean>>;
@@ -343,38 +349,69 @@ export function useActiveSceneRestoration(ports: {
     React.SetStateAction<"home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
   >;
 }) {
-  const { setDebugDiscardEnabled, setRoom, setRoomBusy, setRoomGreetingError, setRoomMode, setRoomOpen, setScreen } =
-    ports;
+  const {
+    isFounded,
+    room,
+    roomEnded,
+    roomCompletionRef,
+    roomSendInFlightRef,
+    setDebugDiscardEnabled,
+    setRoom,
+    setRoomBusy,
+    setRoomGreetingError,
+    setRoomMode,
+    setRoomOpen,
+    setScreen,
+  } = ports;
+  const lifetime = useSceneEntryLifetime({
+    room,
+    isFounded,
+    ended: roomEnded,
+    inFlight: roomSendInFlightRef,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+  });
   useEffect(() => {
     const controller = new AbortController();
+    let claim: ReturnType<typeof lifetime.begin> = null;
     void request<{ session: SceneView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
       signal: controller.signal,
     })
-      .then(({ session, debugDiscardEnabled: debugEnabled }) => {
+      .then(async ({ session, debugDiscardEnabled: debugEnabled }) => {
+        if (controller.signal.aborted || !lifetime.isCurrent()) return;
         setDebugDiscardEnabled(debugEnabled);
-        if (controller.signal.aborted || !session) return;
-        setRoom(currentRoom(session));
-        setRoomMode("chat");
-        setRoomOpen(true);
-        setScreen("room");
-        if (session.status === "opening") {
-          setRoomBusy(true);
-          void request<{ session: SceneView }>("/rooms/greet", {
-            method: "POST",
-            body: JSON.stringify({ sessionId: session.id }),
-            signal: AbortSignal.timeout(30_000),
-          })
-            .then(({ session: greeted }) => {
-              if (!controller.signal.aborted) {
-                setRoom((current) => (current?.id === session.id ? currentRoom(greeted) : current));
-                setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
-              }
-            })
-            .catch(async (cause) => {
-              if (controller.signal.aborted) return;
-              const recovered = await completedGreetingAfterFailure(session.id);
-              if (controller.signal.aborted) return;
+        if (!session) return;
+        const owned = lifetime.begin();
+        if (!owned) return;
+        claim = owned;
+        const owns = () => !controller.signal.aborted && lifetime.owns(owned);
+        try {
+          const restored = currentRoom(session);
+          if (!lifetime.handoff(owned, restored, roomEnded)) return;
+          setRoom(restored);
+          setRoomMode("chat");
+          setRoomOpen(true);
+          setScreen("room");
+          if (session.status === "opening") {
+            owned.busy = true;
+            setRoomBusy(true);
+            try {
+              const { session: greeted } = await request<{ session: SceneView }>("/rooms/greet", {
+                method: "POST",
+                body: JSON.stringify({ sessionId: session.id }),
+                signal: AbortSignal.timeout(30_000),
+              });
+              if (!owns()) return;
+              const next = currentRoom(greeted);
+              if (!lifetime.handoff(owned, next, roomEnded)) return;
+              setRoom((current) => (current?.id === session.id ? next : current));
+              setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
+            } catch (cause) {
+              if (!owns()) return;
+              const recovered = await completedGreetingAfterFailure(session.id, owns);
+              if (!owns()) return;
               if (recovered) {
+                if (!lifetime.handoff(owned, recovered, roomEnded)) return;
                 setRoom((current) => (current?.id === session.id ? recovered : current));
                 setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
               } else
@@ -383,14 +420,17 @@ export function useActiveSceneRestoration(ports: {
                     ? current
                     : { sessionId: session.id, message: openingFailureMessage(cause) },
                 );
-            })
-            .finally(() => {
-              if (!controller.signal.aborted) setRoomBusy(false);
-            });
+            }
+          }
+        } finally {
+          if (!controller.signal.aborted && lifetime.finish(owned) && owned.busy) setRoomBusy(false);
         }
       })
       .catch(() => {});
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (claim) lifetime.cancel(claim);
+    };
   }, []);
 }
 
