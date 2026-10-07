@@ -1,3 +1,5 @@
+import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
+import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { applyResidenceEditApproval } from "../features/venues/zone-edits.js";
 import { queueVillageVenueRequest } from "../features/venues/venue-requests.js";
 import { recordVillagerVenueImprovement } from "../features/venues/venue-mailbox.js";
@@ -101,7 +103,7 @@ import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
-  reconcileProjectLifecycles,
+  configureProjectLifecycle,
 } from "../features/projects/project-lifecycle.js";
 import { createResidentRoster } from "../features/residents/resident-roster-service.js";
 import { configureResidentRoster } from "../features/residents/resident-roster.js";
@@ -324,6 +326,17 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseProjectLifecycle = configureProjectLifecycle(
+    createProjectLifecycle({
+      mutateVillageState,
+      villagesDebugAgentsEnabled,
+      outsideVenueOperation: operations.outsideVenueOperation,
+      preparePrivateSpaces,
+      loadProjectWishProgress: () => import("../features/residents/wishes/wish-progress.js"),
+      draftNewVenueProject,
+      draftRenovationProject,
+    }),
   );
   const releaseLiveScenes = configureLiveScenes(
     createLiveScenes({
@@ -715,6 +728,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseFoundingSetup();
     releaseWorldCoordination();
     releaseFounding();
+    releaseProjectLifecycle();
     releasePrivateSpaces();
     releaseBackground();
     releaseCoordinator();

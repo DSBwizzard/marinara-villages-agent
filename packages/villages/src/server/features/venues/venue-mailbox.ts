@@ -1,3 +1,4 @@
+import { applyProjectMailboxDecisions } from "../../domain/rules/project-lifecycle-rules.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type {
@@ -20,7 +21,6 @@ import { hashString, randomVillageSeed } from "../../domain/rules/village-clock.
 import { backgroundRevision, queueBackgroundJob } from "../../jobs/background-work.js";
 import { completeWithRoom } from "../generation/model-requests.js";
 import {
-  applyProjectMailboxDecisions,
   createRenovationProject,
   draftNewVenueProject,
   draftRenovationProject,

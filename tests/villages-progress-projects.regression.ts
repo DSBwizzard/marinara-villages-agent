@@ -10,10 +10,20 @@ import {
   lockProjectBuilder,
   openFinishedProject,
   placeNewVenueProject,
-  reconcileProjectLifecycles,
   startProjectConstruction,
   draftRenovationProject,
+  draftNewVenueProject,
+  configureProjectLifecycle,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { reconcileProjectLifecycles } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
+import {
+  createProjectLifecycle,
+  type ProjectLifecyclePorts,
+} from "../packages/villages/src/server/features/projects/project-lifecycle-service.js";
+import {
+  createVenueOperationContext,
+  type Context,
+} from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import {
   recordExistingProjectSource,
   recordProjectSpokenEvidence,
@@ -145,6 +155,8 @@ const release = configureVillagesRuntime({
 
 let turnNumber = 0;
 let materialEvidenceWorld: VillageState | undefined, heldEvidenceWorld: VillageState | undefined;
+let lifecycleOpeningWorld: VillageState | undefined,
+  lifecycleOpeningId = "";
 function saveTurn(message: string, content: string, speakerId = "rosa", venueId = "mill") {
   const number = ++turnNumber;
   const sessionId = `visit-${number}`;
@@ -633,6 +645,8 @@ async function main() {
         .map((receipt) => receipt.id),
       completedReceipts,
     );
+    lifecycleOpeningWorld = structuredClone(state);
+    lifecycleOpeningId = renovationId;
     await openFinishedProject(renovationId, {});
     state = await readVillageState();
     assert.equal(state.projects.find((entry) => entry.id === renovationId)?.status, "complete");
@@ -1049,8 +1063,325 @@ async function ownedEvidenceChecks() {
     "PASS owned Project evidence connections, same-ID activation replacement, CAS retries, failures and candidate limits",
   );
 }
+function lifecycleOwner(label: string, opening = true) {
+  assert(lifecycleOpeningWorld);
+  const world = opening ? structuredClone(lifecycleOpeningWorld) : coerceVillageState(structuredClone(village));
+  if (!opening) {
+    world.projects = [];
+    world.progressTasks = [];
+  }
+  const calls: string[] = [],
+    owners: unknown[] = [],
+    sceneContexts: { stage: string; context: Context | undefined }[] = [];
+  const operations = createVenueOperationContext(() => ({
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    debugOverride() {},
+  }));
+  const entered = evidenceDeferred(),
+    gate = evidenceDeferred();
+  let paused = "",
+    failed = "",
+    losing: VillageState | undefined,
+    beforeMutation: (() => void) | undefined;
+  const exact = new Error(label + " lifecycle failure");
+  function capture(stage: string) {
+    calls.push(stage);
+    owners.push(scopedActivation());
+    sceneContexts.push({ stage, context: operations.context.getStore() });
+  }
+  async function touch(stage: string) {
+    capture(stage);
+    const owner = scopedActivation();
+    if (paused === stage) {
+      paused = "";
+      entered.resolve();
+      await gate.promise;
+    }
+    if (owner && !owner.active) throw new Error("Original Project lifecycle connection unavailable.");
+    assert.equal(scopedActivation(), owner);
+    if (failed === stage) throw exact;
+  }
+  const ports: ProjectLifecyclePorts = {
+    async mutateVillageState(update) {
+      await touch("mutation");
+      if (losing) update(losing);
+      beforeMutation?.();
+      update(world);
+      return world;
+    },
+    villagesDebugAgentsEnabled() {
+      capture("debug");
+      return false;
+    },
+    outsideVenueOperation(work) {
+      capture("outside");
+      return operations.outsideVenueOperation(work);
+    },
+    async preparePrivateSpaces() {
+      await touch("prepare");
+      calls.push("prepared");
+    },
+    async loadProjectWishProgress() {
+      await touch("load");
+      return {
+        async processProjectWishOutbox() {
+          await touch("outbox");
+          calls.push("processed");
+        },
+      };
+    },
+    draftNewVenueProject(...args) {
+      capture("new-draft");
+      return draftNewVenueProject(...args);
+    },
+    draftRenovationProject(...args) {
+      capture("renovation-draft");
+      return draftRenovationProject(...args);
+    },
+  };
+  return {
+    world,
+    calls,
+    owners,
+    sceneContexts,
+    operations,
+    entered,
+    gate,
+    exact,
+    service: createProjectLifecycle(ports),
+    pause(stage: string) {
+      paused = stage;
+    },
+    fail(stage: string) {
+      failed = stage;
+    },
+    retry(copy: VillageState) {
+      losing = copy;
+    },
+    beforeMutation(work: () => void) {
+      beforeMutation = work;
+    },
+  };
+}
+function lifecycleSceneContext(): Context {
+  return {
+    sessionId: "same-scene",
+    controller: new AbortController(),
+    allowPaid: false,
+    scope: "test",
+    counts: new Map(),
+    usedAttemptKeys: new Map(),
+    blocked: new Set(),
+    operation: {
+      id: "same-operation",
+      kind: "chat",
+      input: {},
+      token: "test",
+      attemptId: "same-attempt",
+      status: "running",
+      stage: "test",
+      startedAt: foundedAt,
+      sceneRevision: 1,
+      snapshot: null,
+      checkpoints: {},
+      attempts: {},
+      error: "",
+    },
+  };
+}
+const settleLifecycleCallbacks = () => new Promise<void>((resolve) => setImmediate(resolve));
+async function ownedLifecycleChecks() {
+  for (const stage of ["mutation", "prepare", "load", "outbox"]) {
+    const a = createActivationScope(),
+      b = createActivationScope();
+    const left = lifecycleOwner("A"),
+      right = lifecycleOwner("B");
+    assert.deepEqual(left.calls, [], "factory construction performs no runtime work");
+    const releaseA = a.run(() => configureProjectLifecycle(left.service));
+    const clearA = installDefaultActivation(a, () => {});
+    left.pause(stage);
+    const pending = left.operations.context.run(lifecycleSceneContext(), () =>
+      openFinishedProject(lifecycleOpeningId, {}),
+    );
+    await left.entered.promise;
+    if (stage !== "mutation") {
+      let returned = false;
+      void pending.then(() => {
+        returned = true;
+      });
+      await settleLifecycleCallbacks();
+      assert(returned, "opening returns while either detached job remains paused");
+    }
+    const releaseB = b.run(() => configureProjectLifecycle(right.service));
+    const clearB = installDefaultActivation(b, () => {});
+    releaseA();
+    clearA();
+    assert.equal(right.world.projects.find((project) => project.id === lifecycleOpeningId)!.status, "finishing");
+    left.gate.resolve();
+    await pending;
+    await settleLifecycleCallbacks();
+    assert.equal(left.world.projects.find((project) => project.id === lifecycleOpeningId)!.status, "complete");
+    assert.deepEqual(
+      left.calls.filter((call) => call !== "prepared" && call !== "processed"),
+      ["mutation", "outside", "prepare", "load", "outbox"],
+    );
+    assert.deepEqual(left.calls.slice(0, 4), ["mutation", "outside", "prepare", "load"]);
+    assert.equal(left.calls.filter((call) => call === "prepared").length, 1);
+    assert.equal(left.calls.filter((call) => call === "processed").length, 1);
+    assert(
+      left.owners.every((owner) => owner === a),
+      "detached loader and completion retain the originating activation",
+    );
+    assert(
+      left.sceneContexts
+        .filter((entry) => ["prepare", "load", "outbox"].includes(entry.stage))
+        .every((entry) => entry.context === undefined),
+    );
+    await openFinishedProject(lifecycleOpeningId, {});
+    await settleLifecycleCallbacks();
+    assert.equal(right.world.projects.find((project) => project.id === lifecycleOpeningId)!.status, "complete");
+    assert(right.owners.every((owner) => owner === b));
+    releaseB();
+    clearB();
+    a.dispose();
+    b.dispose();
+  }
+
+  const failedSave = lifecycleOwner("failed save"),
+    before = structuredClone(failedSave.world);
+  failedSave.fail("mutation");
+  await assert.rejects(
+    failedSave.service.openFinishedProject(lifecycleOpeningId, {}),
+    (error) => error === failedSave.exact,
+  );
+  assert.deepEqual(failedSave.calls, ["mutation"]);
+  assert.deepEqual(failedSave.world, before);
+  for (const stage of ["prepare", "load", "outbox"]) {
+    const failed = lifecycleOwner(stage);
+    failed.fail(stage);
+    await failed.service.openFinishedProject(lifecycleOpeningId, {});
+    await settleLifecycleCallbacks();
+    assert.equal(failed.world.projects.find((project) => project.id === lifecycleOpeningId)!.status, "complete");
+    assert.equal(failed.calls.filter((call) => call === "processed").length, stage === "prepare" ? 1 : 0);
+  }
+
+  const retired = createActivationScope(),
+    disposed = lifecycleOwner("disposed");
+  const releaseRetired = retired.run(() => configureProjectLifecycle(disposed.service));
+  const clearRetired = installDefaultActivation(retired, () => {});
+  disposed.pause("mutation");
+  const pending = openFinishedProject(lifecycleOpeningId, {});
+  await disposed.entered.promise;
+  retired.dispose();
+  disposed.gate.resolve();
+  await assert.rejects(pending, /Original Project lifecycle connection unavailable/);
+  assert.deepEqual(disposed.calls, ["mutation"]);
+  releaseRetired();
+  clearRetired();
+  await assert.rejects(createNewVenueProject({}), /not configured/);
+
+  const old = createActivationScope(),
+    replacement = createActivationScope();
+  const delayed = lifecycleOwner("disposed loader"),
+    current = lifecycleOwner("current loader");
+  const releaseOld = old.run(() => configureProjectLifecycle(delayed.service));
+  const clearOld = installDefaultActivation(old, () => {});
+  delayed.pause("load");
+  await openFinishedProject(lifecycleOpeningId, {});
+  await delayed.entered.promise;
+  const releaseCurrent = replacement.run(() => configureProjectLifecycle(current.service));
+  const clearCurrent = installDefaultActivation(replacement, () => {});
+  old.dispose();
+  releaseOld();
+  clearOld();
+  delayed.gate.resolve();
+  await settleLifecycleCallbacks();
+  assert.equal(
+    delayed.calls.includes("outbox"),
+    false,
+    "disposed originating loader fails without borrowing B's Wish connection",
+  );
+  assert.deepEqual(current.calls, []);
+  await openFinishedProject(lifecycleOpeningId, {});
+  await settleLifecycleCallbacks();
+  assert(current.owners.every((owner) => owner === replacement));
+  releaseCurrent();
+  clearCurrent();
+  replacement.dispose();
+
+  const draftA = createActivationScope(),
+    draftB = createActivationScope();
+  const firstDraft = lifecycleOwner("draft A", false),
+    secondDraft = lifecycleOwner("draft B", false);
+  const releaseDraftA = draftA.run(() => configureProjectLifecycle(firstDraft.service));
+  const clearDraftA = installDefaultActivation(draftA, () => {});
+  firstDraft.pause("mutation");
+  const pendingDraft = createNewVenueProject({ name: "Workshop", classes: ["workplace"], description: "A workshop." });
+  await firstDraft.entered.promise;
+  const releaseDraftB = draftB.run(() => configureProjectLifecycle(secondDraft.service));
+  const clearDraftB = installDefaultActivation(draftB, () => {});
+  releaseDraftA();
+  clearDraftA();
+  firstDraft.gate.resolve();
+  await pendingDraft;
+  assert.deepEqual(firstDraft.calls, ["mutation", "new-draft"]);
+  assert(firstDraft.owners.every((owner) => owner === draftA));
+  assert.equal(firstDraft.world.projects.length, 1);
+  assert.equal(secondDraft.world.projects.length, 0);
+  releaseDraftB();
+  clearDraftB();
+  draftA.dispose();
+  draftB.dispose();
+
+  const cas = lifecycleOwner("retry", false),
+    losing = structuredClone(cas.world);
+  cas.retry(losing);
+  await cas.service.createNewVenueProject({ name: "Workshop", classes: ["workplace"], description: "A workshop." });
+  assert.deepEqual(cas.calls, ["mutation", "new-draft", "new-draft"]);
+  assert.equal(cas.world.projects.length, 1);
+  assert.equal(losing.projects.length, 1);
+  assert.notEqual(
+    cas.world.projects[0]!.id,
+    losing.projects[0]!.id,
+    "UUID allocation remains inside each save attempt",
+  );
+  assert.equal(cas.world.progressTasks.length, 1);
+  assert.equal(losing.progressTasks.length, 1);
+  const synchronous = lifecycleOwner("standalone", false);
+  const draft = draftNewVenueProject(
+    synchronous.world,
+    { name: "Studio", classes: ["workplace"], description: "A studio." },
+    "rosa",
+    "same-project",
+  );
+  assert.equal(draft.id, "same-project");
+  assert.deepEqual(
+    synchronous.calls,
+    [],
+    "supplied-state draft remains usable without an activation or runtime connection",
+  );
+
+  const changed = lifecycleOwner("changed roster"),
+    firstAttempt = structuredClone(changed.world);
+  changed.retry(firstAttempt);
+  changed.beforeMutation(() =>
+    changed.world.venues.find((venue) => venue.id === "mill")!.workerIds!.push("late-worker"),
+  );
+  await assert.rejects(changed.service.openFinishedProject(lifecycleOpeningId, {}), /Renew.*approvals/);
+  assert.equal(firstAttempt.projects.find((project) => project.id === lifecycleOpeningId)!.status, "complete");
+  assert.equal(changed.world.projects.find((project) => project.id === lifecycleOpeningId)!.status, "finishing");
+  assert.deepEqual(changed.calls, ["mutation"], "failed authoritative attempt schedules no detached job");
+  const debug = lifecycleOwner("debug");
+  await assert.rejects(debug.service.debugCompleteProjectConstruction(lifecycleOpeningId), /not enabled/);
+  assert.deepEqual(debug.calls, ["debug"]);
+  console.log("PASS owned Project lifecycle connections, detached originating jobs, CAS retries and standalone drafts");
+}
 void main()
   .then(ownedEvidenceChecks)
+  .then(ownedLifecycleChecks)
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

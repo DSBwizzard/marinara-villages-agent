@@ -47,7 +47,7 @@ import type { backfillAgendas, refreshVillagerRemaps } from "../residents/reside
 import type { queueBackgroundJob } from "../../jobs/background-work.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type { proposeHappenings, proposeReaction } from "../founding/village-bootstrap.js";
-import type { reconcileProjectLifecycles } from "../projects/project-lifecycle.js";
+import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
 import type { rollActiveAgendas } from "../residents/agenda-roll.js";
 import type { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import type { expireResidentWishes, reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
