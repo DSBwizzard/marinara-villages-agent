@@ -1,10 +1,22 @@
-import type { MemoryLibrary, VillagerAgendaView, VillagerRefreshPreview } from "../../../shared/contracts/village.js";
-import type { PortraitMap } from "../../shared/types.js";
+import type {
+  CatalogEntry,
+  PersonaEntry,
+  MemoryLibrary,
+  VillagerAgendaView,
+  VillagerRefreshPreview,
+} from "../../../shared/contracts/village.js";
+import type { Portrait, PortraitMap } from "../../shared/types.js";
 import type { DossierNavigation, DossierSection } from "./villages-dossier.js";
 import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useResidentsState() {
+  const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
+  const [search, setSearch] = useState("");
+  /** Null distinguishes a catalog still loading from an empty catalog. */
+  const [personas, setPersonas] = useState<PersonaEntry[] | null>(null);
+  /** The player's Persona portrait uses its own endpoint and identity. */
+  const [personaPortrait, setPersonaPortrait] = useState<Portrait | null>(null);
   const [memoryLibrary, setMemoryLibrary] = useState<MemoryLibrary | null>(null);
 
   /**
@@ -95,6 +107,14 @@ export function useResidentsState() {
    */
   const portraitsAsked = useRef<Set<string>>(new Set());
   return {
+    catalog,
+    setCatalog,
+    search,
+    setSearch,
+    personas,
+    setPersonas,
+    personaPortrait,
+    setPersonaPortrait,
     memoryLibrary,
     setMemoryLibrary,
     agendas,

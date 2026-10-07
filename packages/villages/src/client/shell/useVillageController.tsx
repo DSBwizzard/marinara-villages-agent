@@ -1,7 +1,5 @@
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
 import type {
-  CatalogEntry,
-  PersonaEntry,
   ProgressDebugView,
   TownMapView,
   VillageLorebookOption,
@@ -200,7 +198,7 @@ import {
   useVillageTransitions,
   useWriteVillageEvent,
 } from "../shared/data-controller.js";
-import type { MapFrameShape, MapPin, MapZoomRange, MenuPage, Portrait } from "../shared/types.js";
+import type { MapFrameShape, MapPin, MapZoomRange, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
 import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
 import { menuCategory } from "./navigation.js";
@@ -224,8 +222,15 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const homeBuildings = snapshot?.settings.homeBuildings ?? [];
 
-  const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
   const {
+    catalog,
+    setCatalog,
+    search,
+    setSearch,
+    personas,
+    setPersonas,
+    personaPortrait,
+    setPersonaPortrait,
     memoryLibrary,
     setMemoryLibrary,
     agendas,
@@ -513,27 +518,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     knowledgeRef,
   } = useSettingsState();
 
-  /**
-   * The player's own face, for the card's read of their own turns.
-   *
-   * Not in `portraits` beside the villagers, because it is not keyed the same
-   * way and does not come from the same route: a villager's picture is the
-   * Engine's character library keyed by character id, and the player's is the
-   * Engine's Persona — a different record, with a different picture, read through
-   * a different endpoint. One object rather than a map, because there is only
-   * ever one of them: the Persona this village is written against. See the effect
-   * that fills it, and `AvatarFace` for what is drawn when it is null.
-   */
-  const [personaPortrait, setPersonaPortrait] = useState<Portrait | null>(null);
-
-  const [search, setSearch] = useState("");
-
-  /**
-   * The Personas on offer, or null while they are being read. `null` rather
-   * than an empty list because "still reading" and "you have none" are two
-   * different things to say, and only one of them is the player's fault.
-   */
-  const [personas, setPersonas] = useState<PersonaEntry[] | null>(null);
   const {
     setupLorebookDraft,
     setSetupLorebookDraft,
