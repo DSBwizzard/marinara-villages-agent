@@ -1,8 +1,11 @@
+import { createVenueRequests } from "../features/venues/venue-request-service.js";
+import { configureVenueRequests } from "../features/venues/venue-requests.js";
+import { draftNewVenueProject, draftRenovationProject } from "../features/projects/project-lifecycle.js";
 import { createResidentRoster } from "../features/residents/resident-roster-service.js";
 import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidences } from "../features/venues/residence-service.js";
 import { configureResidences } from "../features/venues/residences.js";
-import { queueSharedMoveConsent } from "../features/venues/venue-mailbox.js";
+import { queueSharedMoveConsent, queueVenueCounteroffer } from "../features/venues/venue-mailbox.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
 import { configureResidentAgendas, queueVillagerAgenda } from "../features/residents/resident-agendas.js";
 import { readEffectiveVillagerCard } from "../adapters/engine/catalog.js";
@@ -259,6 +262,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       retireBackgroundResident,
     }),
   );
+  const releaseVenueRequests = configureVenueRequests(
+    createVenueRequests({
+      mutateVillageState,
+      buildVillageSnapshot,
+      draftNewVenueProject,
+      draftRenovationProject,
+      queueVenueCounteroffer,
+    }),
+  );
   const releaseSprites = configureSpriteManager(
     createSpriteManager({
       readVillageState,
@@ -371,6 +383,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSettings();
     releaseSignatures();
     releaseSprites();
+    releaseVenueRequests();
     releaseResidentRoster();
     releaseResidentCards();
     releasePersonaCache();

@@ -29,8 +29,11 @@ async function main() {
     moduleUrl("packages/villages/src/server/features/world/village-store.ts")
   );
   const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
-  const { reconcileVillage, requestVillageHomeUpgrade, decideVillageHomeUpgrade, projectHomeLines } = await import(
+  const { reconcileVillage, projectHomeLines } = await import(
     moduleUrl("packages/villages/src/server/features/world/village.ts")
+  );
+  const { requestVillageHomeUpgrade, decideVillageHomeUpgrade } = await import(
+    moduleUrl("packages/villages/src/server/features/venues/venue-requests.ts")
   );
   const { proposeVillageResidence, decideVillageResidence, completeVillageResidence } = await import(
     moduleUrl("packages/villages/src/server/features/venues/residences.ts")

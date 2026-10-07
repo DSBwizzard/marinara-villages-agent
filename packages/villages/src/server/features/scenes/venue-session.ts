@@ -216,7 +216,7 @@ import {
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { recordVillagerVenueImprovement } from "../venues/venue-mailbox.js";
 import { mutateVillageState, readVillageSnapshot, readVillageState } from "../world/village-store.js";
-import { queueVillageVenueRequest } from "../world/village.js";
+import { queueVillageVenueRequest } from "../venues/venue-requests.js";
 import { applyResidenceEditApproval } from "../venues/zone-edits.js";
 import { memoryForVillager } from "./chat.js";
 import { dispatchExchange } from "./exchange-processing.js";

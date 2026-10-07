@@ -1,3 +1,4 @@
+import { queueVillageVenueRequest } from "../venues/venue-requests.js";
 import { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
 import { queueVillagerAgenda, backfillAgendas, refreshVillagerRemaps } from "../residents/resident-agendas.js";
 import { prepareFoundedVillage } from "../founding/preparation.js";
@@ -15,7 +16,6 @@ import type {
   VillageChronicleEntry,
   VillageChronicleEntryView,
   VillageOpportunity,
-  VillagePendingDecision,
   VillageResidence,
   VillageSnapshot,
   VillageState,
@@ -44,7 +44,6 @@ import { reconcileBuildProjects } from "../../domain/rules/project-rules.js";
 import {
   boundText,
   DEFAULT_TOWN_MAP_VIEW,
-  HOME_BUILDING_ORDER,
   isHousePlace,
   isTownMapImage,
   LEGACY_EVENTS_CAN_AFFECT_VILLAGE,
@@ -53,7 +52,6 @@ import {
   MAX_NOTICEBOARD_NOTES,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUE_NOTE_LENGTH,
   prependHappenings,
   remapVenues,
   TOWN_MAP_EXPECTED_HEIGHT,
@@ -72,7 +70,6 @@ import { venueDraft } from "../../domain/rules/venue-authoring.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
 
 import { validVenueClasses, venueResidentIds, venueSpaces } from "../../domain/rules/venue-model.js";
-import { readVenueRequestCore, type VenueRequestCore, venueRequestDraft } from "../../domain/rules/venue-requests.js";
 import { venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import {
@@ -88,13 +85,7 @@ import {
   villagerPlaceView,
 } from "../../domain/rules/village-projections.js";
 import { wishExpired, wishRetained } from "../../domain/rules/wish-definition.js";
-import {
-  readHomeBuildingNames,
-  readVillageName,
-  readVillageSetting,
-  residenceCharacterId,
-  residenceVenueId,
-} from "../../domain/rules/world-input.js";
+import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import {
   buildReturnRecap,
@@ -116,18 +107,14 @@ import {
   type VillageTickContext,
 } from "../founding/village-bootstrap.js";
 
-import {
-  draftNewVenueProject,
-  draftRenovationProject,
-  reconcileProjectLifecycles,
-} from "../projects/project-lifecycle.js";
+import { reconcileProjectLifecycles } from "../projects/project-lifecycle.js";
 import { rollActiveAgendas } from "../residents/agenda-roll.js";
 import { relationshipWritingPrompt } from "../residents/relationships.js";
 import { expireResidentWishes, reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
 
 import { readVillageConnectionSettings, validateVillageSetupConnections } from "../settings/connections.js";
 import { readLinkedPersona } from "../settings/personas.js";
-import { queueVenueCounteroffer, respondDueVenueMail } from "../venues/venue-mailbox.js";
+import { respondDueVenueMail } from "../venues/venue-mailbox.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 
@@ -137,217 +124,6 @@ export {
   villagerPlaceView,
   readVenueImageContext,
 } from "../../domain/rules/village-projections.js";
-
-/** Save only an explicit, grounded request. All sources share this deduplication rule. */
-export function queueVillageVenueRequest(
-  state: VillageState,
-  core: VenueRequestCore,
-  requesterCharacterId: string,
-  source: "chat" | "background",
-  sourceKey: string,
-  at: string,
-  requestQuote = "",
-): void {
-  const requester = state.villagers.find((villager) => villager.characterId === requesterCharacterId);
-  if (!requester || !sourceKey) return;
-  if (
-    state.pendingDecisions.filter((decision) => decision.status !== "approved" && decision.status !== "denied")
-      .length >= 256
-  )
-    return;
-  const key = core.name.trim().toLowerCase();
-  if (
-    state.venues.some((venue) => venue.name.trim().toLowerCase() === key) ||
-    state.projects.some(
-      (project) =>
-        (project.kind === "build-venue" || project.kind === "new-venue") &&
-        project.status !== "complete" &&
-        project.venueDraft?.name.trim().toLowerCase() === key,
-    ) ||
-    state.pendingDecisions.some(
-      (decision) =>
-        decision.sourceKey === sourceKey ||
-        (decision.kind === "venue" &&
-          decision.status !== "denied" &&
-          decision.venueDraft?.name.trim().toLowerCase() === key),
-    )
-  )
-    return;
-  const decision: VillagePendingDecision = {
-    id: randomVillageSeed(),
-    kind: "venue",
-    title: core.name,
-    detail: core.classes.join(" / "),
-    proposedAt: at,
-    sourceOpportunityId: source === "background" ? sourceKey : "",
-    status: "pending",
-    venueDraft: venueRequestDraft(core),
-    requesterCharacterId,
-    requesterName: requester.cardSnapshot.name,
-    requestQuote: boundText(requestQuote, MAX_VENUE_NOTE_LENGTH),
-    source,
-    sourceKey,
-  };
-  state.pendingDecisions.push(decision);
-  const pending = state.pendingDecisions.filter((entry) => entry.status !== "approved" && entry.status !== "denied");
-  const resolved = state.pendingDecisions.filter((entry) => entry.status === "approved" || entry.status === "denied");
-  const historyRoom = 256 - pending.length;
-  state.pendingDecisions = [...(historyRoom > 0 ? resolved.slice(-historyRoom) : []), ...pending];
-}
-
-export async function recordVillageVenueRequest(
-  core: VenueRequestCore,
-  requesterCharacterId: string,
-  sourceKey: string,
-): Promise<void> {
-  await mutateVillageState((state) =>
-    queueVillageVenueRequest(state, core, requesterCharacterId, "chat", sourceKey, new Date().toISOString()),
-  );
-}
-
-export async function decideVillageVenueRequest(
-  requestId: string,
-  approved: boolean,
-  value: unknown,
-): Promise<VillageSnapshot> {
-  const edits = approved ? readVenueRequestCore(value) : null;
-  const description = approved
-    ? boundText((value as Record<string, unknown>)?.description, MAX_VENUE_DESCRIPTION_LENGTH)
-    : "";
-  if (approved && !edits) throw badRequest("A venue request needs a name and Class.");
-  if (approved && !description) throw badRequest("Approve a description before creating this venue.");
-  await mutateVillageState((state) => {
-    applyVillageVenueDecision(state, requestId, approved, edits, description, new Date());
-  });
-  return buildVillageSnapshot();
-}
-
-export async function requestVillageHomeUpgrade(
-  characterValue: unknown,
-  venueValue: unknown,
-  sourceKey = "",
-): Promise<VillageSnapshot> {
-  const characterId = residenceCharacterId(characterValue);
-  const venueId = residenceVenueId(venueValue);
-  await mutateVillageState((state) => {
-    if (sourceKey && state.processedOpportunityIds.includes(sourceKey)) return;
-    const venue = state.venues.find((entry) => entry.id === venueId);
-    if (!venue || venue.occupancy.residentCharacterId !== characterId || !venue.occupancy.homeKind)
-      throw badRequest("Only the resident can request an upgrade to their home.");
-    const index = HOME_BUILDING_ORDER.indexOf(venue.occupancy.homeKind);
-    const next = HOME_BUILDING_ORDER[index + 1];
-    if (!next) throw badRequest("This home is already at the highest tier.");
-    if (
-      state.pendingDecisions.some(
-        (decision) =>
-          decision.kind === "venue-upgrade" && decision.venueId === venueId && decision.status === "pending",
-      )
-    )
-      return;
-    const resident = state.villagers.find((entry) => entry.characterId === characterId)!;
-    state.pendingDecisions.push({
-      id: randomVillageSeed(),
-      kind: "venue-upgrade",
-      title: `Upgrade ${venue.name || resident.cardSnapshot.name + "'s home"}`,
-      detail: `${resident.cardSnapshot.name} requests ${state.homeBuildingNames[next]}.`,
-      proposedAt: new Date().toISOString(),
-      sourceOpportunityId: "",
-      status: "pending",
-      requesterCharacterId: characterId,
-      requesterName: resident.cardSnapshot.name,
-      venueId,
-      proposedHomeKind: next,
-      source: "chat",
-    });
-    if (sourceKey) state.processedOpportunityIds = [...state.processedOpportunityIds, sourceKey].slice(-256);
-  });
-  return buildVillageSnapshot();
-}
-
-export async function decideVillageHomeUpgrade(requestId: string, approved: boolean): Promise<VillageSnapshot> {
-  await mutateVillageState((state) => {
-    const decision = state.pendingDecisions.find(
-      (entry) => entry.id === requestId && entry.kind === "venue-upgrade" && entry.status === "pending",
-    );
-    if (!decision) throw notFound("That home upgrade request is no longer pending.");
-    if (approved) {
-      const venue = state.venues.find((entry) => entry.id === decision.venueId);
-      if (!venue || venue.occupancy.residentCharacterId !== decision.requesterCharacterId || !venue.occupancy.homeKind)
-        throw conflict("The requester no longer lives in that home.");
-      const next = HOME_BUILDING_ORDER[HOME_BUILDING_ORDER.indexOf(venue.occupancy.homeKind) + 1];
-      if (!next || next !== decision.proposedHomeKind)
-        throw conflict("The home's tier has changed since this request.");
-      const project = draftRenovationProject(state, venue.id, {
-        title: `Renovate ${venue.name}`,
-        detail: `${decision.requesterName || "The resident"} wants ${state.homeBuildingNames[next]}.`,
-        homeKind: next,
-      });
-      const flow = project.lifecycle!;
-      if (decision.requesterCharacterId && flow.affectedIds.includes(decision.requesterCharacterId))
-        flow.approvals.push({
-          residentId: decision.requesterCharacterId,
-          source: "conversation",
-          evidenceId: decision.id,
-          at: decision.proposedAt,
-        });
-      if (flow.affectedIds.every((id) => flow.approvals.some((entry) => entry.residentId === id)))
-        flow.phase = "builder";
-    }
-    decision.status = approved ? "approved" : "denied";
-  });
-  return buildVillageSnapshot();
-}
-
-export function applyVillageVenueDecision(
-  state: VillageState,
-  requestId: string,
-  approved: boolean,
-  edits: VenueRequestCore | null,
-  description: string,
-  now: Date,
-): void {
-  const decision = state.pendingDecisions.find((entry) => entry.id === requestId && entry.kind === "venue");
-  if (!decision || decision.status === "approved" || decision.status === "denied" || !decision.venueDraft)
-    throw notFound("That venue request is no longer pending.");
-  const core = edits ?? decision.venueDraft;
-  if (
-    approved &&
-    edits &&
-    (edits.name !== decision.venueDraft.name ||
-      JSON.stringify(edits.classes) !== JSON.stringify(decision.venueDraft.classes))
-  ) {
-    queueVenueCounteroffer(state, requestId, edits, description, now);
-    return;
-  }
-  if (approved) {
-    draftNewVenueProject(
-      state,
-      { ...core, classes: core.classes.slice(0, 1), description, requestQuote: decision.requestQuote },
-      decision.requesterCharacterId,
-      `request:${requestId}`,
-    );
-  }
-  decision.status = approved ? "approved" : "denied";
-  const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now });
-  const who = decision.requesterName || "A villager";
-  const text = approved
-    ? `The player accepted ${who}'s request to plan ${core.name}. Construction has not begun.`
-    : `The player declined ${who}'s request for ${decision.venueDraft.name}.`;
-  state.chronicle = [
-    {
-      id: randomVillageSeed(),
-      dayIndex: moment.dayIndex,
-      clock: moment.dayPhase,
-      occurredAt: moment.instant,
-      timePrecision: "exact",
-      scope: "village",
-      actors: decision.requesterCharacterId ? [{ id: decision.requesterCharacterId, name: who }] : [],
-      kind: "chat",
-      text,
-    },
-    ...state.chronicle,
-  ];
-}
 
 export async function runVillageSetup(input: {
   foundingCharacterIds?: unknown;
