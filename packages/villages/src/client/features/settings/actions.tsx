@@ -27,7 +27,7 @@ export function useSaveSettings(ports: {
     settingDraft,
     acceptSavedSettings,
   } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded);
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const claim = lifetime.begin();
     if (!claim) return;
@@ -56,51 +56,72 @@ export function useSaveSettings(ports: {
 }
 
 export function useSaveSpriteCardFlip(ports: {
+  snapshot: VillageSnapshot | null;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setSpriteFlipDraft: React.Dispatch<SetStateAction<boolean>>;
   setSpriteFlipError: React.Dispatch<SetStateAction<string>>;
   setSpriteFlipSaving: React.Dispatch<SetStateAction<boolean>>;
 }) {
   const { setSnapshot, setSpriteFlipDraft, setSpriteFlipError, setSpriteFlipSaving } = ports;
-  return useCallback(async (spriteCardFlipEnabled: boolean) => {
-    setSpriteFlipDraft(spriteCardFlipEnabled);
-    setSpriteFlipSaving(true);
-    setSpriteFlipError("");
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", {
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setSpriteFlipSaving);
+  return useCallback(
+    async (spriteCardFlipEnabled: boolean) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
+      claim.onRetire = () => {
+        setSpriteFlipSaving(false);
+        setSpriteFlipDraft(null);
+      };
+      setSpriteFlipDraft(spriteCardFlipEnabled);
+      setSpriteFlipSaving(true);
+      setSpriteFlipError("");
+      try {
+        const saved = await request<VillageSnapshot>("/settings", {
           method: "PATCH",
           body: JSON.stringify({ spriteCardFlipEnabled }),
-        }),
-      );
-    } catch (cause) {
-      setSpriteFlipError(messageFrom(cause, "That setting could not be saved."));
-    } finally {
-      setSpriteFlipSaving(false);
-      setSpriteFlipDraft(null);
-    }
-  }, []);
+        });
+        if (lifetime.owns(claim)) setSnapshot(saved);
+      } catch (cause) {
+        if (lifetime.owns(claim)) setSpriteFlipError(messageFrom(cause, "That setting could not be saved."));
+      } finally {
+        if (lifetime.finish(claim)) {
+          setSpriteFlipSaving(false);
+          setSpriteFlipDraft(null);
+        }
+      }
+    },
+    [lifetime],
+  );
 }
 
 export function useSaveStoryPace(ports: {
+  snapshot: VillageSnapshot | null;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setBusy, setSettingsError, setSnapshot } = ports;
-  return useCallback(async (storyPace: VillageStoryPace) => {
-    setBusy(true);
-    setSettingsError("");
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", { method: "PATCH", body: JSON.stringify({ storyPace }) }),
-      );
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "That could not be saved."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  return useCallback(
+    async (storyPace: VillageStoryPace) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
+      setBusy(true);
+      setSettingsError("");
+      try {
+        const saved = await request<VillageSnapshot>("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ storyPace }),
+        });
+        if (lifetime.owns(claim)) setSnapshot(saved);
+      } catch (cause) {
+        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That could not be saved."));
+      } finally {
+        if (lifetime.finish(claim)) setBusy(false);
+      }
+    },
+    [lifetime],
+  );
 }
 
 export function useSaveSendOnEnter(ports: {
@@ -110,29 +131,32 @@ export function useSaveSendOnEnter(ports: {
   snapshot: VillageSnapshot;
 }) {
   const { setBusy, setSettingsError, setSnapshot, snapshot } = ports;
+  const lifetime = useSettingsSaveLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (sendOnEnter: boolean) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
       const previous = snapshot?.settings.sendOnEnter === true;
       setSnapshot((current) => (current ? { ...current, settings: { ...current.settings, sendOnEnter } } : current));
       setBusy(true);
       setSettingsError("");
       try {
-        setSnapshot(
-          await request<VillageSnapshot>("/settings", {
-            method: "PATCH",
-            body: JSON.stringify({ sendOnEnter }),
-          }),
-        );
+        const saved = await request<VillageSnapshot>("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ sendOnEnter }),
+        });
+        if (lifetime.owns(claim)) setSnapshot(saved);
       } catch (cause) {
+        if (!lifetime.owns(claim)) return;
         setSnapshot((current) =>
           current ? { ...current, settings: { ...current.settings, sendOnEnter: previous } } : current,
         );
         setSettingsError(messageFrom(cause, "Send on Enter could not be saved."));
       } finally {
-        setBusy(false);
+        if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot?.settings.sendOnEnter],
+    [snapshot?.settings.sendOnEnter, lifetime],
   );
 }
 
@@ -143,8 +167,11 @@ export function useSaveCharacterSpeechColors(ports: {
   snapshot: VillageSnapshot;
 }) {
   const { setBusy, setSettingsError, setSnapshot, snapshot } = ports;
+  const lifetime = useSettingsSaveLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (characterSpeechColors: boolean) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
       const previous = snapshot?.settings.characterSpeechColors ?? true;
       setSnapshot((current) =>
         current ? { ...current, settings: { ...current.settings, characterSpeechColors } } : current,
@@ -152,46 +179,56 @@ export function useSaveCharacterSpeechColors(ports: {
       setBusy(true);
       setSettingsError("");
       try {
-        setSnapshot(
-          await request<VillageSnapshot>("/settings", {
-            method: "PATCH",
-            body: JSON.stringify({ characterSpeechColors }),
-          }),
-        );
+        const saved = await request<VillageSnapshot>("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ characterSpeechColors }),
+        });
+        if (lifetime.owns(claim)) setSnapshot(saved);
       } catch (cause) {
+        if (!lifetime.owns(claim)) return;
         setSnapshot((current) =>
           current ? { ...current, settings: { ...current.settings, characterSpeechColors: previous } } : current,
         );
         setSettingsError(messageFrom(cause, "Character speech colors could not be saved."));
       } finally {
-        setBusy(false);
+        if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot?.settings.characterSpeechColors],
+    [snapshot?.settings.characterSpeechColors, lifetime],
   );
 }
 
 export function useSaveVisitRetention(ports: {
+  snapshot: VillageSnapshot | null;
   setArchiveVersion: React.Dispatch<SetStateAction<number>>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setArchiveVersion, setBusy, setSettingsError, setSnapshot } = ports;
-  return useCallback(async (visitRetention: VillageSettings["visitRetention"]) => {
-    setBusy(true);
-    setSettingsError("");
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", { method: "PATCH", body: JSON.stringify({ visitRetention }) }),
-      );
-      setArchiveVersion((version) => version + 1);
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "Scene retention could not be saved."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  return useCallback(
+    async (visitRetention: VillageSettings["visitRetention"]) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
+      setBusy(true);
+      setSettingsError("");
+      try {
+        const saved = await request<VillageSnapshot>("/settings", {
+          method: "PATCH",
+          body: JSON.stringify({ visitRetention }),
+        });
+        if (!lifetime.owns(claim)) return;
+        setSnapshot(saved);
+        setArchiveVersion((version) => version + 1);
+      } catch (cause) {
+        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Scene retention could not be saved."));
+      } finally {
+        if (lifetime.finish(claim)) setBusy(false);
+      }
+    },
+    [lifetime],
+  );
 }
 
 export function useInsertMacro(ports: {
@@ -214,6 +251,7 @@ export function useInsertMacro(ports: {
 }
 
 export function useAddNotice(ports: {
+  snapshot: VillageSnapshot | null;
   noticeDraft: string;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setNoticeDraft: React.Dispatch<SetStateAction<string>>;
@@ -221,37 +259,53 @@ export function useAddNotice(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot } = ports;
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const notice = noticeDraft.trim();
     if (notice.length === 0) return;
+    const claim = lifetime.begin();
+    if (!claim) return;
     setBusy(true);
     setSettingsError("");
     try {
-      setSnapshot(await request<VillageSnapshot>("/noticeboard", { method: "POST", body: JSON.stringify({ notice }) }));
-      setNoticeDraft("");
+      const saved = await request<VillageSnapshot>("/noticeboard", {
+        method: "POST",
+        body: JSON.stringify({ notice }),
+      });
+      if (!lifetime.owns(claim)) return;
+      setSnapshot(saved);
+      setNoticeDraft((current) => (current === noticeDraft ? "" : current));
     } catch (cause) {
-      setSettingsError(messageFrom(cause, "That notice could not be pinned up."));
+      if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That notice could not be pinned up."));
     } finally {
-      setBusy(false);
+      if (lifetime.finish(claim)) setBusy(false);
     }
-  }, [noticeDraft]);
+  }, [noticeDraft, lifetime]);
 }
 
 export function useRemoveNotice(ports: {
+  snapshot: VillageSnapshot | null;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setBusy, setSettingsError, setSnapshot } = ports;
-  return useCallback(async (index: number) => {
-    setBusy(true);
-    setSettingsError("");
-    try {
-      setSnapshot(await request<VillageSnapshot>(`/noticeboard/${index}`, { method: "DELETE" }));
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "That notice could not be taken down."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  return useCallback(
+    async (index: number) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
+      setBusy(true);
+      setSettingsError("");
+      try {
+        const saved = await request<VillageSnapshot>(`/noticeboard/${index}`, { method: "DELETE" });
+        if (lifetime.owns(claim)) setSnapshot(saved);
+      } catch (cause) {
+        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That notice could not be taken down."));
+      } finally {
+        if (lifetime.finish(claim)) setBusy(false);
+      }
+    },
+    [lifetime],
+  );
 }

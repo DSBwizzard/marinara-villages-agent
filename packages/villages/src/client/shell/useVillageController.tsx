@@ -1632,19 +1632,26 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const saveSpriteCardFlip = useSaveSpriteCardFlip({
+    snapshot,
     setSnapshot,
     setSpriteFlipDraft,
     setSpriteFlipError,
     setSpriteFlipSaving,
   });
 
-  const saveStoryPace = useSaveStoryPace({ setBusy, setSettingsError, setSnapshot });
+  const saveStoryPace = useSaveStoryPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveCharacterSpeechColors = useSaveCharacterSpeechColors({ setBusy, setSettingsError, setSnapshot, snapshot });
 
-  const saveVisitRetention = useSaveVisitRetention({ setArchiveVersion, setBusy, setSettingsError, setSnapshot });
+  const saveVisitRetention = useSaveVisitRetention({
+    setArchiveVersion,
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+    snapshot,
+  });
 
   /**
    * Ask the model for places again. Deliberately a separate button from Save:
@@ -2140,9 +2147,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const insertMacro = useInsertMacro({ knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft });
 
-  const addNotice = useAddNotice({ noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot });
+  const addNotice = useAddNotice({ noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot, snapshot });
 
-  const removeNotice = useRemoveNotice({ setBusy, setSettingsError, setSnapshot });
+  const removeNotice = useRemoveNotice({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const needle = calculateNeedle({ search });
 
