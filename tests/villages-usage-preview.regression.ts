@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -250,5 +251,62 @@ async function main() {
     globalThis.fetch = originalFetch;
     resetNativeScheduleCache();
   }
+  for (const [op, id, at] of [
+    ["get", "villages-village", 1],
+    ["get", "villages-connections", 1],
+    ["resolver", "same-connection", 1],
+    ["list", "background-work", 1],
+    ["get", "villages-connections", 2],
+    ["get", "villages-ai-usage", 1],
+  ] as const) {
+    await withSettingsOwners(async (a, b, selectB) => {
+      const paused = a.pause(op, id, at);
+      const pending = previewVillageBurst({ action: "images", count: 1 });
+      await paused.wait(pending);
+      selectB();
+      assert.equal((await previewVillageBurst({ action: "images", count: 2 })).requests, 2);
+      const bCalls = b.calls.length;
+      paused.resume();
+      const result = await pending;
+      assert.equal(result.requests, 1);
+      assert.equal(b.calls.length, bCalls, `A forecast retained its owner after ${op}:${id}:${at}`);
+      assert(a.calls.every((call) => call.owner));
+      assert(a.calls.some((call) => call.op === "resolver"));
+      assert.equal(a.writes + b.writes, 0, "forecast does not create/update any document");
+      a.owner.run(a.release);
+      await assert.rejects(
+        a.owner.run(() => previewVillageBurst({ action: "images" })),
+        /usage preview is not configured/,
+      );
+      assert.equal((await previewVillageBurst({ action: "images", count: 0 })).requests, 0);
+    });
+  }
+  await withSettingsOwners(async (a, b, selectB) => {
+    const paused = a.pause("list", "background-work");
+    const pending = previewVillageBurst({ action: "retry", jobId: "same-job" });
+    await paused.wait(pending);
+    selectB();
+    paused.resume();
+    await pending;
+    assert.equal(
+      a.calls.filter((call) => call.op === "get" && call.id === "villages-village").length,
+      2,
+      "agenda retry re-enters the actual forecast in A",
+    );
+    assert(a.calls.every((call) => call.owner));
+    assert.equal(b.calls.length, 0);
+    assert.equal(a.writes, 0);
+  });
+  await withSettingsOwners(async (a) => {
+    const failure = new Error("A raw world storage failure");
+    a.failNext("get", "villages-village", failure);
+    await assert.rejects(previewVillageBurst({ action: "images" }), (error) => error === failure);
+    assert.equal(a.calls.length, 1, "raw read failure precedes model and background lookup");
+    a.failNext("resolver", "same-connection", new Error("model unavailable"));
+    const result = await previewVillageBurst({ action: "images", count: 1 });
+    assert.equal(result.requests, 1, "resolution failure retains counts and unknown prices");
+    assert(a.calls.some((call) => call.op === "list"));
+    assert.equal(a.writes, 0);
+  });
 }
 void main();

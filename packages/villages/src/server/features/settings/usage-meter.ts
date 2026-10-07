@@ -1,39 +1,27 @@
-import {
-  readUsageLedger,
-  resetUsagePeriod as resetLedger,
-  saveLinkApiGroup as saveGroup,
-  saveUsageRate as saveRate,
-} from "../../adapters/models/usage-ledger.js";
-import { previewBackgroundJobs } from "../../jobs/background-work.js";
+import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
+import type { UsageMeter } from "./usage-meter-service.js";
 
-export * from "../../adapters/models/usage-ledger.js";
-async function withBursts(ledger: Awaited<ReturnType<typeof readUsageLedger>>, details = true) {
-  return {
-    ...ledger,
-    bursts: details
-      ? (await previewBackgroundJobs())
-          .filter((job) => !["completed", "obsolete"].includes(job.status))
-          .map(({ id, kind, label, status, cause, remainingRequests, remainingBlocks }) => ({
-            id,
-            kind,
-            label,
-            status,
-            cause,
-            remainingRequests,
-            remainingBlocks,
-          }))
-      : [],
-  };
+const binding = createActivationBinding<UsageMeter>("Villages usage meter is not configured.");
+export function configureUsageMeter(service: UsageMeter): () => void {
+  return binding.configure(bindActivationService(service));
 }
-export async function readUsageMeter(details = true) {
-  return withBursts(await readUsageLedger(details), details);
+export async function readUsageMeter(
+  ...args: Parameters<UsageMeter["readUsageMeter"]>
+): ReturnType<UsageMeter["readUsageMeter"]> {
+  return binding.get().readUsageMeter(...args);
 }
-export async function resetUsagePeriod() {
-  return withBursts(await resetLedger());
+export async function resetUsagePeriod(
+  ...args: Parameters<UsageMeter["resetUsagePeriod"]>
+): ReturnType<UsageMeter["resetUsagePeriod"]> {
+  return binding.get().resetUsagePeriod(...args);
 }
-export async function saveUsageRate(...args: Parameters<typeof saveRate>) {
-  return withBursts(await saveRate(...args));
+export async function saveUsageRate(
+  ...args: Parameters<UsageMeter["saveUsageRate"]>
+): ReturnType<UsageMeter["saveUsageRate"]> {
+  return binding.get().saveUsageRate(...args);
 }
-export async function saveLinkApiGroup(...args: Parameters<typeof saveGroup>) {
-  return withBursts(await saveGroup(...args));
+export async function saveLinkApiGroup(
+  ...args: Parameters<UsageMeter["saveLinkApiGroup"]>
+): ReturnType<UsageMeter["saveLinkApiGroup"]> {
+  return binding.get().saveLinkApiGroup(...args);
 }

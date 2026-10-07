@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
+import {
+  readVillageWriting,
+  saveVillageWriting,
+} from "../packages/villages/src/server/features/settings/narration-settings.js";
 import {
   activationScope,
   createActivationScope,
@@ -730,5 +735,95 @@ async function main() {
     await rm(root, { recursive: true, force: true });
   }
   await ownedInterpretationConnections();
+  for (const [op, at] of [
+    ["get", 1],
+    ["update", 1],
+    ["get", 2],
+  ] as const) {
+    await withSettingsOwners(async (a, b, selectB) => {
+      const paused = a.pause(op, "villages-interpretation-settings", at);
+      const pending = saveInterpretationSettings({ decisionsEnabled: true });
+      await paused.wait(pending);
+      selectB();
+      assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false, compareSystem: false });
+      const bCalls = b.calls.length;
+      paused.resume();
+      assert.deepEqual(await pending, { decisionsEnabled: true, compareSystem: true });
+      assert.deepEqual(a.rows.get("villages-interpretation-settings")?.data, {
+        decisionsEnabled: true,
+        compareSystem: true,
+      });
+      assert.equal(b.calls.length, bCalls);
+      assert(a.calls.every((call) => call.owner));
+      a.owner.run(a.release);
+      await assert.rejects(
+        a.owner.run(() => readInterpretationSettings()),
+        /interpretation settings are not configured/,
+      );
+      assert.deepEqual(await readInterpretationSettings(), { decisionsEnabled: false, compareSystem: false });
+    });
+  }
+  await withSettingsOwners(async (a, _b, selectB) => {
+    a.rejectNextUpdate("villages-interpretation-settings");
+    const paused = a.pause("get", "villages-interpretation-settings", 3);
+    const pending = saveInterpretationSettings({ decisionsEnabled: true });
+    await paused.wait(pending);
+    selectB();
+    const row = a.rows.get("villages-interpretation-settings")!;
+    row.data = { decisionsEnabled: false, compareSystem: true };
+    row.revision++;
+    paused.resume();
+    assert.deepEqual(
+      await pending,
+      { decisionsEnabled: false, compareSystem: true },
+      "final reread observes the owning concurrent writer, not a callback snapshot",
+    );
+    assert.equal(a.calls.filter((call) => call.op === "update").length, 2, "CAS conflict retries in A");
+  });
+  await withSettingsOwners(async (a, b, selectB) => {
+    const paused = a.pause("update", "villages-village");
+    const pending = saveVillageWriting({ writingGuidance: "  authored A  " });
+    await paused.wait(pending);
+    selectB();
+    assert.equal((await readVillageWriting()).writingGuidance, "B writing");
+    const bCalls = b.calls.length;
+    paused.resume();
+    await pending;
+    assert.equal((await a.owner.run(() => readVillageWriting())).writingGuidance, "authored A");
+    assert.equal(b.calls.length, bCalls);
+    await assert.rejects(
+      a.owner.run(() => saveVillageWriting({ tense: "future" })),
+      /Choose present or past tense/,
+    );
+    a.owner.run(a.release);
+    await assert.rejects(
+      a.owner.run(() => readVillageWriting()),
+      /writing settings are not configured/,
+    );
+    assert.equal((await readVillageWriting()).writingGuidance, "B writing");
+  });
+  await withSettingsOwners(async (a, b, selectB) => {
+    a.failNext("get", "villages-interpretation-settings", new Error("stored settings unavailable"));
+    assert.deepEqual(
+      await readInterpretationSettings(),
+      { decisionsEnabled: false, compareSystem: true },
+      "document failure preserves the in-service fallback",
+    );
+    const paused = a.pause("update", "villages-interpretation-settings");
+    const pending = saveInterpretationSettings({ decisionsEnabled: true });
+    await paused.wait(pending);
+    selectB();
+    const failure = new Error("A interpretation write failure");
+    a.failNext("update", "villages-interpretation-settings", failure);
+    const aReads = a.calls.filter((call) => call.op === "get").length;
+    paused.resume();
+    await assert.rejects(pending, (error) => error === failure);
+    assert.equal(
+      a.calls.filter((call) => call.op === "get").length,
+      aReads,
+      "failed save never performs the final reread",
+    );
+    assert.equal(b.calls.length, 0);
+  });
 }
 await main();

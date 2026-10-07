@@ -222,6 +222,11 @@ import {
   trackUsage,
   inferredPurpose,
   usageProcessOwner,
+  readUsageLedger,
+  resetUsagePeriod as resetUsageLedgerPeriod,
+  saveUsageRate as saveLedgerRate,
+  saveLinkApiGroup as saveLedgerGroup,
+  quoteUsageRate,
 } from "../adapters/models/usage-ledger.js";
 import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
 import {
@@ -254,7 +259,17 @@ import { generateVillageImage, resolveVillageImageConnectionId } from "../featur
 import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
 import { configureResidentSignatures } from "../features/residents/resident-signature.js";
 import { prepareSignatureImage } from "../features/residents/signature-image.js";
-import { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
+import { createVillageWriting } from "../features/settings/writing-settings-service.js";
+import { configureVillageWriting } from "../features/settings/narration-settings.js";
+import { createInterpretationSettings } from "../features/settings/interpretation-settings-service.js";
+import {
+  configureInterpretationSettings,
+  readInterpretationSettings,
+} from "../features/settings/interpretation-settings.js";
+import { createUsageMeter } from "../features/settings/usage-meter-service.js";
+import { configureUsageMeter } from "../features/settings/usage-meter.js";
+import { createUsagePreview } from "../features/settings/usage-preview-service.js";
+import { configureUsagePreview } from "../features/settings/usage-preview.js";
 import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
@@ -290,7 +305,12 @@ import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
 import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
 import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
-import { configureBackgroundWork, queueBackgroundJob, retireBackgroundResident } from "../jobs/background-work.js";
+import {
+  configureBackgroundWork,
+  queueBackgroundJob,
+  retireBackgroundResident,
+  previewBackgroundJobs,
+} from "../jobs/background-work.js";
 import { createBackgroundWork } from "../jobs/background-service.js";
 import { configurePrivateSpacePreparation } from "../jobs/private-space-preparation.js";
 import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
@@ -365,6 +385,33 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       venueDebugContext: operations.venueDebugContext,
       linkApiQuote,
       readExchangeRate,
+    }),
+  );
+  const releaseInterpretationSettings = configureInterpretationSettings(
+    createInterpretationSettings({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+    }),
+  );
+  const releaseUsageMeter = configureUsageMeter(
+    createUsageMeter({
+      readUsageLedger,
+      resetLedger: resetUsageLedgerPeriod,
+      saveRate: saveLedgerRate,
+      saveGroup: saveLedgerGroup,
+      previewBackgroundJobs,
+    }),
+  );
+  const releaseUsagePreview = configureUsagePreview(
+    createUsagePreview({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      villagesLanguageModels,
+      quoteUsageRate,
+      previewBackgroundJobs,
+      villagesConnectionIdFor,
+      villagesImageConnectionChoice,
     }),
   );
   const releaseInterpretationDiagnostics = configureInterpretationDiagnostics(
@@ -849,6 +896,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       draftVillageVenueDescriptions,
     }),
   );
+  const releaseWritingSettings = configureVillageWriting(
+    createVillageWriting({ readVillageState, mutateVillageState }),
+  );
   const releaseSettings = configureVillageSettings(
     createVillageSettings({
       mutateVillageState,
@@ -969,7 +1019,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseProjectLifecycle();
     releasePrivateSpaces();
     releaseBackground();
+    releaseUsagePreview();
+    releaseUsageMeter();
     releaseCoordinator();
+    releaseInterpretationSettings();
     releaseTownMap();
     releaseZoneEdits();
     releaseSignatures();
@@ -999,6 +1052,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseRelationshipViews();
     releaseWishArchive();
     releaseFoundingProgress();
+    releaseWritingSettings();
     releaseVillageState();
     releaseRelationships();
     releaseRelationshipSocial();

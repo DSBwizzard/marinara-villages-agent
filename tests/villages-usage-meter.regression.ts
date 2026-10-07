@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { villagesLanguageModels } from "../packages/villages/src/server/adapters/models/language-models.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -238,5 +239,82 @@ async function main() {
     release();
     globalThis.fetch = originalFetch;
   }
+  for (const command of [
+    () => readUsageMeter(true),
+    () => resetUsagePeriod(),
+    () => saveUsageRate("same-connection", "same-model", { input: 2, output: 8 }),
+  ]) {
+    await withSettingsOwners(async (a, b, selectB) => {
+      const paused = a.pause("get", "villages-ai-usage");
+      const pending = command();
+      await paused.wait(pending);
+      selectB();
+      assert.deepEqual(
+        (await readUsageMeter()).bursts.map((row) => row.label),
+        ["B job"],
+      );
+      const bCalls = b.calls.length;
+      paused.resume();
+      const result = await pending;
+      assert.deepEqual(
+        result.bursts.map((row) => row.label),
+        ["A job"],
+      );
+      assert.equal(b.calls.length, bCalls, "resumed A never accesses the current B queue");
+      assert(a.calls.every((call) => call.owner));
+      assert(!JSON.stringify(result.bursts).includes("privateScene"));
+      a.owner.run(a.release);
+      assert.deepEqual(
+        (await readUsageMeter()).bursts.map((row) => row.label),
+        ["B job"],
+        "old cleanup retains B",
+      );
+    });
+  }
+  await withSettingsOwners(async (a, b, selectB) => {
+    const result = await readUsageMeter(false);
+    assert.equal(result.since, "A-ledger");
+    assert.deepEqual(result.bursts, []);
+    assert(!a.calls.some((call) => call.op === "list"));
+    const paused = a.pause("list", "background-work");
+    const pending = readUsageMeter();
+    await paused.wait(pending);
+    selectB();
+    a.owner.run(a.release);
+    a.owner.dispose();
+    const bCalls = b.calls.length;
+    paused.resume();
+    // The captured queue can finish an already admitted read; it cannot borrow B.
+    const final = await pending;
+    assert.deepEqual(
+      final.bursts.map((row) => row.label),
+      ["A job"],
+    );
+    assert.equal(b.calls.length, bCalls);
+    await assert.rejects(
+      a.owner.run(() => readUsageMeter()),
+      /usage meter is not configured/,
+    );
+    assert.deepEqual(
+      (await readUsageMeter()).bursts.map((row) => row.label),
+      ["B job"],
+    );
+  });
+  await withSettingsOwners(async (a, b, selectB) => {
+    const paused = a.pause("get", "villages-ai-usage");
+    const pending = readUsageMeter();
+    await paused.wait(pending);
+    selectB();
+    const failure = new Error("A background storage failure");
+    a.failNext("list", "background-work", failure);
+    const bCalls = b.calls.length;
+    paused.resume();
+    await assert.rejects(pending, (error) => error === failure);
+    assert.equal(b.calls.length, bCalls);
+    assert.deepEqual(
+      (await readUsageMeter()).bursts.map((row) => row.label),
+      ["B job"],
+    );
+  });
 }
 void main();
