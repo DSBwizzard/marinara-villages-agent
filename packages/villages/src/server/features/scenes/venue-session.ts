@@ -115,7 +115,7 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import { knownWish, setWishJournalStatus, wishConditionRevision } from "../../domain/rules/wish-journal.js";
+import { knownWish } from "../../domain/rules/wish-journal.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import {
   cancelVenueOperation,
@@ -143,8 +143,7 @@ import {
   mergeLiveReplyProposals,
 } from "../../domain/rules/live-exchange.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
-import { matchingWishReceipts, wishFingerprint, wishReceiptRecords } from "../residents/wishes/wish-interpretation.js";
-import { fulfillResidentWish } from "../residents/wishes/wish-lifecycle.js";
+import { wishFingerprint } from "../residents/wishes/wish-interpretation.js";
 import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../residents/wishes/wish-progress.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { recordVillagerVenueImprovement } from "../venues/venue-mailbox.js";
@@ -1342,7 +1341,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", prior.id, String(error));
     }
     if (!prior.processing) await applyVenueTurnChange(session, prior);
-    await applyFulfilledWish(session, prior);
     await applyVenueRequests(session, prior);
     if (
       prior.invitationSignal &&
@@ -1824,7 +1822,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     villagesLogger().warn("[villages] saved turn progress deferred for %s: %s", submission.id, String(error));
   }
   if (!submission.processing) await applyVenueTurnChange(updated, submission);
-  await applyFulfilledWish(updated, submission);
   await applyVenueRequests(updated, submission);
   if (submission.invitationSignal) await recordSpokenInvitation(updated, submission.invitationSignal);
   await markZoneSeen(updated, updated.zoneId === session.zoneId);
@@ -2368,54 +2365,6 @@ async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmis
   });
 }
 
-async function applyFulfilledWish(session: VenueScene, submission: VenueSubmission): Promise<boolean> {
-  if (!submission.wishId) return false;
-  let applied = false;
-  await mutateVillageState((state) => {
-    applied = false;
-    const memoryId = `${session.id}:wish:${submission.wishId}`;
-    if (state.correctedWishMemoryIds.includes(memoryId)) return;
-    if (state.chronicle.some((entry) => entry.id === memoryId)) return;
-    const resident = state.villagers.find((person) => person.characterId === submission.targetId);
-    const wish = resident?.agenda?.wishes.find((entry) => entry.id === submission.wishId);
-    if (!resident?.agenda || !wish) return;
-    const proof = submission.wishInterpretationProof;
-    if (
-      proof &&
-      (proof.fingerprint !== wishFingerprint(wish) ||
-        (proof.criteria.conditionRevision ?? 0) !==
-          wishConditionRevision(state, submission.targetId, wish, proof.criteria.conditionAt) ||
-        (proof.criteria.requiresPhysical &&
-          !matchingWishReceipts(
-            proof.criteria,
-            { actorId: submission.targetId, receipts: wishReceiptRecords(state, submission.targetId, session) },
-            wish,
-          ).some((event) => proof.receiptIds.includes(event.id))))
-    )
-      return;
-    applied = true;
-    const moment = deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() });
-    fulfillResidentWish(resident, wish.id, moment.instant, memoryId);
-    setWishJournalStatus(state, submission.targetId, wish.id, "fulfilled");
-    state.chronicle = [
-      {
-        id: memoryId,
-        dayIndex: moment.dayIndex,
-        clock: moment.dayPhase,
-        occurredAt: moment.instant,
-        timePrecision: "exact",
-        scope: "private",
-        actors: [{ id: submission.targetId, name: resident.cardSnapshot.name }],
-        kind: "favour",
-        weight: wish.intensity,
-        text: submission.wishMemory || `${resident.cardSnapshot.name} saw their wish fulfilled.`,
-      },
-      ...state.chronicle,
-    ];
-  });
-  return applied;
-}
-
 async function receiptForTurn(
   session: VenueScene,
   submission: VenueSubmission,
@@ -2460,9 +2409,6 @@ async function receiptForTurn(
         detail: saved.text,
       });
   }
-  const wishId = `${session.id}:wish:${submission.wishId}`;
-  if (submission.wishId && village.chronicle.some((entry) => entry.id === wishId))
-    events.push({ id: wishId, kind: "wish", text: "A villager's wish was fulfilled." });
   const venueId = `venue-chat:${session.id}:${submission.id}`;
   const change = physicalVenueEvents(village).find((entry) => entry.id === venueId);
   if (change) events.push({ id: venueId, kind: "venue", text: change.text });

@@ -1144,7 +1144,7 @@ async function main() {
     "domain/rules/native-remap.ts",
     "adapters/engine/native-schedules.ts",
     "features/scenes/chat.ts",
-    "features/residents/wishes/wishes.ts",
+    "features/residents/wishes/wish-progress.ts",
     "adapters/engine/catalog.ts",
   ]) {
     const source = await readFile(join(repoRoot, services, silent), "utf8");

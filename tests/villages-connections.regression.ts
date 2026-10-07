@@ -438,7 +438,7 @@ async function main() {
     "features/scenes/chat.ts",
     "features/founding/village-bootstrap.ts",
     "domain/rules/native-remap.ts",
-    "features/residents/wishes/wishes.ts",
+    "features/residents/wishes/wish-progress.ts",
     "features/world/village.ts",
     "features/world/village-service.ts",
     "features/residents/resident-agenda-service.ts",

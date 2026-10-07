@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
-  interpretWishClaim,
+  interpretWishBatch,
   wishInterpretationCheck,
   validateWishInterpretation,
   matchingWishReceipts,
@@ -150,10 +150,10 @@ async function main() {
         "Confident wrong answers and incorrect agreement cannot substitute for the required transfer",
       );
     }
-    const failed = await operation(() => interpretWishClaim(context, "scene", "physical-claim"));
-    assert.equal(failed.verdict.fulfilled, false, "Even a positive native answer without a transfer is rejected");
+    const failed = await operation(() => interpretWishBatch([context], "scene", "physical-claim", false));
+    assert.equal(failed.results[0].outcome, "none", "Missing physical proof is never admitted to the paid batch");
     assert.equal(interpretations, 0, "Missing physical proof avoids judgment altogether");
-    assert.equal(failed.interpretationStatus, undefined, "Absent proof is a settled negative, not a retryable failure");
+    assert.ok(failed.results[0].reason, "Absent proof retains its admission reason");
     context.receipts = [
       {
         id: "transfer",
@@ -187,9 +187,10 @@ async function main() {
     }
     for (const enabled of [false, true]) {
       await saveInterpretationSettings({ decisionsEnabled: enabled, compareSystem: false });
-      const result = await operation(() => interpretWishClaim(context, "scene", `physical-${enabled}`));
-      assert.equal(result.verdict.fulfilled, true);
-      assert.equal(result.batch.results[0].source, "system", "Absent Decisions connection always falls back");
+      const result = await operation(() => interpretWishBatch([context], "scene", `physical-${enabled}`, false));
+      assert.equal(result.results[0].outcome, "fulfilled");
+      assert.equal(result.results[0].source, "system", "Cited finite Wish batches retain their System judge");
+      assert.ok(result.results[0].evidenceIds.includes("receipt:transfer"));
     }
     assert.equal(preparations, 0, "Condition preparation never dispatches a request");
     const state = defaultVillageState();
@@ -246,13 +247,17 @@ async function main() {
       at,
     });
     context.receipts = [];
-    const social = await operation(() => interpretWishClaim(context, "scene", "social"));
-    assert.equal(social.verdict.fulfilled, true);
+    const social = await operation(() => interpretWishBatch([context], "scene", "social", false));
+    assert.equal(social.results[0].outcome, "fulfilled");
+    assert.equal(social.results[0].source, "system");
+    assert.equal(social.results[0].reason, "Independent labeled fixture");
+    assert.ok(social.results[0].evidenceIds.includes("spoken"));
     for (const outcome of ["none", "unresolved"]) {
       nativeOutcome = outcome;
-      const result = await operation(() => interpretWishClaim(context, "scene", `social-${outcome}`));
-      assert.equal(result.verdict.fulfilled, false);
-      assert.equal(result.interpretationStatus, outcome === "unresolved" ? "unresolved" : undefined);
+      const result = await operation(() => interpretWishBatch([context], "scene", `social-${outcome}`, false));
+      assert.equal(result.results[0].outcome, outcome);
+      assert.equal(result.results[0].source, "system");
+      assert.equal(result.results[0].reason, "Independent labeled fixture");
     }
     const socialCheck = wishInterpretationCheck(
       context,
@@ -282,7 +287,7 @@ async function main() {
     );
     assert.equal(interpretations, 5);
     console.log(
-      "Villages wish interpretation: native fallback, cached conditions, actual interaction, transfer evidence, wrong positives and storage ok",
+      "Villages finite Wish batch: cited System results, no preparation requests, actual interaction, transfer evidence, wrong positives and storage ok",
     );
   } finally {
     release();

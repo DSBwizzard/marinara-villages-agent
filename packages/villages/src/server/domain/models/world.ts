@@ -1584,28 +1584,6 @@ export type VillageChatMessage = {
   speakerName?: string;
 };
 
-/**
- * What the village decided about a claim the player made.
- *
- * `fulfilled` is false unless a separate, single-purpose call said otherwise
- * with a wish id that matches a wish this villager actually has — see
- * `coerceVerdict`, which is where that is enforced and which defaults to NO.
- * The default matters more than anything the prompt says: a judge that is
- * merely ASKED to be strict is a judge that is lenient the first time it
- * returns something the coercion did not expect.
- *
- * `reason` is one line, written by the judge and shown to the player under the
- * villager's answer. It is the whole of what makes strictness legible instead
- * of arbitrary — a refusal a player cannot read is indistinguishable from a
- * bug — and it is deliberately the JUDGE's words rather than the villager's,
- * because the villager is a party to the question and cannot also be its
- * referee.
- */
-export type VillageWishVerdict = {
-  fulfilled: boolean;
-  reason: string;
-};
-
 /** A card the picker offers, flattened for the tab. */
 export type VillageCatalogEntry = {
   id: string;

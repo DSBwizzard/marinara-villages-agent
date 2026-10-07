@@ -28,7 +28,6 @@ import { requestProjectMailbox } from "../packages/villages/src/server/features/
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { _proposeWishVerdict } from "../packages/villages/src/server/features/residents/wishes/wishes.js";
 import {
   venueReplyIntegrity,
   venueSceneHistory,

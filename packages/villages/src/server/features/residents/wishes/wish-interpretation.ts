@@ -3,14 +3,13 @@ import type { DocumentSlot } from "../../../adapters/storage/document-store.js";
 import type { InterpretationCheck, InterpretationResult } from "../../../domain/models/interpretation-check-model.js";
 import type { InterpretationBatch } from "../../../domain/models/interpretation-model.js";
 import type { VenueScene } from "../../../domain/models/scene-model.js";
-import type { VillageWishVerdictResult } from "../../../domain/models/wish-claim-model.js";
 import type {
   WishCriteria,
   WishInterpretationContext,
   WishReceipt,
 } from "../../../domain/models/wish-interpretation-model.js";
 import type { VillageState, VillageWish } from "../../../domain/models/world.js";
-import { asRecord, asTrimmedString } from "../../../domain/rules/coerce.js";
+import { asRecord } from "../../../domain/rules/coerce.js";
 import { physicalVenueEvents } from "../../../domain/rules/venue-scene-state.js";
 import { localWishRequirements, wishEvidenceAdmission } from "../../../domain/rules/wish-admission.js";
 import { interpretChecks } from "../../generation/interpretation.js";
@@ -305,64 +304,4 @@ export function validateWishInterpretation(check: InterpretationCheck, result: I
   )
     return "No actual player interaction supports the conversational wish";
   return "";
-}
-export async function interpretWishClaim(
-  context: WishInterpretationContext,
-  sceneId: string,
-  key: string,
-  allowProgress = false,
-): Promise<VillageWishVerdictResult & { batch: InterpretationBatch }> {
-  const batch = await interpretWishBatch([context], sceneId, key, allowProgress);
-  const checks = batch.checks;
-  let selected = -1;
-  for (const [index, result] of batch.results.entries()) {
-    const reason = validateWishInterpretation(checks[index], result);
-    if (reason) {
-      batch.traces[index].applied = `Rejected: ${reason}`;
-      result.outcome = "none";
-      result.reason = reason;
-      continue;
-    }
-    if (result.outcome === "fulfilled" && selected < 0) selected = index;
-  }
-  if (selected >= 0) {
-    const wish = context.wishes[selected];
-    for (const [index, trace] of batch.traces.entries())
-      trace.applied =
-        index === selected
-          ? "Wish supported; awaiting current-state application"
-          : batch.results[index].outcome === "fulfilled"
-            ? "Supported; one wish is applied per claim and this wish remains active"
-            : trace.applied === "Not yet applied"
-              ? "No wish change"
-              : trace.applied;
-    return {
-      batch,
-      wish,
-      verdict: {
-        fulfilled: true,
-        reason: batch.results[selected].reason || "The witnessed record satisfies this wish.",
-      },
-      memory:
-        asTrimmedString(asRecord(batch.results[selected].details).memory).slice(0, 600) ||
-        `${context.card.name} saw ${context.playerName} fulfill their wish: ${wish.wish}`,
-    };
-  }
-  const unresolved = batch.results.some((result) => result.outcome === "unresolved");
-  for (const trace of batch.traces)
-    if (trace.applied === "Not yet applied")
-      trace.applied =
-        trace.result.outcome === "unresolved" ? "Unresolved: natural clarification needed" : "No wish change";
-  return {
-    batch,
-    wish: null,
-    memory: "",
-    verdict: {
-      fulfilled: false,
-      reason: unresolved
-        ? "It is still unclear whether that settles the wish; clarify what happened."
-        : batch.results[0]?.reason || "The record does not yet satisfy that wish.",
-    },
-    ...(unresolved ? { interpretationStatus: "unresolved" as const } : {}),
-  };
 }

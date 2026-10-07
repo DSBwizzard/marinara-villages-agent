@@ -152,7 +152,6 @@ export const MAX_WISH_TELL_LENGTH = 160;
  * the ordinary reason a label is short.
  */
 export const MAX_WISH_CLAIM_LENGTH = 600;
-export const MAX_JUDGE_REASON_LENGTH = 240;
 /** How long the village's fallback line about an ordinary day may be. */
 export const MAX_ROUTINE_SUMMARY_LENGTH = 240;
 /**

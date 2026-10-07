@@ -1,6 +1,6 @@
 import type { VillageMoment } from "../rules/village-clock.js";
 import type { VillagerCard } from "./catalog-model.js";
-import type { VillageChatMessage, VillageChronicleEntry, VillageWish, VillageWishVerdict } from "./world.js";
+import type { VillageChatMessage, VillageChronicleEntry, VillageWish } from "./world.js";
 
 export type VillageWishClaimContext = {
   /** The village's name. */
@@ -10,7 +10,7 @@ export type VillageWishClaimContext = {
   card: VillagerCard;
   playerName: string;
   playerDescription: string;
-  /** What this villager is currently after. The judge picks from these, by id. */
+  /** Current goals included in a bounded, cited Wish check. */
   wishes: readonly VillageWish[];
   /** What the player says they have done, in the player's own words. */
   claim: string;
@@ -22,13 +22,4 @@ export type VillageWishClaimContext = {
   worldState?: readonly string[];
   /** What this villager already remembers, so a settled thing is already known. */
   memory: readonly VillageChronicleEntry[];
-};
-export type VillageWishVerdictResult = {
-  verdict: VillageWishVerdict;
-  /** The wish the judge named. Null whenever `fulfilled` is false. */
-  wish: VillageWish | null;
-  /** The line to remember a fulfilled wish by. Empty unless `fulfilled`. */
-  memory: string;
-  interpretationStatus?: "unresolved";
-  evidenceIds?: string[];
 };
