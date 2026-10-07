@@ -1,3 +1,4 @@
+import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
@@ -81,7 +82,6 @@ import {
   reconcileVillage,
   resetVillage,
   completeVillageResidence,
-  setVillageSendOnEnter,
 } from "../packages/villages/src/server/features/world/village.js";
 import { proposeResidenceSpaceEdit } from "../packages/villages/src/server/features/venues/zone-edits.js";
 import { updateVillageVenue, setVillageVenueImage } from "../packages/villages/src/server/features/venues/services.js";

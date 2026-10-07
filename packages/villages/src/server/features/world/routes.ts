@@ -1,15 +1,14 @@
+import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
 import { fail } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { listVenueVisitSummaries } from "../scenes/venue-session.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import {
-  addNotice,
   buildVillageCatalog,
   buildVillageMemories,
   buildVillageStory,
   reconcileVillage,
   removeChronicleEntry,
-  removeNoticeAt,
   removeVillageRecollection,
 } from "./village.js";
 import type { FastifyInstance } from "fastify";

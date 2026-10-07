@@ -76,6 +76,10 @@ import { configureInterpretationDiagnostics } from "../features/generation/inter
 import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
 import { systemInterpretations } from "../features/generation/system-interpretation.js";
 import { villagesConnectionIdFor } from "../features/settings/connections.js";
+import { readLinkedPersona } from "../features/settings/persona-service.js";
+import { createVillageSettings } from "../features/settings/village-settings-service.js";
+import { configureVillageSettings } from "../features/settings/village-settings.js";
+import { runVillageBootstrap } from "../features/world/village.js";
 import { createFoundingPreparation } from "../features/founding/preparation-service.js";
 import { configureFoundingPreparation } from "../features/founding/preparation.js";
 import { seedFoundingVenueDetails } from "../features/founding/founding-drafts.js";
@@ -143,6 +147,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseSettings = configureVillageSettings(
+    createVillageSettings({
+      mutateVillageState,
+      buildVillageSnapshot,
+      readLinkedPersona,
+      runVillageBootstrap,
+      villagesLogger,
+    }),
   );
   const releaseVenueCommands = configureVenueCommands(
     createVenueCommands({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
@@ -217,6 +230,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
     releaseTownMap();
     releaseZoneEdits();
     releaseVenueCommands();
+    releaseSettings();
     releaseVillageState();
     releaseRelationships();
     releaseQueries();

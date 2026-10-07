@@ -1,15 +1,4 @@
-import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
-import { listVillageLorebooks } from "../../adapters/engine/lorebooks.js";
-import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/route-support.js";
-import { readRuntimeDebug, saveRuntimeDebug } from "../../adapters/observability/runtime-debug.js";
-import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
-import { setVenueVisitRetention } from "../scenes/venue-session.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
-  buildVillagePersonaCatalog,
-  readVillagePersonaPreview,
-  refreshPlayerPersona,
   setScenerySettings,
   setVillageCharacterSpeechColors,
   setVillageLoreSettings,
@@ -20,7 +9,16 @@ import {
   setVillageSetting,
   setVillageSpriteCardFlipEnabled,
   setVillageStoryPace,
-} from "../world/village.js";
+} from "./village-settings.js";
+import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
+import { listVillageLorebooks } from "../../adapters/engine/lorebooks.js";
+import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/route-support.js";
+import { readRuntimeDebug, saveRuntimeDebug } from "../../adapters/observability/runtime-debug.js";
+import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
+import { setVenueVisitRetention } from "../scenes/venue-session.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
+import { buildVillagePersonaCatalog, readVillagePersonaPreview, refreshPlayerPersona } from "../world/village.js";
 import { setVillageHomeBuildingNames, setVillageVenues } from "../venues/services.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "./connections.js";
 import { readInterpretationSettings, saveInterpretationSettings } from "./interpretation-settings.js";

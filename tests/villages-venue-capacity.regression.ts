@@ -1,3 +1,4 @@
+import { setVillageName } from "../packages/villages/src/server/features/settings/village-settings.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -10,11 +11,7 @@ import {
   villageVenueLimit,
   villageVenueUsage,
 } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
-import {
-  setVillageName,
-  resetVillage,
-  runVillageBootstrap,
-} from "../packages/villages/src/server/features/world/village.js";
+import { resetVillage, runVillageBootstrap } from "../packages/villages/src/server/features/world/village.js";
 import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
 import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 
