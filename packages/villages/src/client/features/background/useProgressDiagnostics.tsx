@@ -6,14 +6,15 @@ import { useCallback, useState } from "react";
 export function useProgressDiagnostics(ports: { setError: React.Dispatch<React.SetStateAction<string>> }) {
   const { setError } = ports;
   const [progressDebug, setProgressDebug] = useState<ProgressDebugView | null>(null);
-  const loadProgressDebug = useCallback(() => request<ProgressDebugView>("/progress/debug").then(setProgressDebug), []);
-  const openProgressDebug = useCallback(
+  const loadProgressDebug = useCallback(
     () =>
-      loadProgressDebug().catch((cause) => {
-        setProgressDebug(null);
-        setError(messageFrom(cause, "Progress diagnostics are unavailable."));
-      }),
-    [loadProgressDebug, setError],
+      request<ProgressDebugView>("/progress/debug")
+        .then(setProgressDebug)
+        .catch((cause) => {
+          setProgressDebug(null);
+          setError(messageFrom(cause, "Progress diagnostics are unavailable."));
+        }),
+    [setError],
   );
-  return { progressDebug, loadProgressDebug, openProgressDebug };
+  return { progressDebug, loadProgressDebug };
 }

@@ -1299,12 +1299,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenuesDraft,
     setVisualLoreDefault,
   });
-  const { progressDebug, loadProgressDebug, openProgressDebug } = useProgressDiagnostics({ setError });
+  const { progressDebug, loadProgressDebug } = useProgressDiagnostics({ setError });
   const openMenu = useScenesOpenMenu({
     loadCatalog,
     loadLorebooks,
     loadPersonas,
-    loadProgressDebug: openProgressDebug,
+    loadProgressDebug,
     menuPage,
     screen,
     setFocusedRequestId,
