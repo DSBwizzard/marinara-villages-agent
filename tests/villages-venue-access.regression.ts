@@ -47,11 +47,8 @@ import {
   readInterpretationDiagnostics,
 } from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
 import { mayInvite } from "../packages/villages/src/server/domain/rules/venue-access.js";
-import {
-  changeVenueAccess,
-  completeVillageResidence,
-  updateVillageZone,
-} from "../packages/villages/src/server/features/world/village.js";
+import { completeVillageResidence, updateVillageZone } from "../packages/villages/src/server/features/world/village.js";
+import { changeVenueAccess } from "../packages/villages/src/server/features/venues/services.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";

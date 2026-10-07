@@ -38,9 +38,9 @@ async function main() {
     completeVillageResidence,
     requestVillageHomeUpgrade,
     decideVillageHomeUpgrade,
-    updateVillageVenue,
     projectHomeLines,
   } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
+  const { updateVillageVenue } = await import(moduleUrl("packages/villages/src/server/features/venues/services.ts"));
   const { rollActiveAgendas } = await import("../packages/villages/src/server/features/residents/agenda-roll.ts");
   const { workingAgendaWeek } = await import(moduleUrl("packages/villages/src/server/domain/rules/agenda-week.ts"));
   const { renderHomesBlock } = await import(moduleUrl("packages/villages/src/server/domain/rules/prompt-preset.ts"));

@@ -81,11 +81,10 @@ import {
   reconcileVillage,
   resetVillage,
   completeVillageResidence,
-  updateVillageVenue,
   proposeResidenceSpaceEdit,
-  setVillageVenueImage,
   setVillageSendOnEnter,
 } from "../packages/villages/src/server/features/world/village.js";
+import { updateVillageVenue, setVillageVenueImage } from "../packages/villages/src/server/features/venues/services.js";
 import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.

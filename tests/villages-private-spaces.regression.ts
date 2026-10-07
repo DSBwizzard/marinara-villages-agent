@@ -25,11 +25,11 @@ import {
   sceneryImageKey,
   readSceneryStyle,
 } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import { applyResidenceEditApproval } from "../packages/villages/src/server/features/world/village.js";
 import {
   assertVenueImageAccess,
-  applyResidenceEditApproval,
   setVillageVenueImage,
-} from "../packages/villages/src/server/features/world/village.js";
+} from "../packages/villages/src/server/features/venues/services.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { readCreationPrivateZones } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";

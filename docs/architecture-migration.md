@@ -21,3 +21,11 @@ Two baseline checks needed repair: client compiler invocation used an unsupporte
 - Verification: enforce imports and absence of cycles; remove temporary paths; independently review; run portable and isolated packaged checks; record the completed baseline.
 
 Each item stays open until implementation and verification pass. This document does not approve publication, Engine upgrades/restarts, upstream submission or save-format changes.
+
+## Venue command ownership
+
+Venue list editing, image access/writes, naming, creation, deletion and player access commands now live in `server/features/venues/venue-service.ts`. Its constructor accepts explicit Village read/mutation, snapshot and active-Scene query ports. The factory imports domain code only; entry assembly supplies its dependencies. Venue, settings and media consumers use the Venue service interface rather than the world coordinator.
+
+This extraction preserves existing function bodies, request contracts, Scene reconciliation timing and validations within each mutation attempt. Provider-free service tests cover independent constructor ports during overlapping calls, replacement binding cleanup, Scene query ordering, active-Scene deletion rejection and retention of a newer image during a simulated revision retry. Existing access, capacity, private-space, Scene, Zone and refresh regressions remain applicable.
+
+The route dispatch binding is transitional. Runtime/queue ownership across overlapping activations remains open. Resident-controlled Zone edits, residence moves/adaptation, venue requests/projects, founding and resident agendas are separate remaining services; this extraction does not mark the architecture milestone complete.

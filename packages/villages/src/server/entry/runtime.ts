@@ -4,7 +4,7 @@ import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
 import { processSocialOutbox } from "../features/residents/relationship-social.js";
 import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
-import { configureSceneQueries } from "../features/scenes/services.js";
+import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
 import {
   activeVenueSession,
   listVenueVisits,
@@ -12,6 +12,10 @@ import {
   readProjectTurnEvidence,
 } from "../features/scenes/venue-session.js";
 import { configureWorldRelationships } from "../features/world/world-relationships.js";
+import { configureVenueCommands } from "../features/venues/services.js";
+import { createVenueCommands } from "../features/venues/venue-service.js";
+import { buildVillageSnapshot } from "../features/world/snapshot.js";
+import { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 /** Connect an application without starting jobs; activation owns the returned release. */
@@ -32,7 +36,11 @@ export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => voi
     projectSocialActivities,
     reconcileSocialPlans,
   });
+  const releaseVenueCommands = configureVenueCommands(
+    createVenueCommands({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
+  );
   return () => {
+    releaseVenueCommands();
     releaseRelationships();
     releaseQueries();
     release();

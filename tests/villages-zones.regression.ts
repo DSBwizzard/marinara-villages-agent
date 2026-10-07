@@ -39,7 +39,7 @@ import {
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
-import { setVillageVenueImage } from "../packages/villages/src/server/features/world/village.js";
+import { setVillageVenueImage } from "../packages/villages/src/server/features/venues/services.js";
 import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";

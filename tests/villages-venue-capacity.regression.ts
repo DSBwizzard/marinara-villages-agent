@@ -11,11 +11,11 @@ import {
   villageVenueUsage,
 } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
 import {
-  setVillageVenues,
   setVillageName,
   resetVillage,
   runVillageBootstrap,
 } from "../packages/villages/src/server/features/world/village.js";
+import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
 import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";

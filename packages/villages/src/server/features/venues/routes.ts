@@ -3,20 +3,22 @@ import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   approveVillageResidence,
-  changeVenueAccess,
   completeVillageResidence,
-  createVillageVenue,
   decideVillageHomeUpgrade,
   decideVillageResidence,
   decideVillageVenueRequest,
-  deleteVillageVenue,
-  previewVillageVenueDeletion,
   proposeResidenceSpaceEdit,
   proposeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
-  updateVillageVenue,
   updateVillageZone,
 } from "../world/village.js";
+import {
+  changeVenueAccess,
+  createVillageVenue,
+  deleteVillageVenue,
+  previewVillageVenueDeletion,
+  updateVillageVenue,
+} from "./services.js";
 import { decideVillagerVenueImprovement, proposePlayerMove, proposeVenueChange } from "./venue-mailbox.js";
 import type { FastifyInstance } from "fastify";
 

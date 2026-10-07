@@ -12,7 +12,6 @@ import {
   refreshPlayerPersona,
   setScenerySettings,
   setVillageCharacterSpeechColors,
-  setVillageHomeBuildingNames,
   setVillageLoreSettings,
   setVillageName,
   setVillagePlayer,
@@ -21,8 +20,8 @@ import {
   setVillageSetting,
   setVillageSpriteCardFlipEnabled,
   setVillageStoryPace,
-  setVillageVenues,
 } from "../world/village.js";
+import { setVillageHomeBuildingNames, setVillageVenues } from "../venues/services.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "./connections.js";
 import { readInterpretationSettings, saveInterpretationSettings } from "./interpretation-settings.js";
 import { readVillageWriting, saveVillageWriting } from "./narration-settings.js";

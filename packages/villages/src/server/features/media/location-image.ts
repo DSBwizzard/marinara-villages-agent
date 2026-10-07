@@ -11,7 +11,7 @@ import { venueClasses, venueInArea, venueInSpace } from "../../domain/rules/venu
 import { legacyZoneId, resolveVenueZone, venueInZone, venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment, describeMoment, type VillageMoment } from "../../domain/rules/village-clock.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
-import { assertVenueImageAccess, setVillageVenueImage } from "../world/village.js";
+import { assertVenueImageAccess, setVillageVenueImage } from "../venues/services.js";
 import { generateVillageImage, imagePromptId } from "./image-generation.js";
 
 // Villages — how a place gets its picture.
