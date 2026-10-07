@@ -1,4 +1,9 @@
 import { configureDecisionsAdapter } from "../adapters/engine/decisions-adapter.js";
+import {
+  bindActivationService,
+  createActivationScope,
+  type ActivationScope,
+} from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { stopInterpretationComparisons } from "../features/generation/interpretation-diagnostics.js";
@@ -65,8 +70,18 @@ const applicationServices: ApplicationServices = {
 };
 /** An activation owns its registrations and job cleanup in their existing order. */
 export async function startVillagesApplication(
-  { api, app }: ActivationContext,
+  context: ActivationContext,
   services: ApplicationServices = applicationServices,
+) {
+  if (services !== applicationServices) return assembleApplication(context, services);
+  const scope = createActivationScope();
+  return scope.run(() => assembleApplication(context, { ...services, routes: scope.bind(services.routes) }, scope));
+}
+
+async function assembleApplication(
+  { api, app }: ActivationContext,
+  services: ApplicationServices,
+  scope?: ActivationScope,
 ) {
   const cleanups: Cleanup[] = [];
   let stopping: Promise<void> | undefined;
@@ -74,13 +89,17 @@ export async function startVillagesApplication(
     // Memoize before calling any disposer, including a synchronous one.
     stopping ??= Promise.resolve().then(async () => {
       const failures: unknown[] = [];
-      while (cleanups.length) {
-        const cleanup = cleanups.pop()!;
-        try {
-          await cleanup();
-        } catch (error) {
-          failures.push(error);
+      try {
+        while (cleanups.length) {
+          const cleanup = cleanups.pop()!;
+          try {
+            await cleanup();
+          } catch (error) {
+            failures.push(error);
+          }
         }
+      } finally {
+        scope?.dispose();
       }
       if (failures.length) throw new AggregateError(failures, "Villages cleanup failed");
     });
@@ -114,10 +133,11 @@ export async function startVillagesApplication(
     }
     throw error;
   }
-  return {
+  const application = {
     stop: unwind,
     async selfCheck() {
       await services.readVillageState();
     },
   };
+  return scope ? bindActivationService(application) : application;
 }

@@ -43,3 +43,7 @@ Provider-free tests cover these ordering and failure boundaries, including inter
 ## Decisions connection ownership
 
 The Decisions compatibility adapter has an instance factory owning its database, canonical module-load promise, build identity and disposal fence. Its Engine loader and supported-build checks remain unchanged. A separately documented correction prevents old cleanup from clearing replacement configuration or an asynchronous call from switching databases; see [Decisions activation ownership](decisions-activation-ownership.md). Synthetic regressions and independent review cover the adapter's loading/resolution races and fallback boundaries. This is one connection owner, not completion of the application's remaining queue/service ownership.
+
+## Activation dispatch ownership
+
+Production assembly captures an activation scope for host-backed connections, supported service dispatch, actual route handlers, cleanup and self-check. Interleaved asynchronous requests retain their originating storage/services; missing or disposed owners cannot borrow the legacy default. Direct configuration remains synchronous and preserves runtime-epoch replacement fences and standalone service tests. The separate correction and compatibility limits are documented in [activation dispatch ownership](activation-dispatch-ownership.md). Queue and cache factories remain open; scoped dispatch alone does not isolate their mutable state.

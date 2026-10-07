@@ -1,3 +1,5 @@
+import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
+
 /** Server-only collaboration used by world reads and writes; bound during application setup. */
 export interface WorldRelationships {
   readRelationshipState: typeof import("../residents/relationship-store.js").readRelationshipState;
@@ -8,16 +10,12 @@ export interface WorldRelationships {
   reconcileSocialPlans: typeof import("../../domain/rules/social-rules.js").reconcileSocialPlans;
 }
 
-let current: WorldRelationships | null = null;
-let registration = 0;
+const relationships = createActivationBinding<WorldRelationships>(
+  "Villages world relationship services are not configured.",
+);
 export function configureWorldRelationships(services: WorldRelationships): () => void {
-  const token = ++registration;
-  current = services;
-  return () => {
-    if (registration === token) current = null;
-  };
+  return relationships.configure(bindActivationService(services));
 }
 export function worldRelationships(): WorldRelationships {
-  if (!current) throw new Error("Villages world relationship services are not configured.");
-  return current;
+  return relationships.get();
 }

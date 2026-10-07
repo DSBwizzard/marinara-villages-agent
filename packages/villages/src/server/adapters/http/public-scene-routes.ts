@@ -2,14 +2,15 @@ import { operationSummary } from "../operations/operation-context.js";
 import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import type { VillageRouteHandler } from "./route-support.js";
 import type { FastifyInstance } from "fastify";
+import { activationScope } from "../engine/activation-scope.js";
 
 export function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
+  const owner = activationScope();
   const surface = Object.create(engine) as FastifyInstance;
   for (const method of ["get", "post", "put", "patch", "delete"] as const) {
     const register = engine[method].bind(engine);
-    const wrap =
-      (handler: VillageRouteHandler): VillageRouteHandler =>
-      async (request, reply) => {
+    const wrap = (handler: VillageRouteHandler): VillageRouteHandler => {
+      const wrapped: VillageRouteHandler = async (request, reply) => {
         const result = await handler(request, reply);
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;
@@ -34,6 +35,8 @@ export function publicSceneRoutes(engine: FastifyInstance): FastifyInstance {
         }
         return result;
       };
+      return owner ? owner.bind(wrapped) : wrapped;
+    };
     surface[method] = ((path: string, options: unknown, handler?: VillageRouteHandler) =>
       handler
         ? register(path, options as never, wrap(handler) as never)

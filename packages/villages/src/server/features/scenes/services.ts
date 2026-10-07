@@ -1,3 +1,5 @@
+import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
+
 /** Narrow Scene query interface, bound by each application activation. */
 export interface SceneQueries {
   activeVenueSession: typeof import("./venue-session.js").activeVenueSession;
@@ -5,16 +7,10 @@ export interface SceneQueries {
   listVenueVisits: typeof import("./venue-session.js").listVenueVisits;
   processSavedExchange: typeof import("./venue-session.js").processSavedExchange;
 }
-let current: SceneQueries | null = null;
-let registration = 0;
+const queriesBinding = createActivationBinding<SceneQueries>("Villages Scene queries are not configured.");
 export function configureSceneQueries(queries: SceneQueries) {
-  const token = ++registration;
-  current = queries;
-  return () => {
-    if (registration === token) current = null;
-  };
+  return queriesBinding.configure(bindActivationService(queries));
 }
 export function sceneQueries(): SceneQueries {
-  if (!current) throw new Error("Villages Scene queries are not configured.");
-  return current;
+  return queriesBinding.get();
 }

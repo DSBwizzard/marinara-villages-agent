@@ -1,3 +1,4 @@
+import { createActivationBinding } from "./activation-scope.js";
 import { pipelineStorage } from "../observability/metrics-context.js";
 import type {
   CapabilityDocumentStore,
@@ -8,62 +9,8 @@ import type {
 } from "@marinara-engine/shared";
 
 export const VILLAGES_PACKAGE_ID = "villages";
-let host: CapabilityRuntimeHost | null = null;
 let registration = 0;
-export function villagesRuntimeEpoch(): number | null {
-  return host ? registration : null;
-}
 const measuredDocuments = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
-export function configureRuntimeHost(next: CapabilityRuntimeHost): () => void {
-  const token = ++registration;
-  host = next;
-
-  return () => {
-    if (registration === token) host = null;
-  };
-}
-export function requireHost(): CapabilityRuntimeHost {
-  if (!host) throw new Error("The Villages package runtime is not configured.");
-  return host;
-}
-export function villagesDocuments(): CapabilityDocumentStore {
-  const documents = requireHost().persistence?.documents;
-  if (!documents) {
-    throw new Error(
-      "This Engine version did not provide the package document store, so Villages cannot remember anything.",
-    );
-  }
-  let measured = measuredDocuments.get(documents);
-  if (!measured) {
-    measured = new Proxy(documents, {
-      get(target, key) {
-        const value = Reflect.get(target, key);
-        if (typeof value !== "function") return value;
-        return (...args: unknown[]) => {
-          if (key === "getById" || key === "list") pipelineStorage("reads");
-          if (key === "create" || key === "update") pipelineStorage("writes");
-          return value.apply(target, args);
-        };
-      },
-    });
-    measuredDocuments.set(documents, measured);
-  }
-  return measured;
-}
-export function villagesResources(): CapabilityResourceHost {
-  const resources = requireHost().resources;
-  if (!resources) {
-    throw new Error("This Engine version did not provide the character library to packages.");
-  }
-  return resources;
-}
-export function villagesPersistence(): CapabilityPersistenceHost {
-  const persistence = requireHost().persistence;
-  if (!persistence) {
-    throw new Error("This Engine version did not provide chat persistence to packages.");
-  }
-  return persistence;
-}
 const fallbackLogger: CapabilityRuntimeLogger = {
   debug: (message, ...args) => console.debug(message, ...args),
   info: (message, ...args) => console.info(message, ...args),
@@ -73,8 +20,7 @@ const fallbackLogger: CapabilityRuntimeLogger = {
     if (enabled) console.debug(message, ...args);
   },
 };
-export function villagesLogger(): CapabilityRuntimeLogger {
-  const target = host?.logger ?? fallbackLogger;
+function safeLogger(target: CapabilityRuntimeLogger): CapabilityRuntimeLogger {
   return {
     debug: (...args) => {
       try {
@@ -113,6 +59,101 @@ export function villagesLogger(): CapabilityRuntimeLogger {
     },
   };
 }
+
+/** Captures one host and epoch; construction starts no timers, requests or writes. */
+export function createRuntimeConnections(next: CapabilityRuntimeHost) {
+  const token = ++registration;
+  let active = true;
+  function requireHost(): CapabilityRuntimeHost {
+    if (!active) throw new Error("The Villages package runtime is not configured.");
+    return next;
+  }
+  function villagesDocuments(): CapabilityDocumentStore {
+    const documents = requireHost().persistence?.documents;
+    if (!documents) {
+      throw new Error(
+        "This Engine version did not provide the package document store, so Villages cannot remember anything.",
+      );
+    }
+    let measured = measuredDocuments.get(documents);
+    if (!measured) {
+      measured = new Proxy(documents, {
+        get(target, key) {
+          const value = Reflect.get(target, key);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            if (key === "getById" || key === "list") pipelineStorage("reads");
+            if (key === "create" || key === "update") pipelineStorage("writes");
+            return value.apply(target, args);
+          };
+        },
+      });
+      measuredDocuments.set(documents, measured);
+    }
+    return measured;
+  }
+  function villagesResources(): CapabilityResourceHost {
+    const resources = requireHost().resources;
+    if (!resources) {
+      throw new Error("This Engine version did not provide the character library to packages.");
+    }
+    return resources;
+  }
+  function villagesPersistence(): CapabilityPersistenceHost {
+    const persistence = requireHost().persistence;
+    if (!persistence) {
+      throw new Error("This Engine version did not provide chat persistence to packages.");
+    }
+    return persistence;
+  }
+
+  function villagesLogger(): CapabilityRuntimeLogger {
+    return safeLogger(next.logger ?? fallbackLogger);
+  }
+  function villagesDebugAgentsEnabled(): boolean {
+    return requireHost().isDebugAgentsEnabled() === true;
+  }
+  return {
+    requireHost,
+    villagesDocuments,
+    villagesResources,
+    villagesPersistence,
+    villagesLogger,
+    villagesDebugAgentsEnabled,
+    epoch: () => (active ? token : null),
+    dispose: () => {
+      active = false;
+    },
+  };
+}
+export type RuntimeConnections = ReturnType<typeof createRuntimeConnections>;
+const connections = createActivationBinding<RuntimeConnections>("The Villages package runtime is not configured.");
+export function configureRuntimeHost(next: CapabilityRuntimeHost): () => void {
+  const runtime = createRuntimeConnections(next);
+  const release = connections.configure(runtime);
+  return () => {
+    runtime.dispose();
+    release();
+  };
+}
+export function villagesRuntimeEpoch(): number | null {
+  return connections.maybe()?.epoch() ?? null;
+}
+export function requireHost(): CapabilityRuntimeHost {
+  return connections.get().requireHost();
+}
+export function villagesDocuments(): CapabilityDocumentStore {
+  return connections.get().villagesDocuments();
+}
+export function villagesResources(): CapabilityResourceHost {
+  return connections.get().villagesResources();
+}
+export function villagesPersistence(): CapabilityPersistenceHost {
+  return connections.get().villagesPersistence();
+}
+export function villagesLogger(): CapabilityRuntimeLogger {
+  return connections.maybe()?.villagesLogger() ?? safeLogger(fallbackLogger);
+}
 export function villagesDebugAgentsEnabled(): boolean {
-  return requireHost().isDebugAgentsEnabled() === true;
+  return connections.get().villagesDebugAgentsEnabled();
 }

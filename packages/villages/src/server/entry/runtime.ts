@@ -1,4 +1,9 @@
 import { configureRuntimeHost, villagesDocuments } from "../adapters/engine/runtime-host.js";
+import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../adapters/engine/activation-scope.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
 import { resetRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
@@ -23,7 +28,7 @@ import { configureVillageStateService, mutateVillageState, readVillageState } fr
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 /** Connect an application without starting jobs; activation owns the returned release. */
-export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => void {
+function connectVillagesRuntime(next: CapabilityRuntimeHost) {
   const release = configureRuntimeHost(next);
   resetRuntimeDebug();
   const releaseQueries = configureSceneQueries({
@@ -49,7 +54,7 @@ export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => voi
   const releaseZoneEdits = configureVenueZoneEdits(
     createVenueZoneEdits({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
   );
-  return () => {
+  const releaseGraph = () => {
     releaseZoneEdits();
     releaseVenueCommands();
     releaseVillageState();
@@ -57,4 +62,27 @@ export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => voi
     releaseQueries();
     release();
   };
+  return { releaseGraph, invalidateHost: release };
+}
+
+/** Production uses its explicit owner; direct callers retain synchronous legacy selection. */
+export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => void {
+  if (scopedActivation()) return connectVillagesRuntime(next).releaseGraph;
+  const scope = createActivationScope();
+  let graph: ReturnType<typeof connectVillagesRuntime>;
+  try {
+    graph = scope.run(() => connectVillagesRuntime(next));
+  } catch (error) {
+    scope.dispose();
+    throw error;
+  }
+  const clearDefault = installDefaultActivation(scope, graph.invalidateHost);
+  return scope.bind(() => {
+    try {
+      graph.releaseGraph();
+    } finally {
+      scope.dispose();
+      clearDefault();
+    }
+  });
 }

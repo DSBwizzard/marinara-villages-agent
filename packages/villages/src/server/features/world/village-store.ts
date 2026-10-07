@@ -1,3 +1,4 @@
+import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { VillageStateService } from "./village-state-service.js";
 
 export { type DocumentSlot, mutateDocument } from "../../adapters/storage/document-store.js";
@@ -11,18 +12,12 @@ export {
 export { listVillageScenes } from "../../adapters/storage/legacy-scene-links.js";
 
 // Transitional route dispatch; the factory owns state coordination, not this binding.
-let current: VillageStateService | null = null;
-let registration = 0;
+const stateBinding = createActivationBinding<VillageStateService>("Villages state service is not configured.");
 export function configureVillageStateService(service: VillageStateService): () => void {
-  const token = ++registration;
-  current = service;
-  return () => {
-    if (registration === token) current = null;
-  };
+  return stateBinding.configure(bindActivationService(service));
 }
 function villageStateService(): VillageStateService {
-  if (!current) throw new Error("Villages state service is not configured.");
-  return current;
+  return stateBinding.get();
 }
 export function readVillageAuthority() {
   return villageStateService().readVillageAuthority();

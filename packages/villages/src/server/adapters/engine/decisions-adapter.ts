@@ -1,6 +1,7 @@
 import { readFile, realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { activationScope, bindActivationService, createActivationBinding } from "./activation-scope.js";
 
 /** Audited runtime imports: never bundle Engine implementations into Villages. */
 export const DECISION_ENGINE_MODULES = [
@@ -141,23 +142,19 @@ export function createDecisionsAdapter(
 export type DecisionsAdapter = ReturnType<typeof createDecisionsAdapter>;
 
 // Transitional dispatch; asynchronous operations retain the selected instance.
-let current: DecisionsAdapter | null = null;
-let inactiveReason = "Engine Decisions adapter has not been configured";
+const adapters = createActivationBinding<DecisionsAdapter>("Engine Decisions adapter has not been configured");
 /** Only activation supplies the live Engine DB; no client can select paths or credentials. */
 export function configureDecisionsAdapter(context: { app?: { db?: unknown } }, serverEntry = process.argv[1] ?? "") {
   const adapter = createDecisionsAdapter(context, serverEntry);
-  current = adapter;
+  // Retain the disposed facade until replacement/owner disposal, including its inactive error.
+  adapters.configure(bindActivationService(adapter));
   return () => {
     adapter.dispose();
-    if (current === adapter) {
-      current = null;
-      inactiveReason = "Villages is inactive";
-    }
   };
 }
 export async function decisionAdapterStatus(): Promise<DecisionAdapterStatus> {
   return (
-    current?.status() ?? {
+    adapters.maybe()?.status() ?? {
       available: false,
       reason: "Engine Decisions integration is unavailable or incompatible",
       engineBuild: null,
@@ -165,6 +162,10 @@ export async function decisionAdapterStatus(): Promise<DecisionAdapterStatus> {
   );
 }
 export async function resolveVillagesDecisionBackend(signal: AbortSignal): Promise<EngineDecisionBackend | null> {
-  if (!current) throw new Error(inactiveReason);
-  return current.resolve(signal);
+  const adapter = adapters.maybe();
+  if (!adapter)
+    throw new Error(
+      activationScope()?.active === false ? "Villages is inactive" : "Engine Decisions adapter has not been configured",
+    );
+  return adapter.resolve(signal);
 }

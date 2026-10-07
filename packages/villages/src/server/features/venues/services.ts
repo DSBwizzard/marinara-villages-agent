@@ -1,21 +1,16 @@
+import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { VenueCommands } from "./venue-service.js";
 
 export type { VillageVenueDeletionDependencies, VenueCommands } from "./venue-service.js";
 
 // Transitional dispatch for existing routes. The factory owns command behavior;
 // runtime and queue isolation are separate parts of the activation migration.
-let current: VenueCommands | null = null;
-let registration = 0;
+const commandsBinding = createActivationBinding<VenueCommands>("Villages Venue commands are not configured.");
 export function configureVenueCommands(commands: VenueCommands): () => void {
-  const token = ++registration;
-  current = commands;
-  return () => {
-    if (registration === token) current = null;
-  };
+  return commandsBinding.configure(bindActivationService(commands));
 }
 export function venueCommands(): VenueCommands {
-  if (!current) throw new Error("Villages Venue commands are not configured.");
-  return current;
+  return commandsBinding.get();
 }
 
 export function setVillageVenues(...args: Parameters<VenueCommands["setVillageVenues"]>) {
