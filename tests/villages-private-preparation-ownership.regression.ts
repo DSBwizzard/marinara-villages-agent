@@ -16,13 +16,13 @@ function deferred() {
   });
   return { promise, resolve };
 }
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-async function until(ready: () => boolean) {
-  for (let i = 0; i < 300; i++) {
-    if (ready()) return;
-    await tick();
-  }
-  throw new Error("Preparation did not reach the expected checkpoint");
+function waitForDispatch(entered: Promise<void>, work: Promise<void>) {
+  return Promise.race([
+    entered,
+    work.then(() => {
+      throw new Error("Preparation completed before the expected provider checkpoint");
+    }),
+  ]);
 }
 function world(name: string) {
   const stamp = new Date().toISOString();
@@ -74,13 +74,18 @@ function fixture(name: string) {
     ],
   ]);
   const gate = deferred();
+  const entered = deferred();
   const calls: { signal?: AbortSignal; claim: string }[] = [];
   const stages: string[] = [];
   const state = () => rows.get("villages-village").data;
   const privateZone = () => state().venues[0].zones[1];
   let conflicts = 2;
   const documents = {
-    getById: async (_package: string, id: string) => structuredClone(rows.get(id) ?? null),
+    getById: async (_package: string, id: string) => {
+      // Native storage can yield while the event loop runs many immediate turns.
+      await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      return structuredClone(rows.get(id) ?? null);
+    },
     list: async (_package: string, kind: string) =>
       structuredClone([...rows.values()].filter((row) => row.kind === kind)),
     create: async (input: any) => {
@@ -110,6 +115,7 @@ function fixture(name: string) {
       const zone = privateZone();
       assert.ok(zone.preparation.claimId, "claim must be stored before provider dispatch");
       calls.push({ signal: options.signal, claim: zone.preparation.claimId });
+      entered.resolve();
       await gate.promise; // Deliberately ignores abort to exercise the late-result fence.
       return {
         content: JSON.stringify({
@@ -159,7 +165,7 @@ function fixture(name: string) {
     persistence: { documents },
     languageModels: { resolveForRequest: async () => model },
   } as any;
-  return { service, state, privateZone, gate, calls, stages, host };
+  return { service, state, privateZone, gate, entered, calls, stages, host };
 }
 async function factoryIsolation() {
   const a = fixture("A"),
@@ -173,7 +179,9 @@ async function factoryIsolation() {
   assert.notEqual(pendingA, pendingB);
   const outcomeA = pendingA.catch((error) => error);
   try {
-    await until(() => a.calls.length === 1 && b.calls.length === 1);
+    await Promise.all([waitForDispatch(a.entered.promise, pendingA), waitForDispatch(b.entered.promise, pendingB)]);
+    assert.equal(a.calls.length, 1);
+    assert.equal(b.calls.length, 1);
     assert.notEqual(a.calls[0].claim, b.calls[0].claim);
     controllerA.abort();
     assert.equal(a.calls[0].signal?.aborted, true);
@@ -216,7 +224,9 @@ async function scopedIsolation() {
   const outcomeA = pendingA.catch((error) => error);
   assert.equal(pendingA, duplicateA, "supported helpers preserve duplicate joins");
   try {
-    await until(() => a.calls.length === 1 && b.calls.length === 1);
+    await Promise.all([waitForDispatch(a.entered.promise, pendingA), waitForDispatch(b.entered.promise, pendingB)]);
+    assert.equal(a.calls.length, 1);
+    assert.equal(b.calls.length, 1);
     controllerA.abort();
     a.gate.resolve();
     assert.match((await outcomeA).message, /interrupted/);
