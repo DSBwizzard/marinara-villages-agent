@@ -31,6 +31,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     personaPortrait,
     portraits,
     retrySavedScene,
+    sceneReading,
     room,
     roomBusy,
     roomChangeStatus,
@@ -89,6 +90,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       {room ? (
         <RoomPanel
           room={room}
+          sceneReading={sceneReading}
           mobile={mobile}
           nameColors={
             snapshot?.settings.characterSpeechColors

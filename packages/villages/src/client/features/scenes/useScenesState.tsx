@@ -1,9 +1,11 @@
 import type { ArchiveVisitSummary, RoomRecordEvent, SceneView } from "../../../shared/contracts/village.js";
 import type { SceneComposerMode } from "../../shared/types.js";
 import { useRef, useState } from "react";
+import { useSceneReadingSession } from "./reading-session.js";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
-export function useScenesState() {
+export function useScenesState(isFounded?: boolean) {
+  const sceneReading = useSceneReadingSession(isFounded);
   const [venueVisits, setVenueVisits] = useState<ArchiveVisitSummary[] | null>(null);
 
   const [archiveTotal, setArchiveTotal] = useState(0);
@@ -113,6 +115,7 @@ export function useScenesState() {
    */
   const [writeUpNote, setWriteUpNote] = useState("");
   return {
+    sceneReading,
     venueVisits,
     setVenueVisits,
     archiveTotal,

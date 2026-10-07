@@ -277,6 +277,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setArchiveError,
     mailboxOpen,
     setMailboxOpen,
+    sceneReading,
     roomOpen,
     setRoomOpen,
     roomDraft,
@@ -328,7 +329,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomEnded,
     writeUpNote,
     setWriteUpNote,
-  } = useScenesState();
+  } = useScenesState(snapshot?.isFounded);
 
   const [progressDebug, setProgressDebug] = useState<ProgressDebugView | null>(null);
 
@@ -2374,6 +2375,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomMoveOperationIdRef,
     roomMoveZoneId,
     roomNotices,
+    sceneReading,
     roomOpen,
     roomRuling,
     roomSubmissionIdRef,

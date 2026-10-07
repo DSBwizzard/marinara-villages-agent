@@ -1,6 +1,7 @@
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "../../shared/villages-inline-markdown.js";
 import { paginateReading, type ReadingPage, readingText, sliceReadingNodes } from "./villages-reading-pages.js";
-import { type RefObject, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useLayoutEffect, useMemo, useState } from "react";
+import type { SceneReadingSession } from "./reading-session.js";
 
 const tag = "marinara-capability-villages";
 
@@ -47,13 +48,17 @@ function measurementNodes(nodes: readonly VillagesMarkdownNode[]): DocumentFragm
 }
 
 /** A second reading cursor only: Scene paragraphs and staging events remain authoritative. */
-export function useReadingPages(text: string, readingKey: string, readingRef: RefObject<HTMLDivElement | null>) {
+export function useReadingPages(
+  text: string,
+  readingKey: string,
+  readingRef: RefObject<HTMLDivElement | null>,
+  position: Pick<SceneReadingSession, "checkpoint" | "reset" | "isFounded" | "anchor" | "enterAtEnd">,
+) {
   const nodes = useMemo(() => parseVillagesInlineMarkdown(text), [text]);
   const length = readingText(nodes).length;
   const [layout, setLayout] = useState<{ key: string; pages: ReadingPage[] }>({ key: "", pages: [] });
-  const [cursor, setCursor] = useState({ key: "", offset: 0 });
-  const anchor = useRef({ key: "", offset: 0 });
-  const enterAtEnd = useRef(false);
+  const { checkpoint, reset, isFounded, anchor, enterAtEnd } = position;
+  const [cursor, setCursor] = useState(() => checkpoint.current.cursor);
   const pages = layout.key === readingKey && layout.pages.length ? layout.pages : [{ start: 0, end: length }];
   const offset = cursor.key === readingKey ? cursor.offset : 0;
   const index = Math.max(
@@ -63,6 +68,15 @@ export function useReadingPages(text: string, readingKey: string, readingRef: Re
   const page = pages[index]!;
 
   useLayoutEffect(() => {
+    if (isFounded === false) setCursor({ key: "", offset: 0 });
+  }, [reset, isFounded]);
+
+  useLayoutEffect(() => {
+    if (isFounded !== false) checkpoint.current.cursor = cursor;
+  }, [checkpoint, cursor, isFounded]);
+
+  useLayoutEffect(() => {
+    if (isFounded === false) return;
     const reading = readingRef.current;
     const screen = reading?.closest<HTMLElement>("[data-mobile]");
     const host = reading?.closest<HTMLElement>(tag);
@@ -152,7 +166,7 @@ export function useReadingPages(text: string, readingKey: string, readingRef: Re
       attributes.disconnect();
       document.fonts?.removeEventListener("loadingdone", fontsChanged);
     };
-  }, [nodes, text, readingKey, length, readingRef]);
+  }, [nodes, text, readingKey, length, readingRef, anchor, enterAtEnd, reset, isFounded]);
 
   const move = (direction: -1 | 1): boolean => {
     const next = pages[index + direction];

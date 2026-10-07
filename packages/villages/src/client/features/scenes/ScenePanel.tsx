@@ -15,6 +15,7 @@ import { CardFlipSprite } from "./villages-card-flip-sprite.js";
 import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
 import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
 import { useReadingPages } from "./villages-reading-viewport.js";
+import type { SceneReadingSession } from "./reading-session.js";
 import { hasCompletedRoomSubmission, nextRoomReadIndex } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
@@ -171,6 +172,7 @@ function SceneControlIcon({
 /** The single Visit surface for an empty, solo, or group cast. */
 export function RoomPanel({
   room,
+  sceneReading,
   mobile,
   nameColors,
   speechColors,
@@ -223,6 +225,7 @@ export function RoomPanel({
   currentZoneLabel,
 }: {
   room: SceneView;
+  sceneReading: SceneReadingSession;
   mobile: boolean;
   nameColors: Record<string, string>;
   speechColors: Record<string, string>;
@@ -276,7 +279,8 @@ export function RoomPanel({
   currentZoneLabel: string;
 }) {
   /** The current paragraph in this Scene's ordered reading. */
-  const [readStep, setReadStep] = useState(0);
+  const { checkpoint, reset, isFounded, previousReading } = sceneReading;
+  const [readStep, setReadStep] = useState(() => checkpoint.current.readStep);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -292,7 +296,6 @@ export function RoomPanel({
   const historyRef = useRef<HTMLDivElement | null>(null);
   const readingRef = useRef<HTMLDivElement | null>(null);
   const actionsRef = useRef<HTMLSpanElement | null>(null);
-  const previousReading = useRef<{ roomId: string; stepCount: number } | null>(null);
   const [dialogueHidden, setDialogueHidden] = useState(false);
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
@@ -459,13 +462,21 @@ export function RoomPanel({
 
   /** A new visit opens at its latest line; each append opens at its first new paragraph. */
   useLayoutEffect(() => {
+    if (isFounded === false) {
+      setReadStep(0);
+      return;
+    }
     setReadStep((current) => nextRoomReadIndex(previousReading.current, room.id, steps.length, current));
     previousReading.current = { roomId: room.id, stepCount: steps.length };
-  }, [room.id, steps.length]);
+  }, [room.id, steps.length, previousReading, reset, isFounded]);
+
+  useLayoutEffect(() => {
+    if (isFounded !== false) checkpoint.current.readStep = readStep;
+  }, [checkpoint, readStep, isFounded]);
 
   const at = Math.min(readStep, Math.max(0, steps.length - 1));
   const step = steps[at];
-  const readingPages = useReadingPages(step?.text ?? "", `${room.id}:${at}`, readingRef);
+  const readingPages = useReadingPages(step?.text ?? "", `${room.id}:${at}`, readingRef, sceneReading);
   const stagingFrames = useMemo(
     () =>
       room.stagingVersion === 1

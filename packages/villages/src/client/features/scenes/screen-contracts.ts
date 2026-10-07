@@ -38,6 +38,7 @@ import type { VenuesState } from "../venues/useVenuesState.js";
 
 /** Values and actions used by SceneScreen; independent of shell implementation. */
 export type SceneScreenController = {
+  readonly sceneReading: ScenesState["sceneReading"];
   readonly closeRoom: ReturnType<typeof useCloseRoom>;
   readonly composerEditVersionRef: ScenesState["composerEditVersionRef"];
   readonly continueRoomWithoutGreeting: ReturnType<typeof useContinueRoomWithoutGreeting>;
