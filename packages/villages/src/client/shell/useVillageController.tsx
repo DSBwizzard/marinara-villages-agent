@@ -179,6 +179,7 @@ import {
   useSaveVenue,
 } from "../features/venues/actions.js";
 import { useVenueRequestFocus } from "../features/venues/controller-hooks.js";
+import { useVenueRequestCommands } from "../features/venues/request-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
 import {
@@ -2130,6 +2131,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenuesDraft,
   });
 
+  const { generateRequestDescription, decideHomeUpgrade, completeResidenceMove, decideResidenceMove } =
+    useVenueRequestCommands({ setBusy, setSettingsError, setSnapshot, setRequestEdits });
+
   /**
    * Drop a macro in at the caret of the prompt box, then put the caret back
    * where it was.
@@ -2270,6 +2274,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     correctCompletedWish,
     debugDiscardEnabled,
     decideVenueRequest,
+    generateRequestDescription,
+    decideHomeUpgrade,
+    completeResidenceMove,
+    decideResidenceMove,
     deleteArchivedVisits,
     discardRoomDebug,
     discardTownMapDraft,

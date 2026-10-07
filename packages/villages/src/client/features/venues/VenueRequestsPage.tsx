@@ -1,18 +1,17 @@
-import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { VenueRequestsPagePorts } from "./page-contracts.js";
 
 export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
   const {
     busy,
+    generateRequestDescription,
+    decideHomeUpgrade,
+    completeResidenceMove,
+    decideResidenceMove,
     decideVenueRequest,
     nameOfCharacter,
     requestEdits,
-    setBusy,
     setRequestEdits,
-    setSettingsError,
-    setSnapshot,
     settingsError,
     snapshot,
   } = ports;
@@ -75,21 +74,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                     type="button"
                     className={`${ELEMENT_TAG}-button`}
                     disabled={busy || !draft.name.trim()}
-                    onClick={() => {
-                      setBusy(true);
-                      setSettingsError("");
-                      void request<{ descriptions: Record<string, string> }>("/locations/venue/descriptions/draft", {
-                        method: "POST",
-                        body: JSON.stringify({
-                          venues: [{ id: entry.id, name: draft.name, classes: draft.classes }],
-                        }),
-                      })
-                        .then((result) => edit({ description: result.descriptions[entry.id] ?? "" }))
-                        .catch((cause) =>
-                          setSettingsError(messageFrom(cause, "The description draft could not be generated.")),
-                        )
-                        .finally(() => setBusy(false));
-                    }}
+                    onClick={() => void generateRequestDescription(entry, draft)}
                   >
                     Generate description draft
                   </button>
@@ -138,17 +123,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
                 disabled={busy}
-                onClick={() => {
-                  setBusy(true);
-                  setSettingsError("");
-                  void request<VillageSnapshot>(
-                    `/venue-upgrades/${encodeURIComponent(entry.id)}/${approved ? "approve" : "deny"}`,
-                    { method: "POST" },
-                  )
-                    .then(setSnapshot)
-                    .catch((cause) => setSettingsError(messageFrom(cause, "The upgrade request could not be decided.")))
-                    .finally(() => setBusy(false));
-                }}
+                onClick={() => void decideHomeUpgrade(entry, approved)}
               >
                 {approved ? "Approve upgrade" : "Deny"}
               </button>
@@ -183,17 +158,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                       type="button"
                       className={`${ELEMENT_TAG}-button`}
                       disabled={busy}
-                      onClick={() => {
-                        setBusy(true);
-                        setSettingsError("");
-                        void request<VillageSnapshot>("/residences/debug/complete-now", {
-                          method: "POST",
-                          body: JSON.stringify({ characterId: entry.characterId }),
-                        })
-                          .then(setSnapshot)
-                          .catch((cause) => setSettingsError(messageFrom(cause, "The move could not be completed.")))
-                          .finally(() => setBusy(false));
-                      }}
+                      onClick={() => void completeResidenceMove(entry)}
                     >
                       DEBUG: Complete move now
                     </button>
@@ -207,19 +172,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                       type="button"
                       className={`${ELEMENT_TAG}-button`}
                       disabled={busy}
-                      onClick={() => {
-                        setBusy(true);
-                        setSettingsError("");
-                        void request<VillageSnapshot>(`/residences/${approved ? "approvals" : "denials"}`, {
-                          method: "POST",
-                          body: JSON.stringify({ characterId: entry.characterId }),
-                        })
-                          .then(setSnapshot)
-                          .catch((cause) =>
-                            setSettingsError(messageFrom(cause, "The move request could not be decided.")),
-                          )
-                          .finally(() => setBusy(false));
-                      }}
+                      onClick={() => void decideResidenceMove(entry, approved)}
                     >
                       {approved ? "Approve move" : "Deny"}
                     </button>

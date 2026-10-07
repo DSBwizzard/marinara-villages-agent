@@ -1,3 +1,4 @@
+import type { VenueRequestsPagePorts } from "../features/venues/page-contracts.js";
 import type { useAddNotice } from "../features/settings/actions.js";
 
 import type { useAddVenue } from "../features/venues/actions.js";
@@ -85,6 +86,10 @@ export type MenuScreenController = {
   readonly catchingUp: boolean;
   readonly debugDiscardEnabled: ScenesState["debugDiscardEnabled"];
   readonly decideVenueRequest: ReturnType<typeof useDecideVenueRequest>;
+  readonly generateRequestDescription: VenueRequestsPagePorts["generateRequestDescription"];
+  readonly decideHomeUpgrade: VenueRequestsPagePorts["decideHomeUpgrade"];
+  readonly completeResidenceMove: VenueRequestsPagePorts["completeResidenceMove"];
+  readonly decideResidenceMove: VenueRequestsPagePorts["decideResidenceMove"];
   readonly deleteArchivedVisits: ReturnType<typeof useDeleteArchivedVisits>;
   readonly discardTownMapDraft: ReturnType<typeof useDiscardTownMapDraft>;
   readonly error: string;

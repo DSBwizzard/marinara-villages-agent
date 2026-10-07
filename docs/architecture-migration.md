@@ -703,3 +703,9 @@ Background owns diagnostics state and its single GET producer. Menu navigation d
 The packaged client reproduced a rejected diagnostics refresh leaving the previous result visible without a reported error. Its old handler also left the rejected Promise uncaught. Refresh now uses the same error-handled command as opening the page: a failed read clears diagnostics and reports the existing API error or fallback. The user can explicitly refresh again. Success retains the previous error-clearing policy; no automatic retry, busy state, provider call or new endpoint is introduced.
 
 The existing menu browser target checks successful reads, failed refresh, explicit recovery and failed navigation across four desktop/mobile layouts. It asserts exact request counts, visible errors and the absence of unhandled browser errors with synthetic HTTP. This read-error correction does not change gameplay, saved data, spending or the separately tracked Venue/Zone mutation lifetimes.
+
+## Venue Requests command ownership
+
+The four remaining request families on the Venue Requests page now belong to the private, always-mounted `useVenueRequestCommands` hook: description generation, home-upgrade decisions, immediate move completion and residence decisions. The page invokes named commands with the existing entry and draft values. It retains input editing, visibility conditions and button policy, while the shell supplies the commands through explicit page inputs.
+
+This mechanical extraction preserves endpoint encoding, POST bodies, success/error/finally order, error messages and the description response's existing captured-draft edit. The command Promise is explicitly discarded by each UI handler. Request admission, reset/disposal ownership and newer-draft acknowledgement remain a separately scoped correction; moving these bodies alone does not establish those guarantees.
