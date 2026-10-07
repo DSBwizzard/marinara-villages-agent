@@ -2140,13 +2140,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const removeVenue = useRemoveVenue({ setBusy, setSettingsError, setSnapshot, setVenuesDraft, snapshot });
 
   const decideVenueRequest = useDecideVenueRequest({
+    snapshot,
     requestEdits,
     setBusy,
     setRequestEdits,
     setSettingsError,
     setSnapshot,
     setVenuesDraft,
-    venuesDraft,
   });
 
   /**

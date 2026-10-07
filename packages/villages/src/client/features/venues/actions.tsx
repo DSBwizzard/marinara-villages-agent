@@ -1,5 +1,6 @@
 import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
@@ -114,8 +115,11 @@ export function useSaveVenue(ports: {
   snapshot: VillageSnapshot;
 }) {
   const { openMenu, setBusy, setSettingsError, setSnapshot, setVenueEditDraft, setVenuesDraft, snapshot } = ports;
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (draft: VillageVenue) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
       setBusy(true);
       setSettingsError("");
       try {
@@ -136,11 +140,12 @@ export function useSaveVenue(ports: {
             ),
           },
         );
+        if (!lifetime.owns(claim)) return;
         const saved = destinationPlaces(next.settings.venues).find((venue) =>
           existing ? venue.id === draft.id : venue.name.toLowerCase() === draft.name.trim().toLowerCase(),
         );
         setSnapshot(next);
-        setVenueEditDraft(null);
+        setVenueEditDraft((current) => (current === draft ? null : current));
         if (!existing) openMenu("projects");
         setVenuesDraft((rows) => {
           const merged = rows.map((row) => (row.id === draft.id && saved ? saved : row));
@@ -150,12 +155,12 @@ export function useSaveVenue(ports: {
           ];
         });
       } catch (cause) {
-        setSettingsError(messageFrom(cause, "That place could not be saved."));
+        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That place could not be saved."));
       } finally {
-        setBusy(false);
+        if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot, openMenu],
+    [snapshot, openMenu, setBusy, setSettingsError, setSnapshot, setVenueEditDraft, setVenuesDraft, lifetime],
   );
 }
 
@@ -167,11 +172,18 @@ export function useRemoveVenue(ports: {
   snapshot: VillageSnapshot;
 }) {
   const { setBusy, setSettingsError, setSnapshot, setVenuesDraft, snapshot } = ports;
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (id: string) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
       const existing = snapshot?.settings.venues.find((venue) => venue.id === id);
       if (!existing) {
-        setVenuesDraft((rows) => rows.filter((row) => row.id !== id));
+        try {
+          setVenuesDraft((rows) => rows.filter((row) => row.id !== id));
+        } finally {
+          lifetime.finish(claim);
+        }
         return;
       }
       setBusy(true);
@@ -187,6 +199,7 @@ export function useRemoveVenue(ports: {
           roomPresent: boolean;
           eventCount: number;
         }>(`/locations/venue/${encodeURIComponent(id)}/dependencies`);
+        if (!lifetime.owns(claim)) return;
         if (
           dependencies.roomPresent ||
           dependencies.playerHome ||
@@ -207,24 +220,26 @@ export function useRemoveVenue(ports: {
           affected || dependencies.workerCharacterIds.length || dependencies.remapCount || dependencies.eventCount
             ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} events. Delete it?`
             : `Delete ${existing.name}?`;
-        if (!window.confirm(note)) return;
+        if (!window.confirm(note) || !lifetime.owns(claim)) return;
         const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(id)}`, {
           method: "DELETE",
           body: JSON.stringify({ confirmed: true }),
         });
+        if (!lifetime.owns(claim)) return;
         setSnapshot(next);
         setVenuesDraft((rows) => rows.filter((row) => row.id !== id));
       } catch (cause) {
-        setSettingsError(messageFrom(cause, "That place could not be removed."));
+        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "That place could not be removed."));
       } finally {
-        setBusy(false);
+        if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot],
+    [snapshot, setBusy, setSettingsError, setSnapshot, setVenuesDraft, lifetime],
   );
 }
 
 export function useDecideVenueRequest(ports: {
+  snapshot: VillageSnapshot;
   requestEdits: Record<
     string,
     { name: string; classes: Array<"residence" | "workplace" | "gathering" | "other">; description: string }
@@ -241,40 +256,45 @@ export function useDecideVenueRequest(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;
-  venuesDraft: VillageVenue[];
 }) {
-  const { requestEdits, setBusy, setRequestEdits, setSettingsError, setSnapshot, setVenuesDraft, venuesDraft } = ports;
+  const { requestEdits, setBusy, setRequestEdits, setSettingsError, setSnapshot, setVenuesDraft } = ports;
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(
     async (entry: VenueRequest, approved: boolean) => {
+      const claim = lifetime.begin();
+      if (!claim) return;
       setBusy(true);
       setSettingsError("");
       try {
-        const draft = requestEdits[entry.id] ?? entry.venueDraft;
+        const submittedEdit = requestEdits[entry.id];
+        const draft = submittedEdit ?? entry.venueDraft;
         const next = await request<VillageSnapshot>(
           `/venue-requests/${encodeURIComponent(entry.id)}/${approved ? "approve" : "deny"}`,
           { method: "POST", body: approved ? JSON.stringify(draft) : undefined },
         );
+        if (!lifetime.owns(claim)) return;
         setSnapshot(next);
         if (approved) {
-          const known = new Set(venuesDraft.map((venue) => venue.id));
-          setVenuesDraft((rows) => [
-            ...rows,
-            ...destinationPlaces(next.settings.venues).filter((venue) => !known.has(venue.id)),
-          ]);
+          setVenuesDraft((rows) => {
+            const known = new Set(rows.map((venue) => venue.id));
+            return [...rows, ...destinationPlaces(next.settings.venues).filter((venue) => !known.has(venue.id))];
+          });
         }
         setRequestEdits((current) => {
+          if (current[entry.id] !== submittedEdit) return current;
           const nextEdits = { ...current };
           delete nextEdits[entry.id];
           return nextEdits;
         });
       } catch (cause) {
-        setSettingsError(
-          messageFrom(cause, approved ? "That venue could not be approved." : "That request could not be denied."),
-        );
+        if (lifetime.owns(claim))
+          setSettingsError(
+            messageFrom(cause, approved ? "That venue could not be approved." : "That request could not be denied."),
+          );
       } finally {
-        setBusy(false);
+        if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [requestEdits, venuesDraft],
+    [requestEdits, setBusy, setRequestEdits, setSettingsError, setSnapshot, setVenuesDraft, lifetime],
   );
 }

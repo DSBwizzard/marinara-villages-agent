@@ -4,6 +4,7 @@ import { build } from "esbuild";
 import { resolve } from "node:path";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { verifySettingsRequestLifetimes } from "./fixtures/villages-settings-request-lifetime.fixture.mjs";
+import { verifyVenueMutationLifetimes } from "./fixtures/villages-venue-mutation-lifetime.fixture.mjs";
 
 function initialSnapshot() {
   const snapshot = structuredClone(fixture);
@@ -379,6 +380,7 @@ try {
     await checkPackage(width);
   }
   await verifySettingsRequestLifetimes(browser);
+  await verifyVenueMutationLifetimes(browser);
   console.log(
     "Mocked desktop/mobile Settings draft navigation, save acknowledgement, reset and explicit Persona choices passed.",
   );
