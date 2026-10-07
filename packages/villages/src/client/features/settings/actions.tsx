@@ -1,5 +1,5 @@
 import type { SavedSettingsDraft } from "./draft-session.js";
-import { useSettingsSaveLifetime } from "./save-lifetime.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import type { VillageSettings, VillageSnapshot, VillageStoryPace } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
@@ -27,7 +27,7 @@ export function useSaveSettings(ports: {
     settingDraft,
     acceptSavedSettings,
   } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const claim = lifetime.begin();
     if (!claim) return;
@@ -65,7 +65,7 @@ export function useSaveScenerySettings(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { sceneryStyle, personalizeHomes, visualLoreDefault, setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const claim = lifetime.begin();
     if (!claim) return;
@@ -97,7 +97,7 @@ export function useSaveSpriteCardFlip(ports: {
   setSpriteFlipSaving: React.Dispatch<SetStateAction<boolean>>;
 }) {
   const { setSnapshot, setSpriteFlipDraft, setSpriteFlipError, setSpriteFlipSaving } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setSpriteFlipSaving);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setSpriteFlipSaving);
   return useCallback(
     async (spriteCardFlipEnabled: boolean) => {
       const claim = lifetime.begin();
@@ -135,7 +135,7 @@ export function useSaveStoryPace(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(
     async (storyPace: VillageStoryPace) => {
       const claim = lifetime.begin();
@@ -165,7 +165,7 @@ export function useSaveSendOnEnter(ports: {
   snapshot: VillageSnapshot;
 }) {
   const { setBusy, setSettingsError, setSnapshot, snapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (sendOnEnter: boolean) => {
       const claim = lifetime.begin();
@@ -201,7 +201,7 @@ export function useSaveCharacterSpeechColors(ports: {
   snapshot: VillageSnapshot;
 }) {
   const { setBusy, setSettingsError, setSnapshot, snapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
     async (characterSpeechColors: boolean) => {
       const claim = lifetime.begin();
@@ -240,7 +240,7 @@ export function useSaveVisitRetention(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setArchiveVersion, setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(
     async (visitRetention: VillageSettings["visitRetention"]) => {
       const claim = lifetime.begin();
@@ -293,7 +293,7 @@ export function useAddNotice(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const notice = noticeDraft.trim();
     if (notice.length === 0) return;
@@ -324,7 +324,7 @@ export function useRemoveNotice(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setBusy, setSettingsError, setSnapshot } = ports;
-  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded, setBusy);
+  const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(
     async (index: number) => {
       const claim = lifetime.begin();

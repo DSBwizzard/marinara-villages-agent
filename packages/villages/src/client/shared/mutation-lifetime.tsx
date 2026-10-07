@@ -9,7 +9,7 @@ function release(key: object, claim: SaveClaim): boolean {
 }
 
 /** A save owns its response and cleanup until reset or disposal retires it. */
-export function useSettingsSaveLifetime(isFounded: boolean | undefined, admissionKey?: object) {
+export function useVillageMutationLifetime(isFounded: boolean | undefined, admissionKey?: object) {
   const localKey = useRef<object>({});
   const key = admissionKey ?? localKey.current;
   const unfounded = isFounded === false;
