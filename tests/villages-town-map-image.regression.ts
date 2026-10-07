@@ -446,7 +446,7 @@ async function main() {
   assert.ok(routes.includes('>("/setup", { bodyLimit: SETTINGS_BODY_LIMIT }'));
   assert.ok(routes.includes('>("/setup/town-map/generate"'));
 
-  const village = await readFile(join(services, "features/world/village.ts"), "utf8");
+  const village = await readFile(join(services, "features/founding/founding-setup-service.ts"), "utf8");
   assert.ok(
     village.includes('if (setting.length === 0) throw badRequest("Describe the place and world before founding.")'),
   );
