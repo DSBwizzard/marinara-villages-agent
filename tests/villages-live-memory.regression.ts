@@ -19,9 +19,9 @@ import {
   readSceneChanges,
   replaySceneChanges,
   dismissSceneNotice,
-  deleteVenueVisit,
   retrySceneChangeInterpretation,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { deleteVenueVisit } from "../packages/villages/src/server/features/scenes/archive.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { responseDiagnostics } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
 import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";

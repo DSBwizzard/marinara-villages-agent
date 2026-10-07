@@ -2,7 +2,7 @@ import { buildVillageCatalog } from "../residents/resident-cards.js";
 import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
 import { fail } from "../../adapters/http/route-support.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { listVenueVisitSummaries } from "../scenes/venue-session.js";
+import { listVenueVisitSummaries } from "../scenes/archive.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import {
   buildVillageMemories,

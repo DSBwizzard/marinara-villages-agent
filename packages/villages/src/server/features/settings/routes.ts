@@ -16,7 +16,7 @@ import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/
 import { readRuntimeDebug, saveRuntimeDebug } from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
-import { setVenueVisitRetention } from "../scenes/venue-session.js";
+import { setVenueVisitRetention } from "../scenes/archive.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { refreshPlayerPersona } from "./persona-cache.js";
 import { buildVillagePersonaCatalog, readVillagePersonaPreview } from "./personas.js";

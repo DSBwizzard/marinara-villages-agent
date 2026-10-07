@@ -63,15 +63,17 @@ import {
   moveVenueZone,
   leaveVenueSession,
   greetVenue as greetVenueRaw,
-  listVenueVisits,
-  listVenueVisitSummaries,
-  readVenueVisit,
   readProjectTurnEvidence,
   resetVenueSessions,
   sendVenueTurn as sendVenueTurnRaw,
   touchVenueSession,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import {
+  listVenueVisits,
+  listVenueVisitSummaries,
+  readVenueVisit,
+} from "../packages/villages/src/server/features/scenes/archive.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { venueCardProfile } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import {

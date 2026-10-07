@@ -4,7 +4,7 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 export interface SceneQueries {
   activeVenueSession: typeof import("./venue-session.js").activeVenueSession;
   readProjectTurnEvidence: typeof import("./venue-session.js").readProjectTurnEvidence;
-  listVenueVisits: typeof import("./venue-session.js").listVenueVisits;
+  listVenueVisits: typeof import("./archive.js").listVenueVisits;
   processSavedExchange: typeof import("./venue-session.js").processSavedExchange;
 }
 const queriesBinding = createActivationBinding<SceneQueries>("Villages Scene queries are not configured.");
