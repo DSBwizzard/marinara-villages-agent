@@ -1,3 +1,4 @@
+import type { SavedSettingsDraft } from "./draft-session.js";
 import type { VillageSettings, VillageSnapshot, VillageStoryPace } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
@@ -11,6 +12,7 @@ export function useSaveSettings(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   settingDraft: string;
+  acceptSavedSettings: (next: VillageSnapshot, submitted: SavedSettingsDraft) => void;
 }) {
   const {
     knowledgeDraft,
@@ -21,29 +23,30 @@ export function useSaveSettings(ports: {
     setSettingsError,
     setSnapshot,
     settingDraft,
+    acceptSavedSettings,
   } = ports;
   return useCallback(async () => {
     setBusy(true);
     setSettingsError("");
     try {
-      setSnapshot(
-        await request<VillageSnapshot>("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({
-            promptKnowledge: knowledgeDraft,
-            playerPersonaId: personaDraft,
-            setting: settingDraft,
-            selectedLorebookIds: lorebookDraft,
-            loreTokenBudget: loreTokenBudgetDraft,
-          }),
+      const saved = await request<VillageSnapshot>("/settings", {
+        method: "PATCH",
+        body: JSON.stringify({
+          promptKnowledge: knowledgeDraft,
+          playerPersonaId: personaDraft,
+          setting: settingDraft,
+          selectedLorebookIds: lorebookDraft,
+          loreTokenBudget: loreTokenBudgetDraft,
         }),
-      );
+      });
+      setSnapshot(saved);
+      acceptSavedSettings(saved, { knowledgeDraft, personaDraft, settingDraft, lorebookDraft, loreTokenBudgetDraft });
     } catch (cause) {
       setSettingsError(messageFrom(cause, "Those settings could not be saved."));
     } finally {
       setBusy(false);
     }
-  }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft]);
+  }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft, acceptSavedSettings]);
 }
 
 export function useSaveSpriteCardFlip(ports: {

@@ -234,13 +234,14 @@ export function useLoadPersonas(ports: {
   readonly setPersonaDraft: SettingsState["setPersonaDraft"];
   readonly setPersonas: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").PersonaEntry[]>>;
 }) {
-  return useCallback(async (signal?: AbortSignal) => {
+  return useCallback(async (signal?: AbortSignal, selectActive = true) => {
     const { setError, setPersonaDraft, setPersonas } = ports;
 
     try {
       const response = await request<PersonaResponse>("/personas", { signal });
       setPersonas(response.personas);
-      setPersonaDraft((current) => current || response.personas.find((persona) => persona.isActive)?.id || "");
+      if (selectActive)
+        setPersonaDraft((current) => current || response.personas.find((persona) => persona.isActive)?.id || "");
     } catch (cause) {
       if (signal?.aborted) return;
       // A failed read settles on "none" rather than staying unsettled forever:

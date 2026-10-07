@@ -1,3 +1,4 @@
+import { useSettingsDraftSession } from "../features/settings/draft-session.js";
 import type {
   CatalogEntry,
   PersonaEntry,
@@ -1312,8 +1313,20 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // ── Menu screen ────────────────────────────────────────────────────────────
   // The menu is its own screen rather than a panel on the homepage, and every
   // option lives here now that nothing is drawn beside the map. Drafts are
-  // seeded when Village Settings opens and never re-seeded while it stays open,
-  // so a snapshot arriving from a chat send cannot overwrite what is being typed.
+  // managed by Settings across navigation; reopening refreshes untouched fields
+  // and preserves edits rather than discarding them for an incoming snapshot.
+  const { openSettings, acceptSavedSettings } = useSettingsDraftSession({
+    snapshot,
+    setKnowledgeDraft,
+    setLorebookDraft,
+    setLoreTokenBudgetDraft,
+    setPersonaDraft,
+    setPersonalizeHomes,
+    setSceneryStyle,
+    setSettingDraft,
+    setVenuesDraft,
+    setVisualLoreDefault,
+  });
   const openMenu = useScenesOpenMenu({
     loadCatalog,
     loadLorebooks,
@@ -1322,21 +1335,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     screen,
     setError,
     setFocusedRequestId,
-    setKnowledgeDraft,
-    setLorebookDraft,
-    setLoreTokenBudgetDraft,
     setMenuPage,
-    setPersonaDraft,
-    setPersonalizeHomes,
     setProgressDebug,
-    setSceneryStyle,
     setScreen,
-    setSettingDraft,
     setSettingsError,
     setSiteProjectId,
-    setVenuesDraft,
-    setVisualLoreDefault,
-    snapshot,
+    openSettings,
   });
 
   const goHome = useNavigationGoHome({
@@ -1608,6 +1612,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSettingsError,
     setSnapshot,
     settingDraft,
+    acceptSavedSettings,
   });
 
   const saveSpriteCardFlip = useSaveSpriteCardFlip({
