@@ -48,6 +48,13 @@ import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
 import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
 import { configureBackgroundWork } from "../jobs/background-work.js";
 import { createBackgroundWork } from "../jobs/background-service.js";
+import { configurePrivateSpacePreparation } from "../jobs/private-space-preparation.js";
+import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
+import { readVillageLore } from "../adapters/engine/lorebooks.js";
+import { villagesLanguageModels } from "../adapters/models/language-models.js";
+import { reportFoundingProgress } from "../features/founding/founding-progress.js";
+import { completeWithRoom } from "../features/generation/model-requests.js";
+import { villagesConnectionIdFor } from "../features/settings/connections.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 /** Connect an application without starting jobs; activation owns the returned release. */
@@ -112,7 +119,20 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
       ],
     }),
   );
+  const releasePrivateSpaces = configurePrivateSpacePreparation(
+    createPrivateSpacePreparation({
+      readVillageLore,
+      villagesLogger,
+      villagesLanguageModels,
+      reportFoundingProgress,
+      completeWithRoom,
+      villagesConnectionIdFor,
+      mutateVillageState,
+      readVillageState,
+    }),
+  );
   const releaseGraph = () => {
+    releasePrivateSpaces();
     releaseBackground();
     releaseCoordinator();
     releaseTownMap();
