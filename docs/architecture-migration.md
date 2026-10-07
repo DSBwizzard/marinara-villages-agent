@@ -121,3 +121,9 @@ Independent review verified all twelve schedule and five gallery function bodies
 Provider-free tests cover identical Scene/check identifiers in separate worlds, independent cancellation, same-owner joins, CAS retries and same-store overlapping admission. Persisted claims still prevent duplicate or automatic repeated model calls. An interrupted attempt retains its unknown receipt even when its provider replies late. Access diagnostics retain their existing redaction, and removal/cleanup cannot select another owner's store or controller. This remains a logical cancellation fence; an abort-ignoring provider is not physically drained.
 
 Independent review verified all six original function bodies and document metadata, with no blocking findings. Cancellation after the provider race has resolved can still permit the final diagnostic write; this existing gap is distinct from aborting a pending provider result and is retained by this extraction.
+
+## Direct Scene-context callback correction
+
+Direct `context.run` and `context.exit` helpers now capture application selection before entering their callback. Previously a direct callback selected default activation A, paused, then resumed with default B: its Scene lookup became uncoordinated, losing A's operation and cancellation authority. The regression reproduced this at `3cdaecf` before the correction.
+
+Pinning the selected activation preserves the original callback result, Promise identity and synchronous failures. It also retains A's checkpoints, inputs, snapshots and cancellation checks across default replacement. Nested explicit B work keeps B's authority, and exiting Scene authority retains the same application before restoring the surrounding Scene on return. This correction changes no saved formats, request identities, provider calls or factory implementations.

@@ -20,10 +20,14 @@ export const context = {
     return operations().context.getStore();
   },
   run<T>(store: Context, work: () => T): T {
-    return operations().context.run(store, work);
+    const owner = activationScope();
+    const calls = operations().context;
+    return owner ? owner.run(() => calls.run(store, work)) : calls.run(store, work);
   },
   exit<T>(work: () => T): T {
-    return operations().context.exit(work);
+    const owner = activationScope();
+    const calls = operations().context;
+    return owner ? owner.run(() => calls.exit(work)) : calls.exit(work);
   },
 };
 export function venueRefusal(code: string, message: string): VillagesRequestError {
