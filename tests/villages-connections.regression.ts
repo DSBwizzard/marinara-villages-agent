@@ -440,6 +440,8 @@ async function main() {
     "domain/rules/native-remap.ts",
     "features/residents/wishes/wishes.ts",
     "features/world/village.ts",
+    "features/residents/resident-agenda-service.ts",
+    "features/venues/residence-service.ts",
   ]) {
     const source = await readFile(join(servicesRoot, relativePath), "utf8");
     assert.equal(

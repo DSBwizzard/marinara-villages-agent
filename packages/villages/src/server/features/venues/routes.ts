@@ -1,15 +1,14 @@
-import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
-import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   approveVillageResidence,
   completeVillageResidence,
-  decideVillageHomeUpgrade,
   decideVillageResidence,
-  decideVillageVenueRequest,
   proposeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
-} from "../world/village.js";
+} from "../venues/residences.js";
+import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
+import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
+import { decideVillageHomeUpgrade, decideVillageVenueRequest } from "../world/village.js";
 import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 import {
   changeVenueAccess,

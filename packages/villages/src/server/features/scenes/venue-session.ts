@@ -1,3 +1,4 @@
+import { decideVillageResidence, proposeVillageResidence } from "../venues/residences.js";
 import { activationScope } from "../../adapters/engine/activation-scope.js";
 import { sceneWork } from "./scene-work.js";
 import {
@@ -215,7 +216,7 @@ import {
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { recordVillagerVenueImprovement } from "../venues/venue-mailbox.js";
 import { mutateVillageState, readVillageSnapshot, readVillageState } from "../world/village-store.js";
-import { decideVillageResidence, proposeVillageResidence, queueVillageVenueRequest } from "../world/village.js";
+import { queueVillageVenueRequest } from "../world/village.js";
 import { applyResidenceEditApproval } from "../venues/zone-edits.js";
 import { memoryForVillager } from "./chat.js";
 import { dispatchExchange } from "./exchange-processing.js";

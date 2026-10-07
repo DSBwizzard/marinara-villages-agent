@@ -1,3 +1,6 @@
+import { createResidences } from "../features/venues/residence-service.js";
+import { configureResidences } from "../features/venues/residences.js";
+import { queueSharedMoveConsent } from "../features/venues/venue-mailbox.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
 import { configureResidentAgendas, queueVillagerAgenda } from "../features/residents/resident-agendas.js";
 import { readEffectiveVillagerCard } from "../adapters/engine/catalog.js";
@@ -82,7 +85,7 @@ import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
 import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
 import { buildVillageSnapshot } from "../features/world/snapshot.js";
-import { adaptationBackgroundHandler, storyBackgroundHandler } from "../features/world/village.js";
+import { storyBackgroundHandler } from "../features/world/village.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
 import { wishBackgroundHandler } from "../features/residents/wishes/wish-lifecycle.js";
 import {
@@ -218,6 +221,20 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     correctResidentWish,
   });
   const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
+  const residences = createResidences({
+    readVillageState,
+    mutateVillageState,
+    buildVillageSnapshot,
+    queueSharedMoveConsent,
+    outsideVenueOperation: operations.outsideVenueOperation,
+    preparePrivateSpaces,
+    readVillageLore,
+    queueBackgroundJob,
+    villagesLanguageModels,
+    villagesConnectionIdFor,
+    completeWithRoom,
+  });
+  const releaseResidences = configureResidences(residences);
   const releasePersonaCache = configurePersonaCache(
     createPersonaCache({ readVillageState, mutateVillageState, findPlayerPersona }),
   );
@@ -299,7 +316,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["wish-check", wishCheckBackgroundHandler],
         ["mail", mailBackgroundHandler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
-        ["adaptation", adaptationBackgroundHandler],
+        ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
         ["story", storyBackgroundHandler],
       ],
     }),
@@ -345,6 +362,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSprites();
     releaseResidentCards();
     releasePersonaCache();
+    releaseResidences();
     releaseResidentAgendas();
     releaseVillageState();
     releaseRelationships();
