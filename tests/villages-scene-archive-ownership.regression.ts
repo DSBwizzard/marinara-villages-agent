@@ -122,6 +122,9 @@ function fixture(name: string) {
         },
       };
     },
+    async readActive() {
+      return { sessionId: "", placeId: "" };
+    },
     async readSession(id) {
       note("read:" + id);
       if (pauseRead) {

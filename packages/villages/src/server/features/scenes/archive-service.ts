@@ -1,9 +1,9 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import { SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
+import { ACTIVE_ID, SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
-import type { VenueScene, VenueParticipant } from "../../domain/models/scene-model.js";
+import type { ActiveVenue, VenueScene, VenueParticipant } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
@@ -11,6 +11,7 @@ import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
 
 export interface SceneArchivePorts {
   villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById" | "remove">;
+  readActive(): Promise<ActiveVenue>;
   readSession(id: string): Promise<VenueScene>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
@@ -20,6 +21,7 @@ export interface SceneArchivePorts {
 /** Owns archive commands and their lazy connections. Construction performs no work. */
 export function createSceneArchive({
   villagesDocuments,
+  readActive,
   readSession,
   readVillageState,
   mutateVillageState,
@@ -141,6 +143,19 @@ export function createSceneArchive({
         await removeInterpretationDiagnostics(session.id);
     }
   }
+
+  /** A village reset also removes the previous village's private Scene archive. */
+  async function resetVenueSessions(): Promise<void> {
+    if ((await readActive()).sessionId) throw conflict("Finish the active Scene before starting the village over.");
+    const documents = villagesDocuments();
+    const visits = await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND);
+    for (const visit of visits)
+      if (!(await documents.remove(VILLAGES_PACKAGE_ID, visit.id, visit.revision)))
+        throw conflict("A venue archive changed while the village was being reset. Try again.");
+    const pointer = await documents.getById(VILLAGES_PACKAGE_ID, ACTIVE_ID);
+    if (pointer && !(await documents.remove(VILLAGES_PACKAGE_ID, ACTIVE_ID, pointer.revision)))
+      throw conflict("The active venue changed while the village was being reset. Try again.");
+  }
   return {
     listVenueVisits,
     readVenueVisit,
@@ -149,6 +164,7 @@ export function createSceneArchive({
     deleteAllVenueVisits,
     setVenueVisitRetention,
     pruneVenueVisits,
+    resetVenueSessions,
   };
 }
 export type SceneArchive = ReturnType<typeof createSceneArchive>;

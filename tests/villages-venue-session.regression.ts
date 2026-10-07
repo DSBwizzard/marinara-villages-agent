@@ -63,13 +63,13 @@ import {
   moveVenueZone,
   leaveVenueSession,
   greetVenue as greetVenueRaw,
-  resetVenueSessions,
   sendVenueTurn as sendVenueTurnRaw,
   touchVenueSession,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
 import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
 import {
+  resetVenueSessions,
   listVenueVisits,
   listVenueVisitSummaries,
   readVenueVisit,

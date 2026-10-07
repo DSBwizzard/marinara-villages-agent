@@ -33,13 +33,7 @@ import {
 } from "../../adapters/operations/operation-context.js";
 import { mutateDocument } from "../../adapters/storage/document-store.js";
 import { changeSession, clearActivePointer, readActive, readSession } from "../../adapters/storage/scene-store.js";
-import {
-  ACTIVE_ID,
-  SESSION_PREFIX,
-  SESSION_KIND,
-  activeSlot,
-  sessionSlot,
-} from "../../adapters/storage/scene-slots.js";
+import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
@@ -4651,19 +4645,6 @@ async function discardVenueVisitDebugInActivation(id: string): Promise<void> {
   await clearActivePointer(id);
   const document = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, `${SESSION_PREFIX}${session.id}`);
   if (document) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, document.id, document.revision);
-}
-
-/** A village reset also removes the previous village's private Scene archive. */
-export async function resetVenueSessions(): Promise<void> {
-  if ((await readActive()).sessionId) throw conflict("Finish the active Scene before starting the village over.");
-  const documents = villagesDocuments();
-  const visits = await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND);
-  for (const visit of visits)
-    if (!(await documents.remove(VILLAGES_PACKAGE_ID, visit.id, visit.revision)))
-      throw conflict("A venue archive changed while the village was being reset. Try again.");
-  const pointer = await documents.getById(VILLAGES_PACKAGE_ID, ACTIVE_ID);
-  if (pointer && !(await documents.remove(VILLAGES_PACKAGE_ID, ACTIVE_ID, pointer.revision)))
-    throw conflict("The active venue changed while the village was being reset. Try again.");
 }
 
 export async function recoverVenueSceneWork() {

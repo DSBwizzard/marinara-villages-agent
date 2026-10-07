@@ -1,6 +1,6 @@
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
-import { configureSceneRepository, readSession } from "../adapters/storage/scene-store.js";
+import { configureSceneRepository, readActive, readSession } from "../adapters/storage/scene-store.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
 import { processSavedProgressSubmission } from "../features/scenes/venue-session.js";
@@ -246,6 +246,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseSceneArchive = configureSceneArchive(
     createSceneArchive({
       villagesDocuments,
+      readActive,
       readSession,
       readVillageState,
       mutateVillageState,

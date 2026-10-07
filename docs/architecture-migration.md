@@ -363,3 +363,11 @@ Typed provider-free probes cover these filters and gates, exact failures, no mut
 Four relationship prompt/notice calculations now live in server domain rules. Scene writing, Venue mail, world snapshots and entry use the domain interface directly; the resident coordinator keeps its saved-state/lore work and no longer reexports these calculations. The owned world service retains its existing supplied prompt connection.
 
 All four bodies and signatures retain their implementation. Character prompts contain only that character's own relationship perspective. Player notices retain the established contact/knowledge gates, require explicit disclosure for private reasons and suppress unchanged receipts without changing the ledger. Existing dialogue-context and relationship/privacy regressions exercise the moved rules and assembled consumers. No connector, timer, provider request, saved schema or behavior is introduced.
+
+## Scene archive reset ownership
+
+The existing Scene archive reset command now belongs to the archive service, with an additional explicit active-pointer reader. Founding calls the supported archive interface before resetting the Village. Entry supplies the originating Scene repository reader; archive cleanup still precedes repository cleanup.
+
+The original command body retains its distinct reset policy. An active Scene refuses reset before the documents getter. Otherwise one document store supplies the raw visit list, serial revision-checked removals and final pointer lookup/removal. A failed visit removal stops before the pointer read; already completed removals retain the existing partial-reset behavior. This path performs no progress replay or diagnostics cleanup. It adds no navigation lock or atomicity guarantee around the initial active-pointer check.
+
+Typed provider-free probes cover early refusal, complete/empty resets, visit and pointer conflicts, exact read/list failures, same-ID storage isolation across a paused pointer read and default replacement, older cleanup and missing/disposed owners. Existing assembled Founding/Scene regressions retain reset-before-world ordering. No schema, migration, provider request or Engine operation is introduced; broader startup/turn ownership and actual Engine acceptance remain pending.

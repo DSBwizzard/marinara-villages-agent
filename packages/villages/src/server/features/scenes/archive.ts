@@ -25,3 +25,7 @@ export async function setVenueVisitRetention(...args: Parameters<SceneArchive["s
 export async function pruneVenueVisits(...args: Parameters<SceneArchive["pruneVenueVisits"]>) {
   return binding.get().pruneVenueVisits(...args);
 }
+
+export async function resetVenueSessions(...args: Parameters<SceneArchive["resetVenueSessions"]>) {
+  return binding.get().resetVenueSessions(...args);
+}
