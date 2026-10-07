@@ -1,10 +1,10 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
 
 type Completion = { roomId: string; submissionId: string } | null;
-type SendClaim = { owner: object; submission: string | null; completion: Completion; busy: boolean };
+type RequestClaim = { owner: object; submission: string | null; completion: Completion; busy: boolean };
 
-/** One send owns its continuation and cleanup while its selected Scene remains current. */
-export function useSceneSendLifetime(ports: {
+/** One request owns its continuation and cleanup while its selected Scene remains current. */
+export function useSceneRequestLifetime(ports: {
   sceneId: string | undefined;
   isFounded: boolean | undefined;
   ended: boolean;
@@ -12,15 +12,25 @@ export function useSceneSendLifetime(ports: {
   submission: React.RefObject<string | null>;
   completion: React.RefObject<Completion>;
   setBusy: React.Dispatch<React.SetStateAction<boolean>>;
+  clearCompletionOnRetire?: boolean;
 }) {
-  const { sceneId, isFounded, ended, inFlight, submission, completion, setBusy } = ports;
+  const {
+    sceneId,
+    isFounded,
+    ended,
+    inFlight,
+    submission,
+    completion,
+    setBusy,
+    clearCompletionOnRetire = true,
+  } = ports;
   const unfounded = isFounded === false;
   const selection = useMemo(() => ({ sceneId, unfounded, ended }), [sceneId, unfounded, ended]);
   const owner = useRef<object>({}),
     selected = useRef(sceneId),
     enabled = useRef(false),
     active = useRef(true),
-    pending = useRef<SendClaim | null>(null);
+    pending = useRef<RequestClaim | null>(null);
   const lifetime = useMemo(
     () => ({
       retire() {
@@ -30,10 +40,10 @@ export function useSceneSendLifetime(ports: {
         if (!claim || completion.current !== claim.completion) return;
         inFlight.current = false;
         if (submission.current === claim.submission) submission.current = null;
-        completion.current = null;
+        if (clearCompletionOnRetire) completion.current = null;
         if (active.current && claim.busy) setBusy(false);
       },
-      begin(id: string, candidate: object): SendClaim | null {
+      begin(id: string, candidate: object): RequestClaim | null {
         if (
           !active.current ||
           !enabled.current ||
@@ -53,17 +63,17 @@ export function useSceneSendLifetime(ports: {
         inFlight.current = true;
         return claim;
       },
-      owns(claim: SendClaim): boolean {
+      owns(claim: RequestClaim): boolean {
         return active.current && enabled.current && owner.current === claim.owner && pending.current === claim;
       },
-      finish(claim: SendClaim): boolean {
+      finish(claim: RequestClaim): boolean {
         if (!lifetime.owns(claim)) return false;
         pending.current = null;
         inFlight.current = false;
         return true;
       },
     }),
-    [inFlight, submission, completion, setBusy],
+    [inFlight, submission, completion, setBusy, clearCompletionOnRetire],
   );
   useLayoutEffect(() => {
     lifetime.retire();

@@ -21,8 +21,8 @@ import {
   staleVenueReason,
 } from "./ScenePanel.js";
 import { sceneResend } from "./villages-venue-send";
-import { useSceneSendLifetime } from "./send-lifetime.js";
-import { type SetStateAction, useCallback } from "react";
+import { useSceneRequestLifetime } from "./request-lifetime.js";
+import { type SetStateAction, useCallback, useRef } from "react";
 
 export function useReceiveRoomRecordEvents(ports: {
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
@@ -392,9 +392,11 @@ export function useDiscardRoomDebug(ports: {
 }
 
 export function useMoveRoom(ports: {
+  isFounded: boolean | undefined;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   room: SceneView;
   roomBusy: boolean;
+  roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
   roomEnded: boolean;
   roomMoveOperationIdRef: React.RefObject<string>;
   roomMoveZoneId: string;
@@ -407,9 +409,11 @@ export function useMoveRoom(ports: {
   setRoomMoveZoneId: React.Dispatch<SetStateAction<string>>;
 }) {
   const {
+    isFounded,
     loadSnapshot,
     room,
     roomBusy,
+    roomCompletionRef,
     roomEnded,
     roomMoveOperationIdRef,
     roomMoveZoneId,
@@ -421,6 +425,16 @@ export function useMoveRoom(ports: {
     setRoomMode,
     setRoomMoveZoneId,
   } = ports;
+  const lifetime = useSceneRequestLifetime({
+    sceneId: room?.id,
+    isFounded,
+    ended: roomEnded || room?.status === "closed",
+    inFlight: roomSendInFlightRef,
+    submission: roomMoveOperationIdRef,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+    clearCompletionOnRetire: false,
+  });
   return useCallback(async () => {
     if (
       !room?.id ||
@@ -431,7 +445,10 @@ export function useMoveRoom(ports: {
       roomMoveZoneId === room.zoneId
     )
       return;
-    roomSendInFlightRef.current = true;
+    const claim = lifetime.begin(room.id);
+    if (!claim) return;
+    const owns = () => lifetime.owns(claim);
+    claim.busy = true;
     setRoomBusy(true);
     setRoomError("");
     let operationId = roomMoveOperationIdRef.current ?? createVillagesClientId();
@@ -439,9 +456,11 @@ export function useMoveRoom(ports: {
       const { operation } = await request<{ operation: RoomOperation | null }>(
         `/rooms/${encodeURIComponent(room.id)}/operation`,
       );
+      if (!owns()) return;
       const resend = sceneResend(operation, { zoneId: roomMoveZoneId }, operationId);
       operationId = resend.submissionId;
       roomMoveOperationIdRef.current = operationId;
+      claim.submission = operationId;
       const { session } = await request<{ session: SceneView }>("/rooms/zone", {
         method: "POST",
         body: JSON.stringify({
@@ -452,27 +471,46 @@ export function useMoveRoom(ports: {
           retryOfAttemptId: resend.retryOfAttemptId,
         }),
       });
+      if (!owns()) return;
       setRoom(currentRoom(session));
       setRoomMode("chat");
       setRoomMoveZoneId("");
       setRoomContactBoundary("");
       roomMoveOperationIdRef.current = null;
+      claim.submission = null;
       void loadSnapshot();
     } catch (cause) {
-      const latest = await refreshSceneAfterFailure(room.id, operationId);
+      if (!owns()) return;
+      const latest = await refreshSceneAfterFailure(room.id, operationId, owns);
+      if (!owns()) return;
       if (latest) setRoom(currentRoom(latest));
       if (latest?.submissions?.some((entry) => entry.id === operationId)) {
         setRoomMode("chat");
         setRoomMoveZoneId("");
         setRoomContactBoundary("");
         roomMoveOperationIdRef.current = null;
+        claim.submission = null;
         void loadSnapshot();
       } else setRoomError(messageFrom(cause, "That Zone could not be entered."));
     } finally {
-      roomSendInFlightRef.current = false;
-      setRoomBusy(false);
+      if (lifetime.finish(claim)) setRoomBusy(false);
     }
-  }, [room, roomMoveZoneId, roomEnded, roomBusy, loadSnapshot]);
+  }, [
+    room,
+    roomMoveZoneId,
+    roomEnded,
+    roomBusy,
+    loadSnapshot,
+    lifetime,
+    roomMoveOperationIdRef,
+    roomSendInFlightRef,
+    setRoom,
+    setRoomBusy,
+    setRoomContactBoundary,
+    setRoomError,
+    setRoomMode,
+    setRoomMoveZoneId,
+  ]);
 }
 
 export function useSendRoom(ports: {
@@ -539,7 +577,7 @@ export function useSendRoom(ports: {
     setScreen,
     snapshot,
   } = ports;
-  const lifetime = useSceneSendLifetime({
+  const lifetime = useSceneRequestLifetime({
     sceneId: room?.id,
     isFounded: snapshot?.isFounded,
     ended: roomEnded || room?.status === "closed",
@@ -871,29 +909,66 @@ export function useRetrySavedScene(ports: {
 }
 
 export function useContinueRoomWithoutGreeting(ports: {
+  isFounded: boolean | undefined;
+  room: SceneView;
+  roomBusy: boolean;
+  roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
+  roomEnded: boolean;
+  roomSendInFlightRef: React.RefObject<boolean>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
   setRoomError: React.Dispatch<SetStateAction<string>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
-  const { setRoom, setRoomBusy, setRoomError, setRoomGreetingNotice } = ports;
-  return useCallback(async (sessionId: string) => {
-    setRoomBusy(true);
-    try {
-      const { session } = await request<{ session: SceneView }>("/rooms/continue", {
-        method: "POST",
-        body: JSON.stringify({ sessionId }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      setRoom(currentRoom(session));
-      setRoomGreetingNotice(session.lines.length === 0 ? "The opening failed. You can continue the Scene now." : "");
-      setRoomError("");
-    } catch (cause) {
-      setRoomError(messageFrom(cause, "The Scene could not continue. Retry or leave the venue."));
-    } finally {
-      setRoomBusy(false);
-    }
-  }, []);
+  const {
+    isFounded,
+    room,
+    roomBusy,
+    roomCompletionRef,
+    roomEnded,
+    roomSendInFlightRef,
+    setRoom,
+    setRoomBusy,
+    setRoomError,
+    setRoomGreetingNotice,
+  } = ports;
+  const submission = useRef<string | null>(null);
+  const lifetime = useSceneRequestLifetime({
+    sceneId: room?.id,
+    isFounded,
+    ended: roomEnded || room?.status === "closed",
+    inFlight: roomSendInFlightRef,
+    submission,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+    clearCompletionOnRetire: false,
+  });
+  return useCallback(
+    async (sessionId: string) => {
+      if (roomBusy) return;
+      const claim = lifetime.begin(sessionId);
+      if (!claim) return;
+      claim.busy = true;
+      setRoomBusy(true);
+      try {
+        const { session } = await request<{ session: SceneView }>("/rooms/continue", {
+          method: "POST",
+          body: JSON.stringify({ sessionId }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!lifetime.owns(claim)) return;
+        setRoom(currentRoom(session));
+        setRoomGreetingNotice(session.lines.length === 0 ? "The opening failed. You can continue the Scene now." : "");
+        setRoomError("");
+      } catch (cause) {
+        if (!lifetime.owns(claim)) return;
+        setRoomError(messageFrom(cause, "The Scene could not continue. Retry or leave the venue."));
+      } finally {
+        if (lifetime.finish(claim)) setRoomBusy(false);
+      }
+    },
+    [roomBusy, lifetime, setRoom, setRoomBusy, setRoomError, setRoomGreetingNotice],
+  );
 }
 
 export function useOpenRoom(ports: {

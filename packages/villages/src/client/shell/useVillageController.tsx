@@ -1411,9 +1411,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * move the hour's own record on — see the memory each of them files at the end.
    */
   const moveRoom = useMoveRoom({
+    isFounded: snapshot?.isFounded,
     loadSnapshot,
     room,
     roomBusy,
+    roomCompletionRef,
     roomEnded,
     roomMoveOperationIdRef,
     roomMoveZoneId,
@@ -1518,6 +1520,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const continueRoomWithoutGreeting = useContinueRoomWithoutGreeting({
+    isFounded: snapshot?.isFounded,
+    room,
+    roomBusy,
+    roomCompletionRef,
+    roomEnded,
+    roomSendInFlightRef,
     setRoom,
     setRoomBusy,
     setRoomError,
