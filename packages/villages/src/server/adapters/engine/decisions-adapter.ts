@@ -29,27 +29,6 @@ type ModuleSet = {
   createAppSettingsStorage: (db: unknown) => { get(key: string): Promise<string | null> };
 };
 export type DecisionAdapterStatus = { available: boolean; reason: string; engineBuild: string | null };
-let database: unknown;
-let entry = "";
-let modules: Promise<ModuleSet> | undefined;
-let build: string | null = null;
-let failure = "Engine Decisions adapter has not been configured";
-
-/** Only activation supplies the live Engine DB; no client can select paths or credentials. */
-export function configureDecisionsAdapter(context: { app?: { db?: unknown } }, serverEntry = process.argv[1] ?? "") {
-  database = context.app?.db;
-  entry = serverEntry;
-  modules = undefined;
-  build = null;
-  failure = database ? "" : "This Engine did not provide its live database";
-  return () => {
-    database = undefined;
-    modules = undefined;
-    entry = "";
-    build = null;
-    failure = "Villages is inactive";
-  };
-}
 
 export async function loadDecisionEngineModules(serverEntry: string): Promise<ModuleSet & { engineBuild: string }> {
   const main = await realpath(serverEntry);
@@ -83,47 +62,109 @@ export async function loadDecisionEngineModules(serverEntry: string): Promise<Mo
   };
 }
 
-async function prepare(): Promise<ModuleSet> {
-  if (!database) throw new Error(failure);
-  modules ??= loadDecisionEngineModules(entry).then((loaded) => {
-    build = loaded.engineBuild;
-    return loaded;
-  });
-  return modules;
+/** Each activation owns its database, canonical module load and disposal fence. */
+export function createDecisionsAdapter(
+  context: { app?: { db?: unknown } },
+  serverEntry = process.argv[1] ?? "",
+  loadModules: typeof loadDecisionEngineModules = loadDecisionEngineModules,
+) {
+  let database = context.app?.db;
+  let modules: Promise<ModuleSet> | undefined;
+  let build: string | null = null;
+  let active = true;
+  let failure = database ? "" : "This Engine did not provide its live database";
+
+  function assertActive() {
+    if (!active || !database) throw new Error(failure);
+  }
+  async function prepare(): Promise<ModuleSet> {
+    assertActive();
+    modules ??= loadModules(serverEntry).then((loaded) => {
+      assertActive();
+      build = loaded.engineBuild;
+      return loaded;
+    });
+    return modules;
+  }
+  async function status(): Promise<DecisionAdapterStatus> {
+    const originatingDatabase = database;
+    try {
+      const loaded = await prepare();
+      assertActive();
+      const settings = loaded.createAppSettingsStorage(originatingDatabase);
+      const connections = loaded.createConnectionsStorage(originatingDatabase);
+      const selected = await settings.get(loaded.DECISION_SETTINGS_KEYS.localDefault);
+      const configured = !!selected || !!(await connections.getDefaultForDecision());
+      assertActive();
+      return {
+        available: configured,
+        reason: configured ? "" : "No Engine Decision model is selected",
+        engineBuild: build,
+      };
+    } catch {
+      return {
+        available: false,
+        reason: "Engine Decisions integration is unavailable or incompatible",
+        engineBuild: build,
+      };
+    }
+  }
+  async function resolve(signal: AbortSignal): Promise<EngineDecisionBackend | null> {
+    const originatingDatabase = database;
+    const loaded = await prepare();
+    assertActive();
+    const settings = loaded.createAppSettingsStorage(originatingDatabase);
+    const connections = loaded.createConnectionsStorage(originatingDatabase);
+    const backend = await loaded.resolveDecisionBackend(
+      {
+        getLocalDefault: () => settings.get(loaded.DECISION_SETTINGS_KEYS.localDefault),
+        getThinkingPreGeneration: async () =>
+          (await settings.get(loaded.DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
+        getDefaultConnection: () => connections.getDefaultForDecision(),
+        getConnectionWithKey: (id: string) => connections.getWithKey(id),
+        debugMode: false,
+      },
+      signal,
+    );
+    assertActive();
+    return backend;
+  }
+  function dispose() {
+    active = false;
+    database = undefined;
+    modules = undefined;
+    build = null;
+    failure = "Villages is inactive";
+  }
+  return { status, resolve, dispose };
+}
+export type DecisionsAdapter = ReturnType<typeof createDecisionsAdapter>;
+
+// Transitional dispatch; asynchronous operations retain the selected instance.
+let current: DecisionsAdapter | null = null;
+let inactiveReason = "Engine Decisions adapter has not been configured";
+/** Only activation supplies the live Engine DB; no client can select paths or credentials. */
+export function configureDecisionsAdapter(context: { app?: { db?: unknown } }, serverEntry = process.argv[1] ?? "") {
+  const adapter = createDecisionsAdapter(context, serverEntry);
+  current = adapter;
+  return () => {
+    adapter.dispose();
+    if (current === adapter) {
+      current = null;
+      inactiveReason = "Villages is inactive";
+    }
+  };
 }
 export async function decisionAdapterStatus(): Promise<DecisionAdapterStatus> {
-  try {
-    const loaded = await prepare();
-    const settings = loaded.createAppSettingsStorage(database);
-    const connections = loaded.createConnectionsStorage(database);
-    const selected = await settings.get(loaded.DECISION_SETTINGS_KEYS.localDefault);
-    const configured = !!selected || !!(await connections.getDefaultForDecision());
-    return {
-      available: configured,
-      reason: configured ? "" : "No Engine Decision model is selected",
-      engineBuild: build,
-    };
-  } catch {
-    return {
+  return (
+    current?.status() ?? {
       available: false,
       reason: "Engine Decisions integration is unavailable or incompatible",
-      engineBuild: build,
-    };
-  }
+      engineBuild: null,
+    }
+  );
 }
 export async function resolveVillagesDecisionBackend(signal: AbortSignal): Promise<EngineDecisionBackend | null> {
-  const loaded = await prepare();
-  const settings = loaded.createAppSettingsStorage(database);
-  const connections = loaded.createConnectionsStorage(database);
-  return loaded.resolveDecisionBackend(
-    {
-      getLocalDefault: () => settings.get(loaded.DECISION_SETTINGS_KEYS.localDefault),
-      getThinkingPreGeneration: async () =>
-        (await settings.get(loaded.DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
-      getDefaultConnection: () => connections.getDefaultForDecision(),
-      getConnectionWithKey: (id: string) => connections.getWithKey(id),
-      debugMode: false,
-    },
-    signal,
-  );
+  if (!current) throw new Error(inactiveReason);
+  return current.resolve(signal);
 }

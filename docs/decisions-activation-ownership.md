@@ -1,0 +1,9 @@
+# Decisions adapter activation ownership
+
+Before this correction, an older activation's cleanup cleared the shared Decisions database and module cache even when a replacement activation was already configured. A module load started by the older activation could also continue against the replacement database after its asynchronous preparation finished. A synthetic compatible-module fixture reproduced the first failure: the newer adapter was available before old cleanup and unavailable afterward.
+
+Each adapter now owns its database, server entry, canonical module-load promise, build identity and disposal fence. In-flight calls retain that instance and its originating database. Old or repeated cleanup cannot clear a newer adapter. Disposed instances reject pending preparation or backend resolution instead of constructing connections or returning a newly resolved backend. Status continues to report the existing generic unavailable result.
+
+The canonical Engine module loader, supported-build checks, selected model, interpretation fallback, saved documents and client controls remain unchanged. This correction does not add model requests, automatic retries or a new cancellation mechanism for already-returned backends. Existing operation signals retain cancellation ownership. A failed module load stays cached for that adapter's lifetime.
+
+Provider-free regressions use synthetic connectors and temporary synthetic Engine modules to cover overlapping loads, database identity, cleanup during loading/resolution, repeated cleanup and failed-load retention. Existing interpretation and optional-request regressions remain applicable. These fixtures do not establish compatibility with a real Engine runtime. The dispatch binding remains transitional; complete application and queue ownership is a separate architecture requirement.
