@@ -142,7 +142,7 @@ export async function listVillagerCards(characterIds?: string[]): Promise<Villag
 /** One card by id, or null when the player has deleted it. */
 export async function findVillagerCard(characterId: string): Promise<VillagerCard | null> {
   const records = await villagesResources().listCharacters([characterId]);
-  const record = records.find((entry) => entry.id === characterId) ?? records[0];
+  const record = records.find((entry) => entry.id === characterId);
   return record ? readVillagerCard(record) : null;
 }
 
@@ -318,6 +318,6 @@ export async function findPlayerPersona(personaId: string): Promise<VillagePerso
   const read = personaReader();
   if (!read) return null;
   const records = await read([personaId]);
-  const record = records.find((entry) => entry.id === personaId) ?? records[0];
+  const record = records.find((entry) => entry.id === personaId);
   return record ? readPersona(record) : null;
 }

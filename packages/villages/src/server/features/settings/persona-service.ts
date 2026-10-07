@@ -8,6 +8,7 @@ import {
 } from "../../domain/rules/prompt-preset.js";
 
 export interface PersonaQueryPorts {
+  /** Resolve this exact library identity, or null when it is absent. */
   findPlayerPersona(id: string): Promise<VillagePersona | null>;
   listPlayerPersonas(): Promise<VillagePersona[]>;
 }
@@ -49,7 +50,7 @@ export function createPersonaQueries({ findPlayerPersona, listPlayerPersonas }: 
   /** Read only the chosen Persona's authored fields for the Founding preview. */
   async function readVillagePersonaPreview(personaId: string): Promise<VillagePersonaPreview | null> {
     const persona = await findPlayerPersona(personaId);
-    // Some Engine readers return the first library record for an unknown id.
+    // A selected preview must always describe its requested identity.
     if (!persona || persona.id !== personaId) return null;
     return {
       id: persona.id,

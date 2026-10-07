@@ -249,3 +249,9 @@ Independent review confirmed the structural preservation and separately reproduc
 A provider-free reproduction confirmed that a losing completion attempt could authorize private preparation after the winning retry moved the deadline into the future. The saved resident stayed `moving`, but preparation still started. Completion now resets its post-save authorization inside each mutation attempt, so only a completed winning attempt can launch adaptation/private preparation.
 
 The regression fails before this correction and passes afterward. It also verifies that a winning completed retry preserves concurrent metadata and still prepares exactly once. No approval, deadline, force-completion, saved schema, private-space ownership or provider retry policy changes. The correction avoids unnecessary preparation admission; it does not cancel work already admitted elsewhere or add a shutdown drain.
+
+## Exact library identity correction
+
+A provider-free reproduction showed both character and Persona lookups returning the first different library record when the requested ID was absent. That could offer another character's writing for resident refresh or overwrite a linked player's cached identity with another Persona. Both adapters now require the exact requested ID and return unavailable otherwise. A matching record still resolves regardless of its position in the returned list, and library failures propagate without retries.
+
+The assembled-runtime regression fails before the correction and covers mismatched/empty records, a matching second record, selected linked identity, missing/restored Persona cache flags, retained cached identity, unavailable resident refresh without adoption, and unchanged failure propagation. Existing unavailable-card/Persona handling provides the response; no route, schema, Engine API, model payload or automatic provider retry changes. This removes the first-record fallback for the user's fresh-world scope.
