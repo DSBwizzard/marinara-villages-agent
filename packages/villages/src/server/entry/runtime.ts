@@ -148,7 +148,10 @@ import { configureVenueCommands } from "../features/venues/services.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
 import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
-import { buildVillageSnapshot } from "../features/world/snapshot.js";
+import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
+import { createVillageSnapshot } from "../features/world/snapshot-service.js";
+import { captureMissingVillagerCardColors } from "../adapters/engine/catalog.js";
+import { privatePreparationRooms } from "../jobs/private-space-preparation.js";
 import { configureWorldCoordination } from "../features/world/village.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
@@ -328,6 +331,18 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     listVenueVisits,
     processSavedExchange,
   });
+  const releaseVillageSnapshot = configureVillageSnapshot(
+    createVillageSnapshot({
+      readVillageState,
+      mutateVillageState,
+      listVillagerCards,
+      captureMissingVillagerCardColors,
+      rollActiveAgendas,
+      sceneQueries,
+      backgroundWorkSummaries,
+      privatePreparationRooms,
+    }),
+  );
   const residentAgendas = createResidentAgendas({
     readVillageState,
     mutateVillageState,
@@ -560,6 +575,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseResidentAgendas();
     releaseSceneChanges();
     releaseSceneProgress();
+    releaseVillageSnapshot();
     releaseQueries();
     releaseSceneArchive();
     releaseLiveScenes();
