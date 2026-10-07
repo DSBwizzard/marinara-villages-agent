@@ -64,7 +64,7 @@ async function main() {
   } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
   const { doingFor } = await import("../packages/villages/src/server/features/scenes/chat.js");
   const { renderResidentsBlock } =
-    await import("../packages/villages/src/server/features/founding/village-bootstrap.js");
+    await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
   const { coerceRemap: readStoredRemap } =
     await import("../packages/villages/src/server/features/world/village-store.js");
 

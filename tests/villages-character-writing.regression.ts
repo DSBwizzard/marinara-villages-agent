@@ -11,7 +11,7 @@ import {
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
-import { buildTickMessages } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   previewVillagerRefresh,

@@ -18,7 +18,7 @@ import {
 import { draftScenarioImprint } from "../packages/villages/src/server/features/founding/scenario-imprint.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
-import { buildTickMessages } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 

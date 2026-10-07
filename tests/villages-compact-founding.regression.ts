@@ -6,8 +6,8 @@ import {
 import {
   foundingNativeActivities,
   parseCompactFounding,
-  proposeCompactFounding,
-} from "../packages/villages/src/server/features/founding/founding-compact.js";
+} from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";

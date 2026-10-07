@@ -9,7 +9,7 @@ import {
   remapBlocks,
   remapBlockKeys,
 } from "../packages/villages/src/server/domain/rules/native-remap.js";
-import { proposeAgenda } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import {
   translationBatchSize,
   translationRequestCount,
@@ -135,20 +135,19 @@ async function main() {
     assert.ok(plan.dollars);
     assert.equal(calls, 0);
     assert.equal(writes, 0, "previews do not reconcile or write village state");
-    const context: any = {
-      name: "A",
+    const context = {
+      card: { id: "a", name: "A", summary: "", personality: "", description: "", tags: [] },
       village: "V",
       setting: "Village",
-      summary: "",
-      personality: "",
-      description: "",
-      tags: [],
       lore: [],
       home: "",
-      routineSummary: "",
       venues: [],
+      activeWishes: [],
+      completedWishes: [],
+      schedule: null,
+      allowInitialWish: false,
     };
-    await proposeAgenda(context);
+    await proposeCompactFounding(context, async () => {});
     await assert.rejects(proposeRemap({} as any), /retired/);
     assert.equal(calls, plan.requests, "forecast matches actual mocked generator dispatches");
     const signature = "unused-retired-translation";

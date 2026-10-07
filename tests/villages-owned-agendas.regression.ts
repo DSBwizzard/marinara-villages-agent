@@ -24,7 +24,7 @@ import {
   settleBackgroundWork,
   backgroundWorkSummaries,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { parseCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
 import { agendaDateKey, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { wishSlots } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";

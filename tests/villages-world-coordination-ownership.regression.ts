@@ -17,7 +17,7 @@ import type {
   VillageState,
 } from "../packages/villages/src/server/domain/models/world.js";
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
-import type { VillageTickContext } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import type { VillageTickContext } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { villageDateLabel } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";

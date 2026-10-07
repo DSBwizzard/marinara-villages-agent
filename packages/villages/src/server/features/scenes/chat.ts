@@ -49,7 +49,7 @@ import {
   type VillageMoment,
 } from "../../domain/rules/village-clock.js";
 import { projectHomeLines, villagerPlaceView } from "../../domain/rules/village-projections.js";
-import { coerceHappeningList } from "../founding/village-bootstrap.js";
+import { coerceHappeningList } from "../../domain/rules/village-bootstrap-rules.js";
 import { completeWithRoom } from "../generation/model-requests.js";
 import { assembleNarrationMessages, type NarrationPlayer } from "../generation/narration-prompt.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";

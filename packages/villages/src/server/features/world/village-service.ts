@@ -36,7 +36,7 @@ import {
   sharedMemoryFor,
   storyAllowance,
 } from "../../domain/rules/world-story.js";
-import type { VillageTickContext } from "../founding/village-bootstrap.js";
+import type { VillageTickContext } from "../../domain/rules/village-bootstrap-rules.js";
 import { backgroundRevision } from "../../jobs/background-work.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { listVillagerCards, readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";

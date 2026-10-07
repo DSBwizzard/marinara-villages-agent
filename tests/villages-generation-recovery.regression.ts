@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { proposeAgenda } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 let mode = "truncated",
   ceiling = 900,
@@ -53,20 +53,27 @@ async function main() {
       village: "Willow",
       setting: "Quiet",
       venues: [],
-      name: "Aqua",
-      summary: "Curious",
-      tags: [],
-      personality: "Patient",
-      description: "Reads",
-      routineSummary: "",
+      card: { id: "a", name: "Aqua", summary: "Curious", tags: [], personality: "Patient", description: "Reads" },
+      home: "",
+      lore: [],
+      activeWishes: [],
+      completedWishes: [],
+      schedule: null,
+      allowInitialWish: false,
     };
-    await assert.rejects(proposeAgenda(context), /too little output room/);
+    await assert.rejects(
+      proposeCompactFounding(context, async () => {}),
+      /too little output room/,
+    );
     assert.equal(calls, 0);
     ceiling = 8192;
-    await assert.rejects(proposeAgenda(context), /truncated/);
+    await assert.rejects(
+      proposeCompactFounding(context, async () => {}),
+      /truncated/,
+    );
     assert.equal(calls, 1, "truncated answers do not trigger paid repair");
     mode = "complete";
-    const agenda = await proposeAgenda(context);
+    const { agenda } = await proposeCompactFounding(context, async () => {});
     assert.equal(calls, 2);
     assert.equal(agenda.wishes.length, 0, "routine generation cannot manufacture Wishes");
     assert.equal(agenda.personalizationPending, false);

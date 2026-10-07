@@ -21,7 +21,8 @@ import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { readNativeScheduleSnapshot } from "../../adapters/engine/native-schedules.js";
 import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
-import type { parseCompactFoundingCompletion, proposeCompactFounding } from "../founding/founding-compact.js";
+import type { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
+import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { rollActiveAgendas } from "../residents/agenda-roll.js";
 import type { correctResidentWish, reserveInitialWishAllowance } from "../residents/wishes/wish-lifecycle.js";

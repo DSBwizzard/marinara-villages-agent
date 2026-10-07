@@ -21,7 +21,7 @@ import {
   readHousingRequests,
   readTickVenueRequests,
   type VillageTickContext,
-} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+} from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 

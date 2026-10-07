@@ -3,10 +3,8 @@ import { createHash } from "node:crypto";
 import { coordinateVenue, rejectVenueCompletion } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  buildTickMessages,
-  proposeHappenings,
-} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import {

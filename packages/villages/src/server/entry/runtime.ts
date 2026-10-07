@@ -1,3 +1,13 @@
+import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
+import { configureFoundingProgress } from "../features/founding/founding-progress.js";
+import { createScenarioImprint } from "../features/founding/scenario-imprint-service.js";
+import { configureScenarioImprint } from "../features/founding/scenario-imprint.js";
+import { createCompactFounding } from "../features/founding/founding-compact-service.js";
+import { configureCompactFounding } from "../features/founding/founding-compact.js";
+import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
+import { configureFoundingDrafts } from "../features/founding/founding-drafts.js";
+import { createVillageBootstrap } from "../features/founding/village-bootstrap-service.js";
+import { configureVillageBootstrap } from "../features/founding/village-bootstrap.js";
 import { createImageGeneration } from "../features/media/image-generation-service.js";
 import { configureImageGeneration } from "../features/media/image-generation.js";
 import { villageEngineJson as villageImageEngineJson } from "../adapters/engine/engine-loopback.js";
@@ -179,7 +189,8 @@ import {
 } from "../features/residents/wishes/wish-lifecycle.js";
 import { registerInitialWish } from "../features/residents/wishes/wish-initial.js";
 import { expireResidentWishes } from "../domain/rules/wish-lifecycle-rules.js";
-import { parseCompactFoundingCompletion, proposeCompactFounding } from "../features/founding/founding-compact.js";
+import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
+import { proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { rollActiveAgendas } from "../features/residents/agenda-roll.js";
 import { createPersonaCache } from "../features/settings/persona-cache-service.js";
 import { configurePersonaCache } from "../features/settings/persona-cache.js";
@@ -406,6 +417,42 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseMapImages = configureTownMapImage(
     createTownMapImage({ readVillageVisualLoreEntries, generateVillageImage, inspectVillageImage }),
   );
+  const releaseScenarioImprint = configureScenarioImprint(
+    createScenarioImprint({ readVillageLore, villagesLanguageModels, villagesConnectionIdFor, completeWithRoom }),
+  );
+  const releaseCompactFounding = configureCompactFounding(
+    createCompactFounding({
+      villagesLanguageModels,
+      villagesConnectionIdFor,
+      completeWithRoom,
+      villagesDebugAgentsEnabled,
+      villagesLogger,
+    }),
+  );
+  const releaseBootstrapRecipes = configureVillageBootstrap(
+    createVillageBootstrap({
+      villagesLanguageModels,
+      villagesConnectionIdFor,
+      completeWithRoom,
+      backgroundCalls: background.backgroundCalls,
+      villagesDebugAgentsEnabled,
+      villagesLogger,
+    }),
+  );
+  const releaseFoundingDrafts = configureFoundingDrafts(
+    createFoundingDrafts({
+      findVillagerCard,
+      readLinkedPersona,
+      readVillageLore,
+      readVillageVisualLore,
+      villagesLanguageModels,
+      villagesConnectionIdFor,
+      completeWithRoom,
+      generateVillageImage,
+      uploadVillageGalleryImage,
+      decodeVillageImageDataUrl,
+    }),
+  );
   const releaseSystemInterpretation = configureSystemInterpretation(
     createSystemInterpretation({ villagesLanguageModels, villagesConnectionIdFor, completeWithRoom }),
   );
@@ -459,6 +506,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseFoundingProgress = configureFoundingProgress(
+    createFoundingProgress({ readVillageState, mutateVillageState }),
   );
   const releaseWishArchive = configureWishArchive(
     createWishArchive({ VILLAGES_PACKAGE_ID, villagesDocuments, readVillageState, mutateVillageState }),
@@ -948,6 +998,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseLiveMemory();
     releaseRelationshipViews();
     releaseWishArchive();
+    releaseFoundingProgress();
     releaseVillageState();
     releaseRelationships();
     releaseRelationshipSocial();
@@ -958,6 +1009,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseInterpretation();
     releaseSystemInterpretation();
     releaseInterpretationEvidence();
+    releaseScenarioImprint();
+    releaseCompactFounding();
+    releaseBootstrapRecipes();
+    releaseFoundingDrafts();
     releaseMapImages();
     releaseImageGeneration();
     releaseConnections();

@@ -805,6 +805,8 @@ async function main() {
   for (const relativePath of [
     "features/scenes/chat.ts",
     "features/founding/village-bootstrap.ts",
+    "features/founding/village-bootstrap-service.ts",
+    "domain/rules/village-bootstrap-rules.ts",
     "domain/rules/native-remap.ts",
     "features/residents/wishes/wish-progress-service.ts",
     "features/residents/wishes/wish-lifecycle-service.ts",
