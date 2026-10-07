@@ -1340,6 +1340,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   /** End an active Scene in place; a second press returns the completed scene to the map. */
   const closeRoom = useCloseRoom({
+    isFounded: snapshot?.isFounded,
     leavingRoomPendingRef,
     loadSnapshot,
     receiveRoomRecordEvents,
@@ -1347,6 +1348,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomBusy,
     roomCompletionRef,
     roomEnded,
+    roomSendInFlightRef,
     seenRoomEventIdsRef,
     setEndFailed,
     setLastSceneEnding,
@@ -1362,12 +1364,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const leaveRoom = useLeaveRoom({
+    isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
     roomBusy,
     roomCompletionRef,
     roomDraft,
+    roomEnded,
     roomLeaveSubmissionIdRef,
     roomSendInFlightRef,
     seenRoomEventIdsRef,
@@ -1498,14 +1502,17 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const retrySavedScene = useRetrySavedScene({
+    isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
     roomBusy,
     roomCompletionRef,
     roomDraft,
+    roomEnded,
     roomLeaveSubmissionIdRef,
     roomMoveOperationIdRef,
+    roomSendInFlightRef,
     roomSubmissionIdRef,
     setRoom,
     setRoomBusy,

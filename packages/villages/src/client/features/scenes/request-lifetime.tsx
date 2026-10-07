@@ -8,6 +8,8 @@ export function useSceneRequestLifetime(ports: {
   sceneId: string | undefined;
   isFounded: boolean | undefined;
   ended: boolean;
+  allowEnded?: boolean;
+  selectionIdentity?: object;
   inFlight: React.RefObject<boolean>;
   submission: React.RefObject<string | null>;
   completion: React.RefObject<Completion>;
@@ -18,6 +20,8 @@ export function useSceneRequestLifetime(ports: {
     sceneId,
     isFounded,
     ended,
+    allowEnded = false,
+    selectionIdentity,
     inFlight,
     submission,
     completion,
@@ -25,7 +29,10 @@ export function useSceneRequestLifetime(ports: {
     clearCompletionOnRetire = true,
   } = ports;
   const unfounded = isFounded === false;
-  const selection = useMemo(() => ({ sceneId, unfounded, ended }), [sceneId, unfounded, ended]);
+  const selection = useMemo(
+    () => ({ sceneId, unfounded, ended, selectionIdentity }),
+    [sceneId, unfounded, ended, selectionIdentity],
+  );
   const owner = useRef<object>({}),
     selected = useRef(sceneId),
     enabled = useRef(false),
@@ -79,8 +86,8 @@ export function useSceneRequestLifetime(ports: {
     lifetime.retire();
     owner.current = selection;
     selected.current = sceneId;
-    enabled.current = !!sceneId && !unfounded && !ended;
-  }, [sceneId, unfounded, ended, lifetime, selection]);
+    enabled.current = !!sceneId && !unfounded && (!ended || allowEnded);
+  }, [sceneId, unfounded, ended, allowEnded, lifetime, selection]);
   useLayoutEffect(() => {
     active.current = true;
     return () => {
@@ -90,7 +97,13 @@ export function useSceneRequestLifetime(ports: {
     };
   }, [lifetime]);
   return useMemo(
-    () => ({ begin: (id: string) => lifetime.begin(id, selection), owns: lifetime.owns, finish: lifetime.finish }),
+    () => ({
+      isCurrent: (id: string) =>
+        active.current && !selection.unfounded && selected.current === id && owner.current === selection,
+      begin: (id: string) => lifetime.begin(id, selection),
+      owns: lifetime.owns,
+      finish: lifetime.finish,
+    }),
     [lifetime, selection],
   );
 }
