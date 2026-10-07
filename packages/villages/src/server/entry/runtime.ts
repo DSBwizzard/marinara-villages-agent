@@ -156,6 +156,7 @@ import { configureTownMapReview } from "../features/media/town-map-review.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
 import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import {
+  createRenovationProject,
   draftNewVenueProject,
   draftRenovationProject,
   configureProjectLifecycle,
@@ -289,7 +290,8 @@ import { captureMissingVillagerCardColors } from "../adapters/engine/catalog.js"
 import { privatePreparationRooms } from "../jobs/private-space-preparation.js";
 import { configureWorldCoordination } from "../features/world/village.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
-import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
+import { configureVenueMailbox, venueMailbox } from "../features/venues/venue-mailbox.js";
+import { createVenueMailbox } from "../features/venues/venue-mailbox-service.js";
 import {
   configureWishAttemptClocks,
   createWishAttemptClocks,
@@ -606,6 +608,19 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       outsideVenueOperation: operations.outsideVenueOperation,
       preparePrivateSpaces,
       loadProjectWishProgress: () => import("../features/residents/wishes/wish-progress.js"),
+      draftNewVenueProject,
+      draftRenovationProject,
+    }),
+  );
+  const releaseMailbox = configureVenueMailbox(
+    createVenueMailbox({
+      readVillageState,
+      mutateVillageState,
+      queueBackgroundJob,
+      villagesConnectionIdFor,
+      villagesLanguageModels,
+      completeWithRoom,
+      createRenovationProject,
       draftNewVenueProject,
       draftRenovationProject,
     }),
@@ -976,7 +991,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       handlers: [
         ["wish", wishLifecycle().wishBackgroundHandler],
         ["wish-check", wishProgress().wishCheckBackgroundHandler],
-        ["mail", mailBackgroundHandler],
+        ["mail", venueMailbox().mailBackgroundHandler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
         ["story", bindActivationService(worldCoordination.storyBackgroundHandler)],
@@ -1016,8 +1031,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseFoundingSetup();
     releaseWorldCoordination();
     releaseFounding();
-    releaseProjectLifecycle();
-    releasePrivateSpaces();
     releaseBackground();
     releaseUsagePreview();
     releaseUsageMeter();
@@ -1035,6 +1048,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseResidences();
     releaseResidentAgendas();
     releaseSceneCommands();
+    releaseMailbox();
+    releaseProjectLifecycle();
+    releasePrivateSpaces();
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();

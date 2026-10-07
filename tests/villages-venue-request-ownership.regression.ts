@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertMailboxOwnership } from "./fixtures/villages-mailbox-owner.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -254,3 +255,4 @@ await assert.rejects(
 console.log(
   "Venue request ownership: inert ports, grounded deduplication, decision/counteroffer and Project planning, home save retries, originating activation and cleanup passed (mocked storage/projection; no model connections).",
 );
+await assertMailboxOwnership();
