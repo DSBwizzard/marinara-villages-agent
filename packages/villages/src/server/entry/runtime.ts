@@ -88,7 +88,13 @@ import { relationshipWritingPrompt } from "../domain/rules/relationship-presenta
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
 import { configureFoundingSetup } from "../features/founding/founding-setup.js";
 import { readTownMapSubmission } from "../features/media/town-map-review.js";
-import { readVillageConnectionSettings, validateVillageSetupConnections } from "../features/settings/connections.js";
+import {
+  configureConnectionSettings,
+  readVillageConnectionSettings,
+  validateVillageSetupConnections,
+} from "../features/settings/connections.js";
+import { createConnectionSettings } from "../features/settings/connection-service.js";
+import { villagesAgentConnectionId, villagesAgentImageConnectionId } from "../adapters/engine/agent-config.js";
 import {
   proposeVillage,
   proposePublicVenueNames,
@@ -142,6 +148,7 @@ import { createResidentCards } from "../features/residents/resident-card-service
 import { configureResidentCards } from "../features/residents/resident-cards.js";
 import {
   configureRuntimeHost,
+  VILLAGES_PACKAGE_ID,
   villagesDocuments,
   villagesLogger,
   villagesResources,
@@ -159,7 +166,12 @@ import {
 } from "../adapters/engine/activation-scope.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
-import { configureUsageLedger, withUsagePurpose, usageProcessOwner } from "../adapters/models/usage-ledger.js";
+import {
+  configureUsageLedger,
+  withUsagePurpose,
+  inferredPurpose,
+  usageProcessOwner,
+} from "../adapters/models/usage-ledger.js";
 import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
 import {
   villageEngineJson,
@@ -172,7 +184,7 @@ import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-prici
 import { configureMetricsContext } from "../adapters/observability/metrics-context.js";
 import { createMetricsContext } from "../adapters/observability/metrics-context-service.js";
 import { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
-import { configureRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
+import { configureRuntimeDebug, readRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
 import { createRuntimeDebug } from "../adapters/observability/runtime-debug-service.js";
 import { villagesDebugAgentsEnabled } from "../adapters/engine/runtime-host.js";
 import { venueDebugContext } from "../adapters/operations/operation-context.js";
@@ -236,7 +248,9 @@ import { createPrivateSpacePreparation } from "../jobs/private-space-service.js"
 import { readVillageLore } from "../adapters/engine/lorebooks.js";
 import { villagesLanguageModels } from "../adapters/models/language-models.js";
 import { reportFoundingProgress } from "../features/founding/founding-progress.js";
-import { completeWithRoom } from "../features/generation/model-requests.js";
+import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
+import { createModelCompletions } from "../features/generation/completion-service.js";
+import { coordinatedCompletion } from "../jobs/venue-coordinator.js";
 import { configureInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
 import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
 import { systemInterpretations } from "../features/generation/system-interpretation.js";
@@ -312,6 +326,29 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesLogger,
       venueDebugContext,
       mutateDocument: createDocumentMutator(villagesDocuments),
+    }),
+  );
+  const completionOwner = activationScope();
+  const releaseCompletions = configureModelCompletions(
+    createModelCompletions({
+      readRuntimeDebug,
+      runtimeDebug,
+      backgroundCalls: background.backgroundCalls,
+      coordinatedCompletion,
+      withUsagePurpose,
+      inferredPurpose,
+      villagesLogger,
+      bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
+    }),
+  );
+  const releaseConnections = configureConnectionSettings(
+    createConnectionSettings({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+      villageEngineJson,
+      villagesAgentConnectionId,
+      villagesAgentImageConnectionId,
     }),
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
@@ -758,6 +795,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseRelationships();
     releaseWishClocks();
     releaseSceneWork();
+    releaseConnections();
+    releaseCompletions();
     releaseDebug();
     releaseInterpretationDiagnostics();
     releaseUsage();
