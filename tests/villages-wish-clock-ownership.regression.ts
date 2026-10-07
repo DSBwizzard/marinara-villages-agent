@@ -10,6 +10,7 @@ import { newWishLifecycle, wishRevision } from "../packages/villages/src/server/
 import {
   processWishAttempt,
   wishBackgroundHandler,
+  wishLifecycle,
 } from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
 import {
   wishAttemptClocks,
@@ -68,6 +69,8 @@ try {
     item.scope.run(() => wishBackgroundHandler.apply(item.state, input, item.attempt, { retrying: true } as any));
   apply(first);
   apply(second);
+  const capturedFirstHandler = first.scope.run(() => wishLifecycle().wishBackgroundHandler);
+  second.scope.run(() => capturedFirstHandler.apply(first.state, input, first.attempt, { retrying: true }));
   assert.equal(first.state.villagers[0].wishLifecycle!.attempt!.at, "2026-10-06T23:59:00.000Z");
   assert.equal(second.state.villagers[0].wishLifecycle!.attempt!.at, "2026-10-07T01:00:00.000Z");
   let later = new Date("2026-10-08T01:00:00.000Z");

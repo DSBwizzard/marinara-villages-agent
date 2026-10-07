@@ -20,7 +20,7 @@ import type { BackgroundInput } from "../packages/villages/src/server/domain/mod
 import type { VillageTickContext } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { villageDateLabel } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { expireResidentWishes } from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
+import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import {
   createWorldCoordination,
   type WorldCoordinationPorts,

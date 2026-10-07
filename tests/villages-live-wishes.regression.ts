@@ -6,9 +6,9 @@ import { readVillageState } from "../packages/villages/src/server/features/world
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   bindWishProposals,
-  processWishExchange,
   applyPreparedWishVerdict,
-} from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
+} from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
+import { processWishExchange } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import {
   settleBackgroundWork,
   backgroundWorkSummaries,

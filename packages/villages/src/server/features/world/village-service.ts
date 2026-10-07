@@ -50,7 +50,8 @@ import type { proposeHappenings, proposeReaction } from "../founding/village-boo
 import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
 import type { rollActiveAgendas } from "../residents/agenda-roll.js";
 import type { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
-import type { expireResidentWishes, reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
+import type { expireResidentWishes } from "../../domain/rules/wish-lifecycle-rules.js";
+import type { reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
 import type { respondDueVenueMail } from "../venues/venue-mailbox.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
 import type { readVillageState, mutateVillageState } from "./village-store.js";

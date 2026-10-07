@@ -27,7 +27,7 @@ import {
 import { parseCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
 import { agendaDateKey, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { wishSlots } from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
+import { wishSlots } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
 

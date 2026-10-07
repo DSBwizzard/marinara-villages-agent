@@ -24,11 +24,8 @@ import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/bac
 import type { parseCompactFoundingCompletion, proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
 import type { rollActiveAgendas } from "../residents/agenda-roll.js";
-import type {
-  correctResidentWish,
-  registerInitialWish,
-  reserveInitialWishAllowance,
-} from "../residents/wishes/wish-lifecycle.js";
+import type { correctResidentWish, reserveInitialWishAllowance } from "../residents/wishes/wish-lifecycle.js";
+import type { registerInitialWish } from "./wishes/wish-initial.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import { agendaRevision } from "./agenda-revision.js";
 export interface ResidentAgendaPorts {

@@ -1,3 +1,14 @@
+import { createWishLifecycle } from "../features/residents/wishes/wish-lifecycle-service.js";
+import { configureWishLifecycle, wishLifecycle } from "../features/residents/wishes/wish-lifecycle.js";
+import { createWishProgress } from "../features/residents/wishes/wish-progress-service.js";
+import { configureWishProgress, wishProgress } from "../features/residents/wishes/wish-progress.js";
+import { readWishAttemptClock, wishAttemptClocks } from "../features/residents/wishes/wish-attempt-clocks.js";
+import {
+  readWishOutcome,
+  previousFulfilledNeed,
+  flushWishOutcomes,
+} from "../features/residents/wishes/wish-archive.js";
+import { cachedWishCriteria, interpretWishBatch } from "../features/residents/wishes/wish-interpretation.js";
 import { createWishArchive } from "../features/residents/wishes/wish-archive-service.js";
 import { configureWishArchive } from "../features/residents/wishes/wish-archive.js";
 import { createWishInterpretation } from "../features/residents/wishes/wish-interpretation-service.js";
@@ -15,8 +26,8 @@ import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-ru
 import { applyResidenceEditApproval } from "../features/venues/zone-edits.js";
 import { queueVillageVenueRequest } from "../features/venues/venue-requests.js";
 import { recordVillagerVenueImprovement } from "../features/venues/venue-mailbox.js";
-import { WISH_PROPOSAL_INSTRUCTION } from "../features/residents/wishes/wish-progress.js";
-import { bindWishProposals } from "../features/residents/wishes/wish-progress.js";
+import { WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
+import { bindWishProposals } from "../domain/rules/wish-progress-rules.js";
 import { projectProposals } from "../domain/rules/project-check-rules.js";
 import { createProjectChecks } from "../features/projects/project-check-service.js";
 import { configureProjectChecks } from "../features/projects/project-checks.js";
@@ -151,11 +162,11 @@ import { readEffectiveVillagerCard } from "../adapters/engine/catalog.js";
 import { readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
   reserveInitialWishAllowance,
-  registerInitialWish,
   correctResidentWish,
-  expireResidentWishes,
   reconcileWishLifecycle,
 } from "../features/residents/wishes/wish-lifecycle.js";
+import { registerInitialWish } from "../features/residents/wishes/wish-initial.js";
+import { expireResidentWishes } from "../domain/rules/wish-lifecycle-rules.js";
 import { parseCompactFoundingCompletion, proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { rollActiveAgendas } from "../features/residents/agenda-roll.js";
 import { createPersonaCache } from "../features/settings/persona-cache-service.js";
@@ -241,12 +252,10 @@ import { privatePreparationRooms } from "../jobs/private-space-preparation.js";
 import { configureWorldCoordination } from "../features/world/village.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
-import { wishBackgroundHandler } from "../features/residents/wishes/wish-lifecycle.js";
 import {
   configureWishAttemptClocks,
   createWishAttemptClocks,
 } from "../features/residents/wishes/wish-attempt-clocks.js";
-import { wishCheckBackgroundHandler } from "../features/residents/wishes/wish-progress.js";
 import {
   configureVillageStateService,
   mutateVillageState,
@@ -431,6 +440,45 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseWishArchive = configureWishArchive(
     createWishArchive({ VILLAGES_PACKAGE_ID, villagesDocuments, readVillageState, mutateVillageState }),
+  );
+  const releaseWishLifecycle = configureWishLifecycle(
+    createWishLifecycle({
+      wishAttemptClocks,
+      readWishAttemptClock,
+      readVillageLore,
+      villagesDebugAgentsEnabled,
+      villagesLogger,
+      villagesLanguageModels,
+      backgroundCalls: background.backgroundCalls,
+      backgroundSetting: background.backgroundSetting,
+      outsideVenueOperation: operations.outsideVenueOperation,
+      backgroundStatus,
+      queueBackgroundJob,
+      settleBackgroundWork,
+      completeWithRoom,
+      villagesConnectionIdFor,
+      mutateVillageState,
+      readVillageState,
+      flushWishOutcomes,
+      previousFulfilledNeed,
+      readWishOutcome,
+    }),
+  );
+  const releaseWishProgress = configureWishProgress(
+    createWishProgress({
+      readEffectiveVillagerCard,
+      backgroundCalls: background.backgroundCalls,
+      backgroundSetting: background.backgroundSetting,
+      outsideVenueOperation: operations.outsideVenueOperation,
+      backgroundStatus,
+      queueBackgroundJob,
+      writeInterpretationDiagnostics,
+      sceneQueries,
+      mutateVillageState,
+      readVillageState,
+      cachedWishCriteria,
+      interpretWishBatch,
+    }),
   );
   const releaseProjectLifecycle = configureProjectLifecycle(
     createProjectLifecycle({
@@ -791,8 +839,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       runtimeDebug,
       backgroundCalls: background.backgroundCalls,
       handlers: [
-        ["wish", wishBackgroundHandler],
-        ["wish-check", wishCheckBackgroundHandler],
+        ["wish", wishLifecycle().wishBackgroundHandler],
+        ["wish-check", wishProgress().wishCheckBackgroundHandler],
         ["mail", mailBackgroundHandler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
@@ -856,8 +904,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseProjectChecks();
     releaseProjectEvidence();
     releaseVillageSnapshot();
-    releaseQueries();
     releaseSceneArchive();
+    releaseWishProgress();
+    releaseWishLifecycle();
+    releaseQueries();
     releaseLiveScenes();
     releaseLiveMemory();
     releaseRelationshipViews();

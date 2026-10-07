@@ -20,16 +20,14 @@ import {
 } from "../packages/villages/src/server/domain/rules/wish-journal.js";
 import {
   bindWishProposals,
-  processWishExchange,
   applyPreparedWishVerdict,
-} from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
+} from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
+import { processWishExchange } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
 import { interpretWishBatch } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
 import { localWishRequirements } from "../packages/villages/src/server/domain/rules/wish-admission.js";
-import {
-  retireResidentWish,
-  expireResidentWishes,
-} from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
+import { retireResidentWish } from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
+import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";

@@ -31,18 +31,20 @@ import {
   pruneWishActivities,
   WISH_DAY_MS,
 } from "../packages/villages/src/server/domain/rules/wish-policy.js";
+import { registerInitialWish } from "../packages/villages/src/server/features/residents/wishes/wish-initial.js";
 import {
-  registerInitialWish,
   reserveInitialWishAllowance,
   reconcileWishLifecycle,
   reserveWishAttempts,
   processWishAttempt,
+  correctResidentWish,
+} from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
+import {
   fulfillResidentWish,
   expireResidentWishes,
-  correctResidentWish,
   wishSlots,
   canApplyWishActivity,
-} from "../packages/villages/src/server/features/residents/wishes/wish-lifecycle.js";
+} from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
 import {
   flushWishOutcomes,
   readWishHistoryPage,
@@ -54,6 +56,11 @@ import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coor
 import { venueOperationSignal } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import type { VillageState, VillageVenue, VillageWish } from "../packages/villages/src/server/domain/models/world.js";
 import type { WishActivity, WishNeed } from "../packages/villages/src/server/domain/models/wish-types.js";
+import {
+  processProjectWishOutbox,
+  wishProgress,
+} from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
+import { configureSceneQueries } from "../packages/villages/src/server/features/scenes/services.js";
 
 type Document = {
   id: string;
@@ -129,6 +136,7 @@ async function archiveConnectionOwnership() {
     let held = false,
       pageConflicts = 0,
       pointerConflicts = 0,
+      villageConflicts = 0,
       providerAccess = 0;
     let failure: Error | undefined,
       failureStage: string | undefined,
@@ -188,6 +196,14 @@ async function archiveConnectionOwnership() {
         await pause(target);
         if (failure && failureStage === target && !afterSave) throw failure;
         const old = records.get(input.id);
+        if (input.id === "villages-village" && villageConflicts-- > 0) {
+          records.set(input.id, {
+            ...old,
+            revision: old.revision + 1,
+            data: { ...old.data, name: label + " concurrent name" },
+          });
+          return null;
+        }
         if (input.id === pageId && pageConflicts-- > 0) {
           const concurrent = {
             ...structuredClone(outcome),
@@ -235,6 +251,9 @@ async function archiveConnectionOwnership() {
       release,
       outcome,
       providerAccess: () => providerAccess,
+      conflictVillage() {
+        villageConflicts = 1;
+      },
       conflict(page: boolean) {
         if (page) {
           pageConflicts = 1;
@@ -312,6 +331,163 @@ async function archiveConnectionOwnership() {
       console.log("Owned Wish archive stage passed:", stage);
     } finally {
       a.gate.resolve();
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+    }
+  }
+  for (const mode of ["correction", "outbox", "reservation"] as const) {
+    const stages =
+      mode === "correction"
+        ? ["world", "ack", "pageSave"]
+        : mode === "outbox"
+          ? ["world", "pointerRead", "ack"]
+          : ["world", "ack"];
+    for (const stage of stages) {
+      const a = fixture("A", stage),
+        b = fixture("B"),
+        clearA = installDefaultActivation(a.scope, () => {});
+      let clearB = () => {};
+      const at = new Date("2026-10-07T10:00:00.000Z");
+      for (const owned of [a, b]) {
+        owned.records.get("villages-village").data.projectWishOutbox = [
+          { projectId: "equal-event", at: at.toISOString() },
+        ];
+        if (mode === "reservation") owned.records.get("villages-village").data.storyPace = "off";
+      }
+      if (stage === "ack") a.conflictVillage();
+      const invoke = () =>
+        mode === "correction"
+          ? correctResidentWish("a", "equal-wish", at)
+          : mode === "outbox"
+            ? processProjectWishOutbox()
+            : reserveWishAttempts(at);
+      try {
+        const pending = invoke();
+        await Promise.race([a.entered.promise, pending.then(() => assert.fail(mode + " completed before " + stage))]);
+        clearB = installDefaultActivation(b.scope, () => {});
+        await invoke();
+        clearA();
+        a.gate.resolve();
+        await pending;
+        for (const owned of [a, b]) {
+          const label = owned === a ? "A" : "B",
+            saved = owned.records.get("villages-village").data;
+          if (mode === "correction") {
+            assert.deepEqual(saved.correctedWishMemoryIds, [label + "-receipt"]);
+            assert.equal(owned.records.get(pageId).data.entries[0].memoryId, label + "-receipt");
+            assert.equal(owned.records.get(pageId).data.entries[0].correctedAt, at.toISOString());
+            assert.equal(saved.villagers[0].agenda.wishes[0].id, "equal-wish");
+          } else if (mode === "outbox") assert.deepEqual(saved.projectWishOutbox, []);
+          else assert.equal(saved.storyPace, "off");
+          if (owned === a && stage === "ack")
+            assert.equal(saved.name, "A concurrent name", "retry retains the winning Village image");
+          const writes = owned.writes.length;
+          await owned.scope.run(invoke);
+          if (mode !== "reservation")
+            assert.equal(owned.writes.length, writes, "saved correction/outbox replays without another write");
+          assert.equal(owned.providerAccess(), 0);
+        }
+        console.log("Owned Wish coordination stage passed:", mode, stage);
+      } finally {
+        a.gate.resolve();
+        clearA();
+        clearB();
+        a.release();
+        b.release();
+        a.scope.dispose();
+        b.scope.dispose();
+      }
+    }
+  }
+  for (const mode of ["correction", "outbox"] as const) {
+    const a = fixture("A"),
+      b = fixture("B"),
+      clearA = installDefaultActivation(a.scope, () => {});
+    let clearB = () => {};
+    try {
+      for (const owned of [a, b])
+        owned.records.get("villages-village").data.projectWishOutbox = [{ projectId: "equal-event", at: "now" }];
+      const invoke = () =>
+        mode === "correction" ? correctResidentWish("a", "equal-wish") : processProjectWishOutbox();
+      for (const stage of ["world", "ack"]) {
+        const exact = new Error("exact " + mode + " " + stage);
+        a.fail(exact, stage);
+        await assert.rejects(invoke(), (error) => error === exact);
+        assert.deepEqual(b.writes, []);
+        a.fail();
+      }
+      clearB = installDefaultActivation(b.scope, () => {});
+      a.scope.dispose();
+      await assert.rejects(a.scope.run(invoke), /not configured/);
+      assert.deepEqual(b.writes, []);
+      await invoke();
+      assert(b.writes.length > 0, "B remains usable after A disposal");
+    } finally {
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+    }
+  }
+  {
+    const a = fixture("A", "world"),
+      b = fixture("B"),
+      clearA = installDefaultActivation(a.scope, () => {});
+    let clearB = () => {};
+    const callbacks: string[] = [];
+    const releaseQueries = [a, b].map((owned, index) =>
+      owned.scope.run(() =>
+        configureSceneQueries({
+          async processSavedExchange(sceneId: string, submissionId: string) {
+            assert.equal(activationScope(), owned.scope);
+            callbacks.push(`${index}:${sceneId}:${submissionId}`);
+          },
+        } as any),
+      ),
+    );
+    try {
+      const handler = a.scope.run(() => wishProgress().wishCheckBackgroundHandler);
+      const input = {
+        sceneId: "same-scene",
+        submissionId: "same-turn",
+        seed: "equal-archive-seed",
+        contractVersion: 2,
+        items: [],
+      };
+      clearB = installDefaultActivation(b.scope, () => {});
+      const pending = b.scope.run(() => handler.generate(input));
+      await Promise.race([a.entered.promise, pending.then(() => assert.fail("Captured Handler did not read A"))]);
+      assert.deepEqual(await b.scope.run(() => wishProgress().wishCheckBackgroundHandler.generate(input)), {
+        items: [],
+      });
+      a.gate.resolve();
+      assert.deepEqual(await pending, { items: [] });
+      await b.scope.run(() => handler.afterApply!(input, true));
+      await b.scope.run(() => handler.afterFailure!(input));
+      await b.scope.run(() => handler.afterFailure!(null));
+      await b.scope.run(() => handler.afterApply!({ ...input, sceneId: "project:equal" }, true));
+      assert.deepEqual(callbacks, ["0:same-scene:same-turn", "0:same-scene:same-turn"]);
+      const exact = new Error("exact Handler read");
+      a.fail(exact, "world");
+      await assert.rejects(
+        b.scope.run(() => handler.generate(input)),
+        (error) => error === exact,
+      );
+      a.scope.dispose();
+      await assert.rejects(
+        b.scope.run(() => handler.generate(input)),
+        /not configured/,
+      );
+      assert.equal(a.providerAccess() + b.providerAccess(), 0);
+    } finally {
+      a.gate.resolve();
+      releaseQueries.forEach((release) => release());
       clearA();
       clearB();
       a.release();
