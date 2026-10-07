@@ -237,7 +237,6 @@ export function useOpenSetup(ports: {
   setSearch: React.Dispatch<SetStateAction<string>>;
   setSelectedSetupVenueId: React.Dispatch<SetStateAction<string>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setSetupCompletedIds: React.Dispatch<SetStateAction<string[]>>;
   setSetupEditorOpen: React.Dispatch<SetStateAction<boolean>>;
   setSetupFocusIssue: React.Dispatch<SetStateAction<FoundingIssue>>;
   setSetupFoundingDetails: React.Dispatch<SetStateAction<string>>;
@@ -258,7 +257,6 @@ export function useOpenSetup(ports: {
   setSetupMapSize: React.Dispatch<SetStateAction<{ width: number; height: number }>>;
   setSetupMapSource: React.Dispatch<SetStateAction<SetupMapSource>>;
   setSetupName: React.Dispatch<SetStateAction<string>>;
-  setSetupNewVenueId: React.Dispatch<SetStateAction<string>>;
   setSetupPlacementError: React.Dispatch<SetStateAction<string>>;
   setSetupPlayerRole: React.Dispatch<SetStateAction<PlayerRole>>;
   setSetupProblem: React.Dispatch<SetStateAction<string>>;
@@ -287,7 +285,6 @@ export function useOpenSetup(ports: {
     setSearch,
     setSelectedSetupVenueId,
     setSettingsError,
-    setSetupCompletedIds,
     setSetupEditorOpen,
     setSetupFocusIssue,
     setSetupFoundingDetails,
@@ -308,7 +305,6 @@ export function useOpenSetup(ports: {
     setSetupMapSize,
     setSetupMapSource,
     setSetupName,
-    setSetupNewVenueId,
     setSetupPlacementError,
     setSetupPlayerRole,
     setSetupProblem,
@@ -370,13 +366,7 @@ export function useOpenSetup(ports: {
           venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [],
         ),
       );
-      setSetupCompletedIds(
-        foundingPlaces
-          .filter((venue) => venue.form?.trim() && venue.description.trim() && venue.spaces?.[0]?.description.trim())
-          .map((venue) => venue.id),
-      );
       setSetupEditorOpen(false);
-      setSetupNewVenueId("");
       setSceneryStyle(
         fresh || !village?.isFounded
           ? SCENERY_STYLES["Painted illustration"]
@@ -430,7 +420,6 @@ export function useFoundVillage(ports: {
   selectedResidentContexts: { [k: string]: ResidentFoundingContext };
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setDraftReady: React.Dispatch<SetStateAction<boolean>>;
-  setPlacingHome: React.Dispatch<SetStateAction<boolean>>;
   setScreen: React.Dispatch<
     SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
   >;
@@ -468,7 +457,6 @@ export function useFoundVillage(ports: {
     selectedResidentContexts,
     setBusy,
     setDraftReady,
-    setPlacingHome,
     setScreen,
     setSelectedSetupVenueId,
     setSetupProblem,
@@ -557,7 +545,6 @@ export function useFoundVillage(ports: {
       setDraftReady(false);
       await draftSaveQueue.current;
       await removeFoundingDraft(API_PATH).catch(() => undefined);
-      setPlacingHome(false);
       setScreen(
         !snapshot?.isFounded ||
           founded.foundingPreparation?.status === "pending" ||

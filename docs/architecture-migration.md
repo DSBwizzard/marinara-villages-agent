@@ -8,6 +8,14 @@ The user has chosen fresh worlds for 0.7.0. Old saved data, migration and backwa
 
 New 0.7.0 worlds must save and reload correctly. Preserve Scene continuity across Zones, server-only private attendance, draft and reading state lifetimes, current request identities, revision conflicts, recovery checkpoints, cancellation and model accounting. Keep the chosen Engine interfaces working. Behavioral corrections still need an explanation, tests and independent review; historical extraction notes below describe what those individual commits preserved, rather than imposing old-data compatibility on subsequent work.
 
+## Architecture source baseline
+
+Client features own their screens, state and commands; the shell assembles them and owns application-wide navigation, snapshots, responsive state and presence. Server entry assembles activation-owned services, connections and jobs. Private records, storage, domain rules and public projections have separate owners. Named feature interfaces and layer/cycle checks enforce these boundaries. Temporary forwarders and the recorded obsolete Founding, native-chat, Events, Project and Wish paths have been retired.
+
+The sections below record successive extraction and correction checkpoints. Earlier remaining-work notes describe those intermediate revisions; later sections record their closure. The source baseline retains the documented logical cancellation and recovery policies. It does not add physical draining of providers that ignore abort, global ordering of independent client snapshot requests, or old-world migration.
+
+Candidate validation includes the complete 129 ordinary regression and 30 mocked-browser targets, repository checks, reproducible package verification, and fresh Windows/Linux source builds with locked dependencies. The three Engine targets are explicitly separate: read-only image contract, Decisions transport with a synthetic local provider, and an actual Engine shell with mocked package requests. Full 0.7.0 acceptance additionally requires the actual isolated package's activation/shutdown, fresh-world save/reload, Scene/Zone privacy, backend request admission, Decisions fallback, desktop/mobile behavior and user playthrough. Source checks and mocked browsers do not establish those runtime results or publication approval. Keep version 0.6.170 until the milestone's acceptance is complete.
+
 ## Validation foundation
 
 `npm run check` covers formatting, lint and compiler checking of maintained package code. `npm test` discovers every ordinary regression. `npm run test:browser` runs browser scenarios with mocked APIs. `npm run test:engine` runs the separately identified Engine-dependent checks. `npm run test:inventory` shows all tests and their requirements. Mocked browser coverage does not establish actual Engine activation or provider behavior.
@@ -747,3 +755,7 @@ Founding accepts the current five scenarios only. Its old reason-to-premise conv
 Retiring the overflow conversion also stops it from prepending a current scenario identifier to authored guidance when reopening a full-length unfinished premise. The previous source applied that conversion to current IDs as well as old ones. The existing Founding browser target mounts the actual opening hook with isolated ports and checks all current IDs, short/full-length circumstances, founded reopening and fresh setup in normal React and StrictMode. Guidance keeps its raw authored value, except the existing No preset rule that clears it. The complete wizard's existing desktop/mobile checks remain.
 
 Wish generation uses its current 4096 output bound directly. The older queue-format flag, done-failure conversion and unproduced comparison stage are removed. Current reserved calls with an unknown paid outcome still require deliberate recovery; Background failure gates, generated/validated saved-result replay, finite identities and explicit retries remain. This retirement does not migrate old worlds or alter the separate explicit Wish reset/refill workflow. Fresh save/reload and current recovery remain acceptance requirements.
+
+## Unused founding state closure
+
+The shell's four unread founding placement, completed-ID and new-Venue-ID slots are removed together with their setter ports and writes. Current map placement, editor selection, preparation progress and navigation use their existing authoritative state. Opening setup, changing steps and founding retain their live commands, HTTP requests, validation, drafts and error handling; no saved fields or model requests change.

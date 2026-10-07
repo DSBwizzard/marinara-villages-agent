@@ -228,8 +228,6 @@ export function createFoundingGotoSetupStep(ports: {
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
   readonly residentContextProblem: "" | "Complete the highlighted resident background fields in People.";
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
-  readonly setPlacingHome: React.Dispatch<React.SetStateAction<boolean>>;
-  readonly setPlacingPublicCenter: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupStep: FoundingState["setSetupStep"];
@@ -256,8 +254,6 @@ export function createFoundingGotoSetupStep(ports: {
       personas,
       residentContextProblem,
       setMovingSetupVenueId,
-      setPlacingHome,
-      setPlacingPublicCenter,
       setSetupEditorOpen,
       setSetupProblem,
       setSetupStep,
@@ -310,8 +306,6 @@ export function createFoundingGotoSetupStep(ports: {
     void loadPersonas();
     void loadCatalog();
     void loadLorebooks();
-    setPlacingHome(false);
-    setPlacingPublicCenter(false);
     setMovingSetupVenueId(null);
   };
 }

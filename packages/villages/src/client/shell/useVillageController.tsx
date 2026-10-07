@@ -642,11 +642,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
     setupOfferedRef,
   } = useFoundingState();
-  // Which home the next click on the map will place, and which pin the editor is
-  // pointing at so the row and the map agree about what is being edited.
-  const [_placingHome, setPlacingHome] = useState(false);
-
-  const [_placingPublicCenter, setPlacingPublicCenter] = useState(false);
 
   const selectedResidentContexts = useFoundingSelectedResidentContexts({
     setupFoundingVillagerIds,
@@ -656,10 +651,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const residentContextProblem = calculateResidentContextProblem({ selectedResidentContexts, snapshot });
 
   const setupHomeCount = calculateSetupHomeCount({ setupFoundingVillagerIds });
-
-  const [, setSetupCompletedIds] = useState<string[]>([]);
-
-  const [, setSetupNewVenueId] = useState("");
 
   const setupBeginningSourceKey = calculateSetupBeginningSourceKey({
     personaDraft,
@@ -1894,7 +1885,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSearch,
     setSelectedSetupVenueId,
     setSettingsError,
-    setSetupCompletedIds,
     setSetupEditorOpen,
     setSetupFocusIssue,
     setSetupFoundingDetails,
@@ -1915,7 +1905,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupMapSize,
     setSetupMapSource,
     setSetupName,
-    setSetupNewVenueId,
     setSetupPlacementError,
     setSetupPlayerRole,
     setSetupProblem,
@@ -1940,8 +1929,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     personas,
     residentContextProblem,
     setMovingSetupVenueId,
-    setPlacingHome,
-    setPlacingPublicCenter,
     setSetupEditorOpen,
     setSetupProblem,
     setSetupStep,
@@ -2044,7 +2031,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     selectedResidentContexts,
     setBusy,
     setDraftReady,
-    setPlacingHome,
     setScreen,
     setSelectedSetupVenueId,
     setSetupProblem,
