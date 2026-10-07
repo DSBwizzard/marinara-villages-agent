@@ -24,11 +24,10 @@ import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/bac
 import type { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
-import type { rollActiveAgendas } from "../residents/agenda-roll.js";
 import type { correctResidentWish, reserveInitialWishAllowance } from "../residents/wishes/wish-lifecycle.js";
 import type { registerInitialWish } from "./wishes/wish-initial.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
-import { agendaRevision } from "./agenda-revision.js";
+import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 export interface ResidentAgendaPorts {
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
@@ -41,7 +40,6 @@ export interface ResidentAgendaPorts {
   parseCompactFoundingCompletion: typeof parseCompactFoundingCompletion;
   proposeCompactFounding: typeof proposeCompactFounding;
   readNativeScheduleSnapshot: typeof readNativeScheduleSnapshot;
-  rollActiveAgendas: typeof rollActiveAgendas;
   registerInitialWish: typeof registerInitialWish;
   correctResidentWish: typeof correctResidentWish;
 }
@@ -59,10 +57,20 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     parseCompactFoundingCompletion,
     proposeCompactFounding,
     readNativeScheduleSnapshot,
-    rollActiveAgendas,
     registerInitialWish,
     correctResidentWish,
   } = ports;
+  async function rollActiveAgendas(now: Date, known?: VillageState): Promise<boolean> {
+    const village = known ?? (await readVillageState());
+    if (village.villagers.every((villager) => villager.agenda?.activeDay?.dateKey === agendaDateKey(now))) return false;
+    await mutateVillageState((state) => {
+      planRoutineDays(state, now);
+      for (const villager of state.villagers) {
+        if (villager.agenda?.activeDay?.dateKey !== agendaDateKey(now)) activateVillagerDay(villager, now, state);
+      }
+    });
+    return true;
+  }
   async function queueVillagerAgenda(characterId: string, finite = true): Promise<void> {
     const village = await readVillageState();
     const villager = village.villagers.find((entry) => entry.characterId === characterId);
@@ -406,6 +414,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await refreshVillagerRemaps(await readVillageState(), new Date(), characterId);
   }
   return {
+    rollActiveAgendas,
     queueVillagerAgenda,
     backfillAgendas,
     refreshVillagerRemaps,

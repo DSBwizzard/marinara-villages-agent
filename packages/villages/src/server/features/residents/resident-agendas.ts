@@ -1,9 +1,11 @@
 import { bindActivationService, createActivationBinding } from "../../adapters/engine/activation-scope.js";
 import type { ResidentAgendas } from "./resident-agenda-service.js";
-export { agendaRevision } from "./agenda-revision.js";
 const binding = createActivationBinding<ResidentAgendas>("Resident Agendas are not configured.");
 export function configureResidentAgendas(service: ResidentAgendas): () => void {
   return binding.configure(bindActivationService(service));
+}
+export async function rollActiveAgendas(...args: Parameters<ResidentAgendas["rollActiveAgendas"]>) {
+  return binding.get().rollActiveAgendas(...args);
 }
 export async function queueVillagerAgenda(...args: Parameters<ResidentAgendas["queueVillagerAgenda"]>) {
   return binding.get().queueVillagerAgenda(...args);

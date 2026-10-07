@@ -192,7 +192,7 @@ import { registerInitialWish } from "../features/residents/wishes/wish-initial.j
 import { expireResidentWishes } from "../domain/rules/wish-lifecycle-rules.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
 import { proposeCompactFounding } from "../features/founding/founding-compact.js";
-import { rollActiveAgendas } from "../features/residents/agenda-roll.js";
+import { rollActiveAgendas } from "../features/residents/resident-agendas.js";
 import { createPersonaCache } from "../features/settings/persona-cache-service.js";
 import { configurePersonaCache } from "../features/settings/persona-cache.js";
 import { createResidentCards } from "../features/residents/resident-card-service.js";
@@ -812,7 +812,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     parseCompactFoundingCompletion,
     proposeCompactFounding,
     readNativeScheduleSnapshot,
-    rollActiveAgendas,
     registerInitialWish,
     correctResidentWish,
   });
@@ -1045,7 +1044,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseResidentCards();
     releasePersonaCache();
     releaseResidences();
-    releaseResidentAgendas();
     releaseSceneCommands();
     releaseMailbox();
     releaseProjectLifecycle();
@@ -1056,6 +1054,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseProjectChecks();
     releaseProjectEvidence();
     releaseVillageSnapshot();
+    releaseResidentAgendas();
     releaseSceneArchive();
     releaseLocationImages();
     releaseVenueCommands();

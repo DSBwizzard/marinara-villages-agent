@@ -13,7 +13,8 @@ import type { VillageState } from "../packages/villages/src/server/domain/models
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { MAX_VILLAGERS } from "../packages/villages/src/server/domain/rules/village-limits.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { backgroundRevision, retireBackgroundResident } from "../packages/villages/src/server/jobs/background-work.js";
+import { retireBackgroundResident } from "../packages/villages/src/server/jobs/background-work.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
 import {
   addVillager,

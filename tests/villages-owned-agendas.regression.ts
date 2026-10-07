@@ -18,7 +18,7 @@ import { readVillageState, mutateVillageState } from "../packages/villages/src/s
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
-import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/agenda-roll.js";
+import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import {
   startBackgroundWork,
   settleBackgroundWork,

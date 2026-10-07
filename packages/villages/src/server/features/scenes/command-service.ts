@@ -157,7 +157,7 @@ export interface SceneCommandPorts {
   finalizeProjectDiagnostics: typeof import("../projects/project-checks.js").finalizeProjectDiagnostics;
   interpretProjectDraft: typeof import("../projects/project-checks.js").interpretProjectDraft;
   projectProposals: typeof import("../../domain/rules/project-check-rules.js").projectProposals;
-  rollActiveAgendas: typeof import("../residents/agenda-roll.js").rollActiveAgendas;
+  rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   wishFingerprint: typeof import("../../domain/rules/wish-interpretation-rules.js").wishFingerprint;
   bindWishProposals: typeof import("../../domain/rules/wish-progress-rules.js").bindWishProposals;
   WISH_PROPOSAL_INSTRUCTION: typeof import("../../domain/rules/wish-progress-rules.js").WISH_PROPOSAL_INSTRUCTION;

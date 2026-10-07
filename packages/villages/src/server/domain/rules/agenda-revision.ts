@@ -1,7 +1,7 @@
-import type { VillageState } from "../../domain/models/world.js";
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
-import { backgroundRevision } from "../../jobs/background-work.js";
-/** Identify the saved inputs of one resident Agenda request without resolving any connection. */
+import type { VillageState } from "../models/world.js";
+import { villageCurrentSetting } from "./prompt-preset.js";
+import { backgroundRevision } from "./background-revision.js";
+/** Identify saved Agenda inputs without resolving connections. */
 export function agendaRevision(village: VillageState, characterId: string): string {
   const resident = village.villagers.find((entry) => entry.characterId === characterId);
   return backgroundRevision([

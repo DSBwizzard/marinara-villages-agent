@@ -1,3 +1,4 @@
+import { backgroundRevision } from "../domain/rules/background-revision.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
@@ -22,9 +23,8 @@ import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 const KIND = "background-work";
-export const backgroundRevision = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
   "villages-background-" + backgroundRevision([work.kind, work.subjectId]);
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);

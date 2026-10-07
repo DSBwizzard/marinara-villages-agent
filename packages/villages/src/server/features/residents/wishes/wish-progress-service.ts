@@ -25,7 +25,7 @@ import {
   wishConditionRevision,
 } from "../../../domain/rules/wish-journal.js";
 import { metadataFailure, type WorkFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
-import { backgroundRevision } from "../../../jobs/background-work.js";
+import { backgroundRevision } from "../../../domain/rules/background-revision.js";
 import type { backgroundStatus, queueBackgroundJob } from "../../../jobs/background-work.js";
 import type { writeInterpretationDiagnostics } from "../../generation/interpretation-diagnostics.js";
 import type { sceneQueries } from "../../scenes/services.js";

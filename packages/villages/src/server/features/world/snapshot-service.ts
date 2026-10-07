@@ -17,7 +17,7 @@ export type VillageSnapshotPorts = {
   mutateVillageState: typeof import("./village-store.js").mutateVillageState;
   listVillagerCards: typeof import("../../adapters/engine/catalog.js").listVillagerCards;
   captureMissingVillagerCardColors: typeof import("../../adapters/engine/catalog.js").captureMissingVillagerCardColors;
-  rollActiveAgendas: typeof import("../residents/agenda-roll.js").rollActiveAgendas;
+  rollActiveAgendas: typeof import("../residents/resident-agendas.js").rollActiveAgendas;
   sceneQueries: () => Pick<ReturnType<typeof import("../scenes/services.js").sceneQueries>, "activeVenueSession">;
   backgroundWorkSummaries: typeof import("../../jobs/background-work.js").backgroundWorkSummaries;
   privatePreparationRooms: typeof import("../../jobs/private-space-preparation.js").privatePreparationRooms;

@@ -12,7 +12,7 @@ import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } fr
 import type { VenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { hashString, randomVillageSeed } from "../../domain/rules/village-clock.js";
-import { backgroundRevision } from "../../jobs/background-work.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import type { draftNewVenueProject, draftRenovationProject } from "../projects/project-lifecycle.js";
 
 export interface VenueMailRulesPorts {

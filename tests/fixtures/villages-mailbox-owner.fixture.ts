@@ -16,10 +16,10 @@ import {
   venueMailbox,
 } from "../../packages/villages/src/server/features/venues/venue-mailbox.js";
 import {
-  backgroundRevision,
   recoverBackgroundWork,
   settleBackgroundWork,
 } from "../../packages/villages/src/server/jobs/background-work.js";
+import { backgroundRevision } from "../../packages/villages/src/server/domain/rules/background-revision.js";
 
 const now = new Date("2026-10-07T12:00:00.000Z"),
   created = new Date("2026-10-04T12:00:00.000Z");

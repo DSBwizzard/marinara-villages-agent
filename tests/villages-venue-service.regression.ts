@@ -69,6 +69,33 @@ async function main() {
   };
   const firstCommands = createVenueCommands(first.ports);
   const secondCommands = createVenueCommands(second.ports);
+  assert.deepEqual(first.events, [], "Constructing Venue commands does not resolve image targets.");
+  assert.equal(await firstCommands.imageTarget(undefined), undefined);
+  assert.equal(await firstCommands.imageTarget({ venueId: "missing" }), undefined);
+  await assert.rejects(firstCommands.imageTarget({ zoneId: 7 }), /text IDs/);
+  assert.deepEqual(first.events, [], "No-target and invalid-ID paths never read storage.");
+  const imageZone = {
+    ...defaultVenueSpace("gathering"),
+    id: "common",
+    kind: "public" as const,
+    name: "Common Space",
+    seen: true,
+  };
+  first.state.venues[0].zones = [imageZone];
+  assert.equal(await firstCommands.imageTarget({ venueId: "venue", zoneId: imageZone.id }), imageZone.id);
+  assert.deepEqual(first.events, ["read"], "A target query performs one owned read and no Scene reconciliation.");
+  await assert.rejects(secondCommands.imageTarget({ venueId: "missing", zoneId: imageZone.id }), /no longer exists/);
+  await assert.rejects(
+    firstCommands.imageTarget({ venueId: "venue", zoneId: imageZone.id, privateSpaceId: "other" }),
+    /Conflicting private/,
+  );
+  await assert.rejects(
+    firstCommands.imageTarget({ venueId: "venue", zoneId: imageZone.id, privateOwnerId: "other" }),
+    /Conflicting personal/,
+  );
+  await assert.rejects(firstCommands.imageTarget({ venueId: "venue", zoneId: "missing" }), /no longer here/);
+  first.events.length = 0;
+  second.events.length = 0;
   const pending = firstCommands.updateVillageVenue("venue", { name: "First revised" });
   await entry;
   assert.equal(await secondCommands.updateVillageVenue("venue", { name: "Second revised" }), second.result);

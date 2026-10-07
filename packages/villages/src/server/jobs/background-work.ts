@@ -17,7 +17,7 @@ export type {
   Handler,
   Ticket,
 } from "../domain/models/background-model.js";
-export { backgroundRevision, retireBackgroundResident } from "./background-service.js";
+export { retireBackgroundResident } from "./background-service.js";
 const binding = createActivationBinding<BackgroundWorkService>("Villages background work is not configured.");
 export function configureBackgroundWork(service: BackgroundWorkService): () => void {
   return binding.configure(bindActivationService(service));

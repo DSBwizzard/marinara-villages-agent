@@ -39,7 +39,7 @@ import {
   wishSlots,
 } from "../../../domain/rules/wish-lifecycle-rules.js";
 import { completionFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
-import { backgroundRevision } from "../../../jobs/background-work.js";
+import { backgroundRevision } from "../../../domain/rules/background-revision.js";
 import type { backgroundStatus, queueBackgroundJob, settleBackgroundWork } from "../../../jobs/background-work.js";
 import type { completeWithRoom } from "../../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../../settings/connections.js";

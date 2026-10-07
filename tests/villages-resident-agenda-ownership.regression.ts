@@ -16,11 +16,12 @@ import {
   type ResidentAgendaPorts,
 } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
 import {
-  agendaRevision,
   configureResidentAgendas,
   queueVillagerAgenda,
   clearVillagerAgenda,
+  rollActiveAgendas,
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -51,6 +52,7 @@ function fixture(name: string) {
   const gate = deferred(),
     entered = deferred();
   let pauseLore = false,
+    pauseRead = false,
     pauseModel = false,
     unavailable = false,
     failure: Error | undefined;
@@ -63,6 +65,12 @@ function fixture(name: string) {
   const ports: ResidentAgendaPorts = {
     async readVillageState() {
       note("read");
+      if (pauseRead) {
+        pauseRead = false;
+        entered.resolve();
+        await gate.promise;
+        owners.push(scopedActivation());
+      }
       return structuredClone(state);
     },
     async mutateVillageState(update) {
@@ -121,10 +129,6 @@ function fixture(name: string) {
       note("schedule");
       return { cardsReadable: true, schedules: [] };
     },
-    async rollActiveAgendas() {
-      note("roll");
-      return false;
-    },
     registerInitialWish() {
       note("register-wish");
     },
@@ -146,6 +150,9 @@ function fixture(name: string) {
     entered,
     pauseLore() {
       pauseLore = true;
+    },
+    pauseRead() {
+      pauseRead = true;
     },
     pauseModel() {
       pauseModel = true;
@@ -314,6 +321,52 @@ assert.equal(callbackFixture.calls.at(-1), "progress:applying");
 clearReplacement();
 callbackOwner.dispose();
 replacementOwner.dispose();
+
+// Rollover is an owned command, including its read-to-mutation continuation.
+const rollOne = createActivationScope(),
+  rollTwo = createActivationScope();
+const rollA = fixture("Roll A"),
+  rollB = fixture("Roll B");
+const releaseRollA = rollOne.run(() => configureResidentAgendas(rollA.service));
+const releaseRollB = rollTwo.run(() => configureResidentAgendas(rollB.service));
+const clearRollA = installDefaultActivation(rollOne, () => {});
+const rollAt = new Date("2026-10-07T12:00:00Z");
+rollA.resident.agenda.activeDay = undefined;
+rollB.resident.agenda.activeDay = undefined;
+rollA.pauseRead();
+const pendingRoll = rollActiveAgendas(rollAt);
+await rollA.entered.promise;
+const clearRollB = installDefaultActivation(rollTwo, () => {});
+assert.equal(await rollActiveAgendas(rollAt), true);
+assert.equal(rollA.calls.filter((call) => call === "mutate").length, 0);
+rollA.gate.resolve();
+assert.equal(await pendingRoll, true);
+assert.equal(rollA.resident.agenda.activeDay?.dateKey, agendaDateKey(rollAt));
+assert.equal(rollB.resident.agenda.activeDay?.dateKey, agendaDateKey(rollAt));
+assert(rollA.owners.every((owner) => owner === rollOne));
+assert(rollB.owners.every((owner) => owner === rollTwo));
+const completedCalls = rollA.calls.length;
+assert.equal(await rollOne.run(() => rollActiveAgendas(rollAt, rollA.state)), false);
+assert.equal(rollA.calls.length, completedCalls, "Supplied current state avoids both read and mutation.");
+const suppliedRoll = fixture("Supplied roll");
+suppliedRoll.resident.agenda.activeDay = undefined;
+assert.equal(await suppliedRoll.service.rollActiveAgendas(rollAt, suppliedRoll.state), true);
+assert.deepEqual(
+  suppliedRoll.calls,
+  ["mutate"],
+  "Supplied stale state bypasses the read and keeps the original mutation.",
+);
+rollOne.run(releaseRollA);
+rollOne.dispose();
+clearRollA();
+assert.equal(await rollActiveAgendas(rollAt), false, "Releasing A retains B's current command.");
+rollTwo.run(releaseRollB);
+rollTwo.dispose();
+clearRollB();
+await assert.rejects(
+  rollTwo.run(() => rollActiveAgendas(rollAt)),
+  /not configured/,
+);
 console.log(
   "Resident Agenda ownership: inert ports, input/revision admission, recovery without regeneration, current-day preservation, independent owners and bound background callbacks passed (mocked storage, schedules and generation).",
 );

@@ -45,7 +45,7 @@ async function main() {
     moduleUrl("packages/villages/src/server/features/settings/village-settings.ts")
   );
   const { updateVillageVenue } = await import(moduleUrl("packages/villages/src/server/features/venues/services.ts"));
-  const { rollActiveAgendas } = await import("../packages/villages/src/server/features/residents/agenda-roll.ts");
+  const { rollActiveAgendas } = await import("../packages/villages/src/server/features/residents/resident-agendas.ts");
   const { workingAgendaWeek } = await import(moduleUrl("packages/villages/src/server/domain/rules/agenda-week.ts"));
   const { renderHomesBlock } = await import(moduleUrl("packages/villages/src/server/domain/rules/prompt-preset.ts"));
   const { REFRESH_MAX_DELAY_MS, REFRESH_MIN_DELAY_MS, startVillageRefreshScheduler, villageSchedulerDelayMs } =

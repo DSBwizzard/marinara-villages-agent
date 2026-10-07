@@ -7,7 +7,7 @@ import {
   SETTINGS_BODY_LIMIT,
   VENUE_IMAGE_BODY_LIMIT,
 } from "../../adapters/http/route-support.js";
-import { imageTarget } from "../venues/image-target.js";
+import { imageTarget } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageTownMapImage, replaceVillageTownMap } from "./town-map-review.js";
 import { setVillageVenueImage } from "../venues/services.js";

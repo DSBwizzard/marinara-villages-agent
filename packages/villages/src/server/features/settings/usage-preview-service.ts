@@ -1,4 +1,4 @@
-import { agendaRevision } from "../residents/resident-agendas.js";
+import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { quoteUsageRate } from "../../adapters/models/usage-ledger.js";

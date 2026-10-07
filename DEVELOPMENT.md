@@ -25,7 +25,7 @@ npm run check
 npm test -- --filter=venue-access
 ```
 
-`check` covers formatting, lint, maintained-code compiler checking, pinned declaration integrity, architectural imports and runtime cycles. It rejects client imports of server code, impure domain dependencies, and connector calls back into feature coordinators. An empty test selection fails. Focused checks support iteration; they do not establish complete candidate readiness.
+`check` covers formatting, lint, maintained-code compiler checking, pinned declaration integrity, architectural imports and runtime cycles. It rejects client imports of server code, impure domain dependencies, and connector calls back into feature coordinators. Server features collaborate only through the named contracts in [feature-interfaces.mjs](scripts/feature-interfaces.mjs); other modules and exports remain private. Entry assembles factories, and modules within one feature may use their own implementation. Types, aliases, reexports and delayed imports obey the same boundaries. Add public contracts deliberately after reviewing their ownership and effects. An empty test selection fails. Focused checks support iteration; they do not establish complete candidate readiness.
 
 Before presenting a complete candidate:
 

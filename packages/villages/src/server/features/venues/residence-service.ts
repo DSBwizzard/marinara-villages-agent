@@ -12,7 +12,7 @@ import { assertResidencePrivateDestination } from "../../domain/rules/venue-layo
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { residenceCharacterId, residenceVenueId } from "../../domain/rules/world-input.js";
-import { backgroundRevision } from "../../jobs/background-work.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import type { queueBackgroundJob } from "../../jobs/background-work.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type { completeWithRoom } from "../generation/model-requests.js";

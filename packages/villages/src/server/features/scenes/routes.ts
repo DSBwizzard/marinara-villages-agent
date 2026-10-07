@@ -13,7 +13,7 @@ import { operationSummary } from "../../adapters/operations/operation-context.js
 import type { VillageVenueClass } from "../../domain/models/world.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import { readVenueOperation } from "../../jobs/venue-coordinator.js";
-import { imageTarget } from "../venues/image-target.js";
+import { imageTarget } from "../venues/services.js";
 import { assertFoundedVillageReady } from "../founding/preparation.js";
 import {
   closeVenueSessionWithReceipts,
