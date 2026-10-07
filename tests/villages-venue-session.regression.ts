@@ -2321,6 +2321,7 @@ async function main() {
         transferTo: "tina",
       };
       const id = `shared-handoff-${mode}`;
+      const beforeNarration = venueReplyCalls;
       const sent = await sendVenueTurn({
         sessionId: group.id,
         message: "I hand the teapot to Tina",
@@ -2328,6 +2329,15 @@ async function main() {
         targetId: mode === "fulfill" ? "tina" : "",
         submissionId: id,
       });
+      assert.equal(venueReplyCalls - beforeNarration, 1, "all current modes use one Scene response generation");
+      const savedTurn = sent.session.submissions.find((turn) => turn.id === id)!;
+      assert.equal(savedTurn.mode, "chat");
+      assert.equal(savedTurn.requestMode, mode === "chat" ? undefined : mode);
+      assert.equal(savedTurn.verdict, null, "Fulfill uses cited finite checks, not an inline legacy verdict");
+      assert.equal(savedTurn.wishId, "");
+      assert.equal(savedTurn.wishMemory, "");
+      assert.equal(savedTurn.wishInterpretationProof, undefined);
+      assert.ok(!savedTurn.requestMetrics?.some((request) => request.stage.includes("wish-verdict")));
       const event = (await readVillageState()).venueEvents.find((event) => event.actionReceipt?.submissionId === id)!;
       const { submissionId: _id, ...proof } = event.actionReceipt!;
       transferProofs.push(proof);
@@ -2343,8 +2353,8 @@ async function main() {
       assert.equal(calls, before);
       assert.deepEqual(replayed.recordEvents, sent.recordEvents, "replay preserves notice identities");
     }
-    assert.deepEqual(transferProofs[0], transferProofs[1], "Chat and new legacy Act write equivalent outcomes");
-    assert.deepEqual(transferProofs[0], transferProofs[2], "new legacy Fulfill preserves the shared physical path");
+    assert.deepEqual(transferProofs[0], transferProofs[1], "Chat and fresh Act write equivalent outcomes");
+    assert.deepEqual(transferProofs[0], transferProofs[2], "fresh Fulfill preserves the shared physical path");
     await stock("timber");
     sceneActionFixture = {
       happened: true,

@@ -51,7 +51,6 @@ import type {
   VenueSubmission,
 } from "../../domain/models/scene-model.js";
 import type { VenueActionResult } from "../../domain/models/venue-action-model.js";
-import type { WishCriteria } from "../../domain/models/wish-interpretation-model.js";
 import type { VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { accessManagementPrompt } from "../../domain/rules/access-speech.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -143,12 +142,7 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import {
-  knownWish,
-  setWishJournalStatus,
-  wishCheckKnowledge,
-  wishConditionRevision,
-} from "../../domain/rules/wish-journal.js";
+import { knownWish, setWishJournalStatus, wishConditionRevision } from "../../domain/rules/wish-journal.js";
 import {
   metadataFailure,
   completionFailure as typedCompletionFailure,
@@ -189,12 +183,7 @@ import {
   relationshipChangeNotices,
   relationshipWritingPrompt,
 } from "../../domain/rules/relationship-presentation.js";
-import {
-  interpretWishClaim,
-  matchingWishReceipts,
-  wishFingerprint,
-  wishReceiptRecords,
-} from "../residents/wishes/wish-interpretation.js";
+import { matchingWishReceipts, wishFingerprint, wishReceiptRecords } from "../residents/wishes/wish-interpretation.js";
 import { fulfillResidentWish } from "../residents/wishes/wish-lifecycle.js";
 import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../residents/wishes/wish-progress.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
@@ -202,7 +191,6 @@ import { recordVillagerVenueImprovement } from "../venues/venue-mailbox.js";
 import { mutateVillageState, readVillageSnapshot, readVillageState } from "../world/village-store.js";
 import { queueVillageVenueRequest } from "../venues/venue-requests.js";
 import { applyResidenceEditApproval } from "../venues/zone-edits.js";
-import { memoryForVillager } from "./chat.js";
 
 import { interpretRoomReply } from "./room-interpretation.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
@@ -2546,8 +2534,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
         recordEvents: [],
       };
   }
-  if (input.mode === "fulfill" && session.activeIds.length === 0)
-    throw badRequest("Nobody is here to fulfill a wish for.");
   if (
     input.mode !== "contact" &&
     input.targetId &&
@@ -2559,116 +2545,11 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
     )
   )
     throw badRequest("That villager is no longer in this conversation.");
-  if (input.mode === "fulfill" && !input.targetId) throw badRequest("Choose one villager for Fulfill.");
   await rollActiveAgendas(new Date());
   const village = await readVillageState();
-  let verdict: { fulfilled: boolean; reason: string } | null = null;
-  let wishId = "";
-  let wishMemory = "";
-  let wishText = "";
-  let wishInterpretation: InterpretationBatch | null = null;
-  let wishUnresolved = false;
-  let wishInterpretationProof: VenueSubmission["wishInterpretationProof"];
-  if (input.mode === "fulfill") {
-    const resident = village.villagers.find((person) => person.characterId === input.targetId);
-    if (!resident) throw notFound("That villager no longer lives here.");
-    const wishes = resident.agenda?.wishes ?? [];
-    if (!wishes.length) throw badRequest(`${resident.cardSnapshot.name} is not waiting on anything at the moment.`);
-    const player = readPlayerIdentity(village);
-    const moment = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() });
-    const judged = await venueCheckpoint("wish-verdict", () =>
-      interpretWishClaim(
-        {
-          actorId: input.targetId,
-          knowledgeByWish: Object.fromEntries(
-            wishes.map((wish) => [wish.id, wishCheckKnowledge(village, input.targetId, wish.id, moment.instant)]),
-          ),
-          evidence: [
-            ...heardLines(session, input.targetId)
-              .filter(
-                (line) => !line.contactHidden && !line.contactReport && line.kind !== "side" && line.kind !== "whisper",
-              )
-              .map((line) => ({
-                id: line.id,
-                speakerId: line.role === "user" ? "player" : line.speakerId,
-                name: line.role === "user" ? player.name : line.name,
-                content: line.content,
-                kind: line.kind,
-                at: line.at,
-              })),
-            ...(session.activeIds.includes(input.targetId)
-              ? [
-                  {
-                    id: "scene-attendance",
-                    speakerId: "player",
-                    name: player.name,
-                    kind: "attendance",
-                    content: `Current authoritative Scene position: ${player.name} and ${resident.cardSnapshot.name} are together in this Zone.`,
-                    at: new Date().toISOString(),
-                  },
-                ]
-              : []),
-          ],
-          receipts: wishReceiptRecords(village, input.targetId, session),
-          village: village.name,
-          setting: villageCurrentSetting(village),
-          moment,
-          card: readEffectiveVillagerCard(resident),
-          playerName: player.name,
-          playerDescription: player.description,
-          wishes,
-          claim: input.message,
-          transcript: heardLines(session, input.targetId).map((line) => ({
-            role: line.role,
-            content: `[Original speaker: ${line.role === "user" ? player.name : line.name}] ${line.content}`,
-            at: line.at,
-          })),
-          happenings: wishReceiptRecords(village, input.targetId, session),
-          worldState: (() => {
-            const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
-            const place = storedPlace
-              ? session.zoneId
-                ? venueInZone(storedPlace, session.zoneId)
-                : venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
-              : undefined;
-            if (!place) return [];
-            return [
-              `Current condition of ${place.name}: ${place.state.condition}`,
-              ...place.state.publicFacts.slice(0, 12),
-              ...(place.state.features ?? []).slice(0, 8).map((feature) => feature.text),
-              ...place.state.furniture.slice(0, 12).map((item) => `Present item: ${item}`),
-            ];
-          })(),
-          memory: memoryForVillager(
-            village.chronicle,
-            input.targetId,
-            `${input.message} ${wishes.map((wish) => wish.wish).join(" ")}`,
-          ),
-        },
-        session.id,
-        input.submissionId,
-      ),
-    );
-    verdict = judged.verdict;
-    wishId = judged.wish?.id ?? "";
-    wishMemory = judged.memory;
-    wishText = judged.wish?.wish ?? "";
-    wishInterpretation = judged.batch;
-    wishUnresolved = judged.interpretationStatus === "unresolved";
-    if (judged.wish) {
-      const check = judged.batch.checks.find((item) => asRecord(item.facts).wishId === judged.wish!.id)!;
-      wishInterpretationProof = {
-        fingerprint: wishFingerprint(judged.wish),
-        criteria: asRecord(check.facts).criteria as WishCriteria,
-        receiptIds: asRecord(check.facts).matchingReceiptIds as string[],
-      };
-      const currentWish = (await readVillageState()).villagers
-        .find((person) => person.characterId === input.targetId)
-        ?.agenda?.wishes.find((item) => item.id === wishId);
-      if (!currentWish || wishFingerprint(currentWish) !== wishInterpretationProof.fingerprint)
-        throw conflict("That wish changed during interpretation. Your draft is preserved.");
-    }
-  }
+  const verdict: VenueSubmission["verdict"] = null;
+  const wishId = "",
+    wishMemory = "";
   const responseTargetId = input.targetId || (session.activeIds.length === 1 ? session.activeIds[0]! : "");
   let contactIntentUsed: ContactIntent | null =
     input.mode === "contact"
@@ -2725,9 +2606,7 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
           input.message,
           input.mode === "contact" ? "chat" : input.mode,
           responseTargetId,
-          verdict
-            ? { fulfilled: verdict.fulfilled, wish: wishText, unresolved: wishUnresolved, reason: verdict.reason }
-            : null,
+          null,
           venueOperationSignal() ?? AbortSignal.timeout(90_000),
         ),
       );
@@ -2798,24 +2677,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   const applicationVillage = await readVillageState();
   validateCurrentRoomInvitation(reply, applicationVillage);
-  if (wishInterpretationProof) {
-    const currentWish = applicationVillage.villagers
-      .find((person) => person.characterId === input.targetId)
-      ?.agenda?.wishes.find((wish) => wish.id === wishId);
-    if (
-      !currentWish ||
-      wishFingerprint(currentWish) !== wishInterpretationProof.fingerprint ||
-      (wishInterpretationProof.criteria.requiresPhysical &&
-        !matchingWishReceipts(
-          wishInterpretationProof.criteria,
-          { actorId: input.targetId, receipts: wishReceiptRecords(applicationVillage, input.targetId, session) },
-          currentWish,
-        ).some((event) => wishInterpretationProof!.receiptIds.includes(event.id)))
-    )
-      throw conflict(
-        "The wish or its authoritative evidence changed while the reply was prepared. Your draft is preserved.",
-      );
-  }
   const projectInterpretation =
     input.mode === "chat" || input.mode === "ask" || input.mode === "contact"
       ? await interpretProjectDraft(
@@ -3013,7 +2874,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
       verdict,
       wishId,
       wishMemory,
-      ...(wishInterpretationProof ? { wishInterpretationProof } : {}),
       recollections,
       wishProposals: wishChanges.proposals,
       wishProposalError: wishChanges.error,
@@ -3111,17 +2971,6 @@ async function sendVenueTurnOnce(input: VenueTurnInput) {
   }
   if (!submission.processing) await applyVenueTurnChange(updated, submission);
   await applyFulfilledWish(updated, submission);
-  if (wishInterpretation) {
-    const current = await readVillageState();
-    const applied = current.chronicle.some((entry) => entry.id === `${updated.id}:wish:${submission.wishId}`);
-    for (const trace of wishInterpretation.traces)
-      if (trace.applied === "Wish supported; awaiting current-state application")
-        trace.applied = applied
-          ? `Wish fulfilled using ${trace.result.source}; conditions, witnesses and current state validated`
-          : "Rejected: wish or authoritative evidence changed before application";
-    await writeInterpretationDiagnostics(updated.id, wishInterpretation.traces).catch(() => {});
-    scheduleSystemComparisons(updated.id, wishInterpretation);
-  }
   await applyVenueRequests(updated, submission);
   if (submission.invitationSignal) await recordSpokenInvitation(updated, submission.invitationSignal);
   await markZoneSeen(updated, updated.zoneId === session.zoneId);
