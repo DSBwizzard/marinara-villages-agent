@@ -7,11 +7,8 @@ import { readVillageState } from "../packages/villages/src/server/features/world
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import {
-  bindLiveProposals,
-  memoryVersion,
-  processLiveRelationships,
-} from "../packages/villages/src/server/features/residents/live-memory.js";
+import { bindLiveProposals, memoryVersion } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { processLiveRelationships } from "../packages/villages/src/server/features/residents/live-memory.js";
 import {
   closeVenueSession,
   endVenueSessionWithReceipts,

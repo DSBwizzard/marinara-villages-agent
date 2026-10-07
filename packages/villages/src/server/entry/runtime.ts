@@ -4,7 +4,7 @@ import { processLiveRelationships } from "../features/residents/live-memory.js";
 import { processLiveMemories } from "../features/residents/live-memory.js";
 import { processWishExchange } from "../features/residents/wishes/wish-progress.js";
 import { applyProjectPickup } from "../features/projects/project-checks.js";
-import { createLiveEvidenceContext } from "../features/residents/live-memory.js";
+import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
 import { processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress } from "../features/scenes/progress.js";

@@ -16,7 +16,7 @@ export interface SceneProgressPorts {
   measurePipeline: typeof import("../../adapters/observability/pipeline-metrics.js").measurePipeline;
   applySavedAccessEvents: SceneReplayEffects["applySavedAccessEvents"];
   recordSpokenInvitation: SceneReplayEffects["recordSpokenInvitation"];
-  createLiveEvidenceContext: typeof import("../residents/live-memory.js").createLiveEvidenceContext;
+  createLiveEvidenceContext: typeof import("../../domain/rules/live-exchange.js").createLiveEvidenceContext;
   applyVenueTurnChange: SceneReplayEffects["applyVenueTurnChange"];
   applyProjectPickup: typeof import("../projects/project-checks.js").applyProjectPickup;
   processWishExchange: typeof import("../residents/wishes/wish-progress.js").processWishExchange;

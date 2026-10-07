@@ -183,7 +183,7 @@ import {
   liveEvidence,
   memoryVersion,
   mergeLiveReplyProposals,
-} from "../residents/live-memory.js";
+} from "../../domain/rules/live-exchange.js";
 import {
   filterRelationshipNotices,
   relationshipChangeNotices,

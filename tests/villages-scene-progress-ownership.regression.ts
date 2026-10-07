@@ -17,7 +17,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { createProgressTask } from "../packages/villages/src/server/domain/rules/progress-engine.js";
 import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
-import { createLiveEvidenceContext } from "../packages/villages/src/server/features/residents/live-memory.js";
+import { createLiveEvidenceContext } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { DomainProcessing, ExchangeDomain } from "../packages/villages/src/server/domain/models/exchange-model.js";
 function deferred() {
