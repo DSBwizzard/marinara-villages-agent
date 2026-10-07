@@ -3,8 +3,35 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-import { storyBackgroundHandler } from "../packages/villages/src/server/features/world/village.js";
+import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
 
+const unavailable = () => {
+  throw Error("No connection is used by this pure story application probe.");
+};
+const { storyBackgroundHandler } = createWorldCoordination({
+  readVillageState: unavailable,
+  mutateVillageState: unavailable,
+  buildVillageSnapshot: unavailable,
+  villagesLogger: unavailable,
+  listVillagerCards: unavailable,
+  readEffectiveVillagerCard: unavailable,
+  readVillageLore: unavailable,
+  outsideVenueOperation: unavailable,
+  completeVillageResidence: unavailable,
+  retryResidencePrivateSpaceAdaptation: unavailable,
+  backfillAgendas: unavailable,
+  refreshVillagerRemaps: unavailable,
+  queueBackgroundJob: unavailable,
+  preparePrivateSpaces: unavailable,
+  proposeHappenings: unavailable,
+  proposeReaction: unavailable,
+  reconcileProjectLifecycles: unavailable,
+  rollActiveAgendas: unavailable,
+  relationshipWritingPrompt: unavailable,
+  expireResidentWishes: unavailable,
+  reconcileWishLifecycle: unavailable,
+  respondDueVenueMail: unavailable,
+});
 const state = defaultVillageState();
 state.seed = "visual-feed";
 state.storyPace = "off";

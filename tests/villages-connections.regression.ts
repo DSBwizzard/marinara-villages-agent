@@ -440,6 +440,7 @@ async function main() {
     "domain/rules/native-remap.ts",
     "features/residents/wishes/wishes.ts",
     "features/world/village.ts",
+    "features/world/village-service.ts",
     "features/residents/resident-agenda-service.ts",
     "features/venues/residence-service.ts",
   ]) {

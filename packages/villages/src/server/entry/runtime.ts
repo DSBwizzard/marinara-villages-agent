@@ -1,3 +1,4 @@
+import { relationshipWritingPrompt } from "../features/residents/relationships.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
 import { configureFoundingSetup } from "../features/founding/founding-setup.js";
 import { readTownMapSubmission } from "../features/media/town-map-review.js";
@@ -6,25 +7,46 @@ import {
   proposeVillage,
   proposePublicVenueNames,
   draftVillageVenueDescriptions,
+  proposeHappenings,
+  proposeReaction,
 } from "../features/founding/village-bootstrap.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview } from "../features/media/town-map-review.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
 import { configureVenueRequests } from "../features/venues/venue-requests.js";
-import { draftNewVenueProject, draftRenovationProject } from "../features/projects/project-lifecycle.js";
+import {
+  draftNewVenueProject,
+  draftRenovationProject,
+  reconcileProjectLifecycles,
+} from "../features/projects/project-lifecycle.js";
 import { createResidentRoster } from "../features/residents/resident-roster-service.js";
 import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidences } from "../features/venues/residence-service.js";
-import { configureResidences } from "../features/venues/residences.js";
-import { queueSharedMoveConsent, queueVenueCounteroffer } from "../features/venues/venue-mailbox.js";
+import {
+  configureResidences,
+  completeVillageResidence,
+  retryResidencePrivateSpaceAdaptation,
+} from "../features/venues/residences.js";
+import {
+  queueSharedMoveConsent,
+  queueVenueCounteroffer,
+  respondDueVenueMail,
+} from "../features/venues/venue-mailbox.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
-import { configureResidentAgendas, queueVillagerAgenda } from "../features/residents/resident-agendas.js";
+import {
+  configureResidentAgendas,
+  queueVillagerAgenda,
+  backfillAgendas,
+  refreshVillagerRemaps,
+} from "../features/residents/resident-agendas.js";
 import { readEffectiveVillagerCard } from "../adapters/engine/catalog.js";
 import { readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
   reserveInitialWishAllowance,
   registerInitialWish,
   correctResidentWish,
+  expireResidentWishes,
+  reconcileWishLifecycle,
 } from "../features/residents/wishes/wish-lifecycle.js";
 import { parseCompactFoundingCompletion, proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { rollActiveAgendas } from "../features/residents/agenda-roll.js";
@@ -101,7 +123,8 @@ import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
 import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
 import { buildVillageSnapshot } from "../features/world/snapshot.js";
-import { storyBackgroundHandler } from "../features/world/village.js";
+import { configureWorldCoordination } from "../features/world/village.js";
+import { createWorldCoordination } from "../features/world/village-service.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
 import { wishBackgroundHandler } from "../features/residents/wishes/wish-lifecycle.js";
 import {
@@ -357,6 +380,31 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseCoordinator = configureVenueCoordinator(
     createVenueCoordinator({ operations, villagesDocuments, villagesLogger, runtimeDebug, readInterpretationSettings }),
   );
+  const worldCoordination = createWorldCoordination({
+    readVillageState,
+    mutateVillageState,
+    buildVillageSnapshot,
+    villagesLogger,
+    listVillagerCards,
+    readEffectiveVillagerCard,
+    readVillageLore,
+    outsideVenueOperation: operations.outsideVenueOperation,
+    completeVillageResidence,
+    retryResidencePrivateSpaceAdaptation,
+    backfillAgendas,
+    refreshVillagerRemaps,
+    queueBackgroundJob,
+    preparePrivateSpaces,
+    proposeHappenings,
+    proposeReaction,
+    reconcileProjectLifecycles,
+    rollActiveAgendas,
+    relationshipWritingPrompt,
+    expireResidentWishes,
+    reconcileWishLifecycle,
+    respondDueVenueMail,
+  });
+  const releaseWorldCoordination = configureWorldCoordination(worldCoordination);
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       villagesDocuments,
@@ -373,7 +421,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["mail", mailBackgroundHandler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
-        ["story", storyBackgroundHandler],
+        ["story", bindActivationService(worldCoordination.storyBackgroundHandler)],
       ],
     }),
   );
@@ -408,6 +456,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseGraph = () => {
     releaseSettings();
     releaseFoundingSetup();
+    releaseWorldCoordination();
     releaseFounding();
     releasePrivateSpaces();
     releaseBackground();

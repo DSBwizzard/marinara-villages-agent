@@ -1136,6 +1136,7 @@ async function main() {
   );
   for (const silent of [
     "features/world/village.ts",
+    "features/world/village-service.ts",
     "features/world/village-store.ts",
     "features/founding/village-bootstrap.ts",
     "domain/rules/village-clock.ts",
