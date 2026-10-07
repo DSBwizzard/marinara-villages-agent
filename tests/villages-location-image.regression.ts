@@ -33,6 +33,26 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
+import {
+  generateVillageImage,
+  resolveVillageImageConnectionId,
+} from "../packages/villages/src/server/features/media/image-generation.js";
+import { generateVillageTownMap } from "../packages/villages/src/server/features/media/town-map-image.js";
+import {
+  generateVillageLocationImage,
+  generateFirstPrivateSpaceImage,
+  storeVillageVenueImage,
+} from "../packages/villages/src/server/features/media/location-image.js";
+import {
+  createActivationScope,
+  activationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 
 /**
  * The path the Engine draws a character's picture on, written out rather than
@@ -69,9 +89,10 @@ async function main() {
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
   const services = "packages/villages/src/server";
 
-  const { avatarPromptId, buildLocationPrompt, decodeImageDataUrl } = await import(
-    moduleUrl(`${services}/features/media/location-image.ts`)
+  const { avatarPromptId, buildLocationPrompt } = await import(
+    moduleUrl(`${services}/domain/rules/location-image-rules.ts`)
   );
+  const { decodeImageDataUrl } = await import(moduleUrl(`${services}/features/media/location-image-codec.ts`));
   const {
     GLOBAL_GALLERY_REF_PREFIX,
     isGlobalGalleryRef,
@@ -1129,8 +1150,9 @@ async function main() {
     [
       "server/features/media/routes.ts",
       "server/adapters/engine/engine-loopback.ts",
-      "server/features/media/image-generation.ts",
+      "server/features/media/image-generation-service.ts",
       "server/features/media/location-image.ts",
+      "server/features/media/location-image-service.ts",
     ].sort(),
     "only explicit scenery draws and their metered shared transport reach image providers",
   );
@@ -1178,7 +1200,7 @@ async function main() {
     /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId, zoneId\)\}/,
     "and wired to a click on the screen that stands in a place",
   );
-  const imageService = await readFile(join(repoRoot, services, "features/media/location-image.ts"), "utf8");
+  const imageService = await readFile(join(repoRoot, services, "features/media/location-image-service.ts"), "utf8");
   const venueSession = await readFile(join(repoRoot, services, "features/scenes/command-service.ts"), "utf8");
   assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
   assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
@@ -1301,7 +1323,362 @@ async function main() {
   );
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+/** Real activation graphs and document CAS, with synthetic Engine HTTP responses. */
+async function mediaConnectionOwnership() {
+  // Only the native ports exercised here are simulated. Any unexpected host
+  // access fails immediately instead of returning a permissive dummy value.
+  function nativePorts<T extends object>(ports: Partial<T>): T {
+    return new Proxy(ports, {
+      get(target, key, receiver) {
+        if (!Reflect.has(target, key)) throw new Error(`Unexpected native test port: ${String(key)}`);
+        return Reflect.get(target, key, receiver);
+      },
+    }) as T;
+  }
+  type Operation = "image" | "resolve" | "map" | "store" | "location" | "private";
+  type Stage = "agent" | "connections" | "provider" | "lore" | "inspect" | "read" | "upload" | "write";
+  type Variant =
+    "ordinary" | "cas" | "context" | "only-empty" | "claim-cas" | "failure" | "provider-failure" | "disposed";
+  const scenarios: Array<[Operation, Stage, Variant?]> = [
+    ["image", "agent"],
+    ["image", "connections"],
+    ["image", "provider"],
+    ["resolve", "agent"],
+    ["image", "provider", "provider-failure"],
+    ["map", "lore"],
+    ["map", "provider"],
+    ["map", "inspect"],
+    ["store", "read"],
+    ["store", "upload"],
+    ["store", "write"],
+    ["location", "lore"],
+    ["location", "provider"],
+    ["location", "upload"],
+    ["private", "write"],
+    ["private", "provider"],
+    ["store", "write", "cas"],
+    ["location", "write", "context"],
+    ["location", "write", "only-empty"],
+    ["private", "write", "claim-cas"],
+    ["store", "read", "failure"],
+    ["store", "write", "failure"],
+    ["store", "read", "disposed"],
+  ];
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  };
+  for (const [operation, stage, variant = "ordinary"] of scenarios) {
+    const controlledError = new Error(`controlled ${operation}/${stage}`);
+    const fixture = (label: string, hold: boolean) => {
+      const scope = createActivationScope(),
+        entered = deferred(),
+        gate = deferred();
+      let held = false;
+      const state = coerceVillageState({
+        wishSystemVersion: 3,
+        seed: "equal-media-seed",
+        name: label,
+        setting: "Quiet harbor",
+        setupAt: new Date().toISOString(),
+        foundedAt: new Date().toISOString(),
+        storyPace: "off",
+        selectedLorebookIds: ["visual"],
+        useVisualLoreByDefault: true,
+        venues: [
+          {
+            id: "equal-venue",
+            name: `${label} place`,
+            layoutVersion: 1,
+            zones: [
+              { id: "exterior", kind: "exterior", name: "Entrance", purpose: "Arrival", seen: true },
+              {
+                id: "own-room",
+                kind: "restricted",
+                name: "Studio",
+                purpose: "Study",
+                seen: true,
+                ownerId: "player",
+                controllerIds: ["player"],
+              },
+            ],
+          },
+        ],
+      });
+      type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
+      const record = (id: string, kind: string, data: unknown): Row => ({
+        id,
+        packageId: "villages",
+        kind,
+        data,
+        revision: 1,
+        name: id,
+        description: "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const records = new Map([
+        ["villages-village", record("villages-village", "village", state)],
+        [
+          "villages-connections",
+          record("villages-connections", "settings", {
+            systemConnectionId: "",
+            narrationConnectionId: "",
+            imageConnectionId: "",
+          }),
+        ],
+      ]);
+      const world = () => records.get("villages-village")!.data as VillageState;
+      const requests = () => (records.get("villages-ai-usage")?.data as Ledger | undefined)?.requests ?? [];
+      async function pause(at: Stage) {
+        if (!hold || held || at !== stage) return;
+        held = true;
+        entered.resolve();
+        await gate.promise;
+        if (variant === "failure" || variant === "provider-failure") throw controlledError;
+      }
+      const documents: CapabilityDocumentStore = {
+        async getById(_pkg, id) {
+          if (id === "villages-village") await pause("read");
+          return structuredClone(records.get(id) ?? null);
+        },
+        async list(_pkg, kind) {
+          return structuredClone([...records.values()].filter((row) => row.kind === kind));
+        },
+        async create(input) {
+          const row = { ...structuredClone(input), revision: 1 };
+          records.set(input.id, row);
+          return structuredClone(row);
+        },
+        async update(input) {
+          if (input.id === "villages-village") await pause("write");
+          const old = records.get(input.id);
+          if (!old || old.revision !== input.expectedRevision) return null;
+          const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+          records.set(input.id, row);
+          return structuredClone(row);
+        },
+        async remove(_pkg, id, revision) {
+          if (records.get(id)?.revision !== revision) return false;
+          return records.delete(id);
+        },
+      };
+      const release = scope.run(() =>
+        configureVillagesRuntime(
+          nativePorts<CapabilityRuntimeHost>({
+            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({ documents }),
+            resources: {
+              async listCharacters() {
+                return [];
+              },
+              async listPersonas() {
+                return [];
+              },
+              async listLorebooks() {
+                return [];
+              },
+              async listEligibleLorebookEntries() {
+                return [];
+              },
+            },
+            async getAgentConfig() {
+              await pause("agent");
+              return {
+                connectionId: null,
+                settings: {
+                  imageConnectionId: stage === "connections" || operation === "resolve" ? "" : `${label}-brush`,
+                },
+              };
+            },
+            logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
+          }),
+        ),
+      );
+      return { scope, entered, gate, release, pause, records, world, requests, label };
+    };
+    const a = fixture("A", true),
+      b = fixture("B", false);
+    const clearA = installDefaultActivation(a.scope, () => {}),
+      oldFetch = globalThis.fetch;
+    let clearB = () => {};
+    const calls: Array<{ owner: string; path: string; connectionId?: string }> = [];
+    globalThis.fetch = async (input, init: RequestInit = {}) => {
+      const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
+      assert(owner, "media transport has an originating activation");
+      const path = new URL(String(input)).pathname;
+      const body = typeof init.body === "string" ? (JSON.parse(init.body) as { connectionId?: string }) : {};
+      calls.push({ owner: owner.label, path, connectionId: body.connectionId });
+      if (path === "/api/connections") await owner.pause("connections");
+      if (path === AVATAR_PATH) await owner.pause("provider");
+      if (path === "/api/lorebooks") await owner.pause("lore");
+      if (path === "/api/image-metadata/inspect") await owner.pause("inspect");
+      if (path === UPLOAD_PATH) await owner.pause("upload");
+      const payload =
+        path === "/api/connections"
+          ? [{ id: `${owner.label}-brush`, provider: "image_generation", isDefault: true }]
+          : path === AVATAR_PATH
+            ? { image: TINY_PNG }
+            : path === "/api/lorebooks"
+              ? [{ id: "visual", name: "Visual", enabled: true }]
+              : path.endsWith("/entries")
+                ? [{ id: "paint", name: "Color", content: `${owner.label} blue doors`, enabled: true, constant: true }]
+                : path.endsWith("/folders")
+                  ? []
+                  : path === "/api/image-metadata/inspect"
+                    ? { width: 1, height: 1 }
+                    : path === UPLOAD_PATH
+                      ? { id: `${owner.label}-image`, url: `/api/global-gallery/file/${owner.label}.png` }
+                      : {};
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const imageInput = { name: "Equal image", prompt: "Empty room", width: 1, height: 1, maxBase64Length: 1000 };
+    try {
+      const pending =
+        operation === "image"
+          ? generateVillageImage(imageInput)
+          : operation === "resolve"
+            ? resolveVillageImageConnectionId()
+            : operation === "map"
+              ? generateVillageTownMap({ setting: "Quiet harbor", selectedLorebookIds: ["visual"] })
+              : operation === "store"
+                ? storeVillageVenueImage("equal-venue", TINY_PNG)
+                : operation === "private"
+                  ? generateFirstPrivateSpaceImage("equal-venue", "own-room")
+                  : generateVillageLocationImage(
+                      "equal-venue",
+                      undefined,
+                      undefined,
+                      "",
+                      variant === "only-empty",
+                      "exterior",
+                    );
+      const outcome = pending.then(
+        (value) => ({ value, error: undefined }),
+        (error) => ({ value: undefined, error: error as unknown }),
+      );
+      await Promise.race([
+        a.entered.promise,
+        outcome.then((result) => assert.fail(`No ${operation}/${stage} pause: ${String(result.error)}`)),
+      ]);
+      clearB = installDefaultActivation(b.scope, () => {});
+      await generateVillageImage(imageInput);
+      assert.equal(b.requests().length, 1, "B independently generates and records its own request while A waits");
+      assert.equal(b.requests()[0]!.connectionId, "B-brush");
+      if (operation === "private" && stage === "provider") {
+        assert(
+          a.world().venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt,
+          "the automatic claim is saved before dispatch waits for its response",
+        );
+      }
+      if (["cas", "context", "only-empty", "claim-cas"].includes(variant)) {
+        const row = a.records.get("villages-village")!,
+          state = structuredClone(a.world());
+        if (variant === "cas") state.spriteCardFlipEnabled = false;
+        if (variant === "context") state.sceneryArtStyle = "Pixel art";
+        if (variant === "only-empty")
+          state.venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image = {
+            ref: "global-gallery:winning",
+            url: "/api/global-gallery/file/winning.png",
+            id: "winning",
+          };
+        if (variant === "claim-cas")
+          state.venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt = "winning claim";
+        a.records.set(row.id, { ...row, revision: row.revision + 1, data: state });
+      }
+      if (variant === "disposed") a.scope.dispose();
+      a.gate.resolve();
+      const result = await outcome;
+      if (variant === "failure")
+        assert.equal(result.error, controlledError, "native storage failures preserve exact identity");
+      else if (variant === "provider-failure") assert.match(String(result.error), new RegExp(controlledError.message));
+      else if (variant === "disposed")
+        assert(result.error instanceof Error, "disposed work refuses further connections");
+      else if (variant === "context" || variant === "only-empty") assert.match(String(result.error), /scenery changed/);
+      else assert.equal(result.error, undefined, `${operation}/${stage} succeeds`);
+      assert.equal(b.requests().length, 1, "A neither borrows nor duplicates B's receipt");
+      assert.equal(b.world().venues[0]!.presentation.image, null);
+      assert(
+        b.world().venues[0]!.zones!.every((zone) => !zone.image && !zone.initialImageAttemptedAt),
+        "B's Zones and private-entry allowance stay unchanged",
+      );
+      const aCalls = calls.filter((call) => call.owner === "A"),
+        draws = aCalls.filter((call) => call.path === AVATAR_PATH);
+      const paid = operation !== "store" && operation !== "resolve" && variant !== "claim-cas";
+      assert.equal(draws.length, paid ? 1 : 0, "one Engine image dispatch, with no replay or failed-claim spending");
+      assert.equal(a.requests().length, paid ? 1 : 0, "the native image ledger belongs to A");
+      if (paid) {
+        assert.equal(a.requests()[0]!.connectionId, "A-brush");
+        assert.equal(
+          a.requests()[0]!.status,
+          variant === "provider-failure" ? "unknown" : "complete",
+          "a transport failure retains uncertain spending instead of asserting no charge",
+        );
+        assert.equal(draws[0]!.connectionId, "A-brush");
+      }
+      assert.equal(
+        calls.filter((call) => call.owner === "B" && call.path === AVATAR_PATH).length,
+        1,
+        "B has only its independently requested dispatch",
+      );
+      if (operation === "resolve") assert.equal(result.value, "A-brush");
+      if (operation === "map")
+        assert.deepEqual(
+          result.value,
+          { image: TINY_PNG, width: 1, height: 1 },
+          "inspection returns A's generated image with actual dimensions",
+        );
+      if (operation === "location" && variant === "ordinary")
+        assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image");
+      if (operation === "store" && !["failure", "disposed"].includes(variant)) {
+        assert.equal(a.world().venues[0]!.presentation.image?.id, "A-image");
+      }
+      if (variant === "cas")
+        assert.equal(a.world().spriteCardFlipEnabled, false, "losing save preserves authoritative concurrent fields");
+      if (variant === "context")
+        assert.equal(
+          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image,
+          null,
+          "stale generated context is refused after upload",
+        );
+      if (variant === "only-empty")
+        assert.equal(
+          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id,
+          "winning",
+          "a concurrent saved image wins only-if-empty",
+        );
+      if (operation === "private") {
+        const zone = a.world().venues[0]!.zones!.find((entry) => entry.id === "own-room")!;
+        assert(zone.initialImageAttemptedAt, "private draw claims before provider dispatch");
+        if (variant !== "claim-cas") assert.equal(zone.image?.id, "A-image");
+        await a.scope.run(() => generateFirstPrivateSpaceImage("equal-venue", "own-room"));
+        assert.equal(
+          calls.filter((call) => call.owner === "A" && call.path === AVATAR_PATH).length,
+          draws.length,
+          "repeated entry does not spend again",
+        );
+      }
+    } finally {
+      a.gate.resolve();
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+      globalThis.fetch = oldFetch;
+    }
+  }
+  console.log(
+    "Villages media: 23 paused assembled ownership, claim, CAS, failure and disposal cases passed (synthetic Engine HTTP)",
+  );
+}
+
+await main()
+  .then(mediaConnectionOwnership)
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

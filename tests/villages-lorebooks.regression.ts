@@ -8,7 +8,7 @@ import {
   readSelectedLorebookIds,
 } from "../packages/villages/src/server/domain/rules/lore-policy.js";
 import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
-import { buildTownMapPrompt } from "../packages/villages/src/server/features/media/town-map-image.js";
+import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);

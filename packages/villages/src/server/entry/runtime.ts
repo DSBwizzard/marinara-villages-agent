@@ -1,3 +1,15 @@
+import { createImageGeneration } from "../features/media/image-generation-service.js";
+import { configureImageGeneration } from "../features/media/image-generation.js";
+import { villageEngineJson as villageImageEngineJson } from "../adapters/engine/engine-loopback.js";
+import { decodeVillageImageDataUrl } from "../adapters/engine/image-files.js";
+import { villagesImageConnectionChoice } from "../features/settings/connections.js";
+import { createTownMapImage } from "../features/media/town-map-image-service.js";
+import { configureTownMapImage } from "../features/media/town-map-image.js";
+import { readVillageVisualLoreEntries, readVillageVisualLore } from "../adapters/engine/lorebooks.js";
+import { createLocationImages } from "../features/media/location-image-service.js";
+import { configureLocationImages } from "../features/media/location-image.js";
+import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
+import { assertVenueImageAccess, setVillageVenueImage } from "../features/venues/services.js";
 import { createWishLifecycle } from "../features/residents/wishes/wish-lifecycle-service.js";
 import { configureWishLifecycle, wishLifecycle } from "../features/residents/wishes/wish-lifecycle.js";
 import { createWishProgress } from "../features/residents/wishes/wish-progress-service.js";
@@ -383,6 +395,16 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesAgentConnectionId,
       villagesAgentImageConnectionId,
     }),
+  );
+  const releaseImageGeneration = configureImageGeneration(
+    createImageGeneration({
+      villageEngineJson: villageImageEngineJson,
+      villagesImageConnectionChoice,
+      decodeVillageImageDataUrl,
+    }),
+  );
+  const releaseMapImages = configureTownMapImage(
+    createTownMapImage({ readVillageVisualLoreEntries, generateVillageImage, inspectVillageImage }),
   );
   const releaseSystemInterpretation = configureSystemInterpretation(
     createSystemInterpretation({ villagesLanguageModels, villagesConnectionIdFor, completeWithRoom }),
@@ -789,6 +811,19 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseVenueCommands = configureVenueCommands(
     createVenueCommands({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
   );
+  const releaseLocationImages = configureLocationImages(
+    createLocationImages({
+      readVillageState,
+      mutateVillageState,
+      assertVenueImageAccess,
+      setVillageVenueImage,
+      readVillageVisualLore,
+      generateVillageImage,
+      uploadVillageGalleryImage,
+      decodeImageDataUrl,
+      villagesLogger,
+    }),
+  );
   const releaseZoneEdits = configureVenueZoneEdits(
     createVenueZoneEdits({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
   );
@@ -887,7 +922,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseCoordinator();
     releaseTownMap();
     releaseZoneEdits();
-    releaseVenueCommands();
     releaseSignatures();
     releaseSprites();
     releaseTownMapReview();
@@ -905,6 +939,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseProjectEvidence();
     releaseVillageSnapshot();
     releaseSceneArchive();
+    releaseLocationImages();
+    releaseVenueCommands();
     releaseWishProgress();
     releaseWishLifecycle();
     releaseQueries();
@@ -922,6 +958,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseInterpretation();
     releaseSystemInterpretation();
     releaseInterpretationEvidence();
+    releaseMapImages();
+    releaseImageGeneration();
     releaseConnections();
     releaseCompletions();
     releaseDebug();

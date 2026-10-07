@@ -9,12 +9,12 @@ import { PNG } from "pngjs";
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const services = join(root, "packages/villages/src/server");
-  const {
-    buildTownMapPrompt,
-    buildTownMapNegativePrompt,
-    MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH,
-    generateVillageTownMap,
-  } = await import(pathToFileURL(join(services, "features/media/town-map-image.ts")).href);
+  const { buildTownMapPrompt, buildTownMapNegativePrompt, MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH } = await import(
+    pathToFileURL(join(services, "domain/rules/town-map-image-rules.ts")).href
+  );
+  const { generateVillageTownMap } = await import(
+    pathToFileURL(join(services, "features/media/town-map-image.ts")).href
+  );
   const { DEFAULT_TOWN_MAP_LAYOUT_PROMPT } =
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   const { DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } =
@@ -30,9 +30,7 @@ async function main() {
   const { defaultVillageState, coerceVillageState } = await import(
     pathToFileURL(join(services, "features/world/village-store.ts")).href
   );
-  const { inspectVillageImage } = await import(
-    pathToFileURL(join(services, "features/media/image-generation.ts")).href
-  );
+  const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
   assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
   assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
