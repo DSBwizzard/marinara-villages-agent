@@ -1604,6 +1604,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const saveSettings = useSaveSettings({
+    snapshot,
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,

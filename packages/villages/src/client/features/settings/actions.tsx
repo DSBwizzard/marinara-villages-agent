@@ -1,4 +1,5 @@
 import type { SavedSettingsDraft } from "./draft-session.js";
+import { useSettingsSaveLifetime } from "./save-lifetime.js";
 import type { VillageSettings, VillageSnapshot, VillageStoryPace } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
@@ -13,6 +14,7 @@ export function useSaveSettings(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   settingDraft: string;
   acceptSavedSettings: (next: VillageSnapshot, submitted: SavedSettingsDraft) => void;
+  snapshot: VillageSnapshot | null;
 }) {
   const {
     knowledgeDraft,
@@ -25,7 +27,10 @@ export function useSaveSettings(ports: {
     settingDraft,
     acceptSavedSettings,
   } = ports;
+  const lifetime = useSettingsSaveLifetime(ports.snapshot?.isFounded);
   return useCallback(async () => {
+    const claim = lifetime.begin();
+    if (!claim) return;
     setBusy(true);
     setSettingsError("");
     try {
@@ -39,14 +44,15 @@ export function useSaveSettings(ports: {
           loreTokenBudget: loreTokenBudgetDraft,
         }),
       });
+      if (!lifetime.owns(claim)) return;
       setSnapshot(saved);
       acceptSavedSettings(saved, { knowledgeDraft, personaDraft, settingDraft, lorebookDraft, loreTokenBudgetDraft });
     } catch (cause) {
-      setSettingsError(messageFrom(cause, "Those settings could not be saved."));
+      if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Those settings could not be saved."));
     } finally {
-      setBusy(false);
+      if (lifetime.finish(claim)) setBusy(false);
     }
-  }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft, acceptSavedSettings]);
+  }, [knowledgeDraft, lorebookDraft, loreTokenBudgetDraft, personaDraft, settingDraft, acceptSavedSettings, lifetime]);
 }
 
 export function useSaveSpriteCardFlip(ports: {

@@ -41,11 +41,11 @@ const bundle = await build({
       const open=useScenesOpenMenu({snapshot,screen,menuPage,setScreen,setMenuPage,openSettings:session.openSettings,
         loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,setError:unused,setFocusedRequestId:unused,
         setSiteProjectId:unused,setProgressDebug:unused,setSettingsError:settings.setSettingsError});
-      const save=useSaveSettings({...settings,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
-      window.settingsHarness={settings,open,save,setSnapshot,loadPersonas,setSceneryStyle,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
+      const save=useSaveSettings({...settings,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
+      window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
       return <pre id='state'>{JSON.stringify({knowledge:settings.knowledgeDraft,persona:settings.personaDraft,lore:settings.lorebookDraft,
         budget:settings.loreTokenBudgetDraft,setting:settings.settingDraft,scenery:sceneryStyle,personalizeHomes,visualLoreDefault,
-        venues:venuesDraft,screen,menuPage,busy,error:settings.settingsError,personas:personas.length})}</pre>;
+        venues:venuesDraft,founded:snapshot.isFounded,screen,menuPage,busy,error:settings.settingsError,personas:personas.length})}</pre>;
     }
     const root=createRoot(document.getElementById('root'));
     window.mountSettings=()=>root.render(<Harness/>); window.unmountSettings=()=>root.render(null); window.mountSettings();
@@ -92,11 +92,12 @@ async function checkHooks(width) {
     await page.evaluate((tab) => window.settingsHarness.open(tab), tab);
     await expect.poll(async () => (await state()).menuPage).toBe(tab);
   };
-  const respond = async (index, response, status = 200) => {
+  const respond = async (index, response, status = 200, saveIndex = index, idle = true) => {
     const completed = page.waitForResponse((r) => r.url().endsWith("/settings"));
     await requests[index].fulfill({ status, contentType: "application/json", body: JSON.stringify(response) });
     await (await completed).finished();
-    await expect.poll(async () => (await state()).busy).toBe(false);
+    await page.evaluate((index) => window.pendingSettingsSaves[index], saveIndex);
+    if (idle) await expect.poll(async () => (await state()).busy).toBe(false);
   };
   await open("village");
   await expect.poll(async () => (await state()).personas).toBe(1);
@@ -184,6 +185,85 @@ async function checkHooks(width) {
   assert.equal(requests.length, 2, "failure does not retry the request");
 
   const reset = { ...structuredClone(snapshot), isFounded: false };
+  const beginSave = async () => {
+    const requestIndex = requests.length;
+    const saveIndex = await call(() => {
+      const index = window.pendingSettingsSaves?.length ?? 0;
+      void window.settingsHarness.save();
+      return index;
+    });
+    await expect.poll(() => requests.length).toBe(requestIndex + 1);
+    return { requestIndex, saveIndex };
+  };
+  const replaceWorld = async (knowledge) => {
+    await page.evaluate((next) => window.settingsHarness.setSnapshot(next), reset);
+    await expect.poll(async () => (await state()).founded).toBe(false);
+    const next = structuredClone(snapshot);
+    next.settings.promptKnowledge = knowledge;
+    await page.evaluate((next) => window.settingsHarness.setSnapshot(next), next);
+    await expect.poll(async () => (await state()).founded).toBe(true);
+    await open("index");
+    await open("village");
+    return next;
+  };
+  const held = await beginSave();
+  await call(() => {
+    void window.settingsHarness.save();
+    void window.settingsHarness.save();
+  });
+  assert.equal(requests.length, held.requestIndex + 1, "duplicate calls cannot dispatch another pending save");
+  await page.evaluate((next) => window.settingsHarness.setSnapshot(next), reset);
+  await expect.poll(async () => (await state()).founded).toBe(false);
+  await call(() => window.settingsHarness.settings.setSettingsError("Reset owner marker"));
+  await respond(held.requestIndex, saved, 200, held.saveIndex, false);
+  assert.equal((await state()).founded, false, "a retired save cannot restore the reset world");
+  assert.equal(
+    (await state()).knowledge,
+    "Newer edit during save",
+    "a retired save cannot acknowledge old draft fields",
+  );
+  assert.equal((await state()).error, "Reset owner marker");
+  assert.equal((await state()).busy, true, "a retired save cannot clear another operation busy state");
+  await call(() => window.settingsHarness.setBusy(false));
+
+  for (const failOld of [false, true]) {
+    await replaceWorld("World A");
+    const a = await beginSave();
+    const bSnapshot = await replaceWorld("World B");
+    const b = await beginSave();
+    await call(() => window.settingsHarness.settings.setSettingsError("World B marker"));
+    await respond(
+      a.requestIndex,
+      failOld ? { error: "Old save failed" } : saved,
+      failOld ? 500 : 200,
+      a.saveIndex,
+      false,
+    );
+    assert.equal((await state()).knowledge, "World B");
+    assert.equal((await state()).error, "World B marker");
+    assert.equal((await state()).busy, true, "old completion cannot release the newer pending save");
+    const accepted = structuredClone(bSnapshot);
+    accepted.settings.promptKnowledge = "World B canonical";
+    await respond(b.requestIndex, accepted, 200, b.saveIndex);
+    assert.equal((await state()).knowledge, "World B canonical");
+    const before = requests.length;
+    await call(() => void window.settingsHarness.save());
+    await expect.poll(() => requests.length).toBe(before + 1);
+    const retryIndex = await call(() => window.pendingSettingsSaves.length - 1);
+    await respond(before, accepted, 200, retryIndex);
+  }
+
+  const disposed = await beginSave();
+  await call(() => window.unmountSettings());
+  await expect(page.locator("#state")).toHaveCount(0);
+  await call(() => window.mountSettings());
+  await open("village");
+  const remounted = await beginSave();
+  await respond(disposed.requestIndex, saved, 200, disposed.saveIndex, false);
+  assert.equal((await state()).knowledge, "Saved knowledge");
+  assert.equal((await state()).busy, true, "disposal cleanup cannot release the remounted save");
+  await respond(remounted.requestIndex, snapshot, 200, remounted.saveIndex);
+
   await page.evaluate((next) => window.settingsHarness.setSnapshot(next), reset);
   await open("index");
   const newWorld = structuredClone(snapshot);
