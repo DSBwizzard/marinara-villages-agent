@@ -1,8 +1,6 @@
 import {
   clearVillagerAgenda,
-  clearVillagerRemap,
   setVillagerScheduleInfluence,
-  setVillagerScheduleIngestion,
   buildVillageAgendas,
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import assert from "node:assert/strict";
@@ -366,11 +364,10 @@ async function main() {
   const stop = startBackgroundWork();
   try {
     await setVillagerScheduleInfluence("a", { enabled: true, categories: { rhythm: false } });
-    await setVillagerScheduleIngestion("a", false);
-    await clearVillagerRemap("a");
+    await setVillagerScheduleInfluence("a", { enabled: false });
     await buildVillageAgendas();
     await buildVillageAgendas();
-    assert.equal(calls, 0, "migration, influence, deprecated reset and repeated reads cost no requests");
+    assert.equal(calls, 0, "local plan initialization, influence and repeated reads cost no requests");
     assert.equal((await previewVillageBurst({ action: "translation", characterId: "a" })).requests, 0);
     assert.equal((await previewVillageBurst({ action: "influence", characterId: "a" })).requests, 0);
     assert.deepEqual((await previewVillageBurst({ action: "influence", characterId: "a" })).dollars, {

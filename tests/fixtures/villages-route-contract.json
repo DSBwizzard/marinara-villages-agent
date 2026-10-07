@@ -529,10 +529,6 @@
       "path": "/agendas"
     },
     {
-      "method": "delete",
-      "path": "/agendas/:characterId"
-    },
-    {
       "method": "post",
       "path": "/agendas/:characterId/regenerate"
     },
@@ -543,14 +539,6 @@
     {
       "method": "patch",
       "path": "/agendas/:characterId/influence"
-    },
-    {
-      "method": "patch",
-      "path": "/agendas/:characterId/ingestion"
-    },
-    {
-      "method": "delete",
-      "path": "/remaps/:characterId"
     },
     {
       "method": "get",

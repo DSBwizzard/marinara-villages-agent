@@ -1,10 +1,8 @@
 import {
   buildVillageAgendas,
   clearVillagerAgenda,
-  clearVillagerRemap,
   correctCompletedWish,
   setVillagerScheduleInfluence,
-  setVillagerScheduleIngestion,
 } from "../residents/resident-agendas.js";
 import { previewVillagerRefresh, applyVillagerRefresh } from "./resident-cards.js";
 import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
@@ -111,14 +109,6 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading what the villagers wish for");
     }
   });
-  app.delete<{ Params: CharacterParams }>("/agendas/:characterId", async (request, reply) => {
-    try {
-      await clearVillagerAgenda(readCharacterId(request.params.characterId));
-      return { villagers: await buildVillageAgendas() };
-    } catch (error) {
-      return fail(reply, error, "forgetting what a villager wishes for");
-    }
-  });
   app.post<{ Params: CharacterParams; Body: { actionId?: unknown } }>(
     "/agendas/:characterId/regenerate",
     async (request, reply) => {
@@ -149,31 +139,6 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
       return { villagers: await buildVillageAgendas() };
     } catch (error) {
       return fail(reply, error, "changing schedule influence");
-    }
-  });
-  app.patch<{ Params: CharacterParams; Body: { ingestSchedule?: unknown } }>(
-    "/agendas/:characterId/ingestion",
-    async (request, reply) => {
-      try {
-        if (typeof request.body?.ingestSchedule !== "boolean")
-          throw badRequest("Choose whether to use the Marinara schedule.");
-        await setVillagerScheduleIngestion(readCharacterId(request.params.characterId), request.body.ingestSchedule);
-        return { deprecated: true, villagers: await buildVillageAgendas() };
-      } catch (error) {
-        return fail(reply, error, "changing schedule influence");
-      }
-    },
-  );
-  app.delete<{ Params: CharacterParams }>("/remaps/:characterId", async (request, reply) => {
-    try {
-      await clearVillagerRemap(readCharacterId(request.params.characterId));
-      return {
-        deprecated: true,
-        message: "Schedule translation is retired. Use optional Agenda influence.",
-        villagers: await buildVillageAgendas(),
-      };
-    } catch (error) {
-      return fail(reply, error, "forgetting a villager's translation");
     }
   });
 }

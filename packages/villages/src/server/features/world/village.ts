@@ -139,11 +139,6 @@ export {
   readVenueImageContext,
 } from "../../domain/rules/village-projections.js";
 
-/** Deprecated compatibility helper; no timetable authority. */
-export function remapSignatureFor(..._args: unknown[]): string {
-  return "deprecated-owned-agenda";
-}
-
 /**
  * Move a card into the village.
  *

@@ -378,11 +378,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await correctResidentWish(characterId, wishId);
   }
 
-  /** Deprecated ingestion alias; no generation side effects. */
-  async function setVillagerScheduleIngestion(characterId: string, enabled: boolean): Promise<void> {
-    await setVillagerScheduleInfluence(characterId, { enabled });
-  }
-
   async function setVillagerScheduleInfluence(characterId: string, value: unknown): Promise<void> {
     const raw = value as { enabled?: unknown; categories?: Record<string, unknown> };
     if (
@@ -412,12 +407,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     });
     await refreshVillagerRemaps(await readVillageState(), new Date(), characterId);
   }
-
-  /** Deprecated no-op for old clients. */
-  async function clearVillagerRemap(characterId: string): Promise<void> {
-    if (!(await readVillageState()).villagers.some((entry) => entry.characterId === characterId))
-      throw notFound("That villager does not live here.");
-  }
   return {
     queueVillagerAgenda,
     backfillAgendas,
@@ -425,9 +414,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     buildVillageAgendas,
     clearVillagerAgenda,
     correctCompletedWish,
-    setVillagerScheduleIngestion,
     setVillagerScheduleInfluence,
-    clearVillagerRemap,
     agendaBackgroundHandler,
   };
 }

@@ -23,16 +23,8 @@ export async function clearVillagerAgenda(...args: Parameters<ResidentAgendas["c
 export async function correctCompletedWish(...args: Parameters<ResidentAgendas["correctCompletedWish"]>) {
   return binding.get().correctCompletedWish(...args);
 }
-export async function setVillagerScheduleIngestion(
-  ...args: Parameters<ResidentAgendas["setVillagerScheduleIngestion"]>
-) {
-  return binding.get().setVillagerScheduleIngestion(...args);
-}
 export async function setVillagerScheduleInfluence(
   ...args: Parameters<ResidentAgendas["setVillagerScheduleInfluence"]>
 ) {
   return binding.get().setVillagerScheduleInfluence(...args);
-}
-export async function clearVillagerRemap(...args: Parameters<ResidentAgendas["clearVillagerRemap"]>) {
-  return binding.get().clearVillagerRemap(...args);
 }

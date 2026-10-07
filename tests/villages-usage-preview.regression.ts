@@ -9,7 +9,6 @@ import {
   remapBlocks,
   remapBlockKeys,
 } from "../packages/villages/src/server/domain/rules/native-remap.js";
-import { remapSignatureFor } from "../packages/villages/src/server/features/world/village.js";
 import { proposeAgenda } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import {
   translationBatchSize,
@@ -152,7 +151,7 @@ async function main() {
     await proposeAgenda(context);
     await assert.rejects(proposeRemap({} as any), /retired/);
     assert.equal(calls, plan.requests, "forecast matches actual mocked generator dispatches");
-    const signature = remapSignatureFor(state, "a", schedule.weekStart, remapBlocks(schedule), []);
+    const signature = "unused-retired-translation";
     state.villagers[0].remap = {
       signature,
       moves: remapBlockKeys(remapBlocks(schedule)).map((key) => ({
@@ -170,7 +169,7 @@ async function main() {
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
       1,
-      "valid translation adds no follow-on requests",
+      "retired translation data cannot add follow-on requests",
     );
     assert.equal((await previewVillageBurst({ action: "change", settings: { setting: state.setting } })).requests, 0);
     assert.equal(
@@ -178,18 +177,12 @@ async function main() {
       0,
     );
     state.villagers[0].agenda!.wishes = [{ wish: "Learn pottery", id: "wish", status: "active" }] as any;
-    state.villagers[0].remap!.signature = remapSignatureFor(
-      state,
-      "a",
-      schedule.weekStart,
-      remapBlocks(schedule),
-      state.villagers[0].agenda!.wishes,
-    );
+    state.villagers[0].remap!.signature = "unused-retired-translation-with-wish";
     storeState();
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
       1,
-      "existing wishes must share the actual dispatch signature",
+      "existing wishes cannot revive retired translation requests",
     );
     const unchanged = structuredClone(records.get("villages-village"));
     await readUsageMeter(true);
