@@ -1,4 +1,26 @@
 import assert from "node:assert/strict";
+import {
+  activationScope,
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createUsageLedger } from "../packages/villages/src/server/adapters/models/usage-ledger-service.js";
+import type {
+  CapabilityDocumentStore,
+  CapabilityLanguageModelMessage,
+  CapabilityResolvedLanguageModel,
+} from "@marinara-engine/shared";
+import type { EngineDecisionBackend } from "../packages/villages/src/server/adapters/engine/decisions-adapter.js";
+import { createInterpretation } from "../packages/villages/src/server/features/generation/interpretation-service.js";
+import { createSystemInterpretation } from "../packages/villages/src/server/features/generation/system-interpretation-service.js";
+import {
+  configureInterpretation,
+  recordInterpretationRouting,
+} from "../packages/villages/src/server/features/generation/interpretation.js";
+import {
+  configureSystemInterpretation,
+  systemInterpretations,
+} from "../packages/villages/src/server/features/generation/system-interpretation.js";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -20,11 +42,9 @@ import {
   saveInterpretationSettings,
   readInterpretationSettings,
 } from "../packages/villages/src/server/features/settings/interpretation-settings.js";
-import {
-  interpretChecks,
-  readDecisionInterpretation,
-} from "../packages/villages/src/server/features/generation/interpretation.js";
-import { readSystemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
+import { interpretChecks } from "../packages/villages/src/server/features/generation/interpretation.js";
+import { readDecisionInterpretation } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
+import { readSystemInterpretations } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
 import { type InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 import {
   readInterpretationDiagnostics,
@@ -39,6 +59,379 @@ import { dismissalDestination } from "../packages/villages/src/server/domain/rul
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const records = new Map<string, any>();
+
+function ownershipGate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function ownedInterpretationConnections() {
+  let otherScope: ReturnType<typeof createActivationScope> | undefined;
+  const ownedCheck: InterpretationCheck = {
+    id: "same",
+    domain: "room",
+    question: "Permission?",
+    facts: { actorId: "resident", zoneId: "private" },
+    outcomes: [{ id: "invite-now", statement: "Permission granted" }],
+    evidence: [
+      { id: "current", speakerId: "resident", name: "Resident", content: "Synthetic private answer", current: true },
+    ],
+  };
+  function fixture(label: string, heldStage?: string) {
+    const scope = createActivationScope(),
+      entered = ownershipGate(),
+      gate = ownershipGate();
+    const rows = new Map<string, any>(),
+      events: string[] = [];
+    const controller = new AbortController();
+    let held = false,
+      diagnosticFailure: Error | undefined,
+      backendFailure: Error | undefined,
+      completionFailure: Error | undefined;
+    let decisions = heldStage !== "system",
+      providerCalls = 0;
+    const logger = { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} };
+    function owned(event: string) {
+      assert.equal(activationScope(), scope, label + " " + event + " retains its activation");
+      if (!scope.active) throw new Error(label + " connections unavailable");
+      events.push(event);
+    }
+    async function pause(stage: string) {
+      if (!held && heldStage === stage) {
+        held = true;
+        entered.resolve();
+        await gate.promise;
+      }
+    }
+    const documents = {
+      async getById(_package: string, id: string) {
+        owned("read");
+        return structuredClone(rows.get(id) ?? null);
+      },
+      async list() {
+        return [];
+      },
+      async create(input: any) {
+        owned("create");
+        const row = { ...structuredClone(input), revision: 1 };
+        rows.set(input.id, row);
+        return structuredClone(row);
+      },
+      async update(input: any) {
+        owned("update");
+        const previous = rows.get(input.id);
+        if (!previous || previous.revision !== input.expectedRevision) return null;
+        const row = { ...previous, ...structuredClone(input), revision: previous.revision + 1 };
+        rows.set(input.id, row);
+        return structuredClone(row);
+      },
+      async remove() {
+        return false;
+      },
+    } as CapabilityDocumentStore;
+    const ledger = createUsageLedger({
+      owner: "same-process",
+      villagesDocuments: () => documents,
+      villagesLogger: () => logger,
+      villageEngineJson: async <T>() => [] as unknown as T,
+      backgroundCalls: { getStore: () => undefined, run: (_store, work) => work() },
+      venueDebugContext: () => ({}),
+      linkApiQuote: async () => null,
+      readExchangeRate: async () => null,
+    });
+    const backend: EngineDecisionBackend = {
+      model: "same-model",
+      maxStateTokens: 10000,
+      calibration: { defaultThreshold: 0.5 },
+      deferPreGeneration: false,
+      async ask(state, questions) {
+        owned("ask");
+        assert.equal(this, backend);
+        assert.doesNotMatch(JSON.stringify(state), /"outcomes"/);
+        assert.deepEqual(
+          questions.map((q) => q.id),
+          ["0:0"],
+        );
+        providerCalls++;
+        await pause("ask");
+        if (backendFailure) throw backendFailure;
+        return new Map([["0:0", 1]]);
+      },
+    };
+    let originalMessages: CapabilityLanguageModelMessage[] | undefined;
+    const model: CapabilityResolvedLanguageModel = {
+      name: "same",
+      model: "same-model",
+      connectionId: "same-connection",
+      maxContext: 8192,
+      maxOutputTokens: 4096,
+      fitContext(messages, options) {
+        owned("fit");
+        originalMessages = messages;
+        return {
+          messages,
+          maxTokens: options?.maxTokens,
+          estimatedTokensBefore: 0,
+          estimatedTokensAfter: 0,
+          trimmed: false,
+        };
+      },
+      async chatComplete() {
+        assert.fail("This factory probe supplies its completion connection explicitly");
+      },
+    };
+    const system = createSystemInterpretation({
+      villagesLanguageModels() {
+        owned("model-getter");
+        return {
+          async resolve() {
+            return model;
+          },
+          async resolveForRequest(options) {
+            owned("resolve");
+            assert.equal(options.connectionId, label);
+            await pause("resolve");
+            return model;
+          },
+        };
+      },
+      async villagesConnectionIdFor(purpose) {
+        owned("connection");
+        assert.equal(purpose, "system");
+        await pause("connection");
+        return label;
+      },
+      async completeWithRoom(resolved, messages, maxTokens, options) {
+        owned("system-completion");
+        assert.equal(resolved, model);
+        assert.equal(messages, originalMessages);
+        assert.equal(maxTokens, 1024);
+        assert.equal(options.retryEmpty, false);
+        assert.equal(options.responseFormat?.type, "json_object");
+        assert.equal(options.usagePurpose, "checks");
+        if (options.signal) assert.equal(options.signal, controller.signal);
+        providerCalls++;
+        await pause("completion");
+        if (completionFailure) throw completionFailure;
+        return {
+          content: JSON.stringify({
+            results: [{ id: "same", outcome: "invite-now", evidenceIds: ["current"], reason: label }],
+          }),
+          finishReason: "stop",
+        };
+      },
+    });
+    const interpretation = createInterpretation({
+      async resolveVillagesDecisionBackend(signal) {
+        owned("backend");
+        assert.equal(signal, controller.signal);
+        await pause("backend");
+        return decisions ? backend : null;
+      },
+      async trackUsage(meta, work) {
+        owned("claim");
+        assert.equal(meta.purpose, "checks");
+        assert.equal(meta.stage, "decisions");
+        await pause("claim");
+        return ledger.trackUsage(meta, () => (otherScope ? otherScope.run(work) : work()));
+      },
+      venueOperationSignal() {
+        owned("signal");
+        return controller.signal;
+      },
+      async coordinatedOptionalCompletion(_fingerprint, work) {
+        owned("optional");
+        await pause("optional");
+        return otherScope ? otherScope.run(() => work(controller.signal)) : work(controller.signal);
+      },
+      async venueCheckpoint(stage, work) {
+        owned("checkpoint:" + stage);
+        await pause(stage.endsWith("-system") ? "system" : "outer");
+        return otherScope ? otherScope.run(work) : work();
+      },
+      venueInterpretationSettings() {
+        owned("settings");
+        return { decisionsEnabled: true, compareSystem: false };
+      },
+      async writeInterpretationDiagnostics() {
+        owned("diagnostics");
+        await pause("diagnostics");
+        if (diagnosticFailure) throw diagnosticFailure;
+      },
+      systemInterpretations: (checks, signal) => system.systemInterpretations(checks, signal),
+      bindCallback: (callback) => scope.bind(callback),
+    });
+    assert.deepEqual(events, [], "constructing both interpretation factories is inert");
+    const releaseRuntime = scope.run(() =>
+      configureVillagesRuntime({ persistence: { documents }, logger, getAgentConfig: async () => null } as any),
+    );
+    const releaseInterfaces = scope.run(() => [
+      configureSystemInterpretation(system),
+      configureInterpretation(interpretation),
+    ]);
+    return {
+      scope,
+      entered,
+      gate,
+      events,
+      rows,
+      ledger,
+      system,
+      controller,
+      calls: () => providerCalls,
+      useSystem() {
+        decisions = false;
+      },
+      failDiagnostics(error?: Error) {
+        diagnosticFailure = error;
+      },
+      failBackend(error?: Error) {
+        backendFailure = error;
+      },
+      failCompletion(error?: Error) {
+        completionFailure = error;
+      },
+      release() {
+        releaseInterfaces.forEach((release) => release());
+        releaseRuntime();
+      },
+    };
+  }
+  for (const stage of [
+    "outer",
+    "optional",
+    "backend",
+    "claim",
+    "ask",
+    "system",
+    "diagnostics",
+    "connection",
+    "resolve",
+    "completion",
+  ]) {
+    const a = fixture("A", stage),
+      b = fixture("B");
+    otherScope = b.scope;
+    const clearA = installDefaultActivation(a.scope, () => {});
+    let clearB = () => {};
+    try {
+      const directSystem = ["connection", "resolve", "completion"].includes(stage);
+      const pending = directSystem
+        ? systemInterpretations([ownedCheck], a.controller.signal)
+        : interpretChecks([ownedCheck], "owned", "same-scene");
+      await Promise.race([
+        a.entered.promise,
+        pending.then(() => assert.fail("The request completed before its controlled " + stage + " pause")),
+      ]);
+      assert.equal(a.events[0], directSystem ? "model-getter" : "settings", "initial selection order is retained");
+      clearB = installDefaultActivation(b.scope, () => {});
+      const independent = await interpretChecks([ownedCheck], "independent", "same-scene");
+      assert.equal(independent.results[0].source, "decisions");
+      clearA();
+      a.gate.resolve();
+      const result = await pending;
+      const resultRows = Array.isArray(result) ? result : result.results;
+      assert.equal(resultRows[0].outcome, "invite-now");
+      assert.equal(resultRows[0].source, directSystem || stage === "system" ? "system" : "decisions");
+      assert.equal(a.calls(), 1);
+      assert.equal(b.calls(), 1);
+      const aReceipts = a.rows.get("villages-ai-usage")?.data.requests ?? [];
+      const bReceipts = b.rows.get("villages-ai-usage")?.data.requests ?? [];
+      assert.equal(aReceipts.length, directSystem || stage === "system" ? 0 : 1);
+      assert.equal(bReceipts.length, 1);
+      assert(bReceipts.every((row: any) => row.status === "complete" && row.purpose === "checks"));
+      assert(aReceipts.every((row: any) => row.status === "complete" && row.purpose === "checks"));
+      assert.doesNotMatch(JSON.stringify(aReceipts), /Synthetic private answer|Permission granted/);
+      if (directSystem || stage === "system") assert(a.events.indexOf("model-getter") < a.events.indexOf("connection"));
+      assert.equal(activationScope(), b.scope);
+      console.log("Owned interpretation stage passed:", stage);
+    } finally {
+      a.gate.resolve();
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+    }
+  }
+  const a = fixture("A"),
+    b = fixture("B");
+  otherScope = b.scope;
+  const clearA = installDefaultActivation(a.scope, () => {});
+  let clearB = () => {};
+  try {
+    const diagnosticError = new Error("exact diagnostic failure");
+    a.failDiagnostics(diagnosticError);
+    assert.equal((await interpretChecks([ownedCheck], "diagnostic", "same-scene")).results[0].source, "decisions");
+    await assert.rejects(
+      recordInterpretationRouting("same-scene", { checks: [ownedCheck], skipped: [], reasons: new Map() }),
+      (error) => error === diagnosticError,
+    );
+    a.failDiagnostics();
+    const backendError = new Error("exact Decision failure");
+    a.failBackend(backendError);
+    await assert.rejects(interpretChecks([ownedCheck], "backend-error"), (error) => error === backendError);
+    assert.equal(a.calls(), 2, "the supplied optional connection propagates its exact failure without another request");
+    assert.equal(
+      a.rows.get("villages-ai-usage").data.requests.filter((row: any) => row.status === "unknown").length,
+      1,
+    );
+    const completionError = new Error("exact System failure");
+    a.failCompletion(completionError);
+    await assert.rejects(systemInterpretations([ownedCheck]), (error) => error === completionError);
+    clearB = installDefaultActivation(b.scope, () => {});
+    a.release();
+    a.scope.dispose();
+    await assert.rejects(
+      a.scope.run(() => interpretChecks([ownedCheck], "retired")),
+      /not configured/,
+    );
+    await assert.rejects(
+      a.scope.run(() => systemInterpretations([ownedCheck])),
+      /not configured/,
+    );
+    assert.equal(b.calls(), 0);
+  } finally {
+    clearA();
+    clearB();
+    a.release();
+    b.release();
+    a.scope.dispose();
+    b.scope.dispose();
+  }
+  const cancelled = fixture("A", "completion"),
+    current = fixture("B");
+  otherScope = current.scope;
+  const clearCancelled = installDefaultActivation(cancelled.scope, () => {});
+  let clearCurrent = () => {};
+  try {
+    const abortError = new Error("exact cancellation after a System response");
+    const pending = systemInterpretations([ownedCheck], cancelled.controller.signal);
+    const refused = assert.rejects(pending, (error) => error === abortError);
+    await Promise.race([
+      cancelled.entered.promise,
+      pending.then(() => assert.fail("System completion must reach its pause")),
+    ]);
+    clearCurrent = installDefaultActivation(current.scope, () => {});
+    cancelled.controller.abort(abortError);
+    cancelled.gate.resolve();
+    await refused;
+    assert.equal(cancelled.calls(), 1, "cancellation after dispatch does not admit another request");
+    assert.equal(current.calls(), 0);
+  } finally {
+    cancelled.gate.resolve();
+    clearCancelled();
+    clearCurrent();
+    cancelled.release();
+    current.release();
+    cancelled.scope.dispose();
+    current.scope.dispose();
+  }
+}
 const documents = {
   async getById(_package: string, id: string) {
     return structuredClone(records.get(id) ?? null);
@@ -336,5 +729,6 @@ async function main() {
     release();
     await rm(root, { recursive: true, force: true });
   }
+  await ownedInterpretationConnections();
 }
-void main();
+await main();

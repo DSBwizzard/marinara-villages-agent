@@ -5,8 +5,9 @@ import { accessManagementChecks } from "../../domain/rules/access-speech.js";
 import { selectRoomEventChecks } from "../../domain/rules/room-events.js";
 import { managesAccess } from "../../domain/rules/venue-access.js";
 import { canInviteToZone, venueZones, zoneClosed } from "../../domain/rules/venue-zones.js";
-import { boundInterpretationEvidence, contextualChecks } from "../generation/interpretation-evidence.js";
-import { recordInterpretationRouting } from "../generation/interpretation-routing.js";
+import { boundInterpretationEvidence } from "../../domain/rules/interpretation-evidence-rules.js";
+import { contextualChecks } from "../generation/interpretation-evidence.js";
+import { recordInterpretationRouting } from "../generation/interpretation.js";
 import { interpretChecks } from "../generation/interpretation.js";
 
 export function roomInterpretationChecks(
@@ -218,7 +219,7 @@ export async function interpretRoomReply(
   const selected = [...selection.selected, ...selection.uncertain];
   if (!selected.length) return null;
   return interpretChecks(selected, `room-interpretation:${key}`, scene.id, async (pending, signal) => {
-    const { systemInterpretations } = await import("../generation/interpretation.js");
+    const { systemInterpretations } = await import("../generation/system-interpretation.js");
     const judge = pending.filter((check) => !selection.uncertain.some((item) => item.id === check.id));
     const results = judge.length ? await systemInterpretations(judge, signal) : [];
     return pending.map(

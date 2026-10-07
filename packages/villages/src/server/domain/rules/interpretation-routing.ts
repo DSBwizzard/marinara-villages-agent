@@ -1,12 +1,12 @@
-import type { InterpretationCheck } from "../../domain/models/interpretation-check-model.js";
-import type { InterpretationTrace } from "../../domain/models/interpretation-model.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { writeInterpretationDiagnostics } from "./interpretation-diagnostics.js";
+import type { InterpretationCheck } from "../models/interpretation-check-model.js";
+
+import { asRecord } from "./coerce.js";
 
 type Context = {
   actorIds: string[];
   projectActors?: string[];
 };
+
 type Row = {
   actorId: string;
   domain: "room" | "project";
@@ -14,7 +14,7 @@ type Row = {
   targetIds: string[];
   segments: number[];
 };
-/** Narration proposes routing only. Missing coverage or uncertain meaning keeps the judge. */
+
 export function routeInterpretationChecks(checks: InterpretationCheck[], raw: unknown, context: Context) {
   const knownActors = new Set(context.actorIds);
   const rows: Row[] = [];
@@ -120,38 +120,4 @@ export function routeInterpretationChecks(checks: InterpretationCheck[], raw: un
       });
   }
   return { checks: selected, skipped, reasons };
-}
-export async function recordInterpretationRouting(
-  sceneId: string,
-  selection: ReturnType<typeof routeInterpretationChecks>,
-) {
-  const traces: InterpretationTrace[] = selection.skipped.map(({ check, reason }) => ({
-    id: check.id + ":routing",
-    domain: check.domain,
-    question: check.question,
-    evidence: check.evidence,
-    decisions: { status: "off" },
-    system: { status: "not-requested", reason },
-    result: { outcome: "none", source: "system", evidenceIds: [], reason },
-    applied: "Skipped by narration routing; no interpretation request",
-    startedAt: new Date().toISOString(),
-  }));
-  for (const check of selection.checks)
-    traces.push({
-      id: check.id + ":routing",
-      domain: check.domain,
-      question: check.question,
-      evidence: check.evidence,
-      decisions: { status: "off" },
-      system: { status: "not-requested", reason: selection.reasons.get(check.id) },
-      result: {
-        outcome: "unresolved",
-        source: "system",
-        evidenceIds: [],
-        reason: selection.reasons.get(check.id) ?? "",
-      },
-      applied: "Selected for verification",
-      startedAt: new Date().toISOString(),
-    });
-  if (traces.length) await writeInterpretationDiagnostics(sceneId, traces);
 }

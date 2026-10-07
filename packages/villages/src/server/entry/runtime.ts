@@ -9,12 +9,16 @@ import { projectProposals } from "../domain/rules/project-check-rules.js";
 import { createProjectChecks } from "../features/projects/project-check-service.js";
 import { configureProjectChecks } from "../features/projects/project-checks.js";
 import { pipelineSignal } from "../adapters/observability/metrics-context.js";
-import { boundInterpretationEvidence, contextualChecks } from "../features/generation/interpretation-evidence.js";
-import {
-  routeInterpretationChecks,
-  recordInterpretationRouting,
-} from "../features/generation/interpretation-routing.js";
-import { interpretChecks } from "../features/generation/interpretation.js";
+import { boundInterpretationEvidence } from "../domain/rules/interpretation-evidence-rules.js";
+import { configureInterpretationEvidence, contextualChecks } from "../features/generation/interpretation-evidence.js";
+import { createInterpretationEvidence } from "../features/generation/interpretation-evidence-service.js";
+import { routeInterpretationChecks } from "../domain/rules/interpretation-routing.js";
+import { recordInterpretationRouting } from "../features/generation/interpretation.js";
+import { configureInterpretation, interpretChecks } from "../features/generation/interpretation.js";
+import { createInterpretation } from "../features/generation/interpretation-service.js";
+import { createSystemInterpretation } from "../features/generation/system-interpretation-service.js";
+import { resolveVillagesDecisionBackend } from "../adapters/engine/decisions-adapter.js";
+import { coordinatedOptionalCompletion, venueInterpretationSettings } from "../jobs/venue-coordinator.js";
 import { interpretProjectDraft } from "../features/projects/project-checks.js";
 import { finalizeProjectDiagnostics } from "../features/projects/project-checks.js";
 import { saveInterpretationContext } from "../features/generation/interpretation-evidence.js";
@@ -169,6 +173,7 @@ import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import {
   configureUsageLedger,
   withUsagePurpose,
+  trackUsage,
   inferredPurpose,
   usageProcessOwner,
 } from "../adapters/models/usage-ledger.js";
@@ -253,7 +258,7 @@ import { createModelCompletions } from "../features/generation/completion-servic
 import { coordinatedCompletion } from "../jobs/venue-coordinator.js";
 import { configureInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
 import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
-import { systemInterpretations } from "../features/generation/system-interpretation.js";
+import { configureSystemInterpretation, systemInterpretations } from "../features/generation/system-interpretation.js";
 import { villagesConnectionIdFor } from "../features/settings/connections.js";
 import { createPersonaQueries } from "../features/settings/persona-service.js";
 import { configurePersonaQueries, readLinkedPersona } from "../features/settings/personas.js";
@@ -298,6 +303,13 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseOperations = configureVenueOperationContext(operations);
   const releaseSceneRepository = configureSceneRepository(
     createSceneRepository({ villagesDocuments, mutateDocument: createDocumentMutator(villagesDocuments) }),
+  );
+  const releaseInterpretationEvidence = configureInterpretationEvidence(
+    createInterpretationEvidence({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+    }),
   );
   const releaseUsage = configureUsageLedger(
     createUsageLedger({
@@ -349,6 +361,22 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villageEngineJson,
       villagesAgentConnectionId,
       villagesAgentImageConnectionId,
+    }),
+  );
+  const releaseSystemInterpretation = configureSystemInterpretation(
+    createSystemInterpretation({ villagesLanguageModels, villagesConnectionIdFor, completeWithRoom }),
+  );
+  const releaseInterpretation = configureInterpretation(
+    createInterpretation({
+      resolveVillagesDecisionBackend,
+      trackUsage,
+      venueOperationSignal,
+      coordinatedOptionalCompletion,
+      venueCheckpoint,
+      venueInterpretationSettings,
+      writeInterpretationDiagnostics,
+      systemInterpretations,
+      bindCallback: (callback) => (completionOwner ? completionOwner.bind(callback) : callback),
     }),
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
@@ -795,6 +823,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseRelationships();
     releaseWishClocks();
     releaseSceneWork();
+    releaseInterpretation();
+    releaseSystemInterpretation();
+    releaseInterpretationEvidence();
     releaseConnections();
     releaseCompletions();
     releaseDebug();

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { routeInterpretationChecks } from "../packages/villages/src/server/features/generation/interpretation-routing.js";
+import { routeInterpretationChecks } from "../packages/villages/src/server/domain/rules/interpretation-routing.js";
 import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 const context = { actorIds: ["a", "b"] };
 function check(domain: "room" | "project" = "room", text = "I like the autumn weather."): InterpretationCheck {
@@ -17,7 +17,11 @@ function check(domain: "room" | "project" = "room", text = "I like the autumn we
   };
 }
 const irrelevant = [{ actorId: "a", domain: "room", relevance: "irrelevant", targetIds: [], segments: [0] }];
-const select = (c = check(), raw: unknown = irrelevant, ctx = context) => routeInterpretationChecks([c], raw, ctx);
+const select = (
+  c = check(),
+  raw: unknown = irrelevant,
+  ctx: Parameters<typeof routeInterpretationChecks>[2] = context,
+) => routeInterpretationChecks([c], raw, ctx);
 assert.equal(select().checks.length, 0);
 for (const raw of [
   null,

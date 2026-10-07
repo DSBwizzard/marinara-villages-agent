@@ -13,8 +13,8 @@ import {
   finalizeProjectDiagnostics,
   applyProjectPickup,
 } from "../packages/villages/src/server/features/projects/project-checks.js";
-import { boundInterpretationEvidence } from "../packages/villages/src/server/features/generation/interpretation-evidence.js";
-import { routeInterpretationChecks } from "../packages/villages/src/server/features/generation/interpretation-routing.js";
+import { boundInterpretationEvidence } from "../packages/villages/src/server/domain/rules/interpretation-evidence-rules.js";
+import { routeInterpretationChecks } from "../packages/villages/src/server/domain/rules/interpretation-routing.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -32,8 +32,8 @@ import {
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import { readSystemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
-import { readDecisionInterpretation } from "../packages/villages/src/server/features/generation/interpretation.js";
+import { readSystemInterpretations } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
+import { readDecisionInterpretation } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
 import { type InterpretationBatch } from "../packages/villages/src/server/domain/models/interpretation-model.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {

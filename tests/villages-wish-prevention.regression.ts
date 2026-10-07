@@ -5,9 +5,9 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import {
   compactWishChecks,
   readSystemInterpretations,
-  systemInterpretations,
-} from "../packages/villages/src/server/features/generation/system-interpretation.js";
-import { interpretationPayload } from "../packages/villages/src/server/features/generation/interpretation-evidence.js";
+} from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
+import { systemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
+import { interpretationPayload } from "../packages/villages/src/server/domain/rules/interpretation-evidence-rules.js";
 import { completionFailure } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import { wishFingerprint } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";

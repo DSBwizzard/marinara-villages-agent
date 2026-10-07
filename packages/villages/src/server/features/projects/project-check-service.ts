@@ -18,9 +18,9 @@ export interface ProjectChecksPorts {
   sceneQueries(): Pick<SceneQueries, "readProjectTurnEvidence">;
   pipelineSignal(name: "projectRelevanceSkips"): void;
   contextualChecks: typeof import("../generation/interpretation-evidence.js").contextualChecks;
-  boundInterpretationEvidence: typeof import("../generation/interpretation-evidence.js").boundInterpretationEvidence;
-  routeInterpretationChecks: typeof import("../generation/interpretation-routing.js").routeInterpretationChecks;
-  recordInterpretationRouting: typeof import("../generation/interpretation-routing.js").recordInterpretationRouting;
+  boundInterpretationEvidence: typeof import("../../domain/rules/interpretation-evidence-rules.js").boundInterpretationEvidence;
+  routeInterpretationChecks: typeof import("../../domain/rules/interpretation-routing.js").routeInterpretationChecks;
+  recordInterpretationRouting: typeof import("../generation/interpretation.js").recordInterpretationRouting;
   interpretChecks(checks: InterpretationCheck[], stage: string, sceneId?: string): Promise<InterpretationBatch>;
   saveInterpretationContext: typeof import("../generation/interpretation-evidence.js").saveInterpretationContext;
   writeInterpretationDiagnostics: typeof import("../generation/interpretation-diagnostics.js").writeInterpretationDiagnostics;
