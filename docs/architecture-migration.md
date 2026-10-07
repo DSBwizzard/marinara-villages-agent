@@ -2,9 +2,11 @@
 
 The starting revision is `9e12f23be71c137c2e5017375641f72ec45b38b3` on staging (0.6.170). The completed migration is planned as 0.7.0. Keep the repository and its history. Candidates retain their source revision and package hash; the milestone is complete only after architecture and packaged checks pass.
 
-## Preserved behavior
+## Fresh-start scope for 0.7.0
 
-Keep routes, saved identifiers and decoding, scene continuity across Zones, server-only private attendance, draft and reading state lifetimes, request identities, revision conflicts, recovery checkpoints, cancellation and model accounting unchanged. Any behavioral correction requires its own explanation, tests and independent review.
+The user has chosen fresh worlds for 0.7.0. Old saved data, migration and backward compatibility are outside this pass. Remove obsolete compatibility paths when they obstruct the authoritative implementation. Future releases can adopt a compatibility policy after this baseline is complete.
+
+New 0.7.0 worlds must save and reload correctly. Preserve Scene continuity across Zones, server-only private attendance, draft and reading state lifetimes, current request identities, revision conflicts, recovery checkpoints, cancellation and model accounting. Keep the chosen Engine interfaces working. Behavioral corrections still need an explanation, tests and independent review; historical extraction notes below describe what those individual commits preserved, rather than imposing old-data compatibility on subsequent work.
 
 ## Validation foundation
 
@@ -20,7 +22,7 @@ Two baseline checks needed repair: client compiler invocation used an unsupporte
 - Delivery: source-only commits; reproducible retained archives; staging revisions identified by source/hash; deliberate numbered releases.
 - Verification: enforce imports and absence of cycles; remove temporary paths; independently review; run portable and isolated packaged checks; record the completed baseline.
 
-Each item stays open until implementation and verification pass. This document does not approve publication, Engine upgrades/restarts, upstream submission or save-format changes.
+Each item stays open until implementation and verification pass. This document does not approve publication, Engine upgrades/restarts or upstream submission. Save-format changes are allowed within the fresh-start scope, with validation of new-world persistence.
 
 ## Venue command ownership
 
@@ -89,3 +91,9 @@ This extraction preserves two cancellation gaps: callers joining work already st
 All four original function bodies and signatures remain unchanged. Venue details, private spaces and residents retain their phase/order, saved progress and seed checks. Duplicate preparation joins the exact owned Promise. Discovery schedules only pending preparation, explicit retry preserves completed steps and resets admission inside CAS, and uncertain paid outcomes retain their deliberate retry gate. Provider-free tests cover simultaneous same-ID worlds, independent completion/failure, saved Venue details, resident order, repeated retry, pending-read resumption, scoped/default dispatch and older-owner cleanup. Existing founding, resident-continuity and route suites cover the assembled production graph and request contracts.
 
 This extraction adds no cancellation or physical provider-drain behavior to founding. Scene navigation/greetings, caches, remaining world/resident/project separation, private-import enforcement and the client assembly audit remain open. Actual packaged Engine and Linux validation remain required before the 0.7.0 milestone.
+
+## Runtime diagnostic ownership
+
+`adapters/observability/runtime-debug-service.ts` owns an application's verbose/usage-meter settings and lazy preference cache. Entry supplies document mutation, Engine debug override, logger and Scene diagnostic context ports. Its six original implementations retain validation, saved metadata and credential redaction. The supported facade binds calls to their activation; released or missing diagnostics remain best effort and cannot borrow another activation's logger.
+
+Provider-free tests pause one world's preference load while another saves settings, then verify independent cached preferences, Engine overrides, redacted logging, reset and older-owner cleanup. The original logging regression still covers model completions, failure handling and no extra provider calls. Independent review found no blocking issues. The preexisting same-instance stale-load race remains: reset/save and concurrent reads have no load generation fence. Metrics context and other private caches still require ownership work.

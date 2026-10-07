@@ -8,7 +8,10 @@ import { createVillageRepository } from "../adapters/storage/village-repository.
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import { withUsagePurpose } from "../adapters/models/usage-ledger.js";
 import { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
-import { resetRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
+import { configureRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
+import { createRuntimeDebug } from "../adapters/observability/runtime-debug-service.js";
+import { villagesDebugAgentsEnabled } from "../adapters/engine/runtime-host.js";
+import { venueDebugContext } from "../adapters/operations/operation-context.js";
 import { configureVenueOperationContext } from "../adapters/operations/operation-context.js";
 import { createVenueOperationContext } from "../adapters/operations/operation-context-service.js";
 import { configureBackgroundContext } from "../adapters/operations/background-context.js";
@@ -75,7 +78,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
   const releaseBackgroundContext = configureBackgroundContext(background);
   const operations = createVenueOperationContext(villagesLogger);
   const releaseOperations = configureVenueOperationContext(operations);
-  resetRuntimeDebug();
+  const releaseDebug = configureRuntimeDebug(
+    createRuntimeDebug({
+      villagesDebugAgentsEnabled,
+      villagesDocuments,
+      villagesLogger,
+      venueDebugContext,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+    }),
+  );
   const releaseQueries = configureSceneQueries({
     activeVenueSession,
     readProjectTurnEvidence,
@@ -169,6 +180,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
     releaseVillageState();
     releaseRelationships();
     releaseQueries();
+    releaseDebug();
     releaseOperations();
     releaseBackgroundContext();
     release();
