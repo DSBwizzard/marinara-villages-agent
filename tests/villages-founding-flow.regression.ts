@@ -306,6 +306,7 @@ async function main() {
   const routes = villageRouteSource();
   const village =
     (await readFile(join(serverRoot, "features/world/village.ts"), "utf8")) +
+    (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts.ts"), "utf8");
   assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));

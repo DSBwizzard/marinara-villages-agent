@@ -1,17 +1,16 @@
-import { previewVillagerRefresh, applyVillagerRefresh } from "./resident-cards.js";
-import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
-import { badRequest } from "../../domain/rules/errors.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
-  addVillager,
   buildVillageAgendas,
   clearVillagerAgenda,
   clearVillagerRemap,
   correctCompletedWish,
-  removeVillager,
   setVillagerScheduleInfluence,
   setVillagerScheduleIngestion,
-} from "../world/village.js";
+} from "../residents/resident-agendas.js";
+import { previewVillagerRefresh, applyVillagerRefresh } from "./resident-cards.js";
+import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
+import { badRequest } from "../../domain/rules/errors.js";
+import { buildVillageSnapshot } from "../world/snapshot.js";
+import { addVillager, removeVillager } from "../world/village.js";
 import { changeRelationshipCreator, readRelationshipsView } from "./relationships.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
 import { readWishHistoryPage } from "./wishes/wish-archive.js";

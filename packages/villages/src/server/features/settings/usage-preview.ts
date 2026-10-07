@@ -1,3 +1,4 @@
+import { agendaRevision } from "../residents/resident-agendas.js";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import { quoteUsageRate } from "../../adapters/models/usage-ledger.js";
@@ -9,7 +10,7 @@ import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import { previewBackgroundJobs } from "../../jobs/background-work.js";
 import { privatePreparationRooms } from "../../jobs/private-space-preparation.js";
-import { agendaRevision } from "../world/village.js";
+
 import { villagesConnectionIdFor, villagesImageConnectionChoice } from "./connections.js";
 
 type Resident = { id: string; name: string; requests: number };

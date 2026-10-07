@@ -1,3 +1,14 @@
+import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
+import { configureResidentAgendas, queueVillagerAgenda } from "../features/residents/resident-agendas.js";
+import { readEffectiveVillagerCard } from "../adapters/engine/catalog.js";
+import { readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
+import {
+  reserveInitialWishAllowance,
+  registerInitialWish,
+  correctResidentWish,
+} from "../features/residents/wishes/wish-lifecycle.js";
+import { parseCompactFoundingCompletion, proposeCompactFounding } from "../features/founding/founding-compact.js";
+import { rollActiveAgendas } from "../features/residents/agenda-roll.js";
 import { createPersonaCache } from "../features/settings/persona-cache-service.js";
 import { configurePersonaCache } from "../features/settings/persona-cache.js";
 import { createResidentCards } from "../features/residents/resident-card-service.js";
@@ -14,6 +25,7 @@ import { createNativeSchedules } from "../adapters/engine/native-schedules-servi
 import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
 import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
 import {
+  bindActivationService,
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
@@ -70,12 +82,7 @@ import { createVenueCommands } from "../features/venues/venue-service.js";
 import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
 import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
 import { buildVillageSnapshot } from "../features/world/snapshot.js";
-import {
-  agendaBackgroundHandler,
-  adaptationBackgroundHandler,
-  storyBackgroundHandler,
-  residentAgendaCommands,
-} from "../features/world/village.js";
+import { adaptationBackgroundHandler, storyBackgroundHandler } from "../features/world/village.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
 import { wishBackgroundHandler } from "../features/residents/wishes/wish-lifecycle.js";
 import {
@@ -93,7 +100,7 @@ import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
 import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
 import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
-import { configureBackgroundWork } from "../jobs/background-work.js";
+import { configureBackgroundWork, queueBackgroundJob } from "../jobs/background-work.js";
 import { createBackgroundWork } from "../jobs/background-service.js";
 import { configurePrivateSpacePreparation } from "../jobs/private-space-preparation.js";
 import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
@@ -194,6 +201,23 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
   );
+  const residentAgendas = createResidentAgendas({
+    readVillageState,
+    mutateVillageState,
+    reportFoundingProgress,
+    readEffectiveVillagerCard,
+    reserveInitialWishAllowance,
+    readVillageLore,
+    queueBackgroundJob,
+    backgroundWorkSummaries,
+    parseCompactFoundingCompletion,
+    proposeCompactFounding,
+    readNativeScheduleSnapshot,
+    rollActiveAgendas,
+    registerInitialWish,
+    correctResidentWish,
+  });
+  const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
   const releasePersonaCache = configurePersonaCache(
     createPersonaCache({ readVillageState, mutateVillageState, findPlayerPersona }),
   );
@@ -274,7 +298,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["wish", wishBackgroundHandler],
         ["wish-check", wishCheckBackgroundHandler],
         ["mail", mailBackgroundHandler],
-        ["agenda", agendaBackgroundHandler],
+        ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["adaptation", adaptationBackgroundHandler],
         ["story", storyBackgroundHandler],
       ],
@@ -305,7 +329,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       backgroundWorkSummaries,
       retryBackgroundJob,
       settleBackgroundWork,
-      queueVillagerAgenda: residentAgendaCommands.queueVillagerAgenda,
+      queueVillagerAgenda,
     }),
   );
   const releaseGraph = () => {
@@ -321,6 +345,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSprites();
     releaseResidentCards();
     releasePersonaCache();
+    releaseResidentAgendas();
     releaseVillageState();
     releaseRelationships();
     releaseQueries();

@@ -1,3 +1,10 @@
+import {
+  clearVillagerAgenda,
+  clearVillagerRemap,
+  setVillagerScheduleInfluence,
+  setVillagerScheduleIngestion,
+  buildVillageAgendas,
+} from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import assert from "node:assert/strict";
 import {
   influenceSettings,
@@ -12,14 +19,7 @@ import { coerceVillageState } from "../packages/villages/src/server/domain/decod
 import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  clearVillagerAgenda,
-  clearVillagerRemap,
-  setVillagerScheduleInfluence,
-  setVillagerScheduleIngestion,
-  buildVillageAgendas,
-  reconcileVillage,
-} from "../packages/villages/src/server/features/world/village.js";
+import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
 import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/agenda-roll.js";
 import {
   startBackgroundWork,

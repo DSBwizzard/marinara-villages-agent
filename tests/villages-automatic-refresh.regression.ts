@@ -31,7 +31,6 @@ async function main() {
   const { deriveVillageMoment } = await import(moduleUrl("packages/villages/src/server/domain/rules/village-clock.ts"));
   const {
     reconcileVillage,
-    clearVillagerAgenda,
     proposeVillageResidence,
     decideVillageResidence,
     completeVillageResidence,
@@ -39,6 +38,9 @@ async function main() {
     decideVillageHomeUpgrade,
     projectHomeLines,
   } = await import(moduleUrl("packages/villages/src/server/features/world/village.ts"));
+  const { clearVillagerAgenda } = await import(
+    moduleUrl("packages/villages/src/server/features/residents/resident-agendas.ts")
+  );
   const { setVillageStoryPace } = await import(
     moduleUrl("packages/villages/src/server/features/settings/village-settings.ts")
   );
