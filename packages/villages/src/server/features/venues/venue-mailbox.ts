@@ -1,3 +1,4 @@
+import type { Handler } from "../../domain/models/background-model.js";
 import { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type {
   VillageResidence,
@@ -16,7 +17,7 @@ import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } fr
 import type { VenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { hashString, randomVillageSeed } from "../../domain/rules/village-clock.js";
-import { backgroundRevision, queueBackgroundJob, registerBackgroundHandler } from "../../jobs/background-work.js";
+import { backgroundRevision, queueBackgroundJob } from "../../jobs/background-work.js";
 import { completeWithRoom } from "../generation/model-requests.js";
 import {
   applyProjectMailboxDecisions,
@@ -414,7 +415,7 @@ export async function respondDueVenueMail(now = new Date()): Promise<void> {
       },
     });
 }
-registerBackgroundHandler("mail", {
+export const mailBackgroundHandler: Handler = {
   async generate(input) {
     const due: VillageVenueMail = input.due;
     const model = await villagesLanguageModels().resolveForRequest({
@@ -530,4 +531,4 @@ registerBackgroundHandler("mail", {
       if (request?.status === "countered") request.status = "denied";
     }
   },
-});
+};

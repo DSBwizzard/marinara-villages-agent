@@ -1,16 +1,29 @@
+import { activationScope, bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
+import { createBackgroundContext, type BackgroundContext } from "./background-context-service.js";
 import type { BackgroundCompletion } from "../../domain/models/background-completion-model.js";
-import { AsyncLocalStorage } from "node:async_hooks";
-
-export type { BackgroundCompletion } from "../../domain/models/background-completion-model.js";
-
-// A completion checkpoint belongs to a background job, never to foreground dialogue.
-
-export const backgroundCalls = new AsyncLocalStorage<BackgroundCompletion>();
-export function requireBackgroundSuccess(error: unknown): void {
-  if (backgroundCalls.getStore()) throw error;
+export type { BackgroundCompletion, BackgroundContext } from "./background-context-service.js";
+const binding = createActivationBinding<BackgroundContext>("Villages background context is not configured.");
+const standalone = createBackgroundContext();
+function backgroundContext(): BackgroundContext {
+  if (activationScope()) return binding.get();
+  return binding.maybe() ?? standalone;
 }
-
-/** Freeze stage layout even when a player changes model limits before retrying. */
+export function configureBackgroundContext(service: BackgroundContext): () => void {
+  return binding.configure(bindActivationService(service));
+}
+export const backgroundCalls = {
+  getStore(): BackgroundCompletion | undefined {
+    return backgroundContext().backgroundCalls.getStore();
+  },
+  run<T>(store: BackgroundCompletion, work: () => T): T {
+    const owner = activationScope();
+    const calls = backgroundContext().backgroundCalls;
+    return owner ? owner.run(() => calls.run(store, work)) : calls.run(store, work);
+  },
+};
+export function requireBackgroundSuccess(error: unknown): void {
+  return backgroundContext().requireBackgroundSuccess(error);
+}
 export async function backgroundSetting<T>(key: string, create: () => T | Promise<T>): Promise<T> {
-  return backgroundCalls.getStore()?.setting?.(key, create) ?? create();
+  return backgroundContext().backgroundSetting<T>(key, create);
 }

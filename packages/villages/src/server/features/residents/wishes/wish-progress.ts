@@ -1,3 +1,4 @@
+import type { Handler } from "../../../domain/models/background-model.js";
 import { readEffectiveVillagerCard } from "../../../adapters/engine/catalog.js";
 import { backgroundCalls, backgroundSetting } from "../../../adapters/operations/background-context.js";
 import { outsideVenueOperation } from "../../../adapters/operations/operation-context.js";
@@ -34,12 +35,7 @@ import {
   wishConditionRevision,
 } from "../../../domain/rules/wish-journal.js";
 import { metadataFailure, type WorkFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
-import {
-  backgroundRevision,
-  backgroundStatus,
-  queueBackgroundJob,
-  registerBackgroundHandler,
-} from "../../../jobs/background-work.js";
+import { backgroundRevision, backgroundStatus, queueBackgroundJob } from "../../../jobs/background-work.js";
 import { writeInterpretationDiagnostics } from "../../generation/interpretation-diagnostics.js";
 import { sceneQueries } from "../../scenes/services.js";
 import { mutateVillageState, readVillageState } from "../../world/village-store.js";
@@ -401,7 +397,7 @@ export function applyPreparedWishVerdict(
   };
 }
 
-registerBackgroundHandler("wish-check", {
+export const wishCheckBackgroundHandler: Handler = {
   valid: (state, input: WishCheckInput | WishBatchInput) =>
     state.seed === input.seed && batchItems(input).some((item) => !!currentWish(state, item.proposal)),
   async generate(input: WishCheckInput | WishBatchInput): Promise<PreparedWishVerdict | PreparedWishBatch> {
@@ -506,7 +502,7 @@ registerBackgroundHandler("wish-check", {
     const { processSavedExchange } = sceneQueries();
     await processSavedExchange(input.sceneId, input.submissionId);
   },
-});
+};
 
 /** Opening a Project saves this finite outbox alongside its physical result. No periodic Wish completion scan. */
 export async function processProjectWishOutbox(): Promise<void> {

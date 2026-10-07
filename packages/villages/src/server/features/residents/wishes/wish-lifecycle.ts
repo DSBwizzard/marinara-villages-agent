@@ -1,3 +1,4 @@
+import type { Handler } from "../../../domain/models/background-model.js";
 import { villagerCardFromSnapshot } from "../../../adapters/engine/catalog.js";
 import { readVillageLore } from "../../../adapters/engine/lorebooks.js";
 import { villagesDebugAgentsEnabled, villagesLogger } from "../../../adapters/engine/runtime-host.js";
@@ -39,7 +40,6 @@ import {
   backgroundRevision,
   backgroundStatus,
   queueBackgroundJob,
-  registerBackgroundHandler,
   settleBackgroundWork,
 } from "../../../jobs/background-work.js";
 import { completeWithRoom } from "../../generation/model-requests.js";
@@ -541,7 +541,7 @@ async function generateWish(input: {
   }
   return job;
 }
-registerBackgroundHandler("wish", {
+export const wishBackgroundHandler: Handler = {
   generate: generateWish,
   valid(state, input) {
     const resident = state.villagers.find((entry) => entry.characterId === input.characterId);
@@ -582,7 +582,7 @@ registerBackgroundHandler("wish", {
     owner.wishLifecycle!.attempt = attempt;
     delete state.wishRefillIntents[input.characterId];
   },
-});
+};
 export async function processWishAttempt(
   characterId: string,
   id: string,

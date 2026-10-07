@@ -1,3 +1,4 @@
+import type { Handler } from "../../domain/models/background-model.js";
 import {
   findPlayerPersona,
   findVillagerCard,
@@ -139,7 +140,6 @@ import {
   backgroundStatus,
   backgroundWorkSummaries,
   queueBackgroundJob,
-  registerBackgroundHandler,
   retireBackgroundResident,
   retryBackgroundJob,
   settleBackgroundWork,
@@ -427,7 +427,7 @@ async function queueVillagerAgenda(characterId: string, finite = true): Promise<
     },
   });
 }
-registerBackgroundHandler("agenda", {
+export const agendaBackgroundHandler: Handler = {
   recoverSavedResult: (input, steps) => {
     const saved = steps.find((step) => step.key === "owned-routine-profile" && step.status === "completed");
     if (!saved?.response) return undefined;
@@ -448,7 +448,7 @@ registerBackgroundHandler("agenda", {
     state.villagers.some((resident) => resident.characterId === input.characterId) &&
     agendaRevision(state, input.characterId) === input.revision,
   apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda, input.initialWishAttemptId),
-});
+};
 
 /**
  * Put one agenda on one villager's record.
@@ -1392,7 +1392,7 @@ export async function retryResidencePrivateSpaceAdaptation(characterValue: unkno
   });
   return buildVillageSnapshot();
 }
-registerBackgroundHandler("adaptation", {
+export const adaptationBackgroundHandler: Handler = {
   async generate(input) {
     const { characterId, destination, archive, card, lore } = input;
     const model = await villagesLanguageModels().resolveForRequest({
@@ -1465,7 +1465,7 @@ registerBackgroundHandler("adaptation", {
     current.state.updatedAt = new Date().toISOString();
     current.adaptationPending = false;
   },
-});
+};
 
 export async function runVillageSetup(input: {
   foundingCharacterIds?: unknown;
@@ -2498,7 +2498,7 @@ export async function reconcileVillage(
   return { ...snapshot, recap: buildReturnRecap(reconciled, previousThrough, moment.instant, elapsedMs) };
 }
 
-registerBackgroundHandler("story", {
+export const storyBackgroundHandler: Handler = {
   generate: (input) => proposeHappenings(input.context),
   valid: (state, input) =>
     input.opportunity.actorIds.every((id: string) =>
@@ -2682,7 +2682,7 @@ registerBackgroundHandler("story", {
       state.processedOpportunityIds = [...state.processedOpportunityIds, opportunityId].slice(-256);
     }
   },
-});
+};
 
 /**
  * Write down what the rest of the village saw of something the player just did.
