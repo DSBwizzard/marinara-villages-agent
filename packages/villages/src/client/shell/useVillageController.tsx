@@ -1,12 +1,8 @@
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
-import type {
-  ProgressDebugView,
-  TownMapView,
-  VillageLorebookOption,
-  VillageSnapshot,
-} from "../../shared/contracts/village.js";
+import type { TownMapView, VillageSnapshot } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
+import { useProgressDiagnostics } from "../features/background/useProgressDiagnostics.js";
 import {
   useCloseExploration,
   useDiscardTownMapDraft,
@@ -65,6 +61,7 @@ import {
 import {
   useFoundingAuthoredReference,
   useFoundingBeginningReference,
+  useFoundingDraftReferences,
   useFoundingImageContext,
   useFoundingMapClock,
   useFoundingMapReceipt,
@@ -85,7 +82,6 @@ import {
   useFoundingFlushSetupDraft,
   useFoundingPersistSetupDraft,
 } from "../features/founding/draft-controller.js";
-import type { SetupDraftData } from "../features/founding/draft-model.js";
 import {
   createFoundingGenerateSetupImage,
   createFoundingSetupDraftRow,
@@ -94,7 +90,6 @@ import {
   useFoundingGenerateSetupTownMap,
 } from "../features/founding/image-controller.js";
 import { useFoundingState } from "../features/founding/useFoundingState.js";
-import type { SavedFoundingDraft } from "../features/founding/villages-founding-draft.js";
 import {
   createFoundingChooseSetupScenario,
   createFoundingGotoSetupStep,
@@ -224,6 +219,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const homeBuildings = snapshot?.settings.homeBuildings ?? [];
 
   const {
+    pickerOpen,
+    setPickerOpen,
     catalog,
     setCatalog,
     search,
@@ -336,10 +333,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     writeUpNote,
     setWriteUpNote,
   } = useScenesState(snapshot?.isFounded);
-
-  const [progressDebug, setProgressDebug] = useState<ProgressDebugView | null>(null);
-
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   // The menu is its own screen. The homepage never carries the villager
   // controls, and the menu never draws the village itself; `menuPage` picks
@@ -500,6 +493,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     spriteLeaveGuard,
   });
   const {
+    resetArmed,
+    setResetArmed,
+    pendingCaretRef,
     requestEdits,
     setRequestEdits,
     knowledgeDraft,
@@ -520,6 +516,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   } = useSettingsState();
 
   const {
+    savedSetupDraft,
+    setSavedSetupDraft,
+    lorebooks,
+    setLorebooks,
+    lorebooksError,
+    setLorebooksError,
+    pendingDraftSaves,
     setupLorebookDraft,
     setSetupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -637,12 +640,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupZoneDrafts,
     setupOfferedRef,
   } = useFoundingState();
-  const [savedSetupDraft, setSavedSetupDraft] = useState<SavedFoundingDraft<SetupDraftData> | null>(null);
-
-  const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
-
-  const [lorebooksError, setLorebooksError] = useState("");
-
   // Which home the next click on the map will place, and which pin the editor is
   // pointing at so the row and the map agree about what is being edited.
   const [_placingHome, setPlacingHome] = useState(false);
@@ -676,8 +673,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     visualLoreDefault,
   });
 
-  const setupBeginningSourceKeyRef = useRef(setupBeginningSourceKey);
-
   const setupImageContextKey = calculateSetupImageContextKey({
     personaDraft,
     personalizeHomes,
@@ -688,11 +683,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     visualLoreDefault,
   });
 
-  const setupImageContextKeyRef = useRef(setupImageContextKey);
+  const { setupBeginningSourceKeyRef, setupImageContextKeyRef, setupVenuesRef, setupAuthoredFieldsRef } =
+    useFoundingDraftReferences({ setupBeginningSourceKey, setupImageContextKey, setupVenues, setupAuthoredFields });
 
   useFoundingImageContext({ setupImageContextKey, setupImageContextKeyRef });
-
-  const setupVenuesRef = useRef(setupVenues);
 
   useFoundingVenueReference({ setupVenues, setupVenuesRef });
 
@@ -717,8 +711,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const setupMapSeconds = calculateSetupMapSeconds({ setupMapClock, setupMapRequest });
 
   const setupMapProgress = calculateSetupMapProgress({ setupMapSeconds });
-
-  const [resetArmed, setResetArmed] = useState(false);
 
   /**
    * The framing the village has saved. The map is drawn with this everywhere
@@ -753,11 +745,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const setupMapSrc = calculateSetupMapSrc({ setupMapImage, setupMapImageSource, setupMapSource, townMapImage });
 
-  const setupAuthoredFieldsRef = useRef(setupAuthoredFields);
-
   useFoundingAuthoredReference({ setupAuthoredFields, setupAuthoredFieldsRef });
-
-  const pendingDraftSaves = useRef(0);
 
   const setupDraftData = useFoundingSetupDraftData({
     mapVisualLore,
@@ -1026,8 +1014,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const [catchingUp, setCatchingUp] = useState(false);
 
-  const pendingCaretRef = useRef<number | null>(null);
-
   useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
   /**
@@ -1159,9 +1145,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * the whole list and that answer is what gets drawn, so a row can never be left
    * showing something the village has already forgotten.
    */
-  const backgroundRetryActions = useRef(new Map<string, { id: string; attempt: number }>());
-
-  const retryWork = useResidentsRetryWork({ backgroundRetryActions, loadAgendas, setSnapshot });
+  const retryWork = useResidentsRetryWork({ loadAgendas, setSnapshot });
 
   const backgroundPanel = (
     <BackgroundWorkPanel
@@ -1172,10 +1156,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     />
   );
 
-  const agendaActions = useRef(new Map<string, string>());
-
   const rewriteAgenda = useRewriteAgenda({
-    agendaActions,
     currentSnapshotRef,
     retryWork,
     setAgendas,
@@ -1318,16 +1299,16 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenuesDraft,
     setVisualLoreDefault,
   });
+  const { progressDebug, loadProgressDebug, openProgressDebug } = useProgressDiagnostics({ setError });
   const openMenu = useScenesOpenMenu({
     loadCatalog,
     loadLorebooks,
     loadPersonas,
+    loadProgressDebug: openProgressDebug,
     menuPage,
     screen,
-    setError,
     setFocusedRequestId,
     setMenuPage,
-    setProgressDebug,
     setScreen,
     setSettingsError,
     setSiteProjectId,
@@ -2470,7 +2451,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPlacingProjectId,
     setPlayerMovePrivateZoneId,
     setProfileInspection,
-    setProgressDebug,
+    loadProgressDebug,
     setReframingMap,
     setRequestEdits,
     setResetArmed,

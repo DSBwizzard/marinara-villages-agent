@@ -3,6 +3,8 @@ import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useSettingsState() {
+  const [resetArmed, setResetArmed] = useState(false);
+  const pendingCaretRef = useRef<number | null>(null);
   const [requestEdits, setRequestEdits] = useState<Record<string, VenueRequest["venueDraft"]>>({});
 
   /** The village's world-knowledge prompt box as it is being edited. */
@@ -43,6 +45,9 @@ export function useSettingsState() {
   // that has only one possible value is not a thing to keep.
   const knowledgeRef = useRef<HTMLTextAreaElement | null>(null);
   return {
+    resetArmed,
+    setResetArmed,
+    pendingCaretRef,
     requestEdits,
     setRequestEdits,
     knowledgeDraft,

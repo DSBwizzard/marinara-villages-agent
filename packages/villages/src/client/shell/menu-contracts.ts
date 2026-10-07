@@ -155,9 +155,7 @@ export type MenuScreenController = {
   readonly setPersonalizeHomes: FoundingState["setPersonalizeHomes"];
   readonly setPlacingMapVenueId: ExplorationState["setPlacingMapVenueId"];
   readonly setPlacingProjectId: ProjectsState["setPlacingProjectId"];
-  readonly setProgressDebug: React.Dispatch<
-    React.SetStateAction<import("../../shared/contracts/village").ProgressDebugView>
-  >;
+  readonly loadProgressDebug: () => Promise<void>;
   readonly setReframingMap: ExplorationState["setReframingMap"];
   readonly setRequestEdits: SettingsState["setRequestEdits"];
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;

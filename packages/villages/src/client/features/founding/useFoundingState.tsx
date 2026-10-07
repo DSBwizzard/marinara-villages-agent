@@ -1,9 +1,11 @@
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
-import type { ScenarioImprint, SetupMapRequest } from "../../../shared/contracts/village.js";
+import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
 import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
 import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
 import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint } from "./FoundingPanels.js";
 import type { FoundingScenarioId } from "./scenarios.js";
+import type { SetupDraftData } from "./draft-model.js";
+import type { SavedFoundingDraft } from "./villages-founding-draft.js";
 import { type AreaDraftCache, SCENERY_STYLES } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
@@ -11,6 +13,10 @@ import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useFoundingState() {
+  const [savedSetupDraft, setSavedSetupDraft] = useState<SavedFoundingDraft<SetupDraftData> | null>(null);
+  const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
+  const [lorebooksError, setLorebooksError] = useState("");
+  const pendingDraftSaves = useRef(0);
   const [setupLorebookDraft, setSetupLorebookDraft] = useState<string[]>([]);
 
   const [setupLoreTokenBudgetDraft, setSetupLoreTokenBudgetDraft] = useState(1600);
@@ -147,6 +153,13 @@ export function useFoundingState() {
   // snapshot that arrives afterwards.
   const setupOfferedRef = useRef(false);
   return {
+    savedSetupDraft,
+    setSavedSetupDraft,
+    lorebooks,
+    setLorebooks,
+    lorebooksError,
+    setLorebooksError,
+    pendingDraftSaves,
     setupLorebookDraft,
     setSetupLorebookDraft,
     setupLoreTokenBudgetDraft,

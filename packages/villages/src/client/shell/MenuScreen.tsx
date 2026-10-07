@@ -96,7 +96,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setPersonalizeHomes,
     setPlacingMapVenueId,
     setPlacingProjectId,
-    setProgressDebug,
+    loadProgressDebug,
     setReframingMap,
     setRequestEdits,
     setResetArmed,
@@ -411,7 +411,7 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                 })
               : null}
 
-            {menuPage === "progress" ? renderProgressDebugPage({ error, progressDebug, setProgressDebug }) : null}
+            {menuPage === "progress" ? renderProgressDebugPage({ error, progressDebug, loadProgressDebug }) : null}
 
             {menuPage === "chatlogs"
               ? renderSceneArchivePage({

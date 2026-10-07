@@ -1,19 +1,13 @@
-import type { ProgressDebugView } from "../../../shared/contracts/village.js";
-import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { ProgressDebugPagePorts } from "./page-contracts.js";
 
 export function renderProgressDebugPage(ports: ProgressDebugPagePorts) {
-  const { error, progressDebug, setProgressDebug } = ports;
+  const { error, progressDebug, loadProgressDebug } = ports;
   return (
     <div className={`${ELEMENT_TAG}-panel`}>
       <h2>DEBUG: Progress</h2>
       <p>Engine version: {progressDebug?.engineVersion ?? "loading"}</p>
-      <button
-        type="button"
-        className={`${ELEMENT_TAG}-button`}
-        onClick={() => void request<ProgressDebugView>("/progress/debug").then(setProgressDebug)}
-      >
+      <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => void loadProgressDebug()}>
         Refresh diagnostics
       </button>
       {progressDebug?.backlog.length ? (

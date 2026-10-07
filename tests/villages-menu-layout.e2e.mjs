@@ -104,6 +104,7 @@ const pages = [
   [/^Village Settings$/, "village"],
   [/^General settings$/, "general"],
   [/^DEBUG: Scenes/, "chatlogs"],
+  [/^DEBUG: Progress$/, "progress"],
 ];
 
 try {
@@ -116,9 +117,23 @@ try {
     const mobile = width <= 704 || (width <= 880 && height <= 512);
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
+    let progressReads = 0;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/progress/debug")) {
+        progressReads += 1;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            engineVersion: `synthetic-${progressReads}`,
+            backlog: [],
+            speechProofs: [],
+            tasks: [],
+          }),
+        });
+      }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
         : path.endsWith("/narration")
@@ -151,7 +166,7 @@ try {
                             archive: { total: 0, pendingReviewCount: 0, recent: [] },
                           }
                         : path.endsWith("/rooms/active")
-                          ? { session: null }
+                          ? { session: null, debugDiscardEnabled: true }
                           : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
@@ -190,6 +205,13 @@ try {
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
+      }
+      if (key === "progress") {
+        await expect(main.getByText("Engine version: synthetic-1", { exact: true })).toBeVisible();
+        assert.equal(progressReads, 1, "opening diagnostics starts one read");
+        await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
+        await expect(main.getByText("Engine version: synthetic-2", { exact: true })).toBeVisible();
+        assert.equal(progressReads, 2, "refresh starts one independent read");
       }
       if (process.env.VILLAGES_MENU_SCREENSHOTS && ["villagers", "projects", "village", "memories"].includes(key)) {
         await page.screenshot({

@@ -9,7 +9,7 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { type SetStateAction, useCallback } from "react";
+import { type SetStateAction, useCallback, useRef } from "react";
 
 export function useLoadMemoryLibrary(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
@@ -73,14 +73,14 @@ export function useLoadAgendas(ports: {
 }
 
 export function useRewriteAgenda(ports: {
-  agendaActions: React.RefObject<Map<string, string>>;
   currentSnapshotRef: React.RefObject<VillageSnapshot>;
   retryWork: (job: BackgroundWork) => Promise<void>;
   setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
-  const { agendaActions, currentSnapshotRef, retryWork, setAgendas, setBusy, setError } = ports;
+  const { currentSnapshotRef, retryWork, setAgendas, setBusy, setError } = ports;
+  const agendaActions = useRef(new Map<string, string>());
   return useCallback(
     async (characterId: string) => {
       setBusy(true);

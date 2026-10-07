@@ -2,6 +2,7 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../../../shared/helpers/resident-founding-context.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { freshRowKey, measureImage } from "../../shared/presentation.js";
+import type { SetupVenueDraft } from "../../shared/types.js";
 import {
   newSetupVenue,
   requestSetupMapReceipt,
@@ -10,7 +11,21 @@ import {
 } from "./FoundingPanels.js";
 import { foundingZoneProblem } from "./villages-founding-zones";
 import { playerRoleProblem } from "./villages-player-role.js";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+
+/** Initial values belong to this mounted founding workspace; effects update the same refs. */
+export function useFoundingDraftReferences(ports: {
+  setupBeginningSourceKey: string;
+  setupImageContextKey: string;
+  setupVenues: SetupVenueDraft[];
+  setupAuthoredFields: Record<string, string[]>;
+}) {
+  const setupBeginningSourceKeyRef = useRef(ports.setupBeginningSourceKey);
+  const setupImageContextKeyRef = useRef(ports.setupImageContextKey);
+  const setupVenuesRef = useRef(ports.setupVenues);
+  const setupAuthoredFieldsRef = useRef(ports.setupAuthoredFields);
+  return { setupBeginningSourceKeyRef, setupImageContextKeyRef, setupVenuesRef, setupAuthoredFieldsRef };
+}
 
 export function useFoundingSelectedResidentContexts(ports: {
   setupFoundingVillagerIds: string[];

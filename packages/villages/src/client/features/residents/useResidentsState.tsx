@@ -11,6 +11,7 @@ import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useResidentsState() {
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogEntry[] | null>(null);
   const [search, setSearch] = useState("");
   /** Null distinguishes a catalog still loading from an empty catalog. */
@@ -107,6 +108,8 @@ export function useResidentsState() {
    */
   const portraitsAsked = useRef<Set<string>>(new Set());
   return {
+    pickerOpen,
+    setPickerOpen,
     catalog,
     setCatalog,
     search,

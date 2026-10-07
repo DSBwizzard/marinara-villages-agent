@@ -10,5 +10,5 @@ export type EventsPagePorts = {
 export type ProgressDebugPagePorts = {
   readonly error: string;
   readonly progressDebug: ProgressDebugView | null;
-  readonly setProgressDebug: React.Dispatch<React.SetStateAction<ProgressDebugView | null>>;
+  readonly loadProgressDebug: () => Promise<void>;
 };

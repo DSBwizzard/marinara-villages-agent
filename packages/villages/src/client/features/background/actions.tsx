@@ -1,14 +1,14 @@
 import type { BackgroundWork, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 export function useResidentsRetryWork(ports: {
-  backgroundRetryActions: React.RefObject<Map<string, { id: string; attempt: number }>>;
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
   setSnapshot: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageSnapshot>>;
 }) {
-  const { backgroundRetryActions, loadAgendas, setSnapshot } = ports;
+  const { loadAgendas, setSnapshot } = ports;
+  const backgroundRetryActions = useRef(new Map<string, { id: string; attempt: number }>());
   return useCallback(
     async (job: BackgroundWork) => {
       let action = backgroundRetryActions.current.get(job.id);
