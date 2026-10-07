@@ -202,8 +202,8 @@ async function scopedDispatch() {
   const a = fixture("scoped-image-A"),
     b = fixture("scoped-image-B");
   const ownerA = createActivationScope();
-  const hostA = { documents: a.documents, logger: a.ports.villagesLogger() } as CapabilityRuntimeHost;
-  const hostB = { documents: b.documents, logger: b.ports.villagesLogger() } as CapabilityRuntimeHost;
+  const hostA = { persistence: { documents: a.documents }, logger: a.ports.villagesLogger() } as CapabilityRuntimeHost;
+  const hostB = { persistence: { documents: b.documents }, logger: b.ports.villagesLogger() } as CapabilityRuntimeHost;
   const cleanupA = ownerA.run(() => configureVillagesRuntime(hostA));
   const releaseA = ownerA.run(() =>
     configureTownMapGeneration(
