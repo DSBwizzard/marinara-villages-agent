@@ -3,10 +3,11 @@ import {
   villagesDocuments,
   villagesLogger,
   villagesResources,
+  villagesRuntimeEpoch,
 } from "../adapters/engine/runtime-host.js";
 import { configureNativeSchedules } from "../adapters/engine/native-schedules.js";
 import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
-import { configureGlobalGallery } from "../adapters/engine/global-gallery.js";
+import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
 import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
 import {
   createActivationScope,
@@ -43,11 +44,14 @@ import { generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
 import { createSpriteManager } from "../features/media/sprite-manager-service.js";
 import { configureSpriteManager } from "../features/media/sprite-manager.js";
-import { createSpriteWrites, type SpriteWrites } from "../features/media/sprite-writes.js";
+import { generateVillageImage, resolveVillageImageConnectionId } from "../features/media/image-generation.js";
+import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
+import { configureResidentSignatures } from "../features/residents/resident-signature.js";
+import { prepareSignatureImage } from "../features/residents/signature-image.js";
 import { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
 import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
-import { createSceneWork, createSceneNavigation, type SceneNavigation } from "../features/scenes/scene-work-service.js";
+import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork } from "../features/scenes/scene-work.js";
 import {
   activeVenueSession,
@@ -75,7 +79,12 @@ import {
   createWishAttemptClocks,
 } from "../features/residents/wishes/wish-attempt-clocks.js";
 import { wishCheckBackgroundHandler } from "../features/residents/wishes/wish-progress.js";
-import { configureVillageStateService, mutateVillageState, readVillageState } from "../features/world/village-store.js";
+import {
+  configureVillageStateService,
+  mutateVillageState,
+  readVillageState,
+  readVillageAuthority,
+} from "../features/world/village-store.js";
 import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
 import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import { configureVenueCoordinator } from "../jobs/venue-coordinator.js";
@@ -107,30 +116,15 @@ import {
   settleBackgroundWork,
 } from "../jobs/background-work.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
+import { randomUUID } from "node:crypto";
+import { backendWorkFor } from "./backend-work.js";
 
-const navigationByStore = new WeakMap<object, SceneNavigation>();
-const spriteWritesByStore = new WeakMap<object, SpriteWrites>();
-function spriteWritesFor(identity: object | undefined): SpriteWrites {
-  if (!identity) return createSpriteWrites();
-  let writes = spriteWritesByStore.get(identity);
-  if (!writes) {
-    writes = createSpriteWrites();
-    spriteWritesByStore.set(identity, writes);
-  }
-  return writes;
-}
-function sceneNavigationFor(identity: object | undefined): SceneNavigation {
-  if (!identity) return createSceneNavigation();
-  let navigation = navigationByStore.get(identity);
-  if (!navigation) {
-    navigation = createSceneNavigation();
-    navigationByStore.set(identity, navigation);
-  }
-  return navigation;
-}
+// A process identity preserves the existing saved-attempt recovery policy.
+const signatureProcessOwner = randomUUID();
 
 /** Connect an application without starting jobs; activation owns the returned release. */
-function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?: object) {
+function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: object) {
+  const backendWork = backendWorkFor(backendIdentity ?? next.persistence?.documents);
   const releaseMetrics = configureMetricsContext(createMetricsContext());
   const release = configureRuntimeHost(next);
   const releaseNativeSchedules = configureNativeSchedules(createNativeSchedules({ villagesResources, villagesLogger }));
@@ -168,9 +162,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
       mutateDocument: createDocumentMutator(villagesDocuments),
     }),
   );
-  const releaseSceneWork = configureSceneWork(
-    createSceneWork(sceneNavigationFor(navigationIdentity ?? next.persistence?.documents)),
-  );
+  const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
   const releaseWishClocks = configureWishAttemptClocks(createWishAttemptClocks());
   const releaseQueries = configureSceneQueries({
     activeVenueSession,
@@ -199,7 +191,21 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
       readSpriteFile: (url) => fetch(villageEngineBaseUrl() + url),
       deleteVillageSpriteFile,
       villagesLogger,
-      writes: spriteWritesFor(navigationIdentity ?? next.persistence?.documents),
+      writes: backendWork.spriteWrites,
+    }),
+  );
+  const releaseSignatures = configureResidentSignatures(
+    createResidentSignatures({
+      owner: signatureProcessOwner,
+      tasks: backendWork.signatureTasks,
+      villagesDocuments,
+      villagesRuntimeEpoch,
+      readVillageAuthority,
+      mutateVillageState,
+      resolveVillageImageConnectionId,
+      generateVillageImage,
+      prepareSignatureImage,
+      uploadVillageGalleryImage,
     }),
   );
   const releaseSettings = configureVillageSettings(
@@ -285,6 +291,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
     releaseZoneEdits();
     releaseVenueCommands();
     releaseSettings();
+    releaseSignatures();
     releaseSprites();
     releaseVillageState();
     releaseRelationships();
@@ -305,12 +312,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
 }
 
 /** Production uses its explicit owner; direct callers retain synchronous legacy selection. */
-export function configureVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?: object): () => void {
-  if (scopedActivation()) return connectVillagesRuntime(next, navigationIdentity).releaseGraph;
+export function configureVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: object): () => void {
+  if (scopedActivation()) return connectVillagesRuntime(next, backendIdentity).releaseGraph;
   const scope = createActivationScope();
   let graph: ReturnType<typeof connectVillagesRuntime>;
   try {
-    graph = scope.run(() => connectVillagesRuntime(next, navigationIdentity));
+    graph = scope.run(() => connectVillagesRuntime(next, backendIdentity));
   } catch (error) {
     scope.dispose();
     throw error;

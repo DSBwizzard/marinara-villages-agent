@@ -280,7 +280,8 @@ async function main() {
     await runtimeGate;
     releaseReplacement = configureVillagesRuntime(host as any);
     unblock();
-    assert.equal((await stopped).status, "interrupted");
+    await assert.rejects(stopped, /runtime is not configured/);
+    assert.equal((await readResidentSignature("mara")).status, "interrupted");
     assert.equal(uploads, beforeUploads, "Package replacement fences late gallery and Village writes");
     console.log(
       "Villager signatures: stable handwriting, transparent crop, persistence, free recovery, explicit retries and late-effect fences passed",
