@@ -1,4 +1,6 @@
 import type { Handler } from "../../../domain/models/background-model.js";
+import { activationScope } from "../../../adapters/engine/activation-scope.js";
+import { wishAttemptClocks, readWishAttemptClock } from "./wish-attempt-clocks.js";
 import { villagerCardFromSnapshot } from "../../../adapters/engine/catalog.js";
 import { readVillageLore } from "../../../adapters/engine/lorebooks.js";
 import { villagesDebugAgentsEnabled, villagesLogger } from "../../../adapters/engine/runtime-host.js";
@@ -48,7 +50,6 @@ import { mutateVillageState, readVillageState } from "../../world/village-store.
 import { flushWishOutcomes, previousFulfilledNeed, readWishOutcome } from "./wish-archive.js";
 import type { CapabilityLanguageModelCompletion, CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
-const clocks = new Map<string, () => Date>();
 const MAX_ACTIVE = 2;
 
 /** Explicit player retirement has no fulfillment award and no model request. */
@@ -557,7 +558,7 @@ export const wishBackgroundHandler: Handler = {
     const owner = state.villagers.find((entry) => entry.characterId === input.characterId)!;
     if (!result.resetRefill && owner.agenda && result.routineIdea)
       addRoutineIdea(owner.agenda, result.routineIdea, owner, state);
-    const committedAt = (clocks.get(input.id) ?? (() => new Date()))();
+    const committedAt = (readWishAttemptClock(input.id) ?? (() => new Date()))();
     const attempt = structuredClone(result);
     // A deliberate retry consumes the current allowance, even when its paid proposal was saved on an earlier day.
     if (context.retrying || attempt.resetRefill) {
@@ -589,6 +590,17 @@ export async function processWishAttempt(
   now: Date,
   clock?: () => Date,
 ): Promise<void> {
+  const owner = activationScope();
+  const work = () => processWishAttemptInActivation(characterId, id, now, clock);
+  return owner ? owner.run(work) : work();
+}
+async function processWishAttemptInActivation(
+  characterId: string,
+  id: string,
+  now: Date,
+  clock?: () => Date,
+): Promise<void> {
+  const clocks = wishAttemptClocks();
   const state = await readVillageState(),
     resident = state.villagers.find((entry) => entry.characterId === characterId);
   const job = resident?.wishLifecycle?.attempt;
@@ -617,7 +629,7 @@ export async function processWishAttempt(
     });
     return;
   }
-  if (clock) clocks.set(id, clock);
+  if (clock) clocks.remember(id, clock);
   const interrupted = legacyInterrupted;
   if (interrupted)
     await mutateVillageState((live) => {
@@ -648,7 +660,7 @@ export async function processWishAttempt(
     try {
       await settleBackgroundWork();
     } finally {
-      clocks.delete(id);
+      clocks.forget(id);
     }
   }
 }
@@ -772,6 +784,11 @@ export async function reserveWishAttempts(now: Date): Promise<{ characterId: str
 }
 
 export async function reconcileWishLifecycle(now: Date, background = true, clock?: () => Date): Promise<void> {
+  const owner = activationScope();
+  const work = () => reconcileWishLifecycleInActivation(now, background, clock);
+  return owner ? owner.run(work) : work();
+}
+async function reconcileWishLifecycleInActivation(now: Date, background = true, clock?: () => Date): Promise<void> {
   try {
     await flushWishOutcomes();
   } catch (error) {

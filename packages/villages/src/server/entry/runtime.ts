@@ -60,6 +60,10 @@ import {
 } from "../features/world/village.js";
 import { mailBackgroundHandler } from "../features/venues/venue-mailbox.js";
 import { wishBackgroundHandler } from "../features/residents/wishes/wish-lifecycle.js";
+import {
+  configureWishAttemptClocks,
+  createWishAttemptClocks,
+} from "../features/residents/wishes/wish-attempt-clocks.js";
 import { wishCheckBackgroundHandler } from "../features/residents/wishes/wish-progress.js";
 import { configureVillageStateService, mutateVillageState, readVillageState } from "../features/world/village-store.js";
 import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
@@ -147,6 +151,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
   const releaseSceneWork = configureSceneWork(
     createSceneWork(sceneNavigationFor(navigationIdentity ?? next.persistence?.documents)),
   );
+  const releaseWishClocks = configureWishAttemptClocks(createWishAttemptClocks());
   const releaseQueries = configureSceneQueries({
     activeVenueSession,
     readProjectTurnEvidence,
@@ -250,6 +255,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?
     releaseVillageState();
     releaseRelationships();
     releaseQueries();
+    releaseWishClocks();
     releaseSceneWork();
     releaseDebug();
     releaseInterpretationDiagnostics();
