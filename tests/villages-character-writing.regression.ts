@@ -16,7 +16,7 @@ import { deriveVillageMoment } from "../packages/villages/src/server/domain/rule
 import {
   previewVillagerRefresh,
   applyVillagerRefresh,
-} from "../packages/villages/src/server/features/world/village.js";
+} from "../packages/villages/src/server/features/residents/resident-cards.js";
 import {
   fitVenueWritingMessages,
   venueCardProfile,

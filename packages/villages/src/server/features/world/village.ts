@@ -5,7 +5,6 @@ import {
   findVillagerCard,
   listVillagerCards,
   readEffectiveVillagerCard,
-  toCatalogEntry,
 } from "../../adapters/engine/catalog.js";
 import { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import { readVillageLore } from "../../adapters/engine/lorebooks.js";
@@ -18,7 +17,6 @@ import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type {
   VillageAgenda,
   VillageAgendaView,
-  VillageCatalogEntry,
   VillageChronicleEntry,
   VillageChronicleEntryView,
   VillageOpportunity,
@@ -27,7 +25,6 @@ import type {
   VillageSnapshot,
   VillageState,
   VillageVenue,
-  VillageVillagerRefreshPreview,
 } from "../../domain/models/world.js";
 import { agendaAt, agendaDayPlan, unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "../../domain/rules/agenda-week.js";
@@ -78,7 +75,7 @@ import {
   villageFoundingSetting,
 } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, keepAgendaPlaces, planRoutineDays } from "../../domain/rules/resident-agenda.js";
-import { snapshotContent, snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
+import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { readFoundingResidentContexts } from "../../domain/rules/resident-founding-context.js";
 import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
@@ -235,13 +232,6 @@ export async function refreshPlayerPersona(): Promise<boolean> {
     state.playerPersonaMissing = next.missing;
   });
   return true;
-}
-
-/** Every card the player owns, flagged with whether it already lives here. */
-export async function buildVillageCatalog(): Promise<VillageCatalogEntry[]> {
-  const [village, cards] = await Promise.all([readVillageState(), listVillagerCards()]);
-  const resident = new Set(village.villagers.map((villager) => villager.characterId));
-  return cards.map((card) => toCatalogEntry(card, resident.has(card.id)));
 }
 
 /**
@@ -616,55 +606,6 @@ export async function addVillager(characterId: string): Promise<void> {
   if (!alreadyResident) {
     await queueVillagerAgenda(characterId);
   }
-}
-
-export async function previewVillagerRefresh(characterId: string): Promise<VillageVillagerRefreshPreview> {
-  const village = await readVillageState();
-  const villager = village.villagers.find((entry) => entry.characterId === characterId);
-  if (!villager) throw notFound("That villager does not live here.");
-  const card = await findVillagerCard(characterId);
-  const proposed = card ? snapshotFromCard(card, villager.cardSnapshot.revision + 1) : null;
-  return {
-    characterId,
-    current: villager.cardSnapshot,
-    proposed,
-    sourceAvailable: card !== null,
-    changed: proposed !== null && snapshotContent(proposed) !== snapshotContent(villager.cardSnapshot),
-  };
-}
-
-export async function applyVillagerRefresh(characterId: string): Promise<VillageSnapshot> {
-  const village = await readVillageState();
-  const villager = village.villagers.find((entry) => entry.characterId === characterId);
-  if (!villager) throw notFound("That villager does not live here.");
-  const card = await findVillagerCard(characterId);
-  if (!card) throw badRequest("That character card is no longer in your library.");
-  const proposed = snapshotFromCard(card, villager.cardSnapshot.revision + 1);
-  const proseChanged =
-    snapshotContent({
-      ...villager.cardSnapshot,
-      nameColor: proposed.nameColor,
-      dialogueColor: proposed.dialogueColor,
-    }) !== snapshotContent(proposed);
-  if (
-    snapshotContent(proposed) === snapshotContent(villager.cardSnapshot) &&
-    villager.cardSnapshot.sourceStatus === "available"
-  ) {
-    return buildVillageSnapshot();
-  }
-  await mutateVillageState((state) => {
-    const resident = state.villagers.find((entry) => entry.characterId === characterId);
-    if (!resident) return;
-    resident.cardSnapshot = {
-      ...proposed,
-    };
-    if (proseChanged) {
-      resident.agenda = unwrittenVillageAgenda(state.venues, card.name);
-      resident.remap = null;
-      resident.remapFailure = null;
-    }
-  });
-  return buildVillageSnapshot();
 }
 
 /** Remove a villager from the village roster. */

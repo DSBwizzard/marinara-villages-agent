@@ -1,3 +1,5 @@
+import { createResidentCards } from "../features/residents/resident-card-service.js";
+import { configureResidentCards } from "../features/residents/resident-cards.js";
 import {
   configureRuntimeHost,
   villagesDocuments,
@@ -103,7 +105,13 @@ import { systemInterpretations } from "../features/generation/system-interpretat
 import { villagesConnectionIdFor } from "../features/settings/connections.js";
 import { createPersonaQueries } from "../features/settings/persona-service.js";
 import { configurePersonaQueries, readLinkedPersona } from "../features/settings/personas.js";
-import { findPlayerPersona, listPlayerPersonas } from "../adapters/engine/catalog.js";
+import {
+  findPlayerPersona,
+  listPlayerPersonas,
+  findVillagerCard,
+  listVillagerCards,
+  toCatalogEntry,
+} from "../adapters/engine/catalog.js";
 import { createVillageSettings } from "../features/settings/village-settings-service.js";
 import { configureVillageSettings } from "../features/settings/village-settings.js";
 import { runVillageBootstrap } from "../features/world/village.js";
@@ -183,6 +191,16 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseVillageState = configureVillageStateService(
     createVillageStateService(createVillageRepository(villagesDocuments), worldRelationships),
+  );
+  const releaseResidentCards = configureResidentCards(
+    createResidentCards({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      listVillagerCards,
+      findVillagerCard,
+      toCatalogEntry,
+    }),
   );
   const releaseSprites = configureSpriteManager(
     createSpriteManager({
@@ -296,6 +314,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSettings();
     releaseSignatures();
     releaseSprites();
+    releaseResidentCards();
     releaseVillageState();
     releaseRelationships();
     releaseQueries();
