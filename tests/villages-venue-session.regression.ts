@@ -81,9 +81,9 @@ import {
   reconcileVillage,
   resetVillage,
   completeVillageResidence,
-  proposeResidenceSpaceEdit,
   setVillageSendOnEnter,
 } from "../packages/villages/src/server/features/world/village.js";
+import { proposeResidenceSpaceEdit } from "../packages/villages/src/server/features/venues/zone-edits.js";
 import { updateVillageVenue, setVillageVenueImage } from "../packages/villages/src/server/features/venues/services.js";
 import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 

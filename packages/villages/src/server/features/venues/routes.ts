@@ -7,11 +7,10 @@ import {
   decideVillageHomeUpgrade,
   decideVillageResidence,
   decideVillageVenueRequest,
-  proposeResidenceSpaceEdit,
   proposeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
-  updateVillageZone,
 } from "../world/village.js";
+import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 import {
   changeVenueAccess,
   createVillageVenue,

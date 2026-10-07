@@ -3,6 +3,11 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import {
+  createVenueZoneEdits,
+  type VenueZoneEditPorts,
+} from "../packages/villages/src/server/features/venues/zone-edit-service.js";
 import {
   createVenueCommands,
   type VenueCommandPorts,
@@ -149,6 +154,64 @@ async function main() {
     /scenery changed/,
   );
   assert.deepEqual(retry.state.venues[0].presentation.image, newImage);
+  const edits = fixture("Edits");
+  const editVenue = edits.state.venues[0];
+  editVenue.layoutVersion = 1;
+  editVenue.workerIds = ["resident"];
+  editVenue.access = undefined; // Legacy access still requires the recorded controller grant.
+  editVenue.zones = [
+    {
+      ...defaultVenueSpace("gathering", "Original workspace."),
+      id: "staff",
+      kind: "staff",
+      name: "Workroom",
+      controllerIds: ["resident"],
+      seen: true,
+      image: newImage,
+    },
+  ];
+  const editPorts: VenueZoneEditPorts = {
+    ...edits.ports,
+    sceneQueries: () => {
+      edits.events.push("queries");
+      return {
+        activeVenueSession: async () => {
+          edits.events.push("scene");
+          return {
+            id: "scene",
+            placeId: "venue",
+            zoneId: "staff",
+            area: "public",
+            privateOwnerId: "",
+            startedAt: "2026-10-01T12:00:00.000Z",
+            zoneGrants: [{ zoneId: "staff", controllerId: "resident" }],
+          };
+        },
+      };
+    },
+  };
+  const zoneEdits = createVenueZoneEdits(editPorts);
+  await zoneEdits.updateVillageZone("venue", "staff", { description: "Proposed workspace." });
+  assert.deepEqual(edits.events, ["read", "queries", "scene", "mutate", "snapshot"]);
+  assert.equal(
+    editVenue.zones[0].description,
+    "Original workspace.",
+    "resident-controlled edits remain proposals until approval",
+  );
+  const proposal = editVenue.editProposals![0];
+  const result = await zoneEdits.applyResidenceEditApproval("venue", proposal.id, "resident", true);
+  assert.equal(result, undefined, "approval preserves its void contract and does not build a snapshot");
+  assert.equal(editVenue.zones[0].description, "Proposed workspace.");
+  assert.deepEqual(editVenue.zones[0].image, newImage);
+  assert.equal(edits.events.at(-1), "mutate");
+  assert.equal(editVenue.editProposals!.length, 0);
+
+  await zoneEdits.proposeResidenceSpaceEdit("venue", { zoneId: "staff", description: "Obsolete proposal." });
+  const staleProposal = editVenue.editProposals![0];
+  editVenue.zones[0].state.updatedAt = "2026-10-02T12:00:00.000Z";
+  await zoneEdits.applyResidenceEditApproval("venue", staleProposal.id, "resident", true);
+  assert.equal(staleProposal.declined, true);
+  assert.equal(editVenue.zones[0].description, "Proposed workspace.", "stale approval cannot replace newer Zone state");
   console.log(
     "Venue service ports, overlapping independent stores, binding ownership, Scene timing and retry fences passed.",
   );

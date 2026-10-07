@@ -14,6 +14,8 @@ import {
 import { configureWorldRelationships } from "../features/world/world-relationships.js";
 import { configureVenueCommands } from "../features/venues/services.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
+import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
+import { configureVenueZoneEdits } from "../features/venues/zone-edits.js";
 import { buildVillageSnapshot } from "../features/world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
@@ -39,7 +41,11 @@ export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => voi
   const releaseVenueCommands = configureVenueCommands(
     createVenueCommands({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
   );
+  const releaseZoneEdits = configureVenueZoneEdits(
+    createVenueZoneEdits({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
+  );
   return () => {
+    releaseZoneEdits();
     releaseVenueCommands();
     releaseRelationships();
     releaseQueries();

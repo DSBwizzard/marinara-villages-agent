@@ -213,12 +213,8 @@ import {
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { recordVillagerVenueImprovement } from "../venues/venue-mailbox.js";
 import { mutateVillageState, readVillageSnapshot, readVillageState } from "../world/village-store.js";
-import {
-  applyResidenceEditApproval,
-  decideVillageResidence,
-  proposeVillageResidence,
-  queueVillageVenueRequest,
-} from "../world/village.js";
+import { decideVillageResidence, proposeVillageResidence, queueVillageVenueRequest } from "../world/village.js";
+import { applyResidenceEditApproval } from "../venues/zone-edits.js";
 import { memoryForVillager } from "./chat.js";
 import { dispatchExchange } from "./exchange-processing.js";
 import { interpretRoomReply } from "./room-interpretation.js";

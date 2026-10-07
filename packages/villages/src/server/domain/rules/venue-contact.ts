@@ -83,7 +83,10 @@ export function contactPosition(scene: VenueScene, characterId: string): string 
     ""
   );
 }
-export function sceneAccessContext(scene: VenueScene, state: VillageState): AccessContext {
+export function sceneAccessContext(
+  scene: Pick<VenueScene, "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId">,
+  state: VillageState,
+): AccessContext {
   return {
     sceneId: scene.id,
     at: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),

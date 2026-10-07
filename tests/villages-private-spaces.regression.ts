@@ -25,7 +25,7 @@ import {
   sceneryImageKey,
   readSceneryStyle,
 } from "../packages/villages/src/server/domain/rules/scenery-context.js";
-import { applyResidenceEditApproval } from "../packages/villages/src/server/features/world/village.js";
+import { applyResidenceEditApproval } from "../packages/villages/src/server/features/venues/zone-edits.js";
 import {
   assertVenueImageAccess,
   setVillageVenueImage,
