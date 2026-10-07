@@ -1,3 +1,5 @@
+import { activationScope } from "../../adapters/engine/activation-scope.js";
+import { sceneWork } from "./scene-work.js";
 import {
   initialStaging,
   replayStaging,
@@ -2162,12 +2164,8 @@ async function refreshZoneParticipants(session: VenueScene, completing = false):
   });
 }
 
-let navigationQueue: Promise<unknown> = Promise.resolve();
-const movingSessions = new Set<string>();
 function serializedNavigation<T>(operation: () => Promise<T>): Promise<T> {
-  const task = navigationQueue.then(operation, operation);
-  navigationQueue = task.catch(() => {});
-  return task;
+  return sceneWork().serializeNavigation(operation);
 }
 export async function moveVenueZone(
   sessionId: string,
@@ -2176,17 +2174,30 @@ export async function moveVenueZone(
   retryOfAttemptId?: string,
   operationId?: string,
 ): Promise<VenueScene> {
+  return withSceneActivation(() =>
+    moveVenueZoneInActivation(sessionId, zoneId, expectedSceneRevision, retryOfAttemptId, operationId),
+  );
+}
+
+async function moveVenueZoneInActivation(
+  sessionId: string,
+  zoneId: string,
+  expectedSceneRevision?: number,
+  retryOfAttemptId?: string,
+  operationId?: string,
+): Promise<VenueScene> {
   operationId ??= `move:${zoneId}:${expectedSceneRevision ?? (await readSession(sessionId)).sceneRevision}`;
-  return coordinateVenue(sessionId, operationId, "move", { zoneId }, expectedSceneRevision, retryOfAttemptId, () =>
-    serializedNavigation(async () => {
-      movingSessions.add(sessionId);
+  return coordinateVenue(sessionId, operationId, "move", { zoneId }, expectedSceneRevision, retryOfAttemptId, () => {
+    const work = sceneWork();
+    return work.serializeNavigation(async () => {
+      work.markMovement(sessionId);
       try {
         return await moveVenueZoneOnce(sessionId, zoneId);
       } finally {
-        movingSessions.delete(sessionId);
+        work.clearMovement(sessionId);
       }
-    }),
-  );
+    });
+  });
 }
 async function moveVenueZoneOnce(
   sessionId: string,
@@ -2398,6 +2409,19 @@ export function enterVenue(
   requestedZoneId?: string,
   expectedSceneRevision?: number,
 ): Promise<VenueScene> {
+  return withSceneActivation(() =>
+    enterVenueInActivation(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId, expectedSceneRevision),
+  );
+}
+
+function enterVenueInActivation(
+  placeId: string,
+  spaceClass?: VillageVenueClass,
+  privateOwnerId = "",
+  entryArea?: "outside" | "public" | "shared" | "private",
+  requestedZoneId?: string,
+  expectedSceneRevision?: number,
+): Promise<VenueScene> {
   return serializedNavigation(() =>
     enterVenueOnce(placeId, spaceClass, privateOwnerId, entryArea, requestedZoneId, expectedSceneRevision),
   );
@@ -2569,6 +2593,14 @@ export async function enterResidencePrivateSpace(
   ownerId: string,
   expectedSceneRevision?: number,
 ): Promise<VenueScene> {
+  return withSceneActivation(() => enterResidencePrivateSpaceInActivation(sessionId, ownerId, expectedSceneRevision));
+}
+
+async function enterResidencePrivateSpaceInActivation(
+  sessionId: string,
+  ownerId: string,
+  expectedSceneRevision?: number,
+): Promise<VenueScene> {
   const session = await readSession(sessionId);
   const village = await readVillageState();
   const venue = village.venues.find((venue) => venue.id === session.placeId);
@@ -2577,7 +2609,12 @@ export async function enterResidencePrivateSpace(
 }
 
 export async function greetVenue(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
-  const inFlight = greetingTasks.get(id);
+  return withSceneActivation(() => greetVenueInActivation(id, retryOfAttemptId));
+}
+
+async function greetVenueInActivation(id: string, retryOfAttemptId?: string): Promise<VenueScene> {
+  const work = sceneWork();
+  const inFlight = work.greetingTask(id);
   if (inFlight) return inFlight.task;
   const started = performance.now();
   const controller = new AbortController();
@@ -2596,7 +2633,7 @@ export async function greetVenue(id: string, retryOfAttemptId?: string): Promise
   const task = coordinateVenue(id, "greeting", "greet", {}, undefined, retryOfAttemptId, () =>
     Promise.race([greetVenueOnce(id, signal, trace), aborted]),
   );
-  greetingTasks.set(id, { task, abort: () => controller.abort() });
+  work.rememberGreeting(id, task, () => controller.abort());
   try {
     return await task;
   } catch (error) {
@@ -2615,11 +2652,9 @@ export async function greetVenue(id: string, retryOfAttemptId?: string): Promise
     throw error;
   } finally {
     signal.removeEventListener("abort", onAbort);
-    greetingTasks.delete(id);
+    work.forgetGreeting(id);
   }
 }
-
-const greetingTasks = new Map<string, { task: Promise<VenueScene>; abort: () => void }>();
 
 async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTrace): Promise<VenueScene> {
   const readStarted = performance.now();
@@ -2706,6 +2741,11 @@ async function greetVenueOnce(id: string, signal: AbortSignal, trace: GreetingTr
 }
 
 export async function continueVenueWithoutGreeting(id: string): Promise<VenueScene> {
+  return withSceneActivation(() => continueVenueWithoutGreetingInActivation(id));
+}
+
+async function continueVenueWithoutGreetingInActivation(id: string): Promise<VenueScene> {
+  const work = sceneWork();
   await cancelVenueOperation(id);
   await requireLiveVenueSession(id);
   const session = await changeSession(id, (state) => {
@@ -2714,7 +2754,7 @@ export async function continueVenueWithoutGreeting(id: string): Promise<VenueSce
     if (state.status === "opening") state.status = "active";
     else if (state.status !== "active") throw conflict("That Scene has already ended.");
   });
-  greetingTasks.get(id)?.abort();
+  work.abortGreeting(id);
   return session;
 }
 
@@ -3171,7 +3211,7 @@ async function finishActReply(
 }
 
 async function sendVenueTurnOnce(input: VenueTurnInput) {
-  if (movingSessions.has(input.sessionId)) throw conflict("Wait for zone navigation to finish before sending.");
+  if (sceneWork().isMoving(input.sessionId)) throw conflict("Wait for zone navigation to finish before sending.");
   let session = await readSession(input.sessionId);
   const compatibilityWishCheck = input.mode === "fulfill";
   const requestMode = input.mode === "act" || input.mode === "fulfill" ? input.mode : undefined;
@@ -4680,10 +4720,15 @@ export async function recordVenueAction(
 }
 
 export async function discardVenueVisitDebug(id: string): Promise<void> {
+  return withSceneActivation(() => discardVenueVisitDebugInActivation(id));
+}
+
+async function discardVenueVisitDebugInActivation(id: string): Promise<void> {
   if (!villagesDebugAgentsEnabled()) throw notFound("That debug action is unavailable.");
+  const work = sceneWork();
   await cancelVenueOperation(id);
   const session = await requireLiveVenueSession(id);
-  greetingTasks.get(id)?.abort();
+  work.abortGreeting(id);
   await changeSession(id, (state) => {
     if (state.status === "closed") return;
     state.status = "closed";
@@ -4892,4 +4937,9 @@ export async function recoverVenueSceneWork() {
         { recovery: true },
       );
   });
+}
+
+function withSceneActivation<T>(work: () => T): T {
+  const owner = activationScope();
+  return owner ? owner.run(work) : work();
 }

@@ -76,7 +76,22 @@ export async function startVillagesApplication(
 ) {
   if (services !== applicationServices) return assembleApplication(context, services);
   const scope = createActivationScope();
-  return scope.run(() => assembleApplication(context, { ...services, routes: scope.bind(services.routes) }, scope));
+  const navigationIdentity = context.app?.db;
+  return scope.run(() =>
+    assembleApplication(
+      context,
+      {
+        ...services,
+        configureRuntime: (runtime) =>
+          configureVillagesRuntime(
+            runtime,
+            navigationIdentity && typeof navigationIdentity === "object" ? navigationIdentity : undefined,
+          ),
+        routes: scope.bind(services.routes),
+      },
+      scope,
+    ),
+  );
 }
 
 async function assembleApplication(

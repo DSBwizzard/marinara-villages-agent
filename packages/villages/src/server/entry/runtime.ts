@@ -37,6 +37,8 @@ import { generateVillageTownMap } from "../features/media/town-map-image.js";
 import { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
 import { persistRelationshipAuthority, readRelationshipState } from "../features/residents/relationship-store.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
+import { createSceneWork, createSceneNavigation, type SceneNavigation } from "../features/scenes/scene-work-service.js";
+import { configureSceneWork } from "../features/scenes/scene-work.js";
 import {
   activeVenueSession,
   listVenueVisits,
@@ -92,8 +94,19 @@ import {
 } from "../jobs/background-work.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
+const navigationByStore = new WeakMap<object, SceneNavigation>();
+function sceneNavigationFor(identity: object | undefined): SceneNavigation {
+  if (!identity) return createSceneNavigation();
+  let navigation = navigationByStore.get(identity);
+  if (!navigation) {
+    navigation = createSceneNavigation();
+    navigationByStore.set(identity, navigation);
+  }
+  return navigation;
+}
+
 /** Connect an application without starting jobs; activation owns the returned release. */
-function connectVillagesRuntime(next: CapabilityRuntimeHost) {
+function connectVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?: object) {
   const releaseMetrics = configureMetricsContext(createMetricsContext());
   const release = configureRuntimeHost(next);
   const releaseNativeSchedules = configureNativeSchedules(createNativeSchedules({ villagesResources, villagesLogger }));
@@ -130,6 +143,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
       venueDebugContext,
       mutateDocument: createDocumentMutator(villagesDocuments),
     }),
+  );
+  const releaseSceneWork = configureSceneWork(
+    createSceneWork(sceneNavigationFor(navigationIdentity ?? next.persistence?.documents)),
   );
   const releaseQueries = configureSceneQueries({
     activeVenueSession,
@@ -234,6 +250,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
     releaseVillageState();
     releaseRelationships();
     releaseQueries();
+    releaseSceneWork();
     releaseDebug();
     releaseInterpretationDiagnostics();
     releaseUsage();
@@ -248,12 +265,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
 }
 
 /** Production uses its explicit owner; direct callers retain synchronous legacy selection. */
-export function configureVillagesRuntime(next: CapabilityRuntimeHost): () => void {
-  if (scopedActivation()) return connectVillagesRuntime(next).releaseGraph;
+export function configureVillagesRuntime(next: CapabilityRuntimeHost, navigationIdentity?: object): () => void {
+  if (scopedActivation()) return connectVillagesRuntime(next, navigationIdentity).releaseGraph;
   const scope = createActivationScope();
   let graph: ReturnType<typeof connectVillagesRuntime>;
   try {
-    graph = scope.run(() => connectVillagesRuntime(next));
+    graph = scope.run(() => connectVillagesRuntime(next, navigationIdentity));
   } catch (error) {
     scope.dispose();
     throw error;
