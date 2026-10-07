@@ -45,12 +45,25 @@ export function createPersonaCache({ readVillageState, mutateVillageState, findP
       next.identity === village.playerPersonaIdentity &&
       next.missing === village.playerPersonaMissing;
     if (unchanged) return false;
+    let wrote = false;
     await mutateVillageState((state) => {
-      state.playerPersonaName = next.name;
-      state.playerPersonaIdentity = next.identity;
+      wrote = false;
+      if (state.playerPersonaId !== village.playerPersonaId) return;
+      // A missing source retains the live cache, including concurrent updates.
+      const name = persona ? next.name : state.playerPersonaName;
+      const identity = persona ? next.identity : state.playerPersonaIdentity;
+      if (
+        name === state.playerPersonaName &&
+        identity === state.playerPersonaIdentity &&
+        next.missing === state.playerPersonaMissing
+      )
+        return;
+      state.playerPersonaName = name;
+      state.playerPersonaIdentity = identity;
       state.playerPersonaMissing = next.missing;
+      wrote = true;
     });
-    return true;
+    return wrote;
   }
   return { refreshPlayerPersona };
 }
