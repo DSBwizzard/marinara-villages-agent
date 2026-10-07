@@ -7,7 +7,7 @@ import {
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { publicSceneRoutes } from "../packages/villages/src/server/adapters/http/public-scene-routes.js";
-import { SESSION_PREFIX, SESSION_KIND } from "../packages/villages/src/server/adapters/storage/scene-store.js";
+import { SESSION_PREFIX, SESSION_KIND } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";

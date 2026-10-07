@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const routes = villageRouteSource();
 const ui = clientImplementation();
-const sceneStore = readFileSync(resolve(root, "packages/villages/src/server/adapters/storage/scene-store.ts"), "utf8");
+const sceneStore = readFileSync(resolve(root, "packages/villages/src/server/adapters/storage/scene-slots.ts"), "utf8");
 const sceneModel = readFileSync(resolve(root, "packages/villages/src/server/domain/models/scene-model.ts"), "utf8");
 
 for (const path of [

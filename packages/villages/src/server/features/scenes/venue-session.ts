@@ -31,17 +31,14 @@ import {
   venueSavedCheckpoint,
 } from "../../adapters/operations/operation-context.js";
 import { mutateDocument } from "../../adapters/storage/document-store.js";
+import { changeSession, clearActivePointer, readActive, readSession } from "../../adapters/storage/scene-store.js";
 import {
   ACTIVE_ID,
-  activeSlot,
-  changeSession,
-  clearActivePointer,
-  readActive,
-  readSession,
-  SESSION_KIND,
   SESSION_PREFIX,
+  SESSION_KIND,
+  activeSlot,
   sessionSlot,
-} from "../../adapters/storage/scene-store.js";
+} from "../../adapters/storage/scene-slots.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";

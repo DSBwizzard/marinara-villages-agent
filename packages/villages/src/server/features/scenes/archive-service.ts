@@ -1,6 +1,6 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import { SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-store.js";
+import { SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { VenueScene, VenueParticipant } from "../../domain/models/scene-model.js";

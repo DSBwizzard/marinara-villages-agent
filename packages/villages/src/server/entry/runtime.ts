@@ -1,6 +1,7 @@
+import { createSceneRepository } from "../adapters/storage/scene-repository.js";
+import { configureSceneRepository, readSession } from "../adapters/storage/scene-store.js";
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
-import { readSession } from "../adapters/storage/scene-store.js";
 import { processSavedProgressSubmission } from "../features/scenes/venue-session.js";
 import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
 import { relationshipWritingPrompt } from "../features/residents/relationships.js";
@@ -196,6 +197,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseBackgroundContext = configureBackgroundContext(background);
   const operations = createVenueOperationContext(villagesLogger);
   const releaseOperations = configureVenueOperationContext(operations);
+  const releaseSceneRepository = configureSceneRepository(
+    createSceneRepository({ villagesDocuments, mutateDocument: createDocumentMutator(villagesDocuments) }),
+  );
   const releaseUsage = configureUsageLedger(
     createUsageLedger({
       owner: usageProcessOwner,
@@ -493,6 +497,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseDebug();
     releaseInterpretationDiagnostics();
     releaseUsage();
+    releaseSceneRepository();
     releaseOperations();
     releaseBackgroundContext();
     releaseGallery();
