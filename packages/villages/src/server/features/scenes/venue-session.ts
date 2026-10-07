@@ -196,7 +196,7 @@ import {
   filterRelationshipNotices,
   relationshipChangeNotices,
   relationshipWritingPrompt,
-} from "../residents/relationships.js";
+} from "../../domain/rules/relationship-presentation.js";
 import {
   interpretWishClaim,
   matchingWishReceipts,

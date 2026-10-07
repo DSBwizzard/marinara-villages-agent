@@ -6,7 +6,7 @@ import { prepareVenueTurnMessages } from "../packages/villages/src/server/featur
 import {
   relationshipPrompt,
   relationshipWritingPrompt,
-} from "../packages/villages/src/server/features/residents/relationships.js";
+} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import {
   defaultRelationshipState,
   neutralRelationship,

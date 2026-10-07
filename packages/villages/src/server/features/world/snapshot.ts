@@ -14,7 +14,7 @@ import {
 import { backgroundWorkSummaries } from "../../jobs/background-work.js";
 import { privatePreparationRooms } from "../../jobs/private-space-preparation.js";
 import { rollActiveAgendas } from "../residents/agenda-roll.js";
-import { relationshipChangeNotices } from "../residents/relationships.js";
+import { relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import { sceneQueries } from "../scenes/services.js";
 import { mutateVillageState, readVillageState } from "./village-store.js";
 

@@ -52,7 +52,7 @@ import { projectHomeLines, villagerPlaceView } from "../../domain/rules/village-
 import { coerceHappeningList } from "../founding/village-bootstrap.js";
 import { completeWithRoom } from "../generation/model-requests.js";
 import { assembleNarrationMessages, type NarrationPlayer } from "../generation/narration-prompt.js";
-import { relationshipWritingPrompt } from "../residents/relationships.js";
+import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import type { VillageNarrationTurn } from "../settings/narration-settings.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";

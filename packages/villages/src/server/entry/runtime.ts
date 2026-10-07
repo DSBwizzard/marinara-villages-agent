@@ -5,7 +5,7 @@ import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive } from "../features/scenes/archive.js";
 import { processSavedProgressSubmission } from "../features/scenes/venue-session.js";
 import { removeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
-import { relationshipWritingPrompt } from "../features/residents/relationships.js";
+import { relationshipWritingPrompt } from "../domain/rules/relationship-presentation.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
 import { configureFoundingSetup } from "../features/founding/founding-setup.js";
 import { readTownMapSubmission } from "../features/media/town-map-review.js";

@@ -25,7 +25,7 @@ import {
   draftNewVenueProject,
   draftRenovationProject,
 } from "../projects/project-lifecycle.js";
-import { relationshipWritingPrompt } from "../residents/relationships.js";
+import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";

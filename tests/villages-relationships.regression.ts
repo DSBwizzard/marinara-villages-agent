@@ -28,11 +28,13 @@ import {
   captureRelationshipKnowledge,
   projectRelationshipProfiles,
   proposeStartingTies,
-  relationshipChangeNotices,
-  filterRelationshipNotices,
   readRelationshipsView,
   changeRelationshipCreator,
 } from "../packages/villages/src/server/features/residents/relationships.js";
+import {
+  relationshipChangeNotices,
+  filterRelationshipNotices,
+} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import {
   socialPlanCandidates,
   socialPlanValid,
