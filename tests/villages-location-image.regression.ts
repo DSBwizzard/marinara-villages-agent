@@ -1178,7 +1178,7 @@ async function main() {
     "and wired to a click on the screen that stands in a place",
   );
   const imageService = await readFile(join(repoRoot, services, "features/media/location-image.ts"), "utf8");
-  const venueSession = await readFile(join(repoRoot, services, "features/scenes/venue-session.ts"), "utf8");
+  const venueSession = await readFile(join(repoRoot, services, "features/scenes/command-service.ts"), "utf8");
   assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
   assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
 

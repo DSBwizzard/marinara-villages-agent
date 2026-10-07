@@ -1,3 +1,39 @@
+import { applyResidenceEditApproval } from "../features/venues/zone-edits.js";
+import { queueVillageVenueRequest } from "../features/venues/venue-requests.js";
+import { recordVillagerVenueImprovement } from "../features/venues/venue-mailbox.js";
+import { WISH_PROPOSAL_INSTRUCTION } from "../features/residents/wishes/wish-progress.js";
+import { bindWishProposals } from "../features/residents/wishes/wish-progress.js";
+import { projectProposals } from "../features/projects/project-checks.js";
+import { interpretProjectDraft } from "../features/projects/project-checks.js";
+import { finalizeProjectDiagnostics } from "../features/projects/project-checks.js";
+import { saveInterpretationContext } from "../features/generation/interpretation-evidence.js";
+import { writeInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
+import { stopInterpretationComparisons } from "../features/generation/interpretation-diagnostics.js";
+import { scheduleSystemComparisons } from "../features/generation/interpretation-diagnostics.js";
+import { venueCheckpoint } from "../jobs/venue-coordinator.js";
+import { recoverVenueOperations } from "../jobs/venue-coordinator.js";
+import { coordinateVenue } from "../jobs/venue-coordinator.js";
+import { cancelVenueOperation } from "../jobs/venue-coordinator.js";
+import { mutateDocument } from "../adapters/storage/document-store.js";
+import { venueRequestMetrics } from "../adapters/operations/operation-context.js";
+import { venueRefusal } from "../adapters/operations/operation-context.js";
+import { venueOperationSnapshot } from "../adapters/operations/operation-context.js";
+import { outsideVenueOperation } from "../adapters/operations/operation-context.js";
+import { assertVenueOwnership } from "../adapters/operations/operation-context.js";
+import { sceneWork } from "../features/scenes/scene-work.js";
+import { activationScope } from "../adapters/engine/activation-scope.js";
+import { proposeVillageResidence } from "../features/venues/residences.js";
+import { decideVillageResidence } from "../features/venues/residences.js";
+import { pruneVenueVisits } from "../features/scenes/archive.js";
+import { requireLiveVenueSession } from "../features/scenes/live-session.js";
+import { readSceneChanges } from "../features/scenes/changes.js";
+import { VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
+import { explicitSceneActions } from "../features/scenes/writing.js";
+import { generateContactResponse } from "../features/scenes/writing.js";
+import { generate } from "../features/scenes/writing.js";
+import { interpretRoomDraft } from "../features/scenes/writing.js";
+import { createSceneCommands } from "../features/scenes/command-service.js";
+import { configureSceneCommands } from "../features/scenes/venue-session.js";
 import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
 import { wishFingerprint } from "../features/residents/wishes/wish-interpretation.js";
 import { rejectVenueCompletion } from "../jobs/venue-coordinator.js";
@@ -311,6 +347,70 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       interpretRoomReply,
     }),
   );
+  const releaseSceneCommands = configureSceneCommands(
+    createSceneCommands({
+      interpretRoomDraft,
+      generate,
+      generateContactResponse,
+      explicitSceneActions,
+      VENUE_REPLY_MAX_TOKENS,
+      loadBackgroundRetry: () => import("../jobs/background-work.js"),
+      loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
+      readSceneChanges,
+      processSavedExchange,
+      activeVenueSession,
+      requireLiveVenueSession,
+      refreshZoneParticipants,
+      pruneVenueVisits,
+      decideVillageResidence,
+      proposeVillageResidence,
+      activationScope,
+      bindReplayEffects: bindActivationService,
+      sceneWork,
+      villagesDebugAgentsEnabled,
+      villagesDocuments,
+      villagesLogger,
+      villagesLanguageModels,
+      runtimeDebug,
+      assertVenueOwnership,
+      outsideVenueOperation,
+      venueOperationId,
+      venueOperationSignal,
+      venueOperationSnapshot,
+      venueRefusal,
+      venueRequestMetrics,
+      mutateDocument,
+      changeSession,
+      clearActivePointer,
+      readActive,
+      readSession,
+      cancelVenueOperation,
+      coordinateVenue,
+      hasVenueOperation,
+      recoverVenueOperations,
+      rejectVenueCompletion,
+      venueCheckpoint,
+      scheduleSystemComparisons,
+      stopInterpretationComparisons,
+      writeInterpretationDiagnostics,
+      saveInterpretationContext,
+      completeWithRoom,
+      finalizeProjectDiagnostics,
+      interpretProjectDraft,
+      projectProposals,
+      rollActiveAgendas,
+      wishFingerprint,
+      bindWishProposals,
+      WISH_PROPOSAL_INSTRUCTION,
+      villagesConnectionIdFor,
+      recordVillagerVenueImprovement,
+      mutateVillageState,
+      readVillageSnapshot,
+      readVillageState,
+      queueVillageVenueRequest,
+      applyResidenceEditApproval,
+    }),
+  );
   const releaseSceneProgress = configureSceneProgress(
     createSceneProgress({
       readVillageState,
@@ -602,6 +702,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseResidentAgendas();
+    releaseSceneCommands();
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();

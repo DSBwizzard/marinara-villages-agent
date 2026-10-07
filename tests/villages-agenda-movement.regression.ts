@@ -263,7 +263,7 @@ assert.equal(villagerPlaceView(village, villager, null, 1080)?.id, "home");
 assert.equal(doingFor(null, null, { hour: 9, minute: 0 }, agenda).activity, "watering flowers");
 assert.equal(doingFor(null, null, { hour: 9, minute: 0 }, agenda).today.length, 4);
 
-const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/venue-session.ts"), "utf8");
+const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/command-service.ts"), "utf8");
 assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, new Date\(\)\)/u);
 assert.match(venueSource, /activeIds: participants\.map\(\(person\) => person\.characterId\)/u);
 assert.doesNotMatch(venueSource, /roomPresenceLines|repairRoomMirrors/u);

@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
+  activationScope,
+  bindActivationService,
+  scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
@@ -11,7 +14,19 @@ import {
   enterVenue,
   enterResidencePrivateSpace,
   sendVenueTurn,
+  retrySceneChangeInterpretation,
+  moveVenueZone,
+  configureSceneCommands,
+  sceneReplayEffects,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import {
+  createSceneCommands,
+  type SceneCommandPorts,
+} from "../packages/villages/src/server/features/scenes/command-service.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { VENUE_REPLY_MAX_TOKENS } from "../packages/villages/src/server/features/scenes/writing.js";
+import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
@@ -21,6 +36,180 @@ function deferred() {
     resolve = done;
   });
   return { promise, resolve };
+}
+function commandFixture(
+  label: string,
+  configure?: (context: {
+    scene: ReturnType<typeof coerceSession>;
+    world: ReturnType<typeof defaultVillageState>;
+    touch(stage: string): Promise<void>;
+    stamp: string;
+  }) => Partial<SceneCommandPorts>,
+) {
+  const stamp = "2026-10-07T12:00:00.000Z";
+  const world = defaultVillageState();
+  world.seed = "same-seed";
+  world.exchangeReceipts["same-effect"] = {
+    id: "same-effect",
+    sceneId: "same-scene",
+    submissionId: "same-turn",
+    domain: "physical",
+    at: stamp,
+    committedAt: stamp,
+    status: "applied",
+    evidenceIds: [],
+    reason: "Confirmed physical outcome",
+    notice: { id: "same-notice", kind: "venue", text: label + " saved effect" },
+  };
+  const scene = coerceSession({
+    id: "same-scene",
+    villageSeed: world.seed,
+    placeId: "same-place",
+    placeName: label,
+    status: "active",
+    processingVersion: 1,
+    startedAt: stamp,
+    participants: [],
+    lines: [],
+    submissions: [
+      {
+        id: "same-turn",
+        mode: "chat",
+        message: "Already saved",
+        targetId: "",
+        at: stamp,
+        wishId: "",
+        wishMemory: "",
+        verdict: null,
+        recordEvents: [],
+        processing: createExchangeProcessing({
+          seed: world.seed,
+          sceneId: "same-scene",
+          submissionId: "same-turn",
+          order: 1,
+          lineIds: [],
+          actionReceiptIds: [],
+        }),
+      },
+    ],
+  });
+  const calls: string[] = [],
+    owners: unknown[] = [],
+    unexpected: string[] = [];
+  const owner = createActivationScope(),
+    work = createSceneWork();
+  const gate = deferred(),
+    entered = deferred(),
+    exact = new Error(label + " exact failure");
+  let pause = "",
+    fail = "",
+    paused = false,
+    guardDisposed = false,
+    modelAccess = 0;
+  async function touch(stage: string) {
+    calls.push(stage);
+    owners.push(scopedActivation());
+    if (guardDisposed && !owner.active) throw exact;
+    if (stage === fail) throw exact;
+    if (stage === pause && !paused) {
+      paused = true;
+      entered.resolve();
+      await gate.promise;
+      if (guardDisposed && !owner.active) throw exact;
+    }
+  }
+  const supplied: Partial<SceneCommandPorts> = {
+    activationScope,
+    bindReplayEffects: bindActivationService,
+    VENUE_REPLY_MAX_TOKENS,
+    WISH_PROPOSAL_INSTRUCTION,
+    sceneWork: () => work,
+    readSession: async (id) => {
+      assert.equal(id, scene.id);
+      await touch("session");
+      return scene;
+    },
+    coordinateVenue: async (id, submissionId, kind, input, expected, retry, run, options) => {
+      assert.equal(id, scene.id);
+      assert.equal(submissionId, "same-turn");
+      assert.equal(kind, "turn");
+      assert.deepEqual(input, { message: "Already saved", mode: "chat", targetId: "", interactionScopeVersion: 1 });
+      assert.equal(expected, undefined);
+      assert.equal(retry, undefined);
+      assert.equal(options?.replay, true);
+      await touch("admission");
+      return run();
+    },
+    processSavedExchange: async (id, submissionId) => {
+      assert.equal(id, scene.id);
+      assert.equal(submissionId, "same-turn");
+      await touch("progress");
+    },
+    readVillageSnapshot: async () => {
+      await touch("snapshot");
+      return world;
+    },
+    changeSession: async (id, change) => {
+      assert.equal(id, scene.id);
+      await touch("persistence");
+      await change(scene);
+      return scene;
+    },
+    runtimeDebug: () => {},
+    villagesLogger: () => ({
+      debug() {},
+      info() {},
+      warn() {
+        calls.push("warning");
+      },
+    }),
+    villagesLanguageModels: () => {
+      modelAccess++;
+      throw new Error("Saved replay may not resolve a model");
+    },
+    completeWithRoom: async () => {
+      modelAccess++;
+      throw new Error("Saved replay may not request a completion");
+    },
+  };
+  Object.assign(supplied, configure?.({ scene, world, touch, stamp }));
+  // Unused typed connections fail if this replay unexpectedly enters another command path.
+  const ports = new Proxy(supplied, {
+    get(target, property) {
+      if (property in target) return Reflect.get(target, property);
+      return () => {
+        unexpected.push(String(property));
+        throw new Error("Unexpected command connection: " + String(property));
+      };
+    },
+  }) as SceneCommandPorts;
+  const service = createSceneCommands(ports);
+  assert.deepEqual(calls, [], "Scene command construction must be inert");
+  assert.equal(modelAccess, 0);
+  return {
+    scene,
+    world,
+    calls,
+    owners,
+    unexpected,
+    owner,
+    service,
+    gate,
+    entered,
+    exact,
+    pause(stage: string) {
+      pause = stage;
+    },
+    fail(stage: string) {
+      fail = stage;
+    },
+    guardDisposal() {
+      guardDisposed = true;
+    },
+    get modelAccess() {
+      return modelAccess;
+    },
+  };
 }
 function fixture(name: string, pause = false, navigationIdentity?: object) {
   const gate = deferred(),
@@ -359,3 +548,310 @@ try {
   residenceA.scope.dispose();
   residenceB.scope.dispose();
 }
+
+const savedInput = {
+  sessionId: "same-scene",
+  submissionId: "same-turn",
+  message: "Already saved",
+  mode: "chat" as const,
+  targetId: "",
+};
+for (const stage of ["session", "admission", "progress", "snapshot", "persistence"]) {
+  const first = commandFixture("Command A"),
+    second = commandFixture("Command B");
+  first.pause(stage);
+  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
+  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
+  const clearFirst = installDefaultActivation(first.owner, () => {});
+  const pending = sendVenueTurn(savedInput);
+  await first.entered.promise;
+  const clearSecond = installDefaultActivation(second.owner, () => {});
+  try {
+    assert.deepEqual(first.scene.submissions[0].recordEvents, []);
+    const resultB = await sendVenueTurn(savedInput);
+    assert.equal(resultB.session.placeName, "Command B");
+    assert.deepEqual(
+      resultB.recordEvents.map((event) => event.text),
+      ["Command B saved effect"],
+    );
+    releaseFirst();
+    clearFirst();
+    first.gate.resolve();
+    const resultA = await pending;
+    assert.equal(resultA.session.placeName, "Command A");
+    assert.deepEqual(
+      resultA.recordEvents.map((event) => event.text),
+      ["Command A saved effect"],
+    );
+    assert(
+      first.owners.every((owner) => owner === first.owner),
+      stage + " must retain A's actual scope",
+    );
+    assert(second.owners.every((owner) => owner === second.owner));
+    assert.deepEqual(first.unexpected, []);
+    assert.deepEqual(second.unexpected, []);
+    assert.equal(first.modelAccess + second.modelAccess, 0);
+  } finally {
+    first.gate.resolve();
+    await pending.catch(() => {});
+    releaseFirst();
+    releaseSecond();
+    clearFirst();
+    clearSecond();
+    first.owner.dispose();
+    second.owner.dispose();
+  }
+}
+
+for (const stage of ["session", "admission", "snapshot", "persistence"]) {
+  const current = commandFixture("Failure " + stage);
+  current.fail(stage);
+  const release = current.owner.run(() => configureSceneCommands(current.service));
+  try {
+    await assert.rejects(
+      current.owner.run(() => sendVenueTurn(savedInput)),
+      (error) => error === current.exact,
+    );
+    assert.deepEqual(current.scene.submissions[0].recordEvents, []);
+    assert.equal(current.modelAccess, 0);
+    assert.deepEqual(current.unexpected, []);
+  } finally {
+    release();
+    current.owner.dispose();
+  }
+}
+
+// The returned replay callbacks can escape their getter's scope; they must still own A.
+{
+  const first = commandFixture("Captured A"),
+    second = commandFixture("Selected B");
+  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
+  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
+  const clearFirst = installDefaultActivation(first.owner, () => {});
+  const captured = sceneReplayEffects();
+  const clearSecond = installDefaultActivation(second.owner, () => {});
+  releaseFirst();
+  clearFirst();
+  try {
+    const events = await captured.receiptForTurn(first.scene, first.scene.submissions[0]);
+    assert.deepEqual(
+      events.map((event) => event.text),
+      ["Captured A saved effect"],
+    );
+    assert(first.owners.every((owner) => owner === first.owner));
+    assert.deepEqual(second.calls, [], "escaped A callbacks cannot use the selected B connections");
+    const resultB = await sendVenueTurn(savedInput);
+    assert.equal(resultB.session.placeName, "Selected B", "old command cleanup must leave B configured");
+    assert.equal(first.modelAccess + second.modelAccess, 0);
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    clearFirst();
+    clearSecond();
+    first.owner.dispose();
+    second.owner.dispose();
+  }
+}
+
+// An originating connection's disposal guard rejects rather than borrowing B's storage.
+{
+  const first = commandFixture("Disposed A"),
+    second = commandFixture("Surviving B");
+  first.pause("snapshot");
+  first.guardDisposal();
+  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
+  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
+  const clearFirst = installDefaultActivation(first.owner, () => {});
+  const pending = sendVenueTurn(savedInput);
+  await first.entered.promise;
+  const clearSecond = installDefaultActivation(second.owner, () => {});
+  first.owner.dispose();
+  const rejected = assert.rejects(pending, (error) => error === first.exact);
+  first.gate.resolve();
+  try {
+    await rejected;
+    assert.deepEqual(first.scene.submissions[0].recordEvents, []);
+    const resultB = await sendVenueTurn(savedInput);
+    assert.equal(resultB.session.placeName, "Surviving B");
+    assert.equal(first.modelAccess + second.modelAccess, 0);
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    clearFirst();
+    clearSecond();
+    second.owner.dispose();
+  }
+}
+// Wish recovery keeps its lazy loader and loaded retry command under the initiating owner.
+{
+  const terminal = new Error("Saved notices ready");
+  const first = commandFixture("Retry A", ({ scene, world, touch, stamp }) => {
+    const turn = scene.submissions[0];
+    turn.processing!.domains.wishes.status = "failed";
+    turn.liveProposals = {
+      version: 1,
+      memoryChanges: [],
+      relationshipChanges: {},
+      memoryVersions: {},
+      earlierLineIds: [],
+      playerLineId: "player-line",
+      replyLineIds: [],
+    };
+    return {
+      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run) => {
+        assert.equal(id, "change:same-turn:wishes");
+        assert.equal(kind, "change-interpretation");
+        assert.deepEqual(input, { submissionId: "same-turn", domain: "wishes" });
+        return run();
+      },
+      readVillageState: async () => world,
+      villagesDocuments: () => ({
+        list: async () => [
+          {
+            id: "same-job",
+            packageId: "villages",
+            kind: "background-work",
+            name: "Wish retry",
+            description: "",
+            revision: 1,
+            createdAt: stamp,
+            updatedAt: stamp,
+            data: {
+              kind: "wish-check",
+              seed: world.seed,
+              input: { sceneId: scene.id, submissionId: turn.id },
+              status: "failed",
+              attempt: 2,
+            },
+          },
+        ],
+        getById: async () => assert.fail("Wish retry does not read arbitrary documents"),
+        remove: async () => assert.fail("Wish retry does not remove documents"),
+      }),
+      loadBackgroundRetry: async () => {
+        await touch("retry-loader");
+        return {
+          retryBackgroundJob: async (id, attempt, actionId) => {
+            assert.equal(id, "same-job");
+            assert.equal(attempt, 2);
+            assert.match(actionId, /^[a-f0-9]{64}$/);
+            await touch("retry-command");
+          },
+        };
+      },
+      venueOperationId: () => "Retry A operation",
+      venueCheckpoint: async (_id, run) => run(),
+      outsideVenueOperation: (run) => run(),
+      readSceneChanges: async () => {
+        await touch("changes");
+        throw terminal;
+      },
+    };
+  });
+  const second = commandFixture("Retry B");
+  first.pause("retry-loader");
+  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
+  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
+  const clearFirst = installDefaultActivation(first.owner, () => {});
+  const pending = retrySceneChangeInterpretation("same-scene", "same-turn", "wishes");
+  const checked = assert.rejects(pending, (error) => error === terminal);
+  await first.entered.promise;
+  const clearSecond = installDefaultActivation(second.owner, () => {});
+  releaseFirst();
+  clearFirst();
+  first.gate.resolve();
+  try {
+    await checked;
+    assert.equal(first.calls.filter((stage) => stage === "retry-command").length, 1);
+    assert.equal(first.calls.filter((stage) => stage === "progress").length, 2);
+    assert(first.owners.every((owner) => owner === first.owner));
+    assert.deepEqual(second.calls, []);
+    assert.equal(first.modelAccess + second.modelAccess, 0);
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    clearFirst();
+    clearSecond();
+    first.owner.dispose();
+    second.owner.dispose();
+  }
+}
+
+// A detached image callback retains its owner while the lazy module promise is paused.
+{
+  const generated = deferred();
+  const first = commandFixture("Image A", ({ scene, world, touch, stamp }) => {
+    const venue = venueDraft({ name: "Staff hall", description: "A staff hall", classes: ["gathering"] }, null);
+    venue.id = scene.placeId;
+    venue.zones = [{ ...venue.spaces[0], id: "staff-zone", name: "Staff room", kind: "staff" }];
+    world.venues = [venue];
+    scene.zoneId = "staff-zone";
+    scene.sceneAttendance = { capturedAt: stamp, occupants: [] };
+    scene.submissions[0].movement = {
+      operationId: "same-image-operation",
+      originZoneId: "outside",
+      destinationZoneId: "staff-zone",
+      transitionLineId: "line",
+    };
+    return {
+      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run) => {
+        assert.equal(id, "same-image-operation");
+        assert.equal(kind, "move");
+        assert.deepEqual(input, { zoneId: "staff-zone" });
+        return run();
+      },
+      assertVenueOwnership: () => {},
+      requireLiveVenueSession: async () => scene,
+      refreshZoneParticipants: async () => scene,
+      venueOperationId: () => "same-image-operation",
+      mutateVillageState: async (change) => {
+        await change(world);
+        return world;
+      },
+      readVillageState: async () => world,
+      outsideVenueOperation: (run) => run(),
+      loadPrivateSpaceImages: async () => {
+        await touch("image-loader");
+        return {
+          generateFirstPrivateSpaceImage: async (placeId, zoneId) => {
+            assert.equal(placeId, scene.placeId);
+            assert.equal(zoneId, "staff-zone");
+            await touch("image-command");
+            generated.resolve();
+          },
+        };
+      },
+    };
+  });
+  const second = commandFixture("Image B");
+  first.pause("image-loader");
+  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
+  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
+  const clearFirst = installDefaultActivation(first.owner, () => {});
+  const pending = moveVenueZone("same-scene", "staff-zone", undefined, undefined, "same-image-operation");
+  await first.entered.promise;
+  const clearSecond = installDefaultActivation(second.owner, () => {});
+  try {
+    assert.equal((await pending).placeName, "Image A");
+    assert.equal(first.calls.includes("image-command"), false);
+    releaseFirst();
+    clearFirst();
+    first.gate.resolve();
+    await generated.promise;
+    assert.equal(first.calls.filter((stage) => stage === "image-command").length, 1);
+    assert(first.owners.every((owner) => owner === first.owner));
+    assert.deepEqual(second.calls, []);
+    assert.equal(first.modelAccess + second.modelAccess, 0);
+  } finally {
+    first.gate.resolve();
+    releaseFirst();
+    releaseSecond();
+    clearFirst();
+    clearSecond();
+    first.owner.dispose();
+    second.owner.dispose();
+  }
+}
+console.log(
+  "Scene command construction, paused replay, captured effects, lazy connections, errors and disposal retain their owners.",
+);
