@@ -7,9 +7,7 @@ export {
   coerceRemap,
   coerceTownMapView,
   coerceVillageState,
-  coerceVillageScene,
 } from "../../domain/decoding/village-codec.js";
-export { listVillageScenes } from "../../adapters/storage/legacy-scene-links.js";
 
 // Transitional route dispatch; the factory owns state coordination, not this binding.
 const stateBinding = createActivationBinding<VillageStateService>("Villages state service is not configured.");

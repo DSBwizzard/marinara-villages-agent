@@ -2,7 +2,6 @@ import { createActivationBinding } from "./activation-scope.js";
 import { pipelineStorage } from "../observability/metrics-context.js";
 import type {
   CapabilityDocumentStore,
-  CapabilityPersistenceHost,
   CapabilityResourceHost,
   CapabilityRuntimeHost,
   CapabilityRuntimeLogger,
@@ -99,13 +98,6 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
     }
     return resources;
   }
-  function villagesPersistence(): CapabilityPersistenceHost {
-    const persistence = requireHost().persistence;
-    if (!persistence) {
-      throw new Error("This Engine version did not provide chat persistence to packages.");
-    }
-    return persistence;
-  }
 
   function villagesLogger(): CapabilityRuntimeLogger {
     return safeLogger(next.logger ?? fallbackLogger);
@@ -117,7 +109,6 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
     requireHost,
     villagesDocuments,
     villagesResources,
-    villagesPersistence,
     villagesLogger,
     villagesDebugAgentsEnabled,
     epoch: () => (active ? token : null),
@@ -147,9 +138,6 @@ export function villagesDocuments(): CapabilityDocumentStore {
 }
 export function villagesResources(): CapabilityResourceHost {
   return connections.get().villagesResources();
-}
-export function villagesPersistence(): CapabilityPersistenceHost {
-  return connections.get().villagesPersistence();
 }
 export function villagesLogger(): CapabilityRuntimeLogger {
   return connections.maybe()?.villagesLogger() ?? safeLogger(fallbackLogger);

@@ -1,7 +1,6 @@
 import { asRecord, asString } from "./coerce.js";
 
 export const WRITING_GUIDANCE_MAX_LENGTH = 4_000;
-export const VILLAGER_REPLY_GUIDANCE_MAX_LENGTH = 8_000;
 export const DEFAULT_NARRATION_STYLE =
   "An immersive, living village. Continue the scene through specific dialogue, actions, discoveries, and consequences.";
 
@@ -34,9 +33,6 @@ Brief audible asides can carry character flavor: a muttered opinion, dry joke, s
 ## Personal motives and knowledge
 A wish is one current desire, subordinate to the whole character. When relevant, they may talk about it, make a suggestion, take an appropriate action, or keep it to themselves according to their personality and circumstances. There is no prescribed visible tell and no requirement to hint at, mention, or pursue it in each reply. An unrelated conversation need not express any wish. It is not automatically an errand for the player. Private desires remain unknown to other characters until evidenced disclosure or observation.
 Nobody is omniscient: a resident knows only what they witnessed, inferred, were told, or could plausibly know.`;
-
-/** Kept for the retired narration settings document; venue replies use the fixed foundation above. */
-export const DEFAULT_VILLAGER_REPLY_GUIDANCE = VENUE_SCENE_WRITING_FOUNDATION;
 
 export type VillageNarrationStyle = {
   tense: "present" | "past";

@@ -11,7 +11,6 @@ import {
   scheduleInformedWeek,
   workingAgendaWeek,
 } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { doingFor } from "../packages/villages/src/server/features/scenes/chat.js";
 import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type {
@@ -260,8 +259,8 @@ const village = {
 assert.equal(villagerPlaceView(village, villager, null, 540)?.id, "garden");
 assert.equal(villagerPlaceView(village, villager, null, 780)?.id, "square");
 assert.equal(villagerPlaceView(village, villager, null, 1080)?.id, "home");
-assert.equal(doingFor(null, null, { hour: 9, minute: 0 }, agenda).activity, "watering flowers");
-assert.equal(doingFor(null, null, { hour: 9, minute: 0 }, agenda).today.length, 4);
+assert.equal(agendaAt(agenda, 540)?.activity, "watering flowers");
+assert.equal(agendaDayPlan(agenda, 540).length, 4);
 
 const venueSource = readFileSync(resolve("packages/villages/src/server/features/scenes/command-service.ts"), "utf8");
 assert.match(venueSource, /const sceneAttendance = captureSceneAttendance\(village, placeId, new Date\(\)\)/u);

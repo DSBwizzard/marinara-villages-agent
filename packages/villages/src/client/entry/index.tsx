@@ -1,5 +1,4 @@
 import { VillagesUsageMeter } from "../features/settings/villages-usage-meter.js";
-import { SpinOffPanel, SpinOffToolbar } from "../features/spinoff/SpinOffSurface.js";
 import { request } from "../shared/api.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
 import { syncVillagesStyles } from "../shared/styles.js";
@@ -82,24 +81,7 @@ class MarinaraVillagesElement extends HTMLElement {
   }
 }
 
-/**
- * Which of the package's two surfaces this element is.
- *
- * The tab and the toolbar are the same tag mounted in different slots, and the
- * host says which by the `view` attribute — `CapabilityElement` writes it on the
- * element it creates and never touches it again. Props arrive separately, in
- * `capabilityProps`, and they arrive AFTER this element is already in the
- * document: the host assigns them in a layout effect and republishes them as a
- * `marinara-capability-props` event rather than re-rendering anything. So the
- * subscription below is not an optimisation, it is the only way the toolbar ever
- * hears the chat it is standing in — and a first paint that read the props once,
- * on connect, would draw a button for no chat at all and never correct itself.
- *
- * The tab is what an unrecognised view gets, because the tab is what the package
- * had before there was a second surface, and because its own slot names itself
- * `browser`: a view this file has never heard of is still the village, and
- * drawing nothing would be a screenshot of an empty tab.
- */
+/** Keep the home surface current when the host republishes capability props. */
 function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
   const [, redraw] = useState(0);
   useEffect(() => {
@@ -107,17 +89,6 @@ function CapabilityRoot({ element }: { element: VillagesCapabilityElement }) {
     element.addEventListener("marinara-capability-props", update);
     return () => element.removeEventListener("marinara-capability-props", update);
   }, [element]);
-  const view = element.getAttribute("view");
-  // The two in-chat surfaces. Both are told which chat they are standing in and
-  // both ask the village where it came from, because neither can see the tab and
-  // the tab cannot see the chat. Neither of them does anything else: on a one-way
-  // lane, knowing where a chat came from is the whole of what a chat can be told.
-  if (view === "tracker") {
-    return <SpinOffPanel props={element.capabilityProps ?? {}} />;
-  }
-  if (view === "toolbar") {
-    return <SpinOffToolbar props={element.capabilityProps ?? {}} />;
-  }
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, minWidth: 0 }}>
       <VillagesUsageMeter request={request} element={element} />

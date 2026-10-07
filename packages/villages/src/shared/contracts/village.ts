@@ -1258,37 +1258,6 @@ export type AgendaListResponse = {
   villagers: VillagerAgendaView[];
 };
 
-/**
- * Where one roleplay chat came from, read backward out of the chat itself.
- *
- * This is the whole of what the village can say about a roleplay it has already
- * made, and it is a memory in one direction only: the chat carries a stamp, the
- * village can read it back when it is handed a chat id, and nothing the village
- * holds points at the chat. There is no listing beside this and no link record
- * behind it, which is why the only way to ask the question is to name a chat.
- *
- * Every field is looked up at the moment it is asked for rather than copied
- * down, which is what lets `name` come back empty and `resident` come back false
- * without anything being broken: a card deleted from the library takes the name
- * with it, and a villager who has since left the village keeps their roleplay
- * and only loses the word "resident".
- *
- * `mode` is deliberately absent. A spin-off is an ordinary Engine roleplay chat
- * and nothing about it is a village conversation, so nothing that crosses this
- * boundary carries the village's own verbs.
- */
-export type VillageSpinOffOriginView = {
-  characterId: string;
-  /** The villager's name now, or "" when their card cannot be read any more. */
-  name: string;
-  /** Where they were standing when the snapshot was taken. */
-  room: string;
-  /** What the village is called now, or "" before it has been named. */
-  villageName: string;
-  /** Whether they still live here. A villager who left keeps their roleplay. */
-  resident: boolean;
-};
-
 /** The per-village writing controls returned by /narration. */
 export type VillageWritingView = {
   tense: "present" | "past";

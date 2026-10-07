@@ -85,7 +85,6 @@ export const MAX_CHRONICLE_IN_PROMPT = 12;
 export const MAX_CHRONICLE_ABOUT_ONE_VILLAGER = 3;
 /** How long one memory may be, and how many one write may add. */
 export const MAX_CHRONICLE_LENGTH = 320;
-export const MAX_CHRONICLE_PER_WRITE = 3;
 /**
  * How many conversations are kept for one villager.
  *
@@ -221,16 +220,6 @@ export const MAX_PLAYER_PERSONA_IDENTITY_LENGTH = 8_000;
  * carrying prose where a key belongs.
  */
 export const MAX_ENGINE_ID_LENGTH = 128;
-/**
- * How long a spin-off's chat may be called.
- *
- * The Engine's own `createChatSchema` allows two hundred, and this is shorter on
- * purpose: the name is written for the player's chat list, and a name that fills
- * a whole row of that list is a name that made the list worse to read. It is
- * still long enough for "An afternoon with Rosa at the mill" and everything like
- * it.
- */
-export const MAX_SPINOFF_NAME_LENGTH = 120;
 /** How much of the world the player may write. One paragraph, not a wiki. */
 export const MAX_SETTING_LENGTH = 2_000;
 /** How long the village's own name may be. */

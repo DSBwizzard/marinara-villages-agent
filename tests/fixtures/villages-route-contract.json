@@ -539,21 +539,10 @@
     {
       "method": "patch",
       "path": "/agendas/:characterId/influence"
-    },
-    {
-      "method": "get",
-      "path": "/spinoffs/prompts"
-    },
-    {
-      "method": "get",
-      "path": "/presets/:presetId/variables"
-    },
-    {
-      "method": "get",
-      "path": "/spinoffs/:chatId"
     }
   ],
   "freshStartChanges": [
-    "0.7.0 removes nine retired Sprite Studio routes; maintained route order and body limits are unchanged."
+    "0.7.0 removes nine retired Sprite Studio routes; maintained route order and body limits are unchanged.",
+    "0.7.0 removes the three legacy SpinOff preset/origin GET routes. Current Scene routes and writing settings retain their order and body limits."
   ]
 }

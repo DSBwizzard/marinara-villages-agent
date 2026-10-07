@@ -58,11 +58,10 @@ async function main() {
     MAX_ROUTINE_SUMMARY_LENGTH,
     MAX_VENUES,
     MAX_VILLAGER_WISHES,
-    renderDoingBlock,
     remapVenues,
     wishLifetimeDays,
   } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
-  const { doingFor } = await import("../packages/villages/src/server/features/scenes/chat.js");
+  const { agendaAt, agendaDayPlan } = await import("../packages/villages/src/server/domain/rules/agenda-plan.js");
   const { renderResidentsBlock } =
     await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
   const { coerceRemap: readStoredRemap } =
@@ -1156,45 +1155,7 @@ async function main() {
   // village with no spaceship briefed its narrator on somebody's morning in a
   // cockpit.
   //
-  // Both readers are built here out of one real week and read for the noun.
-  // `doingFor` is the villager's, and it is the whole of the composition: the
-  // translation of the present hour, the village's own summary if it has written
-  // one, and the day the hour sits in out of the same table. `renderResidentsBlock`
-  // is the narrator's, and it is built from what that composition produced.
-  const pilotWeek = schedule({
-    Monday: [
-      { time: "05:00-08:00", activity: "piloting the Halcyon", status: "dnd" },
-      { time: "08:00-22:00", activity: "walking the ridge", status: "idle" },
-      { time: "22:00-06:00", activity: "asleep", status: "offline" },
-    ],
-  });
-  const pilotBlocks = remapBlocks(pilotWeek);
-  // The Tuesday slot has to be one the translation was WRITTEN for, so the context
-  // it is resolved against carries that day too. The plan below is still Monday's,
-  // which is what makes the phrase land in `restOfWeek` rather than in the day.
-  const pilot = coerceRemap(
-    {
-      moves: [
-        { day: "Monday", time: "22:00-06:00", here: "asleep in the loft" },
-        { day: "Tuesday", time: "05:00-08:00", here: "mending the fence" },
-      ],
-    },
-    {
-      ...context,
-      blocks: [...pilotBlocks, { day: "Tuesday", time: "05:00-08:00", activity: "walking the ridge", status: "idle" }],
-    },
-    "now",
-  );
-  const pilotRoutine = {
-    routineSummary: "Ives flies the Halcyon most mornings and sleeps in the crew quarters.",
-    activity: "piloting the Halcyon",
-    status: "dnd",
-    talkativeness: 60,
-    weekStart: "2026-09-07",
-    weekday: "Monday",
-    block: pilotWeek.days.Monday![0],
-    blocks: pilotWeek.days.Monday,
-  };
+  // The current Village-owned agenda supplies activity, availability and day.
   const now = new Date();
   const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const activeBlocks = [
@@ -1232,16 +1193,19 @@ async function main() {
     generatedAt: "now",
     activeDay: { dateKey, weekday: "Monday", blocks: activeBlocks, scheduleInformed: false },
   };
-  const pilotDoing = doingFor(pilot, pilotRoutine as any, { hour: 6, minute: 0 }, pilotAgenda as any);
+  const pilotBlock = agendaAt(pilotAgenda as any, 360, now)!;
+  const pilotDoing = {
+    activity: pilotBlock.activity,
+    status: pilotBlock.status,
+    routineSummary: pilotAgenda.routineSummary,
+    today: agendaDayPlan(pilotAgenda as any, 360, now),
+    restOfWeek: [],
+  };
   assert.equal(pilotDoing.activity, "at home", "the active Villages agenda decides the activity");
   assert.equal(pilotDoing.status, "dnd", "availability comes from the same active agenda block");
   assert.equal(pilotDoing.routineSummary, "An ordinary village day.");
   assert.equal(pilotDoing.today.length, 4, "the entire active day reaches the prompt");
   assert.equal(pilotDoing.today[1]?.reason, "To prepare for the day");
-  const villagerBlock = renderDoingBlock(pilotDoing);
-  assert.ok(!villagerBlock.includes("Halcyon"), "native schedule prose never reaches the villager prompt");
-  assert.ok(villagerBlock.includes("Right now you are at home until 08:00."));
-  assert.ok(!villagerBlock.includes("To prepare for the day"), "routine reasons stay out of recurring prompts");
   const narratorBlock = renderResidentsBlock([
     {
       characterId: "character-ives",
@@ -1308,24 +1272,6 @@ async function main() {
     hourlyPlan[13]!.activity,
     "an hour on the card, number 13",
     "the Engine's string rides beside the village's",
-  );
-
-  const hourlyDoing = {
-    activity: hourlyPlan[13]!.here,
-    routineSummary: "",
-    status: "",
-    today: hourlyPlan,
-  };
-  const hourlyVillager = renderDoingBlock(hourlyDoing);
-  for (const block of hourly) {
-    assert.ok(
-      hourlyVillager.includes(`${block.time} minding ${block.activity}`),
-      `the villager's own prompt prints ${block.time} rather than blurring it into a part of the day`,
-    );
-  }
-  assert.ok(
-    hourlyVillager.includes("Right now you are minding an hour on the card, number 13 until 14:00."),
-    "and says how long the hour they are in has left",
   );
 
   const hourlyNarrator = renderResidentsBlock([

@@ -1,56 +1,54 @@
 import assert from "node:assert/strict";
-import {
-  buildGreetingMessages,
-  buildLeavingMessages,
-  buildSceneOpeningMessages,
-  buildVillagerMessages,
-} from "../packages/villages/src/server/features/scenes/chat.js";
-import { builtInNarrationTurn } from "../packages/villages/src/server/features/settings/narration-settings.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 
-const village = defaultVillageState();
-village.playerName = "Robin";
-const card = {
-  id: "hana",
-  name: "Hana",
-  description: "A beekeeper.",
-  personality: "Direct.",
-  scenario: "",
-  backstory: "",
-  appearance: "",
-  systemPrompt: "",
-  exampleDialogue: "",
-} as any;
-const context = {
-  roster: [],
-  present: [],
-  lore: [],
-  homes: [],
-  memory: [],
-  moment: deriveVillageMoment({
-    foundedAt: "2026-09-01T00:00:00.000Z",
-    seed: "test",
-    now: new Date("2026-09-27T12:00:00.000Z"),
-  }),
-  routine: null,
-  remap: null,
-  agenda: null,
-} as any;
-const narration = builtInNarrationTurn({ maxTokens: 4096, temperature: 0.8 });
-const history = [{ role: "user", content: "I fixed the gate." }] as any;
-const cases = [
-  buildVillagerMessages(card, village, history, "What do you think?", context, narration),
-  buildGreetingMessages(card, village, context, narration),
-  buildSceneOpeningMessages(card, village, context, narration),
-  buildLeavingMessages(card, village, history, context, narration),
-];
-for (const messages of cases) {
-  const prompt = messages.map((message) => message.content).join("\n");
-  assert.match(prompt, /The player controls their own words, decisions, actions, thoughts, feelings, and consent/u);
-  assert.match(prompt, /Never write or imply a new player response/u);
+async function main() {
+  const village = defaultVillageState();
+  village.playerPersonaId = "robin";
+  village.playerPersonaName = "Robin";
+  const card = {
+    ...readVillagerCard({
+      id: "hana",
+      data: { name: "Hana", description: "A beekeeper.", personality: "Direct." },
+    } as any),
+    systemPrompt: "Hana follows her own authored principles.",
+    exampleDialogue: "Hana: The bees know when rain is coming.",
+    backstory: "Hana learned beekeeping beside the orchard.",
+    appearance: "Hana wears an old canvas coat.",
+    postHistoryInstructions: "Keep Hana's dry cadence.",
+  };
+  for (const mode of ["greet", "chat", "leave"] as const) {
+    const prompt = await currentScenePrompt(village, card, mode, "What do you think?", {
+      lines: [
+        {
+          id: "prior-line",
+          speakerId: "player",
+          name: "Robin",
+          role: "user",
+          kind: "dialogue",
+          content: "I fixed the gate.",
+          at: "2026-10-07T12:00:00.000Z",
+          heardBy: [card.id],
+        },
+      ],
+    });
+    assert.match(prompt, /while the player plays their own persona/u);
+    assert.match(prompt, /The player is Robin/u);
+    assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u);
+    assert.match(prompt, /Never write a new player response or imply one/u);
+    assert.match(
+      prompt,
+      /narrate only what they explicitly submitted, the departure they chose, or an outcome already verified in the scene/u,
+    );
+    assert.match(prompt, /I fixed the gate/u, "the witnessed player line survives current Scene prompt assembly");
+    if (mode === "greet") assert.match(prompt, /moment already underway/u);
+    if (mode === "chat") assert.match(prompt, /Never speak for the player/u);
+    if (mode === "leave") assert.match(prompt, /Do not invent the player's goodbye, further actions, or a new errand/u);
+  }
+  console.log("Villages player voice regression: current greeting, conversation and departure prompts passed");
 }
-assert.match(cases[0]!.map((message) => message.content).join("\n"), /I fixed the gate/u);
-assert.match(cases[3]!.map((message) => message.content).join("\n"), /The player has chosen to end the visit/u);
-
-console.log("Villages player voice regression passed");
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

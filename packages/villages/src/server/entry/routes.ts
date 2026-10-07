@@ -21,7 +21,6 @@ import {
   registerUsageRoutes,
   registerVillageSettingsRoutes,
 } from "../features/settings/routes.js";
-import { registerSpinOffRoutes } from "../features/spinoff/routes.js";
 import {
   registerVenueAccessRoutes,
   registerVenueCreationRoutes,
@@ -60,5 +59,4 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerBackgroundRoutes(surface);
   registerHistoryRoutes(surface);
   registerAgendaRoutes(surface);
-  registerSpinOffRoutes(surface);
 }

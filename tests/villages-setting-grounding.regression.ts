@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
-import {
-  buildVillagerMessages,
-  type VillagePromptContext,
-} from "../packages/villages/src/server/features/scenes/chat.js";
+import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
-import { builtInNarrationTurn } from "../packages/villages/src/server/features/settings/narration-settings.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
@@ -74,18 +70,6 @@ async function main() {
     seed: "grounding",
     now: new Date("2026-10-02T12:00:00Z"),
   });
-  const context: VillagePromptContext = {
-    roster: [],
-    present: [],
-    lore: [],
-    homes: [],
-    memory: [],
-    moment,
-    routine: null,
-    remap: null,
-    agenda: null,
-  };
-  const narration = builtInNarrationTurn({ maxTokens: 4096, temperature: 0.8 });
   const palette = ["Resting", "Reading", "Preparing a meal", "Maintaining equipment", "Talking", "Taking a break"].map(
     (activity) => ({ activity, venue: 0, status: "idle" }),
   );
@@ -135,9 +119,7 @@ async function main() {
       assert.ok(villageRelevantOrigin(state, "Why are we staying here?").includes(circumstances));
       assert.equal(villageRelevantOrigin(state, "What is for dinner?"), "");
       assert.equal(villageRelevantOrigin(state, "What is for dinner here?"), "");
-      const dialogue = buildVillagerMessages(card, state, [], "Why are we here?", context, narration)
-        .map((message) => message.content)
-        .join("\n");
+      const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.ok(dialogue.includes(setting));
       assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
       const events = buildTickMessages({

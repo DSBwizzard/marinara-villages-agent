@@ -1167,7 +1167,7 @@ async function main() {
     "jobs/village-refresh-scheduler.ts",
     "domain/rules/native-remap.ts",
     "adapters/engine/native-schedules.ts",
-    "features/scenes/chat.ts",
+    "features/scenes/writing-service.ts",
     "features/residents/wishes/wish-progress-service.ts",
     "features/residents/wishes/wish-lifecycle-service.ts",
     "adapters/engine/catalog.ts",

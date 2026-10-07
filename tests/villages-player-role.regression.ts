@@ -15,14 +15,9 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  buildVillagerMessages,
-  renderSceneContextBlock,
-} from "../packages/villages/src/server/features/scenes/chat.js";
-import { builtInNarrationTurn } from "../packages/villages/src/server/features/settings/narration-settings.js";
+import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   villageCurrentSetting,
   villageFoundingSetting,
@@ -71,7 +66,6 @@ async function main() {
   assertPlayerRoleLocked(custom, { ...custom });
   assert.equal(defaultVillageState().playerRole, null);
   assert.equal(coerceVillageState({ wishSystemVersion: 3, setupAt: "2026-09-01T00:00:00Z" }).playerRole, null);
-  const narration = builtInNarrationTurn({ maxTokens: 4096, temperature: 0.8 });
   const card = {
     id: "hana",
     name: "Hana",
@@ -82,21 +76,6 @@ async function main() {
     appearance: "",
     systemPrompt: "",
     exampleDialogue: "",
-  } as any;
-  const context = {
-    roster: [],
-    present: [],
-    lore: [],
-    homes: [],
-    memory: [],
-    moment: deriveVillageMoment({
-      foundedAt: "2026-09-01T00:00:00Z",
-      seed: "test",
-      now: new Date("2026-09-30T12:00:00Z"),
-    }),
-    routine: null,
-    remap: null,
-    agenda: null,
   } as any;
   for (const playerRole of [DEFAULT_PLAYER_ROLE, custom, disabled, null]) {
     const state = coerceVillageState(
@@ -128,15 +107,9 @@ async function main() {
       assert.match(writingContext, /private wishes remain private motivations/);
       assert.match(writingContext, /ability to disagree or refuse/);
     } else assert.equal(writingContext, roleContext, "disabled and legacy role framing stays unchanged");
-    const prompt = buildVillagerMessages(card, state, [], "Could we plan a workshop?", context, narration)
-      .map((message) => message.content)
-      .join("\n");
+    const prompt = await currentScenePrompt(state, card, "chat", "Could we plan a workshop?");
     if (playerRole) {
-      assert.ok(prompt.includes(roleContext));
-      assert.ok(
-        renderSceneContextBlock(card, { ...state, promptKnowledge: "" }, context).includes(roleContext),
-        "scene context includes role even with an empty knowledge box",
-      );
+      assert.ok(prompt.includes(writingContext));
       assert.match(
         prompt,
         /does not grant access or override resident consent, builder willingness, resources, or Project evidence/,

@@ -803,7 +803,7 @@ async function main() {
   // the resolver that makes up the chain.
   const servicesRoot = join(repoRoot, "packages/villages/src/server");
   for (const relativePath of [
-    "features/scenes/chat.ts",
+    "features/scenes/writing-service.ts",
     "features/founding/village-bootstrap.ts",
     "features/founding/village-bootstrap-service.ts",
     "domain/rules/village-bootstrap-rules.ts",

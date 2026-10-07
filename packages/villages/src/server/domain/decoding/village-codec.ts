@@ -15,7 +15,6 @@ import type {
   VillageRemapFailure,
   VillageRemapMove,
   VillageResidence,
-  VillageScene,
   VillageScheduledEvent,
   VillageState,
   VillageStoryPace,
@@ -64,7 +63,6 @@ import {
   LEGACY_TOWN_MAP_HEIGHT,
   LEGACY_TOWN_MAP_WIDTH,
   MAX_CHRONICLE_LENGTH,
-  MAX_ENGINE_ID_LENGTH,
   MAX_HAPPENING_LENGTH,
   MAX_HAPPENINGS,
   MAX_NOTICE_AUTHOR_LENGTH,
@@ -80,7 +78,6 @@ import {
   MAX_REMAP_SLOT_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_SETTING_LENGTH,
-  MAX_SPINOFF_NAME_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_EVENTS,
@@ -2259,29 +2256,4 @@ export function coerceVillageState(value: unknown): VillageState {
   }
   resetLegacyWishRecords(state);
   return state;
-}
-export function coerceVillageScene(characterId: string, value: unknown): VillageScene {
-  const raw = asRecord(value);
-  return {
-    version: 1,
-    characterId,
-    chatId: boundText(raw.chatId, MAX_ENGINE_ID_LENGTH),
-    // The stored name is a display convenience, so a missing one is repaired
-    // with a blank and the row falls back to the villager's own name. The Engine
-    // is the authority on what the chat is called and is asked on every listing.
-    chatName: boundText(raw.chatName, MAX_SPINOFF_NAME_LENGTH),
-    presetId: boundText(raw.presetId, MAX_ENGINE_ID_LENGTH),
-    personaId: boundText(raw.personaId, MAX_ENGINE_ID_LENGTH),
-    // Stamped rather than left empty when absent: this is when the LINK began,
-    // and a link that exists was made at some point. An empty one would sort
-    // every upgraded record to the bottom of a list ordered by age.
-    spawnedAt: asIsoString(raw.spawnedAt) ?? new Date().toISOString(),
-    // These three are deliberately left empty rather than stamped. Each is a
-    // positive statement — a line was written, the scene was read, the scene was
-    // filed — and an invented timestamp would claim the player had done
-    // something they had not, on a row whose whole job is to offer the action.
-    beatAt: asIsoString(raw.beatAt) ?? "",
-    lastImportedAt: asIsoString(raw.lastImportedAt) ?? "",
-    endedAt: asIsoString(raw.endedAt) ?? "",
-  };
 }

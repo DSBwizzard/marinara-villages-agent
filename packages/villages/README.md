@@ -1,5 +1,11 @@
 # Villages
 
+## 0.7.0 architecture work (unreleased)
+
+Villages remains a Marinara Engine Agent with its home tab, Venue Scenes, and per-village writing controls. The unused native-chat SpinOff creation and origin routes, roleplay tracker panels, old Engine-preset narration pipeline, and their legacy document readers are retired. Villages no longer requests native chat read/write permissions; its current Scene records use the package document store. Existing native chats and lorebooks are untouched.
+
+Voice, role, setting, attendance, and privacy regressions now exercise the current Scene writer and its captured Venue/Zone state. The obsolete preset-grammar regression is removed. The architecture candidate retains version 0.6.170 until the remaining 0.7.0 validation and review gates are complete.
+
 ## Founding Venue workspace (0.6.169)
 
 Step 3 is now Venues: place photographs successively on a fitted map, then refine details in an independently scrolling inspector. Narrow tabs switch between Map and Details. Drag a photograph, use Move, or place with arrow keys and Enter; rejected moves keep their original coordinates. Photographs retain their size on selection and hover.
