@@ -19,7 +19,7 @@ import {
   fitVenueWritingMessages,
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
-import { proposeStartingTies } from "../packages/villages/src/server/features/residents/relationships.js";
+import { proposeStartingTies } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";

@@ -35,10 +35,8 @@ import {
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import {
-  projectRelationshipProfiles,
-  readRelationshipsView,
-} from "../packages/villages/src/server/features/residents/relationships.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import { readRelationshipsView } from "../packages/villages/src/server/features/residents/relationships.js";
 
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";

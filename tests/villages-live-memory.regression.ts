@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
+import { createHash } from "node:crypto";
+import {
+  activationScope,
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -8,7 +14,10 @@ import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/r
 
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { bindLiveProposals, memoryVersion } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import { processLiveRelationships } from "../packages/villages/src/server/features/residents/live-memory.js";
+import {
+  processLiveMemories,
+  processLiveRelationships,
+} from "../packages/villages/src/server/features/residents/live-memory.js";
 import {
   closeVenueSession,
   endVenueSessionWithReceipts,
@@ -25,10 +34,282 @@ import { publicSceneResponse } from "../packages/villages/src/server/domain/rule
 import { responseDiagnostics } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
 import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import { selectPromptMemories } from "../packages/villages/src/server/domain/rules/memory-selection.js";
-import { relationshipFor } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  defaultRelationshipState,
+  relationshipFor,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 
+async function liveConnectionOwnership() {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  const seed = "equal-live-owner";
+  const relationshipId = "villages-relationships-" + createHash("sha256").update(seed).digest("hex").slice(0, 24);
+  function fixture(label: string, stage?: string) {
+    const scope = createActivationScope(),
+      entered = deferred(),
+      gate = deferred();
+    const at = new Date().toISOString(),
+      state = defaultVillageState();
+    state.seed = seed;
+    state.foundedAt = state.setupAt = at;
+    state.progressEngineVersion = 1;
+    state.villagers = [
+      {
+        characterId: "a",
+        cardSnapshot: { id: "a", name: label, capturedAt: at, revision: 1, sourceStatus: "available" },
+        addedAt: at,
+        completedWishes: [],
+        agenda: unwrittenVillageAgenda(state.venues, "a"),
+      } as any,
+    ];
+    const scene: any = {
+      id: "equal-scene",
+      villageSeed: seed,
+      status: "active",
+      memoryMode: "live",
+      processingVersion: 1,
+      startedAt: at,
+      lastActivityAt: at,
+      placeId: "mill",
+      placeName: "Mill",
+      activeIds: ["a"],
+      participants: [{ characterId: "a", name: label }],
+      lines: [
+        {
+          id: "player-line",
+          role: "user",
+          speakerId: "",
+          name: "Player",
+          content: "We can plant the garden beds on Saturday.",
+          at,
+          heardBy: ["a"],
+        },
+        {
+          id: "reply-line",
+          role: "assistant",
+          speakerId: "a",
+          name: label,
+          kind: "dialogue",
+          content: "I will bring seedlings for our Saturday garden planting.",
+          at,
+          heardBy: ["a"],
+        },
+      ],
+      submissions: [
+        {
+          id: "equal-turn",
+          at,
+          liveProposals: bindLiveProposals(
+            {
+              memoryChanges: [
+                {
+                  kind: "durable",
+                  category: "commitment",
+                  text: label + " will bring seedlings on Saturday.",
+                  subjectCharacterIds: ["a"],
+                  knownByCharacterIds: ["a"],
+                  evidence: ["player", 0],
+                  memoryIds: [],
+                },
+              ],
+              relationshipChanges: {
+                changes: [
+                  {
+                    fromId: "a",
+                    toId: "player",
+                    dimension: "warmth",
+                    strength: "minor",
+                    direction: "increase",
+                    ordinary: true,
+                    reason: label + " planning together",
+                    lineIds: ["player", 0],
+                    disclosed: false,
+                  },
+                ],
+                permissions: [],
+                disclosures: [],
+              },
+            },
+            "player-line",
+            ["reply-line"],
+          ),
+        },
+      ],
+    };
+    const records = new Map<string, any>([
+      ["villages-village", { id: "villages-village", kind: "village", revision: 1, data: state }],
+      [
+        relationshipId,
+        { id: relationshipId, kind: "relationships", revision: 1, data: defaultRelationshipState(seed) },
+      ],
+    ]);
+    const writes: string[] = [];
+    let held = false,
+      worldReads = 0,
+      conflicts = stage === "relationship-save" ? 1 : 0;
+    let failure: Error | undefined;
+    async function pause(candidate: string) {
+      if (!held && stage === candidate) {
+        held = true;
+        entered.resolve();
+        await gate.promise;
+      }
+    }
+    const documents = {
+      async getById(_packageId: string, id: string) {
+        assert.equal(activationScope(), scope, label + " read owner");
+        if (id === "villages-village") await pause(++worldReads === 1 ? "world" : "authority");
+        if (failure) throw failure;
+        return structuredClone(records.get(id) ?? null);
+      },
+      async list() {
+        return [];
+      },
+      async create(input: any) {
+        throw new Error("Unexpected create: " + input.id);
+      },
+      async update(input: any) {
+        assert.equal(activationScope(), scope, label + " save owner");
+        await pause(input.id === relationshipId ? "relationship-save" : "village-save");
+        if (failure) throw failure;
+        const old = records.get(input.id);
+        if (input.id === relationshipId && conflicts-- > 0) {
+          records.set(input.id, {
+            ...old,
+            revision: old.revision + 1,
+            data: { ...old.data, reviewedActorIds: ["concurrent"] },
+          });
+          return null;
+        }
+        if (!old || old.revision !== input.expectedRevision) return null;
+        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+        records.set(input.id, row);
+        writes.push(input.id);
+        return structuredClone(row);
+      },
+      async remove() {
+        return false;
+      },
+    };
+    const release = scope.run(() =>
+      configureVillagesRuntime({
+        persistence: { documents },
+        getAgentConfig: async () => {
+          throw new Error("Live settlement must not resolve a model");
+        },
+        logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
+      } as any),
+    );
+    assert.deepEqual(writes, [], "assembly performs no saved-live processing");
+    return {
+      scope,
+      entered,
+      gate,
+      records,
+      writes,
+      release,
+      scene,
+      fail(error?: Error) {
+        failure = error;
+      },
+    };
+  }
+  for (const stage of ["world", "authority", "village-save", "relationship-save"]) {
+    const a = fixture("A", stage),
+      b = fixture("B"),
+      clearA = installDefaultActivation(a.scope, () => {});
+    let clearB = () => {};
+    try {
+      const pending = processLiveRelationships(a.scene, "equal-turn");
+      await Promise.race([
+        a.entered.promise,
+        pending.then(() => assert.fail("Live processing completed before controlled " + stage + " pause")),
+      ]);
+      clearB = installDefaultActivation(b.scope, () => {});
+      const resultB = await processLiveRelationships(b.scene, "equal-turn");
+      clearA();
+      a.gate.resolve();
+      const resultA = await pending;
+      assert.deepEqual(resultA.receiptIds, resultB.receiptIds, "equal IDs stay separate in independent saved worlds");
+      for (const owned of [a, b]) {
+        const label = owned === a ? "A" : "B",
+          relationships = owned.records.get(relationshipId).data;
+        assert.equal(relationshipFor(relationships, "a", "player").warmth, 2);
+        assert(
+          Object.values(relationships.receipts).every(
+            (receipt: any) => !receipt.reason || !receipt.reason.includes((label === "A" ? "B" : "A") + " planning"),
+          ),
+        );
+        const before = JSON.stringify(relationships);
+        await owned.scope.run(() => processLiveRelationships(owned.scene, "equal-turn"));
+        assert.equal(
+          relationshipFor(owned.records.get(relationshipId).data, "a", "player").warmth,
+          2,
+          "saved relationship replay spends no second reward",
+        );
+        assert.equal(JSON.stringify(owned.records.get(relationshipId).data), before);
+        await owned.scope.run(() => processLiveMemories(owned.scene, "equal-turn"));
+        const memories = owned.records.get("villages-village").data.chronicle;
+        assert.equal(memories.length, 1);
+        assert.equal(memories[0].text, label + " will bring seedlings on Saturday.");
+        await owned.scope.run(() => processLiveMemories(owned.scene, "equal-turn"));
+        assert.equal(owned.records.get("villages-village").data.chronicle.length, 1);
+      }
+      if (stage === "relationship-save")
+        assert(a.records.get(relationshipId).data.reviewedActorIds.includes("concurrent"));
+      console.log("Owned live settlement stage passed:", stage);
+    } finally {
+      a.gate.resolve();
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+    }
+  }
+  const a = fixture("A"),
+    b = fixture("B"),
+    clearA = installDefaultActivation(a.scope, () => {});
+  let clearB = () => {};
+  try {
+    const exact = new Error("exact live authority failure");
+    a.fail(exact);
+    await assert.rejects(processLiveRelationships(a.scene, "equal-turn"), (error) => error === exact);
+    await assert.rejects(processLiveMemories(a.scene, "equal-turn"), (error) => error === exact);
+    assert.deepEqual(a.writes, []);
+    a.fail();
+    clearB = installDefaultActivation(b.scope, () => {});
+    a.scope.dispose();
+    await assert.rejects(
+      a.scope.run(() => processLiveRelationships(a.scene, "equal-turn")),
+      /not configured/,
+    );
+    await assert.rejects(
+      a.scope.run(() => processLiveMemories(a.scene, "equal-turn")),
+      /not configured/,
+    );
+    assert.deepEqual(b.writes, []);
+    await processLiveMemories(b.scene, "equal-turn");
+    assert.equal(b.records.get("villages-village").data.chronicle.length, 1);
+  } finally {
+    clearA();
+    clearB();
+    a.release();
+    b.release();
+    a.scope.dispose();
+    b.scope.dispose();
+  }
+}
+
 async function main() {
+  await liveConnectionOwnership();
   const at = new Date().toISOString(),
     state = defaultVillageState();
   state.seed = "live-memory-fixture";
@@ -674,4 +955,4 @@ async function main() {
     release();
   }
 }
-void main();
+await main();

@@ -1,3 +1,11 @@
+import { createRelationshipStore } from "../features/residents/relationship-store-service.js";
+import { configureRelationshipStore, mutateRelationships } from "../features/residents/relationship-store.js";
+import { createRelationshipSocial } from "../features/residents/relationship-social-service.js";
+import { configureRelationshipSocial } from "../features/residents/relationship-social.js";
+import { createRelationships } from "../features/residents/relationship-service.js";
+import { configureRelationships } from "../features/residents/relationships.js";
+import { createLiveMemory } from "../features/residents/live-memory-service.js";
+import { configureLiveMemory } from "../features/residents/live-memory.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { applyResidenceEditApproval } from "../features/venues/zone-edits.js";
@@ -381,6 +389,22 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneWork = configureSceneWork(createSceneWork(backendWork.navigation));
   const releaseWishClocks = configureWishAttemptClocks(createWishAttemptClocks());
+  const releaseRelationshipStore = configureRelationshipStore(
+    createRelationshipStore({
+      VILLAGES_PACKAGE_ID,
+      villagesDocuments,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+    }),
+  );
+  const releaseRelationshipSocial = configureRelationshipSocial(
+    createRelationshipSocial({ mutateVillageState, mutateRelationships }),
+  );
+  const releaseRelationshipViews = configureRelationships(
+    createRelationships({ readVillageLore, readVillageState, mutateRelationships }),
+  );
+  const releaseLiveMemory = configureLiveMemory(
+    createLiveMemory({ mutateVillageState, readVillageAuthority, readVillageState, mutateRelationships }),
+  );
   const releaseRelationships = configureWorldRelationships({
     readRelationshipState,
     reconcileRelationships,
@@ -819,8 +843,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseQueries();
     releaseSceneArchive();
     releaseLiveScenes();
+    releaseLiveMemory();
+    releaseRelationshipViews();
     releaseVillageState();
     releaseRelationships();
+    releaseRelationshipSocial();
+    releaseRelationshipStore();
     releaseWishClocks();
     releaseSceneWork();
     releaseInterpretation();
