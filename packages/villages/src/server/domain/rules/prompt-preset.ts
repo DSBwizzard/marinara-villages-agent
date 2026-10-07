@@ -81,8 +81,6 @@ export const MAX_VENUE_EVENTS = 200;
 export const MAX_CHRONICLE = MAX_VENUE_EVENTS;
 /** How many memories reach one villager's prompt. */
 export const MAX_CHRONICLE_IN_PROMPT = 12;
-/** How many memories about one person reach that person's own prompt. */
-export const MAX_CHRONICLE_ABOUT_ONE_VILLAGER = 3;
 /** How long one memory may be, and how many one write may add. */
 export const MAX_CHRONICLE_LENGTH = 320;
 /**
@@ -133,21 +131,6 @@ export const MAX_WISH_TELL_LENGTH = 160;
 export const MAX_WISH_CLAIM_LENGTH = 600;
 /** How long the village's fallback line about an ordinary day may be. */
 export const MAX_ROUTINE_SUMMARY_LENGTH = 240;
-/**
- * How many of the week's other activities one resident's line in the narrator's
- * briefing may name.
- *
- * The narrator is given TODAY block by block, which is precise and is also
- * today-shaped: a reader shown one day of a miller's life cannot tell a daily
- * grind from a Tuesday errand. A short list of the phrases the rest of the week
- * is made of is the whole of the correction, and it is kept short because it is
- * colour beside a plan that is already several lines long. Nothing on the
- * VILLAGER's side reads it: their own prompt prints their actual day, which
- * subsumes a list of phrases about it.
- */
-export const MAX_RESIDENT_WEEK_NOTES = 6;
-/** How long the name beside one resident may be in the narrator's own briefing. */
-export const MAX_RESIDENT_SUMMARY_LENGTH = 200;
 /**
  * How much of the Engine's week one translation may cover, and how long each
  * field of an entry may be.
@@ -1131,22 +1114,6 @@ function wishWeightNote(intensity: number): string {
   if (intensity >= 3) return " — this is on your mind most of the day";
   if (intensity <= 1) return " — this sits at the back of your mind";
   return "";
-}
-
-/**
- * The same weight, said about a villager rather than to them.
- *
- * The narrator is briefed on the same wishes as a second reader, and it needs the
- * same spread in order to weight what it writes — otherwise it treats the
- * faintest wish and the loudest one as equally worth writing a happening about,
- * and then those happenings feed back into `{{happenings}}` on the next turn.
- * The words are the tab's, so all three places agree about what an intensity
- * means.
- */
-export function wishWeightWords(intensity: number): string {
-  if (intensity >= 3) return "often on their mind";
-  if (intensity <= 1) return "barely on their mind";
-  return "on their mind";
 }
 
 /**

@@ -960,7 +960,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesLogger,
     listVillagerCards,
     readEffectiveVillagerCard,
-    readVillageLore,
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
     retryResidencePrivateSpaceAdaptation,

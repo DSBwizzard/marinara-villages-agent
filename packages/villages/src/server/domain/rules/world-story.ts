@@ -1,11 +1,5 @@
-import type {
-  VillageChronicleEntry,
-  VillageOpportunity,
-  VillageRecap,
-  VillageState,
-  VillageStoryPace,
-} from "../models/world.js";
-import { isHousePlace, MAX_CHRONICLE_ABOUT_ONE_VILLAGER, MAX_CHRONICLE_IN_PROMPT } from "./prompt-preset.js";
+import type { VillageOpportunity, VillageRecap, VillageState, VillageStoryPace } from "../models/world.js";
+import { isHousePlace } from "./prompt-preset.js";
 import type { NativeRoutine } from "./schedule-rules.js";
 import { deriveVillageMoment, hashString } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
@@ -123,55 +117,4 @@ export function buildReturnRecap(
     summaries.push(`${days} days passed in the village.`);
   }
   return { from, through, details, summaries, pendingDecisionCount };
-}
-/**
- * What the village already remembers about one person.
- *
- * Only private memories. The village-scope ones are no longer thrown away —
- * they are fed to the same call as their own section by `sharedMemoryFor` below
- * — but they are still NOT fed back here, because they arrive by that route and
- * feeding the same fortnight in twice would spend the prompt's room on saying it
- * again.
- */
-export function rememberedFor(chronicle: readonly VillageChronicleEntry[], characterId: string): string[] {
-  const lines: string[] = [];
-  for (const entry of chronicle) {
-    if (entry.scope !== "private" || !entry.actors.some((actor) => actor.id === characterId)) continue;
-    lines.push(entry.text);
-    if (lines.length >= MAX_CHRONICLE_ABOUT_ONE_VILLAGER) break;
-  }
-  return lines;
-}
-/**
- * What the WHOLE village remembers, newest first, as the narrator reads it.
- *
- * Three things are decided here, and each of them is the difference between a
- * prompt that helps and a prompt that lies:
- *
- *   * Private memories are excluded. A memory filed against one villager is
- *     that villager's to know, and handing it to the narrator as village history
- *     would put a confidence in the mouth of the whole square. It reaches the
- *     narrator only as `rememberedFor` on the person it belongs to.
- *   * Anything already in the happenings window is dropped. The window is the
- *     last part of this same record, so it is already in the prompt above and a
- *     memory that repeated it would read as the village saying everything twice.
- *   * It is capped, and the cap is a cap on ENTRIES rather than characters,
- *     because the old end of this list is the part that can afford to be
- *     forgotten — the window above is what proves what happened most recently.
- */
-export function sharedMemoryFor(
-  chronicle: readonly VillageChronicleEntry[],
-  alreadySaid: readonly string[],
-): VillageChronicleEntry[] {
-  const seen = new Set(alreadySaid.map((line) => line.trim().toLowerCase()));
-  const memory: VillageChronicleEntry[] = [];
-  for (const entry of chronicle) {
-    if (entry.scope !== "village") continue;
-    const key = entry.text.trim().toLowerCase();
-    if (key.length === 0 || seen.has(key)) continue;
-    seen.add(key);
-    memory.push(entry);
-    if (memory.length >= MAX_CHRONICLE_IN_PROMPT) break;
-  }
-  return memory;
 }

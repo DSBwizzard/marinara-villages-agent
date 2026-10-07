@@ -89,9 +89,6 @@ async function main() {
     venues: [],
     opportunities: [{ id: "opportunity", kind: "wish", actorIds: ["a"], venueId: "park", facts: ["A quiet morning"] }],
     recent: [],
-    noticeboard: [],
-    memory: [],
-    pendingVenueNames: [],
   };
   const jsonOptions = { temperature: 0, debugMode: false, retryEmpty: false, responseFormat: { type: "json_object" } };
   const examples = buildVenueTextContract("a", ["a"], true)

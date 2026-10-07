@@ -52,9 +52,9 @@ async function main() {
   const {
     coerceWish,
     describeStatus,
+    renderDoingBlock,
     MAX_REMAP_HERE_LENGTH,
     MAX_REMAP_SLOT_LENGTH,
-    MAX_RESIDENT_WEEK_NOTES,
     MAX_ROUTINE_SUMMARY_LENGTH,
     MAX_VENUES,
     MAX_VILLAGER_WISHES,
@@ -62,8 +62,8 @@ async function main() {
     wishLifetimeDays,
   } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
   const { agendaAt, agendaDayPlan } = await import("../packages/villages/src/server/domain/rules/agenda-plan.js");
-  const { renderResidentsBlock } =
-    await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
+  const { buildTickMessages } = await import("../packages/villages/src/server/domain/rules/village-bootstrap-rules.js");
+  const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const { coerceRemap: readStoredRemap } =
     await import("../packages/villages/src/server/features/world/village-store.js");
 
@@ -1204,26 +1204,46 @@ async function main() {
   assert.equal(pilotDoing.activity, "at home", "the active Villages agenda decides the activity");
   assert.equal(pilotDoing.status, "dnd", "availability comes from the same active agenda block");
   assert.equal(pilotDoing.routineSummary, "An ordinary village day.");
-  assert.equal(pilotDoing.today.length, 4, "the entire active day reaches the prompt");
+  assert.equal(pilotDoing.today.length, 4, "the Village agenda retains its complete active day");
   assert.equal(pilotDoing.today[1]?.reason, "To prepare for the day");
-  const narratorBlock = renderResidentsBlock([
-    {
-      characterId: "character-ives",
-      name: "Ives",
-      summary: "An apiarist with a ledger.",
-      tags: ["beekeeper"],
-      doing: pilotDoing.activity,
-      status: pilotDoing.status,
-      routine: pilotDoing.routineSummary,
-      week: [],
-      today: pilotDoing.today,
-      agenda: pilotAgenda as any,
-      remembered: [],
-    },
-  ]);
+  const currentSceneDoing = renderDoingBlock(pilotDoing);
+  assert.ok(currentSceneDoing.includes("at home"));
+  assert.ok(!currentSceneDoing.includes("Halcyon"), "current Scene writing receives Village-owned activity");
+  assert.ok(
+    !currentSceneDoing.includes("To prepare for the day"),
+    "current Scene recurring activity omits routine reasons",
+  );
+  function eventsPrompt(doing: string, agenda: Parameters<typeof buildTickMessages>[0]["residents"][number]["agenda"]) {
+    return buildTickMessages({
+      village: "Apiary",
+      setting: "A quiet village",
+      moment: deriveVillageMoment({ foundedAt: now.toISOString(), seed: "schedule-fixture", now }),
+      residents: [
+        { characterId: "character-ives", name: "Ives", summary: "An apiarist with a ledger.", doing, agenda },
+      ],
+      recent: [],
+      venues: [],
+      opportunities: [
+        {
+          id: "routine",
+          kind: "routine",
+          startsAt: now.toISOString(),
+          endsAt: now.toISOString(),
+          actorIds: ["character-ives"],
+          venueId: "",
+          facts: ["An ordinary day at the apiary"],
+        },
+      ],
+      lastSimulatedAt: "",
+      forced: false,
+    })
+      .map((message) => String(message.content))
+      .join("\n");
+  }
+  const narratorBlock = eventsPrompt(pilotDoing.activity, pilotAgenda as any);
+  assert.ok(narratorBlock.includes("Current activity: at home"));
   assert.ok(!narratorBlock.includes("Halcyon"), "native schedule prose never reaches the narrator");
   assert.ok(!narratorBlock.includes("To prepare for the day"), "routine reasons are omitted from recurring prompts");
-  assert.ok(!renderResidentsBlock([]).includes("lives here"));
 
   // ── Block-level fidelity ──────────────────────────────────────────────────
   // The thing the whole feature is for, and the one thing a summary cannot prove. A
@@ -1274,34 +1294,12 @@ async function main() {
     "the Engine's string rides beside the village's",
   );
 
-  const hourlyNarrator = renderResidentsBlock([
-    {
-      characterId: "character-ives",
-      name: "Ives",
-      summary: "",
-      tags: [],
-      doing: hourlyPlan[13]!.here,
-      status: "",
-      routine: "",
-      week: Array.from({ length: MAX_RESIDENT_WEEK_NOTES + 3 }, (_unused, index) => `note ${index}`),
-      today: hourlyPlan,
-      agenda: null,
-      remembered: [],
-    },
-  ]);
-  for (const block of hourly) {
-    assert.ok(
-      hourlyNarrator.includes(`${block.time} minding ${block.activity}`),
-      `the narrator is given ${block.time} too, so what it writes can agree with the hour it happens in`,
-    );
-  }
+  const hourlyNarrator = eventsPrompt(hourlyPlan[13]!.here, null);
+  assert.ok(hourlyNarrator.includes("Current activity: minding an hour on the card, number 13"));
   assert.ok(
-    hourlyNarrator.includes(
-      `On other days: ${Array.from({ length: MAX_RESIDENT_WEEK_NOTES }, (_unused, index) => `note ${index}`).join("; ")}`,
-    ),
-    "the rest of the week is named, capped, and does not carry today",
+    !hourlyNarrator.includes("Current activity: minding an hour on the card, number 0"),
+    "current Events uses the selected hour; the complete translation remains in the agenda",
   );
-  assert.ok(!hourlyNarrator.includes(`note ${MAX_RESIDENT_WEEK_NOTES}`), "and the cap on it holds");
 
   // A week whose phrases the plan already says is not repeated back at the
   // narrator: the line is about the days the plan is not.

@@ -148,10 +148,6 @@ function fixture(name: string) {
       return [card];
     },
     readEffectiveVillagerCard,
-    async readVillageLore() {
-      note("lore");
-      return [`${name} lore`];
-    },
     outsideVenueOperation(work) {
       note("outside");
       return work();
@@ -318,7 +314,11 @@ assert.equal(a.queued[0].revision, "manual:owned-story");
 assert.equal(a.queued[0].expectedAttempt, 4);
 const queuedContext = (a.queued[0].input as { context: VillageTickContext }).context;
 assert.equal(queuedContext.village, a.state.name);
-assert.deepEqual(queuedContext.lore, ["A lore"]);
+for (const field of ["lore", "foundedAt", "at", "memory", "noticeboard", "pendingVenueNames"])
+  assert(!Object.hasOwn(queuedContext, field), "unused private/world data is not persisted in Events work");
+for (const field of ["tags", "status", "routine", "today", "week", "remembered"])
+  assert(!Object.hasOwn(queuedContext.residents[0], field), "unused resident data is not persisted in Events work");
+assert(!a.calls.includes("lore"), "Events admission has no discarded lore read");
 assert.equal(queuedContext.residents[0].name, "A library");
 assert(!a.calls.some((call) => call.startsWith("story:")), "reconciliation admits work without calling its provider");
 a.state.recollections = [

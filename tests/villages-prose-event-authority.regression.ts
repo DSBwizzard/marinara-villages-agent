@@ -15,7 +15,6 @@ const { storyBackgroundHandler } = createWorldCoordination({
   villagesLogger: unavailable,
   listVillagerCards: unavailable,
   readEffectiveVillagerCard: unavailable,
-  readVillageLore: unavailable,
   outsideVenueOperation: unavailable,
   completeVillageResidence: unavailable,
   retryResidencePrivateSpaceAdaptation: unavailable,

@@ -1,27 +1,18 @@
 import type {
   VillageAgenda,
-  VillageChronicleEntry,
-  VillageDayBlock,
   VillageHappening,
-  VillageNotice,
   VillageOpportunity,
   VillagePlayerRole,
   VillageVenue,
 } from "../models/world.js";
-import { condense } from "./coerce.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { agendaPromptDay, compressAgendaBlocks } from "./owned-routine.js";
 import { renderPlayerRoleContext } from "./player-role.js";
 import {
   boundText,
-  describeStatus,
   HAPPENING_RULES,
   MAX_HAPPENING_LENGTH,
   MAX_HAPPENINGS_PER_WRITE,
-  MAX_RESIDENT_SUMMARY_LENGTH,
-  MAX_RESIDENT_WEEK_NOTES,
   MAX_VENUE_NAME_LENGTH,
-  wishWeightWords,
 } from "./prompt-preset.js";
 import { EVENT_MEMORY_GUIDANCE } from "./venue-writing.js";
 import { describeMoment, hashString, randomVillageSeed } from "./village-clock.js";
@@ -118,75 +109,15 @@ export function coerceProposal(payload: Record<string, unknown>): { venues: Vill
 export const TICK_MAX_TOKENS = 3_000;
 
 export const TICK_TEMPERATURE = 0.85;
-
 export type VillageTickResident = {
   characterId: string;
   name: string;
-  /** Complete authored identity for background encounters; optional on old fixtures. */
+  /** Complete authored identity for background encounters. */
   profile?: string;
-  /** The card's one-line blurb, empty when the card is gone or says nothing. */
   summary: string;
-  tags: readonly string[];
-  /** What they are doing at this hour, already translated into this village's terms. */
+  /** Current activity in the village's own terms. */
   doing: string;
-  /**
-   * The Engine's availability token for this hour, or "".
-   *
-   * The raw token rather than a sentence, so that the one table of words is
-   * still the only table of words — see `describeStatus`. "" is the ordinary
-   * value and means the Engine said nothing about this hour, which is not the
-   * same as saying the hour is theirs.
-   *
-   * The narrator needs this for a reason the villager's own prompt does not have:
-   * a happening is written about a person who may not be there. "Somebody was
-   * working the forge all afternoon" and "somebody was asleep all afternoon" are
-   * the same sentence to a writer that has only been told what they were doing,
-   * and only one of them is true of a person whose afternoon the Engine marked
-   * as not to be interrupted.
-   */
-  status: string;
-  /**
-   * One line about an ordinary day for them, already translated into this
-   * village's terms, or "" when there is nothing to translate.
-   *
-   * It travels on its own rather than being read off `agenda.routineSummary`
-   * below, because those are two different sentences. The agenda holds whatever
-   * the Engine wrote about the week it generated on its own — which may name a
-   * place this village does not have — and this holds the village's own reading
-   * of that week. Only one of them can be true of a person who lives here, the
-   * caller has already decided which, and this block is not the place to
-   * re-decide it.
-   */
-  routine: string;
-  /**
-   * The rest of their week as phrases, without days or hours, already translated
-   * into this village's terms — and with anything today's plan already says left
-   * out.
-   *
-   * Here so that a reader shown one day of somebody's life can tell a daily
-   * grind from a Tuesday errand. `today` is precise and is also today-shaped, and
-   * a narrator with only that has no way to know the miller works the mill every
-   * morning rather than this morning.
-   */
-  week: readonly string[];
-  /**
-   * Today, block by block, in order, in the village's own words — see
-   * `VillageDayBlock`.
-   *
-   * The precise half, and the one that makes an event possible rather than
-   * plausible: an event about a person is only ever true if it agrees with what
-   * THEY are doing at the hour it happened. Empty when the Engine has no schedule
-   * for them, which is why the block renders nothing at all in that case.
-   */
-  today: readonly VillageDayBlock[];
-  /**
-   * What they privately wish for, or null when the village has not written for them
-   * yet. This is the last of the grounding inputs, and the only one the village
-   * invented for itself rather than inherited from the card or the Engine.
-   */
   agenda: VillageAgenda | null;
-  /** What the village already remembers about them, newest first. */
-  remembered: readonly string[];
 };
 
 export type VillageTickContext = {
@@ -197,43 +128,15 @@ export type VillageTickContext = {
   /** The player's description of the place. Empty is allowed: the village still has a name. */
   setting: string;
   worldFacts?: readonly string[];
-  lore?: readonly string[];
   /** The moment being written for, as `village-clock.ts` derived it. */
   moment: VillageMoment;
-  /**
-   * When the village was founded, as an instant. Here for one reason: it is what
-   * turns a `dayIndex` back into a calendar date, and the shared memory below is
-   * the first thing in this prompt that is dated rather than merely ordered.
-   */
-  foundedAt: string;
-  /**
-   * The wall-clock instant the same derivation used, for the display-only `at`
-   * stamp on each memory. Passed in rather than read again here so the stamp and
-   * the `dayIndex`/`clock` beside it can never come from two different instants.
-   */
-  at: string;
   /** Who lives here, and what the village knows about each of them. */
   residents: readonly VillageTickResident[];
   /** What has already been written down, newest first, so it continues rather than repeats. */
   recent: readonly string[];
-  /**
-   * What the VILLAGE remembers, newest first, and only what it remembers
-   * SHARED — a private memory reaches this call through the resident it is about
-   * and nowhere else.
-   *
-   * This is the half of the record the happenings window cannot cover. The window
-   * holds forty lines and is trimmed forever, so a village played for a fortnight
-   * has forgotten what it did in its first week, and a narrator shown only the
-   * window can write an event and then never be able to mention it again. Selected
-   * by the caller, where the chronicle can be read and deduped against `recent`.
-   */
-  memory: readonly VillageChronicleEntry[];
-  /** What is on the board, so a second note does not say what the first one said. */
-  noticeboard: readonly VillageNotice[];
   venues: readonly VillageVenue[];
   /** Residents with a move or home upgrade already awaiting a decision. */
   pendingHousingCharacterIds?: readonly string[];
-  pendingVenueNames: readonly string[];
   /** Deterministic, fact-backed windows the planner is allowed to use. */
   opportunities: readonly VillageOpportunity[];
   /** Exact high-water mark of deterministic simulation, or empty before the first pass. */
@@ -300,58 +203,6 @@ function describeGap(gap: VillageGap): string {
   if (gap.hours < 24) return `The last thing written down was about ${gap.hours} hours ago.`;
   if (gap.days === 1) return "Nothing has been written down here for a whole day.";
   return `Nothing has been written down here for ${gap.days} days.`;
-}
-
-export function renderResidentsBlock(residents: readonly VillageTickResident[]): string {
-  const lines: string[] = [];
-  for (const resident of residents) {
-    const name = resident.name.trim();
-    if (name.length === 0) continue;
-    const summary = condense(resident.summary, MAX_RESIDENT_SUMMARY_LENGTH);
-    const tags = resident.tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0);
-    const who = summary.length > 0 ? `${name} — ${summary}` : name;
-    lines.push(tags.length > 0 ? `- ${who} (${tags.join(", ")})` : `- ${who}`);
-    const doing = resident.doing.trim();
-    if (doing.length > 0) lines.push(`  Right now: ${doing}`);
-    const availability = describeStatus(resident.status);
-    if (availability.length > 0) lines.push(`  They are ${availability}.`);
-    const routine = resident.routine.trim();
-    if (routine.length > 0) lines.push(`  On an ordinary day: ${routine}`);
-    // Today, terse, on one line per person. The plan is the whole day rather
-    // than an hour, and the narrator is reading about everybody at once, so the
-    // separator is a semicolon and there is no heading of its own.
-    const today = compressAgendaBlocks(resident.today).filter((block) => block.here.trim().length > 0);
-    if (today.length > 0) {
-      lines.push(`  Today: ${agendaPromptDay(today)}`);
-    }
-    // The rest of the week, short, and only the phrases today does not already
-    // account for. Capped because it is colour beside a plan that is already
-    // several lines long — see `MAX_RESIDENT_WEEK_NOTES`.
-    const week = [...new Set(resident.week)]
-      .map((note) => note.trim())
-      .filter((note) => note.length > 0 && !today.some((block) => block.here.trim() === note))
-      .slice(0, MAX_RESIDENT_WEEK_NOTES);
-    if (week.length > 0) lines.push(`  On other days: ${week.join("; ")}`);
-    const wishes = resident.agenda?.wishes ?? [];
-    if (wishes.length > 0) {
-      lines.push("  What they wish for, privately:");
-      // Heaviest first, carrying its weight — the same order and the same words
-      // the villager is given in their own prompt, so the two readers of one
-      // agenda agree about which of these is loud. Without it the writer treats
-      // the faintest wish and the loudest as equally worth a happening, and
-      // every happening it writes comes back in `{{happenings}}` next turn.
-      for (const wish of [...wishes].sort((left, right) => right.intensity - left.intensity)) {
-        lines.push(`  - ${wish.wish} — ${wishWeightWords(wish.intensity)}`);
-      }
-    }
-    const remembered = resident.remembered.map((line) => line.trim()).filter((line) => line.length > 0);
-    if (remembered.length > 0) {
-      lines.push("  Already remembered about them:");
-      for (const line of remembered) lines.push(`  - ${line}`);
-    }
-  }
-  if (lines.length === 0) return "";
-  return ["Who lives here, and what is already known about each of them:", ...lines].join("\n");
 }
 
 export function buildTickMessages(context: VillageTickContext): CapabilityLanguageModelMessage[] {

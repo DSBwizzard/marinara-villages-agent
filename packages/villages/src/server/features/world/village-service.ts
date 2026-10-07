@@ -8,10 +8,9 @@ import type {
   VillageSnapshot,
   VillageVenue,
 } from "../../domain/models/world.js";
-import { agendaAt, agendaDayPlan } from "../../domain/rules/agenda-plan.js";
+import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
-import { selectPromptMemories } from "../../domain/rules/memory-selection.js";
 import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
 import {
   boundText,
@@ -24,23 +23,15 @@ import type { NativeRoutine } from "../../domain/rules/schedule-rules.js";
 import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
 import { venueCardProfile } from "../../domain/rules/venue-writing.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
-import { deriveVillageMoment, VILLAGE_WEEKDAYS, villageDateLabel } from "../../domain/rules/village-clock.js";
+import { deriveVillageMoment, villageDateLabel } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity, villagerPlaceView } from "../../domain/rules/village-projections.js";
 import { wishExpired } from "../../domain/rules/wish-definition.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
-import {
-  buildReturnRecap,
-  creativeOpportunity,
-  localDateKey,
-  rememberedFor,
-  sharedMemoryFor,
-  storyAllowance,
-} from "../../domain/rules/world-story.js";
+import { buildReturnRecap, creativeOpportunity, localDateKey, storyAllowance } from "../../domain/rules/world-story.js";
 import type { VillageTickContext } from "../../domain/rules/village-bootstrap-rules.js";
 import { backgroundRevision } from "../../jobs/background-work.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { listVillagerCards, readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
-import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
 import type { backfillAgendas, refreshVillagerRemaps } from "../residents/resident-agendas.js";
@@ -63,7 +54,6 @@ export interface WorldCoordinationPorts {
   villagesLogger: typeof villagesLogger;
   listVillagerCards: typeof listVillagerCards;
   readEffectiveVillagerCard: typeof readEffectiveVillagerCard;
-  readVillageLore: typeof readVillageLore;
   outsideVenueOperation: typeof outsideVenueOperation;
   completeVillageResidence: typeof completeVillageResidence;
   retryResidencePrivateSpaceAdaptation: typeof retryResidencePrivateSpaceAdaptation;
@@ -89,7 +79,6 @@ export function createWorldCoordination({
   villagesLogger,
   listVillagerCards,
   readEffectiveVillagerCard,
-  readVillageLore,
   outsideVenueOperation,
   completeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
@@ -288,97 +277,30 @@ export function createWorldCoordination({
       const withoutDuplicate = state.opportunities.filter((entry) => entry.id !== opportunity.id);
       state.opportunities = [...withoutDuplicate, opportunity].slice(-256);
     });
-    const narrationMemories = selectPromptMemories(
-      village.chronicle,
-      village.villagers.map((villager) => villager.characterId),
-      opportunity.facts.join(" "),
-      900,
-    );
     const context: VillageTickContext = {
       village: village.name,
       playerRole: village.playerRole,
       playerPersonaName: village.playerPersonaName,
       setting: village.setting,
       worldFacts: village.worldFacts,
-      lore: await readVillageLore(
-        village.selectedLorebookIds,
-        [
-          villageCurrentSetting(village),
-          opportunity.facts.join(" "),
-          village.venues.find((venue) => venue.id === opportunity.venueId)?.name ?? "",
-        ].join("\n"),
-        undefined,
-        village.loreTokenBudget,
-      ),
       moment,
-      // Taken off the record rather than off `now`, because it is only ever used
-      // as a lower bound for the date labels on the memory block and the founding
-      // stamp is what those labels are measured from.
-      foundedAt: village.foundedAt,
-      at: now.toISOString(),
       residents: village.villagers.map((villager) => {
         const card = readEffectiveVillagerCard(villager);
-        // Their whole day, block by block, off the schedule read taken above —
-        // the very list `blockAt` already searched to find this hour. The times
-        // live only in the Engine's raw week and the words only in the stored
-        // translation, so this join is the only place either half becomes a day
-        // somebody could be written into: without it the narrator knows one
-        // clause about each person and can only honestly write weather.
-        const today = agendaDayPlan(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
         return {
           characterId: villager.characterId,
           name: card.name,
           summary: card.summary,
-          tags: card.tags,
           profile: venueCardProfile(card, readPlayerIdentity(village).name),
           // What they are doing, said the way it happens here. A miss answers with
           // the village's own default rather than with the Engine's sentence,
           // which is the leak this whole file exists to close: see
           // `VILLAGE_UNTRANSLATED_ACTIVITY`.
           doing: agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.activity ?? "",
-          // And whether this hour is theirs at all, off the VERY SAME block the
-          // sentence above came from. Two lookups would be two chances to pick
-          // different blocks, and a villager recorded as asleep during their own
-          // shift is exactly that bug with a narrator's voice on it.
-          status: agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false)?.status ?? "",
-          // The one-line description of an ordinary day, in the village's words
-          // when it has any. It travels separately from the agenda rather than
-          // being left for the block to pick off `agenda.routineSummary`, because
-          // the sentence the narrator reads and the sentence the agenda holds are
-          // two different facts about the same person and only one of them is true
-          // here.
-          //
-          // The Engine's own summary is not allowed to stand in for a missing
-          // translation, which is the second half of the same leak: an agenda
-          // marked `native` holds the Engine's sentence word for word, and it is
-          // prose about a life this village may have no room for. Only the
-          // village's own writing is allowed here, and a villager with neither has
-          // nothing said about their ordinary day at all — a shorter prompt rather
-          // than a wrong one.
-          routine: villager.agenda?.routineSummary ?? "",
-          // Their whole day, block by block — see above.
-          today,
-          // And the shape of the rest of the week, so one day of somebody's life
-          // does not read as the whole of it. Also a join, and also free.
-          week: VILLAGE_WEEKDAYS.filter((day) => day !== moment.weekday).flatMap(
-            (day) => villager.agenda?.week?.[day]?.map((block) => block.activity) ?? [],
-          ),
           agenda: villager.agenda,
-          remembered: rememberedFor(narrationMemories, villager.characterId),
         };
       }),
       recent: village.happenings.map((entry) => entry.text),
-      memory: sharedMemoryFor(
-        narrationMemories,
-        village.happenings.map((entry) => entry.text),
-      ),
-      noticeboard: village.noticeboard,
       venues: village.venues,
-      pendingVenueNames: village.pendingDecisions
-        .filter(
-          (decision) => decision.kind === "venue" && decision.status !== "approved" && decision.status !== "denied",
-        )
-        .map((decision) => decision.venueDraft?.name ?? decision.title),
       pendingHousingCharacterIds: [
         ...village.residences.filter((entry) => entry.status !== "current").map((entry) => entry.characterId),
         ...village.pendingDecisions
