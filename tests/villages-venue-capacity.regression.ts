@@ -19,9 +19,9 @@ import { addVillageVenue } from "../packages/villages/src/server/domain/rules/ve
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   createNewVenueProject,
+  draftNewVenueProject,
   placeNewVenueProject,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { draftBuildProject } from "../packages/villages/src/server/features/projects/build-projects.js";
 import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
@@ -65,17 +65,14 @@ async function main() {
   assert.throws(() => assertCanAddVillageVenue(legacy, ["other"]), /no room/);
   assert.doesNotThrow(() => assertCanAddVillageVenue(legacy, ["residence"]));
 
-  const oldBuild = defaultVillageState();
-  oldBuild.setupAt = "2026-10-03T12:00:00.000Z";
-  oldBuild.venues = Array.from({ length: 15 }, (_, i) => venue(i));
-  draftBuildProject(oldBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
-  assert.equal(villageVenueUsage(oldBuild).total, 16, "older build drafts reserve one place");
-  assert.throws(
-    () => draftBuildProject(oldBuild, { name: "Another room", classes: ["gathering"], description: "A room." }),
-    /maximum 16/,
-  );
+  const currentBuild = defaultVillageState();
+  currentBuild.setupAt = "2026-10-03T12:00:00.000Z";
+  currentBuild.venues = Array.from({ length: 15 }, (_, i) => venue(i));
+  draftNewVenueProject(currentBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
+  assert.equal(villageVenueUsage(currentBuild).total, 16, "current drafts reserve one place");
+  assert.throws(() => assertCanAddVillageVenue(currentBuild, ["gathering"]), /maximum 16/);
   const requestState = defaultVillageState();
-  requestState.setupAt = oldBuild.setupAt;
+  requestState.setupAt = currentBuild.setupAt;
   requestState.venues = Array.from({ length: 15 }, (_, i) => venue(i));
   const counter = () => {
     requestState.pendingDecisions = [
@@ -92,7 +89,7 @@ async function main() {
       "request",
       { name: "Counter", classes: ["gathering"] },
       "A shared room.",
-      new Date(oldBuild.setupAt),
+      new Date(currentBuild.setupAt),
     );
   };
   counter();
@@ -100,7 +97,7 @@ async function main() {
   requestState.venues.push(venue(15));
   assert.throws(counter, /maximum 16/);
   legacy.projects = [];
-  const residentialBuild = draftBuildProject(legacy, {
+  const residentialBuild = draftNewVenueProject(legacy, {
     name: "Legacy residence",
     classes: ["residence"],
     description: "Another existing room.",

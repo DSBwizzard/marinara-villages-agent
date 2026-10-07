@@ -13,7 +13,6 @@ import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { selectPromptMemories } from "../../domain/rules/memory-selection.js";
 import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
-import { reconcileBuildProjects } from "../../domain/rules/project-rules.js";
 import {
   boundText,
   MAX_CHRONICLE_LENGTH,
@@ -148,7 +147,6 @@ export function createWorldCoordination({
     }
     if (completedMove) recorded = await readVillageState();
     await mutateVillageState((state) => {
-      reconcileBuildProjects(state, now);
       reconcileProjectLifecycles(state, now);
     });
     recorded = await readVillageState();
