@@ -67,11 +67,13 @@ export function staleVenueReason(cause: unknown): "inactivity" | "elsewhere" | n
   return null;
 }
 
-export async function completedGreetingAfterFailure(sessionId: string): Promise<SceneView | null> {
+export async function completedGreetingAfterFailure(sessionId: string, owns = () => true): Promise<SceneView | null> {
   try {
+    if (!owns()) return null;
     const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
     });
+    if (!owns()) return null;
     return session?.id === sessionId && session.status !== "opening" ? currentRoom(session) : null;
   } catch {
     return null;

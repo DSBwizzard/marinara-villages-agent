@@ -3,6 +3,25 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 type Completion = { roomId: string; submissionId: string } | null;
 type RequestClaim = { owner: object; submission: string | null; completion: Completion; busy: boolean };
 
+/** Admission identity only; each mounted Scene owns its existing in-flight ref. */
+const admissions = new WeakMap<React.RefObject<boolean>, object>();
+export function beginSceneRequest(inFlight: React.RefObject<boolean>): object | null {
+  if (inFlight.current || admissions.has(inFlight)) return null;
+  const token = {};
+  admissions.set(inFlight, token);
+  inFlight.current = true;
+  return token;
+}
+export function ownsSceneRequest(inFlight: React.RefObject<boolean>, token: object): boolean {
+  return admissions.get(inFlight) === token;
+}
+export function releaseSceneRequest(inFlight: React.RefObject<boolean>, token: object, clearFlag: boolean): boolean {
+  if (!ownsSceneRequest(inFlight, token)) return false;
+  admissions.delete(inFlight);
+  if (clearFlag) inFlight.current = false;
+  return true;
+}
+
 /** One request owns its continuation and cleanup while its selected Scene remains current. */
 export function useSceneRequestLifetime(ports: {
   sceneId: string | undefined;
@@ -44,8 +63,8 @@ export function useSceneRequestLifetime(ports: {
         const claim = pending.current;
         owner.current = {};
         pending.current = null;
-        if (!claim || completion.current !== claim.completion) return;
-        inFlight.current = false;
+        if (!claim || !releaseSceneRequest(inFlight, claim.owner, completion.current === claim.completion)) return;
+        if (completion.current !== claim.completion) return;
         if (submission.current === claim.submission) submission.current = null;
         if (clearCompletionOnRetire) completion.current = null;
         if (active.current && claim.busy) setBusy(false);
@@ -60,23 +79,26 @@ export function useSceneRequestLifetime(ports: {
           inFlight.current
         )
           return null;
+        const admission = beginSceneRequest(inFlight);
+        if (!admission) return null;
         const claim = {
-          owner: owner.current,
+          owner: admission,
           submission: submission.current,
           completion: completion.current,
           busy: false,
         };
         pending.current = claim;
-        inFlight.current = true;
         return claim;
       },
       owns(claim: RequestClaim): boolean {
-        return active.current && enabled.current && owner.current === claim.owner && pending.current === claim;
+        return (
+          active.current && enabled.current && pending.current === claim && ownsSceneRequest(inFlight, claim.owner)
+        );
       },
       finish(claim: RequestClaim): boolean {
         if (!lifetime.owns(claim)) return false;
         pending.current = null;
-        inFlight.current = false;
+        releaseSceneRequest(inFlight, claim.owner, true);
         return true;
       },
     }),

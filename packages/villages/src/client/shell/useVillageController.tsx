@@ -1493,6 +1493,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const greetRoom = useGreetRoom({
+    isFounded: snapshot?.isFounded,
+    room,
+    roomBusy,
+    roomEnded,
+    roomCompletionRef,
+    roomSendInFlightRef,
     loadSnapshot,
     setRoom,
     setRoomBusy,
@@ -1541,6 +1547,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   /** Visit starts one venue session with a fixed cast, including when the venue is empty. */
   const openRoom = useOpenRoom({
+    isFounded: snapshot?.isFounded,
+    roomBusy,
+    roomEnded,
+    roomSendInFlightRef,
     greetRoom,
     leavingRoomPendingRef,
     loadSnapshot,

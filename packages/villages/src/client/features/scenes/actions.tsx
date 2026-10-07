@@ -22,6 +22,7 @@ import {
 } from "./ScenePanel.js";
 import { sceneResend } from "./villages-venue-send";
 import { useSceneRequestLifetime } from "./request-lifetime.js";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import { type SetStateAction, useCallback, useRef } from "react";
 
 export function useReceiveRoomRecordEvents(ports: {
@@ -857,7 +858,14 @@ export function useSendRoom(ports: {
   ]);
 }
 
+type EntryGreeting = { owns(): boolean; handoff(session: SceneView): boolean };
 export function useGreetRoom(ports: {
+  isFounded: boolean | undefined;
+  room: SceneView;
+  roomBusy: boolean;
+  roomEnded: boolean;
+  roomCompletionRef: React.RefObject<{ roomId: string; submissionId: string }>;
+  roomSendInFlightRef: React.RefObject<boolean>;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   setRoom: React.ActionDispatch<[next: SetStateAction<SceneView>]>;
   setRoomBusy: React.Dispatch<SetStateAction<boolean>>;
@@ -865,9 +873,39 @@ export function useGreetRoom(ports: {
   setRoomGreetingError: React.Dispatch<SetStateAction<{ sessionId: string; message: string }>>;
   setRoomGreetingNotice: React.Dispatch<SetStateAction<string>>;
 }) {
-  const { loadSnapshot, setRoom, setRoomBusy, setRoomError, setRoomGreetingError, setRoomGreetingNotice } = ports;
+  const {
+    isFounded,
+    room,
+    roomBusy,
+    roomEnded,
+    roomCompletionRef,
+    roomSendInFlightRef,
+    loadSnapshot,
+    setRoom,
+    setRoomBusy,
+    setRoomError,
+    setRoomGreetingError,
+    setRoomGreetingNotice,
+  } = ports;
+  const submission = useRef<string | null>(null);
+  const lifetime = useSceneRequestLifetime({
+    sceneId: room?.id,
+    isFounded,
+    ended: roomEnded || room?.status === "closed",
+    inFlight: roomSendInFlightRef,
+    submission,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+    clearCompletionOnRetire: false,
+  });
   return useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, entry?: EntryGreeting) => {
+      if (!entry && roomBusy) return;
+      const claim = entry ? null : lifetime.begin(sessionId);
+      if (!entry && !claim) return;
+      const owns = entry?.owns ?? (() => lifetime.owns(claim!));
+      if (!owns()) return;
+      if (claim) claim.busy = true;
       setRoomBusy(true);
       setRoomError("");
       setRoomGreetingError(null);
@@ -878,12 +916,17 @@ export function useGreetRoom(ports: {
           body: JSON.stringify({ sessionId }),
           signal: AbortSignal.timeout(30_000),
         });
+        if (!owns()) return;
+        if (entry && !entry.handoff(answer.session)) return;
         setRoom((current) => (current?.id === sessionId ? currentRoom(answer.session) : current));
         setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
         void loadSnapshot();
       } catch (cause) {
-        const recovered = await completedGreetingAfterFailure(sessionId);
+        if (!owns()) return;
+        const recovered = await completedGreetingAfterFailure(sessionId, owns);
+        if (!owns()) return;
         if (recovered) {
+          if (entry && !entry.handoff(recovered)) return;
           setRoom((current) => (current?.id === sessionId ? recovered : current));
           setRoomGreetingError((current) => (current?.sessionId === sessionId ? null : current));
         } else
@@ -891,10 +934,10 @@ export function useGreetRoom(ports: {
             current && current.sessionId !== sessionId ? current : { sessionId, message: openingFailureMessage(cause) },
           );
       } finally {
-        setRoomBusy(false);
+        if (claim && lifetime.finish(claim)) setRoomBusy(false);
       }
     },
-    [loadSnapshot],
+    [loadSnapshot, roomBusy, lifetime],
   );
 }
 
@@ -1109,7 +1152,11 @@ export function useContinueRoomWithoutGreeting(ports: {
 }
 
 export function useOpenRoom(ports: {
-  greetRoom: (sessionId: string) => Promise<void>;
+  greetRoom: (sessionId: string, entry?: EntryGreeting) => Promise<void>;
+  isFounded: boolean | undefined;
+  roomBusy: boolean;
+  roomEnded: boolean;
+  roomSendInFlightRef: React.RefObject<boolean>;
   leavingRoomPendingRef: React.RefObject<boolean>;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   room: SceneView;
@@ -1135,6 +1182,10 @@ export function useOpenRoom(ports: {
 }) {
   const {
     greetRoom,
+    isFounded,
+    roomBusy,
+    roomEnded,
+    roomSendInFlightRef,
     leavingRoomPendingRef,
     loadSnapshot,
     room,
@@ -1156,6 +1207,14 @@ export function useOpenRoom(ports: {
     setRoomTargetId,
     setScreen,
   } = ports;
+  const lifetime = useSceneEntryLifetime({
+    room,
+    isFounded,
+    ended: roomEnded,
+    inFlight: roomSendInFlightRef,
+    completion: roomCompletionRef,
+    setBusy: setRoomBusy,
+  });
   return useCallback(
     async (
       place: VillageVenue,
@@ -1164,7 +1223,13 @@ export function useOpenRoom(ports: {
       entryArea?: "outside" | "shared" | "private" | "public",
       zoneId?: string,
     ) => {
-      if (room?.id && room.status === "active" && room.placeId === place.id && zoneId) {
+      if (roomBusy) return;
+      const zoneOnly = !!(room?.id && room.status === "active" && room.placeId === place.id && zoneId);
+      const claim = lifetime.begin(zoneOnly);
+      if (!claim) return;
+      const owns = () => lifetime.owns(claim);
+      claim.busy = true;
+      if (zoneOnly) {
         setRoomBusy(true);
         setRoomError("");
         try {
@@ -1172,30 +1237,34 @@ export function useOpenRoom(ports: {
             method: "POST",
             body: JSON.stringify({ sessionId: room.id, zoneId, expectedSceneRevision: room.sceneRevision ?? 0 }),
           });
+          if (!owns()) return;
           setRoom(currentRoom(session));
           setRoomTargetId("");
           setScreen("room");
           setRoomOpen(true);
           void loadSnapshot();
         } catch (cause) {
+          if (!owns()) return;
           setRoomError(messageFrom(cause, "That zone could not be entered."));
         } finally {
-          setRoomBusy(false);
+          if (lifetime.finish(claim)) setRoomBusy(false);
         }
         return;
       }
       leavingRoomPendingRef.current = false;
       roomCompletionRef.current = null;
+      claim.completion = null;
       setOpenPlaceId(null);
       setPlaceProblem(null);
       setRoomDraft("");
+      lifetime.handoff(claim, room, false);
       setRoomEnded(false);
       setRoomError("");
       setRoomGreetingNotice("");
       setRoomNotices([]);
       seenRoomEventIdsRef.current.clear();
       setRoomBusy(true);
-      setRoom({
+      const placeholder: SceneView = {
         version: 1,
         id: "",
         placeId: place.id,
@@ -1206,7 +1275,9 @@ export function useOpenRoom(ports: {
         activeIds: [],
         participants: [],
         lines: [],
-      });
+      };
+      lifetime.handoff(claim, placeholder, false);
+      setRoom(placeholder);
       setRoomOpen(true);
       setScreen("room");
       try {
@@ -1222,6 +1293,8 @@ export function useOpenRoom(ports: {
           }),
           signal: AbortSignal.timeout(20_000),
         });
+        if (!owns()) return;
+        lifetime.handoff(claim, currentRoom(session), false);
         setRoom(currentRoom(session));
         setRoomMode("chat");
         setRoomTargetId("");
@@ -1229,13 +1302,18 @@ export function useOpenRoom(ports: {
         setLastSceneEnding("");
         setRoomOpen(true);
         void loadSnapshot();
-        if (session.status === "opening") await greetRoom(session.id);
+        if (session.status === "opening")
+          await greetRoom(session.id, {
+            owns,
+            handoff: (next) => lifetime.handoff(claim, next, false),
+          });
       } catch (cause) {
+        if (!owns()) return;
         setRoomError(messageFrom(cause, "That Zone could not be opened. Retry or leave the venue."));
       } finally {
-        setRoomBusy(false);
+        if (lifetime.finish(claim)) setRoomBusy(false);
       }
     },
-    [greetRoom, loadSnapshot, room],
+    [greetRoom, loadSnapshot, room, roomBusy, lifetime],
   );
 }
