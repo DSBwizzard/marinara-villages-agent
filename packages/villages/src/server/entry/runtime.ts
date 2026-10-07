@@ -6,7 +6,12 @@ import {
 } from "../adapters/engine/activation-scope.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
-import { withUsagePurpose } from "../adapters/models/usage-ledger.js";
+import { configureUsageLedger, withUsagePurpose, usageProcessOwner } from "../adapters/models/usage-ledger.js";
+import { createUsageLedger } from "../adapters/models/usage-ledger-service.js";
+import { villageEngineJson } from "../adapters/engine/engine-transport.js";
+import { linkApiQuote, readExchangeRate } from "../adapters/models/linkapi-pricing.js";
+import { configureMetricsContext } from "../adapters/observability/metrics-context.js";
+import { createMetricsContext } from "../adapters/observability/metrics-context-service.js";
 import { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
 import { configureRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
 import { createRuntimeDebug } from "../adapters/observability/runtime-debug-service.js";
@@ -73,11 +78,24 @@ import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
 
 /** Connect an application without starting jobs; activation owns the returned release. */
 function connectVillagesRuntime(next: CapabilityRuntimeHost) {
+  const releaseMetrics = configureMetricsContext(createMetricsContext());
   const release = configureRuntimeHost(next);
   const background = createBackgroundContext();
   const releaseBackgroundContext = configureBackgroundContext(background);
   const operations = createVenueOperationContext(villagesLogger);
   const releaseOperations = configureVenueOperationContext(operations);
+  const releaseUsage = configureUsageLedger(
+    createUsageLedger({
+      owner: usageProcessOwner,
+      villagesDocuments,
+      villagesLogger,
+      villageEngineJson,
+      backgroundCalls: background.backgroundCalls,
+      venueDebugContext: operations.venueDebugContext,
+      linkApiQuote,
+      readExchangeRate,
+    }),
+  );
   const releaseDebug = configureRuntimeDebug(
     createRuntimeDebug({
       villagesDebugAgentsEnabled,
@@ -181,9 +199,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
     releaseRelationships();
     releaseQueries();
     releaseDebug();
+    releaseUsage();
     releaseOperations();
     releaseBackgroundContext();
     release();
+    releaseMetrics();
   };
   return { releaseGraph, invalidateHost: release };
 }
