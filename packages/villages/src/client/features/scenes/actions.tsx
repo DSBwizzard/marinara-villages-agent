@@ -858,15 +858,13 @@ export function useRetrySavedScene(ports: {
       const path =
         operation.kind === "move"
           ? "/rooms/zone"
-          : operation.kind === "memory"
-            ? `/rooms/archive/${encodeURIComponent(room.id)}/retry-memory`
-            : operation.kind === "greet"
-              ? "/rooms/greet"
-              : operation.kind === "turn"
-                ? operation.input?.mode === "leave"
-                  ? "/rooms/leave"
-                  : "/rooms/turn"
-                : "/rooms/end";
+          : operation.kind === "greet"
+            ? "/rooms/greet"
+            : operation.kind === "turn"
+              ? operation.input?.mode === "leave"
+                ? "/rooms/leave"
+                : "/rooms/turn"
+              : "/rooms/end";
       const answer = await request<{ session: SceneView; recordEvents?: RoomRecordEvent[] }>(path, {
         method: "POST",
         body: JSON.stringify({

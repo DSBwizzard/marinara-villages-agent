@@ -121,7 +121,7 @@ const api = async (route) => {
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
-    value = {};
+    return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/operation")) value = { operation: null };
   else if (path.endsWith("/catalog")) value = { characters: [] };
   else if (path.endsWith("/relationships")) value = { profiles: [], starting: { pending: false, summaries: [] } };

@@ -2654,7 +2654,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           { recovery: true, replay: true },
         );
       }
-      if (operation.kind === "memory" || operation.kind === "close")
+      if (operation.kind === "close")
         return coordinateVenue(
           id,
           operation.id,

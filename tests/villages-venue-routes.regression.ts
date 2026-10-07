@@ -48,6 +48,8 @@ for (const retired of [
 ])
   assert.ok(!routes.includes(`"${retired}"`), `${retired} is retired`);
 
+assert.ok(!ui.includes("/retry-memory"), "Scene recovery does not target the retired memory endpoint");
+
 assert.match(routes, /await resetVenueSessions\(\);\s*return await resetVillage\(\)/u);
 assert.match(routes, /mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act"/u);
 assert.match(

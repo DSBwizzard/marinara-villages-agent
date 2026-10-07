@@ -83,7 +83,7 @@ async function main() {
     const first = coordinateVenue("race", "one", "turn", { message: "Hello" }, 0, undefined, work);
     await started.promise;
     const duplicate = coordinateVenue("race", "one", "turn", { message: "Hello" }, 999, undefined, work);
-    for (const kind of ["turn", "greet", "move", "close", "memory"])
+    for (const kind of ["turn", "greet", "move", "close", "change-interpretation"])
       await assert.rejects(
         () => coordinateVenue("race", kind, kind, {}, 0, undefined, () => paid()),
         refused("SCENE_BUSY"),

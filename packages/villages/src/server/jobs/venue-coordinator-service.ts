@@ -426,8 +426,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
               operation.checkpoints["action-reply"] ||
               operation.checkpoints["greeting-reply"] ||
               operation.checkpoints["move-invitation"] ||
-              ((operation.kind === "memory" || operation.kind === "close") &&
-                Object.keys(operation.attempts).length > 0) ||
+              (operation.kind === "close" && Object.keys(operation.attempts).length > 0) ||
               (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
                 ? "interrupted"
                 : "complete";
