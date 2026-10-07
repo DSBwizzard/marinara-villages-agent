@@ -100,8 +100,7 @@ export function createSpriteManager({
       id: "a-" + randomUUID(),
       name: name.slice(0, 100) || "Artwork",
       assetId,
-      origin: engineSource ? "engine" : "upload",
-      engineSource,
+      ...(engineSource ? { origin: "engine" as const, engineSource } : { origin: "upload" as const }),
       source: {
         ...savedSource,
         width: source.width,
@@ -139,28 +138,15 @@ export function createSpriteManager({
         if (!isEngineSpriteFilename(filename)) return [];
         return [{ filename, url: `/api/sprites/${encodeURIComponent(id)}/file/${encodeURIComponent(filename)}` }];
       });
-      const items = await Promise.all(
-        available.map(async (file) => {
-          let adopted = manager.artwork.find(
-            (art) => art.engineSource?.characterId === id && art.engineSource.filename === file.filename,
-          );
-          // Older adoptions retained only the filename as their name. Match bytes too,
-          // so a different upload with the same name remains independent.
-          const legacy = manager.artwork.filter(
-            (art) => !art.engineSource && art.origin !== "upload" && art.name === file.filename.slice(0, 100),
-          );
-          if (!adopted && legacy.length) {
-            try {
-              const image = await readImage(file.url);
-              const hash = digest(Buffer.from(image.split(",")[1]!, "base64"));
-              adopted = legacy.find((art) => art.source.sha256 === hash);
-            } catch {
-              // An unreadable legacy source must not hide the other library files.
-            }
-          }
-          return { ...file, ...(adopted ? { adoptedArtworkId: adopted.id } : {}) };
-        }),
-      );
+      const items = available.map((file) => {
+        const adopted = manager.artwork.find(
+          (art) =>
+            art.origin === "engine" &&
+            art.engineSource.characterId === id &&
+            art.engineSource.filename === file.filename,
+        );
+        return { ...file, ...(adopted ? { adoptedArtworkId: adopted.id } : {}) };
+      });
       return { items, error: "" };
     } catch {
       return {
@@ -179,28 +165,20 @@ export function createSpriteManager({
       const library = await listSpriteLibrary(id);
       const artwork: SpriteArtwork[] = [];
       const selectedArtworkIds: string[] = [];
-      const reused: { artworkId: string; filename: string }[] = [];
       for (const filename of selected) {
         const file = library.items.find((item) => item.filename === filename);
         if (!file) throw badRequest("The character library changed. Refresh it before choosing sprites.");
         if (file.adoptedArtworkId) {
           selectedArtworkIds.push(file.adoptedArtworkId);
-          if (!findArtwork(resident.spriteManager!, file.adoptedArtworkId).engineSource)
-            reused.push({ artworkId: file.adoptedArtworkId, filename });
         } else {
           const art = await prepareArtwork(filename, await readImage(file.url), { characterId: id, filename });
           artwork.push(art);
           selectedArtworkIds.push(art.id);
         }
       }
-      if (artwork.length || reused.length)
+      if (artwork.length)
         await commit(id, resident.addedAt, (manager) => {
           manager.artwork.push(...artwork);
-          for (const entry of reused) {
-            const art = findArtwork(manager, entry.artworkId);
-            art.engineSource = { characterId: id, filename: entry.filename };
-            art.origin = "engine";
-          }
         });
       return { ...(await result(id)), addedArtworkIds: artwork.map((item) => item.id), selectedArtworkIds };
     });
@@ -281,7 +259,6 @@ export function createSpriteManager({
     return serialize(id, async () => {
       const resident = await owner(id),
         body = asRecord(raw);
-      // Older clients may still send cropPercent; Scene rendering uses only mode.
       if (!["full", "half"].includes(asString(body.mode))) throw badRequest("Choose full or half body.");
       await commit(id, resident.addedAt, (manager) => {
         manager.framing = { mode: body.mode as "full" | "half" };
@@ -329,7 +306,7 @@ export function createSpriteManager({
         manager.assignments = manager.assignments.filter((item) => item.artworkId !== art.id);
         pruneSpriteExpressions(manager);
       });
-      // Only files owned by this new manager entry. Never scan or delete old Studio art.
+      // Delete only the original and derivative owned by this manager entry.
       for (const filename of [art.source.filename, art.rendered.filename]) {
         try {
           await deleteVillageSpriteFile(art.assetId, filename.replace(/\.[^.]+$/, ""));

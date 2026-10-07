@@ -1768,6 +1768,7 @@ async function main() {
             id: "a-123e4567-e89b-42d3-a456-426614174000",
             assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
             name: "Quiet.png",
+            origin: "upload",
             source: {
               filename: "original.png",
               url: "/api/sprites/villages-123e4567-e89b-42d3-a456-426614174000/file/original.png",
@@ -1792,7 +1793,7 @@ async function main() {
           },
         ],
         defaultExpressionId: "e-123e4567-e89b-42d3-a456-426614174000",
-        framing: { mode: "full", cropPercent: 58 },
+        framing: { mode: "full" },
       };
     });
     const lively = await sendVenueTurn({

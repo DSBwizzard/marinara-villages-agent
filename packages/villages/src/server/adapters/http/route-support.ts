@@ -80,5 +80,3 @@ export type VenueTurnBody = {
 export const SETTINGS_BODY_LIMIT = MAX_TOWN_MAP_IMAGE_LENGTH + 64 * 1024;
 export const VENUE_IMAGE_BODY_LIMIT = MAX_LOCATION_IMAGE_BASE64_LENGTH + 64 * 1024;
 export type VillageRouteHandler = (request: FastifyRequest, reply: FastifyReply) => unknown;
-export const retiredSprites = async (_request: FastifyRequest, reply: FastifyReply) =>
-  reply.code(410).send({ error: "Sprite Studio is retired. Use Sprite Manager to upload finished artwork." });

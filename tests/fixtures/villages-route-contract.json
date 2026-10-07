@@ -28,22 +28,6 @@
     },
     {
       "method": "get",
-      "path": "/villagers/:characterId/sprites/studio"
-    },
-    {
-      "method": "get",
-      "path": "/villagers/:characterId/sprites/studio/*"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/sprites/studio"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/sprites/studio/*"
-    },
-    {
-      "method": "get",
       "path": "/villagers/:characterId/sprites/manager"
     },
     {
@@ -138,26 +122,6 @@
     {
       "method": "delete",
       "path": "/villagers/:characterId"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/sprites/generate"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/sprites/approve"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/sprites/import"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/sprites/framing"
-    },
-    {
-      "method": "get",
-      "path": "/villagers/:characterId/sprites/source"
     },
     {
       "method": "get",
@@ -600,5 +564,8 @@
       "method": "get",
       "path": "/spinoffs/:chatId"
     }
+  ],
+  "freshStartChanges": [
+    "0.7.0 removes nine retired Sprite Studio routes; maintained route order and body limits are unchanged."
   ]
 }

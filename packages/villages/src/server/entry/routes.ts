@@ -2,7 +2,6 @@ import { publicSceneRoutes } from "../adapters/http/public-scene-routes.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
 import { registerFoundingRoutes } from "../features/founding/routes.js";
 import {
-  registerRetiredSpriteRoutes,
   registerSpriteManagerRoutes,
   registerTownMapRoutes,
   registerVenueImageRoutes,
@@ -45,7 +44,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerPersonaRoutes(surface);
   registerTownMapRoutes(surface);
   registerResidentRoutes(surface);
-  registerRetiredSpriteRoutes(surface);
   registerSceneEntryRoutes(surface);
   registerVenueAccessRoutes(surface);
   registerSceneOperationRoutes(surface);

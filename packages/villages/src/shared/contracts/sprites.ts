@@ -18,13 +18,14 @@ export type SpriteArtwork = {
   id: string;
   name: string;
   assetId: string;
-  engineSource?: { characterId: string; filename: string };
-  origin?: "upload" | "engine";
   source: { filename: string; url: string; width: number; height: number; sha256: string };
   rendered: { filename: string; url: string };
   frame: SpriteFrame;
   warnings: string[];
-};
+} & (
+  | { origin: "upload"; engineSource?: never }
+  | { origin: "engine"; engineSource: { characterId: string; filename: string } }
+);
 export type SpriteAssignment = { expressionId: string; view: SpriteView; artworkId: string };
 export type SpriteManagerState = {
   version: 1;

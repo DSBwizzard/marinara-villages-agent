@@ -97,6 +97,7 @@ try {
         id,
         name,
         assetId: "villages-" + randomUUID(),
+        origin: engineSource ? "engine" : "upload",
         engineSource,
         source: { url: sourceUrl, width: png.width, height: png.height },
         rendered: { url: renderedUrl },

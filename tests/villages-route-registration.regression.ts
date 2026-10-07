@@ -32,11 +32,11 @@ async function main() {
   assert.deepEqual(
     JSON.parse(JSON.stringify(routes)),
     baseline.routes,
-    "host collector methods, paths, body limits and order preserve the validated baseline",
+    "host collector methods, paths, body limits and order match the maintained route contract",
   );
-  assert.equal(routes.length, 146);
+  assert.equal(routes.length, 137);
   console.log(
-    "Villages route registration regression: all 146 host collector definitions and limits preserved; handler behaviors have separate suites.",
+    "Villages route registration regression: all 137 maintained host collector definitions and limits match; handler behaviors have separate suites.",
   );
 }
 main().catch((error) => {

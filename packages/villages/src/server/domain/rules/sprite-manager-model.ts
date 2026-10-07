@@ -31,9 +31,20 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
         !/^villages-[a-f0-9-]{36}$/i.test(art.assetId) ||
         !art.source ||
         !art.rendered ||
-        !art.frame
+        !art.frame ||
+        !["upload", "engine"].includes(art.origin)
       )
         return false;
+      if (art.origin === "engine") {
+        if (
+          typeof art.engineSource?.characterId !== "string" ||
+          !art.engineSource.characterId.length ||
+          /[\\/]/.test(art.engineSource.characterId) ||
+          art.engineSource.characterId.includes("..") ||
+          !isEngineSpriteFilename(art.engineSource.filename)
+        )
+          return false;
+      } else if (art.engineSource !== undefined) return false;
       if (
         !/^[a-z0-9_-]{1,40}\.(png|jpeg|jpg|webp)$/.test(art.source.filename) ||
         !/^[a-z0-9_-]{1,40}\.png$/.test(art.rendered.filename) ||
@@ -63,16 +74,18 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       return true;
     })
     .map<SpriteArtwork>((art) => ({
-      ...structuredClone(art),
-      origin: art.origin === "upload" || art.origin === "engine" ? art.origin : undefined,
-      engineSource:
-        typeof art.engineSource?.characterId === "string" &&
-        art.engineSource.characterId.length > 0 &&
-        !/[\\/]/.test(art.engineSource.characterId) &&
-        !art.engineSource.characterId.includes("..") &&
-        isEngineSpriteFilename(art.engineSource.filename)
-          ? { characterId: art.engineSource.characterId, filename: art.engineSource.filename }
-          : undefined,
+      id: art.id,
+      name: art.name,
+      assetId: art.assetId,
+      source: structuredClone(art.source),
+      rendered: structuredClone(art.rendered),
+      frame: structuredClone(art.frame),
+      ...(art.origin === "engine"
+        ? {
+            origin: "engine" as const,
+            engineSource: { characterId: art.engineSource.characterId, filename: art.engineSource.filename },
+          }
+        : { origin: "upload" as const }),
       warnings: Array.isArray(art.warnings) ? art.warnings.filter((warning) => typeof warning === "string") : [],
     }));
   const seenExpressions = new Set<string>();

@@ -4,7 +4,6 @@ import {
   readCharacterId,
   readVenueId,
   readVenueSpaceClass,
-  retiredSprites,
   SETTINGS_BODY_LIMIT,
   VENUE_IMAGE_BODY_LIMIT,
 } from "../../adapters/http/route-support.js";
@@ -28,10 +27,6 @@ import type { FastifyInstance } from "fastify";
 
 export function registerSpriteManagerRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.get("/villagers/:characterId/sprites/studio", retiredSprites);
-  app.get("/villagers/:characterId/sprites/studio/*", retiredSprites);
-  app.post("/villagers/:characterId/sprites/studio", retiredSprites);
-  app.post("/villagers/:characterId/sprites/studio/*", retiredSprites);
   app.get<{ Params: CharacterParams }>("/villagers/:characterId/sprites/manager", async (request, reply) => {
     try {
       return await readSpriteManager(readCharacterId(request.params.characterId));
@@ -79,13 +74,6 @@ export function registerTownMapRoutes(engine: FastifyInstance) {
       return fail(reply, error, "replacing the village map");
     }
   });
-}
-export function registerRetiredSpriteRoutes(engine: FastifyInstance) {
-  const app = engine;
-  for (const action of ["generate", "approve", "import", "framing"]) {
-    app.post("/villagers/:characterId/sprites/" + action, retiredSprites);
-  }
-  app.get("/villagers/:characterId/sprites/source", retiredSprites);
 }
 export function registerVenueImageRoutes(engine: FastifyInstance) {
   const app = engine;
