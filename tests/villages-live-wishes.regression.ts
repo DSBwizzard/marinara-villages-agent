@@ -18,10 +18,8 @@ import { wishFingerprint } from "../packages/villages/src/server/features/reside
 import { bindLiveProposals } from "../packages/villages/src/server/features/residents/live-memory.js";
 
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import {
-  readSceneChanges,
-  retrySceneChangeInterpretation,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { retrySceneChangeInterpretation } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 

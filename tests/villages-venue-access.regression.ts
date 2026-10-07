@@ -22,9 +22,9 @@ import {
   moveVenueZone,
   endVenueSession,
   recordRoomAccessEvents,
-  readSceneChanges,
   recordSpokenInvitation,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
 import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { savedAccessEvents } from "../packages/villages/src/server/domain/rules/scene-reply.js";

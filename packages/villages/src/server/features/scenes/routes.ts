@@ -19,17 +19,15 @@ import {
   closeVenueSessionWithReceipts,
   continueVenueWithoutGreeting,
   discardVenueVisitDebug,
-  dismissSceneNotice,
   enterResidencePrivateSpace,
   enterVenue,
   greetVenue,
   leaveVenueSession,
   moveVenueZone,
-  readSceneChanges,
-  replaySceneChanges,
   retrySceneChangeInterpretation,
   sendVenueTurn,
 } from "./venue-session.js";
+import { dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
 import { deleteAllVenueVisits, deleteVenueVisit, listVenueVisitSummaries, readVenueVisit } from "./archive.js";
 import type { FastifyInstance } from "fastify";

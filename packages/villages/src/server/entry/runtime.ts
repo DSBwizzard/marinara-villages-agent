@@ -8,6 +8,8 @@ import { createLiveEvidenceContext } from "../features/residents/live-memory.js"
 import { processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress } from "../features/scenes/progress.js";
+import { createSceneChanges } from "../features/scenes/changes-service.js";
+import { configureSceneChanges } from "../features/scenes/changes.js";
 import { sceneReplayEffects } from "../features/scenes/venue-session.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
 import { configureLiveScenes } from "../features/scenes/live-session.js";
@@ -159,6 +161,7 @@ import { wishCheckBackgroundHandler } from "../features/residents/wishes/wish-pr
 import {
   configureVillageStateService,
   mutateVillageState,
+  readVillageSnapshot,
   readVillageState,
   readVillageAuthority,
 } from "../features/world/village-store.js";
@@ -295,6 +298,17 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       sceneQueries,
       villagesLogger,
       ...sceneReplayEffects(),
+    }),
+  );
+  const releaseSceneChanges = configureSceneChanges(
+    createSceneChanges({
+      readSession,
+      readVillageSnapshot,
+      readVillageState,
+      mutateVillageState,
+      villagesDocuments,
+      processSavedExchange,
+      venueRequestMetrics: operations.venueRequestMetrics,
     }),
   );
   const releaseSceneArchive = configureSceneArchive(
@@ -544,6 +558,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseResidentAgendas();
+    releaseSceneChanges();
     releaseSceneProgress();
     releaseQueries();
     releaseSceneArchive();

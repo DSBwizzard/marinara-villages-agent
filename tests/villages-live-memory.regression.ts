@@ -15,11 +15,13 @@ import {
 import {
   closeVenueSession,
   endVenueSessionWithReceipts,
+  retrySceneChangeInterpretation,
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import {
   readSceneChanges,
   replaySceneChanges,
   dismissSceneNotice,
-  retrySceneChangeInterpretation,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
+} from "../packages/villages/src/server/features/scenes/changes.js";
 import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
 import { deleteVenueVisit } from "../packages/villages/src/server/features/scenes/archive.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";

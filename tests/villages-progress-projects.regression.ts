@@ -23,7 +23,7 @@ import {
   revealProgress,
   visibleProgress,
 } from "../packages/villages/src/server/domain/rules/progress-engine.js";
-import { readSceneChanges } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import {
   processSavedProgressSubmission,
   processSavedExchange,

@@ -57,7 +57,6 @@ import {
   endVenueSession as endVenueSessionRaw,
   closeVenueSessionWithReceipts,
   enterVenue,
-  readSceneChanges,
   enterResidencePrivateSpace,
   moveVenueZone,
   leaveVenueSession,
@@ -65,6 +64,7 @@ import {
   sendVenueTurn as sendVenueTurnRaw,
   discardVenueVisitDebug,
 } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import { activeVenueSession, touchVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { readProjectTurnEvidence } from "../packages/villages/src/server/features/scenes/services.js";
 import {
