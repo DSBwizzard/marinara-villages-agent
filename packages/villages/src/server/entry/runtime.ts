@@ -72,6 +72,9 @@ import { readVillageLore } from "../adapters/engine/lorebooks.js";
 import { villagesLanguageModels } from "../adapters/models/language-models.js";
 import { reportFoundingProgress } from "../features/founding/founding-progress.js";
 import { completeWithRoom } from "../features/generation/model-requests.js";
+import { configureInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics.js";
+import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
+import { systemInterpretations } from "../features/generation/system-interpretation.js";
 import { villagesConnectionIdFor } from "../features/settings/connections.js";
 import { createFoundingPreparation } from "../features/founding/preparation-service.js";
 import { configureFoundingPreparation } from "../features/founding/preparation.js";
@@ -105,6 +108,14 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
       venueDebugContext: operations.venueDebugContext,
       linkApiQuote,
       readExchangeRate,
+    }),
+  );
+  const releaseInterpretationDiagnostics = configureInterpretationDiagnostics(
+    createInterpretationDiagnostics({
+      villagesDocuments,
+      outsideVenueOperation: operations.outsideVenueOperation,
+      mutateDocument: createDocumentMutator(villagesDocuments),
+      systemInterpretations,
     }),
   );
   const releaseDebug = configureRuntimeDebug(
@@ -210,6 +221,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost) {
     releaseRelationships();
     releaseQueries();
     releaseDebug();
+    releaseInterpretationDiagnostics();
     releaseUsage();
     releaseOperations();
     releaseBackgroundContext();

@@ -113,3 +113,11 @@ The recovery owner remains one immutable process-uptime identity, supplied expli
 Provider-free tests cover identical character IDs in separate libraries, a paused late read, independent resets and failure reports, same-owner gallery joins, separate folder/upload paths, validation and failed-lookup recovery. Scoped helper tests use the assembled runtime graph and verify that older cleanup cannot remove a newer owner's caches. Existing schedule-remap, usage-preview and location-image suites continue to pass. No gallery identifiers or files are migrated, and no Engine installation is changed.
 
 Independent review verified all twelve schedule and five gallery function bodies and found no blocking issues. Existing same-instance limitations remain: a late schedule load can refill a reset cache, and a successfully cached gallery folder is not revalidated after deletion or renaming.
+
+## Interpretation comparison ownership
+
+`features/generation/interpretation-diagnostics-service.ts` owns optional comparison admission and cancellation controllers. Entry provides document access/mutation, execution outside Scene authority and the System comparison interface. The original diagnostic commands and redaction helper retain their bodies, bounded evidence, saved attempt metadata and timeout/abort ordering. Application shutdown calls the supported interface in its originating activation.
+
+Provider-free tests cover identical Scene/check identifiers in separate worlds, independent cancellation, same-owner joins, CAS retries and same-store overlapping admission. Persisted claims still prevent duplicate or automatic repeated model calls. An interrupted attempt retains its unknown receipt even when its provider replies late. Access diagnostics retain their existing redaction, and removal/cleanup cannot select another owner's store or controller. This remains a logical cancellation fence; an abort-ignoring provider is not physically drained.
+
+Independent review verified all six original function bodies and document metadata, with no blocking findings. Cancellation after the provider race has resolved can still permit the final diagnostic write; this existing gap is distinct from aborting a pending provider result and is retained by this extraction.
