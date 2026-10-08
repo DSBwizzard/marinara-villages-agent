@@ -1,8 +1,10 @@
 # Villages changes
 
-## Unreleased — 0.7.0
+## 0.7.0 — Architecture baseline
 
-Architecture and development baseline migration. Gameplay and saved-world compatibility are preserved. Release only after full validation and review.
+Villages remains a Marinara Engine Agent. Client features own their screens, state and commands; server entry assembles activation-owned services, connections and jobs. Private storage, domain rules and public projections have separate owners, enforced by import and cycle checks. Locked repository tools build and verify reproducible packages without an Engine installation.
+
+This release starts with fresh worlds. Old-world migration is outside its scope. Obsolete native-chat creation, preset narration and unused compatibility paths are retired; current Venue Scenes, Zone privacy, recovery controls and request accounting remain covered by the maintained tests. Optional Decisions integration requires an audited Engine build; other builds retain the System interpretation path.
 
 ## Historical development notes
 

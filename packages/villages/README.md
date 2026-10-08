@@ -1,10 +1,10 @@
 # Villages
 
-## 0.7.0 architecture work (unreleased)
+## 0.7.0 architecture baseline
 
 Villages remains a Marinara Engine Agent with its home tab, Venue Scenes, and per-village writing controls. The unused native-chat SpinOff creation and origin routes, roleplay tracker panels, old Engine-preset narration pipeline, and their legacy document readers are retired. Villages no longer requests native chat read/write permissions; its current Scene records use the package document store. Existing native chats and lorebooks are untouched.
 
-Voice, role, setting, attendance, and privacy regressions now exercise the current Scene writer and its captured Venue/Zone state. The obsolete preset-grammar regression is removed. The architecture candidate retains version 0.6.170 until the remaining 0.7.0 validation and review gates are complete.
+Voice, role, setting, attendance, and privacy regressions now exercise the current Scene writer and its captured Venue/Zone state. The obsolete preset-grammar regression is removed. This baseline uses fresh worlds; old-world migration is outside its scope. Feature ownership, private interfaces and layer boundaries are enforced by the repository checks. Optional Decisions integration requires an audited Engine build; other builds retain the System interpretation path.
 
 ## Founding Venue workspace (0.6.169)
 

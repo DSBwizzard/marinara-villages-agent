@@ -1,7 +1,7 @@
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.6.170",
+  version: "0.7.0",
   minEngineVersion: "2.4.6",
   maxEngineExclusive: "4.0.0",
   name: "Villages",

@@ -1,6 +1,6 @@
 # Villages architecture migration
 
-The starting revision is `9e12f23be71c137c2e5017375641f72ec45b38b3` on staging (0.6.170). The completed migration is planned as 0.7.0. Keep the repository and its history. Candidates retain their source revision and package hash; the milestone is complete only after architecture and packaged checks pass.
+The starting revision is `9e12f23be71c137c2e5017375641f72ec45b38b3` on staging (0.6.170). The completed architecture baseline is numbered 0.7.0. Keep the repository and its history. Candidates retain their source revision and package hash; validation and publication approval remain separate.
 
 ## Fresh-start scope for 0.7.0
 
@@ -14,7 +14,9 @@ Client features own their screens, state and commands; the shell assembles them 
 
 The sections below record successive extraction and correction checkpoints. Earlier remaining-work notes describe those intermediate revisions; later sections record their closure. The source baseline retains the documented logical cancellation and recovery policies. It does not add physical draining of providers that ignore abort, global ordering of independent client snapshot requests, or old-world migration.
 
-Candidate validation includes the complete 129 ordinary regression and 30 mocked-browser targets, repository checks, reproducible package verification, and fresh Windows/Linux source builds with locked dependencies. The three Engine targets are explicitly separate: read-only image contract, Decisions transport with a synthetic local provider, and an actual Engine shell with mocked package requests. Full 0.7.0 acceptance additionally requires the actual isolated package's activation/shutdown, fresh-world save/reload, Scene/Zone privacy, backend request admission, Decisions fallback, desktop/mobile behavior and user playthrough. Source checks and mocked browsers do not establish those runtime results or publication approval. Keep version 0.6.170 until the milestone's acceptance is complete.
+Architecture validation includes the complete 129 ordinary regression and 30 mocked-browser targets, repository checks, reproducible package verification, and fresh Windows/Linux source builds with locked dependencies. The three Engine targets are explicitly separate: read-only image contract, Decisions transport with a synthetic local provider, and an actual Engine shell with mocked package requests. Optional Decisions transport requires an audited build; an unsupported build retains the System interpretation path.
+
+Isolated packaged checks establish activation, desktop/mobile rendering, graceful restart and volume persistence. Those checks and the mocked suites do not establish automated live gameplay, newly founded-world persistence, private Zone interactions or paid-provider behavior. Hands-on gameplay acceptance complements the automated evidence; publication approval remains separate. Later behavior changes need validation of their actual save, Scene, privacy, admission and recovery effects.
 
 ## Validation foundation
 
