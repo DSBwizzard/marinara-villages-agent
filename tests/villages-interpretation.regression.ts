@@ -26,7 +26,7 @@ import {
   configureSystemInterpretation,
   systemInterpretations,
 } from "../packages/villages/src/server/features/generation/system-interpretation.js";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -556,7 +556,11 @@ async function main() {
       'export const DECISION_SETTINGS_KEYS = {localDefault:"local",thinkingPreGeneration:"thinking"}; export let calls=0; export let mode="yes"; export const setMode=value=>{mode=value}; export async function resolveDecisionBackend(){if(mode==="absent")return null;return {model:"fixture",maxStateTokens:30000,calibration:{defaultThreshold:0.1,questionShape:"statement"},deferPreGeneration:mode==="deferred",ask:async(state,questions)=>{calls++;if(mode==="error")throw new Error("SECRET provider body");if(mode==="missing")return null;return new Map(questions.map((question,index)=>[question.id,mode==="conflict"?1:mode==="no"?0:mode==="malformed"?NaN:index===0?0.2:0]))}}};',
     );
     const entry = join(dist, "index.js");
-    const fixture = await import(pathToFileURL(join(dist, "services/decision/decision-default.js")).href);
+    // Windows temp paths can use different drive/directory casing from their real paths.
+    // Load the host fixture by its canonical URL, just as the Engine adapter does.
+    const fixture = await import(
+      pathToFileURL(await realpath(join(dist, "services/decision/decision-default.js"))).href
+    );
     const modules = await loadDecisionEngineModules(entry);
     assert.equal(modules.resolveDecisionBackend, fixture.resolveDecisionBackend, "canonical live ESM module reused");
     teardown = configureDecisionsAdapter({ app: { db: {} } }, entry);

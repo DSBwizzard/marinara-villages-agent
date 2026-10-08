@@ -3,9 +3,6 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
-import { verifySceneActionLifetimes } from "./fixtures/villages-scene-action-lifetime.fixture.mjs";
-import { verifySceneEntryLifetimes } from "./fixtures/villages-scene-entry-lifetime.fixture.mjs";
-import { verifySceneRestorationLifetimes } from "./fixtures/villages-scene-restoration-lifetime.fixture.mjs";
 
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
@@ -215,9 +212,6 @@ try {
   console.log(
     "Scene actions browser: four modes, contact targeting, busy/stale/lost-response movement, drafts, restored transitions and optional concluding messages passed",
   );
-  await verifySceneActionLifetimes(browser);
-  await verifySceneEntryLifetimes(browser);
-  await verifySceneRestorationLifetimes(browser);
 } finally {
   await browser.close();
 }

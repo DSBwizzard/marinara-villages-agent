@@ -190,6 +190,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       // A waiting read owns no admission. A same-selection real request defeats restoration adoption.
       for (const initial of [null, "blank"]) {
         const f = await mount(strict, width, { initial, marker: true });
+        await expect.poll(async () => (await f.state()).id).toBe("A");
         await expect.poll(async () => (await f.state()).status).toBe("active");
         await expect.poll(async () => (await f.refs()).flight).toBe(false);
         assert.equal((await f.state()).id, "A");
