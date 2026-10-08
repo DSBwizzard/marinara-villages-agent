@@ -1,3 +1,4 @@
+import { FoundingField, FoundingHelp } from "./FoundingField.js";
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 
 export const DEFAULT_PLAYER_ROLE: Readonly<PlayerRole> = {
@@ -45,37 +46,48 @@ export function PlayerRoleFields({
   onChange,
   disabled,
   compact = false,
+  problem = "",
 }: {
   role: PlayerRole;
   onChange: (role: PlayerRole) => void;
   disabled: boolean;
   compact?: boolean;
+  problem?: string;
 }) {
   return (
     <fieldset className={`${PREFIX}-field`} aria-label={compact ? "Your role" : undefined}>
       {!compact ? (
-        <>
-          <legend className={`${PREFIX}-label`}>Your place in the village</legend>
-          <p className={`${PREFIX}-hint`}>In Villages, you are the one who coordinates construction projects.</p>
-          <p className={`${PREFIX}-hint`}>Give this responsibility a title and a reason that fit your Persona.</p>
-        </>
+        <legend className={`${PREFIX}-label`}>
+          Your place in the village{" "}
+          <FoundingHelp label="Your role">
+            In Villages, you coordinate construction projects. Make this responsibility your own. Residents can disagree
+            or refuse; their homes and lives remain theirs. Your choice becomes fixed at founding.
+          </FoundingHelp>
+        </legend>
       ) : null}
       <div className={`${PREFIX}-founding-role-fields`}>
-        <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-title`}>
-          Role title
+        <FoundingField
+          title="Role title"
+          help="Give your responsibility a title that fits your Persona."
+          error={problem && (!role.title.trim() || role.title.length > 80) ? problem : ""}
+        >
           <input
             id={`${PREFIX}-role-title`}
             className={`${PREFIX}-search`}
             type="text"
+            aria-label="Role title"
             value={role.title}
             maxLength={80}
             required
             disabled={disabled}
             onChange={(event) => onChange({ ...role, title: event.target.value })}
           />
-        </label>
-        <label className={`${PREFIX}-label`} htmlFor={`${PREFIX}-role-explanation`}>
-          Why villagers turn to you
+        </FoundingField>
+        <FoundingField
+          title="Why villagers turn to you"
+          help="Explain why residents turn to you to coordinate Projects. This role becomes fixed at founding."
+          error={problem && (!role.explanation.trim() || role.explanation.length > 1000) ? problem : ""}
+        >
           <textarea
             id={`${PREFIX}-role-explanation`}
             aria-label="Why villagers turn to you"
@@ -87,12 +99,15 @@ export function PlayerRoleFields({
             disabled={disabled}
             onChange={(event) => onChange({ ...role, explanation: event.target.value })}
           />
-        </label>
+        </FoundingField>
       </div>
-      {!compact ? (
-        <p className={`${PREFIX}-hint`}>
-          Make this role your own. Residents can disagree or refuse; their homes and lives remain theirs. Your choice
-          becomes fixed at founding.
+      {problem &&
+      role.title.trim() &&
+      role.explanation.trim() &&
+      role.title.length <= 80 &&
+      role.explanation.length <= 1000 ? (
+        <p role="alert" data-founding-problem tabIndex={-1}>
+          {problem}
         </p>
       ) : null}
     </fieldset>

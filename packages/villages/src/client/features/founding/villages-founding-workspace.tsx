@@ -1,3 +1,4 @@
+import { FoundingField, FoundingHelp } from "./FoundingField.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { includeFoundingZone } from "./founding-template.js";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
@@ -182,7 +183,9 @@ export function FoundingWorkspace({
           ) : null}
           <details>
             <summary>Artwork context</summary>
-            <p>Form, the selected Zone’s purpose and description, and shared scenery style inform this artwork.</p>
+            <FoundingHelp label="Artwork context">
+              Form, the selected Zone’s purpose and description, and shared scenery style inform this artwork.
+            </FoundingHelp>
             {(
               [
                 ["useAssignedVillagerContext", "Use assigned resident’s personality"],
@@ -210,9 +213,18 @@ export function FoundingWorkspace({
             ))}
           </details>
         </details>
-        {area === "exterior" ? <small>Also used as the map marker.</small> : null}
+        {area === "exterior" ? (
+          <FoundingHelp label="Exterior photograph">
+            Also used as the map marker. Photographs are optional.
+          </FoundingHelp>
+        ) : null}
       </section>
     );
+  const fieldProblem = (field: FoundingIssue["field"], zoneId?: string) =>
+    focusIssue
+      ? issues.find((issue) => issue.venueId === selectedId && issue.field === field && issue.zoneId === zoneId)
+          ?.message
+      : undefined;
   const included = personal ? !!selected?.privateSpaces?.length : !!selected?.spaces?.length;
   const gathering = selected?.category === "public-center";
   const initialZones = selected && (
@@ -243,13 +255,14 @@ export function FoundingWorkspace({
         />
         Include {personal ? "Private" : "Common"} Space
       </label>
-      <p>
+      <FoundingHelp label="Included spaces">
         {gathering
           ? personal
             ? "The starting Gathering Place has no Private Space. It is a neutral meeting spot everyone can enter."
             : "Required for the starting Gathering Place. Open to everyone · No owner."
           : "At least one Common or Private Space is required."}
-      </p>
+      </FoundingHelp>
+      {fieldProblem("layout", "common") ? <p role="alert">{fieldProblem("layout", "common")}</p> : null}
       {inclusionProblem ? <p role="alert">{inclusionProblem}</p> : null}
       {!included ? (
         <p>
@@ -277,8 +290,11 @@ export function FoundingWorkspace({
             );
           return (
             <section key={zone.id} data-zone-id={zone.id}>
-              <label>
-                Zone name
+              <FoundingField
+                title="Zone name"
+                help="The name of this dedicated space."
+                error={fieldProblem("zone-name", zone.id)}
+              >
                 <input
                   aria-label="Zone name"
                   maxLength={100}
@@ -286,9 +302,12 @@ export function FoundingWorkspace({
                   value={zone.name ?? ""}
                   onChange={(event) => patch({ name: event.target.value })}
                 />
-              </label>
-              <label>
-                Purpose
+              </FoundingField>
+              <FoundingField
+                title="Purpose"
+                help="Describe what this Zone is used for."
+                error={fieldProblem("zone-purpose", zone.id)}
+              >
                 <input
                   aria-label="Zone used for"
                   maxLength={240}
@@ -296,12 +315,17 @@ export function FoundingWorkspace({
                   value={zone.purpose ?? ""}
                   onChange={(event) => patch({ purpose: event.target.value })}
                 />
-              </label>
+              </FoundingField>
               {hidden ? (
-                <p>The private interior is prepared for this resident after founding and stays hidden until invited.</p>
+                <FoundingHelp label="Private interior">
+                  The private interior is prepared for this resident after founding and stays hidden until invited.
+                </FoundingHelp>
               ) : (
-                <label>
-                  Description
+                <FoundingField
+                  title="Description"
+                  help="Describe the visible interior of this space."
+                  error={fieldProblem("zone-appearance", zone.id)}
+                >
                   <textarea
                     aria-label="Zone appearance"
                     rows={3}
@@ -310,16 +334,18 @@ export function FoundingWorkspace({
                     value={zone.description}
                     onChange={(event) => patch({ description: event.target.value })}
                   />
-                </label>
+                </FoundingField>
               )}
-              <p>
-                Access:{" "}
-                {gathering
-                  ? "Open to everyone."
-                  : personal
-                    ? "Entry follows this personal space’s invitation rules."
-                    : "Entry follows this home’s invitation rules."}
-              </p>
+              <div className="villages-founding-field-heading">
+                Access{" "}
+                <FoundingHelp label="Zone access">
+                  {gathering
+                    ? "Open to everyone."
+                    : personal
+                      ? "Entry follows this personal space’s invitation rules."
+                      : "Entry follows this home’s invitation rules."}
+                </FoundingHelp>
+              </div>
               {!hidden ? imageFields(personal ? "private" : "interior", zone.image, zone.id) : null}
             </section>
           );
@@ -450,17 +476,15 @@ export function FoundingWorkspace({
               ) : null}
               {section === "venue" ? (
                 <fieldset disabled={locked}>
-                  <label>
-                    Venue name
+                  <FoundingField title="Venue name" help="The name of the overall place." error={fieldProblem("name")}>
                     <input
                       aria-label="Venue name"
                       maxLength={100}
                       value={selected.name}
                       onChange={(event) => onPatch({ ...selected, name: event.target.value })}
                     />
-                  </label>
-                  <label>
-                    Form<p>Describe the overall physical place.</p>
+                  </FoundingField>
+                  <FoundingField title="Form" help="Describe the overall physical place." error={fieldProblem("form")}>
                     <textarea
                       aria-label="Physical form"
                       maxLength={240}
@@ -468,7 +492,7 @@ export function FoundingWorkspace({
                       value={selected.form ?? ""}
                       onChange={(event) => onPatch({ ...selected, form: event.target.value })}
                     />
-                  </label>
+                  </FoundingField>
                   {existing ? (
                     <label>
                       Venue Type
@@ -554,9 +578,12 @@ export function FoundingWorkspace({
                   {(existing ? existingZoneId : zoneTab) === "exterior" ? (
                     <section>
                       <h4>Exterior</h4>
-                      <p>The approach or doorway just outside this Venue.</p>
-                      <label>
-                        Exterior description
+
+                      <FoundingField
+                        title="Exterior description"
+                        help="The approach or doorway just outside this Venue."
+                        error={fieldProblem("description", "exterior")}
+                      >
                         <textarea
                           aria-label="Exterior description"
                           rows={3}
@@ -565,7 +592,7 @@ export function FoundingWorkspace({
                           value={selected.description}
                           onChange={(event) => onPatch({ ...selected, description: event.target.value })}
                         />
-                      </label>
+                      </FoundingField>
                       {imageFields("exterior", selected.presentation.image)}
                     </section>
                   ) : existing ? (

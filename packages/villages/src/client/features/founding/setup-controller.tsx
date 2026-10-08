@@ -298,6 +298,8 @@ export function createFoundingGotoSetupStep(ports: {
             : "";
       const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 3 ? setupBlocker() : "");
       if (problem) {
+        if (peopleProblem) setSetupStep(0);
+        else if (step >= 2 && placeProblem) setSetupStep(1);
         setSetupProblem(problem);
         return;
       }

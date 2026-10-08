@@ -1,3 +1,4 @@
+import { FoundingHelp } from "./FoundingField.js";
 import type {
   CatalogEntry,
   PersonaEntry,
@@ -285,7 +286,7 @@ export function FoundingPersonaSelector({
       ) : selected ? (
         <p className={`${ELEMENT_TAG}-hint`}>Reading {selected.name}…</p>
       ) : (
-        <p className={`${ELEMENT_TAG}-hint`}>Choose a Persona to see how Villages will know you.</p>
+        <FoundingHelp label="Persona identity">Choose a Persona to see how Villages will know you.</FoundingHelp>
       )}
     </div>
   );
@@ -324,9 +325,7 @@ export function FoundingVillagerPicker({
         <span>Choose 1–3 villagers</span>
         <span role="status">{selectedIds.length} of 3 selected</span>
       </div>
-      <p className={`${ELEMENT_TAG}-hint`}>
-        {disabled ? "Your existing founding villagers are kept." : "Choose 1–3 villagers from your character cards."}
-      </p>
+
       <input
         className={`${ELEMENT_TAG}-search`}
         type="search"
@@ -479,11 +478,13 @@ export function VillageLorebookPicker({
   const shown = filtered.slice(0, 50);
   return (
     <fieldset className={`${ELEMENT_TAG}-field ${ELEMENT_TAG}-lore-picker`}>
-      <legend className={`${ELEMENT_TAG}-label`}>Village Lorebooks</legend>
-      <p className={`${ELEMENT_TAG}-hint`}>
-        Selected books supply live world facts for places, stories, conversations, wishes, agendas, and generated
-        scenery. Villages never edits them.
-      </p>
+      <legend className={`${ELEMENT_TAG}-label`}>
+        Village Lorebooks{" "}
+        <FoundingHelp label="Village lorebooks">
+          Selected books supply live world facts for places, stories, conversations, wishes, agendas, and generated
+          scenery. Villages never edits them.
+        </FoundingHelp>
+      </legend>
       <div className={`${ELEMENT_TAG}-lore-selected`} aria-live="polite">
         {selected.length ? (
           selected.map((id) => (

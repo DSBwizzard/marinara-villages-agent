@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -13,19 +14,26 @@ import {
   SETUP_STEPS,
   VillageLorebookPicker,
 } from "./FoundingPanels.js";
+import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
 import { FOUNDING_SCENARIOS } from "./scenarios.js";
 import { evenlySpacedFoundingPins } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
-import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary } from "./villages-player-role.js";
+import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary, playerRoleProblem } from "./villages-player-role.js";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
+
+const CIRCUMSTANCE_EXAMPLES = FOUNDING_SCENARIOS.map((scenario) => scenario.premise).filter(Boolean);
+const PLACE_ERRORS = {
+  name: "Give the village a name.",
+  setting: "Describe where we are.",
+  circumstance: "Describe what brings you together.",
+};
 
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
   const {
     busy,
     catalog,
-    chooseSetupScenario,
     connectionSetupProblem,
     draftPins,
     draftSaveError,
@@ -60,7 +68,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSceneryStyle,
     setScreen,
     setSelectedSetupVenueId,
-    setSetupEditorOpen,
     setSetupFocusIssue,
     setSetupFoundingDetails,
     setSetupFoundingGuidance,
@@ -93,7 +100,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupFocusIssue,
     setupFoundingDetails,
     setupFoundingGuidance,
-    setupFoundingReason,
     setupFoundingVillagerIds,
     setupImageClaim,
     setupImageTarget,
@@ -122,7 +128,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupResidentContexts,
     setupRoleExpanded,
     setupSetting,
-    setupShowIssues,
     setupStep,
     setupSuggestionsBusy,
     setupSuggestionsClaim,
@@ -136,6 +141,30 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     updateSetupMapRequest,
     uploadSetupImage,
   } = controller;
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [validationAttempt, setValidationAttempt] = useState(0);
+  const roleError = setupProblem && setupProblem === playerRoleProblem(setupPlayerRole) ? setupProblem : "";
+  const inlineProblem =
+    Object.values(PLACE_ERRORS).includes(setupProblem) ||
+    !!roleError ||
+    setupProblem === "Choose an available Persona." ||
+    setupProblem === "Choose one to three available founding villagers." ||
+    setupProblem === "Complete the highlighted resident background fields in People." ||
+    (!!connectionSetupProblem && setupProblem === connectionSetupProblem);
+  useEffect(() => {
+    if (!setupProblem || !inlineProblem) return;
+    if (roleError) setSetupRoleExpanded(true);
+    const frame = requestAnimationFrame(() => {
+      const root = rootRef.current;
+      const target = [
+        ...(root?.querySelectorAll<HTMLElement>('[aria-invalid="true"], [data-founding-problem]') ?? []),
+      ].find((element) => element.getClientRects().length > 0);
+      target?.focus();
+      target?.scrollIntoView({ block: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [setupProblem, inlineProblem, roleError, setSetupRoleExpanded, validationAttempt]);
 
   if (screen === "setup") {
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
@@ -259,11 +288,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
         </div>
         {interactive ? (
           <>
-            <p>
+            <FoundingHelp label="Venue placement">
               Select a Venue’s Move button, then click its new spot. Arrow keys and Enter also place Venue photographs.
-            </p>
+            </FoundingHelp>
             {setupMapSource === "none" ? (
-              <p>Spaces Venue photographs evenly on this logical map.</p>
+              <FoundingHelp label="Simple map placement">
+                Spaces Venue photographs evenly on this logical map.
+              </FoundingHelp>
             ) : placed === setupVenues.length && !setupMapReviewed ? (
               <button type="button" onClick={() => setSetupMapReviewed(true)}>
                 I checked all Venue photographs against this map
@@ -282,34 +313,38 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
         data-step={setupStep}
+        ref={rootRef}
       >
-        <header className={`${ELEMENT_TAG}-setup-heading`}>
-          <h1>
-            Villages <span>· Village Forging</span>
-          </h1>
+        <header className={`${ELEMENT_TAG}-setup-heading villages-forging-heading`}>
+          <ol className="villages-forging-steps" aria-label="Founding phases">
+            {SETUP_STEPS.map((label, index) => (
+              <li
+                key={label}
+                aria-label={label}
+                aria-current={index === setupStep ? "step" : undefined}
+                data-active={index === setupStep}
+              >
+                <span aria-hidden="true">{index + 1}</span>
+              </li>
+            ))}
+          </ol>
+          <h1>Forging the Village</h1>
         </header>
-        <nav className="villages-forging-steps" aria-label="Founding steps">
-          {SETUP_STEPS.map((label, index) => (
-            <button
-              key={label}
-              type="button"
-              aria-current={index === setupStep ? "step" : undefined}
-              data-active={index === setupStep}
-              disabled={busy || setupEditorOpen || (index === 3 && (setupVenueBusy || setupSuggestionsBusy))}
-              onClick={() => gotoSetupStep(index)}
-            >
-              {index + 1} {label}
-            </button>
-          ))}
-        </nav>
         <main className="villages-forging-body" data-step={setupStep}>
-          <p className="villages-forging-kicker" hidden={setupStep === 0}>
-            Step {setupStep + 1} of 4 · {SETUP_STEPS[setupStep]}
-          </p>
           <div hidden={setupStep !== 0}>
             <div className="villages-forging-columns">
               <section className="villages-forging-card">
-                <h3>You</h3>
+                <h3 aria-label="You">
+                  You{" "}
+                  <FoundingHelp label="Persona">
+                    Your Persona supplies your name and authored identity for this village.
+                  </FoundingHelp>
+                </h3>
+                {setupProblem === "Choose an available Persona." ? (
+                  <p role="alert" data-founding-problem tabIndex={-1}>
+                    {setupProblem}
+                  </p>
+                ) : null}
                 <FoundingPersonaSelector
                   personas={personas}
                   draft={personaDraft}
@@ -335,6 +370,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     >
                       <PlayerRoleFields
                         compact
+                        problem={roleError}
                         role={setupPlayerRole ?? DEFAULT_PLAYER_ROLE}
                         onChange={setSetupPlayerRole}
                         disabled={busy}
@@ -346,7 +382,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 )}
               </section>
               <section className="villages-forging-card">
-                <h3>Founding villagers</h3>
+                <h3 aria-label="Founding villagers">
+                  Founding villagers{" "}
+                  <FoundingHelp label="Founding villagers">
+                    Choose one to three characters to live here with you.
+                  </FoundingHelp>
+                </h3>
+                {setupProblem === "Choose one to three available founding villagers." ? (
+                  <p role="alert" data-founding-problem tabIndex={-1}>
+                    {setupProblem}
+                  </p>
+                ) : null}
                 <FoundingVillagerPicker
                   catalog={catalog}
                   portraits={portraits}
@@ -357,7 +403,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div className="villages-people-connections">
                   <details open={!!connectionSetupProblem}>
                     <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
-                    <p>System and Narration are required. Images are optional.</p>
+                    <FoundingHelp label="Connections">
+                      System and Narration are required. Images are optional.
+                    </FoundingHelp>
+                    {connectionSetupProblem && setupProblem === connectionSetupProblem ? (
+                      <p role="alert" data-founding-problem tabIndex={-1}>
+                        {setupProblem}
+                      </p>
+                    ) : null}
                     <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
                   </details>
                 </div>
@@ -385,8 +438,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               <h2>Define your place</h2>
               <div className="villages-forging-columns">
                 <section className="villages-forging-card">
-                  <label>
-                    Village name
+                  <FoundingField
+                    title="Village name"
+                    help="The name of your village."
+                    error={setupProblem === PLACE_ERRORS.name && !setupName.trim() ? setupProblem : ""}
+                  >
                     <input
                       aria-label="Village name"
                       maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
@@ -394,9 +450,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       disabled={busy}
                       onChange={(event) => setSetupName(event.target.value)}
                     />
-                  </label>
-                  <label>
-                    Where are we?
+                  </FoundingField>
+                  <FoundingField
+                    title="Where are we?"
+                    help="Describe the place, surrounding world, and ongoing conditions. It can already be established."
+                    error={setupProblem === PLACE_ERRORS.setting && !setupSetting.trim() ? setupProblem : ""}
+                  >
                     <textarea
                       aria-label="Where are we?"
                       maxLength={snapshot?.settings.settingMaxLength ?? 1200}
@@ -405,11 +464,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       disabled={busy}
                       onChange={(event) => setSetupSetting(event.target.value)}
                     />
-                  </label>
-                  <p>Describe the place, surrounding world, and ongoing conditions. It can already be established.</p>
-                  <label>
-                    What brings you together?
-                    <textarea
+                  </FoundingField>
+                  <FoundingField
+                    title="What brings you together?"
+                    help="Everyday reasons or unusual events are both welcome. Individual motives can emerge through play."
+                    error={
+                      setupProblem === PLACE_ERRORS.circumstance && !setupFoundingDetails.trim() ? setupProblem : ""
+                    }
+                  >
+                    <CircumstanceInput
+                      examples={CIRCUMSTANCE_EXAMPLES}
                       aria-label="What brings you together?"
                       maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
                       rows={4}
@@ -417,27 +481,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       disabled={busy || !!snapshot?.isFounded}
                       onChange={(event) => setSetupFoundingDetails(event.target.value)}
                     />
-                  </label>
-                  <p>
-                    Everyday reasons or unusual events are both welcome. Individual motives can emerge through play.
-                  </p>
-                  {!snapshot?.isFounded ? (
-                    <details>
-                      <summary>Starting circumstance examples</summary>
-                      <div className="villages-forging-actions">
-                        {FOUNDING_SCENARIOS.filter((scenario) => scenario.value !== "none").map((scenario) => (
-                          <button
-                            key={scenario.value}
-                            type="button"
-                            aria-pressed={setupFoundingReason === scenario.value}
-                            onClick={() => chooseSetupScenario(scenario.value)}
-                          >
-                            {scenario.label}
-                          </button>
-                        ))}
-                      </div>
-                    </details>
-                  ) : null}
+                  </FoundingField>
                   <details>
                     <summary>Village lorebooks · {setupLorebookDraft.length} selected</summary>
                     <VillageLorebookPicker
@@ -462,8 +506,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </details>
                   <details>
                     <summary>Optional narrative direction</summary>
-                    <label>
-                      Narrative direction
+                    <FoundingField title="Narrative direction" help="A creative preference, not a guaranteed future.">
                       <textarea
                         aria-label="Narrative direction"
                         maxLength={500}
@@ -471,8 +514,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         disabled={busy || !!snapshot?.isFounded}
                         onChange={(event) => setSetupFoundingGuidance(event.target.value)}
                       />
-                    </label>
-                    <p>A creative preference, not a guaranteed future.</p>
+                    </FoundingField>
                   </details>
                   {snapshot?.isFounded ? (
                     <label>
@@ -485,7 +527,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   ) : null}
                 </section>
                 <section className="villages-forging-card">
-                  <h3>Map</h3>
+                  <h3 aria-label="Map">
+                    Map{" "}
+                    <FoundingHelp label="Map">
+                      A Simple map keeps Venue positions without artwork; automatic spacing is available on Venues. You
+                      can also generate or upload artwork.
+                    </FoundingHelp>
+                  </h3>
                   {snapshot?.isFounded ? (
                     <p>
                       Change artwork and Venue photographs in Village Settings → Village Map. Existing locations are
@@ -516,8 +564,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       </div>
                       {setupMapSource === "generate" ? (
                         <>
-                          <label>
-                            Map layout
+                          <FoundingField
+                            title="Map layout"
+                            help="Guides the artwork. You will place the Venue photographs yourself."
+                          >
                             <textarea
                               aria-label="Map layout"
                               rows={3}
@@ -526,8 +576,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                               onChange={(event) => setSetupMapPrompt(event.target.value)}
                               placeholder="For example: bedrooms along the east corridor; lounge near the center."
                             />
-                          </label>
-                          <p>Guides the artwork. You will place the Venue photographs yourself.</p>
+                          </FoundingField>
                           <label>
                             Art style
                             <select
@@ -640,11 +689,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           ) : null}
                         </>
                       ) : null}
-                      {setupMapSource === "none" ? (
-                        <p>
-                          A logical map keeps Venue positions without artwork. Automatic spacing is available on Venues.
-                        </p>
-                      ) : setupMapSrc ? (
+                      {setupMapSource === "none" ? null : setupMapSrc ? (
                         <figure>
                           <img
                             className="villages-forging-preview"
@@ -841,7 +886,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </div>
             </>
           ) : null}
-          {setupProblem ? (
+          {setupProblem && !inlineProblem ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupProblem}
             </p>
@@ -907,6 +952,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             className="villages-forging-primary"
             disabled={busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError}
             onClick={() => {
+              setValidationAttempt((attempt) => attempt + 1);
               if (setupStep === 2 && setupIssues.length) {
                 setSetupShowIssues(true);
                 openIssue(setupIssues[0]);

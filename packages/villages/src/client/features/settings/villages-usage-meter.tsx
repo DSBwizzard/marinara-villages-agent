@@ -187,10 +187,9 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       style={{
         flex: "0 0 auto",
         minWidth: 0,
-        padding: "4px 8px",
+        padding: "0 8px",
         color: "var(--foreground, #f5f5f5)",
         background: "var(--background, #20232a)",
-        borderBottom: "1px solid var(--border, #888)",
         font: "12px/1.5 Arial,sans-serif",
         overflowWrap: "anywhere",
       }}
@@ -198,71 +197,84 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "center" }}>
         <button
           type="button"
+          aria-label="Villages AI usage"
           aria-expanded={open}
           onClick={() => setOpen(!open)}
           style={{
-            flex: "1 1 15rem",
+            minHeight: 44,
+            maxWidth: "100%",
+            borderRadius: 16,
             minWidth: 0,
             textAlign: "left",
             color: "inherit",
-            background: "transparent",
-            border: 0,
+            background: "var(--popover, #252b38)",
+            border: "1px solid var(--border, #888)",
+            padding: "2px 10px",
             cursor: "pointer",
             whiteSpace: "normal",
           }}
         >
-          Villages AI usage ·{" "}
-          {total
-            ? (total.unknown === total.requests && total.requests > 0
-                ? "Cost unavailable"
-                : cost(total) + " estimated") +
-              " · " +
-              total.requests +
-              " requests · " +
-              total.tokens.toLocaleString() +
-              " known tokens" +
-              (total.unknownTokens ? " · " + total.unknownTokens + " with unavailable token totals" : "") +
-              (view?.running ? " · " + view.running + " running" : "") +
-              (total.unknown ? " · " + total.unknown + " unpriced/unknown" : "")
-            : "Loading usage…"}
-        </button>
-        <button
-          type="button"
-          disabled={busy || !view}
-          onClick={() => void mutate("/usage/reset", { method: "POST" })}
-          title="Clear the displayed totals and recent requests. Saved prices and aggregate history are kept."
-        >
-          Reset usage
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            if (mutating.current) return;
-            setBusy(true);
-            try {
-              await request("/debug/runtime", { method: "PATCH", body: JSON.stringify({ showUsageMeter: false }) });
-              window.dispatchEvent(new CustomEvent("villages-usage-visibility", { detail: false }));
-            } catch {
-              setError("Usage display could not be hidden");
-            } finally {
-              setBusy(false);
-            }
-          }}
-          title="Show again in DEBUG Settings → Show AI usage meter"
-        >
-          Hide usage
+          AI usage ·{" "}
+          {error || view?.error
+            ? "Unavailable"
+            : total
+              ? (total.unknown === total.requests && total.requests > 0
+                  ? "Cost unknown"
+                  : fx
+                    ? "$" + ((total.usd ?? total.dollars) + (total.yuan ?? 0) / fx).toFixed(2) + " est."
+                    : (total.yuan
+                        ? "¥" + total.yuan.toFixed(2) + (total.dollars ? " + $" + total.dollars.toFixed(2) : "")
+                        : "$" + (total.usd ?? total.dollars).toFixed(2)) + " est.") +
+                (total.unknown ? " · partial" : "")
+              : "Loading…"}{" "}
+          <span aria-hidden="true">{open ? "⌃" : "⌄"}</span>
         </button>
       </div>
       {open && view ? (
         <div
           style={{
-            maxHeight: "min(50vh, 28rem)",
+            maxHeight: "min(40vh, 20rem)",
             overflow: "auto",
             padding: "4px 0",
             borderTop: "1px solid var(--border, #888)",
           }}
         >
+          <p>
+            {view.totals.requests} requests · {view.totals.tokens.toLocaleString()} known tokens
+            {view.totals.unknownTokens ? " · " + view.totals.unknownTokens + " with unavailable token totals" : ""}
+            {view.totals.unknown ? " · " + view.totals.unknown + " unpriced/unknown" : ""}
+            {view.running ? " · " + view.running + " running" : ""} · {cost(view.totals)} estimated
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {" "}
+            <button
+              type="button"
+              disabled={busy || !view}
+              onClick={() => void mutate("/usage/reset", { method: "POST" })}
+              title="Clear the displayed totals and recent requests. Saved prices and aggregate history are kept."
+            >
+              Reset usage
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                if (mutating.current) return;
+                setBusy(true);
+                try {
+                  await request("/debug/runtime", { method: "PATCH", body: JSON.stringify({ showUsageMeter: false }) });
+                  window.dispatchEvent(new CustomEvent("villages-usage-visibility", { detail: false }));
+                } catch {
+                  setError("Usage display could not be hidden");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              title="Show again in DEBUG Settings → Show AI usage meter"
+            >
+              Hide usage
+            </button>
+          </div>
           <p>
             Since reset: {new Date(view.since).toLocaleString()}. Today: {cost(view.today)} estimated /{" "}
             {view.today.requests} requests.
@@ -426,7 +438,7 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
           ))}
         </div>
       ) : null}
-      {error || view?.error ? <p role="status">{error || view?.error}</p> : null}
+      {error || view?.error ? <p role="alert">{error || view?.error}</p> : null}
     </aside>
   );
 }

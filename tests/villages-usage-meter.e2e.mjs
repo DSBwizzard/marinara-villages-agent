@@ -133,8 +133,9 @@ try {
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
     await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
-    await expect(meter).toContainText("18 requests");
-    await expect(meter).toContainText("¥2.9400 ≈ $0.4200");
+    await expect(meter).toContainText("$0.42 est.");
+    await expect(meter.getByRole("button", { name: "Reset usage", exact: true })).toHaveCount(0);
+    assert.ok((await meter.boundingBox()).height <= 48, "collapsed usage fits one compact row");
     const assertFlow = async () => {
       const boxes = await page.evaluate(() => {
         const meter = document.querySelector('[aria-label="Villages AI usage"]');
@@ -152,6 +153,8 @@ try {
     };
     await assertFlow();
     await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
+    await expect(meter).toContainText("18 requests");
+    await expect(meter).toContainText("¥2.9400 ≈ $0.4200");
     await expect(meter).toContainText("1 USD ≈ ¥7.0000");
     await meter.getByLabel("Price connection and model").selectOption("link:gemini-test");
     await meter.getByLabel("LinkAPI token group").selectOption("gemini");
@@ -170,6 +173,8 @@ try {
       await page.screenshot({ path: process.env.VILLAGES_USAGE_SCREENSHOT.replace(".png", "-" + width + ".png") });
     await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
     const meterToggle = page.getByRole("checkbox", { name: "Show AI usage meter", exact: true });
+    await expect(meter.getByRole("button", { name: "Hide usage", exact: true })).toHaveCount(0);
+    await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
     await meter.getByRole("button", { name: "Hide usage", exact: true }).click();
     await expect(meter).toHaveCount(0);
     await expect(meterToggle).not.toBeChecked();

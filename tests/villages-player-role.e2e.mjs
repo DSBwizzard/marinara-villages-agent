@@ -120,7 +120,10 @@ try {
         await page.locator("summary").filter({ hasText: "Connections · Ready" }).click();
         await expect(page.getByLabel("System", { exact: true })).toBeVisible();
       }
-      await expect(page.getByRole("button", { name: "1 People", exact: true })).toBeVisible();
+      await expect(page.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute(
+        "aria-label",
+        "People",
+      );
       if (scenario.founded) {
         const summary = page.getByRole("region", { name: "Your place in the village" });
         await expect(summary).toContainText(

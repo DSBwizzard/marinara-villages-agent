@@ -1,3 +1,4 @@
+import { FoundingField } from "./FoundingField.js";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   RESIDENT_HISTORY_MODES,
@@ -66,8 +67,17 @@ export function ResidentFoundingEditors({
             </button>
             <div className="villages-resident-fields" id={prefix} data-expanded={!!opened}>
               <div className="villages-resident-choices">
-                <label>
-                  Character history
+                <FoundingField
+                  title="Character history"
+                  help={
+                    value.historyMode === "adapt"
+                      ? "Keep their history except for changes you describe. A blank note keeps it unchanged."
+                      : value.historyMode === "new"
+                        ? "Keep who they are. Their former personal history is reference material unless you retain it below; this does not imply amnesia."
+                        : "Continue the character’s existing history in this setting."
+                  }
+                  error={problems.historyMode}
+                >
                   <select
                     aria-label={person.name + " character history"}
                     disabled={disabled}
@@ -82,10 +92,12 @@ export function ResidentFoundingEditors({
                       </option>
                     ))}
                   </select>
-                  {error("historyMode")}
-                </label>
-                <label>
-                  Place in the Village’s story
+                </FoundingField>
+                <FoundingField
+                  title="Place in the Village’s story"
+                  help="Choose how this character belongs to the setting when play begins."
+                  error={problems.storyRole}
+                >
                   <select
                     aria-label={person.name + " place in the Village's story"}
                     disabled={disabled}
@@ -100,8 +112,7 @@ export function ResidentFoundingEditors({
                       </option>
                     ))}
                   </select>
-                  {error("storyRole")}
-                </label>
+                </FoundingField>
                 {value.storyRole === "custom" ? (
                   <label className="villages-resident-custom">
                     Describe their place here
@@ -118,32 +129,23 @@ export function ResidentFoundingEditors({
                     {error("customDescription")}
                   </label>
                 ) : null}
-                {value.historyMode !== "continue" ? (
-                  <p className="villages-resident-help villages-resident-custom">
-                    {value.historyMode === "adapt"
-                      ? "Keep their history except for changes you describe. A blank note keeps it unchanged."
-                      : "Keep who they are. Their former personal history is reference material unless you retain it below; this does not imply amnesia."}
-                  </p>
-                ) : null}
               </div>
-              <label>
-                {value.storyRole === "lifelong" ? "Their life here before play" : "Why they’re here"}{" "}
-                <small>Optional</small>
+              <FoundingField
+                title={
+                  (value.storyRole === "lifelong" ? "Their life here before play" : "Why they’re here") + " · Optional"
+                }
+                help="Why they’re here, how their past connects to this setting, or what differs from their card."
+                error={problems.background}
+              >
                 <textarea
                   aria-label={person.name + " starting background"}
                   rows={3}
                   maxLength={1200}
-                  aria-invalid={!!problems.background}
-                  aria-describedby={problems.background ? prefix + "-background-error" : undefined}
                   disabled={disabled}
                   value={value.background}
                   onChange={(event) => patch({ background: event.target.value })}
                 />
-                <span className="villages-resident-help">
-                  Why they’re here, how their past connects to this setting, or what differs from their card.
-                </span>
-                {error("background")}
-              </label>
+              </FoundingField>
             </div>
           </section>
         );
