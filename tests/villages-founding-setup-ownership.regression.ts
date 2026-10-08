@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import Fastify from "fastify";
+import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -186,6 +188,44 @@ function fixture(name: string) {
   };
 }
 
+// Exercise the real HTTP entry and setup coordinator with provider-free ports.
+for (const invalid of ["exterior-residence", "missing-purpose", "gathering-private", "owned-gathering"]) {
+  const api = fixture(invalid),
+    payload = input(invalid);
+  if (invalid === "exterior-residence") Object.assign(payload.venues[0]!, { layout: "exterior", spaces: [] });
+  if (invalid === "missing-purpose") payload.venues[0]!.spaces[0]!.purpose = "";
+  if (invalid === "gathering-private")
+    Object.assign(payload.venues[2]!, {
+      layout: "both",
+      privateSpaces: [
+        {
+          id: "forbidden",
+          name: "Bedroom",
+          purpose: "Rest",
+          description: "Bed",
+          venueClass: "gathering",
+          ownerId: "player",
+        },
+      ],
+    });
+  if (invalid === "owned-gathering") Object.assign(payload.venues[2]!.spaces[0]!, { ownerId: "player" });
+  const dispose = configureFoundingSetup(api.service),
+    server = Fastify();
+  registerFoundingRoutes(server);
+  try {
+    const response = await server.inject({ method: "POST", url: "/setup", payload });
+    assert.equal(response.statusCode, 400, invalid);
+    assert.ok(response.json().error, "HTTP validation explains the rejected template");
+    assert.ok(
+      !api.calls.some((call) => ["mutate", "propose", "names", "descriptions", "prepare", "schedule"].includes(call)),
+      "Invalid initial templates cause no model work or world writes",
+    );
+    assert.equal(api.state.setupAt, "");
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
 const direct = fixture("Direct");
 await assert.rejects(
   direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "" }),
