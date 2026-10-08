@@ -72,7 +72,11 @@ try {
     await expect(page.getByText(/0 expected AI requests/).first()).toBeVisible();
     await expect(page.getByText(/1 with unknown cost/).first()).toBeVisible();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
-    await expect(meter).toContainText("18 requests");
+    await expect(meter).toContainText("$0.42 est.");
+    await expect(meter.getByRole("button", { name: "Villages AI usage", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     await page.evaluate(() => {
       const button = document.createElement("button");
       button.textContent = "Test fullscreen";
@@ -84,6 +88,7 @@ try {
     await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(true);
     await expect.poll(() => meter.evaluate((element) => document.fullscreenElement?.contains(element))).toBe(true);
     await meter.getByRole("button", { name: /Villages AI usage/ }).click();
+    await expect(meter).toContainText("18 requests");
     await expect(meter).toContainText("1 requests remaining");
     await expect(meter).toContainText("Player: regenerate Agenda");
     const box = await meter.boundingBox();
