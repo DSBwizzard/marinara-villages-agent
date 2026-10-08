@@ -45,6 +45,20 @@ npm run test:engine
 
 The inventory accounts for every regression and browser scenario. Engine tests are explicitly separate: the image compatibility test requires `MARINARA_ENGINE_ROOT` for read-only source, Decisions transport requires a compatible existing built runtime and synthetic local provider, and the shell test needs `VILLAGES_ENGINE_URL` pointing to an isolated running Engine. They do not authorize Engine source changes, rebuilds or everyday restarts. Mocked tests complement actual packaged activation, persistence, Scene privacy, recovery and desktop/mobile verification.
 
+## Keeping the architecture healthy
+
+For each task, state the intended user-visible outcome and identify its feature owner, collaborators and relevant Engine contract. Start with the smallest change that fits those owners. If the request appears to require a dependency outside an existing feature contract, duplicated host service, new private Engine import, data-policy change or broad restructuring, explain the concrete tradeoff and discuss the approach before expanding implementation. Follow the engineering discussion guidance in [AGENTS.md](AGENTS.md); conventions are revisable, but changes to them need a reason and appropriate validation.
+
+During review, check these points:
+
+- Ownership and dependencies remain explicit; client-visible projections expose only permitted data, and asynchronous work respects its activation and operation lifetime.
+- New interfaces or layers have an evidenced purpose. Superseded paths are removed within scope, rather than leaving two ways to implement the same behavior.
+- A maintainer can find the behavior and diagnose its failures. Important tradeoffs and changed contracts are documented close to their maintained guidance, without creating a permanent log of routine implementation decisions.
+- Tests protect observable behavior and relevant failures, with accurate coverage limitations. A rising test count or line count alone does not demonstrate improvement. Fix unreliable fixtures or excessive test grouping without dropping assertions or weakening gates.
+- Git history and the PR stay focused on one outcome. Integration changes are reviewed and revalidated; required checks, publication authorization, immutable released bytes and separate staging/main decisions remain intact.
+
+Small cleanup belongs with the feature it affects. Larger refactors require a demonstrated problem, bounded scope and an agreed outcome; they are not a routine prerequisite for new features. For post-0.7.0 work, discuss saved-data compatibility whenever a change affects existing worlds. The fresh-world decision for 0.7.0 does not silently authorize future data loss or require speculative migration machinery for every edit.
+
 ## Package identities and releases
 
 Each build writes working outputs under `packages/villages/` and `artifacts/villages-<version>.zip`. It retains archive bytes at `artifacts/<version>/<source-content-hash>/<archive-sha256>.zip`, with a build receipt alongside them and the latest receipt at `.build-tmp/package-build.json`. Receipts identify source revision, exact input hashes and archive bytes. Use those identities when reviewing or installing a staging build; version equality alone does not identify the build.
