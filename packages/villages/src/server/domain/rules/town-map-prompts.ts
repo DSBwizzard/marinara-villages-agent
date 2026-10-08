@@ -1,0 +1,7 @@
+export const DEFAULT_TOWN_MAP_LAYOUT_PROMPT =
+  "Create a single continuous overhead illustration of the described shared place, composed for a 3:2 landscape canvas, wider than it is tall. Extend the scenery to every edge of the image. " +
+  "Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish. Use generous spatial separation where the setting permits, while preserving the described architecture and density. Distinguish areas through their furnishings, materials, terrain and landmarks. " +
+  "Reveal indoor spaces through roofless plans or clear cutaways. Show outdoor terrain where appropriate. For layered settings, use separated, non-overlapping cutaways that keep usable spaces visible. Preserve existing structures and conditions, including repeated rooms where appropriate. Keep entrances and essential circulation legible. " +
+  "Render the place itself as a complete, unoccupied environment. Do not reserve blank spaces for annotations or add placeholder panels, photograph frames, label plaques, decorative borders, interface elements, symbols or writing. Do not draw outlined lots or a zoning grid.";
+export const DEFAULT_TOWN_MAP_NEGATIVE_PROMPT =
+  "text, letters, writing, numerals, labels, captions, signs, icons, markers, interface elements, legend, compass rose, watermark, decorative border, blank annotation panels, placeholder boxes, photograph frames, label plaques, people, characters, outlined lots, zoning grid, crowded composition, blurry, low quality";

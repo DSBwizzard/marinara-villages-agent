@@ -1,26 +1,24 @@
 import assert from "node:assert/strict";
-import {
-  buildVillagerMessages,
-  type VillagePromptContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/chat.js";
-import { readVillagerCard } from "../packages/villages/src/engine/packages/server/src/services/villages/catalog.js";
-import { proposeCompactFounding } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/engine/packages/server/src/services/villages/narrative-grounding.js";
-import { builtInNarrationTurn } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-settings.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
+import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { VILLAGE_SHARED_SETTING_RULE } from "../packages/villages/src/server/domain/rules/narrative-grounding.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { DEFAULT_PLAYER_ROLE } from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   villageCurrentSetting,
   villageFoundingSetting,
   villageRelevantOrigin,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.js";
-import { draftScenarioImprint } from "../packages/villages/src/engine/packages/server/src/services/villages/scenario-imprint.js";
-import { sceneryPrompt } from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";
-import { buildTownMapPrompt } from "../packages/villages/src/engine/packages/server/src/services/villages/town-map-image.js";
-import { buildTickMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
-import { coerceVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { validateFirstDayDescription } from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { draftScenarioImprint } from "../packages/villages/src/server/features/founding/scenario-imprint.js";
+import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+
+import { validateFirstDayDescription } from "../packages/villages/src/server/domain/rules/founding-record.js";
 
 const scenarios = [
   [
@@ -72,18 +70,6 @@ async function main() {
     seed: "grounding",
     now: new Date("2026-10-02T12:00:00Z"),
   });
-  const context: VillagePromptContext = {
-    roster: [],
-    present: [],
-    lore: [],
-    homes: [],
-    memory: [],
-    moment,
-    routine: null,
-    remap: null,
-    agenda: null,
-  };
-  const narration = builtInNarrationTurn({ maxTokens: 4096, temperature: 0.8 });
   const palette = ["Resting", "Reading", "Preparing a meal", "Maintaining equipment", "Talking", "Taking a break"].map(
     (activity) => ({ activity, venue: 0, status: "idle" }),
   );
@@ -133,21 +119,16 @@ async function main() {
       assert.ok(villageRelevantOrigin(state, "Why are we staying here?").includes(circumstances));
       assert.equal(villageRelevantOrigin(state, "What is for dinner?"), "");
       assert.equal(villageRelevantOrigin(state, "What is for dinner here?"), "");
-      const dialogue = buildVillagerMessages(card, state, [], "Why are we here?", context, narration)
-        .map((message) => message.content)
-        .join("\n");
+      const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.ok(dialogue.includes(setting));
       assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
       const events = buildTickMessages({
         village: name,
         setting: current,
         moment,
-        foundedAt: state.setupAt,
         residents: [],
         recent: [],
-        noticeboard: [],
         venues: [],
-        pendingVenueNames: [],
         opportunities: [],
         lastSimulatedAt: state.setupAt,
         forced: false,

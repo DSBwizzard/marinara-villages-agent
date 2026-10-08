@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   coerceSelectedLorebookIds,
   readSelectedLorebookIds,
-  readVillageLore,
-  readVillageVisualLore,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/lorebooks.ts";
-import { buildTownMapPrompt } from "../packages/villages/src/engine/packages/server/src/services/villages/town-map-image.ts";
+} from "../packages/villages/src/server/domain/rules/lore-policy.js";
+import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
+import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);

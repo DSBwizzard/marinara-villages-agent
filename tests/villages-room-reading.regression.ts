@@ -3,7 +3,7 @@ import {
   hasCompletedRoomSubmission,
   isLocalRoomCompletion,
   nextRoomReadIndex,
-} from "../packages/villages/src/engine/packages/client/src/villages-room-reading.ts";
+} from "../packages/villages/src/client/features/scenes/villages-room-reading.ts";
 
 const visit = { roomId: "visit-a", stepCount: 47 };
 assert.equal(

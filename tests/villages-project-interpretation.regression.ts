@@ -3,34 +3,29 @@ import {
   projectSpeechContexts,
   validateProjectSpeech,
   type ProjectSpeechProposal,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-interpretation.ts";
+} from "../packages/villages/src/server/domain/rules/project-interpretation.js";
 import assert from "node:assert/strict";
-import { recordProjectProgress } from "../packages/villages/src/engine/packages/server/src/services/villages/project-progress.ts";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.ts";
+import { recordProjectProgress } from "../packages/villages/src/server/domain/rules/project-progress.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   acceptProjectRequirements,
   createNewVenueProject,
   createRenovationProject,
   lockProjectBuilder,
   placeNewVenueProject,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
-import { recordExistingProjectSource } from "../packages/villages/src/engine/packages/server/src/services/villages/project-evidence.ts";
-import {
-  processSavedProgressSubmission,
-  sendVenueTurn,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { recordExistingProjectSource } from "../packages/villages/src/server/features/projects/project-evidence.js";
+import { sendVenueTurn } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { processSavedProgressSubmission } from "../packages/villages/src/server/features/scenes/progress.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   coerceVillageState,
   defaultVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.ts";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
 const records = new Map<string, any>();
 let failVillageWrites = 0;

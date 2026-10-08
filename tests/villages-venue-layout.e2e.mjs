@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { verifyVenueScreenLifetimes } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
@@ -119,6 +120,7 @@ try {
       assert.deepEqual(errors, []);
       await page.close();
     }
+  await verifyVenueScreenLifetimes(browser);
   console.log(
     "Desktop and phone new-venue layouts: Entrance-only and multiple Zone selection, separated name/use/appearance, class association, and submissions passed.",
   );

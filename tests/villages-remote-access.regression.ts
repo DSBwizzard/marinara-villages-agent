@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof that the tab's calls carry the Engine's admin secret.
 //
 // Every route this package serves sits behind the Engine's privileged gate, and
@@ -26,10 +27,7 @@ import { fileURLToPath } from "node:url";
 import { transpileModule, ScriptTarget } from "typescript";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(
-  resolve(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-  "utf8",
-);
+const source = readFileSync(resolve(repoRoot, "packages/villages/src/client/shared/api.tsx"), "utf8");
 
 /* ── The one run of code that answers both questions ─────────────────────── */
 
@@ -77,17 +75,19 @@ assert.ok(hintLiteral, "the tab must still say what to do about a secret it was 
 const hint = JSON.parse(hintLiteral) as string;
 
 /*
-  The sentence has to BE the Engine's, not a second wording of it. The vendored
-  Engine client ships in this repo, so the comparison is made against the very
-  constant the Engine's own panels read out, and a re-worded Engine fails here
-  instead of quietly leaving the tab with stale advice.
+  Compare the advice with the explicitly pinned Engine public-access contract.
+  The fixture records its source revision/hash without retaining an unused copy
+  of the Engine application. Engine upgrades must revalidate this contract.
 */
-const engineSource = readFileSync(resolve(repoRoot, "sources/engine/packages/client/src/lib/api-client.ts"), "utf8");
-const engineHintLiteral = /export const PRIVILEGED_ACCESS_HINT =\s*("(?:[^"\\]|\\.)*");/u.exec(engineSource)?.[1];
-assert.ok(engineHintLiteral, "the Engine's own privileged-access hint must still be readable in the vendored client");
+const engineAccess = JSON.parse(
+  readFileSync(resolve(repoRoot, "sources/engine-public/privileged-access.json"), "utf8"),
+);
+assert.equal(JSON.parse(storageKey), engineAccess.adminSecretStorageKey);
+assert.match(engineAccess.revision, /^[a-f0-9]{40}$/u);
+assert.match(engineAccess.sourceSha256, /^[a-f0-9]{64}$/u);
 assert.equal(
   hint,
-  JSON.parse(engineHintLiteral) as string,
+  engineAccess.privilegedAccessHint,
   "the tab must say exactly what the Engine says, so the refusal reads the same wherever the player meets it",
 );
 

@@ -1,0 +1,171 @@
+import { readFile, realpath } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { activationScope, bindActivationService, createActivationBinding } from "./activation-scope.js";
+
+/** Audited runtime imports: never bundle Engine implementations into Villages. */
+export const DECISION_ENGINE_MODULES = [
+  "services/decision/decision-default.js",
+  "services/storage/connections.storage.js",
+  "services/storage/app-settings.storage.js",
+] as const;
+export const TESTED_DECISION_ENGINE_BUILDS = ["ead04150a132"] as const;
+export type EngineDecisionBackend = {
+  model?: string;
+  maxStateTokens: number;
+  calibration: { defaultThreshold: number; questionShape?: string };
+  deferPreGeneration: boolean;
+  ask(state: unknown, questions: { id: string; instructions: string }[]): Promise<Map<string, number> | null>;
+};
+type ModuleSet = {
+  resolveDecisionBackend: (
+    dependencies: Record<string, unknown>,
+    signal?: AbortSignal,
+  ) => Promise<EngineDecisionBackend | null>;
+  DECISION_SETTINGS_KEYS: { localDefault: string; thinkingPreGeneration: string };
+  createConnectionsStorage: (db: unknown) => {
+    getDefaultForDecision(): Promise<unknown>;
+    getWithKey(id: string): Promise<unknown>;
+  };
+  createAppSettingsStorage: (db: unknown) => { get(key: string): Promise<string | null> };
+};
+export type DecisionAdapterStatus = { available: boolean; reason: string; engineBuild: string | null };
+
+export async function loadDecisionEngineModules(serverEntry: string): Promise<ModuleSet & { engineBuild: string }> {
+  const main = await realpath(serverEntry);
+  const dist = dirname(main);
+  if (basename(main) !== "index.js" || basename(dist) !== "dist") throw new Error("Unsupported Engine server layout");
+  const manifest = JSON.parse(await readFile(join(dirname(dist), "package.json"), "utf8"));
+  if (manifest.name !== "@marinara-engine/server" || manifest.type !== "module")
+    throw new Error("Unverified Engine server identity");
+  const metadata = JSON.parse(await readFile(join(dist, "config/build-meta.json"), "utf8"));
+  if (!TESTED_DECISION_ENGINE_BUILDS.some((commit) => commit === metadata.commit))
+    throw new Error("This Engine build has not been tested with Villages Decisions");
+  const urls = await Promise.all(
+    DECISION_ENGINE_MODULES.map(async (relative) => pathToFileURL(await realpath(join(dist, relative))).href),
+  );
+  // Canonical URLs share the running server's ESM instances, including its queues and sidecars.
+  const [decisions, connections, settings] = await Promise.all(urls.map((url) => import(url)));
+  if (
+    typeof decisions.resolveDecisionBackend !== "function" ||
+    typeof decisions.DECISION_SETTINGS_KEYS?.localDefault !== "string" ||
+    typeof decisions.DECISION_SETTINGS_KEYS?.thinkingPreGeneration !== "string" ||
+    typeof connections.createConnectionsStorage !== "function" ||
+    typeof settings.createAppSettingsStorage !== "function"
+  )
+    throw new Error("Incompatible Engine Decisions contract");
+  return {
+    resolveDecisionBackend: decisions.resolveDecisionBackend,
+    DECISION_SETTINGS_KEYS: decisions.DECISION_SETTINGS_KEYS,
+    createConnectionsStorage: connections.createConnectionsStorage,
+    createAppSettingsStorage: settings.createAppSettingsStorage,
+    engineBuild: metadata.commit,
+  };
+}
+
+/** Each activation owns its database, canonical module load and disposal fence. */
+export function createDecisionsAdapter(
+  context: { app?: { db?: unknown } },
+  serverEntry = process.argv[1] ?? "",
+  loadModules: typeof loadDecisionEngineModules = loadDecisionEngineModules,
+) {
+  let database = context.app?.db;
+  let modules: Promise<ModuleSet> | undefined;
+  let build: string | null = null;
+  let active = true;
+  let failure = database ? "" : "This Engine did not provide its live database";
+
+  function assertActive() {
+    if (!active || !database) throw new Error(failure);
+  }
+  async function prepare(): Promise<ModuleSet> {
+    assertActive();
+    modules ??= loadModules(serverEntry).then((loaded) => {
+      assertActive();
+      build = loaded.engineBuild;
+      return loaded;
+    });
+    return modules;
+  }
+  async function status(): Promise<DecisionAdapterStatus> {
+    const originatingDatabase = database;
+    try {
+      const loaded = await prepare();
+      assertActive();
+      const settings = loaded.createAppSettingsStorage(originatingDatabase);
+      const connections = loaded.createConnectionsStorage(originatingDatabase);
+      const selected = await settings.get(loaded.DECISION_SETTINGS_KEYS.localDefault);
+      const configured = !!selected || !!(await connections.getDefaultForDecision());
+      assertActive();
+      return {
+        available: configured,
+        reason: configured ? "" : "No Engine Decision model is selected",
+        engineBuild: build,
+      };
+    } catch {
+      return {
+        available: false,
+        reason: "Engine Decisions integration is unavailable or incompatible",
+        engineBuild: build,
+      };
+    }
+  }
+  async function resolve(signal: AbortSignal): Promise<EngineDecisionBackend | null> {
+    const originatingDatabase = database;
+    const loaded = await prepare();
+    assertActive();
+    const settings = loaded.createAppSettingsStorage(originatingDatabase);
+    const connections = loaded.createConnectionsStorage(originatingDatabase);
+    const backend = await loaded.resolveDecisionBackend(
+      {
+        getLocalDefault: () => settings.get(loaded.DECISION_SETTINGS_KEYS.localDefault),
+        getThinkingPreGeneration: async () =>
+          (await settings.get(loaded.DECISION_SETTINGS_KEYS.thinkingPreGeneration)) === "true",
+        getDefaultConnection: () => connections.getDefaultForDecision(),
+        getConnectionWithKey: (id: string) => connections.getWithKey(id),
+        debugMode: false,
+      },
+      signal,
+    );
+    assertActive();
+    return backend;
+  }
+  function dispose() {
+    active = false;
+    database = undefined;
+    modules = undefined;
+    build = null;
+    failure = "Villages is inactive";
+  }
+  return { status, resolve, dispose };
+}
+export type DecisionsAdapter = ReturnType<typeof createDecisionsAdapter>;
+
+// Transitional dispatch; asynchronous operations retain the selected instance.
+const adapters = createActivationBinding<DecisionsAdapter>("Engine Decisions adapter has not been configured");
+/** Only activation supplies the live Engine DB; no client can select paths or credentials. */
+export function configureDecisionsAdapter(context: { app?: { db?: unknown } }, serverEntry = process.argv[1] ?? "") {
+  const adapter = createDecisionsAdapter(context, serverEntry);
+  // Retain the disposed facade until replacement/owner disposal, including its inactive error.
+  adapters.configure(bindActivationService(adapter));
+  return () => {
+    adapter.dispose();
+  };
+}
+export async function decisionAdapterStatus(): Promise<DecisionAdapterStatus> {
+  return (
+    adapters.maybe()?.status() ?? {
+      available: false,
+      reason: "Engine Decisions integration is unavailable or incompatible",
+      engineBuild: null,
+    }
+  );
+}
+export async function resolveVillagesDecisionBackend(signal: AbortSignal): Promise<EngineDecisionBackend | null> {
+  const adapter = adapters.maybe();
+  if (!adapter)
+    throw new Error(
+      activationScope()?.active === false ? "Villages is inactive" : "Engine Decisions adapter has not been configured",
+    );
+  return adapter.resolve(signal);
+}

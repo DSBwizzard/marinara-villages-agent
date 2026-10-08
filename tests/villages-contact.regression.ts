@@ -3,19 +3,20 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   enterVenue,
   continueVenueWithoutGreeting,
   sendVenueTurn as submitTurn,
   moveVenueZone,
-  activeVenueSession,
-  publicSceneResponse,
   discardVenueVisitDebug,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
   contactNeighbors,
   contactPath,
@@ -25,13 +26,9 @@ import {
   readContactDelivery,
   contactDevice,
   contactReach,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-contact.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
-import { coordinateVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
+} from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
 const now = new Date(),
   stamp = now.toISOString(),
@@ -133,6 +130,8 @@ state.villagers = [villager("messenger", "house", "common"), villager("alex", "h
 const saved = coerceVillageState(state);
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: saved, revision: 1 });
+let providerCalls = 0,
+  providerResolves = 0;
 let calls = 0,
   behavior = "answer",
   failSave = false;
@@ -186,6 +185,7 @@ const release = configureVillagesRuntime({
   },
   languageModels: {
     async resolveForRequest() {
+      providerResolves++;
       return {
         model: "fixture",
         maxOutputTokens: 4096,
@@ -193,6 +193,7 @@ const release = configureVillagesRuntime({
           return { messages, ...options };
         },
         async chatComplete(messages: any[]) {
+          providerCalls++;
           if (messages[0]?.content.startsWith("Interpret the meaning of witnessed Scene evidence")) {
             const checks = fixtureInterpretationChecks(messages[1].content);
             return {
@@ -285,8 +286,11 @@ const release = configureVillagesRuntime({
               result.segments.push({ kind: "narration", text: "Messenger steps outside.", heardBy: audience });
               result.contactMoves = [{ characterId: "messenger", zoneId: "exterior", quote }];
             }
+          } else if (user === "I make my way into Common Space") {
+            result.contactIntent = { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: user };
+            result.movementIntent = { zoneId: "common", quote: user };
           } else if (user === "I raise my voice toward the house and ask for Alex.") {
-            // Even an invalid remote speaker in preliminary prose cannot block valid contact routing.
+            // A Contact nomination cannot authorize a remote speaker in local prose.
             result.segments = [
               { kind: "dialogue", speakerId: "alex", text: "A discarded premature answer.", heardBy: ["alex"] },
             ];
@@ -341,52 +345,13 @@ const release = configureVillagesRuntime({
   },
 } as Parameters<typeof configureVillagesRuntime>[0]);
 
-/** Exercise recovery of pre-upgrade admissions separately from new explicit actions. */
-async function sendVenueTurn(input: Parameters<typeof submitTurn>[0]) {
-  const data =
-    records.get("villages-venue-visit:" + input.sessionId)?.data ??
-    [...records.values()].find((record) => record.data?.id === input.sessionId)?.data;
-  if (
-    !data?.submissions?.some((entry: any) => entry.id === input.submissionId) &&
-    data?.operation?.id !== input.submissionId
-  ) {
-    const payload = {
-      message: input.message,
-      mode: input.mode,
-      targetId: input.targetId,
-      ...(input.contact ? { contact: input.contact } : {}),
-    };
-    await assert.rejects(
-      coordinateVenue(
-        input.sessionId,
-        input.submissionId,
-        "turn",
-        payload,
-        input.expectedSceneRevision,
-        undefined,
-        async () => {
-          throw new Error("Pre-upgrade admission interrupted");
-        },
-      ),
-      /Pre-upgrade admission interrupted/,
-    );
-  }
-  const operation = (await activeVenueSession())?.operation;
-  return submitTurn({
-    ...input,
-    ...(operation?.id === input.submissionId && operation.status === "interrupted"
-      ? { retryOfAttemptId: input.retryOfAttemptId ?? operation.attemptId }
-      : {}),
-  });
-}
-
 async function open() {
   const entered = await enterVenue("house", undefined, "", "outside");
   return continueVenueWithoutGreeting(entered.id);
 }
 async function attempt(id: string, submissionId: string, targetId = "messenger", retryOfAttemptId?: string) {
   const message = targetId === "alex" ? "Alex, are you there?" : "I knock at the doorway.";
-  return sendVenueTurn({
+  return submitTurn({
     sessionId: id,
     message,
     mode: "contact",
@@ -508,6 +473,11 @@ async function explicitActionChecks() {
   };
   await assert.rejects(submitTurn(crashInput), /save interrupted/);
   const interrupted = (await activeVenueSession())!;
+  const beforeUnauthorized = [providerCalls, providerResolves];
+  for (const retryOfAttemptId of [undefined, "wrong-attempt"]) {
+    await assert.rejects(submitTurn({ ...crashInput, retryOfAttemptId }), /explicitly retry/);
+    assert.deepEqual([providerCalls, providerResolves], beforeUnauthorized);
+  }
   const recovered = await submitTurn({ ...crashInput, retryOfAttemptId: interrupted.operation!.attemptId });
   assert.equal(calls - recoveryCalls, 1, "new Contact retry reuses its saved response");
   assert.equal(recovered.session.submissions.filter((entry) => entry.id === "crash").length, 1);
@@ -518,11 +488,7 @@ async function main() {
   try {
     await explicitActionChecks();
     assert.deepEqual(contactNeighbors(house, "exterior").sort(), ["common", "public"]);
-    assert.deepEqual(
-      contactPath(saved, house, "common", "public", "messenger"),
-      ["common", "exterior", "public"],
-      "a messenger can cross multiple permitted boundaries",
-    );
+    assert.deepEqual(contactPath(saved, house, "common", "public", "messenger"), ["common", "exterior", "public"]);
     assert.equal(contactPath(saved, house, "common", "office", "messenger"), null, "staff permission is enforced");
     assert.equal(
       contactPath(saved, house, "common", "private:alex", "messenger"),
@@ -532,163 +498,124 @@ async function main() {
     const hypothetical = "If I knock on the door, would Alex hear?";
     assert.equal(readContactIntent({ kind: "knock", quote: hypothetical }, hypothetical), null);
     assert.equal(readContactIntent({ kind: "call", quote: "invented quote" }, "I call Alex."), null);
+
+    behavior = "answer";
     let scene = await open();
     const baseCalls = calls;
     const answer = await attempt(scene.id, "answer");
-    assert.equal(calls - baseCalls, 1, "the explicit control needs one response call");
-    assert.deepEqual(answer.session.activeIds, [], "answering does not change physical cast");
+    assert.equal(calls - baseCalls, 1, "adjacent Contact needs one response generation");
+    assert.equal(answer.session.operation?.input.interactionScopeVersion, 1);
+    assert.deepEqual(answer.session.activeIds, []);
     assert.equal(answer.session.lines.at(-1)?.viaDoorway, true);
     assert.equal(answer.session.doorwayContacts?.[0]?.characterId, "messenger");
     assert.equal(answer.session.zoneId, "exterior");
     assert.doesNotMatch(prompts.at(-1)!, /SECRET OFFICE DETAILS|SECRET BEDROOM/);
     const beforeReplay = calls;
     await attempt(scene.id, "answer");
-    assert.equal(calls, beforeReplay, "saved contact replays without paid work");
-    const refreshed = (await activeVenueSession())!;
-    assert.equal(refreshed.doorwayContacts?.[0]?.characterId, "messenger", "refresh restores the contact");
+    assert.equal(calls, beforeReplay, "saved adjacent Contact does not repeat its response generation");
+    assert.equal((await activeVenueSession())!.doorwayContacts?.[0]?.characterId, "messenger");
     const chatCalls = calls;
-    const chat = await sendVenueTurn({
+    const local = await submitTurn({
       sessionId: scene.id,
-      message: "Is it too early? I thought you were an early bird.",
+      message: "Is it too early?",
       mode: "chat",
       targetId: "",
-      submissionId: "ordinary-followup",
+      submissionId: "local-followup",
     });
-    assert.equal(calls - chatCalls, 1, "ordinary Chat uses the established audible audience before local validation");
-    assert.deepEqual(chat.session.activeIds, []);
-    assert.equal(chat.session.lines.at(-1)?.viaDoorway, true);
-    assert.equal(chat.session.zoneId, "exterior");
-    await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Is it too early? I thought you were an early bird.",
-      mode: "chat",
-      targetId: "",
-      submissionId: "ordinary-followup",
-    });
-    assert.equal(calls - chatCalls, 1, "ordinary Chat replay is free");
+    assert.equal(calls - chatCalls, 1, "Say / Do uses one local response generation");
+    assert.equal(local.session.operation?.input.interactionScopeVersion, 1);
+    assert.deepEqual(local.session.lines.at(-1)!.heardBy, []);
+    assert.equal(local.session.lines.at(-1)!.viaDoorway, undefined);
+    assert.deepEqual(local.session.activeIds, []);
+    assert.equal(local.session.zoneId, "exterior");
     await attempt(scene.id, "followup");
-    assert.match(prompts.at(-1)!, /Yes, I'm listening/, "follow-ups receive witnessed doorway history");
+    assert.match(prompts.at(-1)!, /Yes, I'm listening/, "explicit Contact receives witnessed doorway history");
     behavior = "end";
-    await attempt(scene.id, "end");
-    assert.deepEqual((await activeVenueSession())!.doorwayContacts, []);
-    assert.equal((await activeVenueSession())!.status, "active", "a doorway goodbye leaves the Venue Scene open");
-    behavior = "answer";
-    await attempt(scene.id, "reopen-after-end");
-    behavior = "short-end";
-    const shortEnd = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "I will leave you to it.",
-      mode: "chat",
-      targetId: "",
-      submissionId: "short-goodbye",
-    });
-    assert.deepEqual(shortEnd.session.doorwayContacts, []);
-    assert.equal(contactPosition(shortEnd.session, "messenger"), "common", "a remote goodbye is not a Venue departure");
-    behavior = "answer";
-    await attempt(scene.id, "reopen-for-player-goodbye");
-    const playerGoodbye = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Goodbye, Messenger.",
-      mode: "chat",
-      targetId: "",
-      submissionId: "player-goodbye",
-    });
-    assert.deepEqual(playerGoodbye.session.doorwayContacts, [], "the player's deliberate goodbye closes the exchange");
+    const ended = await attempt(scene.id, "end");
+    assert.deepEqual(ended.session.doorwayContacts, []);
+    assert.equal(ended.session.status, "active", "a doorway goodbye leaves the Venue Scene open");
+    assert.equal(contactPosition(ended.session, "messenger"), "common");
     behavior = "invite";
     const invited = await attempt(scene.id, "invite");
-    assert.equal(invited.session.zoneId, "exterior", "inviting does not automatically enter");
+    assert.equal(invited.session.zoneId, "exterior", "an invitation grants permission without moving the player");
     assert.equal(invited.session.entryOffers?.[0]?.zoneId, "common");
     const inside = await moveVenueZone(scene.id, "common");
     assert.equal(inside.zoneId, "common");
     assert.deepEqual(inside.doorwayContacts, []);
     await discardVenueVisitDebug(scene.id);
-
-    behavior = "relay";
     scene = await open();
-    const beforeRelay = calls;
-    const relayed = await attempt(scene.id, "relay", "alex");
-    assert.equal(calls - beforeRelay, 2, "a route with multiple doors uses two response stages");
-    assert.doesNotMatch(prompts.slice(-2).join("\n"), /SECRET OFFICE DETAILS|SECRET BEDROOM/);
-    assert.ok(
-      relayed.session.lines.some(
-        (line) =>
-          line.contactHidden &&
-          line.speakerId === "messenger" &&
-          line.content === "Alex, are you there?" &&
-          line.heardBy.includes("alex"),
-      ),
-      "the target's ledger records the request actually relayed",
+    const targetCalls = [providerCalls, providerResolves];
+    await assert.rejects(
+      submitTurn({
+        sessionId: scene.id,
+        message: "Messenger, are you there?",
+        mode: "chat",
+        targetId: "messenger",
+        submissionId: "remote-local-target",
+      }),
+      /no longer in this conversation/,
     );
-    const relayEvidence = relayed.session.submissions.at(-1)?.contactEvidence?.relay;
     assert.deepEqual(
-      relayEvidence?.path,
-      ["common", "exterior", "public"],
-      "relay approaches an authorized boundary beyond one hop",
+      [providerCalls, providerResolves],
+      targetCalls,
+      "a remote target cannot admit a local response or interpretation",
     );
-    assert.equal(contactPosition(relayed.session, "messenger"), "common", "the messenger returns after the relay");
-    assert.equal(relayed.session.zoneId, "exterior");
-    assert.equal(relayed.session.entryOffers?.[0]?.zoneId, "office");
-    const publicReply = publicSceneResponse(relayed);
-    assert.doesNotMatch(
-      JSON.stringify(publicReply),
-      /SECRET OFFICE DETAILS|SECRET BEDROOM|sceneAttendance|contactEvidence|characterZoneId|contactHidden|checkpoints|attempts|snapshot/,
-    );
-    assert.ok(
-      !publicReply.session.lines.some((line) => line.speakerId === "alex"),
-      "offscreen speech remains server-only",
-    );
-    assert.match(publicReply.session.lines.at(-1)!.content, /alex says/i);
-    assert.equal(relayed.session.lines.at(-1)!.contactReport, true);
-    assert.equal(publicReply.session.lines.at(-1)!.contactReport, undefined);
-    assert.deepEqual(publicReply.session.activeIds, []);
-    const againCalls = calls;
-    await attempt(scene.id, "relay", "alex");
-    assert.equal(calls, againCalls);
     await discardVenueVisitDebug(scene.id);
 
     behavior = "relay-move";
     scene = await open();
-    const movedRelay = await attempt(scene.id, "move-and-relay", "alex");
-    assert.deepEqual(
-      movedRelay.session.submissions.at(-1)?.contactEvidence?.relay?.path,
-      ["exterior", "public"],
-      "a messenger travels from their evidenced new position",
-    );
-    assert.deepEqual(movedRelay.session.activeIds, ["messenger"]);
+    const moveCalls = calls;
+    const moved = await attempt(scene.id, "move-with-fetch-offer", "alex");
     assert.equal(
-      movedRelay.session.lines.at(-1)?.viaDoorway,
-      undefined,
-      "the returned report uses the messenger's physical position",
+      calls - moveCalls,
+      1,
+      "a fetch offer with evidenced resident movement still needs one adjacent response",
     );
-    await discardVenueVisitDebug(scene.id);
-    behavior = "relay";
-
-    scene = await open();
-    failSave = true;
-    const crashCalls = calls;
-    await assert.rejects(attempt(scene.id, "crash", "alex"), /save interrupted/);
-    const interrupted = (await activeVenueSession())!;
-    assert.equal(interrupted.operation?.status, "interrupted");
-    const recovered = await attempt(scene.id, "crash", "alex", interrupted.operation!.attemptId);
-    assert.equal(calls - crashCalls, 2, "saved response checkpoints survive a failed Scene save");
-    assert.equal(recovered.session.submissions.filter((entry) => entry.id === "crash").length, 1);
+    assert.equal(moved.session.submissions.at(-1)?.contactEvidence?.relay, null);
+    assert.equal(contactPosition(moved.session, "messenger"), "exterior");
+    assert.equal(contactPosition(moved.session, "alex"), "office");
+    assert.deepEqual(moved.session.activeIds, ["messenger"]);
+    assert.ok(!moved.session.lines.some((line) => line.contactReport));
     await discardVenueVisitDebug(scene.id);
 
+    behavior = "answer";
     scene = await open();
-    const naturalCalls = calls;
-    const natural = await sendVenueTurn({
+    const nominationCalls = calls;
+    const nominations = await submitTurn({
       sessionId: scene.id,
-      message: "I raise my voice toward the house and ask for Alex.",
+      message: "I make my way into Common Space",
       mode: "chat",
       targetId: "",
-      submissionId: "natural",
+      submissionId: "ignored-nominations",
     });
-    assert.equal(
-      calls - naturalCalls,
-      3,
-      "natural interpretation reuses the normal reply, followed by bounded contact and relay",
+    assert.equal(calls - nominationCalls, 1, "model nominations do not admit extra Contact or movement responses");
+    assert.match(prompts.at(-1)!, /Say \/ Do affects only the current Zone/);
+    assert.doesNotMatch(prompts.at(-1)!, /CONTACT RESPONSE|RELAY RESPONSE/);
+    assert.equal(nominations.session.zoneId, "exterior");
+    assert.deepEqual(nominations.session.activeIds, []);
+    assert.deepEqual(nominations.session.doorwayContacts ?? [], []);
+    assert.equal(nominations.session.submissions.at(-1)?.movement, undefined);
+    assert.deepEqual(nominations.session.lines.at(-1)!.heardBy, []);
+    await discardVenueVisitDebug(scene.id);
+
+    scene = await open();
+    const invalidNominationCalls = calls;
+    await assert.rejects(
+      submitTurn({
+        sessionId: scene.id,
+        message: "I raise my voice toward the house and ask for Alex.",
+        mode: "chat",
+        targetId: "",
+        submissionId: "invalid-remote-nomination",
+      }),
+      /failed validation \(invalid-segments\)/,
     );
-    assert.ok(natural.session.entryOffers?.some((offer) => offer.zoneId === "office"));
+    assert.equal(
+      calls - invalidNominationCalls,
+      1,
+      "a remote speaker in local prose cannot bypass validation by nominating Contact",
+    );
+    assert.equal((await activeVenueSession())!.zoneId, "exterior");
     await discardVenueVisitDebug(scene.id);
 
     behavior = "quiet";
@@ -697,112 +624,59 @@ async function main() {
     assert.equal(silent.session.lines.at(-1)!.content, "No answer.");
     assert.deepEqual(silent.session.participants, [], "silence does not disclose who is inside");
     await discardVenueVisitDebug(scene.id);
-
     behavior = "silent-heard";
     scene = await open();
-    const unheardPublic = await attempt(scene.id, "silent-heard");
-    assert.equal(unheardPublic.session.lines.at(-1)!.content, "No answer.");
-    assert.ok(unheardPublic.session.lines.some((line) => line.contactHidden && line.heardBy.includes("messenger")));
-    const silentPublic = publicSceneResponse(unheardPublic);
+    const unheard = await attempt(scene.id, "silent-heard");
+    assert.equal(unheard.session.lines.at(-1)!.content, "No answer.");
+    assert.ok(unheard.session.lines.some((line) => line.contactHidden && line.heardBy.includes("messenger")));
+    const silentPublic = publicSceneResponse(unheard);
     assert.deepEqual(silentPublic.session.participants, []);
-    assert.deepEqual(silentPublic.session.heardHistory, [], "unseen silent listeners stay server-only");
+    assert.deepEqual(silentPublic.session.heardHistory, []);
     assert.doesNotMatch(JSON.stringify(silentPublic.session.lines), /messenger/);
-    assert.ok(
-      (await activeVenueSession())!.heardHistory.some((entry) => entry.characterId === "messenger"),
-      "silent hearing survives refresh server-side",
-    );
+    assert.ok((await activeVenueSession())!.heardHistory.some((entry) => entry.characterId === "messenger"));
     await discardVenueVisitDebug(scene.id);
 
     await mutateVillageState((current) => {
       current.villagers.push(villager("trina", "house", "exterior"), villager("dozy", "house", "office", "Sleeping"));
       current.venues[0]!.workerIds = ["alex", "dozy"];
     });
-    behavior = "distant";
+    behavior = "answer";
     scene = await open();
     assert.deepEqual(scene.activeIds, ["trina"]);
-    const loudMessage = "I shout loudly toward the house: Alex, can you hear me?";
-    const loudCalls = calls;
-    const loud = await sendVenueTurn({
+    const loud = await submitTurn({
       sessionId: scene.id,
-      message: loudMessage,
+      message: "I shout loudly for Alex.",
       mode: "contact",
       targetId: "alex",
-      submissionId: "loud",
-      contact: { kind: "call", targetId: "alex", boundaryZoneId: "", quote: loudMessage },
+      submissionId: "loud-adjacent",
+      contact: { kind: "call", targetId: "alex", boundaryZoneId: "common", quote: "I shout loudly for Alex." },
     });
-    assert.equal(calls - loudCalls, 1);
-    assert.deepEqual(loud.session.activeIds, ["trina"], "remote speech does not teleport the speaker");
+    assert.deepEqual(loud.session.activeIds, ["trina"]);
     assert.equal(loud.session.lines.at(-1)!.remoteDelivery, "loud");
-    const callWitnesses = loud.session.lines.find(
-      (line) => line.contactHidden && line.content === loudMessage,
-    )!.heardBy;
-    assert.deepEqual(callWitnesses.sort(), ["alex", "trina"], "a possible listener does not automatically hear");
-    assert.ok(!callWitnesses.includes("messenger") && !callWitnesses.includes("dozy"));
+    assert.equal(contactPosition(loud.session, "alex"), "office");
+    assert.match(prompts.at(-1)!, /Possible remote listeners: messenger/);
+    assert.doesNotMatch(prompts.at(-1)!, /Possible remote listeners:.*alex|SECRET OFFICE DETAILS|SECRET BEDROOM/);
     assert.doesNotMatch(
       JSON.stringify(publicSceneResponse(loud)),
       /dozy|sceneAttendance|characterZoneId|SECRET OFFICE DETAILS|SECRET BEDROOM/,
     );
-    const remoteFollowup = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Thanks. How is your morning going?",
-      mode: "chat",
-      targetId: "",
-      submissionId: "loud-followup",
-    });
-    assert.equal(remoteFollowup.session.lines.at(-1)!.speakerId, "alex");
-    assert.equal(
-      remoteFollowup.session.doorwayContacts!.find((entry) => entry.characterId === "alex")!.delivery,
-      "loud",
+    const boundaryCalls = [providerCalls, providerResolves];
+    await assert.rejects(
+      submitTurn({
+        sessionId: scene.id,
+        message: "I shout loudly for Alex.",
+        mode: "contact",
+        targetId: "alex",
+        submissionId: "loud-unselected",
+        contact: { kind: "call", targetId: "alex", boundaryZoneId: "", quote: "I shout loudly for Alex." },
+      }),
+      /adjacent/,
     );
-    behavior = "distant-silent-witness";
-    const silentWitness = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Good morning everyone.",
-      mode: "chat",
-      targetId: "",
-      submissionId: "silent-witness",
-    });
-    assert.ok(silentWitness.session.lines.some((line) => line.contactHidden && line.heardBy.includes("dozy")));
-    assert.doesNotMatch(
-      JSON.stringify(publicSceneResponse(silentWitness)),
-      /dozy|Dozy/,
-      "unseen actual witnesses and their recollections remain server-only",
+    assert.deepEqual(
+      [providerCalls, providerResolves],
+      boundaryCalls,
+      "loud wording cannot admit an unselected distant response",
     );
-    behavior = "distant-local";
-    const local = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Trina, what do you think?",
-      mode: "chat",
-      targetId: "",
-      submissionId: "local-addressee",
-    });
-    assert.equal(local.session.lines.at(-1)!.speakerId, "trina");
-    assert.ok(local.session.lines.at(-1)!.heardBy.includes("alex"), "addressing the local resident is not isolation");
-    assert.match(prompts.at(-1)!, /Intended addressee: trina/);
-    behavior = "distant-approach";
-    const closer = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Would you like to come closer?",
-      mode: "chat",
-      targetId: "",
-      submissionId: "approach",
-    });
-    assert.equal(contactPosition(closer.session, "alex"), "common");
-    assert.deepEqual(closer.session.activeIds, ["trina"], "an intermediate arrival stays out of the physical cast");
-    assert.equal(
-      closer.session.doorwayContacts!.find((entry) => entry.characterId === "alex")!.characterZoneId,
-      "common",
-    );
-    behavior = "distant-end";
-    const ended = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "See you later!",
-      mode: "chat",
-      targetId: "",
-      submissionId: "distant-end",
-    });
-    assert.equal(ended.session.status, "active");
-    assert.deepEqual(ended.session.doorwayContacts, []);
     await discardVenueVisitDebug(scene.id);
     await mutateVillageState((current) => {
       current.villagers = current.villagers.filter((entry) => !["trina", "dozy"].includes(entry.characterId));
@@ -822,55 +696,47 @@ async function main() {
         locked: true,
       });
     });
-    behavior = "distant";
     scene = await open();
     const deviceMessage = "I use the intercom to ask Alex if he is listening.";
-    const device = await sendVenueTurn({
+    const device = await submitTurn({
       sessionId: scene.id,
       message: deviceMessage,
       mode: "contact",
       targetId: "alex",
-      submissionId: "device",
+      submissionId: "device-adjacent",
       contact: {
         kind: "call",
         targetId: "alex",
-        boundaryZoneId: "",
+        boundaryZoneId: "common",
         quote: deviceMessage,
         delivery: "device",
         deviceFeatureId: "intercom",
       },
     });
-    assert.equal(device.session.lines.at(-1)!.remoteDelivery, "device");
     assert.deepEqual(device.session.activeIds, []);
-    const deviceFollowup = await sendVenueTurn({
-      sessionId: scene.id,
-      message: "Thanks for answering.",
-      mode: "chat",
-      targetId: "",
-      submissionId: "device-followup",
-    });
-    assert.equal(deviceFollowup.session.lines.at(-1)!.remoteDelivery, "device");
-    await discardVenueVisitDebug(scene.id);
-    scene = await open();
+    assert.equal(device.session.lines.at(-1)!.remoteDelivery, "device");
+    assert.equal(contactPosition(device.session, "alex"), "office");
+    assert.doesNotMatch(prompts.at(-1)!, /Possible remote listeners:.*alex/);
+    const inventedCalls = [providerCalls, providerResolves];
     await assert.rejects(
-      () =>
-        sendVenueTurn({
-          sessionId: scene.id,
-          message: deviceMessage,
-          mode: "contact",
+      submitTurn({
+        sessionId: scene.id,
+        message: deviceMessage,
+        mode: "contact",
+        targetId: "alex",
+        submissionId: "invented-device",
+        contact: {
+          kind: "call",
           targetId: "alex",
-          submissionId: "invented-device",
-          contact: {
-            kind: "call",
-            targetId: "alex",
-            boundaryZoneId: "",
-            quote: deviceMessage,
-            delivery: "device",
-            deviceFeatureId: "invented",
-          },
-        }),
+          boundaryZoneId: "common",
+          quote: deviceMessage,
+          delivery: "device",
+          deviceFeatureId: "invented",
+        },
+      }),
       /not an established feature/,
     );
+    assert.deepEqual([providerCalls, providerResolves], inventedCalls);
     await discardVenueVisitDebug(scene.id);
 
     behavior = "move";
@@ -881,12 +747,6 @@ async function main() {
     assert.deepEqual(arrived.session.doorwayContacts, []);
     await discardVenueVisitDebug(scene.id);
 
-    await mutateVillageState((current) => {
-      const messenger = current.villagers.find((person) => person.characterId === "messenger")!;
-      messenger.agenda!.activeDay!.blocks[0]!.zoneId = "private:alex";
-      current.venues[0]!.residentIds = ["alex"];
-    });
-    // Pure evidence rejection uses the same immutable Scene facts, without inventing a journey.
     const fake = {
       ...scene,
       sceneAttendance: {
@@ -922,34 +782,37 @@ async function main() {
     behavior = "invalid";
     scene = await open();
     const invalidCalls = calls;
+    const originalLines = structuredClone(scene.lines);
     await assert.rejects(
-      () =>
-        sendVenueTurn({
-          sessionId: scene.id,
-          message: "Hello there.",
-          mode: "chat",
-          targetId: "",
-          submissionId: "invalid-parser",
-        }),
+      submitTurn({
+        sessionId: scene.id,
+        message: "Hello there.",
+        mode: "chat",
+        targetId: "",
+        submissionId: "invalid-parser",
+      }),
       /failed validation \(invalid-segments\)/,
     );
     assert.equal(calls - invalidCalls, 1, "invalid Scene replies are not automatically retried");
-    behavior = "answer";
-    const beforeExplicitRetry = calls;
-    await sendVenueTurn({
+    const interrupted = (await activeVenueSession())!;
+    assert.deepEqual(interrupted.lines, originalLines);
+    const invalidInput = {
       sessionId: scene.id,
       message: "Hello there.",
-      mode: "chat",
+      mode: "chat" as const,
       targetId: "",
       submissionId: "invalid-parser",
-    });
+    };
+    behavior = "answer";
+    const beforeExplicitRetry = calls;
+    await submitTurn(invalidInput);
     assert.equal(
       calls - beforeExplicitRetry,
       1,
-      "known invalid completions can be explicitly retried without replaying the same rejected draft",
+      "deliberately resending a known invalid reply does not reuse the rejected draft",
     );
     assert.ok(debugLogs.some((line) => line.includes("scene parser rejection") && line.includes("unreadable speaker")));
-    assert.ok(!debugLogs.some((line) => line.includes("scene repair")), "rejected replies have no automatic repair");
+    assert.ok(!debugLogs.some((line) => line.includes("scene repair")));
     assert.ok(
       debugLogs.some(
         (line) =>
@@ -957,11 +820,10 @@ async function main() {
           line.includes("checkpoint replay") ||
           line.includes("completion replay"),
       ),
-      "replayed completions are identifiable in logs",
     );
     assert.ok(debugLogs.some((line) => line.includes("contact routing") && line.includes("possibleListeners")));
     console.log(
-      "Explicit local/contact scope and legacy admitted routing, witnesses, relay recovery, entry and replay passed.",
+      "Fresh local/contact scope, adjacent witnesses, saved-response recovery, invitation and explicit movement passed.",
     );
   } finally {
     release();

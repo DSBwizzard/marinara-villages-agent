@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import {
+  activationScope,
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import {
   defaultVillageState,
   coerceVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
-import {
-  resolveVenueZone,
-  canInviteToZone,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { resolveVenueZone, canInviteToZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
@@ -17,44 +20,279 @@ import {
   applyRelationshipReview,
   reconcileRelationships,
   relationshipZoneController,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
   mutateRelationships,
   readRelationshipState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
+} from "../packages/villages/src/server/features/residents/relationship-store.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
   substantiveContact,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-review.js";
+} from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   captureRelationshipKnowledge,
   projectRelationshipProfiles,
   proposeStartingTies,
-  relationshipChangeNotices,
-  filterRelationshipNotices,
+} from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import {
   readRelationshipsView,
   changeRelationshipCreator,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
+} from "../packages/villages/src/server/features/residents/relationships.js";
+import {
+  relationshipChangeNotices,
+  filterRelationshipNotices,
+} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import {
   socialPlanCandidates,
   socialPlanValid,
   socialContinuationValid,
   projectSocialActivities,
   reconcileSocialPlans,
-  processSocialOutbox,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-social.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/domain/rules/social-rules.js";
+import { processSocialOutbox } from "../packages/villages/src/server/features/residents/relationship-social.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 import type {
   RelationshipChange,
   RelationshipEvidenceLine,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-types.js";
+} from "../packages/villages/src/server/domain/models/relationship-types.js";
 
 const now = new Date(),
   stamp = now.toISOString(),
   weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+
+async function relationshipConnectionOwnership() {
+  function deferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+  const seed = "relationship-owner-fixture";
+  const relationshipId = "villages-relationships-" + createHash("sha256").update(seed).digest("hex").slice(0, 24);
+  function fixture(label: string, operation: "creator" | "social", stage?: string) {
+    const scope = createActivationScope(),
+      entered = deferred(),
+      gate = deferred();
+    const village = defaultVillageState();
+    village.seed = seed;
+    village.foundedAt = village.setupAt = new Date().toISOString();
+    const entry = {
+      id: "equal-outbox",
+      seed,
+      at: new Date().toISOString(),
+      opportunity: { id: "equal-opportunity", kind: "encounter", actorIds: [], venueId: "missing" },
+      proposal: { encounter: null },
+      candidates: [],
+    };
+    if (operation === "social") village.socialOutbox = [entry as any];
+    const relationships = defaultRelationshipState(seed);
+    relationships.reviewedActorIds = [label];
+    const records = new Map<string, any>([
+      ["villages-village", { id: "villages-village", kind: "village", revision: 1, data: village }],
+      [relationshipId, { id: relationshipId, kind: "relationships", revision: 1, data: relationships }],
+    ]);
+    const writes: string[] = [];
+    let held = false,
+      relationshipReads = 0,
+      conflicts = stage === "save" ? 1 : 0;
+    let failure: Error | undefined,
+      failureTarget: string | undefined,
+      failAfterSave = false;
+    async function pause(candidate: string) {
+      if (!held && candidate === stage) {
+        held = true;
+        entered.resolve();
+        await gate.promise;
+      }
+    }
+    const documents = {
+      async getById(_packageId: string, id: string) {
+        assert.equal(activationScope(), scope, label + " read owner");
+        if (id === "villages-village") await pause("world");
+        if (id === relationshipId && ++relationshipReads === (operation === "creator" ? 2 : 1)) await pause("mutation");
+        if (failure && !failureTarget) throw failure;
+        return structuredClone(records.get(id) ?? null);
+      },
+      async list() {
+        return [];
+      },
+      async create(input: any) {
+        throw new Error("Unexpected creation: " + input.id);
+      },
+      async update(input: any) {
+        assert.equal(activationScope(), scope, label + " write owner");
+        if (input.id === relationshipId) await pause("save");
+        if (failure && (!failureTarget || failureTarget === input.id) && !failAfterSave) throw failure;
+        const old = records.get(input.id);
+        if (input.id === relationshipId && conflicts-- > 0) {
+          records.set(input.id, {
+            ...old,
+            revision: old.revision + 1,
+            data: { ...old.data, reviewedActorIds: [label, "concurrent"] },
+          });
+          return null;
+        }
+        if (!old || old.revision !== input.expectedRevision) return null;
+        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+        records.set(input.id, row);
+        writes.push(input.id);
+        if (failure && failureTarget === input.id && failAfterSave) throw failure;
+        return structuredClone(row);
+      },
+      async remove() {
+        return false;
+      },
+    };
+    const release = scope.run(() =>
+      configureVillagesRuntime({
+        persistence: { documents },
+        getAgentConfig: async () => null,
+        logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
+      } as any),
+    );
+    assert.deepEqual(writes, [], "assembling connections performs no relationship work");
+    return {
+      scope,
+      entered,
+      gate,
+      records,
+      writes,
+      release,
+      village,
+      fail(error?: Error, target?: string, afterSave = false) {
+        failure = error;
+        failureTarget = target;
+        failAfterSave = afterSave;
+      },
+    };
+  }
+  for (const operation of ["creator", "social"] as const)
+    for (const stage of ["world", "mutation", "save"]) {
+      const a = fixture("A", operation, stage),
+        b = fixture("B", operation);
+      const clearA = installDefaultActivation(a.scope, () => {});
+      let clearB = () => {};
+      const invoke = (owned: typeof a) =>
+        operation === "creator"
+          ? changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true })
+          : processSocialOutbox(structuredClone(owned.village));
+      try {
+        const pending = invoke(a);
+        await Promise.race([
+          a.entered.promise,
+          pending.then(() => assert.fail("Operation completed before controlled " + stage + " pause")),
+        ]);
+        clearB = installDefaultActivation(b.scope, () => {});
+        await invoke(b);
+        clearA();
+        a.gate.resolve();
+        await pending;
+        for (const owned of [a, b]) {
+          const saved = owned.records.get(relationshipId).data;
+          assert(saved.reviewedActorIds.includes(owned === a ? "A" : "B"));
+          assert(!saved.reviewedActorIds.includes(owned === a ? "B" : "A"));
+          if (operation === "creator") assert.equal(saved.spoilers, true);
+          else {
+            assert.equal(saved.applied["equal-outbox"], true);
+            assert.deepEqual(owned.records.get("villages-village").data.socialOutbox, []);
+            assert.deepEqual(
+              owned.writes,
+              [relationshipId, "villages-village"],
+              "relationship commit precedes Village acknowledgement",
+            );
+            const before = owned.writes.length;
+            await owned.scope.run(() => processSocialOutbox(structuredClone(owned.village)));
+            assert.equal(
+              owned.records.get(relationshipId).data.socialEncounters.length,
+              0,
+              "invalid local encounter causes no paid repair or invented relationship evidence",
+            );
+            assert.equal(owned.writes.length, before + 2, "replay retains the saved transaction path");
+          }
+        }
+        if (stage === "save")
+          assert(
+            a.records.get(relationshipId).data.reviewedActorIds.includes("concurrent"),
+            "losing CAS attempt preserves authoritative saved changes",
+          );
+        console.log("Owned relationship stage passed:", operation, stage);
+      } finally {
+        a.gate.resolve();
+        clearA();
+        clearB();
+        a.release();
+        b.release();
+        a.scope.dispose();
+        b.scope.dispose();
+      }
+    }
+  for (const afterSave of [false, true]) {
+    const owned = fixture("A", "social"),
+      clear = installDefaultActivation(owned.scope, () => {});
+    try {
+      const exact = new Error(afterSave ? "lost social acknowledgement" : "failed social acknowledgement");
+      owned.fail(exact, "villages-village", afterSave);
+      await assert.rejects(processSocialOutbox(structuredClone(owned.village)), (error) => error === exact);
+      assert.equal(
+        owned.records.get(relationshipId).data.applied["equal-outbox"],
+        true,
+        "relationship settlement survives an acknowledgement error",
+      );
+      assert.equal(owned.records.get("villages-village").data.socialOutbox.length, afterSave ? 0 : 1);
+      owned.fail();
+      await processSocialOutbox(structuredClone(owned.village));
+      assert.deepEqual(owned.records.get("villages-village").data.socialOutbox, []);
+      assert.equal(owned.records.get(relationshipId).data.socialEncounters.length, 0);
+      assert.deepEqual(Object.keys(owned.records.get(relationshipId).data.applied), ["equal-outbox"]);
+    } finally {
+      clear();
+      owned.release();
+      owned.scope.dispose();
+    }
+  }
+  const a = fixture("A", "creator"),
+    b = fixture("B", "creator");
+  const clearA = installDefaultActivation(a.scope, () => {});
+  let clearB = () => {};
+  try {
+    const exact = new Error("exact relationship read failure");
+    a.fail(exact);
+    await assert.rejects(
+      changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true }),
+      (error) => error === exact,
+    );
+    assert.deepEqual(a.writes, []);
+    a.fail();
+    clearB = installDefaultActivation(b.scope, () => {});
+    a.scope.dispose();
+    await assert.rejects(
+      a.scope.run(() => readRelationshipState(seed)),
+      /not configured/,
+    );
+    await assert.rejects(
+      a.scope.run(() => changeRelationshipCreator({ action: "hide" })),
+      /not configured/,
+    );
+    await assert.rejects(
+      a.scope.run(() => processSocialOutbox(a.village)),
+      /not configured/,
+    );
+    assert.deepEqual(b.writes, [], "disposed interfaces never borrow the replacement's store");
+    await changeRelationshipCreator({ action: "acknowledge", spoilerAcknowledged: true });
+    assert.equal(b.records.get(relationshipId).data.spoilers, true);
+  } finally {
+    clearA();
+    clearB();
+    a.release();
+    b.release();
+    a.scope.dispose();
+    b.scope.dispose();
+  }
+}
 function venue(id: string, classes: VillageVenue["classes"]): VillageVenue {
   return {
     id,
@@ -698,6 +936,7 @@ socialVillage.storyPace = "off";
 assert.equal(socialPlanCandidates(socialVillage, morning).length, 0);
 
 async function main() {
+  await relationshipConnectionOwnership();
   const records = new Map<string, any>();
   records.set("villages-village", { id: "villages-village", kind: "village", revision: 1, data: village });
   let failWrite = false;
@@ -815,4 +1054,4 @@ async function main() {
   );
   console.log("villages-relationships: ok");
 }
-void main();
+await main();

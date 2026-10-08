@@ -1,22 +1,23 @@
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
-import { residentSignature } from "../packages/villages/src/engine/packages/shared/src/villages/resident-signature.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { residentSignature } from "../packages/villages/src/shared/helpers/resident-signature.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
-  coerceVillageState,
   mutateVillageState,
   readVillageAuthority,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+} from "../packages/villages/src/server/features/world/village-store.js";
 import {
   generateResidentSignature,
   readResidentSignature,
   signaturePrompt,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/resident-signature.js";
+} from "../packages/villages/src/server/features/residents/resident-signature.js";
 import {
   trimSignaturePixels,
   prepareSignatureImage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/signature-image.js";
+} from "../packages/villages/src/server/features/residents/signature-image.js";
 
 const now = "2026-10-04T12:00:00.000Z";
 const village = coerceVillageState({
@@ -279,7 +280,8 @@ async function main() {
     await runtimeGate;
     releaseReplacement = configureVillagesRuntime(host as any);
     unblock();
-    assert.equal((await stopped).status, "interrupted");
+    await assert.rejects(stopped, /runtime is not configured/);
+    assert.equal((await readResidentSignature("mara")).status, "interrupted");
     assert.equal(uploads, beforeUploads, "Package replacement fences late gallery and Village writes");
     console.log(
       "Villager signatures: stable handwriting, transparent crop, persistence, free recovery, explicit retries and late-effect fences passed",

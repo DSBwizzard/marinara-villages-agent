@@ -1,26 +1,27 @@
 import assert from "node:assert/strict";
-import { parseVenueReply } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.ts";
+
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   describeSpriteExpressions,
   validateSpriteExpression,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/sprite-expressions.ts";
+} from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
-import { villagesWalk } from "../packages/villages/src/engine/packages/client/src/villages-chat-paragraphs.ts";
+import { villagesWalk } from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
 import {
   selectSpriteImage,
   spriteFacing,
-} from "../packages/villages/src/engine/packages/client/src/villages-sprite-stage.ts";
+} from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
   parseVillagesTurnBeats,
   renderVillagesTurnBeats,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/turn-beats.ts";
+} from "../packages/villages/src/server/domain/rules/turn-beats.js";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 const answer = `[expression:happy] "Welcome home."\n\n[expression:unknown] "Maybe."\n\n[side] "Quiet now."`;
 const beats = parseVillagesTurnBeats(answer);
 assert.ok(beats);
@@ -125,7 +126,7 @@ assert.equal(
 );
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const entry = readFileSync(
-  join(root, "packages/villages/src/engine/packages/client/src/villages-sprite-manager.tsx"),
+  join(root, "packages/villages/src/client/features/residents/villages-sprite-manager.tsx"),
   "utf8",
 );
 assert.match(entry, /Upload images/);

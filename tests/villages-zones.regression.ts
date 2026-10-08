@@ -1,17 +1,17 @@
 import {
-  addBuildSource,
-  acquireBuildSource,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.js";
+  recordExistingProjectSource,
+  recordProjectSpokenEvidence,
+} from "../packages/villages/src/server/features/projects/project-evidence.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   venueZones,
   resolveVenueZone,
@@ -19,35 +19,35 @@ import {
   chooseAgendaZone,
   effectiveVenueClasses,
   zoneClosed,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import {
   draftRenovationProject,
   createRenovationProject,
+  createNewVenueProject,
+  placeNewVenueProject,
+  lockProjectBuilder,
+  acceptProjectRequirements,
   openFinishedProject,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   enterVenue,
   greetVenue,
   sendVenueTurn,
   moveVenueZone,
-  activeVenueSession,
   endVenueSession,
   recoverVenueSceneWork,
   discardVenueVisitDebug,
-  publicSceneResponse,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
-import { sceneLockedRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
-import { applyVenueSceneChange } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
-import {
-  buildVillageSnapshot,
-  setVillageVenueImage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { agendaDateKey } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
+import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { setVillageVenueImage } from "../packages/villages/src/server/features/venues/services.js";
+import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
 const now = new Date(),
   stamp = now.toISOString(),
@@ -245,7 +245,14 @@ let nominatedMovement: { zoneId: string; quote: string } | null = null;
 let replyGate: Promise<void> | null = null,
   signalReplyStarted: (() => void) | null = null;
 let lastPrompt = "",
-  response: "ordinary" | "invite-now" | "invite-later" | "legacy-handoff" | "depart-chef" = "ordinary";
+  response:
+    | "ordinary"
+    | "invite-now"
+    | "invite-later"
+    | "project-builder"
+    | "project-plan"
+    | "project-handoff"
+    | "depart-chef" = "ordinary";
 const release = configureVillagesRuntime({
   logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
   isDebugAgentsEnabled: () => true,
@@ -350,11 +357,23 @@ const release = configureVillagesRuntime({
               finishReason: "stop",
             };
           }
-          if (response === "legacy-handoff")
+          if (response === "project-builder" || response === "project-plan" || response === "project-handoff")
             return {
               content: JSON.stringify({
                 heardPlayerBy: audience,
-                segments: [{ kind: "dialogue", speakerId: "chef", text: "Here is legacy timber.", heardBy: audience }],
+                segments: [
+                  {
+                    kind: "dialogue",
+                    speakerId: "chef",
+                    text:
+                      response === "project-builder"
+                        ? "I will build Timber Workshop."
+                        : response === "project-plan"
+                          ? "Structure: timber; Equipment: not needed; Finish: not needed."
+                          : "Here is timber for Timber Workshop.",
+                    heardBy: audience,
+                  },
+                ],
               }),
               finishReason: "stop",
             };
@@ -462,17 +481,48 @@ async function sceneAttendanceChecks() {
       "polling cannot reconcile background attendance",
     );
 
-    let routeHandler: any;
-    const routes = sceneLockedRoutes({
-      get(_path: string, handler: any) {
-        routeHandler = handler;
-      },
-    } as any);
-    routes.get("/rooms/active", async () => ({ session: scene }));
-    const browserResponse = await routeHandler({}, {});
+    const routeHandlers = new Map<string, (request: any, reply: any) => any>();
+    const collector = Object.fromEntries(
+      ["get", "post", "put", "patch", "delete"].map((method) => [
+        method,
+        (_path: string, optionsOrHandler: any, handler?: any) => {
+          routeHandlers.set(method + " " + _path, typeof optionsOrHandler === "function" ? optionsOrHandler : handler);
+        },
+      ]),
+    );
+    await villagesRoutes(collector as any);
+    const callsBeforeProjection = paidCalls;
+    const preservedScene = structuredClone(scene);
+    const browserResponse = await routeHandlers.get("get /rooms/active")!({}, {});
     assert.equal(browserResponse.session.sceneAttendance, undefined, "route responses hide the whole-Venue snapshot");
     assert.doesNotMatch(JSON.stringify(browserResponse), /captured activity resident/);
     assert.equal(scene.sceneAttendance!.occupants.length, 3, "projection cannot mutate durable attendance");
+    const archiveId = "privacy-archive-" + scene.id;
+    const archiveKey = "villages-venue-visit-" + archiveId;
+    records.set(archiveKey, {
+      id: archiveKey,
+      kind: "venue-visit",
+      revision: 1,
+      data: { ...structuredClone(scene), id: archiveId, status: "closed", endedAt: stamp },
+    });
+    try {
+      const archiveResponse = await routeHandlers.get("get /rooms/archive/:id")!({ params: { id: archiveId } }, {});
+      assert.equal(
+        archiveResponse.visit.sceneAttendance,
+        undefined,
+        "the actual archive handler hides whole-Venue attendance",
+      );
+      assert.doesNotMatch(JSON.stringify(archiveResponse), /captured activity resident/);
+      assert.equal(
+        records.get(archiveKey).data.sceneAttendance.occupants.length,
+        3,
+        "archive projection preserves private saved data",
+      );
+    } finally {
+      records.delete(archiveKey);
+    }
+    assert.equal(paidCalls, callsBeforeProjection, "Scene response projection never requests a model");
+    assert.deepEqual(scene, preservedScene, "Scene response projection does not change its input");
     const nested = publicSceneResponse({
       session: scene,
       operation: { snapshot: scene, checkpoints: { saved: scene } },
@@ -579,8 +629,178 @@ async function sceneAttendanceChecks() {
     await mutateVillageState((state) => Object.assign(state, structuredClone(original)));
   }
 }
+async function currentProjectZoneChecks() {
+  const original = structuredClone(await readVillageState());
+  let visit: Awaited<ReturnType<typeof enterVenue>> | null = null;
+  try {
+    const fresh = defaultVillageState();
+    fresh.setupAt = stamp;
+    fresh.foundedAt = stamp;
+    const shop = venue("cafe");
+    shop.layoutVersion = 1;
+    shop.workerIds = ["chef"];
+    shop.zones = [
+      ...venueZones(shop),
+      {
+        ...defaultVenueSpace("workplace", "A quiet stockroom."),
+        id: "stock",
+        name: "Stockroom",
+        kind: "staff",
+        seen: false,
+        preparation: { status: "ready" },
+      },
+    ];
+    initializeVenueAccess(shop);
+    shop.access!.managerIds = ["chef"];
+    fresh.venues = [shop];
+    fresh.villagers = [villager("chef", "cafe", "gathering"), villager("guest", "cafe", "gathering")];
+    await mutateVillageState((current) => Object.assign(current, fresh));
+    visit = await greetVenue((await enterVenue("cafe", undefined, "", undefined, "gathering")).id);
+    let state = await readVillageState();
+    await mutateVillageState((current) => {
+      resolveVenueZone(current.venues[0]!, "stock")!.state.items.push("timber");
+      resolveVenueZone(current.venues[0]!, "gathering")!.state.items.push("timber");
+    });
+    await createNewVenueProject({
+      name: "Timber Workshop",
+      venueClass: "workplace",
+      description: "A workshop for the Village.",
+    });
+    const timberProjectId = (await readVillageState()).projects.find((entry) => entry.kind === "new-venue")!.id;
+    await placeNewVenueProject(timberProjectId, { x: 0.8, y: 0.8 });
+    response = "project-builder";
+    const builder = await sendVenueTurn({
+      sessionId: visit.id,
+      message: "Will you build Timber Workshop?",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "project-builder",
+    });
+    await recordProjectSpokenEvidence(timberProjectId, {
+      kind: "builder",
+      sessionId: visit.id,
+      submissionId: "project-builder",
+      lineId: builder.session.lines.at(-1)!.id,
+    });
+    await lockProjectBuilder(timberProjectId, { residentId: "chef" });
+    response = "project-plan";
+    const plan = await sendVenueTurn({
+      sessionId: visit.id,
+      message: "What does Timber Workshop need?",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "project-plan",
+    });
+    await recordProjectSpokenEvidence(timberProjectId, {
+      kind: "requirements",
+      sessionId: visit.id,
+      submissionId: "project-plan",
+      lineId: plan.session.lines.at(-1)!.id,
+    });
+    await acceptProjectRequirements(timberProjectId);
+    response = "ordinary";
+    const timberRequirementId = (await readVillageState()).projects
+      .find((entry) => entry.id === timberProjectId)!
+      .lifecycle!.requirements.find((entry) => entry.title === "timber")!.id;
+    const stockSource = { requirementId: timberRequirementId, venueId: "cafe", zoneId: "stock" };
+    await assert.rejects(recordExistingProjectSource(timberProjectId, stockSource), /restricted or closed zone/);
+    assert.equal(
+      (await readVillageState()).projects.find((entry) => entry.id === timberProjectId)!.lifecycle!.sources.length,
+      0,
+      "unearned stockroom access cannot reserve a source",
+    );
+    await mutateVillageState((current) => {
+      resolveVenueZone(current.venues[0]!, "stock")!.seen = true;
+    });
+    state = await readVillageState();
+    const beforeRestrictedSource = {
+      sources: structuredClone(state.projects.find((entry) => entry.id === timberProjectId)!.lifecycle!.sources),
+      receipts: structuredClone(
+        state.progressTasks.find((task) => task.definition.owner.id === timberProjectId)!.receipts,
+      ),
+      stock: [...resolveVenueZone(state.venues[0]!, "stock")!.state.items],
+      floor: [...resolveVenueZone(state.venues[0]!, "gathering")!.state.items],
+    };
+    await assert.rejects(recordExistingProjectSource(timberProjectId, stockSource), /restricted or closed zone/);
+    state = await readVillageState();
+    assert.deepEqual(
+      {
+        sources: state.projects.find((entry) => entry.id === timberProjectId)!.lifecycle!.sources,
+        receipts: state.progressTasks.find((task) => task.definition.owner.id === timberProjectId)!.receipts,
+        stock: resolveVenueZone(state.venues[0]!, "stock")!.state.items,
+        floor: resolveVenueZone(state.venues[0]!, "gathering")!.state.items,
+      },
+      beforeRestrictedSource,
+      "discovering stock does not grant authority or mutate stock/progress",
+    );
+
+    response = "invite-now";
+    inviterId = "chef";
+    await sendVenueTurn({
+      sessionId: visit.id,
+      message: "Please show me the stockroom",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "project-stock-invitation",
+    });
+    visit = await moveVenueZone(visit.id, "stock");
+    assert.equal(visit.zoneId, "stock");
+    await recordExistingProjectSource(timberProjectId, stockSource);
+    state = await readVillageState();
+    assert.ok(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("timber"));
+    assert.equal(
+      state.progressTasks
+        .find((task) => task.definition.owner.id === timberProjectId)!
+        .receipts.filter((receipt) => receipt.requirementId === `source:${timberRequirementId}`).length,
+      1,
+      "earned access records one canonical source receipt without consuming stock",
+    );
+    response = "project-handoff";
+    const handoff = await sendVenueTurn({
+      sessionId: visit.id,
+      message: "May I take the timber for Timber Workshop?",
+      mode: "chat",
+      targetId: "chef",
+      submissionId: "project-handoff",
+    });
+    response = "ordinary";
+    const handoffEvidence = {
+      kind: "handoff",
+      requirementId: timberRequirementId,
+      sessionId: visit.id,
+      submissionId: "project-handoff",
+      lineId: handoff.session.lines.at(-1)!.id,
+    };
+    await recordProjectSpokenEvidence(timberProjectId, handoffEvidence);
+    await recordProjectSpokenEvidence(timberProjectId, handoffEvidence);
+    state = await readVillageState();
+    assert.equal(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("timber"), false);
+    assert.ok(
+      resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("timber"),
+      "current Project handoff and replay leave another Zone's identical item intact",
+    );
+    assert.ok(
+      state.projects
+        .find((entry) => entry.id === timberProjectId)!
+        .lifecycle!.requirements.find((entry) => entry.id === timberRequirementId)!.carriedAt,
+    );
+    assert.equal(
+      state.progressTasks
+        .find((task) => task.definition.owner.id === timberProjectId)!
+        .receipts.filter((receipt) => receipt.requirementId === `acquired:${timberRequirementId}`).length,
+      1,
+      "saved handoff replay retains one canonical acquisition receipt",
+    );
+  } finally {
+    response = "ordinary";
+    if (visit) await endVenueSession(visit.id);
+    await mutateVillageState((current) => Object.assign(current, structuredClone(original)));
+  }
+}
+
 async function main() {
   try {
+    await currentProjectZoneChecks();
     await createRenovationProject("cafe", {
       title: "Kitchen",
       detail: "Add a kitchen with a stockroom",
@@ -736,72 +956,6 @@ async function main() {
     state = await readVillageState();
     assert.ok(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("cup"));
     assert.equal(resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("cup"), false);
-    await mutateVillageState((current) => {
-      resolveVenueZone(current.venues[0]!, "stock")!.state.items.push("legacy timber");
-      resolveVenueZone(current.venues[0]!, "gathering")!.state.items.push("legacy timber");
-      current.projects.push({
-        id: "legacy-project",
-        kind: "build-venue",
-        title: "Legacy Project",
-        venueId: "cafe",
-        participantIds: [],
-        progress: 0,
-        status: "active",
-        updatedAt: stamp,
-        plan: {
-          revision: 1,
-          agreedAt: stamp,
-          need: "Timber",
-          revisions: [],
-          requirements: [{ id: "timber", title: "Timber", routeIds: [] }],
-          sources: [],
-          recordedItems: [{ venueId: "cafe", zoneId: "stock", itemName: "legacy timber" }],
-          receipts: [],
-          builderId: "",
-          builderAgreedAt: "",
-          workOrder: null,
-          finishing: null,
-          blockedReason: "",
-        },
-      } as any);
-    });
-    await addBuildSource("legacy-project", {
-      requirementId: "timber",
-      kind: "existing-item",
-      venueId: "cafe",
-      zoneId: "stock",
-      itemName: "legacy timber",
-      cost: "Use the stored timber",
-      prerequisite: "Obtain the controller's handoff",
-    });
-    response = "legacy-handoff";
-    const handoff = await sendVenueTurn({
-      sessionId: visit.id,
-      message: "Receive legacy timber",
-      mode: "chat",
-      targetId: "chef",
-      submissionId: "legacy-handoff",
-    });
-    response = "ordinary";
-    await mutateVillageState((current) => {
-      const legacy = current.projects.find((project) => project.id === "legacy-project")!;
-      legacy.status = "active";
-      legacy.plan!.agreedAt = stamp;
-    });
-    const legacySource = (await readVillageState()).projects.find((project) => project.id === "legacy-project")!.plan!
-      .sources[0]!;
-    await acquireBuildSource("legacy-project", {
-      sourceId: legacySource.id,
-      sessionId: visit.id,
-      submissionId: "legacy-handoff",
-      lineId: handoff.session.lines.at(-1)!.id,
-    });
-    state = await readVillageState();
-    assert.equal(resolveVenueZone(state.venues[0]!, "stock")!.state.items.includes("legacy timber"), false);
-    assert.ok(
-      resolveVenueZone(state.venues[0]!, "gathering")!.state.items.includes("legacy timber"),
-      "legacy Project debits do not remove another zone's identically named item",
-    );
     await endVenueSession(visit.id);
     await assert.rejects(
       () => enterVenue("cafe", undefined, "", undefined, "stock"),

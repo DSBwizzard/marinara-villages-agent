@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -10,7 +11,7 @@ import {
   mobileMapBox,
   mobileMapGesture,
   mobilePhotoScale,
-} from "../packages/villages/src/engine/packages/client/src/villages-mobile-map.ts";
+} from "../packages/villages/src/client/features/exploration/villages-mobile-map.ts";
 
 const image = { width: 1500, height: 1000 };
 const frame = { width: 360, height: 600 };
@@ -82,13 +83,7 @@ assert.deepEqual(mobileDoorPoint({ left: 0, top: 0, width: 360, height: 600 }, f
   top: 94,
 });
 
-const source = readFileSync(
-  resolve(
-    dirname(fileURLToPath(import.meta.url)),
-    "../packages/villages/src/engine/packages/client/src/villages-package-entry.tsx",
-  ),
-  "utf8",
-);
+const source = clientImplementation();
 assert.ok(source.includes("<VenuePolaroid"));
 assert.ok(source.includes('data-photo-pins="true"'));
 assert.equal(source.includes("-pin-tack"), false);

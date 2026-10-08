@@ -1,3 +1,4 @@
+import { defaultVillageConnectionSettings } from "../packages/villages/src/server/domain/rules/connection-rules.js";
 // Villages — proof for the three connections the village spends model calls on.
 //
 // The village sends work to three different places, and the whole feature is
@@ -30,6 +31,375 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
+import {
+  activationScope,
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
+import { configureVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context.js";
+import type { BackgroundCompletion } from "../packages/villages/src/server/domain/models/background-completion-model.js";
+import type { UsagePurpose } from "../packages/villages/src/server/domain/models/usage-model.js";
+import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
+import {
+  configureModelCompletions,
+  completeWithRoom,
+} from "../packages/villages/src/server/features/generation/model-requests.js";
+import { createConnectionSettings } from "../packages/villages/src/server/features/settings/connection-service.js";
+import {
+  configureConnectionSettings,
+  readVillageConnectionSettings,
+  saveVillageConnectionSettings,
+  villagesConnectionIdFor,
+  villagesImageConnectionChoice,
+} from "../packages/villages/src/server/features/settings/connections.js";
+
+function ownedDeferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { resolve, promise };
+}
+
+async function checkOwnedConnections() {
+  function fixture(label: string, heldStage?: string) {
+    const scope = createActivationScope();
+    const entered = ownedDeferred(),
+      gate = ownedDeferred();
+    const events: string[] = [],
+      tokens: number[] = [];
+    const records = new Map<string, any>();
+    let readFailure: Error | undefined,
+      saveFailure: Error | undefined,
+      providerFailure: Error | undefined,
+      conflicts = 0;
+    const background = new AsyncLocalStorage<BackgroundCompletion>();
+    const purpose = new AsyncLocalStorage<UsagePurpose>();
+    const operationController = new AbortController();
+    const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
+    function owned(event: string) {
+      assert.equal(activationScope(), scope, `${label} ${event} retains its activation`);
+      if (!scope.active) throw new Error(`${label} connections unavailable`);
+      events.push(event);
+    }
+    async function pause(stage: string) {
+      if (heldStage === stage) {
+        entered.resolve();
+        await gate.promise;
+      }
+    }
+    const documents = {
+      async getById(packageId: string, id: string) {
+        owned("read");
+        assert.equal(packageId, "villages");
+        await pause("read");
+        if (readFailure) throw readFailure;
+        return structuredClone(records.get(id) ?? null);
+      },
+      async list() {
+        return [];
+      },
+      async create(input: any) {
+        owned("create");
+        await pause("save");
+        if (saveFailure) throw saveFailure;
+        const row = { ...structuredClone(input), revision: 1 };
+        records.set(input.id, row);
+        return structuredClone(row);
+      },
+      async update(input: any) {
+        owned("update");
+        await pause("save");
+        if (saveFailure) throw saveFailure;
+        const current = records.get(input.id);
+        if (conflicts-- > 0) {
+          records.set(input.id, {
+            ...current,
+            revision: current.revision + 1,
+            data: { ...current.data, imageConnectionId: "winning-image" },
+          });
+          return null;
+        }
+        if (!current || current.revision !== input.expectedRevision) return null;
+        const row = { ...current, ...structuredClone(input), revision: current.revision + 1 };
+        records.set(input.id, row);
+        return structuredClone(row);
+      },
+      async remove() {
+        return false;
+      },
+    } as CapabilityDocumentStore;
+    const model: CapabilityResolvedLanguageModel = {
+      connectionId: "same",
+      model: "same",
+      name: "same",
+      maxContext: 8192,
+      maxOutputTokens: 4096,
+      fitContext(messages, options) {
+        return {
+          messages,
+          maxTokens: options?.maxTokens,
+          estimatedTokensBefore: 0,
+          estimatedTokensAfter: 0,
+          trimmed: false,
+        };
+      },
+      async chatComplete(messages, options) {
+        owned("provider");
+        assert.equal(this, model);
+        assert.equal(messages, sentMessages);
+        assert.equal(purpose.getStore(), "checks");
+        assert.equal(options?.temperature, undefined);
+        assert.equal(options?.signal, operationController.signal);
+        tokens.push(options!.maxTokens!);
+        await pause("provider");
+        if (providerFailure) throw providerFailure;
+        return { content: tokens.length === 1 ? " " : label, finishReason: "stop" };
+      },
+    };
+    const completion = createModelCompletions({
+      async readRuntimeDebug() {
+        owned("debug-read");
+        await pause("debug");
+        return { verbose: false, effective: false, engineEnabled: false, showUsageMeter: true };
+      },
+      runtimeDebug() {
+        owned("debug");
+      },
+      backgroundCalls: {
+        getStore() {
+          owned("background-read");
+          return background.getStore();
+        },
+      },
+      async coordinatedCompletion(_fingerprint, work) {
+        owned("coordinator");
+        await pause("coordinator");
+        // Deliberately invoke a retained callback in a different real context.
+        return otherScope ? otherScope.run(() => work(operationController.signal)) : work(operationController.signal);
+      },
+      withUsagePurpose(value, work) {
+        owned("purpose");
+        return purpose.run(value, work);
+      },
+      inferredPurpose() {
+        owned("inferred");
+        return "checks";
+      },
+      villagesLogger() {
+        owned("logger");
+        return logger;
+      },
+      bindCallback: (callback) => scope.bind(callback),
+    });
+    const settings = createConnectionSettings({
+      VILLAGES_PACKAGE_ID: "villages",
+      villagesDocuments() {
+        owned("documents");
+        return documents;
+      },
+      mutateDocument: createDocumentMutator(() => {
+        owned("mutator");
+        return documents;
+      }),
+      async villageEngineJson<T>() {
+        owned("list");
+        await pause("list");
+        return [] as unknown as T;
+      },
+      async villagesAgentConnectionId() {
+        owned("agent-talk");
+        await pause("agent");
+        return label + "-talk";
+      },
+      async villagesAgentImageConnectionId() {
+        owned("agent-image");
+        await pause("agent");
+        return label + "-image";
+      },
+    });
+    assert.deepEqual(events, [], "constructing both factories is inert");
+    const releases = scope.run(() => [
+      configureVenueOperationContext(createVenueOperationContext(() => logger)),
+      configureModelCompletions(completion),
+      configureConnectionSettings(settings),
+    ]);
+    return {
+      scope,
+      entered,
+      gate,
+      events,
+      tokens,
+      records,
+      model,
+      settings,
+      completion,
+      background,
+      operationController,
+      failRead(error?: Error) {
+        readFailure = error;
+      },
+      failSave(error?: Error) {
+        saveFailure = error;
+      },
+      failProvider(error?: Error) {
+        providerFailure = error;
+      },
+      conflict() {
+        conflicts = 1;
+      },
+      releaseBindings() {
+        releases[1]();
+        releases[2]();
+      },
+      release() {
+        [...releases].reverse().forEach((release) => release());
+      },
+    };
+  }
+  const sentMessages = [{ role: "user" as const, content: "Synthetic request" }];
+  let otherScope: ReturnType<typeof createActivationScope> | undefined;
+  for (const stage of ["read", "agent", "save", "debug", "coordinator", "provider", "background"]) {
+    const a = fixture("A", stage),
+      b = fixture("B");
+    otherScope = b.scope;
+    let clearDefault = installDefaultActivation(a.scope, () => {});
+    const attempts: number[] = [];
+    try {
+      let pending: Promise<unknown>;
+      if (stage === "read" || stage === "agent") {
+        a.records.set(CONNECTIONS_DOC_ID, {
+          revision: 1,
+          data: { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" },
+        });
+        pending = villagesConnectionIdFor("system");
+      } else if (stage === "save") {
+        a.records.set(CONNECTIONS_DOC_ID, {
+          revision: 1,
+          data: { systemConnectionId: "old", narrationConnectionId: "saved", imageConnectionId: "old-image" },
+        });
+        a.conflict();
+        pending = saveVillageConnectionSettings({ systemConnectionId: "changed" });
+      } else {
+        const call = () =>
+          completeWithRoom(a.model, sentMessages, 100, {
+            temperature: null,
+            onAttempt(_completion, _elapsed, amount) {
+              assert.equal(activationScope(), a.scope);
+              attempts.push(amount);
+            },
+          });
+        if (stage === "background") {
+          const handler: BackgroundCompletion = async (model, messages, amount, options) => {
+            assert.equal(model, a.model);
+            assert.equal(messages, sentMessages);
+            assert.equal(amount, 100);
+            assert.equal(options.temperature, null);
+            assert.equal(activationScope(), a.scope);
+            a.entered.resolve();
+            await a.gate.promise;
+            assert.equal(activationScope(), a.scope);
+            return { content: "background A", finishReason: "stop" };
+          };
+          pending = a.background.run(handler, call);
+        } else pending = call();
+      }
+      await a.entered.promise;
+      clearDefault = installDefaultActivation(b.scope, () => {});
+      assert.equal(await villagesConnectionIdFor("system"), "B-talk", "B can make independent requests while A waits");
+      a.releaseBindings();
+      a.gate.resolve();
+      const result = await pending;
+      if (stage === "read" || stage === "agent") assert.equal(result, "A-talk");
+      else if (stage === "save") {
+        assert.deepEqual(result, {
+          systemConnectionId: "changed",
+          narrationConnectionId: "saved",
+          imageConnectionId: "winning-image",
+        });
+        assert.equal(a.events.filter((x) => x === "update").length, 2, "result comes from the winning CAS attempt");
+      } else if (stage === "background") {
+        assert.equal((result as { content: string }).content, "background A");
+        assert.deepEqual(a.tokens, []);
+        assert.deepEqual(attempts, []);
+      } else {
+        assert.equal((result as { content: string }).content, "A");
+        assert.deepEqual(a.tokens, [100, 1600]);
+        assert.deepEqual(attempts, [100, 1600]);
+      }
+      assert.equal(b.records.size, 0, "A saves cannot write B's settings");
+      assert.deepEqual(b.tokens, [], "A completions cannot invoke B's provider");
+      assert.equal(await villagesConnectionIdFor("system"), "B-talk", "old cleanup cannot remove B");
+    } finally {
+      a.gate.resolve();
+      clearDefault();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+    }
+  }
+  const a = fixture("A"),
+    b = fixture("B");
+  otherScope = b.scope;
+  let clearDefault = installDefaultActivation(a.scope, () => {});
+  try {
+    const exactFailure = new Error("exact read failure");
+    a.failRead(exactFailure);
+    await assert.rejects(readVillageConnectionSettings(), (error) => error === exactFailure);
+    assert.equal(await villagesConnectionIdFor("system"), "A-talk", "selection retains its documented read fallback");
+    a.failRead();
+    const saveError = new Error("exact settings save failure");
+    a.failSave(saveError);
+    await assert.rejects(
+      saveVillageConnectionSettings({ systemConnectionId: "failed" }),
+      (error) => error === saveError,
+    );
+    assert.equal(a.records.size, 0, "a failed save has no committed result");
+    a.failSave();
+    assert.deepEqual(await villagesImageConnectionChoice(), { enabled: false, connectionId: null });
+    assert.equal(a.events.includes("agent-image"), false, "disabled images do not read the agent default");
+    a.records.set(CONNECTIONS_DOC_ID, { revision: 1, data: { imageConnectionId: "" } });
+    assert.deepEqual(await villagesImageConnectionChoice(), { enabled: true, connectionId: "A-image" });
+    const providerError = new Error("exact provider failure");
+    a.failProvider(providerError);
+    await assert.rejects(
+      completeWithRoom(a.model, sentMessages, 100, { temperature: null, retryEmpty: false }),
+      (error) => error === providerError,
+    );
+    assert.deepEqual(a.tokens, [100], "provider exceptions do not trigger blank retries");
+    const cancelled = new AbortController();
+    const abortError = new Error("explicit cancelled request");
+    cancelled.abort(abortError);
+    await assert.rejects(
+      completeWithRoom(a.model, sentMessages, 100, { temperature: null, signal: cancelled.signal }),
+      (error) => error === abortError,
+    );
+    assert.deepEqual(a.tokens, [100], "a request already aborted starts no provider call");
+    clearDefault = installDefaultActivation(b.scope, () => {});
+    a.scope.dispose();
+    await assert.rejects(
+      a.scope.run(() => readVillageConnectionSettings()),
+      /not configured/,
+    );
+    await assert.rejects(
+      a.scope.run(() => completeWithRoom(a.model, sentMessages, 100, { temperature: null })),
+      /not configured/,
+    );
+    assert.equal(await villagesConnectionIdFor("system"), "B-talk");
+    assert.deepEqual(b.tokens, []);
+  } finally {
+    clearDefault();
+    a.release();
+    b.release();
+    a.scope.dispose();
+    b.scope.dispose();
+  }
+}
 
 /**
  * The id the choices are stored under.
@@ -41,27 +411,21 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const CONNECTIONS_DOC_ID = "villages-connections";
 
 async function main() {
+  if (!process.env.VILLAGES_TEST_PACKAGED) await checkOwnedConnections();
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
-  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
-  const Fastify = (
-    await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
-  ).default;
+  const Fastify = (await import("fastify")).default;
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
 
   const { activate } = await import(
     moduleUrl(
       process.env.VILLAGES_TEST_PACKAGED
         ? "packages/villages/server.mjs"
-        : "packages/villages/src/engine/packages/server/src/services/villages/server-entry.ts",
+        : "packages/villages/src/server/entry/index.ts",
     )
   );
-  const {
-    defaultVillageConnectionSettings,
-    validateVillageSetupConnections,
-    villagesConnectionIdFor,
-    villagesImageConnectionChoice,
-  } = await import(moduleUrl("packages/villages/src/engine/packages/server/src/services/villages/connections.ts"));
+  const { validateVillageSetupConnections, villagesConnectionIdFor, villagesImageConnectionChoice } = await import(
+    moduleUrl("packages/villages/src/server/features/settings/connections.ts")
+  );
 
   // ── Document store double ──────────────────────────────────────────────────
   // Same semantics as the Engine's own store and as the chat regression's: a
@@ -206,7 +570,10 @@ async function main() {
   const post = (url: string, payload?: any) => app.inject({ method: "POST", url, payload });
   const put = (url: string, payload?: any) => app.inject({ method: "PUT", url, payload });
 
-  if (process.env.VILLAGES_TEST_PACKAGED) process.argv[1] = join(engineRoot, "packages/server/dist/index.js");
+  if (process.env.VILLAGES_TEST_PACKAGED) {
+    assert.ok(process.env.MARINARA_ENGINE_ROOT, "Packaged compatibility checks require an explicit Engine runtime.");
+    process.argv[1] = join(process.env.MARINARA_ENGINE_ROOT, "packages/server/dist/index.js");
+  }
   const deactivate = await activate(context);
   const originalSettings = await get("/api/villages/interpretation-settings");
   assert.equal(originalSettings.json().settings.decisionsEnabled, false);
@@ -434,8 +801,20 @@ async function main() {
   // that one call — which is exactly the bug this rewiring was for. So the
   // accessor is pinned to its two legitimate readers: its own definition, and
   // the resolver that makes up the chain.
-  const servicesRoot = join(repoRoot, "packages/villages/src/engine/packages/server/src/services/villages");
-  for (const relativePath of ["chat.ts", "village-bootstrap.ts", "native-remap.ts", "wishes.ts", "village.ts"]) {
+  const servicesRoot = join(repoRoot, "packages/villages/src/server");
+  for (const relativePath of [
+    "features/scenes/writing-service.ts",
+    "features/founding/village-bootstrap.ts",
+    "features/founding/village-bootstrap-service.ts",
+    "domain/rules/village-bootstrap-rules.ts",
+    "domain/rules/native-remap.ts",
+    "features/residents/wishes/wish-progress-service.ts",
+    "features/residents/wishes/wish-lifecycle-service.ts",
+    "features/world/village.ts",
+    "features/world/village-service.ts",
+    "features/residents/resident-agenda-service.ts",
+    "features/venues/residence-service.ts",
+  ]) {
     const source = await readFile(join(servicesRoot, relativePath), "utf8");
     assert.equal(
       source.includes("villagesAgentConnectionId("),

@@ -1,40 +1,37 @@
-import assert from "node:assert/strict";
-import { proposePlayerMove } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-mailbox.js";
-import { privatePreparationKey } from "../packages/villages/src/engine/packages/server/src/services/villages/private-space-preparation.js";
 import {
-  coerceVillageState,
-  defaultVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import {
-  parsePlace,
   completeVillageResidence,
   proposeVillageResidence,
   decideVillageResidence,
-  villageSettings,
-  removeVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/features/venues/residences.js";
+import assert from "node:assert/strict";
+import { proposePlayerMove } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
-  defaultVenueSpace,
-  venueCapacity,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { removeVillager } from "../packages/villages/src/server/features/residents/resident-roster.js";
+import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { defaultVenueSpace, venueCapacity } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   chooseAgendaZone,
   canOccupyZone,
   synchronizeVenueZones,
   legacyZoneId,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import {
   draftRenovationProject,
   createRenovationProject,
   createNewVenueProject,
   placeNewVenueProject,
   openFinishedProject,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.js";
-import { assertResidencePrivateDestination } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-layout.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import type { VillageVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { assertResidencePrivateDestination } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 
 function draft(layout: string, role = "residence", owner = "a") {
   return {

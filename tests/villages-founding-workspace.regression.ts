@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { foundingVenueIssues } from "../packages/villages/src/engine/packages/client/src/villages-founding-workspace-state";
-import type { VillageVenue } from "../packages/villages/src/engine/packages/client/src/villages-package-entry";
+import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state";
+import type { VillageVenue } from "../packages/villages/src/shared/contracts/village.js";
 
 const venue = {
   id: "home",

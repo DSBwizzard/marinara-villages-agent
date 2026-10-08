@@ -1,30 +1,40 @@
+import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
+import {
+  draftNewVenueProject,
+  draftRenovationProject,
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 import assert from "node:assert/strict";
 import {
   readConversationVenueRequest,
   readVenueRequestCore,
   venueRequestDraft,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-requests.ts";
+} from "../packages/villages/src/server/domain/rules/venue-requests.js";
 import {
   coerceVillageState,
   defaultVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
-import {
-  addVillageVenue,
-  applyVillageVenueDecision,
-  queueVillageVenueRequest,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.ts";
-import { remapVenues } from "../packages/villages/src/engine/packages/server/src/services/villages/prompt-preset.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { queueVillageVenueRequest } from "../packages/villages/src/server/features/venues/venue-requests.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   readHousingRequests,
-  readTickVenueRequests,
   type VillageTickContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.ts";
-import { normalizeVillageSnapshot } from "../packages/villages/src/engine/packages/client/src/villages-snapshot-normalization.ts";
-import type {
-  VillageVenue,
-  VillageVillager,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
+} from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
+const { applyVillageVenueDecision } = createVenueRequests({
+  async mutateVillageState() {
+    throw Error("Unexpected persistence in a pure request decision probe.");
+  },
+  async buildVillageSnapshot() {
+    throw Error("Unexpected projection in a pure request decision probe.");
+  },
+  draftNewVenueProject,
+  draftRenovationProject,
+  queueVenueCounteroffer,
+});
 const at = "2026-09-22T12:00:00.000Z";
 const core = { name: "The Glasshouse", classes: ["gathering"] as ["gathering"] };
 const venue = (name: string): VillageVenue => {
@@ -82,17 +92,6 @@ assert.equal(
   ]),
   null,
   "a room participant cannot file another villager's request as their own",
-);
-assert.deepEqual(readTickVenueRequests([{ who: "Rosa", ...core }], [{ characterId: "rosa", name: "Rosa" }], []), [
-  { characterId: "rosa", core },
-]);
-assert.deepEqual(
-  readTickVenueRequests([{ who: "A stranger", ...core }], [{ characterId: "rosa", name: "Rosa" }], []),
-  [],
-);
-assert.deepEqual(
-  readTickVenueRequests([{ who: "Rosa", ...core }], [{ characterId: "rosa", name: "Rosa" }], [core.name]),
-  [],
 );
 const housingContext = {
   residents: [{ characterId: "rosa", name: "Rosa" }],

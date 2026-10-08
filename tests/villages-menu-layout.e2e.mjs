@@ -32,7 +32,6 @@ const snapshot = {
   noticeboard: [],
   venueRequests: [],
   projects: [],
-  villageCapabilities: [],
   upgradeRequests: [],
   residences: [],
   venueMail: [],
@@ -104,6 +103,7 @@ const pages = [
   [/^Village Settings$/, "village"],
   [/^General settings$/, "general"],
   [/^DEBUG: Scenes/, "chatlogs"],
+  [/^DEBUG: Progress$/, "progress"],
 ];
 
 try {
@@ -116,9 +116,28 @@ try {
     const mobile = width <= 704 || (width <= 880 && height <= 512);
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
+    let progressReads = 0;
+    let progressFails = false;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.endsWith("/progress/debug")) {
+        progressReads += 1;
+        return route.fulfill({
+          status: progressFails ? 503 : 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            progressFails
+              ? { error: "Diagnostics are offline." }
+              : {
+                  engineVersion: `synthetic-${progressReads}`,
+                  backlog: [],
+                  speechProofs: [],
+                  tasks: [],
+                },
+          ),
+        });
+      }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
         : path.endsWith("/narration")
@@ -151,7 +170,7 @@ try {
                             archive: { total: 0, pendingReviewCount: 0, recent: [] },
                           }
                         : path.endsWith("/rooms/active")
-                          ? { session: null }
+                          ? { session: null, debugDiscardEnabled: true }
                           : snapshot;
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
@@ -190,6 +209,29 @@ try {
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
+      }
+      if (key === "progress") {
+        await expect(main.getByText("Engine version: synthetic-1", { exact: true })).toBeVisible();
+        assert.equal(progressReads, 1, "opening diagnostics starts one read");
+        await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
+        await expect(main.getByText("Engine version: synthetic-2", { exact: true })).toBeVisible();
+        assert.equal(progressReads, 2, "refresh starts one independent read");
+        progressFails = true;
+        await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
+        await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
+        await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
+        assert.equal(progressReads, 3, "failed refresh is not automatically retried");
+        progressFails = false;
+        await main.getByRole("button", { name: "Refresh diagnostics", exact: true }).click();
+        await expect(main.getByText("Engine version: synthetic-4", { exact: true })).toBeVisible();
+        assert.equal(progressReads, 4, "explicit refresh recovers with one read");
+        await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
+        progressFails = true;
+        await nav.getByRole("button", { name: /^Projects \(/ }).click();
+        await nav.getByRole("button", { name: /^DEBUG: Progress$/ }).click();
+        await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
+        await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
+        assert.equal(progressReads, 5, "navigation retains its single-read error policy");
       }
       if (process.env.VILLAGES_MENU_SCREENSHOTS && ["villagers", "projects", "village", "memories"].includes(key)) {
         await page.screenshot({

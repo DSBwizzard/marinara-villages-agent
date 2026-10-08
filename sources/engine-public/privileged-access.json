@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Pasta-Devs/Marinara-Engine",
+  "revision": "974faebb683842f5a31be34cee65394d9a47c336",
+  "path": "packages/client/src/lib/api-client.ts",
+  "sourceSha256": "458294036fdb3cf63c642c961555d2b42783d075cdc3b07504d2e1d448ddb595",
+  "adminSecretStorageKey": "marinara_admin_secret",
+  "privilegedAccessHint": "This action needs loopback access or admin access. Open the app through localhost, or set ADMIN_SECRET=<secret> in the server .env and paste the same value in Settings → Advanced → Admin Access. Marinara sends it as the X-Admin-Secret header."
+}

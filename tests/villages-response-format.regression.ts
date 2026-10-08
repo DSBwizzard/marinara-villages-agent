@@ -1,26 +1,19 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import {
-  coordinateVenue,
-  rejectVenueCompletion,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
-import {
-  completeWithRoom,
-  configureVillagesRuntime,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import {
-  buildTickMessages,
-  proposeHappenings,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { buildVenueTextContract } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-response-contract.js";
-import { extractSceneReply } from "../packages/villages/src/engine/packages/server/src/services/villages/scene-reply-json.js";
+import { coordinateVenue, rejectVenueCompletion } from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
+import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import {
   responseDiagnostics,
   sceneMissingFields,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/response-diagnostics.js";
-import { WorkFailureError } from "../packages/villages/src/engine/packages/server/src/services/villages/work-failure.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
+} from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   registerBackgroundHandler,
   queueBackgroundJob,
@@ -28,7 +21,7 @@ import {
   settleBackgroundWork,
   backgroundWorkSummaries,
   recoverBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
 
 async function main() {
   const state = defaultVillageState();
@@ -96,9 +89,6 @@ async function main() {
     venues: [],
     opportunities: [{ id: "opportunity", kind: "wish", actorIds: ["a"], venueId: "park", facts: ["A quiet morning"] }],
     recent: [],
-    noticeboard: [],
-    memory: [],
-    pendingVenueNames: [],
   };
   const jsonOptions = { temperature: 0, debugMode: false, retryEmpty: false, responseFormat: { type: "json_object" } };
   const examples = buildVenueTextContract("a", ["a"], true)
@@ -327,6 +317,19 @@ async function main() {
     await recoverBackgroundWork();
     await backgroundWorkSummaries();
     assert.equal(calls, beforeRead);
+    const routineIdea = {
+      characterId: "a",
+      activity: "Read quietly",
+      venueId: "park",
+      zoneId: "exterior",
+      flexible: true,
+    };
+    const social = { planId: "offered-plan" };
+    const supportedContext = {
+      ...context,
+      venues: [{ id: "destination", name: "Open home", occupancy: { playerHome: false, residentCharacterId: null } }],
+      social: { candidates: [{ id: "offered-plan" }], relationships: [] },
+    };
     output = JSON.stringify({
       happenings: [
         {
@@ -337,11 +340,25 @@ async function main() {
           narration: "Ada rests beside the gate.",
         },
       ],
-      housingRequests: [],
+      housingRequests: [{ who: "a", kind: "move", venueId: "destination" }],
+      routineIdea,
+      social,
+      memory: [{ text: "A private fact was invented", who: ["Ada"], private: true }],
+      notices: [{ author: "Ada", text: "A notice was invented" }],
+      venueRequests: [{ who: "Ada", name: "Unrequested hall", classes: ["gathering"] }],
+      featureEdits: [{ who: "Ada", venueId: "park", featureId: "wall", text: "An invented change" }],
+      lapsed: [{ who: "Ada", wish: "An invented loss" }],
     });
-    const valid = await proposeHappenings(context);
+    const beforeValid = calls;
+    const valid = await proposeHappenings(supportedContext);
     assert.equal(valid.happenings.length, 1);
     assert.equal(valid.happenings[0].text, "Ada rests beside the gate.");
+    assert.equal(calls - beforeValid, 1, "supported Events use one completion without repair");
+    assert.deepEqual(valid.housingRequests, [{ characterId: "a", kind: "move", venueId: "destination" }]);
+    assert.deepEqual(valid.routineIdea, routineIdea);
+    assert.deepEqual(valid.social, social);
+    for (const key of ["memory", "notices", "venueRequests", "featureEdits", "lapsed"])
+      assert.equal(Object.hasOwn(valid, key), false, `Events never admit the unsupported ${key} effect channel`);
     providerError = true;
     const beforeError = calls;
     await assert.rejects(

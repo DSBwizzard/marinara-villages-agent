@@ -1,3 +1,8 @@
+import {
+  clearVillagerAgenda,
+  setVillagerScheduleInfluence,
+  buildVillageAgendas,
+} from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import assert from "node:assert/strict";
 import {
   influenceSettings,
@@ -7,36 +12,24 @@ import {
   addRoutineIdea,
   agendaPromptDay,
   validateRoutineDay,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/owned-routine.js";
-import {
-  coerceVillageState,
-  readVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import {
-  clearVillagerAgenda,
-  clearVillagerRemap,
-  setVillagerScheduleInfluence,
-  setVillagerScheduleIngestion,
-  buildVillageAgendas,
-  rollActiveAgendas,
-  reconcileVillage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/domain/rules/owned-routine.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
+import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import {
   startBackgroundWork,
   settleBackgroundWork,
   backgroundWorkSummaries,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
-import { parseCompactFounding } from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.js";
-import { previewVillageBurst } from "../packages/villages/src/engine/packages/server/src/services/villages/usage-preview.js";
-import {
-  agendaDateKey,
-  agendaBlocksFor,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-week.js";
-import { wishSlots } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-lifecycle.js";
-import { resetNativeScheduleCache } from "../packages/villages/src/engine/packages/server/src/services/villages/native-schedules.js";
-import { VILLAGE_WEEKDAYS } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
+import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import { agendaDateKey, agendaBlocksFor } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { wishSlots } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
+import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
 
 const today = new Date(),
   dateKey = agendaDateKey(today),
@@ -371,11 +364,10 @@ async function main() {
   const stop = startBackgroundWork();
   try {
     await setVillagerScheduleInfluence("a", { enabled: true, categories: { rhythm: false } });
-    await setVillagerScheduleIngestion("a", false);
-    await clearVillagerRemap("a");
+    await setVillagerScheduleInfluence("a", { enabled: false });
     await buildVillageAgendas();
     await buildVillageAgendas();
-    assert.equal(calls, 0, "migration, influence, deprecated reset and repeated reads cost no requests");
+    assert.equal(calls, 0, "local plan initialization, influence and repeated reads cost no requests");
     assert.equal((await previewVillageBurst({ action: "translation", characterId: "a" })).requests, 0);
     assert.equal((await previewVillageBurst({ action: "influence", characterId: "a" })).requests, 0);
     assert.deepEqual((await previewVillageBurst({ action: "influence", characterId: "a" })).dollars, {

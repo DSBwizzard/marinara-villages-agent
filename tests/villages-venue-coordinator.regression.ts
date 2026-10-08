@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { safeFailureMessage } from "../packages/villages/src/engine/packages/server/src/services/villages/errors.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   coordinateVenue,
   coordinatedCompletion,
@@ -8,9 +9,9 @@ import {
   cancelVenueOperation,
   recoverVenueOperations,
   readVenueOperation,
-  assertVenueOwnership,
   stopVenueCoordinator,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.js";
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { assertVenueOwnership } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 
 const records = new Map<string, any>();
 const documents = {
@@ -82,7 +83,7 @@ async function main() {
     const first = coordinateVenue("race", "one", "turn", { message: "Hello" }, 0, undefined, work);
     await started.promise;
     const duplicate = coordinateVenue("race", "one", "turn", { message: "Hello" }, 999, undefined, work);
-    for (const kind of ["turn", "greet", "move", "close", "memory"])
+    for (const kind of ["turn", "greet", "move", "close", "change-interpretation"])
       await assert.rejects(
         () => coordinateVenue("race", kind, kind, {}, 0, undefined, () => paid()),
         refused("SCENE_BUSY"),

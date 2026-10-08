@@ -10,7 +10,7 @@ import {
   type ProgressDefinition,
   type ProgressEvidence,
   type ProgressRegistry,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/progress-engine.ts";
+} from "../packages/villages/src/server/domain/rules/progress-engine.js";
 
 type State = { effects: string[]; itemPresent: boolean };
 const state: State = { effects: [], itemPresent: true };

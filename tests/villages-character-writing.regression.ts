@@ -3,23 +3,24 @@ import {
   readVillagerCard,
   readEffectiveVillagerCard,
   villagerCardFromSnapshot,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/catalog.js";
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   defaultVillageState,
   coerceVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
-import { buildTickMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/village-bootstrap.js";
-import { deriveVillageMoment } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   previewVillagerRefresh,
   applyVillagerRefresh,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
+} from "../packages/villages/src/server/features/residents/resident-cards.js";
 import {
   fitVenueWritingMessages,
   venueCardProfile,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-writing.js";
+} from "../packages/villages/src/server/domain/rules/venue-writing.js";
 
 const stamp = new Date().toISOString();
 const source = {

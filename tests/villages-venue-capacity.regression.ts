@@ -1,32 +1,31 @@
+import { setVillageName } from "../packages/villages/src/server/features/settings/village-settings.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.ts";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   assertCanAddVillageVenue,
   assertVillageVenueCapacity,
   villageVenueLimit,
   villageVenueUsage,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-capacity.ts";
-import {
-  addVillageVenue,
-  setVillageVenues,
-  setVillageName,
-  resetVillage,
-  runVillageBootstrap,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.ts";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+} from "../packages/villages/src/server/domain/rules/venue-capacity.js";
+import { resetVillage } from "../packages/villages/src/server/features/world/village.js";
+import { runVillageBootstrap } from "../packages/villages/src/server/features/founding/founding-setup.js";
+import { setVillageVenues } from "../packages/villages/src/server/features/venues/services.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   createNewVenueProject,
+  draftNewVenueProject,
+  draftRenovationProject,
   placeNewVenueProject,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/project-lifecycle.ts";
-import { draftBuildProject } from "../packages/villages/src/engine/packages/server/src/services/villages/build-projects.ts";
-import { queueVenueCounteroffer } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-mailbox.ts";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.ts";
-import type { VillageVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/types.ts";
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 
 async function main() {
   const venue = (index: number, residential = true): VillageVenue => ({
@@ -67,17 +66,43 @@ async function main() {
   assert.throws(() => assertCanAddVillageVenue(legacy, ["other"]), /no room/);
   assert.doesNotThrow(() => assertCanAddVillageVenue(legacy, ["residence"]));
 
-  const oldBuild = defaultVillageState();
-  oldBuild.setupAt = "2026-10-03T12:00:00.000Z";
-  oldBuild.venues = Array.from({ length: 15 }, (_, i) => venue(i));
-  draftBuildProject(oldBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
-  assert.equal(villageVenueUsage(oldBuild).total, 16, "older build drafts reserve one place");
-  assert.throws(
-    () => draftBuildProject(oldBuild, { name: "Another room", classes: ["gathering"], description: "A room." }),
-    /maximum 16/,
+  const currentBuild = defaultVillageState();
+  currentBuild.setupAt = "2026-10-03T12:00:00.000Z";
+  currentBuild.venues = Array.from({ length: 15 }, (_, i) => venue(i));
+  draftNewVenueProject(currentBuild, { name: "Workshop", classes: ["workplace"], description: "An adaptable room." });
+  assert.equal(villageVenueUsage(currentBuild).total, 16, "current drafts reserve one place");
+  assert.throws(() => assertCanAddVillageVenue(currentBuild, ["gathering"]), /maximum 16/);
+  draftRenovationProject(currentBuild, currentBuild.venues[0]!.id, {
+    title: "Room Renovation",
+    detail: "Adjust the existing residence.",
+    classes: ["residence"],
+  });
+  const storedCurrent = JSON.parse(JSON.stringify(currentBuild));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(coerceVillageState(storedCurrent).projects)),
+    storedCurrent.projects,
+    "current New Venue and Renovation drafts survive save/reload",
   );
+  const currentDraft = storedCurrent.projects[0];
+  const unsupported = [
+    { ...currentDraft, id: "old-build", kind: "build-venue", plan: { revision: 1, need: "Old timber" } },
+    { ...currentDraft, id: "unknown-project", kind: "unknown" },
+    { ...currentDraft, id: "untagged-project", kind: undefined },
+    { ...currentDraft, id: "missing-lifecycle", lifecycle: undefined },
+    { ...currentDraft, id: "old-lifecycle", lifecycle: { ...currentDraft.lifecycle, version: 1 } },
+  ];
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        coerceVillageState({ ...storedCurrent, projects: [...storedCurrent.projects, ...unsupported] }).projects,
+      ),
+    ),
+    storedCurrent.projects,
+    "unsupported rows are discarded without conversion into generic Projects",
+  );
+  assert.equal(villageVenueUsage(coerceVillageState(storedCurrent)).total, 16);
   const requestState = defaultVillageState();
-  requestState.setupAt = oldBuild.setupAt;
+  requestState.setupAt = currentBuild.setupAt;
   requestState.venues = Array.from({ length: 15 }, (_, i) => venue(i));
   const counter = () => {
     requestState.pendingDecisions = [
@@ -94,7 +119,7 @@ async function main() {
       "request",
       { name: "Counter", classes: ["gathering"] },
       "A shared room.",
-      new Date(oldBuild.setupAt),
+      new Date(currentBuild.setupAt),
     );
   };
   counter();
@@ -102,7 +127,7 @@ async function main() {
   requestState.venues.push(venue(15));
   assert.throws(counter, /maximum 16/);
   legacy.projects = [];
-  const residentialBuild = draftBuildProject(legacy, {
+  const residentialBuild = draftNewVenueProject(legacy, {
     name: "Legacy residence",
     classes: ["residence"],
     description: "Another existing room.",

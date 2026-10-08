@@ -1,29 +1,27 @@
 import assert from "node:assert/strict";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import {
-  defaultVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import {
   bindWishProposals,
-  processWishExchange,
   applyPreparedWishVerdict,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-progress.js";
+} from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
+import { processWishExchange } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import {
   settleBackgroundWork,
   backgroundWorkSummaries,
   recoverBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
-import { wishFingerprint } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
-import { bindLiveProposals } from "../packages/villages/src/engine/packages/server/src/services/villages/live-memory.js";
-import { createExchangeProcessing } from "../packages/villages/src/engine/packages/server/src/services/villages/exchange-processing.js";
-import {
-  readSceneChanges,
-  processSavedExchange,
-  publicSceneResponse,
-  retrySceneChangeInterpretation,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { retrySceneChangeInterpretation } from "../packages/villages/src/server/features/scenes/venue-session.js";
+import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
+import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 
 async function main() {
   const at = new Date().toISOString(),

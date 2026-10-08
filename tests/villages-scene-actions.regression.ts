@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import {
-  readPlayerMovement,
-  movementTransition,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-movement.js";
-import { readVenueSceneChange } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-scene-state.js";
-import { defaultVillageNarrationStyle } from "../packages/villages/src/engine/packages/server/src/services/villages/narration-style.js";
-import type { VillageVenue } from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+import { readPlayerMovement, movementTransition } from "../packages/villages/src/server/domain/rules/venue-movement.js";
+import { readVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { defaultVillageNarrationStyle } from "../packages/villages/src/server/domain/rules/narration-style.js";
+import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 
 const samples = JSON.parse(
   readFileSync(new URL("./fixtures/villages-scene-actions.samples.json", import.meta.url), "utf8"),

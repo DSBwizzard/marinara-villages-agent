@@ -1,3 +1,4 @@
+import { clientImplementation } from "./client-source.js";
 // Villages — proof for the chat reader that draws the Engine's own inline markdown.
 //
 // The rule set is the Engine's (`packages/client/src/lib/inline-markdown-regex.ts`,
@@ -31,7 +32,7 @@ import {
   parseVillagesInlineMarkdown,
   type VillagesMarkdownNode,
   type VillagesMarkdownStyle,
-} from "../packages/villages/src/engine/packages/client/src/villages-inline-markdown.ts";
+} from "../packages/villages/src/client/shared/villages-inline-markdown.ts";
 
 const text = (value: string): VillagesMarkdownNode => ({ kind: "text", text: value });
 const code = (value: string): VillagesMarkdownNode => ({ kind: "code", text: value });
@@ -164,10 +165,7 @@ assert.deepEqual(read("![alt](https://example.test/a.png)"), [text("!"), link("a
   read as another it is a prefix of.
 */
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const entrySource = readFileSync(
-  resolve(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-  "utf8",
-);
+const entrySource = clientImplementation();
 const tagName = /const ELEMENT_TAG = "([^"]+)";/u.exec(entrySource)?.[1];
 assert.ok(tagName, "The client must still name the custom element it registers itself as");
 const css = entrySource.split("${ELEMENT_TAG}").join(tagName);
@@ -188,7 +186,11 @@ assert.equal(
 );
 assert.equal(countIn("drawVillagesNodes(readingPages.nodes"), 2, "venue narration and speech render Markdown");
 assert.equal(countIn("renderVillagesMarkdown(aside.text"), 1, "venue asides render Markdown");
-assert.equal(countIn("{line.content}"), 0, "venue lines are not drawn raw");
+const scenePanel = readFileSync(
+  resolve(repoRoot, "packages/villages/src/client/features/scenes/ScenePanel.tsx"),
+  "utf8",
+);
+assert.equal(scenePanel.includes("{line.content}"), false, "venue lines are not drawn raw");
 for (const name of ["chat-md-code", "chat-md-link", "chat-md-highlight"]) {
   assert.ok(css.includes(`${tagName}-${name}`), `.${tagName}-${name} is not in the sheet`);
 }

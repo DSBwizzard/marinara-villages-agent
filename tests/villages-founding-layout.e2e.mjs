@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
 import { chromium, expect } from "@playwright/test";
+import { build } from "esbuild";
 
 const art = new PNG({ width: 1280, height: 720 });
 art.data.fill(90);
@@ -81,6 +82,67 @@ const imageRef = {
   ref: "global-gallery:test-art",
   url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AGtLQAAAABJRU5ErkJggg==",
 };
+
+async function verifyFoundingReopening() {
+  const bundle = await build({
+    stdin: {
+      loader: "tsx",
+      resolveDir: process.cwd(),
+      contents: `
+import {createRoot} from 'react-dom/client';import {StrictMode} from 'react';
+import {useOpenSetup} from './packages/villages/src/client/features/founding/actions.js';
+const setters=new Map();window.values={};
+const ports=new Proxy({}, {get(_target,key){if(!setters.has(key))setters.set(key,value=>{window.values[key]=value});return setters.get(key)}});
+function Harness(){window.openSetup=useOpenSetup(ports);return <div>Ready</div>}
+createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
+`,
+    },
+    bundle: true,
+    write: false,
+    platform: "browser",
+    format: "iife",
+    jsx: "automatic",
+  });
+  for (const strict of [false, true]) {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.setContent('<div id="root"></div>');
+    await page.evaluate((strict) => (window.strict = strict), strict);
+    await page.addScriptTag({ content: bundle.outputFiles[0].text });
+    await expect.poll(() => page.evaluate(() => typeof window.openSetup)).toBe("function");
+    for (const reason of ["rebuild", "pioneer", "prosper", "custom", "none"])
+      for (const founded of [false, true])
+        for (const details of ["Authored starting circumstances", "x".repeat(2000)]) {
+          const village = structuredClone(snapshot);
+          village.isFounded = founded;
+          village.settings.foundingReason = reason;
+          village.settings.foundingDetails = details;
+          village.settings.foundingGuidance = " Authored narrative direction ";
+          const values = await page.evaluate((village) => {
+            window.openSetup(false, village);
+            return window.values;
+          }, village);
+          assert.equal(values.setSetupFoundingReason, reason);
+          assert.equal(values.setSetupFoundingDetails, details);
+          assert.equal(values.setSetupFoundingGuidance, reason === "none" ? "" : village.settings.foundingGuidance);
+          assert.equal(values.setScreen, "setup");
+        }
+    const fresh = await page.evaluate(() => {
+      window.openSetup(true, null);
+      return window.values;
+    });
+    assert.equal(fresh.setSetupFoundingReason, "custom");
+    assert.equal(fresh.setSetupFoundingGuidance, "");
+    assert.notEqual(fresh.setSetupFoundingDetails, "x".repeat(2000));
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  console.log(
+    "Actual Founding hook: current short/full-length drafts, founded reopening and fresh setup retain authored state (normal/StrictMode; isolated ports).",
+  );
+}
 try {
   for (const { width, height, fontSize, homeCount, chromeHeight = 0 } of [
     { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
@@ -811,6 +873,7 @@ try {
     console.log(`Founding v2: ${width}x${height}, ${homeCount} villagers, saved/resumed, validated.`);
     await context.close();
   }
+  await verifyFoundingReopening();
 } finally {
   await browser.close();
 }

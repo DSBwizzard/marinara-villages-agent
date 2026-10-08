@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "@playwright/test";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   coordinateVenue,
   coordinatedCompletion,
@@ -11,7 +12,7 @@ import {
   operationSummary,
   readVenueOperation,
   assertVenueOwnership,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-coordinator.ts";
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
 
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
@@ -72,7 +73,8 @@ let calls = 0,
   holdNext = true;
 let disconnectNext = false;
 const publicRoom = () => ({ ...structuredClone(record.data), operation: operationSummary(record.data.operation) });
-const errors = [];
+const errors = [],
+  routeErrors = [];
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   await context.route("http://villages.test/", (route) =>
@@ -145,6 +147,7 @@ try {
       }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     } catch (error) {
+      routeErrors.push(error.message);
       await route.fulfill({
         status: error.statusCode ?? 502,
         contentType: "application/json",
@@ -183,7 +186,20 @@ try {
   });
   await composer(one).fill("First tab message");
   await send(one).click();
-  await admission;
+  let admissionTimer;
+  try {
+    await Promise.race([
+      admission,
+      new Promise((_resolve, reject) => {
+        admissionTimer = setTimeout(
+          () => reject(new Error(`The mock provider was not reached: ${routeErrors.join("; ")}`)),
+          10_000,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(admissionTimer);
+  }
   await composer(two).fill("Second tab draft");
   await send(two).click();
   await expect(composer(two)).toHaveValue("Second tab draft");

@@ -1,16 +1,13 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { villagesRoutes } from "../packages/villages/src/engine/packages/server/src/routes/villages.routes.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 async function main() {
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
-  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT for the read-only Fastify dependency.");
-  const Fastify = (
-    await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
-  ).default;
+  const Fastify = (await import("fastify")).default;
   // Use the host router's default 100-character parameter ceiling.
   const app = Fastify();
   const sceneId = "3260cf01-1771-43b8-b72c-c050c713029d";

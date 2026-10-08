@@ -69,6 +69,8 @@ try {
       throw error;
     }
     await page.keyboard.press("Escape");
+    const closeChats = page.getByRole("button", { name: "Close chats", exact: true });
+    if (await closeChats.isVisible()) await closeChats.click();
     await openVillages.click();
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toBeVisible({ timeout: 20000 });

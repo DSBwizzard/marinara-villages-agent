@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import {
-  interpretWishBatch,
-  wishFingerprint,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
-import { localWishRequirements } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-admission.js";
-import { processWishExchange } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-progress.js";
-import { settleBackgroundWork } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { interpretWishBatch } from "../packages/villages/src/server/features/residents/wishes/wish-interpretation.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+import { localWishRequirements } from "../packages/villages/src/server/domain/rules/wish-admission.js";
+import { processWishExchange } from "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
+import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 
 async function main() {
   const at = new Date().toISOString(),

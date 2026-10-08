@@ -2,14 +2,15 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PLAYER_ROLE,
   renderPlayerRoleContext,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/player-role.js";
+} from "../packages/villages/src/server/domain/rules/player-role.js";
 import {
   foundingNativeActivities,
   parseCompactFounding,
-  proposeCompactFounding,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/founding-compact.ts";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.ts";
-import { VILLAGE_WEEKDAYS } from "../packages/villages/src/engine/packages/server/src/services/villages/village-clock.ts";
+} from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
 
 const card = {
   id: "a",

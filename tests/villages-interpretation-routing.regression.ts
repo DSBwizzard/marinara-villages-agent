@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { routeInterpretationChecks } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-routing.js";
-import type { InterpretationCheck } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
+import { routeInterpretationChecks } from "../packages/villages/src/server/domain/rules/interpretation-routing.js";
+import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 const context = { actorIds: ["a", "b"] };
 function check(domain: "room" | "project" = "room", text = "I like the autumn weather."): InterpretationCheck {
   return {
@@ -17,7 +17,11 @@ function check(domain: "room" | "project" = "room", text = "I like the autumn we
   };
 }
 const irrelevant = [{ actorId: "a", domain: "room", relevance: "irrelevant", targetIds: [], segments: [0] }];
-const select = (c = check(), raw: unknown = irrelevant, ctx = context) => routeInterpretationChecks([c], raw, ctx);
+const select = (
+  c = check(),
+  raw: unknown = irrelevant,
+  ctx: Parameters<typeof routeInterpretationChecks>[2] = context,
+) => routeInterpretationChecks([c], raw, ctx);
 assert.equal(select().checks.length, 0);
 for (const raw of [
   null,
@@ -97,12 +101,9 @@ for (const residents of [1, 4, 8]) {
 console.log("Conservative narration routing: irrelevant skipped; ambiguous, witnessed and pending events retained");
 
 async function integration() {
-  const { configureVillagesRuntime } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js");
-  const { defaultVillageState } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/village-store.js");
-  const { interpretProjectDraft } =
-    await import("../packages/villages/src/engine/packages/server/src/services/villages/project-checks.js");
+  const { configureVillagesRuntime } = await import("../packages/villages/src/server/entry/runtime.js");
+  const { defaultVillageState } = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
+  const { interpretProjectDraft } = await import("../packages/villages/src/server/features/projects/project-checks.js");
   const records = new Map<string, any>();
   let calls = 0;
   const release = configureVillagesRuntime({
@@ -147,7 +148,13 @@ async function integration() {
     const state = defaultVillageState();
     state.villagers = [{ characterId: "a", cardSnapshot: { name: "A" } }] as any;
     state.projects = [
-      { id: "p", title: "Garden", status: "draft", lifecycle: { phase: "builder", affectedIds: [], requirements: [] } },
+      {
+        id: "p",
+        kind: "new-venue",
+        title: "Garden",
+        status: "draft",
+        lifecycle: { version: 2, phase: "builder", affectedIds: [], requirements: [] },
+      },
     ] as any;
     state.progressTasks = [
       { definition: { owner: { kind: "project", id: "p" }, revision: 1 }, transitions: [], resolvedAt: "" },

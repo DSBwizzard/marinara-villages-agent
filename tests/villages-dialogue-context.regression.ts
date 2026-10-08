@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   relationshipPrompt,
   relationshipWritingPrompt,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationships.js";
+} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
   relationshipKey,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-store.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/engine/packages/server/src/services/villages/relationship-review.js";
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();

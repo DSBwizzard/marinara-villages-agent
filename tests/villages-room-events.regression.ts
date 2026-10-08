@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   interpretRoomReply,
   roomInterpretationChecks,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/room-interpretation.js";
-import { selectRoomEventChecks } from "../packages/villages/src/engine/packages/server/src/services/villages/room-events.js";
-import { systemInterpretations } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
+} from "../packages/villages/src/server/features/scenes/room-interpretation.js";
+import { selectRoomEventChecks } from "../packages/villages/src/server/domain/rules/room-events.js";
+import { systemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
 
 async function main() {
   const records = new Map<string, any>();

@@ -1,16 +1,17 @@
 import assert from "node:assert/strict";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
-import { defaultVillageState } from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   compactWishChecks,
   readSystemInterpretations,
-  systemInterpretations,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation.js";
-import { interpretationPayload } from "../packages/villages/src/engine/packages/server/src/services/villages/interpretation-evidence.js";
-import { completionFailure } from "../packages/villages/src/engine/packages/server/src/services/villages/work-failure.js";
-import { wishFingerprint } from "../packages/villages/src/engine/packages/server/src/services/villages/wish-interpretation.js";
-import { unwrittenVillageAgenda } from "../packages/villages/src/engine/packages/server/src/services/villages/agenda-plan.js";
-import "../packages/villages/src/engine/packages/server/src/services/villages/wish-progress.js";
+} from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
+import { systemInterpretations } from "../packages/villages/src/server/features/generation/system-interpretation.js";
+import { interpretationPayload } from "../packages/villages/src/server/domain/rules/interpretation-evidence-rules.js";
+import { completionFailure } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
+import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import "../packages/villages/src/server/features/residents/wishes/wish-progress.js";
 import {
   queueBackgroundJob,
   startBackgroundWork,
@@ -18,7 +19,7 @@ import {
   backgroundWorkSummaries,
   retryBackgroundJob,
   recoverBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
 
 async function main() {

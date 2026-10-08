@@ -1,3 +1,5 @@
+import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
+import { clientImplementation } from "./client-source.js";
 // Villages — proof for the pictures a place can have.
 //
 // A place's picture spends the player's image tokens, so these tests cover:
@@ -31,6 +33,26 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
+import {
+  generateVillageImage,
+  resolveVillageImageConnectionId,
+} from "../packages/villages/src/server/features/media/image-generation.js";
+import { generateVillageTownMap } from "../packages/villages/src/server/features/media/town-map-image.js";
+import {
+  generateVillageLocationImage,
+  generateFirstPrivateSpaceImage,
+  storeVillageVenueImage,
+} from "../packages/villages/src/server/features/media/location-image.js";
+import {
+  createActivationScope,
+  activationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 
 /**
  * The path the Engine draws a character's picture on, written out rather than
@@ -64,14 +86,13 @@ async function collectSources(root: string): Promise<Array<{ path: string; sourc
 
 async function main() {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const engineRoot = process.env.MARINARA_ENGINE_ROOT;
-  assert.ok(engineRoot, "Set MARINARA_ENGINE_ROOT to the current Marinara Engine checkout.");
   const moduleUrl = (relativePath: string) => pathToFileURL(join(repoRoot, relativePath)).href;
-  const services = "packages/villages/src/engine/packages/server/src/services/villages";
+  const services = "packages/villages/src/server";
 
-  const { avatarPromptId, buildLocationPrompt, decodeImageDataUrl, MAX_LOCATION_IMAGE_BASE64_LENGTH } = await import(
-    moduleUrl(`${services}/location-image.ts`)
+  const { avatarPromptId, buildLocationPrompt } = await import(
+    moduleUrl(`${services}/domain/rules/location-image-rules.ts`)
   );
+  const { decodeImageDataUrl } = await import(moduleUrl(`${services}/features/media/location-image-codec.ts`));
   const {
     GLOBAL_GALLERY_REF_PREFIX,
     isGlobalGalleryRef,
@@ -81,12 +102,13 @@ async function main() {
     MAX_PLACES,
     MAX_SETTING_LENGTH,
     VILLAGES_GALLERY_FOLDER_NAME,
-  } = await import(moduleUrl(`${services}/prompt-preset.ts`));
-  const { coerceVillageState, readVillageState, mutateVillageState } = await import(
-    moduleUrl(`${services}/village-store.ts`)
+  } = await import(moduleUrl(`${services}/domain/rules/prompt-preset.ts`));
+  const { coerceVillageState } = await import(moduleUrl(`${services}/domain/decoding/village-codec.ts`));
+  const { readVillageState, mutateVillageState } = await import(
+    moduleUrl(`${services}/features/world/village-store.ts`)
   );
-  const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/engine-loopback.ts`));
-  const { describeMoment } = await import(moduleUrl(`${services}/village-clock.ts`));
+  const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/adapters/engine/engine-loopback.ts`));
+  const { describeMoment } = await import(moduleUrl(`${services}/domain/rules/village-clock.ts`));
 
   // ── The one number two codebases have to agree on ──────────────────────────
   // The tab refuses a file before encoding it, the package refuses a data url
@@ -105,31 +127,8 @@ async function main() {
     "the gallery folder is named after the package and nothing else",
   );
 
-  // ── The prompt id the Engine has to recognise ──────────────────────────────
-  // The Engine builds this key itself, in `characters.routes.ts`, and looks an
-  // override up BY it. A copy that has drifted does not fail — it is ignored,
-  // and the player pays for a portrait of a place. So the rule is read out of
-  // the Engine's own source and the copy is checked against what is there.
-  const engineRoutes = await readFile(join(engineRoot, "packages/server/src/routes/characters.routes.ts"), "utf8");
-  const squeeze = (text: string) => text.replace(/\s+/g, "");
-  const engineRule = squeeze(
-    `name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 120) || "character"`,
-  );
-  assert.ok(
-    squeeze(engineRoutes).includes(engineRule),
-    "the Engine's avatar prompt id rule moved; `avatarPromptId` in location-image.ts has to move with it",
-  );
-  assert.ok(
-    squeeze(engineRoutes).includes(squeeze(`\${purpose === "character-sheet" ? "character-sheet" : "avatar"}:\${`)),
-    "the Engine's avatar prompt id prefix moved",
-  );
-  assert.ok(
-    squeeze(engineRoutes).includes(
-      squeeze('promptOverrideById.get(avatarGenerationPromptId(body.name ?? "character", body.purpose))'),
-    ),
-    "the Engine stopped looking the override up by this key, which is the only reason the key matters",
-  );
-
+  // Current identifier behavior; the separate Engine contract suite checks the
+  // selected host's normalization, prefix and override lookup independently.
   const slugOf = (name: string) =>
     name
       .trim()
@@ -654,9 +653,7 @@ async function main() {
   const galleryCalls = (path: string) => engineCalls.filter((call) => call.path === path);
 
   // ── The host ──────────────────────────────────────────────────────────────
-  const Fastify = (
-    await import(pathToFileURL(join(engineRoot, "packages/server/node_modules/fastify/fastify.js")).href)
-  ).default;
+  const Fastify = (await import("fastify")).default;
 
   const documentsByKey = new Map<string, any>();
   const keyOf = (packageId: string, id: string) => `${packageId}::${id}`;
@@ -774,7 +771,7 @@ async function main() {
   const patch = (url: string, payload?: any) => app.inject({ method: "PATCH", url, payload });
   const del = (url: string, payload?: any) => app.inject({ method: "DELETE", url, payload });
 
-  const { activate } = await import(moduleUrl(`${services}/server-entry.ts`));
+  const { activate } = await import(moduleUrl(`${services}/entry/index.ts`));
   await activate(context);
 
   // ── Founding a village costs nothing ──────────────────────────────────────
@@ -789,7 +786,7 @@ async function main() {
   const founded = await post("/api/villages/setup", {
     name: "Ashcroft",
     setting: settingText,
-    foundingReason: "fresh-start",
+    foundingReason: "pioneer",
     foundingDetails: "The group arrives at the riverside and opens the first shared path.",
     playerPersonaId: "persona-robin",
     venues: [
@@ -920,7 +917,7 @@ async function main() {
       ]),
     );
   });
-  const addedSnapshot = (await import(moduleUrl(`${services}/village.ts`))).buildVillageSnapshot;
+  const addedSnapshot = (await import(moduleUrl(`${services}/features/world/snapshot.ts`))).buildVillageSnapshot;
   assert.deepEqual(
     (await addedSnapshot()).settings.venues
       .filter((venue: any) => ["mill", "ridge"].includes(venue.id))
@@ -1152,24 +1149,29 @@ async function main() {
   assert.deepEqual(
     canDraw,
     [
-      "engine/packages/server/src/routes/villages.routes.ts",
-      "engine/packages/server/src/services/villages/engine-loopback.ts",
-      "engine/packages/server/src/services/villages/image-generation.ts",
-      "engine/packages/server/src/services/villages/location-image.ts",
-    ],
+      "server/features/media/routes.ts",
+      "server/adapters/engine/engine-loopback.ts",
+      "server/features/media/image-generation-service.ts",
+      "server/features/media/location-image.ts",
+      "server/features/media/location-image-service.ts",
+    ].sort(),
     "only explicit scenery draws and their metered shared transport reach image providers",
   );
   for (const silent of [
-    "village.ts",
-    "village-store.ts",
-    "village-bootstrap.ts",
-    "village-clock.ts",
-    "village-refresh-scheduler.ts",
-    "native-remap.ts",
-    "native-schedules.ts",
-    "chat.ts",
-    "wishes.ts",
-    "catalog.ts",
+    "features/world/village.ts",
+    "features/world/village-service.ts",
+    "features/world/village-store.ts",
+    "features/founding/village-bootstrap.ts",
+    "features/founding/village-bootstrap-service.ts",
+    "domain/rules/village-bootstrap-rules.ts",
+    "domain/rules/village-clock.ts",
+    "jobs/village-refresh-scheduler.ts",
+    "domain/rules/native-remap.ts",
+    "adapters/engine/native-schedules.ts",
+    "features/scenes/writing-service.ts",
+    "features/residents/wishes/wish-progress-service.ts",
+    "features/residents/wishes/wish-lifecycle-service.ts",
+    "adapters/engine/catalog.ts",
   ]) {
     const source = await readFile(join(repoRoot, services, silent), "utf8");
     assert.equal(
@@ -1183,16 +1185,12 @@ async function main() {
   // path has a durable one-attempt marker and is not a UI redraw effect.
   //
   // The shared venue image control serves exterior, Class, and private spaces.
-  const client = await readFile(
-    join(repoRoot, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-    "utf8",
-  );
-  const presses: Record<string, number> = { drawPlaceImage: 2, keepPlaceImage: 2, dropPlaceImage: 2 };
-  for (const [handler, count] of Object.entries(presses)) {
+  const client = await clientImplementation();
+  for (const handler of ["drawPlaceImage", "keepPlaceImage", "dropPlaceImage"]) {
     assert.equal(
-      client.split(handler).length - 1,
-      count,
-      `${handler} must be defined once and reached only from the control the player presses`,
+      client.split(`${handler}(`).length - 1,
+      1,
+      `${handler} is invoked only by its manual control; forwarding it between components does not invoke it`,
     );
   }
   assert.equal(
@@ -1205,8 +1203,8 @@ async function main() {
     /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, ownerId, zoneId\)\}/,
     "and wired to a click on the screen that stands in a place",
   );
-  const imageService = await readFile(join(repoRoot, services, "location-image.ts"), "utf8");
-  const venueSession = await readFile(join(repoRoot, services, "venue-session.ts"), "utf8");
+  const imageService = await readFile(join(repoRoot, services, "features/media/location-image-service.ts"), "utf8");
+  const venueSession = await readFile(join(repoRoot, services, "features/scenes/command-service.ts"), "utf8");
   assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
   assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
 
@@ -1317,7 +1315,9 @@ async function main() {
   // API; reaching past it would be a second copy of each.
   const boundary = JSON.parse(await readFile(join(repoRoot, "packages/villages/engine-boundary.json"), "utf8"));
   assert.deepEqual(boundary.privateEngineImports, [], "the pictures add no private Engine import");
-  for (const bound of sources.filter((file) => file.path.endsWith("engine-loopback.ts"))) {
+  const transports = sources.filter((file) => file.path.endsWith("engine-transport.ts"));
+  assert.equal(transports.length, 1, "there is one authoritative Engine transport");
+  for (const bound of transports) {
     assert.ok(bound.source.includes("127.0.0.1"), "and the Engine is reached over its own loopback address");
   }
 
@@ -1326,7 +1326,362 @@ async function main() {
   );
 }
 
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+/** Real activation graphs and document CAS, with synthetic Engine HTTP responses. */
+async function mediaConnectionOwnership() {
+  // Only the native ports exercised here are simulated. Any unexpected host
+  // access fails immediately instead of returning a permissive dummy value.
+  function nativePorts<T extends object>(ports: Partial<T>): T {
+    return new Proxy(ports, {
+      get(target, key, receiver) {
+        if (!Reflect.has(target, key)) throw new Error(`Unexpected native test port: ${String(key)}`);
+        return Reflect.get(target, key, receiver);
+      },
+    }) as T;
+  }
+  type Operation = "image" | "resolve" | "map" | "store" | "location" | "private";
+  type Stage = "agent" | "connections" | "provider" | "lore" | "inspect" | "read" | "upload" | "write";
+  type Variant =
+    "ordinary" | "cas" | "context" | "only-empty" | "claim-cas" | "failure" | "provider-failure" | "disposed";
+  const scenarios: Array<[Operation, Stage, Variant?]> = [
+    ["image", "agent"],
+    ["image", "connections"],
+    ["image", "provider"],
+    ["resolve", "agent"],
+    ["image", "provider", "provider-failure"],
+    ["map", "lore"],
+    ["map", "provider"],
+    ["map", "inspect"],
+    ["store", "read"],
+    ["store", "upload"],
+    ["store", "write"],
+    ["location", "lore"],
+    ["location", "provider"],
+    ["location", "upload"],
+    ["private", "write"],
+    ["private", "provider"],
+    ["store", "write", "cas"],
+    ["location", "write", "context"],
+    ["location", "write", "only-empty"],
+    ["private", "write", "claim-cas"],
+    ["store", "read", "failure"],
+    ["store", "write", "failure"],
+    ["store", "read", "disposed"],
+  ];
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  };
+  for (const [operation, stage, variant = "ordinary"] of scenarios) {
+    const controlledError = new Error(`controlled ${operation}/${stage}`);
+    const fixture = (label: string, hold: boolean) => {
+      const scope = createActivationScope(),
+        entered = deferred(),
+        gate = deferred();
+      let held = false;
+      const state = coerceVillageState({
+        wishSystemVersion: 3,
+        seed: "equal-media-seed",
+        name: label,
+        setting: "Quiet harbor",
+        setupAt: new Date().toISOString(),
+        foundedAt: new Date().toISOString(),
+        storyPace: "off",
+        selectedLorebookIds: ["visual"],
+        useVisualLoreByDefault: true,
+        venues: [
+          {
+            id: "equal-venue",
+            name: `${label} place`,
+            layoutVersion: 1,
+            zones: [
+              { id: "exterior", kind: "exterior", name: "Entrance", purpose: "Arrival", seen: true },
+              {
+                id: "own-room",
+                kind: "restricted",
+                name: "Studio",
+                purpose: "Study",
+                seen: true,
+                ownerId: "player",
+                controllerIds: ["player"],
+              },
+            ],
+          },
+        ],
+      });
+      type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
+      const record = (id: string, kind: string, data: unknown): Row => ({
+        id,
+        packageId: "villages",
+        kind,
+        data,
+        revision: 1,
+        name: id,
+        description: "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      const records = new Map([
+        ["villages-village", record("villages-village", "village", state)],
+        [
+          "villages-connections",
+          record("villages-connections", "settings", {
+            systemConnectionId: "",
+            narrationConnectionId: "",
+            imageConnectionId: "",
+          }),
+        ],
+      ]);
+      const world = () => records.get("villages-village")!.data as VillageState;
+      const requests = () => (records.get("villages-ai-usage")?.data as Ledger | undefined)?.requests ?? [];
+      async function pause(at: Stage) {
+        if (!hold || held || at !== stage) return;
+        held = true;
+        entered.resolve();
+        await gate.promise;
+        if (variant === "failure" || variant === "provider-failure") throw controlledError;
+      }
+      const documents: CapabilityDocumentStore = {
+        async getById(_pkg, id) {
+          if (id === "villages-village") await pause("read");
+          return structuredClone(records.get(id) ?? null);
+        },
+        async list(_pkg, kind) {
+          return structuredClone([...records.values()].filter((row) => row.kind === kind));
+        },
+        async create(input) {
+          const row = { ...structuredClone(input), revision: 1 };
+          records.set(input.id, row);
+          return structuredClone(row);
+        },
+        async update(input) {
+          if (input.id === "villages-village") await pause("write");
+          const old = records.get(input.id);
+          if (!old || old.revision !== input.expectedRevision) return null;
+          const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+          records.set(input.id, row);
+          return structuredClone(row);
+        },
+        async remove(_pkg, id, revision) {
+          if (records.get(id)?.revision !== revision) return false;
+          return records.delete(id);
+        },
+      };
+      const release = scope.run(() =>
+        configureVillagesRuntime(
+          nativePorts<CapabilityRuntimeHost>({
+            persistence: nativePorts<CapabilityRuntimeHost["persistence"]>({ documents }),
+            resources: {
+              async listCharacters() {
+                return [];
+              },
+              async listPersonas() {
+                return [];
+              },
+              async listLorebooks() {
+                return [];
+              },
+              async listEligibleLorebookEntries() {
+                return [];
+              },
+            },
+            async getAgentConfig() {
+              await pause("agent");
+              return {
+                connectionId: null,
+                settings: {
+                  imageConnectionId: stage === "connections" || operation === "resolve" ? "" : `${label}-brush`,
+                },
+              };
+            },
+            logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
+          }),
+        ),
+      );
+      return { scope, entered, gate, release, pause, records, world, requests, label };
+    };
+    const a = fixture("A", true),
+      b = fixture("B", false);
+    const clearA = installDefaultActivation(a.scope, () => {}),
+      oldFetch = globalThis.fetch;
+    let clearB = () => {};
+    const calls: Array<{ owner: string; path: string; connectionId?: string }> = [];
+    globalThis.fetch = async (input, init: RequestInit = {}) => {
+      const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
+      assert(owner, "media transport has an originating activation");
+      const path = new URL(String(input)).pathname;
+      const body = typeof init.body === "string" ? (JSON.parse(init.body) as { connectionId?: string }) : {};
+      calls.push({ owner: owner.label, path, connectionId: body.connectionId });
+      if (path === "/api/connections") await owner.pause("connections");
+      if (path === AVATAR_PATH) await owner.pause("provider");
+      if (path === "/api/lorebooks") await owner.pause("lore");
+      if (path === "/api/image-metadata/inspect") await owner.pause("inspect");
+      if (path === UPLOAD_PATH) await owner.pause("upload");
+      const payload =
+        path === "/api/connections"
+          ? [{ id: `${owner.label}-brush`, provider: "image_generation", isDefault: true }]
+          : path === AVATAR_PATH
+            ? { image: TINY_PNG }
+            : path === "/api/lorebooks"
+              ? [{ id: "visual", name: "Visual", enabled: true }]
+              : path.endsWith("/entries")
+                ? [{ id: "paint", name: "Color", content: `${owner.label} blue doors`, enabled: true, constant: true }]
+                : path.endsWith("/folders")
+                  ? []
+                  : path === "/api/image-metadata/inspect"
+                    ? { width: 1, height: 1 }
+                    : path === UPLOAD_PATH
+                      ? { id: `${owner.label}-image`, url: `/api/global-gallery/file/${owner.label}.png` }
+                      : {};
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const imageInput = { name: "Equal image", prompt: "Empty room", width: 1, height: 1, maxBase64Length: 1000 };
+    try {
+      const pending =
+        operation === "image"
+          ? generateVillageImage(imageInput)
+          : operation === "resolve"
+            ? resolveVillageImageConnectionId()
+            : operation === "map"
+              ? generateVillageTownMap({ setting: "Quiet harbor", selectedLorebookIds: ["visual"] })
+              : operation === "store"
+                ? storeVillageVenueImage("equal-venue", TINY_PNG)
+                : operation === "private"
+                  ? generateFirstPrivateSpaceImage("equal-venue", "own-room")
+                  : generateVillageLocationImage(
+                      "equal-venue",
+                      undefined,
+                      undefined,
+                      "",
+                      variant === "only-empty",
+                      "exterior",
+                    );
+      const outcome = pending.then(
+        (value) => ({ value, error: undefined }),
+        (error) => ({ value: undefined, error: error as unknown }),
+      );
+      await Promise.race([
+        a.entered.promise,
+        outcome.then((result) => assert.fail(`No ${operation}/${stage} pause: ${String(result.error)}`)),
+      ]);
+      clearB = installDefaultActivation(b.scope, () => {});
+      await generateVillageImage(imageInput);
+      assert.equal(b.requests().length, 1, "B independently generates and records its own request while A waits");
+      assert.equal(b.requests()[0]!.connectionId, "B-brush");
+      if (operation === "private" && stage === "provider") {
+        assert(
+          a.world().venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt,
+          "the automatic claim is saved before dispatch waits for its response",
+        );
+      }
+      if (["cas", "context", "only-empty", "claim-cas"].includes(variant)) {
+        const row = a.records.get("villages-village")!,
+          state = structuredClone(a.world());
+        if (variant === "cas") state.spriteCardFlipEnabled = false;
+        if (variant === "context") state.sceneryArtStyle = "Pixel art";
+        if (variant === "only-empty")
+          state.venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image = {
+            ref: "global-gallery:winning",
+            url: "/api/global-gallery/file/winning.png",
+            id: "winning",
+          };
+        if (variant === "claim-cas")
+          state.venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt = "winning claim";
+        a.records.set(row.id, { ...row, revision: row.revision + 1, data: state });
+      }
+      if (variant === "disposed") a.scope.dispose();
+      a.gate.resolve();
+      const result = await outcome;
+      if (variant === "failure")
+        assert.equal(result.error, controlledError, "native storage failures preserve exact identity");
+      else if (variant === "provider-failure") assert.match(String(result.error), new RegExp(controlledError.message));
+      else if (variant === "disposed")
+        assert(result.error instanceof Error, "disposed work refuses further connections");
+      else if (variant === "context" || variant === "only-empty") assert.match(String(result.error), /scenery changed/);
+      else assert.equal(result.error, undefined, `${operation}/${stage} succeeds`);
+      assert.equal(b.requests().length, 1, "A neither borrows nor duplicates B's receipt");
+      assert.equal(b.world().venues[0]!.presentation.image, null);
+      assert(
+        b.world().venues[0]!.zones!.every((zone) => !zone.image && !zone.initialImageAttemptedAt),
+        "B's Zones and private-entry allowance stay unchanged",
+      );
+      const aCalls = calls.filter((call) => call.owner === "A"),
+        draws = aCalls.filter((call) => call.path === AVATAR_PATH);
+      const paid = operation !== "store" && operation !== "resolve" && variant !== "claim-cas";
+      assert.equal(draws.length, paid ? 1 : 0, "one Engine image dispatch, with no replay or failed-claim spending");
+      assert.equal(a.requests().length, paid ? 1 : 0, "the native image ledger belongs to A");
+      if (paid) {
+        assert.equal(a.requests()[0]!.connectionId, "A-brush");
+        assert.equal(
+          a.requests()[0]!.status,
+          variant === "provider-failure" ? "unknown" : "complete",
+          "a transport failure retains uncertain spending instead of asserting no charge",
+        );
+        assert.equal(draws[0]!.connectionId, "A-brush");
+      }
+      assert.equal(
+        calls.filter((call) => call.owner === "B" && call.path === AVATAR_PATH).length,
+        1,
+        "B has only its independently requested dispatch",
+      );
+      if (operation === "resolve") assert.equal(result.value, "A-brush");
+      if (operation === "map")
+        assert.deepEqual(
+          result.value,
+          { image: TINY_PNG, width: 1, height: 1 },
+          "inspection returns A's generated image with actual dimensions",
+        );
+      if (operation === "location" && variant === "ordinary")
+        assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image");
+      if (operation === "store" && !["failure", "disposed"].includes(variant)) {
+        assert.equal(a.world().venues[0]!.presentation.image?.id, "A-image");
+      }
+      if (variant === "cas")
+        assert.equal(a.world().spriteCardFlipEnabled, false, "losing save preserves authoritative concurrent fields");
+      if (variant === "context")
+        assert.equal(
+          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image,
+          null,
+          "stale generated context is refused after upload",
+        );
+      if (variant === "only-empty")
+        assert.equal(
+          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id,
+          "winning",
+          "a concurrent saved image wins only-if-empty",
+        );
+      if (operation === "private") {
+        const zone = a.world().venues[0]!.zones!.find((entry) => entry.id === "own-room")!;
+        assert(zone.initialImageAttemptedAt, "private draw claims before provider dispatch");
+        if (variant !== "claim-cas") assert.equal(zone.image?.id, "A-image");
+        await a.scope.run(() => generateFirstPrivateSpaceImage("equal-venue", "own-room"));
+        assert.equal(
+          calls.filter((call) => call.owner === "A" && call.path === AVATAR_PATH).length,
+          draws.length,
+          "repeated entry does not spend again",
+        );
+      }
+    } finally {
+      a.gate.resolve();
+      clearA();
+      clearB();
+      a.release();
+      b.release();
+      a.scope.dispose();
+      b.scope.dispose();
+      globalThis.fetch = oldFetch;
+    }
+  }
+  console.log(
+    "Villages media: 23 paused assembled ownership, claim, CAS, failure and disposal cases passed (synthetic Engine HTTP)",
+  );
+}
+
+await main()
+  .then(mediaConnectionOwnership)
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

@@ -1,0 +1,175 @@
+{
+  "repository": "https://github.com/Pasta-Devs/Marinara-Engine",
+  "revision": "974faebb683842f5a31be34cee65394d9a47c336",
+  "engineVersion": "2.4.6",
+  "capabilityApi": {
+    "major": 1,
+    "minor": 14
+  },
+  "license": "AGPL-3.0",
+  "files": [
+    {
+      "path": "types/achievement.d.ts",
+      "sourceSha256": "7ecbf1a392c19d5ea99da6a16c98cb0d267eefb123a4ea6fbe58d84b81d47852",
+      "symbols": [
+        "AchievementProgress",
+        "CapabilityAchievementHost"
+      ],
+      "sha256": "4c5dbfdc6dbbbeb755109df3a0962f79478882d72ac2b1bb4cab05d10cb175e2"
+    },
+    {
+      "path": "types/capability-runtime.d.ts",
+      "sourceSha256": "ecee0d5b0184e7e6c4f3b560d19204319b554034af8f73a3c6e3f44442aee92c",
+      "symbols": [
+        "CapabilityCharacterRecord",
+        "CapabilityChatActivityUpdate",
+        "CapabilityChatMetadataUpdate",
+        "CapabilityChatRecord",
+        "CapabilityCreateMessageWithSwipeInput",
+        "CapabilityDocumentRecord",
+        "CapabilityDocumentStore",
+        "CapabilityDocumentUpdate",
+        "CapabilityDocumentWrite",
+        "CapabilityEmbeddingHost",
+        "CapabilityGameStateRecord",
+        "CapabilityJsonHost",
+        "CapabilityLanguageModelCompletion",
+        "CapabilityLanguageModelCompletionOptions",
+        "CapabilityLanguageModelContextFit",
+        "CapabilityLanguageModelHost",
+        "CapabilityLanguageModelMessage",
+        "CapabilityLanguageModelRequest",
+        "CapabilityLorebookCategory",
+        "CapabilityLorebookCreateInput",
+        "CapabilityLorebookEntryInput",
+        "CapabilityLorebookEntryRecord",
+        "CapabilityLorebookEntrySelection",
+        "CapabilityLorebookRecord",
+        "CapabilityLorebookUpdateInput",
+        "CapabilityMessageRecord",
+        "CapabilityPersistenceHost",
+        "CapabilityPersistenceSession",
+        "CapabilityPersonaCreateInput",
+        "CapabilityPersonaRecord",
+        "CapabilityPersonaUpdateInput",
+        "CapabilityResolvedLanguageModel",
+        "CapabilityResourceHost",
+        "CapabilityRoleplayEventAudience",
+        "CapabilityRoleplayEventInput",
+        "CapabilityRoleplayEventRecord",
+        "CapabilityRuntimeHost",
+        "CapabilityRuntimeLogArgument",
+        "CapabilityRuntimeLogger",
+        "CapabilitySpatialSnapshotStore",
+        "CapabilitySpatialSnapshotWrite"
+      ],
+      "sha256": "a331356d4f44c84feb8d318b5230bd27fe019b5721ba1968625de6cd609e7cc6"
+    },
+    {
+      "path": "types/chat.d.ts",
+      "sourceSha256": "5e26758375c38c6210d2371ccf8fa46f3ed2aac397fcfffb754dfebd0421b348",
+      "symbols": [
+        "ChatMode",
+        "MessageRole"
+      ],
+      "sha256": "65f77e5fc797240020ef9d4b12037bfab172a47df3babed28b19f5e803303bd0"
+    },
+    {
+      "path": "types/connection.d.ts",
+      "sourceSha256": "b0e57f4284eb84249aeb75500dbc3b7ade284be5355e342cc586c94bcad5bf87",
+      "symbols": [
+        "IMAGE_GENERATION_QUALITIES",
+        "ImageGenerationQuality"
+      ],
+      "sha256": "58b06721ac9209004a5040b0ff183c06b7b3ee3ec3956234348e656b9b628268"
+    },
+    {
+      "path": "types/generation-integration.d.ts",
+      "sourceSha256": "30520750ec32a18f9d1660dd5d52c51f59a528c1d6f438a0184a83fa14b87e03",
+      "symbols": [
+        "CapabilityConnectionFallbackOptions",
+        "CapabilityIntegrationHost",
+        "CapabilityIntegrationProvider",
+        "ChatCompletionResult",
+        "ChatMediaAttachment",
+        "ChatMessage",
+        "ChatOptions",
+        "ConnectionAdmissionMode",
+        "ConnectionAttemptFinalizer",
+        "ConnectionAttemptOutcome",
+        "FallbackConnection",
+        "GenerationFallbackCategory",
+        "GenerationFallbackNotice",
+        "GenerationFallbackNotifier",
+        "GenerationProviderOrigin",
+        "ImageGenRequest",
+        "ImageGenResult",
+        "LLMToolCall",
+        "LLMToolDefinition",
+        "LLMUsage",
+        "LtxDirectorPromptInput",
+        "SaveImageToDiskOptions",
+        "StagedGalleryImage",
+        "VideoGenerationRequest",
+        "VideoGenerationResult",
+        "VideoReferenceImage",
+        "VideoReferencePublicUploadExpiry",
+        "VideoReferencePublicUploadOptions"
+      ],
+      "sha256": "c4dbc2fd38bde9e198235c70a2e8eaee156675c5b66395e4946d4a4cc84a01e1"
+    },
+    {
+      "path": "types/image-generation-defaults.d.ts",
+      "sourceSha256": "ce1cc0c69c2c6c430558148be34c827864112a119fc8646d12a5ff5b338784ca",
+      "symbols": [
+        "Automatic1111Defaults",
+        "ComfyUiDefaults",
+        "ComfyUiLoraSetting",
+        "ImageDefaultsService",
+        "ImageGenerationDefaultsProfile",
+        "NovelAiDefaults"
+      ],
+      "sha256": "a1306dd51addb0f88868b39d406414aac89328108bf6bb856b9c30b8784ffaf2"
+    },
+    {
+      "path": "types/prompt.d.ts",
+      "sourceSha256": "d0677a9a410855c7af62506c88905238934af30288ce8607fc3ad854b6f0f804",
+      "symbols": [
+        "GENERATION_PARAMETER_SEND_KEYS",
+        "GenerationParameterSendKey",
+        "GenerationParameterSendMap"
+      ],
+      "sha256": "a0e8b7e2464cb3e21fb9c66147793dccb82fabcbc731e3c4b966afc6078b86eb"
+    },
+    {
+      "path": "types/sidecar.d.ts",
+      "sourceSha256": "29a9bd79cb256e45fe64c35d58015ecb2e4b77490b91b33935dc9a9edb988d87",
+      "symbols": [
+        "SceneIllustrationCharacterPrompt"
+      ],
+      "sha256": "1a306d36ec65bb7d90a918b74cfbf4eeb7796bf1a4a416b575a92bf00efa621e"
+    },
+    {
+      "path": "types/spatial-context.d.ts",
+      "sourceSha256": "74489f0d1a4be65b0cfe1e05f9ce5d4ba0ab9a2eebb2f9e6c992a3b46511c88b",
+      "symbols": [
+        "SpatialContextSnapshot",
+        "SpatialSnapshotSource"
+      ],
+      "sha256": "c270821e257faa9c840d16078351651072d6a4bdba631ea31d3af56f6d6abd42"
+    }
+  ],
+  "roots": [
+    "CapabilityCharacterRecord",
+    "CapabilityDocumentStore",
+    "CapabilityLanguageModelCompletion",
+    "CapabilityLanguageModelHost",
+    "CapabilityLanguageModelMessage",
+    "CapabilityPersistenceHost",
+    "CapabilityPersonaRecord",
+    "CapabilityResolvedLanguageModel",
+    "CapabilityResourceHost",
+    "CapabilityRuntimeHost",
+    "CapabilityRuntimeLogger"
+  ]
+}

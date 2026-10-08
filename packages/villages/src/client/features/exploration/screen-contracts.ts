@@ -1,0 +1,41 @@
+import type { TownMapView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { MapFrameShape, MapPin, MenuPage, PortraitMap } from "../../shared/types.js";
+import type { DossierNavigation } from "../residents/villages-dossier.js";
+import type { ExplorationSheet, ExplorationTab } from "./villages-exploration.js";
+import type { MobileMapView } from "./villages-mobile-map.js";
+
+/** Values and actions used by ExplorationScreen; independent of shell implementation. */
+export type ExplorationScreenController = {
+  readonly busy: boolean;
+  readonly catchingUp: boolean;
+  readonly closeExploration: () => void;
+  readonly error: string;
+  readonly explorationOrigin: React.RefObject<HTMLElement | null>;
+  readonly explorationReturnTab: React.RefObject<ExplorationTab>;
+  readonly explorationSearch: { places: string; people: string };
+  readonly exploreSheet: ExplorationSheet | null;
+  readonly lastSceneEnding: string;
+  readonly mobile: boolean;
+  readonly navigationView: MobileMapView | null;
+  readonly openMenu: (tab: MenuPage) => void;
+  readonly openPerson: (navigation: DossierNavigation) => void;
+  readonly openPlaceId: string | null;
+  readonly placingProjectId: string;
+  readonly portraits: PortraitMap;
+  readonly savedPins: MapPin[];
+  readonly savedTownMapShape: MapFrameShape;
+  readonly savedTownMapView: TownMapView;
+  readonly setBusy: React.Dispatch<React.SetStateAction<boolean>>;
+  readonly setError: React.Dispatch<React.SetStateAction<string>>;
+  readonly setExplorationSearch: React.Dispatch<React.SetStateAction<{ places: string; people: string }>>;
+  readonly setExploreSheet: React.Dispatch<React.SetStateAction<ExplorationSheet | null>>;
+  readonly setFocusedProjectId: (id: string) => void;
+  readonly setNavigationView: React.Dispatch<React.SetStateAction<MobileMapView | null>>;
+  readonly setOpenPlaceId: React.Dispatch<React.SetStateAction<string | null>>;
+  readonly setPlacingProjectId: React.Dispatch<React.SetStateAction<string>>;
+  readonly setSnapshot: React.Dispatch<React.SetStateAction<VillageSnapshot>>;
+  readonly settingsError: string;
+  readonly snapshot: VillageSnapshot;
+  readonly townMapImage: string;
+  readonly venueExplorationActions: (place: VillageVenue) => { label: string; onSelect: () => void }[];
+};

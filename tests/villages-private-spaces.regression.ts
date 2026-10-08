@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import {
   defaultVillageState,
   coerceVillageState,
-  readVillageState,
-  mutateVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import { defaultVenueSpace } from "../packages/villages/src/engine/packages/server/src/services/villages/venue-model.js";
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   canOccupyZone,
   canInviteToZone,
@@ -13,30 +12,28 @@ import {
   resolveVenueZone,
   privateTarget,
   zoneClosed,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/venue-zones.js";
-import { configureVillagesRuntime } from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+} from "../packages/villages/src/server/domain/rules/venue-zones.js";
+
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   preparePrivateSpaces,
   retryPrivateSpaces,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/private-space-preparation.js";
+} from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   sceneryPrompt,
   sceneryCharacterContext,
   sceneryImageKey,
   readSceneryStyle,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/scenery-context.js";
+} from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import { applyResidenceEditApproval } from "../packages/villages/src/server/features/venues/zone-edits.js";
 import {
-  villageSettings,
   assertVenueImageAccess,
-  applyResidenceEditApproval,
   setVillageVenueImage,
-  readCreationPrivateZones,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/engine/packages/server/src/services/villages/location-image.js";
-import type {
-  VillageVenue,
-  VillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/types.js";
+} from "../packages/villages/src/server/features/venues/services.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { readCreationPrivateZones } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
+import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();
 function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): VillageVenue {
   return {
@@ -345,15 +342,15 @@ async function main() {
       await generateFirstPrivateSpaceImage("own", "player");
       assert.equal(draws, 0, "the player's known personal space keeps image generation optional");
       const { saveVillageConnections } =
-        await import("../packages/villages/src/engine/packages/server/src/services/villages/connections.js");
+        await import("../packages/villages/src/server/features/settings/connections.js");
       await saveVillageConnections({ imageConnectionId: "fixture-image" });
       await mutateVillageState((current) => {
         current.venues[2].playerInvitations = [
           { residentId: "b", zoneId: "staff", recordedAt: stamp, sourceLineId: "visit-vault" },
         ];
       });
-      const { enterVenue, activeVenueSession } =
-        await import("../packages/villages/src/engine/packages/server/src/services/villages/venue-session.js");
+      const { enterVenue } = await import("../packages/villages/src/server/features/scenes/venue-session.js");
+      const { activeVenueSession } = await import("../packages/villages/src/server/features/scenes/live-session.js");
       const visit = await enterVenue("bank", undefined, "", undefined, "staff");
       assert.equal(visit.privateSpaceId, "staff");
       await Promise.all([

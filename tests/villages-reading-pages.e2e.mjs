@@ -1,3 +1,4 @@
+import { checkReadingSessionLifecycle } from "./fixtures/villages-reading-session.fixture.mjs";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,6 +19,7 @@ const prose = `**${sentences.join(" ")}**`;
 const expected = sentences.join(" ");
 mkdirSync("artifacts", { recursive: true });
 try {
+  await checkReadingSessionLifecycle(browser);
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
@@ -112,6 +114,14 @@ try {
     const draft = page.getByRole("textbox", { name: "Message at The Mill" });
     const dock = page.locator(`.${tag}-chat-vn`);
     const tray = page.getByRole("button", { name: /village notice/ });
+    const visitVenueAndReturn = async () => {
+      await page.getByRole("button", { name: "Venue actions" }).click();
+      await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
+      await expect(page.getByRole("main", { name: "View Venue" })).toBeVisible();
+      await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+      await expect(reading).toBeVisible();
+    };
+
     await expect(reading).toBeVisible();
     await expect(page.locator(".mari-home-browser-chrome")).toBeVisible();
     if (mobile) {
@@ -126,6 +136,34 @@ try {
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
+    // Opening a dossier keeps the same mounted scene and its earlier reading position.
+    await previous.click();
+    await expect(text).toHaveText("A quiet afternoon.");
+    await draft.fill("Draft retained across dossier navigation");
+    for (let repeat = 0; repeat < 2; repeat++) {
+      await visitVenueAndReturn();
+      await expect(text).toHaveText("A quiet afternoon.");
+      await expect(draft).toHaveValue("Draft retained across dossier navigation");
+    }
+    if ((await tray.getAttribute("aria-expanded")) === "true") await tray.click();
+
+    events.push({
+      id: "wish-navigation",
+      kind: "wish",
+      text: "Inspect Mara's wish",
+      detail: { text: "Wish update" },
+      wishUpdate: { actorId: "mara", wishId: "swim" },
+    });
+    await expect(tray).toHaveAccessibleName("3 village notices");
+    await expect(page.getByLabel("Village events")).toBeVisible();
+    // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
+    await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
+    await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await expect(text).toHaveText("A quiet afternoon.");
+    await expect(draft).toHaveValue("Draft retained across dossier navigation");
+    await tray.click();
+    await next.click();
     if (mobile) {
       await expect(counter).toContainText("Page 1/");
       await previous.click();
@@ -136,6 +174,20 @@ try {
       assert.equal((await page.locator(`.${tag}-chat-vn-portrait`).boundingBox()).width, 32);
       assert.ok((await reading.boundingBox()).width > width - 48, "text spans the card width");
       await draft.fill("Preserve this draft");
+
+      await next.click();
+      await expect(counter).toContainText("Page 2/");
+      const retainedPage = await counter.textContent();
+      const retainedText = await text.textContent();
+      for (let repeat = 0; repeat < 2; repeat++) {
+        await visitVenueAndReturn();
+        await expect(counter).toHaveText(retainedPage);
+        await expect(text).toHaveText(retainedText);
+        await expect(draft).toHaveValue("Preserve this draft");
+      }
+      if ((await tray.getAttribute("aria-expanded")) === "true") await tray.click();
+      await previous.click();
+      await expect(counter).toContainText("Page 1/");
       const initialText = await text.textContent();
       await page.screenshot({ path: `artifacts/compact-before-hide-${width}x${height}.png` });
       await page.getByRole("button", { name: "Hide dialogue", exact: true }).click();

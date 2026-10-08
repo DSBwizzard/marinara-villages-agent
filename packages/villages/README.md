@@ -1,5 +1,11 @@
 # Villages
 
+## 0.7.0 architecture baseline
+
+Villages remains a Marinara Engine Agent with its home tab, Venue Scenes, and per-village writing controls. The unused native-chat SpinOff creation and origin routes, roleplay tracker panels, old Engine-preset narration pipeline, and their legacy document readers are retired. Villages no longer requests native chat read/write permissions; its current Scene records use the package document store. Existing native chats and lorebooks are untouched.
+
+Voice, role, setting, attendance, and privacy regressions now exercise the current Scene writer and its captured Venue/Zone state. The obsolete preset-grammar regression is removed. This baseline uses fresh worlds; old-world migration is outside its scope. Feature ownership, private interfaces and layer boundaries are enforced by the repository checks. Optional Decisions integration requires an audited Engine build; other builds retain the System interpretation path.
+
 ## Founding Venue workspace (0.6.169)
 
 Step 3 is now Venues: place photographs successively on a fitted map, then refine details in an independently scrolling inspector. Narrow tabs switch between Map and Details. Drag a photograph, use Move, or place with arrow keys and Enter; rejected moves keep their original coordinates. Photographs retain their size on selection and hover.
@@ -1339,27 +1345,20 @@ packages/villages/
 ├── build/
 │   ├── cover.mjs            # regenerates both PNGs above
 │   └── png.mjs              # dependency-free PNG encoder (from Pixelforge)
-├── src/engine/              # package-owned source, overlaid onto a copy of the
-│   └── packages/            # vendored Engine tree at build time
-│       ├── client/src/villages-package-entry.tsx
-│       └── server/src/
-│           ├── routes/villages.routes.ts
-│           └── services/villages/
-│               ├── server-entry.ts      # registers the tab and the routes
-│               ├── package-runtime.ts   # readiness, storage, agent connection
-│               ├── types.ts             # the snapshot contract
-│               ├── village-store.ts     # the village document and its coercion
-│               ├── village.ts           # reads and writes the village itself
-│               ├── village-clock.ts     # the village day: its parts and its weekdays
-│               ├── village-refresh-scheduler.ts # the timer the village wakes itself on
-│               ├── catalog.ts           # resolves character and persona ids to names
-│               ├── chat.ts             # builds the prompt, speaks to the model, ends a conversation
-│               ├── prompt-preset.ts    # the default knowledge box, macros and caps
-│               ├── narration-preset.ts # reads a player's Engine preset over the loopback API
-│               ├── narration-prompt.ts # assembles a narration turn through the Engine's phases
-│               ├── connections.ts      # which connection each kind of work uses
-│               ├── coerce.ts           # shared input coercion
-│               └── errors.ts           # shared error helpers
+├── package-definition.mjs   # package identity, entry points and permissions
+├── src/
+│   ├── client/
+│   │   ├── entry/           # Marinara interface registration
+│   │   ├── shell/           # navigation and feature assembly
+│   │   ├── features/        # screens, state, actions and styles
+│   │   └── shared/          # reusable interface controls and requests
+│   ├── server/
+│   │   ├── entry/           # application lifecycle and route assembly
+│   │   ├── features/        # feature services and HTTP handlers
+│   │   ├── domain/          # private records, decoding and independent rules
+│   │   ├── adapters/        # Engine, storage and model connections
+│   │   └── jobs/            # queues, recovery and scheduled work
+│   └── shared/              # client-visible contracts and shared calculations
 ├── manifest.json            # generated
 ├── agents.json              # generated
 ├── client.js                # generated
@@ -1368,7 +1367,7 @@ packages/villages/
 └── locales/en.json          # generated
 ```
 
-`src/engine/` mirrors the Engine's own paths: at build time the builder copies the vendored Engine source into a temporary directory and overlays this tree on top, so `packages/client/src/villages-package-entry.tsx` lands next to the Engine's client sources and can import them by relative path.
+The repository builds this source directly. Required public Engine declarations live separately under `sources/engine-public/`, with their upstream revision and attribution. Ordinary builds use locked repository dependencies and do not copy or modify an Engine checkout.
 
 `manifest.json`, `agents.json`, `client.js`, `server.mjs`, and `locales/en.json` are **generated outputs**. Change the source or the build scripts, then rebuild — never hand-edit them.
 
@@ -1376,10 +1375,12 @@ packages/villages/
 
 ```bash
 node packages/villages/build/cover.mjs        # only when the placeholder art changes
-node scripts/build-feature-packages.mjs villages
+npm ci
+npm run build
+npm run verify:package
 ```
 
-The second command bundles `server.mjs` and `client.js`, writes the manifest, `agents.json`, and `locales/en.json`, and produces a deterministic store-only zip under `artifacts/` named for the manifest version. Set `MARINARA_ENGINE_ROOT` to the current Engine checkout to provide its `esbuild` and client dependencies.
+The build bundles `server.mjs` and `client.js`, writes package metadata, and retains a deterministic archive under `artifacts/<version>/<source-digest>/<archive-hash>.zip`. The build receipt identifies its source revision and inputs. `MARINARA_ENGINE_ROOT` is needed only for separately identified Engine compatibility tests.
 
 Then run the repository checks:
 
@@ -1387,7 +1388,7 @@ Then run the repository checks:
 npm run check
 ```
 
-Because `villages` is listed in `scripts/catalog-incomplete.mjs`, the builder keeps it out of every published catalog lane, so the catalog counts and the package guidance tables stay unchanged while it is being built. Delete the id from that set and rebuild the catalog when it graduates.
+Generated bundles, metadata, archives and local catalogs are ignored by Git. Commit source, tests, definitions and documentation. Staging integration identifies each package by source and archive hash; increment the version when deliberately releasing a batch. Published numbered release contents remain immutable. See [DEVELOPMENT.md](../../DEVELOPMENT.md) for validation, release policy and the test inventory.
 
 ## Relationships
 

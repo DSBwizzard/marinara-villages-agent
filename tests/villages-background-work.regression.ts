@@ -1,9 +1,7 @@
-import { proposeRemap } from "../packages/villages/src/engine/packages/server/src/services/villages/native-remap.js";
+import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import assert from "node:assert/strict";
-import {
-  configureVillagesRuntime,
-  completeWithRoom,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/package-runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   queueBackgroundJob,
   registerBackgroundHandler,
@@ -14,13 +12,10 @@ import {
   villageBackgroundPresence,
   hasVillagePresence,
   recoverBackgroundWork,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
-import {
-  defaultVillageState,
-  mutateVillageState,
-  readVillageState,
-} from "../packages/villages/src/engine/packages/server/src/services/villages/village-store.js";
-import type { BackgroundInput } from "../packages/villages/src/engine/packages/server/src/services/villages/background-work.js";
+} from "../packages/villages/src/server/jobs/background-work.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 
 const rows = new Map<string, any>();
 let writesFail = false;

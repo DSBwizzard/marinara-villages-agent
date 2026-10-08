@@ -1,3 +1,5 @@
+import { villageRouteSource } from "./route-source.js";
+import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -6,15 +8,17 @@ import { PNG } from "pngjs";
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-  const services = join(root, "packages/villages/src/engine/packages/server/src/services/villages");
-  const {
-    buildTownMapPrompt,
-    buildTownMapNegativePrompt,
-    MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH,
-    DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
-    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
-    generateVillageTownMap,
-  } = await import(pathToFileURL(join(services, "town-map-image.ts")).href);
+  const services = join(root, "packages/villages/src/server");
+  const { buildTownMapPrompt, buildTownMapNegativePrompt, MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH } = await import(
+    pathToFileURL(join(services, "domain/rules/town-map-image-rules.ts")).href
+  );
+  const { generateVillageTownMap } = await import(
+    pathToFileURL(join(services, "features/media/town-map-image.ts")).href
+  );
+  const { DEFAULT_TOWN_MAP_LAYOUT_PROMPT } =
+    await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
+  const { DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } =
+    await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   const {
     TOWN_MAP_EXPECTED_HEIGHT,
     TOWN_MAP_EXPECTED_WIDTH,
@@ -22,11 +26,11 @@ async function main() {
     villageCurrentSetting,
     villageFoundingSetting,
     villageRelevantOrigin,
-  } = await import(pathToFileURL(join(services, "prompt-preset.ts")).href);
+  } = await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
   const { defaultVillageState, coerceVillageState } = await import(
-    pathToFileURL(join(services, "village-store.ts")).href
+    pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href
   );
-  const { inspectVillageImage } = await import(pathToFileURL(join(services, "image-generation.ts")).href);
+  const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
   assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
   assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
@@ -257,8 +261,10 @@ async function main() {
     globalThis.fetch = originalFetch;
   }
   // Exercise the actual generation boundary, with a realistic PNG and no network.
-  const { configureVillagesRuntime } = await import(pathToFileURL(join(services, "package-runtime.ts")).href);
-  const { VILLAGE_SHARED_SETTING_RULE } = await import(pathToFileURL(join(services, "narrative-grounding.ts")).href);
+  const { configureVillagesRuntime } = await import(pathToFileURL(join(services, "entry/runtime.ts")).href);
+  const { VILLAGE_SHARED_SETTING_RULE } = await import(
+    pathToFileURL(join(services, "domain/rules/narrative-grounding.ts")).href
+  );
   const documents = new Map<string, any>();
   const releaseRuntime = configureVillagesRuntime({
     persistence: {
@@ -340,7 +346,7 @@ async function main() {
     await assert.rejects(generateVillageTownMap(input), /too large to store/);
     assert.equal(imageRequests.length, 2, "an oversized result must not trigger another paid request");
     const { requestTownMapGeneration, readTownMapGeneration, startTownMapGeneration } = await import(
-      pathToFileURL(join(services, "town-map-generation.ts")).href
+      pathToFileURL(join(services, "jobs/town-map-generation.ts")).href
     );
     let stop = startTownMapGeneration();
     resultImage = generatedImage;
@@ -412,10 +418,7 @@ async function main() {
     globalThis.fetch = originalFetch;
     releaseRuntime();
   }
-  const client = await readFile(
-    join(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-    "utf8",
-  );
+  const client = await clientImplementation();
   for (const step of ["People", "Place", "Venues", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
@@ -437,20 +440,17 @@ async function main() {
     "founding and replacement each generate explicitly",
   );
 
-  const routes = await readFile(
-    join(root, "packages/villages/src/engine/packages/server/src/routes/villages.routes.ts"),
-    "utf8",
-  );
+  const routes = villageRouteSource();
   assert.ok(routes.includes('>("/setup", { bodyLimit: SETTINGS_BODY_LIMIT }'));
   assert.ok(routes.includes('>("/setup/town-map/generate"'));
 
-  const village = await readFile(join(services, "village.ts"), "utf8");
+  const village = await readFile(join(services, "features/founding/founding-setup-service.ts"), "utf8");
   assert.ok(
     village.includes('if (setting.length === 0) throw badRequest("Describe the place and world before founding.")'),
   );
   assert.ok(village.includes("state.townMapImage = townMap.image"));
 
-  const builder = await readFile(join(root, "scripts/build-feature-packages.mjs"), "utf8");
+  const builder = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
   assert.equal(builder.includes('"villages-townmap.png"'), false);
   await assert.rejects(access(join(root, "packages/villages/villages-townmap.png")));
 

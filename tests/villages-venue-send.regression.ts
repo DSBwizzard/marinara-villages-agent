@@ -1,18 +1,16 @@
+import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  createVillagesClientId,
   shouldSubmitVenueKey,
   sceneResend,
-} from "../packages/villages/src/engine/packages/client/src/villages-venue-send.ts";
+} from "../packages/villages/src/client/features/scenes/villages-venue-send.ts";
+import { createVillagesClientId } from "../packages/villages/src/client/shared/request-id.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const ui = readFileSync(
-  resolve(root, "packages/villages/src/engine/packages/client/src/villages-package-entry.tsx"),
-  "utf8",
-);
+const ui = clientImplementation();
 const sendButton = ui.match(
   /className=\{`\$\{ELEMENT_TAG\}-chat-send`\}[\s\S]*?aria-label=\{busy \? "Sending" : "Send"\}/u,
 )?.[0];

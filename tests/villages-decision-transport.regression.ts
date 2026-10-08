@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { join } from "node:path";
-import { loadDecisionEngineModules } from "../packages/villages/src/engine/packages/server/src/services/villages/decisions-adapter.js";
+import { loadDecisionEngineModules } from "../packages/villages/src/server/adapters/engine/decisions-adapter.js";
 
 // Synthetic local provider, never a configured paid connection or an Engine server.
 async function main() {
