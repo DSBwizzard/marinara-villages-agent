@@ -81,26 +81,120 @@ export class VillageApiError extends Error {
     readonly code?: string,
   ) {
     super(message);
+    this.name = "VillageApiError";
   }
 }
 
+const GENERIC_HTTP_ERROR =
+  /^(?:Bad Request|Unauthorized|Forbidden|Not Found|Conflict|Payload Too Large|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)$/iu;
+
 function requestRefusal(payload: unknown, status: number, fallback: string): Error {
   const response = payload as { message?: unknown; error?: unknown } | null;
-  const detail = [response?.message, response?.error].find((value) => typeof value === "string" && value.trim());
+  const detail = [response?.message, response?.error].find(
+    (value) => typeof value === "string" && value.trim() && !GENERIC_HTTP_ERROR.test(value.trim()),
+  );
   const message = typeof detail === "string" ? detail : fallback;
   if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
-    return new Error(`${PRIVILEGED_ACCESS_HINT} (${message})`);
+    return new VillageApiError(
+      `${PRIVILEGED_ACCESS_HINT} (${message})`,
+      status,
+      (payload as { code?: string } | null)?.code,
+    );
   }
   return new VillageApiError(message, status, (payload as { code?: string } | null)?.code);
 }
 
+function requestContext(path: string, init?: RequestInit): string {
+  return `${init?.method?.toUpperCase() ?? "GET"} ${path.split("?")[0]}`;
+}
+
+function requestFailure(path: string, init: RequestInit | undefined, status: number): string {
+  const reason =
+    status === 401
+      ? "Authentication is required."
+      : status === 403
+        ? "Access was denied by the server or review gateway."
+        : status === 404
+          ? "The requested API route or resource was not found."
+          : status === 409
+            ? "The request conflicts with the current saved state. Reload before trying again."
+            : status === 413
+              ? "The request is too large. Reduce the uploaded file or content."
+              : status === 429
+                ? "The request was rate limited. Wait before trying again."
+                : status >= 500
+                  ? "The server could not complete the request. Check the current state before retrying."
+                  : "The server rejected the request. Check the submitted details.";
+  const action =
+    path.split("?")[0] === "/api/villages/setup/reset" ? "Could not reset the village." : "Request failed.";
+  return `${action} ${reason} (HTTP ${status}; ${requestContext(path, init)})`;
+}
+
+function connectionFailure(cause: unknown, path: string, init?: RequestInit): never {
+  if (init?.signal?.aborted || (cause instanceof Error && cause.name === "AbortError")) throw cause;
+  throw new VillageApiError(
+    `Could not reach the server (${requestContext(path, init)}). Check your connection and reload to see whether the action completed before trying again.`,
+    0,
+    "NETWORK_ERROR",
+  );
+}
+
+async function readApiResponse(response: Response, path: string, init?: RequestInit): Promise<unknown> {
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (cause) {
+    if (init?.signal?.aborted || (cause instanceof Error && cause.name === "AbortError")) throw cause;
+    throw new VillageApiError(
+      `Could not read the server response (HTTP ${response.status}; ${requestContext(path, init)}). Reload to check whether the action completed before trying again.`,
+      response.status,
+      "RESPONSE_READ_FAILED",
+    );
+  }
+  let payload: unknown;
+  let validJson = false;
+  try {
+    payload = JSON.parse(text);
+    validJson = true;
+  } catch {
+    // Non-JSON failures may be a plain-text gateway refusal. HTML is never displayed.
+  }
+  if (!response.ok) {
+    if (
+      !validJson &&
+      /^text\/plain\b/iu.test(response.headers.get("Content-Type") ?? "") &&
+      !/<!doctype|<\/?[a-z][a-z0-9:-]*(?:\s|>)/iu.test(text)
+    ) {
+      const detail = text.trim().slice(0, 1200);
+      if (detail && !GENERIC_HTTP_ERROR.test(detail))
+        payload = { message: `${detail} (HTTP ${response.status}; ${requestContext(path, init)})` };
+    }
+    throw requestRefusal(payload, response.status, requestFailure(path, init, response.status));
+  }
+  if (!text.trim() && (response.status === 204 || response.status === 205 || init?.method?.toUpperCase() === "HEAD"))
+    return null;
+  if (!validJson || payload === null) {
+    throw new VillageApiError(
+      `The server returned an invalid or empty JSON response (HTTP ${response.status}; ${requestContext(path, init)}). Reload to check the current state before trying again.`,
+      response.status,
+      "INVALID_RESPONSE",
+    );
+  }
+  return payload;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_PATH}${path}`, {
-    ...init,
-    headers: villagesRequestHeaders(init),
-  });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw requestRefusal(payload, response.status, `The village replied ${response.status}.`);
+  const url = `${API_PATH}${path}`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: villagesRequestHeaders(init),
+    });
+  } catch (cause) {
+    return connectionFailure(cause, url, init);
+  }
+  const payload = await readApiResponse(response, url, init);
   return normalizeVillageSnapshot(payload) as T;
 }
 
@@ -126,15 +220,18 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * player somebody they had already re-dressed.
  */
 export async function requestHost<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    cache: "no-store",
-    credentials: "same-origin",
-    ...init,
-    headers: villagesRequestHeaders(init),
-  });
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw requestRefusal(payload, response.status, `The Engine replied ${response.status}.`);
-  return payload as T;
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...init,
+      headers: villagesRequestHeaders(init),
+    });
+  } catch (cause) {
+    return connectionFailure(cause, path, init);
+  }
+  return (await readApiResponse(response, path, init)) as T;
 }
 
 export function messageFrom(cause: unknown, fallback: string): string {

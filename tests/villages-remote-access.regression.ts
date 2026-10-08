@@ -207,10 +207,14 @@ assert.equal(
   "Privileged API is loopback-only",
   "a loopback-only refusal is not about the secret either",
 );
-assert.equal(buildRefusal({ error: "Unauthorized" }, 401, "x").message, "Unauthorized", "only 403 is the gate");
 assert.equal(
-  buildRefusal(null, 500, "The village replied 500.").message,
-  "The village replied 500.",
+  buildRefusal({ error: "Unauthorized" }, 401, "Authentication is required.").message,
+  "Authentication is required.",
+  "generic HTTP labels use the actionable fallback",
+);
+assert.equal(
+  buildRefusal(null, 500, "The server could not complete the request (HTTP 500).").message,
+  "The server could not complete the request (HTTP 500).",
   "a body that was not JSON falls back to the tab's own sentence",
 );
 
