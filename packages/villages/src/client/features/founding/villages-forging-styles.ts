@@ -35,8 +35,6 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-workspace-artwork img { width:48px; height:48px; object-fit:cover; }
 .villages-workspace-artwork small { display:block; }
 .villages-workspace-save { border-top:1px solid #71664f; padding-top:.6rem; }
-.villages-workspace-checklist { border:1px solid #d2ab72; padding:.5rem; margin:.5rem 0; }
-.villages-workspace-checklist button { width:100%; text-align:left; margin:.15rem 0; }
 .villages-workspace-switch,.villages-workspace-back { display:none; }
 .villages-workspace .marinara-capability-villages-stage[data-photo-pins="true"][data-mobile="false"] .marinara-capability-villages-pin { display:grid; place-items:center; padding:0; min-width:44px; min-height:44px; width:auto; height:auto; background:transparent; border:0; touch-action:none; }
 .villages-workspace .marinara-capability-villages-stage[data-photo-pins="true"] .marinara-capability-villages-pin-photo-card { width:36px; transform:none!important; transition:transform .12s; }

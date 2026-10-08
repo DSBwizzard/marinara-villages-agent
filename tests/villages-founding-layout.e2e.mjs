@@ -155,7 +155,7 @@ const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,ven
 const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
 function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
 window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
-<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} showIssues={false} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} saveStatus='Saved' onState={setState} onMove={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onIssue={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
+<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} saveStatus='Saved' onState={setState} onMove={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
 createRoot(document.getElementById('root')).render(<Harness/>);
 `,
     },
@@ -574,6 +574,8 @@ try {
       await open();
       await inspector.getByRole("button", { name: "Venue", exact: true }).click();
     }
+    await expect(inspector.getByRole("heading", { name: "Before Review", exact: true })).toHaveCount(0);
+    await expect(inspector.getByRole("region", { name: "Details needed before Review", exact: true })).toHaveCount(0);
     await inspector.getByLabel("Venue name", { exact: true }).fill("Autosaved name");
     await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
     if (narrow) {

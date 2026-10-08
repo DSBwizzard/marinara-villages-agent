@@ -708,7 +708,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               existing={snapshot?.isFounded ?? false}
               mapReady={mapReady}
               issues={setupIssues}
-              showIssues={setupShowIssues}
               focusIssue={setupFocusIssue}
               imageTarget={setupImageTarget}
               imageBusy={setupVenueBusy}
@@ -744,7 +743,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               }
               onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
               onDraft={() => void suggestSetupVenues()}
-              onIssue={openIssue}
               onGenerate={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
               onUpload={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
             />

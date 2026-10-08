@@ -15,7 +15,6 @@ export function FoundingWorkspace({
   existing,
   mapReady,
   issues,
-  showIssues,
   focusIssue,
   imageTarget,
   imageBusy,
@@ -29,7 +28,6 @@ export function FoundingWorkspace({
   onArrange,
   onPatch,
   onDraft,
-  onIssue,
   onGenerate,
   onUpload,
 }: {
@@ -42,7 +40,6 @@ export function FoundingWorkspace({
   existing: boolean;
   mapReady: boolean;
   issues: FoundingIssue[];
-  showIssues: boolean;
   focusIssue: FoundingIssue | null;
   imageTarget: { venueId: string; zoneId: string } | null;
   imageBusy: boolean;
@@ -56,7 +53,6 @@ export function FoundingWorkspace({
   onArrange?: () => void;
   onPatch(venue: VillageVenue): void;
   onDraft(): void;
-  onIssue(issue: FoundingIssue): void;
   onGenerate(venue: VillageVenue, area: Area, zoneId?: string): void;
   onUpload(venue: VillageVenue, area: Area, file: File, zoneId?: string): void;
 }) {
@@ -586,20 +582,6 @@ export function FoundingWorkspace({
                   )}
                 </>
               )}
-              {showIssues && issues.length ? (
-                <section className="villages-workspace-checklist" aria-label="Details needed before Review">
-                  <h3>Before Review</h3>
-                  {issues.map((issue) => (
-                    <button
-                      key={`${issue.venueId}:${issue.zoneId ?? ""}:${issue.field}`}
-                      type="button"
-                      onClick={() => onIssue(issue)}
-                    >
-                      {venues.find((venue) => venue.id === issue.venueId)?.name || "Venue"}: {issue.message}
-                    </button>
-                  ))}
-                </section>
-              ) : null}
               <p className="villages-workspace-save" role="status">
                 {saveStatus}
               </p>
