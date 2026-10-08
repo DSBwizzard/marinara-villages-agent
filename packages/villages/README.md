@@ -6,13 +6,15 @@ Villages remains a Marinara Engine Agent with its home tab, Venue Scenes, and pe
 
 Voice, role, setting, attendance, and privacy regressions now exercise the current Scene writer and its captured Venue/Zone state. The obsolete preset-grammar regression is removed. This baseline uses fresh worlds; old-world migration is outside its scope. Feature ownership, private interfaces and layer boundaries are enforced by the repository checks. Optional Decisions integration requires an audited Engine build; other builds retain the System interpretation path.
 
-## Founding Venue workspace (0.6.169)
+## Founding Venue workspace (0.7.1)
 
-Step 3 is now Venues: place photographs successively on a fitted map, then refine details in an independently scrolling inspector. Narrow tabs switch between Map and Details. Drag a photograph, use Move, or place with arrow keys and Enter; rejected moves keep their original coordinates. Photographs retain their size on selection and hover.
+The 0.7.1 founding editor selects one Venue through its map photograph. The inspector has Venue and Zones tabs, with Exterior, Common and Private always available. New residences include both managed spaces; at least one is required. The initial Gathering Place has mandatory public Common Space and no owner or Private Space. Form describes the overall physical place; individual spaces have their own purposes and descriptions.
 
-Venue and individual Zone fields save into the existing device-local draft as they change. A complete suggested draft can proceed directly through placement to Review without confirming each Venue. Review lists missing fields and opens the matching Venue and Zone. Artwork stays optional and deliberate; unrelated navigation and placement remain available during a single image operation. Draft conflicts and save failures retain their recovery controls, and legacy editor checkpoints keep their saved edits.
+Below 704px of available workspace width, selection opens a full-screen editor sheet. Return to map, Escape, tab switches and Venue changes preserve incomplete edits. Disabled spaces retain their complete draft and optional photographs, including after reload. Older unfounded drafts keep prohibited Gathering Private content inactive and require any missing managed-space details before founding. Existing worlds and later Project layouts retain their rules.
 
-The founding-layout browser regression uses mocked requests and synthetic artwork to exercise desktop/phone layouts, direct autosave, placement, optional artwork, request races and draft recovery. Packaged runtime verification uses isolated provider-free storage.
+Map photographs rest at 36px with 44px touch targets and enlarge temporarily on desktop hover or keyboard focus. Artwork remains deliberate. Villager Private interiors remain server-protected until discovered; Common Purpose survives suggestions and final snapshots. The founding browser suite uses mocked requests and synthetic art; packaged Docker acceptance is separate from provider-free startup smoke.
+
+Venue and Zone edits save into the device-local draft as they change. Complete suggestions can proceed through placement to Review without visiting every editor. Review opens the exact Venue, Zone and missing field. Drag, Move, and arrow-key/Enter placement remain available; rejected moves retain their coordinates. Save failures and revision conflicts retain recovery controls and block leaving or founding until resolved.
 
 ## Venue and Zone access (0.6.168)
 

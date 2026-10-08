@@ -39,8 +39,16 @@ function input(name: string) {
       category: id === "hall" ? "public-center" : "house",
       classes: [id === "hall" ? "gathering" : "residence"],
       layoutVersion: 1,
-      layout: "exterior",
-      spaces: [],
+      layout: "common",
+      spaces: [
+        {
+          id: "common:base",
+          name: "Shared room",
+          purpose: "Conversation",
+          description: "A table",
+          venueClass: id === "hall" ? "gathering" : "residence",
+        },
+      ],
       privateSpaces: [],
       occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
       presentation: { x: 0.2 + index * 0.2, y: 0.5 },

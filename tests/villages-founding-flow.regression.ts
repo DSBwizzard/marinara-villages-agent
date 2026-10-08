@@ -339,6 +339,8 @@ async function main() {
         {
           venueClass: "residence",
           description: "A hearth and a low table",
+          name: "Hearth room",
+          purpose: "Sharing meals",
           image: insideImage,
           state: {
             condition: "lived in",
@@ -361,8 +363,16 @@ async function main() {
   assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
-    () => parsePlace({ ...parsed, layout: "common", spaces: [{ venueClass: "residence", description: "" }] }, true),
-    /Common Space/,
+    () =>
+      parsePlace(
+        {
+          ...parsed,
+          layout: "common",
+          spaces: [{ venueClass: "residence", name: "Room", purpose: "Meals", description: "" }],
+        },
+        true,
+      ),
+    /visible Zone/,
   );
 
   const client = await clientImplementation();
@@ -636,8 +646,10 @@ async function foundingConnectionOwnership() {
                     venues: draftRows.map((row) => ({
                       ...row,
                       name: `${label} ${row.name}`,
-                      commonName: "",
-                      commonDescription: "",
+                      layout: "common",
+                      commonName: "Shared room",
+                      commonPurpose: "Conversation",
+                      commonDescription: "A table",
                       privateName: "",
                       privatePurpose: "",
                       privateDescription: "model secret",

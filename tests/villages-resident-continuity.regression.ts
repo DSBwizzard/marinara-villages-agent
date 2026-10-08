@@ -213,7 +213,10 @@ async function setupPersistence() {
               content: JSON.stringify({
                 venues: input.venues.map((venue: any) => ({
                   ...venue,
-                  layout: "exterior",
+                  layout: "common",
+                  commonName: "Common Space",
+                  commonPurpose: "Conversation",
+                  commonDescription: "A table",
                   name: venue.id + " space",
                   form: "Room",
                   description: "A doorway.",
@@ -241,8 +244,16 @@ async function setupPersistence() {
       category: id === "hall" ? "public-center" : "house",
       classes: [id === "hall" ? "gathering" : "residence"],
       layoutVersion: 1,
-      layout: "exterior",
-      spaces: [],
+      layout: "common",
+      spaces: [
+        {
+          id: "common:base",
+          name: "Room",
+          purpose: "Conversation",
+          description: "A table",
+          venueClass: id === "hall" ? "gathering" : "residence",
+        },
+      ],
       privateSpaces: [],
       occupancy: { playerHome: id === "player", residentCharacterId: id === "aqua" ? id : null, homeKind: null },
       presentation: { x: 0.2 + index * 0.2, y: 0.5 },

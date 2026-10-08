@@ -408,19 +408,26 @@ export function useFoundingRosterReconciliation(ports: {
       const center = rows.find((row) => row.category === "public-center");
       const emptyVenue = (residence: boolean, player = false) => {
         const row = newSetupVenue(freshRowKey(), residence ? "residence" : "gathering", 0.5, 0.5, player);
-        return { ...row, layout: "exterior" as const, presentation: { ...row.presentation, x: null, y: null } };
+        return { ...row, presentation: { ...row.presentation, x: null, y: null } };
       };
       const next = [
         home ?? emptyVenue(true, true),
-        ...setupFoundingVillagerIds.map(
-          (id) =>
-            rows.find((row) => row.occupancy.residentCharacterId === id) ?? {
-              ...emptyVenue(true),
-              name: (catalog?.find((person) => person.id === id)?.name ?? "Villager") + "'s living space",
-              residentIds: [id],
-              occupancy: { playerHome: false, residentCharacterId: id, homeKind: null },
-            },
-        ),
+        ...setupFoundingVillagerIds.map((id) => {
+          const existing = rows.find((row) => row.occupancy.residentCharacterId === id);
+          if (existing) return existing;
+          const venue = emptyVenue(true);
+          return {
+            ...venue,
+            name: (catalog?.find((person) => person.id === id)?.name ?? "Villager") + "'s living space",
+            residentIds: [id],
+            occupancy: { playerHome: false, residentCharacterId: id, homeKind: null },
+            privateSpaces: venue.privateSpaces?.map((zone) => ({
+              ...zone,
+              ownerId: id,
+              access: { ...zone.access!, managerIds: [id], memberIds: [id] },
+            })),
+          };
+        }),
         center ?? emptyVenue(false),
       ];
       return next.length === rows.length && next.every((row, index) => row === rows[index]) ? rows : next;

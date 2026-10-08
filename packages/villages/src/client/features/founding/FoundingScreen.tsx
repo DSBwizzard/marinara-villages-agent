@@ -165,14 +165,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       }));
       setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
     };
-    const selectVenue = (venue: SetupVenueDraft) => {
-      const unplaced = venue.presentation.x === null || venue.presentation.y === null;
-      setSelectedSetupVenueId(venue.id);
-      setSetupFocusIssue(null);
-      setMovingSetupVenueId(unplaced ? venue.id : null);
-      setSetupWorkspace((state) => ({ ...state, view: unplaced ? "map" : "details", paused: !unplaced }));
-      setSetupEditorOpen(false);
-    };
     const moveVenue = (venue: SetupVenueDraft) => {
       setSelectedSetupVenueId(venue.id);
       setMovingSetupVenueId(venue.id);
@@ -206,15 +198,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             if (event.key === "Enter") {
               event.preventDefault();
               const stage = event.currentTarget.querySelector<HTMLElement>(`.${ELEMENT_TAG}-stage`);
-              const photo = stage?.querySelector<HTMLElement>(`.${ELEMENT_TAG}-pin-photo`)?.getBoundingClientRect();
               const photoSize = stage
-                ? parseFloat(getComputedStyle(stage).getPropertyValue("--founding-photo-width")) || 88
-                : 88;
+                ? parseFloat(getComputedStyle(stage).getPropertyValue("--founding-photo-width")) || 36
+                : 36;
               placeSetupPin(setupKeyboardSpot.x, setupKeyboardSpot.y, {
                 width: Number(stage?.dataset.pictureWidth) || 1000,
                 height: Number(stage?.dataset.pictureHeight) || 700,
-                photoWidth: photo?.width ?? photoSize,
-                photoHeight: photo?.height ?? photoSize,
+                photoWidth: photoSize,
+                photoHeight: photoSize,
               });
             } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
               event.preventDefault();
@@ -724,11 +715,18 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               suggestionsBusy={setupSuggestionsBusy}
               suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
               usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
+              saveStatus={
+                draftSaveError ||
+                (draftSaving ? "Saving changes…" : draftSavedAt ? "Changes saved" : "Draft not saved yet")
+              }
               onState={setSetupWorkspace}
-              onSelect={selectVenue}
               onMove={moveVenue}
               onContinue={() => {
-                setMovingSetupVenueId(null);
+                const next = setupVenues.find(
+                  (venue) => venue.presentation.x === null || venue.presentation.y === null,
+                );
+                setSelectedSetupVenueId(next?.id ?? null);
+                setMovingSetupVenueId(next?.id ?? null);
                 setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
               }}
               onArrange={

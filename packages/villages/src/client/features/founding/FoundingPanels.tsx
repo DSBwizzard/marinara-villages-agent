@@ -18,6 +18,7 @@ import type {
 } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
+import { startingZone } from "./founding-template.js";
 import { useEffect, useState } from "react";
 
 export const emptyScenarioImprint = (): ScenarioImprint => ({
@@ -51,7 +52,7 @@ export function newSetupVenue(
   index = 1,
 ): SetupVenueDraft {
   const name = venueClass === "gathering" ? "Gathering Place" : playerHome ? "Your residence" : `Residence ${index}`;
-  return {
+  const venue: SetupVenueDraft = {
     id,
     name,
     form: "",
@@ -67,6 +68,12 @@ export function newSetupVenue(
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
     capabilities: [],
     state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+  };
+  return {
+    ...venue,
+    layout: venueClass === "gathering" ? "common" : "both",
+    spaces: [startingZone(venue, false)],
+    privateSpaces: venueClass === "gathering" ? [] : [startingZone(venue, true)],
   };
 }
 

@@ -74,6 +74,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           commonDescription: string;
           privateName: string;
           privatePurpose: string;
+          privateDescription?: string;
         }>;
       }>("/setup/venues/suggest", {
         method: "POST",
@@ -158,6 +159,7 @@ export function createFoundingSuggestSetupVenues(ports: {
                       ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
                       name: proposal.privateName,
                       purpose: proposal.privatePurpose,
+                      description: row.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
                       access: draftZonePolicy(
                         row,
                         {

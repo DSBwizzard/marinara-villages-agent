@@ -808,7 +808,14 @@ async function main() {
         form: "A converted diner",
         classes: ["residence"],
         description: "A modest home for the player.",
-        spaces: [{ venueClass: "residence", description: "A warm room with tables and a small hearth." }],
+        spaces: [
+          {
+            venueClass: "residence",
+            name: "Hearth room",
+            purpose: "Meals",
+            description: "A warm room with tables and a small hearth.",
+          },
+        ],
         presentation: { x: 0.2, y: 0.3 },
         occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
       },
@@ -829,7 +836,14 @@ async function main() {
         form: "A sleeping pod",
         classes: ["residence"],
         description: "Millie's small home.",
-        spaces: [{ venueClass: "residence", description: "A compact room with a woven mat." }],
+        spaces: [
+          {
+            venueClass: "residence",
+            name: "Common room",
+            purpose: "Rest",
+            description: "A compact room with a woven mat.",
+          },
+        ],
         presentation: { x: 0.4, y: 0.5 },
         occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
       },
@@ -841,7 +855,14 @@ async function main() {
         form: "An open square",
         classes: ["gathering"],
         description: "A public square where neighbours meet.",
-        spaces: [{ venueClass: "gathering", description: "An open central yard with benches." }],
+        spaces: [
+          {
+            venueClass: "gathering",
+            name: "Square",
+            purpose: "Conversation",
+            description: "An open central yard with benches.",
+          },
+        ],
         category: "public-center",
         presentation: { x: 0.6, y: 0.7 },
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
