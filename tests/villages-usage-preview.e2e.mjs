@@ -92,7 +92,11 @@ try {
     await expect(meter).toContainText("1 requests remaining");
     await expect(meter).toContainText("Player: regenerate Agenda");
     const box = await meter.boundingBox();
-    assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1);
+    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+    assert.ok(
+      box && box.x >= 0 && box.x + box.width <= viewport.width + 1,
+      "floating meter stays inside the active fullscreen viewport",
+    );
     await page.screenshot({ path: resolve("artifacts/usage-preview-" + width + ".png") });
     await page.evaluate(() => document.exitFullscreen());
     await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBe(null);

@@ -230,6 +230,7 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       popover="manual"
       style={{
         position: "fixed",
+        boxSizing: "border-box",
         inset: "max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) auto auto",
         margin: 0,
         border: 0,

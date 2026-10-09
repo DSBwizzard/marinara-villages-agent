@@ -150,7 +150,10 @@ try {
       assert.equal(boxes.position, "fixed");
       assert.equal(boxes.content.top, 0, "usage overlay reserves no space");
       assert.equal(boxes.content.height, 900, "screen keeps its full available height");
-      assert.ok(boxes.meter.right <= width && boxes.scroll <= width, "summary wraps without horizontal overflow");
+      assert.ok(
+        boxes.meter.left >= 0 && boxes.meter.right <= width && boxes.scroll <= width,
+        "summary and expanded details stay inside the viewport",
+      );
     };
     await assertFlow();
     await page.evaluate(() => {
