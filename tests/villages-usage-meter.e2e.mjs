@@ -139,7 +139,7 @@ try {
     const assertFlow = async () => {
       const boxes = await page.evaluate(() => {
         const meter = document.querySelector('[aria-label="Villages AI usage"]');
-        const content = meter.nextElementSibling;
+        const content = document.querySelector("marinara-capability-villages").firstElementChild.lastElementChild;
         return {
           meter: meter.getBoundingClientRect().toJSON(),
           content: content.getBoundingClientRect().toJSON(),
@@ -147,11 +147,28 @@ try {
           scroll: document.documentElement.scrollWidth,
         };
       });
-      assert.equal(boxes.position, "static");
-      assert.ok(boxes.meter.bottom <= boxes.content.top + 1, "meter reserves space instead of overlaying controls");
+      assert.equal(boxes.position, "fixed");
+      assert.equal(boxes.content.top, 0, "usage overlay reserves no space");
+      assert.equal(boxes.content.height, 900, "screen keeps its full available height");
       assert.ok(boxes.meter.right <= width && boxes.scroll <= width, "summary wraps without horizontal overflow");
     };
     await assertFlow();
+    await page.evaluate(() => {
+      const modal = document.createElement("dialog");
+      modal.id = "usage-modal-fixture";
+      modal.textContent = "Modal fixture";
+      document.body.append(modal);
+      modal.showModal();
+    });
+    await expect.poll(() => meter.evaluate((node) => node.parentElement.id)).toBe("usage-modal-fixture");
+    await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
+    await expect(meter).toContainText("18 requests");
+    await page.keyboard.press("Escape");
+    await expect(meter.getByRole("button", { name: /^Villages AI usage/ })).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(() => page.evaluate(() => document.getElementById("usage-modal-fixture").open)).toBe(true);
+    await page.evaluate(() => document.getElementById("usage-modal-fixture").close());
+    await expect.poll(() => meter.evaluate((node) => node.parentElement.tagName)).toBe("BODY");
+    await page.evaluate(() => document.getElementById("usage-modal-fixture").remove());
     await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
     await expect(meter).toContainText("18 requests");
     await expect(meter).toContainText("¥2.9400 ≈ $0.4200");

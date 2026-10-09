@@ -1,4 +1,5 @@
 import { FoundingHelp } from "./FoundingField.js";
+import { FoundingDialog } from "./FoundingDialog.js";
 import type {
   CatalogEntry,
   PersonaEntry,
@@ -8,15 +9,7 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type {
-  IdentityChoice,
-  IdentityPreview,
-  PersonaPreview,
-  Portrait,
-  PortraitMap,
-  SetupVenueDraft,
-  TownMapOptions,
-} from "../../shared/types.js";
+import type { Portrait, PortraitMap, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { startingZone } from "./founding-template.js";
@@ -89,88 +82,50 @@ export async function requestSetupMapReceipt(path: string, init?: RequestInit): 
   }
 }
 
-/** Shared visual selection pattern; callers supply their own identity and status data. */
-function IdentityChoiceStrip({
-  label,
-  choices,
-  selectedId,
-  onSelect,
-  disabled,
-  emptyMessage,
-}: {
-  label: string;
-  choices: IdentityChoice[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  disabled: boolean;
-  emptyMessage: string;
-}) {
-  return choices.length ? (
-    <div className={`${ELEMENT_TAG}-identity-strip`} role="group" aria-label={label}>
-      {choices.map((choice) => (
-        <button
-          key={choice.id}
-          type="button"
-          className={`${ELEMENT_TAG}-identity-card`}
-          aria-pressed={selectedId === choice.id}
-          disabled={disabled}
-          onClick={() => onSelect(choice.id)}
-        >
-          <AvatarFace
-            portrait={choice.portrait}
-            name={choice.name}
-            className={`${ELEMENT_TAG}-identity-card-face`}
-            glyph="person"
-          />
-          <strong>{choice.name}</strong>
-          {choice.hint ? <small>{choice.hint}</small> : null}
-        </button>
-      ))}
-    </div>
-  ) : (
-    <p className={`${ELEMENT_TAG}-hint`}>{emptyMessage}</p>
-  );
-}
-
-function IdentityChoicePreview({ value }: { value: IdentityPreview }) {
-  return (
-    <section className={`${ELEMENT_TAG}-identity-preview`} aria-label={`${value.name} overview`}>
-      <AvatarFace
-        portrait={value.portrait}
-        name={value.name}
-        className={`${ELEMENT_TAG}-identity-preview-face`}
-        glyph="person"
-      />
-      <div className={`${ELEMENT_TAG}-identity-preview-copy`}>
-        <h3>{value.name}</h3>
-        {value.overview ? <p className={`${ELEMENT_TAG}-identity-overview`}>{value.overview}</p> : null}
-        {value.details.length ? (
-          <dl className={`${ELEMENT_TAG}-identity-details`}>
-            {value.details.map(({ label, text }) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{text}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
-        <p className={`${ELEMENT_TAG}-identity-context`}>{value.context}</p>
-      </div>
-    </section>
-  );
-}
-
-/** Shorten authored text at a word boundary without rewriting the Persona. */
-function identityExcerpt(value: string, limit: number): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= limit) return compact;
-  const boundary = compact.lastIndexOf(" ", limit);
-  const nextBoundary = compact.indexOf(" ", limit);
-  return `${compact.slice(0, boundary > 0 ? boundary : nextBoundary > 0 ? nextBoundary : compact.length).trimEnd()}…`;
-}
-
 function personaChoicePortrait(persona: { avatarPath: string | null; avatarCrop: unknown }): Portrait | undefined {
   return persona.avatarPath ? { url: persona.avatarPath, crop: readAvatarCrop(persona.avatarCrop) } : undefined;
+}
+
+/** One row geometry for both kinds of library identity. */
+function FoundingIdentityRow({
+  id,
+  name,
+  summary,
+  portrait,
+  selected,
+  disabled,
+  action,
+  onClick,
+}: {
+  id: string;
+  name: string;
+  summary?: string;
+  portrait?: Portrait;
+  selected: boolean;
+  disabled: boolean;
+  action: string;
+  onClick(): void;
+}) {
+  return (
+    <button
+      type="button"
+      className="villages-people-identity"
+      data-identity={id}
+      aria-label={name + " · " + action}
+      aria-pressed={selected}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <AvatarFace portrait={portrait} name={name} className={ELEMENT_TAG + "-identity-card-face"} glyph="person" />
+      <span>
+        <strong>{name}</strong>
+        {summary ? <small>{summary}</small> : null}
+      </span>
+      <span className="villages-people-action" aria-hidden="true">
+        {action}
+      </span>
+    </button>
+  );
 }
 
 export function FoundingPersonaSelector({
@@ -181,113 +136,82 @@ export function FoundingPersonaSelector({
 }: {
   personas: PersonaEntry[] | null;
   draft: string;
-  onDraft: (personaId: string) => void;
+  onDraft(id: string): void;
   disabled: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [preview, setPreview] = useState<PersonaPreview | null>(null);
-  const [previewProblem, setPreviewProblem] = useState("");
-  const selected = personas?.find((entry) => entry.id === draft);
-  const selectedId = selected?.id;
-  const normalized = query.trim().toLocaleLowerCase();
+  const selected = personas?.find((person) => person.id === draft);
   const choices = (personas ?? [])
-    .filter((entry) => !normalized || `${entry.name} ${entry.summary}`.toLocaleLowerCase().includes(normalized))
-    .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }))
-    .map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      portrait: personaChoicePortrait(entry),
-      hint: entry.summary,
-    }));
-
-  useEffect(() => {
-    setPreview(null);
-    setPreviewProblem("");
-    if (!draft || !selectedId) return;
-    const controller = new AbortController();
-    void request<{ persona: PersonaPreview }>(`/personas/${encodeURIComponent(draft)}`, {
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!controller.signal.aborted) setPreview(response.persona);
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) setPreviewProblem(messageFrom(cause, "This Persona could not be read."));
-      });
-    return () => controller.abort();
-  }, [draft, selectedId]);
-
-  const adapted: IdentityPreview | null =
-    preview && preview.id === draft
-      ? {
-          id: preview.id,
-          name: preview.name,
-          portrait: personaChoicePortrait(preview),
-          overview: identityExcerpt(
-            preview.description || preview.appearance || preview.personality || preview.backstory,
-            180,
-          ),
-          details: (
-            [
-              ["Appearance", preview.appearance],
-              ["Personality", preview.personality],
-              ["Backstory", preview.backstory],
-            ] as const
-          )
-            .filter(([, text]) => text.trim())
-            .map(([label, text]) => ({ label, text: identityExcerpt(text, 120) })),
-          context: "Villages uses this Persona's name and authored details as your identity in future interactions.",
-        }
-      : null;
-
+    .filter((person) =>
+      (person.name + " " + person.summary).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name));
   return (
-    <div className={`${ELEMENT_TAG}-founding-persona`}>
-      <div className={`${ELEMENT_TAG}-identity-picker-head`}>
-        <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-setup-persona-search`}>
-          Persona
-        </label>
-        <input
-          id={`${ELEMENT_TAG}-setup-persona-search`}
-          className={`${ELEMENT_TAG}-search`}
-          type="search"
-          value={query}
-          placeholder="Search Personas"
-          onChange={(event) => setQuery(event.target.value)}
-          disabled={disabled || personas === null}
+    <div className={ELEMENT_TAG + "-founding-persona"}>
+      {selected ? (
+        <FoundingIdentityRow
+          id={selected.id}
+          name={selected.name}
+          summary={selected.summary}
+          portrait={personaChoicePortrait(selected)}
+          selected
+          disabled={disabled}
+          action="Change"
+          onClick={() => {
+            setQuery("");
+            setOpen(true);
+          }}
         />
-      </div>
-      <IdentityChoiceStrip
-        label="Choose a Persona"
-        choices={choices}
-        selectedId={draft}
-        onSelect={onDraft}
-        disabled={disabled}
-        emptyMessage={
-          personas === null
-            ? "Reading Personas…"
-            : personas.length === 0
-              ? "Create a Persona in your library before founding a village."
-              : "No Personas match your search."
-        }
-      />
-      {draft && personas && !selected ? (
-        <p className={`${ELEMENT_TAG}-error`} role="alert">
-          The saved Persona is no longer in your library. Choose another Persona to continue.
-        </p>
-      ) : adapted ? (
-        <details className="villages-persona-preview">
-          <summary>View Persona details</summary>
-          <IdentityChoicePreview value={adapted} />
-        </details>
-      ) : previewProblem ? (
-        <p className={`${ELEMENT_TAG}-error`} role="alert">
-          {previewProblem}
-        </p>
-      ) : selected ? (
-        <p className={`${ELEMENT_TAG}-hint`}>Reading {selected.name}…</p>
       ) : (
-        <FoundingHelp label="Persona identity">Choose a Persona to see how Villages will know you.</FoundingHelp>
+        <button
+          type="button"
+          disabled={disabled || personas === null || personas.length === 0}
+          onClick={() => {
+            setQuery("");
+            setOpen(true);
+          }}
+        >
+          Choose Persona
+        </button>
       )}
+      {personas === null ? (
+        <p role="status">Reading Personas…</p>
+      ) : personas.length === 0 ? (
+        <p>Create a Persona in your library before founding a village.</p>
+      ) : draft && !selected ? (
+        <p role="alert">The saved Persona is no longer in your library. Choose another Persona to continue.</p>
+      ) : null}
+      {open ? (
+        <FoundingDialog title="Choose Persona" onClose={() => setOpen(false)}>
+          <input
+            type="search"
+            aria-label="Search Personas"
+            placeholder="Search Personas"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="villages-people-choices" role="group" aria-label="Choose a Persona">
+            {choices.map((person) => (
+              <FoundingIdentityRow
+                key={person.id}
+                id={person.id}
+                name={person.name}
+                summary={person.summary}
+                portrait={personaChoicePortrait(person)}
+                selected={person.id === draft}
+                disabled={disabled}
+                action={person.id === draft ? "Selected" : "Select"}
+                onClick={() => {
+                  onDraft(person.id);
+                  setOpen(false);
+                }}
+              />
+            ))}
+            {!choices.length ? <p>No Personas match your search.</p> : null}
+          </div>
+        </FoundingDialog>
+      ) : null}
     </div>
   );
 }
@@ -305,76 +229,88 @@ export function FoundingVillagerPicker({
   onChange(ids: string[]): void;
   disabled: boolean;
 }) {
+  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const choices = [
-    ...(catalog ?? []),
-    ...selectedIds
-      .filter((id) => !catalog?.some((entry) => entry.id === id))
-      .map((id) => ({
+  const selected = selectedIds.map(
+    (id) =>
+      catalog?.find((person) => person.id === id) ?? {
         id,
         name: "Unavailable character",
         summary: "Remove this selection and choose an available card.",
-      })),
-  ];
-  const visible = choices
-    .filter((entry) => entry.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+      },
+  );
+  const choices = (catalog ?? [])
+    .filter((person) =>
+      (person.name + " " + person.summary).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+    )
     .sort((a, b) => a.name.localeCompare(b.name));
+  const toggle = (id: string) =>
+    onChange(selectedIds.includes(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id]);
   return (
-    <section className={`${ELEMENT_TAG}-founding-roster`} aria-label="Founding villagers">
-      <div className={`${ELEMENT_TAG}-identity-picker-head`}>
-        <span>Choose 1–3 villagers</span>
-        <span role="status">{selectedIds.length} of 3 selected</span>
+    <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
+      <small role="status">{selectedIds.length} of 3 selected</small>
+      <div className="villages-people-selected">
+        {selected.map((person) => (
+          <FoundingIdentityRow
+            key={person.id}
+            id={person.id}
+            name={person.name}
+            summary={person.summary}
+            portrait={portraits[person.id]}
+            selected
+            disabled={disabled}
+            action="Remove"
+            onClick={() => toggle(person.id)}
+          />
+        ))}
       </div>
-
-      <input
-        className={`${ELEMENT_TAG}-search`}
-        type="search"
-        aria-label="Search character cards by name"
-        placeholder="Search character cards by name"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
-      <div className={`${ELEMENT_TAG}-founding-roster-grid`} role="group" aria-label="Choose founding villagers">
-        {visible.map((entry) => {
-          const selected = selectedIds.includes(entry.id);
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              className={`${ELEMENT_TAG}-founding-roster-card`}
-              aria-label={entry.name}
-              aria-pressed={selected}
-              disabled={disabled || (!selected && selectedIds.length >= 3)}
-              onClick={() =>
-                onChange(selected ? selectedIds.filter((id) => id !== entry.id) : [...selectedIds, entry.id])
-              }
-            >
-              <AvatarFace
-                portrait={portraits[entry.id]}
-                name={entry.name}
-                className={`${ELEMENT_TAG}-identity-card-face`}
-                glyph="person"
+      <button
+        type="button"
+        disabled={disabled || catalog === null || selectedIds.length >= 3}
+        onClick={() => {
+          setQuery("");
+          setOpen(true);
+        }}
+      >
+        + Add villager
+      </button>
+      {catalog === null ? (
+        <p role="status">Reading character cards…</p>
+      ) : !catalog?.length ? (
+        <p>Add character cards to your library before founding.</p>
+      ) : null}
+      {open ? (
+        <FoundingDialog title="Choose founding villagers" onClose={() => setOpen(false)}>
+          <input
+            type="search"
+            aria-label="Search character cards by name"
+            placeholder="Search characters"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <div className="villages-people-choices" role="group" aria-label="Choose founding villagers">
+            {choices.map((person) => (
+              <FoundingIdentityRow
+                key={person.id}
+                id={person.id}
+                name={person.name}
+                summary={person.summary}
+                portrait={portraits[person.id]}
+                selected={selectedIds.includes(person.id)}
+                disabled={disabled || (!selectedIds.includes(person.id) && selectedIds.length >= 3)}
+                action={selectedIds.includes(person.id) ? "✓" : "Select"}
+                onClick={() => toggle(person.id)}
               />
-              <span>
-                <strong>{entry.name}</strong>
-                <small>{entry.summary}</small>
-              </span>
-              <span className={`${ELEMENT_TAG}-roster-check`} aria-hidden="true">
-                {selected ? "✓" : ""}
-              </span>
+            ))}
+            {!choices.length ? <p>No character cards match your search.</p> : null}
+          </div>
+          <footer>
+            <button type="button" className="villages-forging-primary" onClick={() => setOpen(false)}>
+              Done
             </button>
-          );
-        })}
-        {!visible.length ? (
-          <p className={`${ELEMENT_TAG}-hint`}>
-            {catalog === null
-              ? "Reading your character cards…"
-              : choices.length
-                ? "No character cards match your search."
-                : "Add character cards to your library before founding."}
-          </p>
-        ) : null}
-      </div>
+          </footer>
+        </FoundingDialog>
+      ) : null}
     </section>
   );
 }

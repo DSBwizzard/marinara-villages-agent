@@ -1,11 +1,10 @@
-import { FoundingField, FoundingHelp } from "./FoundingField.js";
+import { FoundingField } from "./FoundingField.js";
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 
 export const DEFAULT_PLAYER_ROLE: Readonly<PlayerRole> = {
   enabled: true,
   title: "Project Coordinator",
-  explanation:
-    "People here recognize you as the coordinator for shared Projects. You help consider proposals, find willing builders, and see agreed plans through.",
+  explanation: "",
 };
 const ORDINARY_RESIDENT =
   "You participate as an ordinary resident. You can still receive proposals and organize Projects through cooperation, without an assumed position of authority. You still manage Project lifecycles.";
@@ -15,8 +14,7 @@ export function playerRoleProblem(role: PlayerRole | null): string {
   if (!role.enabled) return "In Villages, you are the one who coordinates construction projects.";
   if (role.title.length > 80 || role.explanation.length > 1_000)
     return "Use a role title of at most 80 characters and an explanation of at most 1,000 characters.";
-  if (role.enabled && (!role.title.trim() || !role.explanation.trim()))
-    return "Give your village role a title and explain why villagers turn to you.";
+  if (role.enabled && !role.title.trim()) return "Give your village role a title.";
   return "";
 }
 
@@ -25,7 +23,7 @@ export function PlayerRoleSummary({ role }: { role: PlayerRole | null | undefine
   return (
     <section className={`${PREFIX}-field`} aria-label="Your place in the village" style={{ overflowWrap: "anywhere" }}>
       <h3>Your place in the village</h3>
-      <p className={`${PREFIX}-hint`}>In Villages, you are the one who coordinates construction projects.</p>
+
       <p className={`${PREFIX}-hint`}>
         <strong>{role ? (role.enabled ? role.title : "Ordinary resident") : "No founding role recorded"}</strong>
       </p>
@@ -36,7 +34,6 @@ export function PlayerRoleSummary({ role }: { role: PlayerRole | null | undefine
             : ORDINARY_RESIDENT
           : "This village keeps its existing narrative framing."}
       </p>
-      <p className={`${PREFIX}-hint`}>Your village role is fixed when founding completes.</p>
     </section>
   );
 }
@@ -56,19 +53,10 @@ export function PlayerRoleFields({
 }) {
   return (
     <fieldset className={`${PREFIX}-field`} aria-label={compact ? "Your role" : undefined}>
-      {!compact ? (
-        <legend className={`${PREFIX}-label`}>
-          Your place in the village{" "}
-          <FoundingHelp label="Your role">
-            In Villages, you coordinate construction projects. Make this responsibility your own. Residents can disagree
-            or refuse; their homes and lives remain theirs. Your choice becomes fixed at founding.
-          </FoundingHelp>
-        </legend>
-      ) : null}
+      {!compact ? <legend className={`${PREFIX}-label`}>Role</legend> : null}
       <div className={`${PREFIX}-founding-role-fields`}>
         <FoundingField
           title="Role title"
-          help="Give your responsibility a title that fits your Persona."
           error={problem && (!role.title.trim() || role.title.length > 80) ? problem : ""}
         >
           <input
@@ -83,29 +71,8 @@ export function PlayerRoleFields({
             onChange={(event) => onChange({ ...role, title: event.target.value })}
           />
         </FoundingField>
-        <FoundingField
-          title="Why villagers turn to you"
-          help="Explain why residents turn to you to coordinate Projects. This role becomes fixed at founding."
-          error={problem && (!role.explanation.trim() || role.explanation.length > 1000) ? problem : ""}
-        >
-          <textarea
-            id={`${PREFIX}-role-explanation`}
-            aria-label="Why villagers turn to you"
-            className={`${PREFIX}-textarea`}
-            value={role.explanation}
-            maxLength={1000}
-            rows={3}
-            required
-            disabled={disabled}
-            onChange={(event) => onChange({ ...role, explanation: event.target.value })}
-          />
-        </FoundingField>
       </div>
-      {problem &&
-      role.title.trim() &&
-      role.explanation.trim() &&
-      role.title.length <= 80 &&
-      role.explanation.length <= 1000 ? (
+      {problem && role.title.trim() && role.title.length <= 80 && role.explanation.length <= 1000 ? (
         <p role="alert" data-founding-problem tabIndex={-1}>
           {problem}
         </p>

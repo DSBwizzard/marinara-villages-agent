@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 type Total = {
@@ -65,8 +66,42 @@ const money = (n: number, currency = "USD") => (currency === "CNY" ? "¥" : "$")
 
 export function VillagesUsageMeter({ request, element }: { request: Request; element: HTMLElement }) {
   const [visible, setVisible] = useState(true);
+  const [overlayParent, setOverlayParent] = useState<Element>(() => document.fullscreenElement ?? document.body);
+  const overlay = useRef<HTMLElement>(null);
+  // A modal makes the rest of the document inert. Mount inside it, then use the
+  // browser top layer so the meter stays both visible and interactive.
+  useEffect(() => {
+    const sync = () => {
+      const dialogs = [...document.querySelectorAll<HTMLDialogElement>("dialog:modal")];
+      const parent = dialogs.at(-1) ?? document.fullscreenElement ?? document.body;
+      setOverlayParent((current) => (current === parent ? current : parent));
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("fullscreenchange", sync);
+    };
+  }, []);
   const [enabled, setEnabled] = useState(false),
     [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!enabled || !visible) setOpen(false);
+  }, [enabled, visible]);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", dismiss, true);
+    return () => document.removeEventListener("keydown", dismiss, true);
+  }, [open]);
   const [view, setView] = useState<View | null>(null),
     [error, setError] = useState("");
   const [selected, setSelected] = useState(""),
@@ -142,6 +177,13 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       setBusy(false);
     }
   };
+  useEffect(() => {
+    const node = overlay.current;
+    if (enabled && visible && node && !node.matches(":popover-open")) node.showPopover();
+    return () => {
+      if (node?.matches(":popover-open")) node.hidePopover();
+    };
+  }, [enabled, visible, overlayParent]);
   if (!enabled || !visible) return null;
   const total = view?.totals,
     fx = view?.exchangeRate?.yuanPerDollar;
@@ -181,15 +223,27 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       body: JSON.stringify({ connectionId: row.connectionId, model: row.model, rate }),
     });
   };
-  return (
+  return createPortal(
     <aside
       aria-label="Villages AI usage"
+      ref={overlay}
+      popover="manual"
       style={{
-        flex: "0 0 auto",
+        position: "fixed",
+        inset: "max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) auto auto",
+        margin: 0,
+        border: 0,
+        width: open ? "min(24rem, calc(100vw - 12px))" : "max-content",
+        maxWidth: "calc(100vw - 12px)",
+        maxHeight: "calc(100dvh - 12px)",
+        overflow: "auto",
+        zIndex: 2147483647,
         minWidth: 0,
-        padding: "0 8px",
+        padding: open ? "6px 8px" : "0",
         color: "var(--foreground, #f5f5f5)",
-        background: "var(--background, #20232a)",
+        background: open ? "var(--background, #20232a)" : "transparent",
+        borderRadius: 16,
+        boxShadow: open ? "0 6px 24px #0008" : "none",
         font: "12px/1.5 Arial,sans-serif",
         overflowWrap: "anywhere",
       }}
@@ -209,12 +263,13 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
             color: "inherit",
             background: "var(--popover, #252b38)",
             border: "1px solid var(--border, #888)",
-            padding: "2px 10px",
+            padding: "2px 8px",
+            fontSize: 11,
             cursor: "pointer",
             whiteSpace: "normal",
           }}
         >
-          AI usage ·{" "}
+          AI ·{" "}
           {error || view?.error
             ? "Unavailable"
             : total
@@ -439,6 +494,7 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
         </div>
       ) : null}
       {error || view?.error ? <p role="alert">{error || view?.error}</p> : null}
-    </aside>
+    </aside>,
+    overlayParent,
   );
 }

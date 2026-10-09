@@ -94,6 +94,14 @@ try {
     const box = await meter.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1);
     await page.screenshot({ path: resolve("artifacts/usage-preview-" + width + ".png") });
+    await page.evaluate(() => document.exitFullscreen());
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBe(null);
+    await expect.poll(() => meter.evaluate((element) => element.parentElement.tagName)).toBe("BODY");
+    await meter.getByRole("button", { name: /Villages AI usage/ }).click();
+    await expect(meter.getByRole("button", { name: "Villages AI usage", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     assert.ok(previews > 0);
     assert.equal(paid, 0);
     assert.deepEqual(errors, []);

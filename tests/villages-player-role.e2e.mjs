@@ -60,25 +60,29 @@ try {
       };
       await page.route("**/api/villages**", (route) => {
         const url = new URL(route.request().url()).pathname;
-        const value = url.endsWith("/personas")
-          ? { personas: [{ id: "ada", name: "Ada", summary: "A patient observer", isActive: true, avatarPath: null }] }
-          : url.endsWith("/personas/ada")
+        const value = url.endsWith("/catalog")
+          ? { characters: [] }
+          : url.endsWith("/personas")
             ? {
-                persona: {
-                  id: "ada",
-                  name: "Ada",
-                  description: "A patient observer",
-                  appearance: "",
-                  personality: "",
-                  backstory: "",
-                  avatarPath: null,
-                },
+                personas: [{ id: "ada", name: "Ada", summary: "A patient observer", isActive: true, avatarPath: null }],
               }
-            : url.endsWith("/connections")
-              ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
-              : url.endsWith("/lorebooks")
-                ? { books: [] }
-                : snapshot;
+            : url.endsWith("/personas/ada")
+              ? {
+                  persona: {
+                    id: "ada",
+                    name: "Ada",
+                    description: "A patient observer",
+                    appearance: "",
+                    personality: "",
+                    backstory: "",
+                    avatarPath: null,
+                  },
+                }
+              : url.endsWith("/connections")
+                ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
+                : url.endsWith("/lorebooks")
+                  ? { books: [] }
+                  : snapshot;
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
       });
       await page.route("**/api/connections", (route) =>
@@ -116,7 +120,11 @@ try {
         if (scenario.label === "steward") await screenshot(page, "settings-" + width);
         await page.getByRole("button", { name: "Run setup again" }).click();
       } else {
-        await page.locator(".marinara-capability-villages-identity-card").filter({ hasText: "Ada" }).click();
+        await page.getByRole("button", { name: /Ada.*Change/ }).click();
+        await page
+          .getByRole("dialog", { name: "Choose Persona" })
+          .getByRole("button", { name: "Ada · Selected", exact: true })
+          .click();
         await page.locator("summary").filter({ hasText: "Connections · Ready" }).click();
         await expect(page.getByLabel("System", { exact: true })).toBeVisible();
       }
@@ -136,15 +144,13 @@ try {
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
       } else {
-        if (width <= 704) await page.getByRole("button", { name: /^Your role ·/ }).click();
+        await page.getByRole("button", { name: "Edit role", exact: true }).click();
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         const role = page.getByRole("group", { name: "Your role", exact: true });
         await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("Project Coordinator");
         await role.scrollIntoViewIfNeeded();
         await screenshot(page, "founding-" + width);
-        await expect(role.getByRole("textbox", { name: "Why villagers turn to you" })).toHaveValue(
-          /People here recognize you as the coordinator for shared Projects\./,
-        );
+        await expect(page.getByRole("textbox", { name: "Why villagers turn to you" })).toHaveCount(0);
         assert.ok(
           await role.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
           "role controls fit the panel",

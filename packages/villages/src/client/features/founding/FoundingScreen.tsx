@@ -334,12 +334,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           <div hidden={setupStep !== 0}>
             <div className="villages-forging-columns">
               <section className="villages-forging-card">
-                <h3 aria-label="You">
-                  You{" "}
-                  <FoundingHelp label="Persona">
-                    Your Persona supplies your name and authored identity for this village.
-                  </FoundingHelp>
-                </h3>
+                <h3 aria-label="You">You</h3>
                 {setupProblem === "Choose an available Persona." ? (
                   <p role="alert" data-founding-problem tabIndex={-1}>
                     {setupProblem}
@@ -351,17 +346,20 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   onDraft={setPersonaDraft}
                   disabled={busy}
                 />
-                <h3 className="villages-desktop-role-heading">Your role</h3>
+
                 {!snapshot?.isFounded ? (
                   <>
                     <button
                       type="button"
-                      className="villages-mobile-role-toggle"
+                      aria-label="Edit role"
+                      className="villages-role-summary"
                       aria-expanded={setupRoleExpanded}
                       aria-controls="villages-founding-role-fields"
                       onClick={() => setSetupRoleExpanded((value) => !value)}
                     >
-                      Your role · {setupPlayerRole?.title || "Customize role"}
+                      <span>Role</span>
+                      <strong>{setupPlayerRole?.title || "Project Coordinator"}</strong>
+                      <span>Edit</span>
                     </button>
                     <div
                       id="villages-founding-role-fields"
@@ -382,12 +380,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 )}
               </section>
               <section className="villages-forging-card">
-                <h3 aria-label="Founding villagers">
-                  Founding villagers{" "}
-                  <FoundingHelp label="Founding villagers">
-                    Choose one to three characters to live here with you.
-                  </FoundingHelp>
-                </h3>
+                <h3 aria-label="Founding villagers">Founding villagers</h3>
                 {setupProblem === "Choose one to three available founding villagers." ? (
                   <p role="alert" data-founding-problem tabIndex={-1}>
                     {setupProblem}
@@ -403,9 +396,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div className="villages-people-connections">
                   <details open={!!connectionSetupProblem}>
                     <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
-                    <FoundingHelp label="Connections">
-                      System and Narration are required. Images are optional.
-                    </FoundingHelp>
                     {connectionSetupProblem && setupProblem === connectionSetupProblem ? (
                       <p role="alert" data-founding-problem tabIndex={-1}>
                         {setupProblem}
@@ -814,11 +804,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           {!snapshot?.isFounded && context ? (
                             <>
                               <p>
-                                {RESIDENT_STORY_ROLES[context.storyRole]} ·{" "}
-                                {RESIDENT_HISTORY_MODES[context.historyMode]}
+                                {context.historyMode === "continue"
+                                  ? "Keep their existing past"
+                                  : RESIDENT_HISTORY_MODES[context.historyMode]}
+                                {context.storyRole !== "unspecified"
+                                  ? " · " + RESIDENT_STORY_ROLES[context.storyRole]
+                                  : ""}
                               </p>
                               {context.storyRole === "custom" ? <p>{context.customDescription}</p> : null}
                               {context.background ? <p>{context.background}</p> : null}
+                              {context.historyMode === "village" ? <p>{context.villageBackstory}</p> : null}
                             </>
                           ) : null}
                         </div>

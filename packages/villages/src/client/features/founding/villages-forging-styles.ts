@@ -167,4 +167,38 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 p[role=alert],.villages-forging-v2 [role=alert],.villages-forging-v2 [data-founding-problem] { color:#ff9ba5; }
 .villages-forging-v2 [aria-invalid=true] { border-color:#ff9ba5; }
 
+
+/* People uses the same selected identity geometry on every device. */
+.villages-people-identity { display:flex!important; align-items:center; gap:.65rem; text-align:left; width:100%; min-width:0; padding:.65rem!important; border-radius:.65rem!important; }
+.villages-people-identity>span:nth-child(2) { display:flex; flex:1; flex-direction:column; min-width:0; gap:.15rem; }
+.villages-people-identity strong { overflow-wrap:anywhere; }
+.villages-people-identity small { display:block!important; color:#c1c9e9; font-size:.8rem; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.villages-people-identity .marinara-capability-villages-identity-card-face { flex:none; width:2.5rem!important; height:2.5rem!important; }
+.villages-people-identity[aria-pressed=true] { background:#30305c!important; border-color:#aa87ff!important; box-shadow:inset 0 0 0 1px #aa87ff; }
+.villages-people-action { flex:none; font-size:.8rem; color:#c4a8ff; }
+.villages-people-selected,.villages-people-choices { display:grid; gap:.5rem; margin:.5rem 0; }
+.villages-forging-v2 .villages-role-summary { display:flex; align-items:center; width:100%; min-width:0; text-align:left; gap:.6rem; border:0; border-top:1px solid #43547d; border-bottom:1px solid #43547d; border-radius:0; margin:.6rem 0 0; background:transparent; }
+.villages-role-summary strong { flex:1; min-width:0; overflow-wrap:anywhere; }
+.villages-role-summary>span { color:#c1c9e9; font-size:.85rem; }
+.villages-role-summary>span:last-child { color:#c4a8ff; }
+.villages-founding-role-editor[data-expanded=false] { display:none; }
+.villages-founding-role-editor .marinara-capability-villages-founding-role-fields { grid-template-columns:minmax(0,1fr); }
+.villages-backstory-row { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin:.5rem 0; padding:.5rem 0; min-width:0; }
+.villages-backstory-row>span { display:flex; align-items:center; flex:1; min-width:5rem; gap:.5rem; overflow-wrap:anywhere; }
+.villages-backstory-row .marinara-capability-villages-identity-card-face { width:2rem; height:2rem; flex:none; }
+.villages-backstory-row>select { flex:1.7; min-width:0; width:auto; max-width:100%; min-height:44px; font:inherit; font-size:.9rem; color:#f3f3ff; background:#141b39; border:1px solid #8574be; border-radius:.5rem; padding:.5rem; }
+.villages-founding-dialog { position:fixed; box-sizing:border-box; width:min(30rem,calc(100vw - 1.5rem)); max-width:calc(100vw - 1.5rem); max-height:calc(100dvh - 1.5rem); margin:auto; padding:1rem; overflow:auto; overscroll-behavior:contain; color:#f3f3ff; background:#141b39; border:2px solid #9d78ed; border-radius:.8rem; box-shadow:0 1rem 4rem #0009; font:inherit; }
+.villages-founding-dialog::backdrop { background:#090c1a99; }
+.villages-founding-dialog * { box-sizing:border-box; }
+.villages-founding-dialog header { display:flex; align-items:center; gap:.5rem; margin-bottom:.75rem; }
+.villages-founding-dialog h3 { flex:1; margin:0; font-size:1.1rem; overflow-wrap:anywhere; }
+.villages-founding-dialog button { min-height:44px; min-width:44px; font:inherit; border:1px solid #596b9b; border-radius:.5rem; color:#f3f3ff; background:#192c4c; padding:.5rem .7rem; cursor:pointer; }
+.villages-founding-dialog button:disabled { opacity:.55; }
+.villages-founding-dialog button:focus-visible { outline:3px solid #c1acff; outline-offset:2px; }
+.villages-founding-dialog input,.villages-founding-dialog textarea,.villages-founding-dialog select { display:block; width:100%; min-width:0; min-height:44px; font:inherit; font-size:1rem; color:#f3f3ff; background:#10172f; border:1px solid #8574be; border-radius:.5rem; padding:.55rem; }
+.villages-founding-dialog textarea { resize:vertical; max-height:14rem; }
+.villages-founding-dialog label { display:block; margin:.7rem 0 .35rem; }
+.villages-founding-dialog p[role=alert] { color:#ffb9bc; }
+.villages-founding-dialog footer { display:flex; justify-content:flex-end; gap:.5rem; padding-top:.75rem; }
+.villages-founding-dialog .villages-forging-primary { background:#6650cf; border-color:#9d88f4; }
 `;
