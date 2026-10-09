@@ -19,7 +19,7 @@ try {
       r.fulfill({
         status: 200,
         contentType: "text/html",
-        body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: "<style>html,body{margin:0;height:100%;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -72,7 +72,7 @@ try {
     await expect(page.getByText(/0 expected AI requests/).first()).toBeVisible();
     await expect(page.getByText(/1 with unknown cost/).first()).toBeVisible();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
-    await expect(meter).toContainText("$0.42 est.");
+    await expect(meter).toContainText("$0.42");
     await expect(meter.getByRole("button", { name: "Villages AI usage", exact: true })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -100,7 +100,7 @@ try {
     await page.screenshot({ path: resolve("artifacts/usage-preview-" + width + ".png") });
     await page.evaluate(() => document.exitFullscreen());
     await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBe(null);
-    await expect.poll(() => meter.evaluate((element) => element.parentElement.tagName)).toBe("BODY");
+    await expect.poll(() => meter.evaluate((element) => element.parentElement?.tagName)).toBe("BODY");
     await meter.getByRole("button", { name: /Villages AI usage/ }).click();
     await expect(meter.getByRole("button", { name: "Villages AI usage", exact: true })).toHaveAttribute(
       "aria-expanded",

@@ -68,6 +68,44 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
   const [visible, setVisible] = useState(true);
   const [overlayParent, setOverlayParent] = useState<Element>(() => document.fullscreenElement ?? document.body);
   const overlay = useRef<HTMLElement>(null);
+  const [bounds, setBounds] = useState({ top: 0, right: 0, width: 0, height: 0 });
+  useEffect(() => {
+    const sync = () => {
+      const rect = element.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const left = Math.max(rect.left, viewport?.offsetLeft ?? 0);
+      const top = Math.max(rect.top, viewport?.offsetTop ?? 0);
+      const right = Math.min(rect.right, (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth));
+      const bottom = Math.min(rect.bottom, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight));
+      const next = {
+        top: top + 4,
+        right: window.innerWidth - right + 6,
+        width: Math.max(0, right - left - 12),
+        height: Math.max(0, bottom - top - 12),
+      };
+      setBounds((current) =>
+        Object.keys(next).every((key) => current[key as keyof typeof next] === next[key as keyof typeof next])
+          ? current
+          : next,
+      );
+    };
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    window.addEventListener("resize", sync);
+    document.addEventListener("scroll", sync, true);
+    document.addEventListener("fullscreenchange", sync);
+    window.visualViewport?.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener("scroll", sync);
+    sync();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sync);
+      document.removeEventListener("scroll", sync, true);
+      document.removeEventListener("fullscreenchange", sync);
+      window.visualViewport?.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener("scroll", sync);
+    };
+  }, [element]);
   // A modal makes the rest of the document inert. Mount inside it, then use the
   // browser top layer so the meter stays both visible and interactive.
   useEffect(() => {
@@ -183,8 +221,8 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
     return () => {
       if (node?.matches(":popover-open")) node.hidePopover();
     };
-  }, [enabled, visible, overlayParent]);
-  if (!enabled || !visible) return null;
+  }, [enabled, visible, overlayParent, bounds.width, bounds.height]);
+  if (!enabled || !visible || bounds.width < 44 || bounds.height < 44) return null;
   const total = view?.totals,
     fx = view?.exchangeRate?.yuanPerDollar;
   const cost = (n: Total) => {
@@ -231,12 +269,12 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       style={{
         position: "fixed",
         boxSizing: "border-box",
-        inset: "max(4px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) auto auto",
+        inset: `${bounds.top}px ${bounds.right}px auto auto`,
         margin: 0,
         border: 0,
-        width: open ? "min(24rem, calc(100vw - 12px))" : "max-content",
-        maxWidth: "calc(100vw - 12px)",
-        maxHeight: "calc(100dvh - 12px)",
+        width: open ? Math.min(384, bounds.width) : "max-content",
+        maxWidth: bounds.width,
+        maxHeight: bounds.height,
         overflow: "auto",
         zIndex: 2147483647,
         minWidth: 0,
@@ -254,6 +292,15 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
           type="button"
           aria-label="Villages AI usage"
           aria-expanded={open}
+          title={
+            error ||
+            view?.error ||
+            (!total
+              ? "Loading usage"
+              : total.unknown === total.requests && total.requests > 0
+                ? "Cost unknown"
+                : `${total.unknown ? "Partial estimate; some costs are unknown. " : "Estimated usage. "}${total.yuan && !fx ? "Yuan conversion unavailable; showing known USD only. " : ""}Tap for full usage details.`)
+          }
           onClick={() => setOpen(!open)}
           style={{
             minHeight: 44,
@@ -270,19 +317,9 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
             whiteSpace: "normal",
           }}
         >
-          AI ·{" "}
-          {error || view?.error
-            ? "Unavailable"
-            : total
-              ? (total.unknown === total.requests && total.requests > 0
-                  ? "Cost unknown"
-                  : fx
-                    ? "$" + ((total.usd ?? total.dollars) + (total.yuan ?? 0) / fx).toFixed(2) + " est."
-                    : (total.yuan
-                        ? "¥" + total.yuan.toFixed(2) + (total.dollars ? " + $" + total.dollars.toFixed(2) : "")
-                        : "$" + (total.usd ?? total.dollars).toFixed(2)) + " est.") +
-                (total.unknown ? " · partial" : "")
-              : "Loading…"}{" "}
+          {error || view?.error || !total || (total.unknown === total.requests && total.requests > 0)
+            ? "$\u2014"
+            : "$" + ((total.usd ?? total.dollars) + (fx ? (total.yuan ?? 0) / fx : 0)).toFixed(2)}{" "}
           <span aria-hidden="true">{open ? "⌃" : "⌄"}</span>
         </button>
       </div>
@@ -494,7 +531,7 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
           ))}
         </div>
       ) : null}
-      {error || view?.error ? <p role="alert">{error || view?.error}</p> : null}
+      {open && (error || view?.error) ? <p role="alert">{error || view?.error}</p> : null}
     </aside>,
     overlayParent,
   );

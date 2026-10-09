@@ -1,9 +1,10 @@
+import { useEffect, useState } from "react";
 import { FoundingField } from "./FoundingField.js";
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 
 export const DEFAULT_PLAYER_ROLE: Readonly<PlayerRole> = {
   enabled: true,
-  title: "Project Coordinator",
+  title: "",
   explanation: "",
 };
 const ORDINARY_RESIDENT =
@@ -18,6 +19,7 @@ export function playerRoleProblem(role: PlayerRole | null): string {
   return "";
 }
 
+const ROLE_EXAMPLES = ["Mayor", "Project Coordinator", "Captain", "King"];
 const PREFIX = "marinara-capability-villages";
 export function PlayerRoleSummary({ role }: { role: PlayerRole | null | undefined }) {
   return (
@@ -51,6 +53,12 @@ export function PlayerRoleFields({
   compact?: boolean;
   problem?: string;
 }) {
+  const [example, setExample] = useState(0);
+  useEffect(() => {
+    if (role.title || disabled) return;
+    const timer = setInterval(() => setExample((index) => (index + 1) % ROLE_EXAMPLES.length), 4000);
+    return () => clearInterval(timer);
+  }, [role.title, disabled]);
   return (
     <fieldset className={`${PREFIX}-field`} aria-label={compact ? "Your role" : undefined}>
       {!compact ? <legend className={`${PREFIX}-label`}>Role</legend> : null}
@@ -65,6 +73,7 @@ export function PlayerRoleFields({
             type="text"
             aria-label="Role title"
             value={role.title}
+            placeholder={ROLE_EXAMPLES[example]}
             maxLength={80}
             required
             disabled={disabled}

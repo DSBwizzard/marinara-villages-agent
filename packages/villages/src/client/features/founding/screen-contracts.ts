@@ -98,7 +98,6 @@ export type FoundingScreenController = {
   readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
-  readonly setSetupRoleExpanded: FoundingState["setSetupRoleExpanded"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupShowIssues: FoundingState["setSetupShowIssues"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
@@ -137,7 +136,6 @@ export type FoundingScreenController = {
   readonly setupPlayerRole: FoundingState["setupPlayerRole"];
   readonly setupProblem: FoundingState["setupProblem"];
   readonly setupResidentContexts: FoundingState["setupResidentContexts"];
-  readonly setupRoleExpanded: FoundingState["setupRoleExpanded"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];

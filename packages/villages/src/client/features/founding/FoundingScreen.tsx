@@ -88,7 +88,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupPlayerRole,
     setSetupProblem,
     setSetupResidentContexts,
-    setSetupRoleExpanded,
     setSetupSetting,
     setSetupShowIssues,
     setSetupVenues,
@@ -126,7 +125,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupPlayerRole,
     setupProblem,
     setupResidentContexts,
-    setupRoleExpanded,
     setupSetting,
     setupStep,
     setupSuggestionsBusy,
@@ -154,7 +152,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     (!!connectionSetupProblem && setupProblem === connectionSetupProblem);
   useEffect(() => {
     if (!setupProblem || !inlineProblem) return;
-    if (roleError) setSetupRoleExpanded(true);
     const frame = requestAnimationFrame(() => {
       const root = rootRef.current;
       const target = [
@@ -164,7 +161,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       target?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [setupProblem, inlineProblem, roleError, setSetupRoleExpanded, validationAttempt]);
+  }, [setupProblem, inlineProblem, roleError, validationAttempt]);
 
   if (screen === "setup") {
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
@@ -349,23 +346,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
 
                 {!snapshot?.isFounded ? (
                   <>
-                    <button
-                      type="button"
-                      aria-label="Edit role"
-                      className="villages-role-summary"
-                      aria-expanded={setupRoleExpanded}
-                      aria-controls="villages-founding-role-fields"
-                      onClick={() => setSetupRoleExpanded((value) => !value)}
-                    >
-                      <span>Role</span>
-                      <strong>{setupPlayerRole?.title || "Project Coordinator"}</strong>
-                      <span>Edit</span>
-                    </button>
-                    <div
-                      id="villages-founding-role-fields"
-                      className="villages-founding-role-editor"
-                      data-expanded={setupRoleExpanded}
-                    >
+                    <p className="villages-role-blurb">
+                      In Villages, you oversee major changes, improvements, and developments.
+                    </p>
+                    <div className="villages-founding-role-editor">
                       <PlayerRoleFields
                         compact
                         problem={roleError}

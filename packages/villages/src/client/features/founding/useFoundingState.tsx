@@ -48,8 +48,6 @@ export function useFoundingState() {
 
   const [setupResidentContexts, setSetupResidentContexts] = useState<Record<string, ResidentFoundingContext>>({});
 
-  const [setupRoleExpanded, setSetupRoleExpanded] = useState(false);
-
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
 
   const [setupEditorOpen, setSetupEditorOpen] = useState(false);
@@ -188,8 +186,6 @@ export function useFoundingState() {
     setSetupFoundingVillagerIds,
     setupResidentContexts,
     setSetupResidentContexts,
-    setupRoleExpanded,
-    setSetupRoleExpanded,
     setupKeyboardSpot,
     setSetupKeyboardSpot,
     setupEditorOpen,

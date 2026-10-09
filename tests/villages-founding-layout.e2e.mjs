@@ -373,7 +373,6 @@ try {
     await personaDialog.getByPlaceholder("Search Personas").fill("patient");
     await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
     await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
-    await root.getByRole("button", { name: "Edit role", exact: true }).click();
     await root.getByLabel("Role title", { exact: true }).fill(" ");
     await forward("Continue to place").click();
     await expect(root.getByRole("alert")).toContainText("title");

@@ -84,7 +84,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: "text/html",
-        body: "<style>html,body{margin:0;background:#171b25;color:white;font-family:Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>html,body{margin:0;height:100%;background:#171b25;color:white;font-family:Arial}#engine-navigation{height:128px}#working-panel{margin-left:${width > 1000 ? 64 : 0}px;height:calc(100% - 128px)}</style><header id="engine-navigation">Engine navigation</header><main id="working-panel"><marinara-capability-villages></marinara-capability-villages></main>`,
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -133,7 +133,8 @@ try {
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
     await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
-    await expect(meter).toContainText("$0.42 est.");
+    await expect(meter).toHaveText(/^\$0\.42\s*\u2304$/);
+    assert.ok((await meter.boundingBox()).width <= 80, "collapsed chip only needs room for USD and its chevron");
     await expect(meter.getByRole("button", { name: "Reset usage", exact: true })).toHaveCount(0);
     assert.ok((await meter.boundingBox()).height <= 48, "collapsed usage fits one compact row");
     const assertFlow = async () => {
@@ -143,13 +144,21 @@ try {
         return {
           meter: meter.getBoundingClientRect().toJSON(),
           content: content.getBoundingClientRect().toJSON(),
+          working: document.querySelector("marinara-capability-villages").getBoundingClientRect().toJSON(),
           position: getComputedStyle(meter).position,
           scroll: document.documentElement.scrollWidth,
         };
       });
       assert.equal(boxes.position, "fixed");
-      assert.equal(boxes.content.top, 0, "usage overlay reserves no space");
-      assert.equal(boxes.content.height, 900, "screen keeps its full available height");
+      assert.equal(boxes.content.top, 128, "usage overlay reserves no space inside Villages");
+      assert.equal(boxes.content.height, 772, "screen keeps its full available height");
+      assert.ok(
+        boxes.meter.top >= boxes.working.top &&
+          boxes.meter.bottom <= boxes.working.bottom &&
+          boxes.meter.left >= boxes.working.left &&
+          boxes.meter.right <= boxes.working.right,
+        "usage stays within Villages, clear of Engine navigation",
+      );
       assert.ok(
         boxes.meter.left >= 0 && boxes.meter.right <= width && boxes.scroll <= width,
         "summary and expanded details stay inside the viewport",

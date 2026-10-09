@@ -177,12 +177,12 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-people-identity[aria-pressed=true] { background:#30305c!important; border-color:#aa87ff!important; box-shadow:inset 0 0 0 1px #aa87ff; }
 .villages-people-action { flex:none; font-size:.8rem; color:#c4a8ff; }
 .villages-people-selected,.villages-people-choices { display:grid; gap:.5rem; margin:.5rem 0; }
-.villages-forging-v2 .villages-role-summary { display:flex; align-items:center; width:100%; min-width:0; text-align:left; gap:.6rem; border:0; border-top:1px solid #43547d; border-bottom:1px solid #43547d; border-radius:0; margin:.6rem 0 0; background:transparent; }
-.villages-role-summary strong { flex:1; min-width:0; overflow-wrap:anywhere; }
-.villages-role-summary>span { color:#c1c9e9; font-size:.85rem; }
-.villages-role-summary>span:last-child { color:#c4a8ff; }
-.villages-founding-role-editor[data-expanded=false] { display:none; }
+.villages-forging-v2 .villages-role-blurb { border-top:1px solid #43547d; margin:.65rem 0 0; padding:.6rem 0 .2rem; font-size:.8rem; line-height:1.4; font-weight:600; }
+.villages-forging-v2 .villages-founding-role-editor fieldset { border:0; padding:0; margin:0; }
 .villages-founding-role-editor .marinara-capability-villages-founding-role-fields { grid-template-columns:minmax(0,1fr); }
+.villages-forging-v2 .villages-founding-role-editor .villages-founding-field { display:grid; grid-template-columns:auto minmax(0,1fr); gap:.5rem; align-items:center; margin:.2rem 0 0; }
+.villages-founding-role-editor .villages-founding-field>p { grid-column:1/-1; }
+.villages-forging-v2 .villages-founding-role-editor input::placeholder { color:#a6aed0; opacity:.75; }
 .villages-backstory-row { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin:.5rem 0; padding:.5rem 0; min-width:0; }
 .villages-backstory-row>span { display:flex; align-items:center; flex:1; min-width:5rem; gap:.5rem; overflow-wrap:anywhere; }
 .villages-backstory-row .marinara-capability-villages-identity-card-face { width:2rem; height:2rem; flex:none; }

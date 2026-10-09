@@ -144,10 +144,23 @@ try {
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         await expect(page.getByRole("textbox", { name: "Role title" })).toHaveCount(0);
       } else {
-        await page.getByRole("button", { name: "Edit role", exact: true }).click();
         await expect(page.getByRole("checkbox", { name: "Recognized village role" })).toHaveCount(0);
         const role = page.getByRole("group", { name: "Your role", exact: true });
-        await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("Project Coordinator");
+        await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("");
+        const title = role.getByRole("textbox", { name: "Role title", exact: true });
+        await expect(page.locator(".villages-role-blurb")).toHaveText(
+          "In Villages, you oversee major changes, improvements, and developments.",
+        );
+        await expect(title).toHaveAttribute("placeholder", "Mayor");
+        await page.clock.install();
+        for (const example of ["Project Coordinator", "Captain", "King", "Mayor"]) {
+          await page.clock.fastForward(4000);
+          await expect(title).toHaveAttribute("placeholder", example);
+          await expect(title).toHaveValue("");
+        }
+        await title.fill("Harbor Patron");
+        await page.clock.fastForward(8000);
+        await expect(title).toHaveValue("Harbor Patron");
         await role.scrollIntoViewIfNeeded();
         await screenshot(page, "founding-" + width);
         await expect(page.getByRole("textbox", { name: "Why villagers turn to you" })).toHaveCount(0);

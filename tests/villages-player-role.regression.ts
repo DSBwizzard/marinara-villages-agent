@@ -32,7 +32,8 @@ async function main() {
   };
   const disabled = { ...custom, enabled: false };
   assert.equal(DEFAULT_PLAYER_ROLE.title, "Project Coordinator");
-  assert.deepEqual(CLIENT_DEFAULT, DEFAULT_PLAYER_ROLE, "client and server founding defaults agree");
+  assert.equal(CLIENT_DEFAULT.title, "", "new founding UI asks for a title instead of filling an example");
+  assert.match(playerRoleProblem(CLIENT_DEFAULT), /Give your village role a title/);
   assert.deepEqual(playerRoleForSetup(null, undefined, true), DEFAULT_PLAYER_ROLE);
   assert.equal(playerRoleForSetup(null, undefined, false), null);
   assert.deepEqual(playerRoleForSetup(custom, undefined, false), custom, "older requests preserve the saved role");
