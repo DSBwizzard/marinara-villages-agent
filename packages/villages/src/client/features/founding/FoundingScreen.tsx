@@ -142,6 +142,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [validationAttempt, setValidationAttempt] = useState(0);
+  const focusedValidationAttempt = useRef(0);
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
   const clearFieldValidation = (field: string) => setValidatedFields((fields) => fields.filter((key) => key !== field));
   const roleError = validatedFields.includes("role") ? playerRoleProblem(setupPlayerRole) : "";
@@ -160,13 +161,19 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupProblem === "Complete the highlighted resident background fields in People." ||
     (!!connectionSetupProblem && setupProblem === connectionSetupProblem);
   useEffect(() => {
+    if (focusedValidationAttempt.current === validationAttempt) return;
+    focusedValidationAttempt.current = validationAttempt;
     if (!setupProblem || !inlineProblem) return;
     const frame = requestAnimationFrame(() => {
       const root = rootRef.current;
-      const target = [
-        ...(root?.querySelectorAll<HTMLElement>('[aria-invalid="true"], [data-founding-problem]') ?? []),
-      ].find((element) => element.getClientRects().length > 0);
-      target?.focus();
+      const target = [...(root?.querySelectorAll<HTMLElement>('[aria-invalid="true"], [data-founding-problem]') ?? [])]
+        .filter((element) => element.getClientRects().length > 0)
+        .sort((a, b) => {
+          const first = a.getBoundingClientRect(),
+            second = b.getBoundingClientRect();
+          return first.top - second.top || first.left - second.left;
+        })[0];
+      target?.focus({ preventScroll: true });
       target?.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(frame);

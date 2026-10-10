@@ -471,7 +471,14 @@ try {
     );
     await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
     await expect(roleTitle).toBeFocused();
+    const scrollBeforeRoleFix = await root.evaluate((node) => node.scrollTop);
     await roleTitle.fill("Harbor Patron");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(roleTitle).toBeFocused();
+    assert.ok(
+      Math.abs((await root.evaluate((node) => node.scrollTop)) - scrollBeforeRoleFix) <= 1,
+      "fixing Role does not scroll to the remaining backstory error",
+    );
     await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveCount(0);
     await expect(missingBackstoryNotice).toBeVisible();
     await forward("Continue to place").click();
@@ -637,6 +644,8 @@ try {
     );
     await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe what brings you together.");
     await nameField.fill("Willowbrook");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(nameField).toBeFocused();
     await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
     await forward("Continue to Venues").click();
     await expect(root.getByLabel("Where are we?", { exact: true })).toBeFocused();
