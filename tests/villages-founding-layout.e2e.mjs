@@ -493,12 +493,14 @@ try {
       "no empty area below popup actions",
     );
     await expect(backstoryEditor.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+    await expect(backstoryEditor.locator("header").getByRole("button")).toHaveCount(0);
+    await expect(backstoryEditor.locator("footer").getByRole("button", { name: "Close", exact: true })).toBeVisible();
     await past.fill("Discard this draft.");
     if (width < 600) await page.touchscreen.tap(4, 4);
     else await page.mouse.click(4, 4);
     await expect(backstoryEditor).toBeVisible();
     await expect(past).toHaveValue("Discard this draft.");
-    await backstoryEditor.getByRole("button", { name: "Close Finn’s backstory", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
     await expect(choice).toHaveValue("village");
     await expect(missingBackstoryNotice).toBeVisible();
     await expect(editBackstory).toBeFocused();
@@ -508,7 +510,7 @@ try {
     await past.press("Escape");
     await expect(backstoryEditor).toBeVisible();
     await expect(past).toHaveValue("Discard with Escape.");
-    await backstoryEditor.getByRole("button", { name: "Close Finn’s backstory", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
     await expect(backstoryEditor).toHaveCount(0);
     await expect(editBackstory).toBeFocused();
     await editBackstory.click();
@@ -543,7 +545,7 @@ try {
     await selectResidents(["Finn"]);
     await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
     await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-    await backstoryEditor.getByRole("button", { name: "Close Finn’s backstory", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
     // Preserve and repair a partially authored legacy Custom draft after reload.
     if (width === 1366) {
       await forward("Save & exit").click();
@@ -652,7 +654,7 @@ try {
         "Remembers a former life elsewhere. The observatory's wider world is undecided.",
       );
     else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-    await backstoryEditor.getByRole("button", { name: "Close Finn’s backstory", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
     await forward("Continue to place").click();
     await forward("Continue to Venues").click();
     await expect(root).toHaveAttribute("data-step", "2");

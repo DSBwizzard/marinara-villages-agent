@@ -7,12 +7,14 @@ export function FoundingDialog({
   children,
   compact = false,
   dismissible = true,
+  showCloseButton = true,
 }: {
   title: string;
   onClose(): void;
   children: ReactNode;
   compact?: boolean;
   dismissible?: boolean;
+  showCloseButton?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -49,9 +51,11 @@ export function FoundingDialog({
     >
       <header>
         <h3 id={titleId}>{title}</h3>
-        <button type="button" aria-label={"Close " + title} onClick={onClose}>
-          ×
-        </button>
+        {showCloseButton ? (
+          <button type="button" aria-label={"Close " + title} onClick={onClose}>
+            ×
+          </button>
+        ) : null}
       </header>
       {children}
     </dialog>
