@@ -375,7 +375,7 @@ try {
     await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
     await root.getByLabel("Role title", { exact: true }).fill(" ");
     await forward("Continue to place").click();
-    await expect(root.getByRole("alert")).toContainText("title");
+    await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toContainText("title");
     await root.getByLabel("Role title", { exact: true }).fill("Harbor Patron");
     await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
     const selectResidents = async (names) => {
@@ -462,6 +462,18 @@ try {
     const missingBackstoryNotice = finnCard.getByRole("alert");
     await expect(missingBackstoryNotice).toHaveCount(0);
     await expect(choice).not.toHaveAttribute("aria-invalid", "true");
+    const roleTitle = root.getByLabel("Role title", { exact: true });
+    await roleTitle.fill(" ");
+    await forward("Continue to place").click();
+    await expect(roleTitle).toHaveAttribute("aria-invalid", "true");
+    await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveText(
+      "Give your village role a title.",
+    );
+    await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
+    await expect(roleTitle).toBeFocused();
+    await roleTitle.fill("Harbor Patron");
+    await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveCount(0);
+    await expect(missingBackstoryNotice).toBeVisible();
     await forward("Continue to place").click();
     await expect(root).toHaveAttribute("data-step", "0");
     await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
@@ -620,7 +632,12 @@ try {
     await expect(nameField).toBeFocused();
     await expect(nameField).toHaveAttribute("aria-invalid", "true");
     await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
+    await expect(root.getByLabel("Where are we?", { exact: true }).locator("..").getByRole("alert")).toHaveText(
+      "Describe where we are.",
+    );
+    await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe what brings you together.");
     await nameField.fill("Willowbrook");
+    await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
     await forward("Continue to Venues").click();
     await expect(root.getByLabel("Where are we?", { exact: true })).toBeFocused();
     const help = root.getByRole("button", { name: "Help: Where are we?", exact: true });

@@ -142,7 +142,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
 
   const rootRef = useRef<HTMLDivElement>(null);
   const [validationAttempt, setValidationAttempt] = useState(0);
-  const roleError = setupProblem && setupProblem === playerRoleProblem(setupPlayerRole) ? setupProblem : "";
+  const [validatedFields, setValidatedFields] = useState<string[]>([]);
+  const clearFieldValidation = (field: string) => setValidatedFields((fields) => fields.filter((key) => key !== field));
+  const roleError = validatedFields.includes("role") ? playerRoleProblem(setupPlayerRole) : "";
+  const personaError =
+    validatedFields.includes("persona") && (!personaDraft || !personas?.some((persona) => persona.id === personaDraft));
+  const villagersError =
+    validatedFields.includes("villagers") &&
+    (setupFoundingVillagerIds.length < 1 ||
+      setupFoundingVillagerIds.length > 3 ||
+      setupFoundingVillagerIds.some((id) => !catalog?.some((person) => person.id === id)));
   const inlineProblem =
     Object.values(PLACE_ERRORS).includes(setupProblem) ||
     !!roleError ||
@@ -302,6 +311,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       </div>
     );
     const chooseRoster = (ids: string[]) => {
+      clearFieldValidation("villagers");
       setSetupFoundingVillagerIds(ids);
       setSetupMapReviewed(false);
       setSetupProblem("");
@@ -332,15 +342,18 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             <div className="villages-forging-columns">
               <section className="villages-forging-card">
                 <h3 aria-label="You">You</h3>
-                {setupProblem === "Choose an available Persona." ? (
+                {personaError ? (
                   <p role="alert" data-founding-problem tabIndex={-1}>
-                    {setupProblem}
+                    Choose an available Persona.
                   </p>
                 ) : null}
                 <FoundingPersonaSelector
                   personas={personas}
                   draft={personaDraft}
-                  onDraft={setPersonaDraft}
+                  onDraft={(id) => {
+                    setPersonaDraft(id);
+                    clearFieldValidation("persona");
+                  }}
                   disabled={busy}
                 />
 
@@ -351,7 +364,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         compact
                         problem={roleError}
                         role={setupPlayerRole ?? DEFAULT_PLAYER_ROLE}
-                        onChange={setSetupPlayerRole}
+                        onChange={(role) => {
+                          setSetupPlayerRole(role);
+                          clearFieldValidation("role");
+                        }}
                         disabled={busy}
                       />
                     </div>
@@ -362,9 +378,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </section>
               <section className="villages-forging-card">
                 <h3 aria-label="Founding villagers">Founding villagers</h3>
-                {setupProblem === "Choose one to three available founding villagers." ? (
+                {villagersError && !snapshot?.isFounded ? (
                   <p role="alert" data-founding-problem tabIndex={-1}>
-                    {setupProblem}
+                    Choose one to three available founding villagers.
                   </p>
                 ) : null}
                 <FoundingVillagerPicker
@@ -378,10 +394,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                             embedded
                             people={[{ characterId: id, name }]}
                             contexts={setupResidentContexts}
-                            showErrors={
-                              setupProblem === "Complete the highlighted resident background fields in People."
-                            }
+                            showErrors={validatedFields.includes("backstory:" + id)}
                             onChange={(characterId, context) => {
+                              clearFieldValidation("backstory:" + characterId);
                               setSetupResidentContexts((current) => ({ ...current, [characterId]: context }));
                               setSetupProblem("");
                             }}
@@ -404,9 +419,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <div className="villages-people-connections">
                   <details open={!!connectionSetupProblem}>
                     <summary>Connections · {connectionSetupProblem ? "Needs setup" : "Ready"}</summary>
-                    {connectionSetupProblem && setupProblem === connectionSetupProblem ? (
+                    {connectionSetupProblem && validatedFields.includes("connections") ? (
                       <p role="alert" data-founding-problem tabIndex={-1}>
-                        {setupProblem}
+                        {connectionSetupProblem}
                       </p>
                     ) : null}
                     <AgentConnections onSetupProblem={setConnectionSetupProblem} compact />
@@ -423,20 +438,25 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <FoundingField
                     title="Village name"
                     help="The name of your village."
-                    error={setupProblem === PLACE_ERRORS.name && !setupName.trim() ? setupProblem : ""}
+                    error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
                   >
                     <input
                       aria-label="Village name"
                       maxLength={snapshot?.settings.villageNameMaxLength ?? 80}
                       value={setupName}
                       disabled={busy}
-                      onChange={(event) => setSetupName(event.target.value)}
+                      onChange={(event) => {
+                        setSetupName(event.target.value);
+                        clearFieldValidation("place-name");
+                      }}
                     />
                   </FoundingField>
                   <FoundingField
                     title="Where are we?"
                     help="Describe the place, surrounding world, and ongoing conditions. It can already be established."
-                    error={setupProblem === PLACE_ERRORS.setting && !setupSetting.trim() ? setupProblem : ""}
+                    error={
+                      validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
+                    }
                   >
                     <textarea
                       aria-label="Where are we?"
@@ -444,14 +464,21 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       rows={4}
                       value={setupSetting}
                       disabled={busy}
-                      onChange={(event) => setSetupSetting(event.target.value)}
+                      onChange={(event) => {
+                        setSetupSetting(event.target.value);
+                        clearFieldValidation("place-setting");
+                      }}
                     />
                   </FoundingField>
                   <FoundingField
                     title="What brings you together?"
                     help="Everyday reasons or unusual events are both welcome. Individual motives can emerge through play."
                     error={
-                      setupProblem === PLACE_ERRORS.circumstance && !setupFoundingDetails.trim() ? setupProblem : ""
+                      validatedFields.includes("place-circumstance") &&
+                      !snapshot?.isFounded &&
+                      !setupFoundingDetails.trim()
+                        ? PLACE_ERRORS.circumstance
+                        : ""
                     }
                   >
                     <CircumstanceInput
@@ -461,7 +488,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       rows={4}
                       value={setupFoundingDetails}
                       disabled={busy || !!snapshot?.isFounded}
-                      onChange={(event) => setSetupFoundingDetails(event.target.value)}
+                      onChange={(event) => {
+                        setSetupFoundingDetails(event.target.value);
+                        clearFieldValidation("place-circumstance");
+                      }}
                     />
                   </FoundingField>
                   <details>
@@ -942,6 +972,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             disabled={busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError}
             onClick={() => {
               setValidationAttempt((attempt) => attempt + 1);
+              setValidatedFields((fields) => [
+                ...new Set([
+                  ...fields,
+                  "persona",
+                  "role",
+                  "villagers",
+                  "connections",
+                  ...setupFoundingVillagerIds.map((id) => "backstory:" + id),
+                  ...(setupStep >= 1 ? ["place-name", "place-setting", "place-circumstance"] : []),
+                ]),
+              ]);
               if (setupStep === 2 && setupIssues.length) {
                 setSetupShowIssues(true);
                 openIssue(setupIssues[0]);
