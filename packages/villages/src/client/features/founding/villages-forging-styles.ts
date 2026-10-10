@@ -233,4 +233,16 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-role-editor .villages-founding-field { position:relative; }
 .villages-founding-role-editor .villages-founding-help { width:44px; align-self:start; }
 .villages-founding-role-editor .villages-founding-help-text { position:absolute; z-index:3; top:100%; right:0; width:min(28rem,100%); max-width:none; box-sizing:border-box; border:1px solid #596b9b; border-radius:.5rem; background:#19213b; color:#f3f3ff; padding:.65rem; box-shadow:0 .3rem 1rem #0006; }
+
+/* Place reuses People's panels and field geometry; map controls leave the reading flow. */
+.villages-place-panels { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; }
+.villages-place-panels .villages-forging-card h3 { font-size:1rem; font-weight:400; margin:0 0 .65rem; }
+.villages-place-panels .villages-founding-field { margin:.6rem 0; }
+.villages-place-panels .villages-founding-field+.villages-founding-field { border-top:1px solid #43547d; padding-top:.65rem; margin-top:.65rem; }
+.villages-starting-situation .villages-founding-field-heading>label { font-size:1rem; }
+.villages-forging-v2 .villages-place-map-choice { display:flex; align-items:center; justify-content:space-between; gap:.65rem; width:100%; text-align:left; background:#30305c; border-color:#aa87ff; box-shadow:inset 0 0 0 1px #aa87ff; border-radius:.65rem; padding:.65rem; }
+.villages-place-options details { margin:.4rem 0; }
+.villages-place-map-editor .villages-forging-preview { max-height:14rem; }
+.villages-place-map-editor .villages-forging-actions { display:flex; flex-wrap:wrap; gap:.4rem; }
+.villages-place-map-editor input[type=checkbox] { display:inline-block; width:1.2rem; min-height:0; vertical-align:middle; }
 `;

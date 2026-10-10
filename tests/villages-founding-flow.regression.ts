@@ -386,7 +386,7 @@ async function main() {
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
   assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
   assert.ok(client.includes("Where are we?"));
-  assert.ok(client.includes("What brings you together?"));
+  assert.ok(client.includes("Starting situation"));
   assert.ok(client.includes("Search lorebooks"));
   const editor = await readFile(
     join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),

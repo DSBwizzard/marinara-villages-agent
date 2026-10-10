@@ -619,7 +619,7 @@ try {
     await expect(root).toHaveAttribute("data-step", "1");
     await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
     await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
-    const circumstance = root.getByLabel("What brings you together?", { exact: true });
+    const circumstance = root.getByLabel("Starting situation", { exact: true });
     await expect(circumstance).toHaveValue("");
     if (width === 390 && height === 844) {
       const first = await circumstance.getAttribute("placeholder");
@@ -671,6 +671,23 @@ try {
       assert.equal(await circumstance.getAttribute("placeholder"), hint, "authored text stops placeholder rotation");
     }
 
+    const changeMap = root.getByRole("button", { name: "Change map", exact: true });
+    await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
+    await changeMap.click();
+    const mapDialog = root.getByRole("dialog", { name: "Map artwork", exact: true });
+    await expect(mapDialog).toBeVisible();
+    await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await bounds();
+    await capture("map-dialog");
+    await mapDialog.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(changeMap).toBeFocused();
+    await changeMap.click();
+    await mapDialog.press("Escape");
+    await expect(changeMap).toBeFocused();
+    assert.equal(mapCalls, 0, "opening and closing map choices never generates artwork");
     await bounds();
     await capture("place");
     await forward("Back").click();
@@ -997,10 +1014,15 @@ try {
     await capture("venues");
     if (width === 1366 || (width === 390 && height === 844)) {
       await forward("Back").click();
+      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await root.getByRole("button", { name: "Generate artwork", exact: true }).click();
       await root.getByLabel("Map layout", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
       await root.getByRole("button", { name: "Generate map", exact: true }).click();
       await expect.poll(() => !!releaseMap).toBe(true);
+      await root
+        .getByRole("dialog", { name: "Map artwork", exact: true })
+        .getByRole("button", { name: "Done", exact: true })
+        .click();
       await forward("Continue to Venues").click();
       await expect(root).toHaveAttribute("data-step", "2");
       await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(0);
@@ -1010,6 +1032,7 @@ try {
       ).toBeVisible();
       await expect(root.locator(".villages-forging-placement")).toContainText("Map artwork failed");
       await forward("Back").click();
+      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(
         root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
       ).toBeVisible();
@@ -1019,6 +1042,10 @@ try {
       await expect(root.getByRole("alert").filter({ hasText: "The generated map is too large to store." })).toHaveCount(
         0,
       );
+      await root
+        .getByRole("dialog", { name: "Map artwork", exact: true })
+        .getByRole("button", { name: "Done", exact: true })
+        .click();
       await forward("Continue to Venues").click();
       await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
       // Reload while the provider is still drawing: the resumed draft only reads status.
@@ -1055,14 +1082,20 @@ try {
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await forward("Back").click();
+      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
       await root.getByLabel("Map layout", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
+      await root
+        .getByRole("dialog", { name: "Map artwork", exact: true })
+        .getByRole("button", { name: "Done", exact: true })
+        .click();
       await forward("Continue to Venues").click();
       await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       // A chosen upload replaces paused recovery, even when the old provider finishes later.
       await forward("Back").click();
+      await root.getByRole("button", { name: "Change map", exact: true }).click();
       failMapStatus = true;
       await root.getByRole("button", { name: "Generate again", exact: true }).click();
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
@@ -1079,6 +1112,10 @@ try {
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toHaveCount(0);
       failMapStatus = false;
       releaseMap();
+      await root
+        .getByRole("dialog", { name: "Map artwork", exact: true })
+        .getByRole("button", { name: "Done", exact: true })
+        .click();
       await forward("Continue to Venues").click();
       await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       await forward("Save & exit").click();
@@ -1087,9 +1124,14 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await forward("Back").click();
+      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
       assert.equal(mapCalls, 3, "upload and reload do not dispatch another image request");
+      await root
+        .getByRole("dialog", { name: "Map artwork", exact: true })
+        .getByRole("button", { name: "Done", exact: true })
+        .click();
       await forward("Continue to Venues").click();
     }
     await forward("Review village").click();
