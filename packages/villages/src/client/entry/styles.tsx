@@ -26,11 +26,8 @@ const VILLAGES_STYLES = `
   needs is its room back — which is what the fullscreen toggle on the map and the
   queries at the foot of this sheet are for.
 
-  0.4.45 took the word "landscape" out of that sentence, and out of one more in
-  this sheet, and put nothing in its place. The tab is drawn for whichever way up
-  a phone is held now, so the size a phone is told to print at no longer has a
-  side to it; see the PORTRAIT block at the foot of the sheet for what replaced
-  the instruction to turn over.
+  Phone design targets portrait. Short-container rules remain useful for
+  keyboards and constrained desktop windows; they do not require rotation.
 
   Both numbers are measured against the TAB rather than the window: the tab
   shares the screen with the Engine's own furniture and takes the whole screen in
@@ -759,7 +756,7 @@ const VILLAGES_STYLES = `
     ONE width, and the square follows from it, which is what keeps the two
     dimensions from ever disagreeing. It is the smaller of a share of the tab's
     width and the room the floor actually has, because a figure that only answered
-    width would eat a landscape tab's height — and the second term is measured
+    width would eat a short tab's height — and the second term is measured
     against the FLOOR rather than against the tab, because the floor is a size
     container of its own. That is the whole answer to a short tab, and it is why
     the short-tab queries at the end of the sheet no longer carry a figure size of
@@ -2957,10 +2954,10 @@ const VILLAGES_STYLES = `
   container-type: size is what makes the tab answerable to the room it was
   actually given rather than to the window. This package is mounted in a tab that
   shares the screen with the Engine's own furniture, and in fullscreen it has the
-  whole screen instead — no viewport query can tell those two apart. A phone held
-  sideways is 844x390 and a laptop is 1400x760, so the width is not the telling
-  difference and the height is, which is why this is size and not inline-size and
-  why the queries at the foot of this sheet ask about both.
+  whole screen instead — no viewport query can tell those two apart. A narrow
+  desktop pane and a phone can have similar widths but different available
+  heights, which is why this is size and not inline-size and why the queries
+  at the foot of this sheet ask about both.
 
   Containment means this element's own size can no longer come from its children,
   which is why the height is stated here outright rather than left to whatever
@@ -3044,52 +3041,6 @@ ${ELEMENT_TAG}:fullscreen .${ELEMENT_TAG}-home-full {
     calc(var(--${ELEMENT_TAG}-pad) * .6 + var(--${ELEMENT_TAG}-safe-left));
 }
 
-/*
-  ── DORMANT 0.4.45 — the notice that told a phone held upright to turn over. ──
-
-  This is the one rule in the sheet that decided which way up a phone had to be
-  held. It is SWITCHED OFF, and it is not retired: 0.4.45 draws the tab for
-  portrait, so there is nothing left for this to answer and nothing left to read
-  it — the four pieces of the component that drew it are dormant beside their own
-  definitions, and the RotateNotice element is dormant on the homepage. Left live,
-  the media query below would match every portrait phone in the world and put a
-  full-bleed panel over the village; the block is commented out for that reason
-  and not for tidiness.
-
-  It is kept rather than deleted because the decision is not final. The map is
-  still a wide 19:13 surface fitted WHOLE to its frame — the frame is the two
-  numbers above and the reason it is fitted rather than cropped is that a house
-  on a corner of the map that nobody can see is a house nobody can open — and a
-  map still wants a wide box. A later lane may decide it wants the map on its side
-  again and may want to say so again.
-
-  To bring it back: uncomment this block, uncomment the four pieces of the notice
-  beside hostOf, and put the RotateNotice element back on the homepage at the foot
-  of the row. Nothing else changed; the rule is exactly what it was.
-
-  What it would take to REMOVE it rather than leave it dormant: nothing. It is a
-  media query and a sentence, and neither of them is load-bearing. Delete the
-  block and the four pieces when the portrait layout has been lived with and
-  nobody wants the sideways map back — or delete them now, if that is already
-  known to be the answer. It is left here unanswered on purpose.
-*/
-/*
-.${ELEMENT_TAG}-rotate { display: none; }
-@media (orientation: portrait) and (pointer: coarse) {
-  .${ELEMENT_TAG}-rotate {
-    position: absolute; inset: 0; z-index: 5;
-    display: grid; place-content: center; justify-items: center;
-    gap: .75rem;
-    padding: calc(var(--${ELEMENT_TAG}-pad) * 2) var(--${ELEMENT_TAG}-pad);
-    background: color-mix(in srgb, var(--background) 96%, transparent);
-    text-align: center;
-  }
-}
-.${ELEMENT_TAG}-rotate-phone { width: 3.25rem; color: var(--primary); }
-.${ELEMENT_TAG}-rotate-phone svg { display: block; width: 100%; height: auto; }
-.${ELEMENT_TAG}-rotate-title { margin: 0; font-size: .875rem; font-weight: 600; color: var(--foreground); }
-.${ELEMENT_TAG}-rotate-note { margin: 0; max-width: 32ch; font-size: .8125rem; line-height: 1.5; color: var(--muted-foreground); }
-*/
 /*
   ON A TOUCH SCREEN, EVERY CONTROL IS AT LEAST A THUMB.
 
@@ -3250,20 +3201,6 @@ ${ELEMENT_TAG}:fullscreen .${ELEMENT_TAG}-home-full {
   .${ELEMENT_TAG}-chat-log { gap: .375rem; }
   .${ELEMENT_TAG}-chat-vn-portrait { display: none; }
   .${ELEMENT_TAG}-chat-vn-reading { max-height: min(34cqh, 11rem); }
-}
-/* A short landscape viewport gives the cast a column beside the reading stack. */
-@container ${ELEMENT_TAG} (min-width: 34rem) and (max-height: 30rem) {
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-stage {
-    position: absolute; top: 3rem; bottom: .5rem; left: .5rem; width: 34%;
-    z-index: 1; flex: none;
-  }
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-cast-person { font-size: .5625rem; }
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn,
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat > .${ELEMENT_TAG}-row,
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat > .${ELEMENT_TAG}-composer {
-    width: 64%; align-self: flex-end; box-sizing: border-box;
-  }
-  .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { margin-top: auto; }
 }
 @container ${ELEMENT_TAG} (max-width: 34rem) {
   .${ELEMENT_TAG}-menu-group-buttons { flex-direction: column; align-items: stretch; }
@@ -3644,7 +3581,6 @@ a chat is the moment this tab stops being a picture of a village and starts
 .${ELEMENT_TAG}-memory-dialog-head button { border: 0; background: transparent; color: inherit; font: inherit; font-size: 1.5rem; cursor: pointer; }
 .${ELEMENT_TAG}-memory-dialog p { margin: .75rem 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 @container ${ELEMENT_TAG} (max-width: 44rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 100%; padding: .45rem; } .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn-asides { width: min(85%, 22rem); } .${ELEMENT_TAG}-room-mode-toggle { width: 2.5rem; height: 2.5rem; } }
-@container ${ELEMENT_TAG} (min-width: 34rem) and (max-height: 30rem) { .${ELEMENT_TAG}-room-screen .${ELEMENT_TAG}-chat-vn { width: 64%; align-self: flex-end; } }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-stars { top: 4.25rem; left: .625rem; width: min(15rem, calc(100% - 1.25rem)); max-height: 20cqh; gap: .25rem; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star { gap: .35rem; padding: .35rem .45rem; font-size: .75rem; line-height: 1.3; }
 .${ELEMENT_TAG}-room-screen[data-mobile="true"] .${ELEMENT_TAG}-room-star-dismiss { margin: -.3rem -.35rem -.3rem 0; }

@@ -208,7 +208,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useLayoutEffect(() => {
     const measure = () => {
       const box = element.getBoundingClientRect();
-      setMobile(box.width <= 704 || (box.width <= 880 && box.height <= 512));
+      setMobile(box.width <= 704);
     };
     measure();
     const observer = new ResizeObserver(measure);
