@@ -398,36 +398,41 @@ try {
     await bounds();
     await capture("people-merged");
     const helpBackstory = finnCard.getByRole("button", { name: "Help: Finn backstory", exact: true });
+    const cardHeightBeforeHelp = await finnCard.evaluate((node) => node.getBoundingClientRect().height);
     await helpBackstory.click();
     await expect(finnCard.getByRole("note").locator("span")).toHaveText([
-      "Use original character history: Preserves the character’s existing history wherever their card describes it.",
-      "Write village-specific history: makes your text the authoritative past for this character in this village.",
+      "Use original backstory: Preserves the character’s existing history wherever their card describes it.",
+      "Write custom backstory: Describe a custom backstory for Villages to use for this character.",
     ]);
     await bounds();
+    assert.equal(
+      await finnCard.evaluate((node) => node.getBoundingClientRect().height),
+      cardHeightBeforeHelp,
+      "help floats without expanding the card",
+    );
     await capture("backstory-help");
     await helpBackstory.press("Escape");
     await expect(helpBackstory).toBeFocused();
-    const heightBefore = await root.evaluate((node) => node.scrollHeight);
-    await choice.focus();
     await choice.selectOption("village");
-    const backstoryEditor = finnCard.getByRole("group", { name: "Finn backstory editor", exact: true });
+    const editBackstory = finnCard.getByRole("button", { name: "Edit Finn backstory", exact: true });
+    const backstoryEditor = root.getByRole("dialog", { name: "Finn’s backstory", exact: true });
     const past = backstoryEditor.getByLabel("Backstory for this village", { exact: true });
+    await expect(editBackstory).toBeVisible();
+    await expect(backstoryEditor).toHaveCount(0);
+    await expect(finnCard.getByRole("textbox")).toHaveCount(0);
+    await editBackstory.click();
     await expect(backstoryEditor).toBeVisible();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    assert.ok(
-      (await root.evaluate((node) => node.scrollHeight)) >= heightBefore,
-      "inline editor belongs to document flow",
-    );
     await past.fill("Discard this draft.");
     await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(choice).toHaveValue("continue");
-    await choice.selectOption("village");
+    await expect(choice).toHaveValue("village");
+    await expect(editBackstory).toBeFocused();
+    await editBackstory.click();
     await expect(past).toHaveValue("");
     await past.fill("Discard with Escape.");
     await past.press("Escape");
     await expect(backstoryEditor).toHaveCount(0);
-    await expect(choice).toBeFocused();
-    await choice.selectOption("village");
+    await expect(editBackstory).toBeFocused();
+    await editBackstory.click();
     await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
     await expect(backstoryEditor.getByRole("alert")).toContainText("Write a backstory");
     await past.fill("Finn has always been guardian of a relic in the observatory.");
@@ -436,13 +441,13 @@ try {
       await past.focus();
       await past.scrollIntoViewIfNeeded();
       const box = await past.boundingBox();
-      assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, "inline field fits phone keyboard width");
+      assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, "popup field fits phone keyboard width");
       await page.setViewportSize({ width: 1366, height: 844 });
       await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
       await page.setViewportSize({ width, height });
     }
     await bounds();
-    await capture("people-inline");
+    await capture("people-popup");
     if (process.env.VILLAGES_SCREENSHOT_DIR) {
       await backstoryEditor.scrollIntoViewIfNeeded();
       await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `backstory-editor-${width}.png`) });
