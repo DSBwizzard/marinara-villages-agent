@@ -636,7 +636,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                     {setupMapProblem}
                                   </p>
                                 ) : null}
-                                <VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />
                                 <details>
                                   <summary>Advanced artwork options</summary>
                                   {(
@@ -723,13 +722,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                   </figcaption>
                                 ) : null}
                               </figure>
-                            ) : (
-                              <p>
-                                {setupMapBusy
-                                  ? "Creating map artwork. Continue editing spaces while this runs."
-                                  : "Choose artwork here, or use Simple map."}
-                              </p>
-                            )}
+                            ) : setupMapBusy ? (
+                              <p>Creating map artwork. Continue editing spaces while this runs.</p>
+                            ) : null}
                             {setupMapSource === "generate" &&
                             setupMapImageSource === "generate" &&
                             setupMapGeneratedKey !== setupMapGenerationKey ? (

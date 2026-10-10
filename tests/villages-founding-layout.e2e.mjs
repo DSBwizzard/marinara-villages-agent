@@ -1066,6 +1066,11 @@ try {
       await forward("Back").click();
       await root.getByRole("button", { name: "Change map", exact: true }).click();
       await root.getByRole("button", { name: "Generate artwork", exact: true }).click();
+      const artworkDialog = root.getByRole("dialog", { name: "Map artwork", exact: true });
+      await expect(artworkDialog.getByText(/expected AI request|Read-only forecast/)).toHaveCount(0);
+      await expect(artworkDialog.getByText("Choose artwork here, or use Simple map.", { exact: true })).toHaveCount(0);
+      await expect(artworkDialog.getByText("Advanced artwork options", { exact: true })).toBeVisible();
+      await capture("map-artwork-options");
       await root.getByLabel("Map layout", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
       await root.getByRole("button", { name: "Generate map", exact: true }).click();
       await expect.poll(() => !!releaseMap).toBe(true);
