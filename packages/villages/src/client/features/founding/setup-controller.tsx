@@ -294,7 +294,7 @@ export function createFoundingGotoSetupStep(ports: {
         : !setupSetting.trim()
           ? "Describe the place and world."
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe what brings you together."
+            ? "Describe the starting circumstances."
             : "";
       const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 3 ? setupBlocker() : "");
       if (problem) {

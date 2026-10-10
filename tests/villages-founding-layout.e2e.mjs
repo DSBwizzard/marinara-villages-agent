@@ -341,6 +341,7 @@ try {
       }),
     );
     await page.goto("http://villages.test/");
+    if (width === 390 && height === 844) await page.clock.install();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     let root = page.locator(".villages-forging-v2");
     const forward = (name) => root.getByRole("button", { name, exact: true });
@@ -619,20 +620,31 @@ try {
     await expect(root).toHaveAttribute("data-step", "1");
     await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
     await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
-    const circumstance = root.getByLabel("Starting situation", { exact: true });
+    const circumstance = root.getByLabel("Starting circumstances", { exact: true });
     await expect(circumstance).toHaveValue("");
     if (width === 390 && height === 844) {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+      const place = root.getByLabel("Place and world", { exact: true });
       const first = await circumstance.getAttribute("placeholder");
-      await page.waitForTimeout(4100);
-      const second = await circumstance.getAttribute("placeholder");
-      assert.notEqual(first, second, "empty circumstance rotates its ghost example after four seconds");
-      await page.waitForTimeout(4100);
-      const third = await circumstance.getAttribute("placeholder");
-      assert.notEqual(third, second);
-      assert.notEqual(third, first);
+      const firstPlace = await place.getAttribute("placeholder");
+      const placeHints = new Set([firstPlace]);
+      const nextCircumstance = first.includes("I already live here")
+        ? "The others and I have rented an abandoned observatory. The power works, but the living quarters need attention."
+        : "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.";
+      for (let tick = 1; tick <= 4; tick++) {
+        await page.clock.runFor(4000);
+        await expect(circumstance).toHaveAttribute("placeholder", tick % 2 ? nextCircumstance : first);
+        const hint = await place.getAttribute("placeholder");
+        if (tick < 4) {
+          assert.ok(!placeHints.has(hint), "Place cycles through four distinct hints");
+          placeHints.add(hint);
+        } else assert.equal(hint, firstPlace, "Place cycles back after four hints");
+      }
       await expect(circumstance).toHaveValue("");
+      await expect(place).toHaveValue("");
       assert.equal(suggestionCalls, 0);
       assert.equal(imageCalls, 0);
+      await page.clock.resume();
     }
     await forward("Continue to Venues").click();
     const nameField = root.getByLabel("Village name", { exact: true });
@@ -642,7 +654,7 @@ try {
     await expect(root.getByLabel("Place and world", { exact: true }).locator("..").getByRole("alert")).toHaveText(
       "Describe the place and world.",
     );
-    await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe what brings you together.");
+    await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting circumstances.");
     await nameField.fill("Willowbrook");
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(nameField).toBeFocused();
@@ -665,10 +677,14 @@ try {
     await help.press("Escape");
     await expect(help).toBeFocused();
     await expect(help).toHaveAttribute("aria-expanded", "false");
-    for (const label of ["Starting situation", "Map"]) {
+    for (const label of ["Starting circumstances", "Map"]) {
       const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
       await otherHelp.click();
       await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
+      if (label === "Starting circumstances")
+        await expect(root.getByRole("note")).toHaveText(
+          "Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine.",
+        );
       assert.equal(
         (await root.locator(".villages-place-panels").boundingBox()).height,
         panelsHeight,
@@ -687,11 +703,18 @@ try {
     await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
     if (width === 390 && height === 844) {
       const hint = await circumstance.getAttribute("placeholder");
-      await page.waitForTimeout(4100);
+      await page.clock.runFor(4100);
       await expect(circumstance).toHaveValue(
         "We rented the observatory together because ordinary housing was too expensive.",
       );
       assert.equal(await circumstance.getAttribute("placeholder"), hint, "authored text stops placeholder rotation");
+      const place = root.getByLabel("Place and world", { exact: true });
+      const placeHint = await place.getAttribute("placeholder");
+      await page.clock.runFor(4000);
+      await expect(place).toHaveValue(
+        "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
+      );
+      assert.equal(await place.getAttribute("placeholder"), placeHint, "authored place text stops hint rotation");
     }
 
     const changeMap = root.getByRole("button", { name: "Change map", exact: true });

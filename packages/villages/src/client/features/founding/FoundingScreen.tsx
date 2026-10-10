@@ -16,7 +16,6 @@ import {
 } from "./FoundingPanels.js";
 import { FoundingDialog } from "./FoundingDialog.js";
 import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
-import { FOUNDING_SCENARIOS } from "./scenarios.js";
 import { evenlySpacedFoundingPins } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
@@ -24,11 +23,20 @@ import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-wor
 import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary, playerRoleProblem } from "./villages-player-role.js";
 import { ResidentFoundingEditors } from "./villages-resident-founding.js";
 
-const CIRCUMSTANCE_EXAMPLES = FOUNDING_SCENARIOS.map((scenario) => scenario.premise).filter(Boolean);
+const PLACE_EXAMPLES = [
+  "A seaside village beneath misty cliffs, in a world where magic is part of everyday life.",
+  "A converted shopping mall in a modern city, with shared living spaces and shops still operating below.",
+  "A remote space station orbiting an icy moon, supplied by occasional cargo ships.",
+  "An old countryside estate with gardens, workshops, and a small town nearby.",
+];
+const CIRCUMSTANCE_EXAMPLES = [
+  "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.",
+  "The others and I have rented an abandoned observatory. The power works, but the living quarters need attention.",
+];
 const PLACE_ERRORS = {
   name: "Give the village a name.",
   setting: "Describe the place and world.",
-  circumstance: "Describe what brings you together.",
+  circumstance: "Describe the starting circumstances.",
 };
 
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
@@ -466,7 +474,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
                     }
                   >
-                    <textarea
+                    <CircumstanceInput
+                      examples={PLACE_EXAMPLES}
                       aria-label="Place and world"
                       maxLength={snapshot?.settings.settingMaxLength ?? 1200}
                       rows={4}
@@ -481,8 +490,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 </section>
                 <section className="villages-forging-card villages-starting-situation">
                   <FoundingField
-                    title="Starting situation"
-                    help="What is happening when play begins? This can be everyday life in an established place or a new beginning. Individual pasts belong on People; motives can emerge through play."
+                    title="Starting circumstances"
+                    help="Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine."
                     error={
                       validatedFields.includes("place-circumstance") &&
                       !snapshot?.isFounded &&
@@ -493,7 +502,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   >
                     <CircumstanceInput
                       examples={CIRCUMSTANCE_EXAMPLES}
-                      aria-label="Starting situation"
+                      aria-label="Starting circumstances"
                       maxLength={snapshot?.settings.foundingDetailsMaxLength ?? 2000}
                       rows={4}
                       value={setupFoundingDetails}
