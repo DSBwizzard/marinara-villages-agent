@@ -47,10 +47,9 @@ export function ResidentFoundingEditors({
       {!embedded ? <h3>Backstories</h3> : null}
       {people.map((row) => {
         const value = contexts[row.characterId] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
-        const invalid =
-          value.historyMode === "village" && !value.villageBackstory?.trim()
-            ? undefined
-            : Object.values(residentFoundingProblems(value)).find(Boolean);
+        const missingBackstory = value.historyMode === "village" && !value.villageBackstory?.trim();
+        const missingBackstoryId = "villages-backstory-required-" + row.characterId;
+        const invalid = missingBackstory ? undefined : Object.values(residentFoundingProblems(value)).find(Boolean);
         const legacy =
           value.historyMode === "adapt" ||
           value.historyMode === "new" ||
@@ -83,6 +82,8 @@ export function ResidentFoundingEditors({
               id={"villages-backstory-" + row.characterId}
               aria-label={row.name + " backstory"}
               value={value.historyMode}
+              aria-invalid={missingBackstory || undefined}
+              aria-describedby={missingBackstory ? missingBackstoryId : undefined}
               disabled={disabled}
               onChange={(event) => {
                 onChange(row.characterId, {
@@ -106,6 +107,11 @@ export function ResidentFoundingEditors({
               >
                 Edit
               </button>
+            ) : null}
+            {missingBackstory ? (
+              <p id={missingBackstoryId} role="alert" data-founding-problem tabIndex={-1}>
+                Custom backstory is empty. Select Edit to write one, or choose Use original backstory.
+              </p>
             ) : null}
             {invalid ? (
               <button type="button" data-founding-problem onClick={() => open(row.characterId, value)}>

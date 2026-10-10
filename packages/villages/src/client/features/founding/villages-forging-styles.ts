@@ -193,6 +193,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-backstory-heading .villages-founding-help { width:44px; }
 .villages-backstory-heading .villages-founding-help-text { position:absolute; z-index:3; top:100%; right:0; width:min(28rem,100%); max-width:none; box-sizing:border-box; border:1px solid #596b9b; border-radius:.5rem; background:#19213b; color:#f3f3ff; padding:.65rem; box-shadow:0 .3rem 1rem #0006; }
 
+.villages-backstory-row>p[data-founding-problem] { flex-basis:100%; margin:.1rem 0 0; font-size:.85rem; line-height:1.4; }
 .villages-embedded-backstory .villages-backstory-row>[data-founding-problem] { flex-basis:100%; }
 @media(max-width:704px) {
  .villages-forging-v2 .villages-embedded-backstory .villages-backstory-row { display:grid; grid-template-columns:minmax(0,1fr) auto; }

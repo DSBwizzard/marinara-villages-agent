@@ -417,6 +417,22 @@ try {
     const editBackstory = finnCard.getByRole("button", { name: "Edit Finn backstory", exact: true });
     const backstoryEditor = root.getByRole("dialog", { name: "Finn’s backstory", exact: true });
     const past = backstoryEditor.getByLabel("Backstory for this village", { exact: true });
+    const missingBackstoryNotice = finnCard.getByRole("alert");
+    await expect(missingBackstoryNotice).toHaveText(
+      "Custom backstory is empty. Select Edit to write one, or choose Use original backstory.",
+    );
+    await expect(missingBackstoryNotice).toHaveCSS("color", "rgb(255, 155, 165)");
+    await expect(choice).toHaveAttribute("aria-invalid", "true");
+    await forward("Continue to place").click();
+    await expect(root).toHaveAttribute("data-step", "0");
+    await expect(choice).toBeFocused();
+    await choice.selectOption("continue");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await expect(choice).not.toHaveAttribute("aria-invalid", "true");
+    await choice.selectOption("village");
+    await expect(missingBackstoryNotice).toBeVisible();
+    await bounds();
+    await capture("backstory-required");
     await expect(editBackstory).toBeVisible();
     await expect(backstoryEditor).toHaveCount(0);
     await expect(finnCard.getByRole("textbox")).toHaveCount(0);
@@ -435,6 +451,7 @@ try {
     await past.fill("Discard this draft.");
     await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(choice).toHaveValue("village");
+    await expect(missingBackstoryNotice).toBeVisible();
     await expect(editBackstory).toBeFocused();
     await editBackstory.click();
     await expect(past).toHaveValue("");
@@ -443,6 +460,9 @@ try {
     await expect(backstoryEditor).toHaveCount(0);
     await expect(editBackstory).toBeFocused();
     await editBackstory.click();
+    await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
+    await expect(backstoryEditor.getByRole("alert")).toContainText("Write a backstory");
+    await past.fill("   ");
     await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
     await expect(backstoryEditor.getByRole("alert")).toContainText("Write a backstory");
     await past.fill("Finn has always been guardian of a relic in the observatory.");
@@ -464,6 +484,8 @@ try {
     }
     await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
     await expect(choice).toHaveValue("village");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await expect(choice).not.toHaveAttribute("aria-invalid", "true");
     await root.getByRole("button", { name: "Finn · Remove", exact: true }).click();
     await expect(root.locator(".villages-backstory-row")).toHaveCount(homeCount - 1);
     await selectResidents(["Finn"]);
