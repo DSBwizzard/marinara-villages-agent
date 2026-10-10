@@ -32,6 +32,8 @@ const PLACE_EXAMPLES = [
 const CIRCUMSTANCE_EXAMPLES = [
   "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.",
   "The others and I have rented an abandoned observatory. The power works, but the living quarters need attention.",
+  "I work at the village inn. It is a quiet week, and the regulars gather each evening to share news and stories.",
+  "A storm has cut off the road out of the village. I am helping the others check supplies while we wait for news.",
 ];
 const PLACE_ERRORS = {
   name: "Give the village a name.",

@@ -628,12 +628,16 @@ try {
       const first = await circumstance.getAttribute("placeholder");
       const firstPlace = await place.getAttribute("placeholder");
       const placeHints = new Set([firstPlace]);
-      const nextCircumstance = first.includes("I already live here")
-        ? "The others and I have rented an abandoned observatory. The power works, but the living quarters need attention."
-        : "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.";
+      const circumstanceHints = new Set([first]);
+      assert.match(first, /\bI\b/, "Circumstance hints use first person");
       for (let tick = 1; tick <= 4; tick++) {
         await page.clock.runFor(4000);
-        await expect(circumstance).toHaveAttribute("placeholder", tick % 2 ? nextCircumstance : first);
+        const circumstanceHint = await circumstance.getAttribute("placeholder");
+        assert.match(circumstanceHint, /\bI\b/, "Circumstance hints use first person");
+        if (tick < 4) {
+          assert.ok(!circumstanceHints.has(circumstanceHint), "Circumstances cycle through four distinct hints");
+          circumstanceHints.add(circumstanceHint);
+        } else assert.equal(circumstanceHint, first, "Circumstances cycle back after four hints");
         const hint = await place.getAttribute("placeholder");
         if (tick < 4) {
           assert.ok(!placeHints.has(hint), "Place cycles through four distinct hints");
