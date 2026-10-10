@@ -368,7 +368,9 @@ try {
         await root.evaluate((element) => {
           element.scrollTop = 0;
         });
-        await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${name}-${width}.png`) });
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${name}-${width}x${height}-${fontSize}.png`),
+        });
       }
     };
     await expect(root.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute("aria-label", "People");
@@ -737,8 +739,49 @@ try {
       "aria-pressed",
       "true",
     );
+    await expect(mapDialog.getByRole("img", { name: "Simple map background preview" })).toBeVisible();
+    const assertMapFooter = async () => {
+      const dialogBox = await mapDialog.boundingBox();
+      const footerBox = await mapDialog.locator("footer").boundingBox();
+      assert.ok(
+        dialogBox &&
+          footerBox &&
+          footerBox.y >= dialogBox.y &&
+          footerBox.y + footerBox.height <= dialogBox.y + dialogBox.height + 1,
+      );
+      assert.ok(dialogBox.y >= 0 && dialogBox.y + dialogBox.height <= height + 1, "map dialog fits viewport");
+      assert.ok(
+        await mapDialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+        "map dialog has no horizontal overflow",
+      );
+    };
+    await assertMapFooter();
     await bounds();
     await capture("map-dialog");
+    await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
+    const mapDetails = mapDialog.getByLabel("Map details", { exact: true });
+    await expect(mapDetails).toHaveValue("");
+    await expect(mapDetails).toHaveAttribute(
+      "placeholder",
+      "An inn beside the river, with homes around a central square.",
+    );
+    await mapDialog.getByRole("button", { name: "Help: Map details", exact: true }).click();
+    await expect(mapDialog.getByRole("note")).toHaveText(
+      "Describe anything you want shown or arranged in the artwork.",
+    );
+    await mapDialog.getByRole("heading", { name: "Map artwork", exact: true }).click();
+    await expect(mapDialog.getByRole("note")).toHaveCount(0);
+    await capture("map-details");
+    await mapDialog.getByText("More options", { exact: true }).click();
+    await expect(mapDialog.getByText("Things to avoid", { exact: true })).toBeVisible();
+    await mapDialog.locator(".villages-place-map-editor").evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    await assertMapFooter();
+    await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
+    await expect(mapDialog.getByLabel("Upload map image", { exact: true })).toBeVisible();
+    await assertMapFooter();
+    await mapDialog.getByRole("button", { name: "Simple map", exact: true }).click();
     await mapDialog.getByRole("button", { name: "Done", exact: true }).click();
     await expect(changeMap).toBeFocused();
     await changeMap.click();
@@ -1076,9 +1119,9 @@ try {
       const artworkDialog = root.getByRole("dialog", { name: "Map artwork", exact: true });
       await expect(artworkDialog.getByText(/expected AI request|Read-only forecast/)).toHaveCount(0);
       await expect(artworkDialog.getByText("Choose artwork here, or use Simple map.", { exact: true })).toHaveCount(0);
-      await expect(artworkDialog.getByText("Advanced artwork options", { exact: true })).toBeVisible();
+      await expect(artworkDialog.getByText("More options", { exact: true })).toBeVisible();
       await capture("map-artwork-options");
-      await root.getByLabel("Map layout", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
+      await root.getByLabel("Map details", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
       await root.getByRole("button", { name: "Generate map", exact: true }).click();
       await expect.poll(() => !!releaseMap).toBe(true);
       await root
@@ -1146,7 +1189,10 @@ try {
       await forward("Back").click();
       await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
-      await root.getByLabel("Map layout", { exact: true }).fill("Same map with updated guidance.");
+      await expect(root.getByLabel("Map details", { exact: true })).toHaveValue(
+        "One floor; bedrooms east, telescope hall west.",
+      );
+      await root.getByLabel("Map details", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
       await root
@@ -1163,7 +1209,7 @@ try {
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
       await root
         .getByRole("group", { name: "Map source", exact: true })
-        .getByRole("button", { name: "Upload", exact: true })
+        .getByRole("button", { name: "Upload image", exact: true })
         .click();
       const uploadArt = new PNG({ width: 640, height: 640 });
       uploadArt.data.fill(110);

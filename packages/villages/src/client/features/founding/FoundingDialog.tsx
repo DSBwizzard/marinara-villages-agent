@@ -6,6 +6,7 @@ export function FoundingDialog({
   onClose,
   children,
   compact = false,
+  scrollBody = false,
   dismissible = true,
   showCloseButton = true,
 }: {
@@ -13,6 +14,7 @@ export function FoundingDialog({
   onClose(): void;
   children: ReactNode;
   compact?: boolean;
+  scrollBody?: boolean;
   dismissible?: boolean;
   showCloseButton?: boolean;
 }) {
@@ -32,6 +34,7 @@ export function FoundingDialog({
       ref={dialog}
       className="villages-founding-dialog"
       data-compact={compact || undefined}
+      data-scroll-body={scrollBody || undefined}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();

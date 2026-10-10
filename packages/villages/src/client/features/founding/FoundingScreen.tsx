@@ -520,8 +520,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <h3 aria-label="Map">
                     Map{" "}
                     <FoundingHelp label="Map">
-                      A Simple map keeps Venue positions without artwork; automatic spacing is available on Venues. You
-                      can also generate or upload artwork.
+                      Choose a simple background, generate artwork, or upload an image. Place your Venues in the next
+                      step.
                     </FoundingHelp>
                   </h3>
                   {snapshot?.isFounded ? (
@@ -554,42 +554,51 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         <p role="alert">{setupMapProblem}</p>
                       ) : null}
                       {mapEditorOpen ? (
-                        <FoundingDialog title="Map artwork" compact onClose={() => setMapEditorOpen(false)}>
+                        <FoundingDialog title="Map artwork" compact scrollBody onClose={() => setMapEditorOpen(false)}>
                           <div className="villages-place-map-editor">
-                            <div className="villages-forging-actions" role="group" aria-label="Map source">
+                            <div className="villages-map-sources" role="group" aria-label="Map source">
                               {(
                                 [
-                                  ["none", "Simple map"],
-                                  ["generate", "Generate artwork"],
-                                  ["upload", "Upload"],
+                                  ["none", "Simple map", "A clean background for your Venues."],
+                                  ["generate", "Generate artwork", "Create a map from Place and world."],
+                                  ["upload", "Upload image", "Use your own map artwork."],
                                 ] as const
-                              ).map(([value, label]) => (
+                              ).map(([value, label, description]) => (
                                 <button
                                   key={value}
                                   type="button"
+                                  aria-label={label}
                                   aria-pressed={setupMapSource === value}
                                   onClick={() => {
                                     setSetupMapSource(value);
                                     setSetupMapReviewed(value === "none");
                                   }}
                                 >
-                                  {label}
+                                  <span className="villages-map-source-indicator" aria-hidden="true" />
+                                  <span>
+                                    <span className="villages-map-source-title">{label}</span>
+                                    {setupMapSource === "none" ? <small>{description}</small> : null}
+                                  </span>
                                 </button>
                               ))}
                             </div>
                             {setupMapSource === "generate" ? (
                               <>
+                                <p className="villages-map-context">Based on your Place and world description.</p>
                                 <FoundingField
-                                  title="Map layout"
-                                  help="Guides the artwork. You will place the Venue photographs yourself."
+                                  title="Map details"
+                                  optional
+                                  help="Describe anything you want shown or arranged in the artwork."
                                 >
                                   <textarea
-                                    aria-label="Map layout"
+                                    aria-label="Map details"
                                     rows={3}
                                     maxLength={1500}
-                                    value={setupMapPrompt}
+                                    value={
+                                      setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? "" : setupMapPrompt
+                                    }
                                     onChange={(event) => setSetupMapPrompt(event.target.value)}
-                                    placeholder="For example: bedrooms along the east corridor; lounge near the center."
+                                    placeholder="An inn beside the river, with homes around a central square."
                                   />
                                 </FoundingField>
                                 <label>
@@ -611,33 +620,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                   </select>
                                 </label>
                                 <details>
-                                  <summary>Customize style description</summary>
-                                  <textarea
-                                    aria-label="Scenery style description"
-                                    maxLength={600}
-                                    value={sceneryStyle}
-                                    onChange={(event) => setSceneryStyle(event.target.value)}
-                                  />
-                                </details>
-                                <button
-                                  type="button"
-                                  disabled={busy || setupMapBusy || !setupSetting.trim()}
-                                  onClick={() => void generateSetupTownMap()}
-                                >
-                                  {setupMapBusy
-                                    ? "Generating map…"
-                                    : setupMapImageSource === "generate"
-                                      ? "Generate again"
-                                      : "Generate map"}
-                                </button>
-                                {setupMapBusy ? <p role="status">{setupMapProgress}</p> : null}
-                                {setupMapProblem ? (
-                                  <p className={`${ELEMENT_TAG}-error`} role="alert">
-                                    {setupMapProblem}
-                                  </p>
-                                ) : null}
-                                <details>
-                                  <summary>Advanced artwork options</summary>
+                                  <summary>More options</summary>
+                                  <label>
+                                    Style description
+                                    <textarea
+                                      aria-label="Scenery style description"
+                                      maxLength={600}
+                                      value={sceneryStyle}
+                                      onChange={(event) => setSceneryStyle(event.target.value)}
+                                    />
+                                  </label>
                                   {(
                                     [
                                       ["roads", "Roads and paths"],
@@ -663,7 +655,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                     </label>
                                   ))}
                                   <label>
-                                    Negative tags
+                                    Things to avoid
                                     <textarea
                                       value={setupMapNegativePrompt}
                                       maxLength={1500}
@@ -679,12 +671,31 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                     Use Village lorebooks for map artwork
                                   </label>
                                 </details>
+                                <button
+                                  type="button"
+                                  className="villages-forging-primary villages-map-generate"
+                                  disabled={busy || setupMapBusy || !setupSetting.trim()}
+                                  onClick={() => void generateSetupTownMap()}
+                                >
+                                  {setupMapBusy
+                                    ? "Generating map…"
+                                    : setupMapImageSource === "generate"
+                                      ? "Generate again"
+                                      : "Generate map"}
+                                </button>
+                                {setupMapBusy ? <p role="status">{setupMapProgress}</p> : null}
+                                {setupMapProblem ? (
+                                  <p className={`${ELEMENT_TAG}-error`} role="alert">
+                                    {setupMapProblem}
+                                  </p>
+                                ) : null}
+                                {!setupSetting.trim() ? <p>Add a Place and world description first.</p> : null}
                               </>
                             ) : null}
                             {setupMapSource === "upload" ? (
                               <>
                                 <label>
-                                  Upload map image
+                                  Upload image
                                   <input
                                     aria-label="Upload map image"
                                     type="file"
@@ -703,7 +714,16 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                 ) : null}
                               </>
                             ) : null}
-                            {setupMapSource === "none" ? null : setupMapSrc ? (
+                            {setupMapSource === "none" ? (
+                              <div className="villages-simple-map-preview">
+                                <div role="img" aria-label="Simple map background preview">
+                                  <span />
+                                  <span />
+                                  <span />
+                                </div>
+                                <p>Place your Venues in the next step.</p>
+                              </div>
+                            ) : setupMapSrc ? (
                               <figure>
                                 <img
                                   className="villages-forging-preview"
@@ -741,21 +761,25 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                 </button>
                               </div>
                             ) : null}
+                            {setupMapRequest?.phase === "paused" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSetupMapProblem("");
+                                  setSetupMapBusy(true);
+                                  updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
+                                }}
+                              >
+                                Check map status
+                              </button>
+                            ) : null}
                           </div>
-                          {setupMapRequest?.phase === "paused" ? (
+                          <footer>
                             <button
                               type="button"
-                              onClick={() => {
-                                setSetupMapProblem("");
-                                setSetupMapBusy(true);
-                                updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
-                              }}
+                              className="villages-forging-primary"
+                              onClick={() => setMapEditorOpen(false)}
                             >
-                              Check map status
-                            </button>
-                          ) : null}
-                          <footer>
-                            <button type="button" onClick={() => setMapEditorOpen(false)}>
                               Done
                             </button>
                           </footer>
@@ -927,7 +951,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           : "Chosen artwork"}{" "}
                       · {setupLorebookDraft.length} lorebooks selected
                     </p>
-                    {setupMapPrompt ? <p>Map layout: {setupMapPrompt}</p> : null}
+                    {setupMapPrompt && setupMapPrompt !== snapshot?.settings.townMapLayoutPrompt ? (
+                      <p>Map details: {setupMapPrompt}</p>
+                    ) : null}
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">

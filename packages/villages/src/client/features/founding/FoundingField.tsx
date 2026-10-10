@@ -53,12 +53,14 @@ export function FoundingField({
   title,
   help,
   helpPlacement = "label",
+  optional = false,
   error,
   children,
 }: {
   title: ReactNode;
   help?: ReactNode;
   helpPlacement?: "label" | "input";
+  optional?: boolean;
   error?: string;
   children: ReactElement<{ id?: string; "aria-describedby"?: string; "aria-invalid"?: boolean }>;
 }) {
@@ -67,7 +69,10 @@ export function FoundingField({
   return (
     <div className="villages-founding-field">
       <div className="villages-founding-field-heading">
-        <label htmlFor={id}>{title}</label>
+        <label htmlFor={id}>
+          {title}
+          {optional ? <small>Optional</small> : null}
+        </label>
         {help && helpPlacement === "label" ? (
           <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
         ) : null}
