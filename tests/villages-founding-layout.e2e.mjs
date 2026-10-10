@@ -16,7 +16,7 @@ const browser = await chromium.launch({
 const snapshot = {
   status: "ready",
   isFounded: false,
-  village: { name: "", setting: "" },
+  village: { name: "Willowbrook", setting: "" },
   noticeboard: [],
   projects: [],
   venueRequests: [],
@@ -124,6 +124,11 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
             window.openSetup(false, village);
             return window.values;
           }, village);
+          assert.equal(
+            values.setSetupName,
+            founded ? "Willowbrook" : "",
+            "Only founded names prefill; drafts restore independently",
+          );
           assert.equal(values.setSetupFoundingReason, reason);
           assert.equal(values.setSetupFoundingDetails, details);
           assert.equal(values.setSetupFoundingGuidance, reason === "none" ? "" : village.settings.foundingGuidance);
@@ -133,6 +138,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
       window.openSetup(true, null);
       return window.values;
     });
+    assert.equal(fresh.setSetupName, "");
     assert.equal(fresh.setSetupFoundingReason, "custom");
     assert.equal(fresh.setSetupFoundingGuidance, "");
     assert.notEqual(fresh.setSetupFoundingDetails, "x".repeat(2000));
@@ -622,6 +628,7 @@ try {
     await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
     const circumstance = root.getByLabel("Starting circumstances", { exact: true });
     await expect(circumstance).toHaveValue("");
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("");
     if (width === 390 && height === 844) {
       await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
       const place = root.getByLabel("Place and world", { exact: true });

@@ -329,7 +329,8 @@ export function useOpenSetup(ports: {
       setSetupWorkspace(emptyFoundingWorkspace());
       setSetupShowIssues(false);
       setSetupFocusIssue(null);
-      setSetupName(fresh ? "" : (village?.village.name ?? ""));
+      // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
+      setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
       const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
