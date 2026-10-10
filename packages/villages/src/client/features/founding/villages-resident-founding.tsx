@@ -132,7 +132,16 @@ export function ResidentFoundingEditors({
           showCloseButton={false}
         >
           {editing.value.historyMode === "village" ? (
-            <FoundingField title="Backstory for this village" error={attempted ? problems?.villageBackstory : ""}>
+            <FoundingField
+              title="Backstory for this village"
+              error={
+                attempted
+                  ? !editing.value.villageBackstory?.trim()
+                    ? `Write ${person.name}’s backstory for this Village.`
+                    : problems?.villageBackstory
+                  : ""
+              }
+            >
               <textarea
                 aria-label="Backstory for this village"
                 rows={4}

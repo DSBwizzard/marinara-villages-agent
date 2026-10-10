@@ -515,10 +515,10 @@ try {
     await expect(editBackstory).toBeFocused();
     await editBackstory.click();
     await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(backstoryEditor.getByRole("alert")).toContainText("Write a backstory");
+    await expect(backstoryEditor.getByRole("alert")).toHaveText("Write Finn’s backstory for this Village.");
     await past.fill("   ");
     await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(backstoryEditor.getByRole("alert")).toContainText("Write a backstory");
+    await expect(backstoryEditor.getByRole("alert")).toHaveText("Write Finn’s backstory for this Village.");
     await past.fill("Finn has always been guardian of a relic in the observatory.");
     if (width === 390 && height === 844) {
       await page.setViewportSize({ width, height: 460 });
