@@ -191,6 +191,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-embedded-backstory .villages-backstory-row>select { flex:1; }
 .villages-backstory-heading { display:flex; align-items:center; flex-wrap:wrap; min-width:0; }
 .villages-backstory-heading .villages-founding-help { display:contents; }
+.villages-backstory-heading:has(button[aria-expanded=true]) { flex-basis:100%; }
 .villages-backstory-heading .villages-founding-help-text { flex-basis:100%; }
 .villages-inline-backstory { min-width:0; padding-bottom:.65rem; }
 .villages-inline-backstory textarea,.villages-inline-backstory select { width:100%; min-width:0; font:inherit; font-size:1rem; color:#f3f3ff; background:#10172f; border:1px solid #8574be; border-radius:.5rem; padding:.55rem; }

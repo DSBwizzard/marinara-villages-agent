@@ -442,6 +442,10 @@ try {
     }
     await bounds();
     await capture("people-inline");
+    if (process.env.VILLAGES_SCREENSHOT_DIR) {
+      await backstoryEditor.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `backstory-editor-${width}.png`) });
+    }
     await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
     await expect(choice).toHaveValue("village");
     await root.getByRole("button", { name: "Finn · Remove", exact: true }).click();
