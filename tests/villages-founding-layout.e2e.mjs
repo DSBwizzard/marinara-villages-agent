@@ -422,6 +422,16 @@ try {
     await expect(finnCard.getByRole("textbox")).toHaveCount(0);
     await editBackstory.click();
     await expect(backstoryEditor).toBeVisible();
+    const popupBounds = await backstoryEditor.boundingBox();
+    assert.ok(
+      popupBounds && popupBounds.height < height * 0.65,
+      "backstory popup fits its contents instead of filling the page",
+    );
+    const popupFooter = await backstoryEditor.locator("footer").boundingBox();
+    assert.ok(
+      popupFooter && popupBounds.y + popupBounds.height - popupFooter.y - popupFooter.height < 25,
+      "no empty area below popup actions",
+    );
     await past.fill("Discard this draft.");
     await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(choice).toHaveValue("village");

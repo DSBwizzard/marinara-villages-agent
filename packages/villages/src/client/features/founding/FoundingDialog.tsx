@@ -1,7 +1,17 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 
 /** Native modality keeps the editor out of page flow and restores its opener. */
-export function FoundingDialog({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }) {
+export function FoundingDialog({
+  title,
+  onClose,
+  children,
+  compact = false,
+}: {
+  title: string;
+  onClose(): void;
+  children: ReactNode;
+  compact?: boolean;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -17,6 +27,7 @@ export function FoundingDialog({ title, onClose, children }: { title: string; on
     <dialog
       ref={dialog}
       className="villages-founding-dialog"
+      data-compact={compact || undefined}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
