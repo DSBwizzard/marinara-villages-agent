@@ -10,11 +10,12 @@ export function FoundingHelp({ label, children }: { label: string; children: Rea
     const node = help.current;
     if (!open || !node) return;
     const document = node.ownerDocument;
-    const dismissOutside = (event: PointerEvent) => {
+    const dismissOutside = (event: MouseEvent) => {
       if (!event.composedPath().includes(node)) setOpen(false);
     };
-    document.addEventListener("pointerdown", dismissOutside, true);
-    return () => document.removeEventListener("pointerdown", dismissOutside, true);
+    // Native clicks distinguish completed taps from cancelled scrolling gestures.
+    document.addEventListener("click", dismissOutside, true);
+    return () => document.removeEventListener("click", dismissOutside, true);
   }, [open]);
   return (
     <span

@@ -425,6 +425,26 @@ try {
     await expect(outsideField).toBeFocused();
     await helpBackstory.click();
     const outsideHeading = root.getByRole("heading", { name: "Forging the Village", exact: true });
+    if (width === 390 && height === 844) {
+      const body = root;
+      await body.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+      const bodyBounds = await body.boundingBox();
+      assert.ok(bodyBounds);
+      const touch = await context.newCDPSession(page);
+      const x = bodyBounds.x + bodyBounds.width - 6;
+      const y = bodyBounds.y + bodyBounds.height * 0.75;
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      for (let step = 1; step <= 6; step++) {
+        await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - step * 24 }] });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
+      await touch.detach();
+    }
     if (width < 600) await outsideHeading.tap();
     else await outsideHeading.click();
     await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
