@@ -292,7 +292,7 @@ export function createFoundingGotoSetupStep(ports: {
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
         : !setupSetting.trim()
-          ? "Describe where we are."
+          ? "Describe the place and world."
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
             ? "Describe what brings you together."
             : "";

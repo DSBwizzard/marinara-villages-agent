@@ -27,7 +27,7 @@ import { ResidentFoundingEditors } from "./villages-resident-founding.js";
 const CIRCUMSTANCE_EXAMPLES = FOUNDING_SCENARIOS.map((scenario) => scenario.premise).filter(Boolean);
 const PLACE_ERRORS = {
   name: "Give the village a name.",
-  setting: "Describe where we are.",
+  setting: "Describe the place and world.",
   circumstance: "Describe what brings you together.",
 };
 
@@ -446,7 +446,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <h3>Place</h3>
                   <FoundingField
                     title="Village name"
-                    help="The name of your village."
                     error={validatedFields.includes("place-name") && !setupName.trim() ? PLACE_ERRORS.name : ""}
                   >
                     <input
@@ -461,14 +460,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     />
                   </FoundingField>
                   <FoundingField
-                    title="Where are we?"
+                    title="Place and world"
                     help="Describe the place, surrounding world, and ongoing conditions. It can already be established."
                     error={
                       validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
                     }
                   >
                     <textarea
-                      aria-label="Where are we?"
+                      aria-label="Place and world"
                       maxLength={snapshot?.settings.settingMaxLength ?? 1200}
                       rows={4}
                       value={setupSetting}

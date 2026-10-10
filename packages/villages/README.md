@@ -292,7 +292,7 @@ Ordinary weeks and native translations do not contain unresolved wish errands. A
 
 ## Place, world, and starting circumstances
 
-Founding sets the grounding for play, not a finished community identity or a scripted first day. **Where are we?** asks for the place, surrounding world, and relevant ongoing conditions. **What brings you and the others together here?** asks for a brief shared circumstance. Both are required; everyday reasons such as shared housing or an onsite assignment are enough. Individual motives, relationships, culture, and what happens next can emerge through play. Starting a game does not mean the place itself is newly established.
+Founding sets the grounding for play, not a finished community identity or a scripted first day. **Place and world** asks for the place, surrounding world, and relevant ongoing conditions. **What brings you and the others together here?** asks for a brief shared circumstance. Both are required; everyday reasons such as shared housing or an onsite assignment are enough. Individual motives, relationships, culture, and what happens next can emerge through play. Starting a game does not mean the place itself is newly established.
 
 **Starting over**, **Arriving somewhere new**, and **A shared undertaking** supply editable examples, not obligations. Custom lets you write your own shared circumstances. Older **No preset** histories remain readable. Existing scenario illustrations remain example artwork and do not define the player's world.
 
@@ -1482,4 +1482,4 @@ Completed local domains share a Scene checkpoint. Effects and notices stay in th
 
 Deterministic saved-exchange fixtures measured 97 document writes for 97 exchanges (previously 388), and 125 for 125 exchanges (previously 500), with zero model requests in both versions. The fixtures use mocked storage and saved proposals; these counts do not predict production latency, model accuracy or monetary savings. Feed and diagnostic reads do not apply background outboxes.
 
-Place follows People’s panels and help controls: Village name and Where are we? stay inline, with a separate Starting situation panel describing what is happening when play begins. Map shows the selected source with Change opening the artwork controls; Done or dismissal returns to the page, retaining the existing draft edits and in-flight artwork. Generation still requires its explicit button. Lorebooks and story direction remain collapsed until opened.
+Place follows People’s panels and help controls: Village name and Place and world stay inline, with a separate Starting situation panel describing what is happening when play begins. Map shows the selected source with Change opening the artwork controls; Done or dismissal returns to the page, retaining the existing draft edits and in-flight artwork. Generation still requires its explicit button. Lorebooks and story direction remain collapsed until opened.

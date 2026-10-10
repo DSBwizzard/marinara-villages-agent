@@ -639,8 +639,8 @@ try {
     await expect(nameField).toBeFocused();
     await expect(nameField).toHaveAttribute("aria-invalid", "true");
     await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
-    await expect(root.getByLabel("Where are we?", { exact: true }).locator("..").getByRole("alert")).toHaveText(
-      "Describe where we are.",
+    await expect(root.getByLabel("Place and world", { exact: true }).locator("..").getByRole("alert")).toHaveText(
+      "Describe the place and world.",
     );
     await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe what brings you together.");
     await nameField.fill("Willowbrook");
@@ -648,16 +648,39 @@ try {
     await expect(nameField).toBeFocused();
     await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
     await forward("Continue to Venues").click();
-    await expect(root.getByLabel("Where are we?", { exact: true })).toBeFocused();
-    const help = root.getByRole("button", { name: "Help: Where are we?", exact: true });
+    await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
+    await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
+    const help = root.getByRole("button", { name: "Help: Place and world", exact: true });
+    const panelsHeight = (await root.locator(".villages-place-panels").boundingBox()).height;
     await help.click();
     await expect(help).toHaveAttribute("aria-expanded", "true");
     await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toBeVisible();
+    assert.equal(
+      (await root.locator(".villages-place-panels").boundingBox()).height,
+      panelsHeight,
+      "Place help floats without expanding panels",
+    );
+    await bounds();
+    await capture("place-help");
     await help.press("Escape");
     await expect(help).toBeFocused();
     await expect(help).toHaveAttribute("aria-expanded", "false");
+    for (const label of ["Starting situation", "Map"]) {
+      const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
+      await otherHelp.click();
+      await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
+      assert.equal(
+        (await root.locator(".villages-place-panels").boundingBox()).height,
+        panelsHeight,
+        label + " help floats without expanding panels",
+      );
+      await bounds();
+      await capture(label === "Map" ? "map-help" : "situation-help");
+      await otherHelp.press("Escape");
+      await expect(otherHelp).toBeFocused();
+    }
     await root
-      .getByLabel("Where are we?", { exact: true })
+      .getByLabel("Place and world", { exact: true })
       .fill("A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.");
     await forward("Continue to Venues").click();
     await expect(circumstance).toBeFocused();
