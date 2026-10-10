@@ -59,9 +59,14 @@ export function ResidentFoundingEditors({
               <div className="villages-backstory-heading">
                 <label htmlFor={"villages-backstory-" + row.characterId}>Backstory</label>
                 <FoundingHelp label={row.name + " backstory"}>
-                  Use the character card's original backstory, or write a custom past for this village. A custom
-                  backstory replaces their personal history here while preserving their personality, appearance, skills,
-                  and the original card.
+                  <span style={{ display: "block" }}>
+                    <strong>Use original character history</strong>: Preserves the character’s existing history wherever
+                    their card describes it.
+                  </span>
+                  <span style={{ display: "block" }}>
+                    <strong>Write village-specific history</strong>: makes your text the authoritative past for this
+                    character in this village.
+                  </span>
                 </FoundingHelp>
               </div>
             ) : (
@@ -84,8 +89,8 @@ export function ResidentFoundingEditors({
                 }
               }}
             >
-              <option value="continue">Use character card backstory</option>
-              <option value="village">Write custom backstory</option>
+              <option value="continue">Use original character history</option>
+              <option value="village">Write village-specific history</option>
               {value.historyMode === "adapt" || value.historyMode === "new" ? (
                 <option value={value.historyMode}>{RESIDENT_HISTORY_MODES[value.historyMode]}</option>
               ) : null}

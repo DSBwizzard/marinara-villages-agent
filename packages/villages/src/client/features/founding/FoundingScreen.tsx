@@ -793,9 +793,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                             <>
                               <p>
                                 {context.historyMode === "continue"
-                                  ? "Use character card backstory"
+                                  ? "Use original character history"
                                   : context.historyMode === "village"
-                                    ? "Write custom backstory"
+                                    ? "Write village-specific history"
                                     : RESIDENT_HISTORY_MODES[context.historyMode]}
                                 {context.storyRole !== "unspecified"
                                   ? " · " + RESIDENT_STORY_ROLES[context.storyRole]

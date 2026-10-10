@@ -399,9 +399,10 @@ try {
     await capture("people-merged");
     const helpBackstory = finnCard.getByRole("button", { name: "Help: Finn backstory", exact: true });
     await helpBackstory.click();
-    await expect(finnCard.getByRole("note")).toHaveText(
-      "Use the character card's original backstory, or write a custom past for this village. A custom backstory replaces their personal history here while preserving their personality, appearance, skills, and the original card.",
-    );
+    await expect(finnCard.getByRole("note").locator("span")).toHaveText([
+      "Use original character history: Preserves the character’s existing history wherever their card describes it.",
+      "Write village-specific history: makes your text the authoritative past for this character in this village.",
+    ]);
     await bounds();
     await capture("backstory-help");
     await helpBackstory.press("Escape");
