@@ -177,10 +177,10 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-people-identity[aria-pressed=true] { background:#30305c!important; border-color:#aa87ff!important; box-shadow:inset 0 0 0 1px #aa87ff; }
 .villages-people-action { flex:none; font-size:.8rem; color:#c4a8ff; }
 .villages-people-selected,.villages-people-choices { display:grid; gap:.5rem; margin:.5rem 0; }
-.villages-forging-v2 .villages-role-blurb { border-top:1px solid #43547d; margin:.65rem 0 0; padding:.6rem 0 .2rem; font-size:.8rem; line-height:1.4; font-weight:600; }
+.villages-forging-v2 .villages-founding-role-editor { border-top:1px solid #43547d; margin:.65rem 0 0; padding:.5rem 0 0; }
 .villages-forging-v2 .villages-founding-role-editor fieldset { border:0; padding:0; margin:0; }
 .villages-founding-role-editor .marinara-capability-villages-founding-role-fields { grid-template-columns:minmax(0,1fr); }
-.villages-forging-v2 .villages-founding-role-editor .villages-founding-field { display:grid; grid-template-columns:auto minmax(0,1fr); gap:.5rem; align-items:center; margin:.2rem 0 0; }
+.villages-forging-v2 .villages-founding-role-editor .villages-founding-field { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:.5rem; align-items:center; margin:.2rem 0 0; }
 .villages-founding-role-editor .villages-founding-field>p { grid-column:1/-1; }
 .villages-forging-v2 .villages-founding-role-editor input::placeholder { color:#a6aed0; opacity:.75; }
 .villages-backstory-row { display:flex; align-items:center; flex-wrap:wrap; gap:.5rem; margin:.5rem 0; padding:.5rem 0; min-width:0; }
@@ -201,4 +201,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-dialog p[role=alert] { color:#ffb9bc; }
 .villages-founding-dialog footer { display:flex; justify-content:flex-end; gap:.5rem; padding-top:.75rem; }
 .villages-founding-dialog .villages-forging-primary { background:#6650cf; border-color:#9d88f4; }
+
+.villages-founding-role-editor .villages-founding-field { position:relative; }
+.villages-founding-role-editor .villages-founding-help { width:44px; align-self:start; }
+.villages-founding-role-editor .villages-founding-help-text { position:absolute; z-index:3; top:100%; right:0; width:min(28rem,100%); max-width:none; box-sizing:border-box; border:1px solid #596b9b; border-radius:.5rem; background:#19213b; color:#f3f3ff; padding:.65rem; box-shadow:0 .3rem 1rem #0006; }
 `;

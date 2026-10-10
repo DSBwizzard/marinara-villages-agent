@@ -346,9 +346,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
 
                 {!snapshot?.isFounded ? (
                   <>
-                    <p className="villages-role-blurb">
-                      In Villages, you oversee major changes, improvements, and developments.
-                    </p>
                     <div className="villages-founding-role-editor">
                       <PlayerRoleFields
                         compact

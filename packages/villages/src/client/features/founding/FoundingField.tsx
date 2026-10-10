@@ -1,6 +1,6 @@
 import { cloneElement, type ReactElement, type ReactNode, useId, useRef, useState, useEffect } from "react";
 
-/** Field help stays beside its label; it never becomes part of an input's accessible name. */
+/** Field help stays beside its label or input; it never changes the input's accessible name. */
 export function FoundingHelp({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const id = useId(),
@@ -39,11 +39,13 @@ export function FoundingHelp({ label, children }: { label: string; children: Rea
 export function FoundingField({
   title,
   help,
+  helpPlacement = "label",
   error,
   children,
 }: {
   title: ReactNode;
   help?: ReactNode;
+  helpPlacement?: "label" | "input";
   error?: string;
   children: ReactElement<{ id?: string; "aria-describedby"?: string; "aria-invalid"?: boolean }>;
 }) {
@@ -53,7 +55,9 @@ export function FoundingField({
     <div className="villages-founding-field">
       <div className="villages-founding-field-heading">
         <label htmlFor={id}>{title}</label>
-        {help ? <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp> : null}
+        {help && helpPlacement === "label" ? (
+          <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
+        ) : null}
       </div>
       {cloneElement(children, {
         id,
@@ -64,6 +68,9 @@ export function FoundingField({
             }
           : {}),
       })}
+      {help && helpPlacement === "input" ? (
+        <FoundingHelp label={typeof title === "string" ? title : "field"}>{help}</FoundingHelp>
+      ) : null}
       {error ? (
         <p id={errorId} role="alert" data-founding-problem tabIndex={-1}>
           {error}

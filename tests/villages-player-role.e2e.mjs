@@ -36,9 +36,9 @@ const screenshot = async (page, name) => {
   await page.screenshot({ path: resolve("artifacts/role-ui", name + ".png") });
 };
 try {
-  for (const width of [1366, 390])
+  for (const width of [1366, 390, 320])
     for (const scenario of cases) {
-      const page = await browser.newPage({ viewport: { width, height: width === 390 ? 844 : 768 } });
+      const page = await browser.newPage({ viewport: { width, height: width <= 390 ? 844 : 768 } });
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       const snapshot = {
@@ -102,6 +102,7 @@ try {
           body: "<style>:root{font-size:20px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
         }),
       );
+      await page.clock.install();
       await page.goto("http://role.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       if (scenario.founded) {
@@ -148,11 +149,29 @@ try {
         const role = page.getByRole("group", { name: "Your role", exact: true });
         await expect(role.getByRole("textbox", { name: "Role title", exact: true })).toHaveValue("");
         const title = role.getByRole("textbox", { name: "Role title", exact: true });
-        await expect(page.locator(".villages-role-blurb")).toHaveText(
+        const help = role.getByRole("button", { name: "Help: Role title", exact: true });
+        const responsibility = role.getByRole("note");
+        await expect(responsibility).toHaveCount(0);
+        await expect(help).toHaveAttribute("aria-expanded", "false");
+        const inputBounds = await title.boundingBox(),
+          helpBounds = await help.boundingBox();
+        assert.ok(helpBounds.x >= inputBounds.x + inputBounds.width, "help is to the right of the Role field");
+        await help.click();
+        await expect(responsibility).toHaveText(
           "In Villages, you oversee major changes, improvements, and developments.",
         );
+        await expect(help).toHaveAttribute("aria-expanded", "true");
+        await responsibility.scrollIntoViewIfNeeded();
+        const helpTextBounds = await responsibility.boundingBox();
+        assert.ok(
+          helpTextBounds.x >= 0 && helpTextBounds.x + helpTextBounds.width <= width,
+          "help text fits the viewport",
+        );
+        await screenshot(page, "role-help-" + width);
+        await help.press("Escape");
+        await expect(responsibility).toHaveCount(0);
+        await expect(help).toBeFocused();
         await expect(title).toHaveAttribute("placeholder", "Mayor");
-        await page.clock.install();
         for (const example of ["Project Coordinator", "Captain", "King", "Mayor"]) {
           await page.clock.fastForward(4000);
           await expect(title).toHaveAttribute("placeholder", example);

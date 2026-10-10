@@ -65,6 +65,8 @@ export function PlayerRoleFields({
       <div className={`${PREFIX}-founding-role-fields`}>
         <FoundingField
           title="Role title"
+          help="In Villages, you oversee major changes, improvements, and developments."
+          helpPlacement="input"
           error={problem && (!role.title.trim() || role.title.length > 80) ? problem : ""}
         >
           <input
