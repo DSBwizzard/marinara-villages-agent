@@ -397,47 +397,59 @@ try {
     await expect(finnCard.getByText("Finn", { exact: true })).toHaveCount(1);
     await bounds();
     await capture("people-merged");
+    const helpBackstory = finnCard.getByRole("button", { name: "Help: Finn backstory", exact: true });
+    await helpBackstory.click();
+    await expect(finnCard.getByRole("note")).toHaveText(
+      "Use the character card's original backstory, or write a custom past for this village. A custom backstory replaces their personal history here while preserving their personality, appearance, skills, and the original card.",
+    );
+    await bounds();
+    await capture("backstory-help");
+    await helpBackstory.press("Escape");
+    await expect(helpBackstory).toBeFocused();
     const heightBefore = await root.evaluate((node) => node.scrollHeight);
     await choice.focus();
     await choice.selectOption("village");
-    const backstoryDialog = page.getByRole("dialog", { name: "Finn’s backstory", exact: true });
-    const past = backstoryDialog.getByLabel("Backstory for this village", { exact: true });
-    await expect(backstoryDialog).toBeVisible();
-    assert.equal(await root.evaluate((node) => node.scrollHeight), heightBefore, "popout reserves no document space");
+    const backstoryEditor = finnCard.getByRole("group", { name: "Finn backstory editor", exact: true });
+    const past = backstoryEditor.getByLabel("Backstory for this village", { exact: true });
+    await expect(backstoryEditor).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    assert.ok(
+      (await root.evaluate((node) => node.scrollHeight)) >= heightBefore,
+      "inline editor belongs to document flow",
+    );
     await past.fill("Discard this draft.");
-    await backstoryDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
     await expect(choice).toHaveValue("continue");
     await choice.selectOption("village");
     await expect(past).toHaveValue("");
     await past.fill("Discard with Escape.");
     await past.press("Escape");
-    await expect(backstoryDialog).toHaveCount(0);
+    await expect(backstoryEditor).toHaveCount(0);
     await expect(choice).toBeFocused();
     await choice.selectOption("village");
-    await backstoryDialog.getByRole("button", { name: "Use backstory", exact: true }).click();
-    await expect(backstoryDialog.getByRole("alert")).toContainText("Write a backstory");
+    await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
+    await expect(backstoryEditor.getByRole("alert")).toContainText("Write a backstory");
     await past.fill("Finn has always been guardian of a relic in the observatory.");
     if (width === 390 && height === 844) {
       await page.setViewportSize({ width, height: 460 });
       await past.focus();
       await past.scrollIntoViewIfNeeded();
-      const box = await backstoryDialog.boundingBox();
-      assert.ok(
-        box && box.x >= 0 && box.x + box.width <= width + 1 && box.y >= 0 && box.y + box.height <= 460 + 1,
-        "popout stays within the simulated keyboard viewport",
-      );
+      const box = await past.boundingBox();
+      assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, "inline field fits phone keyboard width");
       await page.setViewportSize({ width: 1366, height: 844 });
       await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
       await page.setViewportSize({ width, height });
     }
-    await backstoryDialog.getByRole("button", { name: "Use backstory", exact: true }).click();
+    await bounds();
+    await capture("people-inline");
+    await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
     await expect(choice).toHaveValue("village");
     await root.getByRole("button", { name: "Finn · Remove", exact: true }).click();
     await expect(root.locator(".villages-backstory-row")).toHaveCount(homeCount - 1);
     await selectResidents(["Finn"]);
     await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
     await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-    await backstoryDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
     // Preserve and repair a partially authored legacy Custom draft after reload.
     if (width === 1366) {
       await forward("Save & exit").click();
@@ -476,13 +488,13 @@ try {
       await expect(choice).toHaveValue("adapt");
       await forward("Continue to place").click();
       await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
-      await expect(backstoryDialog.getByLabel("Finn custom place", { exact: true })).toHaveValue("");
-      await backstoryDialog.getByRole("button", { name: "Use backstory", exact: true }).click();
-      await expect(backstoryDialog.getByRole("alert")).toContainText("Describe their place here");
-      await backstoryDialog
+      await expect(backstoryEditor.getByLabel("Finn custom place", { exact: true })).toHaveValue("");
+      await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
+      await expect(backstoryEditor.getByRole("alert")).toContainText("Describe their place here");
+      await backstoryEditor
         .getByLabel("Finn custom place", { exact: true })
         .fill("Guardian of a relic in the observatory.");
-      await backstoryDialog.getByRole("button", { name: "Use backstory", exact: true }).click();
+      await backstoryEditor.getByRole("button", { name: "Use backstory", exact: true }).click();
     }
     assert.equal(suggestionCalls, 0);
     assert.equal(imageCalls, 0);
@@ -542,11 +554,11 @@ try {
     await forward("Back").click();
     await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
     if (width === 1366)
-      await expect(backstoryDialog.getByLabel("Finn starting background", { exact: true })).toHaveValue(
+      await expect(backstoryEditor.getByLabel("Finn starting background", { exact: true })).toHaveValue(
         "Remembers a former life elsewhere. The observatory's wider world is undecided.",
       );
     else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
-    await backstoryDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await backstoryEditor.getByRole("button", { name: "Cancel", exact: true }).click();
     await forward("Continue to place").click();
     await forward("Continue to Venues").click();
     await expect(root).toHaveAttribute("data-step", "2");

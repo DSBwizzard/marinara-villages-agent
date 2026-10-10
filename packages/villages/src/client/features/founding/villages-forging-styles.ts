@@ -186,13 +186,21 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-selected-villager { min-width:0; border:1px solid #aa87ff; border-radius:.65rem; background:#30305c; box-shadow:inset 0 0 0 1px #aa87ff; }
 .villages-forging-v2 .villages-selected-villager>.villages-people-identity { border:0; box-shadow:none; background:transparent!important; }
 .villages-embedded-backstory { margin:0 .65rem; border-top:1px solid #596b9b; min-width:0; }
-.villages-forging-v2 .villages-embedded-backstory .villages-backstory-row { flex-wrap:nowrap; }
+.villages-forging-v2 .villages-embedded-backstory .villages-backstory-row { flex-wrap:wrap; }
 .villages-forging-v2 .villages-embedded-backstory label { margin:0; flex:none; font-size:.9rem; }
 .villages-embedded-backstory .villages-backstory-row>select { flex:1; }
+.villages-backstory-heading { display:flex; align-items:center; flex-wrap:wrap; min-width:0; }
+.villages-backstory-heading .villages-founding-help { display:contents; }
+.villages-backstory-heading .villages-founding-help-text { flex-basis:100%; }
+.villages-inline-backstory { min-width:0; padding-bottom:.65rem; }
+.villages-inline-backstory textarea,.villages-inline-backstory select { width:100%; min-width:0; font:inherit; font-size:1rem; color:#f3f3ff; background:#10172f; border:1px solid #8574be; border-radius:.5rem; padding:.55rem; }
+.villages-inline-backstory textarea { resize:vertical; min-height:7rem; }
+.villages-inline-backstory footer { display:flex; justify-content:flex-end; gap:.5rem; }
+
 .villages-embedded-backstory .villages-backstory-row>[data-founding-problem] { flex-basis:100%; }
 @media(max-width:704px) {
  .villages-forging-v2 .villages-embedded-backstory .villages-backstory-row { display:grid; grid-template-columns:minmax(0,1fr) auto; }
- .villages-embedded-backstory label { grid-column:1/-1; }
+ .villages-embedded-backstory .villages-backstory-heading { grid-column:1/-1; }
  .villages-embedded-backstory .villages-backstory-row>select { width:100%; }
  .villages-embedded-backstory .villages-backstory-row>[data-founding-problem] { grid-column:1/-1; }
 }

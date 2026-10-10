@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from "react";
-import { FoundingDialog } from "./FoundingDialog.js";
-import { FoundingField } from "./FoundingField.js";
+import { useRef, useState, type ReactNode } from "react";
+import { FoundingField, FoundingHelp } from "./FoundingField.js";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   RESIDENT_HISTORY_MODES,
@@ -26,13 +25,16 @@ export function ResidentFoundingEditors({
 }) {
   const [editing, setEditing] = useState<{ id: string; value: ResidentFoundingContext } | null>(null);
   const [attempted, setAttempted] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
   const person = people.find((row) => row.characterId === editing?.id);
   const close = () => {
     setEditing(null);
     setAttempted(false);
+    opener.current?.focus();
   };
   const problems = editing ? residentFoundingProblems(editing.value) : null;
   const open = (id: string, value: ResidentFoundingContext) => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setEditing({ id, value: { ...value } });
     setAttempted(false);
   };
@@ -54,7 +56,14 @@ export function ResidentFoundingEditors({
         return (
           <div className="villages-backstory-row" key={row.characterId}>
             {embedded ? (
-              <label htmlFor={"villages-backstory-" + row.characterId}>Backstory</label>
+              <div className="villages-backstory-heading">
+                <label htmlFor={"villages-backstory-" + row.characterId}>Backstory</label>
+                <FoundingHelp label={row.name + " backstory"}>
+                  Use the character card's original backstory, or write a custom past for this village. A custom
+                  backstory replaces their personal history here while preserving their personality, appearance, skills,
+                  and the original card.
+                </FoundingHelp>
+              </div>
             ) : (
               <span>
                 {avatar(row.characterId, row.name)}
@@ -64,20 +73,24 @@ export function ResidentFoundingEditors({
             <select
               id={"villages-backstory-" + row.characterId}
               aria-label={row.name + " backstory"}
-              value={value.historyMode}
+              value={editing?.id === row.characterId ? editing.value.historyMode : value.historyMode}
               disabled={disabled}
               onChange={(event) => {
                 if (event.target.value === "village") open(row.characterId, { ...value, historyMode: "village" });
-                else onChange(row.characterId, { ...value, historyMode: "continue" });
+                else {
+                  setEditing(null);
+                  setAttempted(false);
+                  onChange(row.characterId, { ...value, historyMode: "continue" });
+                }
               }}
             >
-              <option value="continue">Keep their existing past</option>
-              <option value="village">Give them a different past</option>
+              <option value="continue">Use character card backstory</option>
+              <option value="village">Write custom backstory</option>
               {value.historyMode === "adapt" || value.historyMode === "new" ? (
                 <option value={value.historyMode}>{RESIDENT_HISTORY_MODES[value.historyMode]}</option>
               ) : null}
             </select>
-            {value.historyMode === "village" || legacy ? (
+            {(value.historyMode === "village" || legacy) && editing?.id !== row.characterId ? (
               <button
                 type="button"
                 aria-label={"Edit " + row.name + " backstory"}
@@ -96,23 +109,18 @@ export function ResidentFoundingEditors({
         );
       })}
       {editing && person ? (
-        <FoundingDialog title={person.name + "’s backstory"} onClose={close}>
-          <select
-            aria-label={person.name + " backstory choice"}
-            value={editing.value.historyMode}
-            onChange={(event) =>
-              setEditing({
-                ...editing,
-                value: { ...editing.value, historyMode: event.target.value as "continue" | "village" },
-              })
+        <section
+          className="villages-inline-backstory"
+          role="group"
+          aria-label={person.name + " backstory editor"}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              close();
             }
-          >
-            <option value="continue">Keep their existing past</option>
-            <option value="village">Give them a different past</option>
-            {editing.value.historyMode === "adapt" || editing.value.historyMode === "new" ? (
-              <option value={editing.value.historyMode}>{RESIDENT_HISTORY_MODES[editing.value.historyMode]}</option>
-            ) : null}
-          </select>
+          }}
+        >
           {editing.value.historyMode === "village" ? (
             <FoundingField title="Backstory for this village" error={attempted ? problems?.villageBackstory : ""}>
               <textarea
@@ -195,7 +203,7 @@ export function ResidentFoundingEditors({
               Use backstory
             </button>
           </footer>
-        </FoundingDialog>
+        </section>
       ) : null}
     </section>
   );
