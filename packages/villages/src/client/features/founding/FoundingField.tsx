@@ -4,9 +4,21 @@ import { cloneElement, type ReactElement, type ReactNode, useId, useRef, useStat
 export function FoundingHelp({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const id = useId(),
-    button = useRef<HTMLButtonElement>(null);
+    button = useRef<HTMLButtonElement>(null),
+    help = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const node = help.current;
+    if (!open || !node) return;
+    const document = node.ownerDocument;
+    const dismissOutside = (event: PointerEvent) => {
+      if (!event.composedPath().includes(node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", dismissOutside, true);
+    return () => document.removeEventListener("pointerdown", dismissOutside, true);
+  }, [open]);
   return (
     <span
+      ref={help}
       className="villages-founding-help"
       onKeyDown={(event) => {
         if (open && event.key === "Escape") {
