@@ -124,7 +124,7 @@ export function ResidentFoundingEditors({
         );
       })}
       {editing && person ? (
-        <FoundingDialog title={person.name + "’s backstory"} onClose={close} compact>
+        <FoundingDialog title={person.name + "’s backstory"} onClose={close} compact dismissible={false}>
           {editing.value.historyMode === "village" ? (
             <FoundingField title="Backstory for this village" error={attempted ? problems?.villageBackstory : ""}>
               <textarea
@@ -190,9 +190,6 @@ export function ResidentFoundingEditors({
             </div>
           ) : null}
           <footer>
-            <button type="button" onClick={close}>
-              Cancel
-            </button>
             <button
               type="button"
               disabled={disabled}
@@ -204,7 +201,7 @@ export function ResidentFoundingEditors({
                 close();
               }}
             >
-              Use backstory
+              Save
             </button>
           </footer>
         </FoundingDialog>

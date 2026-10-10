@@ -6,11 +6,13 @@ export function FoundingDialog({
   onClose,
   children,
   compact = false,
+  dismissible = true,
 }: {
   title: string;
   onClose(): void;
   children: ReactNode;
   compact?: boolean;
+  dismissible?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -31,10 +33,10 @@ export function FoundingDialog({
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
+        if (dismissible) onClose();
       }}
       onClick={(event) => {
-        if (event.target !== event.currentTarget) return;
+        if (!dismissible || event.target !== event.currentTarget) return;
         const bounds = event.currentTarget.getBoundingClientRect();
         if (
           event.clientX < bounds.left ||
