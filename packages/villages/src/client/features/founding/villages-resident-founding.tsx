@@ -16,6 +16,7 @@ export function ResidentFoundingEditors({
   avatar,
   disabled,
   embedded = false,
+  showErrors = false,
 }: {
   people: { characterId: string; name: string }[];
   contexts: Record<string, ResidentFoundingContext>;
@@ -23,6 +24,7 @@ export function ResidentFoundingEditors({
   avatar(id: string, name: string): ReactNode;
   disabled: boolean;
   embedded?: boolean;
+  showErrors?: boolean;
 }) {
   const [editing, setEditing] = useState<{ id: string; value: ResidentFoundingContext } | null>(null);
   const [attempted, setAttempted] = useState(false);
@@ -82,8 +84,8 @@ export function ResidentFoundingEditors({
               id={"villages-backstory-" + row.characterId}
               aria-label={row.name + " backstory"}
               value={value.historyMode}
-              aria-invalid={missingBackstory || undefined}
-              aria-describedby={missingBackstory ? missingBackstoryId : undefined}
+              aria-invalid={(showErrors && missingBackstory) || undefined}
+              aria-describedby={showErrors && missingBackstory ? missingBackstoryId : undefined}
               disabled={disabled}
               onChange={(event) => {
                 onChange(row.characterId, {
@@ -108,9 +110,9 @@ export function ResidentFoundingEditors({
                 Edit
               </button>
             ) : null}
-            {missingBackstory ? (
+            {showErrors && missingBackstory ? (
               <p id={missingBackstoryId} role="alert" data-founding-problem tabIndex={-1}>
-                Custom backstory is empty. Select Edit to write one, or choose Use original backstory.
+                Custom backstory is empty.
               </p>
             ) : null}
             {invalid ? (

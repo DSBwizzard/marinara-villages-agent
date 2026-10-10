@@ -378,9 +378,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                             embedded
                             people={[{ characterId: id, name }]}
                             contexts={setupResidentContexts}
-                            onChange={(characterId, context) =>
-                              setSetupResidentContexts((current) => ({ ...current, [characterId]: context }))
+                            showErrors={
+                              setupProblem === "Complete the highlighted resident background fields in People."
                             }
+                            onChange={(characterId, context) => {
+                              setSetupResidentContexts((current) => ({ ...current, [characterId]: context }));
+                              setSetupProblem("");
+                            }}
                             avatar={(characterId, characterName) => (
                               <AvatarFace
                                 portrait={portraits[characterId]}

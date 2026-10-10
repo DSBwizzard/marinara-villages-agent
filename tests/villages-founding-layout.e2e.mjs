@@ -418,19 +418,21 @@ try {
     const backstoryEditor = root.getByRole("dialog", { name: "Finn’s backstory", exact: true });
     const past = backstoryEditor.getByLabel("Backstory for this village", { exact: true });
     const missingBackstoryNotice = finnCard.getByRole("alert");
-    await expect(missingBackstoryNotice).toHaveText(
-      "Custom backstory is empty. Select Edit to write one, or choose Use original backstory.",
-    );
-    await expect(missingBackstoryNotice).toHaveCSS("color", "rgb(255, 155, 165)");
-    await expect(choice).toHaveAttribute("aria-invalid", "true");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await expect(choice).not.toHaveAttribute("aria-invalid", "true");
     await forward("Continue to place").click();
     await expect(root).toHaveAttribute("data-step", "0");
+    await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
+    await expect(missingBackstoryNotice).toHaveCSS("color", "rgb(255, 155, 165)");
+    await expect(choice).toHaveAttribute("aria-invalid", "true");
     await expect(choice).toBeFocused();
     await choice.selectOption("continue");
     await expect(missingBackstoryNotice).toHaveCount(0);
     await expect(choice).not.toHaveAttribute("aria-invalid", "true");
     await choice.selectOption("village");
-    await expect(missingBackstoryNotice).toBeVisible();
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await forward("Continue to place").click();
+    await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
     await bounds();
     await capture("backstory-required");
     await expect(editBackstory).toBeVisible();
