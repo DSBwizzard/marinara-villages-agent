@@ -15,12 +15,14 @@ export function ResidentFoundingEditors({
   onChange,
   avatar,
   disabled,
+  embedded = false,
 }: {
   people: { characterId: string; name: string }[];
   contexts: Record<string, ResidentFoundingContext>;
   onChange(id: string, context: ResidentFoundingContext): void;
   avatar(id: string, name: string): ReactNode;
   disabled: boolean;
+  embedded?: boolean;
 }) {
   const [editing, setEditing] = useState<{ id: string; value: ResidentFoundingContext } | null>(null);
   const [attempted, setAttempted] = useState(false);
@@ -35,8 +37,11 @@ export function ResidentFoundingEditors({
     setAttempted(false);
   };
   return (
-    <section className="villages-forging-card villages-backstories" aria-label="Backstories">
-      <h3>Backstories</h3>
+    <section
+      className={embedded ? "villages-embedded-backstory" : "villages-forging-card villages-backstories"}
+      aria-label="Backstories"
+    >
+      {!embedded ? <h3>Backstories</h3> : null}
       {people.map((row) => {
         const value = contexts[row.characterId] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
         const invalid = Object.values(residentFoundingProblems(value)).find(Boolean);
@@ -48,11 +53,16 @@ export function ResidentFoundingEditors({
           !!value.customDescription;
         return (
           <div className="villages-backstory-row" key={row.characterId}>
-            <span>
-              {avatar(row.characterId, row.name)}
-              <strong>{row.name}</strong>
-            </span>
+            {embedded ? (
+              <label htmlFor={"villages-backstory-" + row.characterId}>Backstory</label>
+            ) : (
+              <span>
+                {avatar(row.characterId, row.name)}
+                <strong>{row.name}</strong>
+              </span>
+            )}
             <select
+              id={"villages-backstory-" + row.characterId}
               aria-label={row.name + " backstory"}
               value={value.historyMode}
               disabled={disabled}

@@ -371,6 +371,29 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   catalog={catalog}
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
+                  renderBackstory={
+                    !snapshot?.isFounded
+                      ? (id, name) => (
+                          <ResidentFoundingEditors
+                            embedded
+                            people={[{ characterId: id, name }]}
+                            contexts={setupResidentContexts}
+                            onChange={(characterId, context) =>
+                              setSetupResidentContexts((current) => ({ ...current, [characterId]: context }))
+                            }
+                            avatar={(characterId, characterName) => (
+                              <AvatarFace
+                                portrait={portraits[characterId]}
+                                name={characterName}
+                                className={ELEMENT_TAG + "-identity-card-face"}
+                                glyph="person"
+                              />
+                            )}
+                            disabled={busy}
+                          />
+                        )
+                      : undefined
+                  }
                   onChange={chooseRoster}
                   disabled={busy || !!snapshot?.isFounded}
                 />
@@ -388,22 +411,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </section>
             </div>
           </div>
-          {setupStep === 0 && !snapshot?.isFounded && wizardVillagers.length ? (
-            <ResidentFoundingEditors
-              people={wizardVillagers.map((person) => ({ characterId: person.id, name: person.name }))}
-              contexts={setupResidentContexts}
-              onChange={(id, context) => setSetupResidentContexts((current) => ({ ...current, [id]: context }))}
-              avatar={(id, name) => (
-                <AvatarFace
-                  portrait={portraits[id]}
-                  name={name}
-                  className={ELEMENT_TAG + "-identity-card-face"}
-                  glyph="person"
-                />
-              )}
-              disabled={busy}
-            />
-          ) : null}
           {setupStep === 1 ? (
             <>
               <h2>Define your place</h2>

@@ -13,7 +13,7 @@ import type { Portrait, PortraitMap, SetupVenueDraft, TownMapOptions } from "../
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { startingZone } from "./founding-template.js";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 export const emptyScenarioImprint = (): ScenarioImprint => ({
   origin: "",
@@ -222,12 +222,14 @@ export function FoundingVillagerPicker({
   selectedIds,
   onChange,
   disabled,
+  renderBackstory,
 }: {
   catalog: CatalogEntry[] | null;
   portraits: PortraitMap;
   selectedIds: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
+  renderBackstory?(id: string, name: string): ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -251,17 +253,19 @@ export function FoundingVillagerPicker({
       <small role="status">{selectedIds.length} of 3 selected</small>
       <div className="villages-people-selected">
         {selected.map((person) => (
-          <FoundingIdentityRow
-            key={person.id}
-            id={person.id}
-            name={person.name}
-            summary={person.summary}
-            portrait={portraits[person.id]}
-            selected
-            disabled={disabled}
-            action="Remove"
-            onClick={() => toggle(person.id)}
-          />
+          <div className="villages-selected-villager" key={person.id}>
+            <FoundingIdentityRow
+              id={person.id}
+              name={person.name}
+              summary={person.summary}
+              portrait={portraits[person.id]}
+              selected
+              disabled={disabled}
+              action="Remove"
+              onClick={() => toggle(person.id)}
+            />
+            {renderBackstory?.(person.id, person.name)}
+          </div>
         ))}
       </div>
       <button

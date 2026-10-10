@@ -389,6 +389,14 @@ try {
     );
     const choice = root.getByLabel("Finn backstory", { exact: true });
     await expect(choice).toHaveValue("continue");
+    await expect(root.locator(".villages-backstories")).toHaveCount(0);
+    const finnCard = root
+      .locator(".villages-selected-villager")
+      .filter({ has: page.getByLabel("Finn backstory", { exact: true }) });
+    await expect(finnCard.getByRole("button", { name: "Finn \u00b7 Remove", exact: true })).toBeVisible();
+    await expect(finnCard.getByText("Finn", { exact: true })).toHaveCount(1);
+    await bounds();
+    await capture("people-merged");
     const heightBefore = await root.evaluate((node) => node.scrollHeight);
     await choice.focus();
     await choice.selectOption("village");
