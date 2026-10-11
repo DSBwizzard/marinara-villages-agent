@@ -84,7 +84,7 @@ try {
       route.fulfill({
         status: 200,
         contentType: "text/html",
-        body: "<style>html,body{margin:0;background:#171b25;color:white;font-family:Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
+        body: `<style>html,body{margin:0;height:100%;background:#171b25;color:white;font-family:Arial}#engine-navigation{height:128px}#working-panel{margin-left:${width > 1000 ? 64 : 0}px;height:calc(100% - 128px)}</style><header id="engine-navigation">Engine navigation</header><main id="working-panel"><marinara-capability-villages></marinara-capability-villages></main>`,
       }),
     );
     await page.route("**/api/villages**", async (route) => {
@@ -133,25 +133,57 @@ try {
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
     await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
     const meter = page.getByRole("complementary", { name: "Villages AI usage" });
-    await expect(meter).toContainText("18 requests");
-    await expect(meter).toContainText("¥2.9400 ≈ $0.4200");
+    await expect(meter).toHaveText(/^\$0\.42\s*\u2304$/);
+    assert.ok((await meter.boundingBox()).width <= 80, "collapsed chip only needs room for USD and its chevron");
+    await expect(meter.getByRole("button", { name: "Reset usage", exact: true })).toHaveCount(0);
+    assert.ok((await meter.boundingBox()).height <= 48, "collapsed usage fits one compact row");
     const assertFlow = async () => {
       const boxes = await page.evaluate(() => {
         const meter = document.querySelector('[aria-label="Villages AI usage"]');
-        const content = meter.nextElementSibling;
+        const content = document.querySelector("marinara-capability-villages").firstElementChild.lastElementChild;
         return {
           meter: meter.getBoundingClientRect().toJSON(),
           content: content.getBoundingClientRect().toJSON(),
+          working: document.querySelector("marinara-capability-villages").getBoundingClientRect().toJSON(),
           position: getComputedStyle(meter).position,
           scroll: document.documentElement.scrollWidth,
         };
       });
-      assert.equal(boxes.position, "static");
-      assert.ok(boxes.meter.bottom <= boxes.content.top + 1, "meter reserves space instead of overlaying controls");
-      assert.ok(boxes.meter.right <= width && boxes.scroll <= width, "summary wraps without horizontal overflow");
+      assert.equal(boxes.position, "fixed");
+      assert.equal(boxes.content.top, 128, "usage overlay reserves no space inside Villages");
+      assert.equal(boxes.content.height, 772, "screen keeps its full available height");
+      assert.ok(
+        boxes.meter.top >= boxes.working.top &&
+          boxes.meter.bottom <= boxes.working.bottom &&
+          boxes.meter.left >= boxes.working.left &&
+          boxes.meter.right <= boxes.working.right,
+        "usage stays within Villages, clear of Engine navigation",
+      );
+      assert.ok(
+        boxes.meter.left >= 0 && boxes.meter.right <= width && boxes.scroll <= width,
+        "summary and expanded details stay inside the viewport",
+      );
     };
     await assertFlow();
+    await page.evaluate(() => {
+      const modal = document.createElement("dialog");
+      modal.id = "usage-modal-fixture";
+      modal.textContent = "Modal fixture";
+      document.body.append(modal);
+      modal.showModal();
+    });
+    await expect.poll(() => meter.evaluate((node) => node.parentElement.id)).toBe("usage-modal-fixture");
     await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
+    await expect(meter).toContainText("18 requests");
+    await page.keyboard.press("Escape");
+    await expect(meter.getByRole("button", { name: /^Villages AI usage/ })).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(() => page.evaluate(() => document.getElementById("usage-modal-fixture").open)).toBe(true);
+    await page.evaluate(() => document.getElementById("usage-modal-fixture").close());
+    await expect.poll(() => meter.evaluate((node) => node.parentElement.tagName)).toBe("BODY");
+    await page.evaluate(() => document.getElementById("usage-modal-fixture").remove());
+    await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
+    await expect(meter).toContainText("18 requests");
+    await expect(meter).toContainText("¥2.9400 ≈ $0.4200");
     await expect(meter).toContainText("1 USD ≈ ¥7.0000");
     await meter.getByLabel("Price connection and model").selectOption("link:gemini-test");
     await meter.getByLabel("LinkAPI token group").selectOption("gemini");
@@ -170,6 +202,8 @@ try {
       await page.screenshot({ path: process.env.VILLAGES_USAGE_SCREENSHOT.replace(".png", "-" + width + ".png") });
     await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
     const meterToggle = page.getByRole("checkbox", { name: "Show AI usage meter", exact: true });
+    await expect(meter.getByRole("button", { name: "Hide usage", exact: true })).toHaveCount(0);
+    await meter.getByRole("button", { name: /^Villages AI usage/ }).click();
     await meter.getByRole("button", { name: "Hide usage", exact: true }).click();
     await expect(meter).toHaveCount(0);
     await expect(meterToggle).not.toBeChecked();

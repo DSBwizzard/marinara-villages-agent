@@ -1,3 +1,6 @@
+import { useRef, useState, type ReactNode } from "react";
+import { FoundingDialog } from "./FoundingDialog.js";
+import { FoundingField, FoundingHelp } from "./FoundingField.js";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT,
   RESIDENT_HISTORY_MODES,
@@ -5,7 +8,6 @@ import {
   type ResidentFoundingContext,
   residentFoundingProblems,
 } from "../../../shared/helpers/resident-founding-context.js";
-import { type ReactNode, useState } from "react";
 
 export function ResidentFoundingEditors({
   people,
@@ -13,141 +15,215 @@ export function ResidentFoundingEditors({
   onChange,
   avatar,
   disabled,
+  embedded = false,
+  showErrors = false,
 }: {
   people: { characterId: string; name: string }[];
   contexts: Record<string, ResidentFoundingContext>;
   onChange(id: string, context: ResidentFoundingContext): void;
   avatar(id: string, name: string): ReactNode;
   disabled: boolean;
+  embedded?: boolean;
+  showErrors?: boolean;
 }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [editing, setEditing] = useState<{ id: string; value: ResidentFoundingContext } | null>(null);
+  const [attempted, setAttempted] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
+  const person = people.find((row) => row.characterId === editing?.id);
+  const close = () => {
+    setEditing(null);
+    setAttempted(false);
+    opener.current?.focus();
+  };
+  const problems = editing ? residentFoundingProblems(editing.value) : null;
+  const open = (id: string, value: ResidentFoundingContext) => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setEditing({ id, value: { ...value } });
+    setAttempted(false);
+  };
   return (
-    <section className="villages-forging-card villages-resident-backgrounds" aria-label="Life in this Village">
-      <h3>Life in this Village</h3>
-      {people.map((person) => {
-        const value = contexts[person.characterId] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
-        const problems = residentFoundingProblems(value);
-        const patch = (change: Partial<ResidentFoundingContext>) =>
-          onChange(person.characterId, { ...value, ...change });
-        const prefix = "resident-background-" + person.characterId;
-        const error = (field: keyof typeof problems) =>
-          problems[field] ? (
-            <small role="alert" id={prefix + "-" + field + "-error"}>
-              {problems[field]}
-            </small>
-          ) : null;
-        const hasErrors = Object.values(problems).some(Boolean);
-        const opened = expanded[person.characterId] || hasErrors;
+    <section
+      className={embedded ? "villages-embedded-backstory" : "villages-forging-card villages-backstories"}
+      aria-label="Backstories"
+    >
+      {!embedded ? <h3>Backstories</h3> : null}
+      {people.map((row) => {
+        const value = contexts[row.characterId] ?? DEFAULT_RESIDENT_FOUNDING_CONTEXT;
+        const missingBackstory = value.historyMode === "village" && !value.villageBackstory?.trim();
+        const missingBackstoryId = "villages-backstory-required-" + row.characterId;
+        const invalid = missingBackstory ? undefined : Object.values(residentFoundingProblems(value)).find(Boolean);
+        const legacy =
+          value.historyMode === "adapt" ||
+          value.historyMode === "new" ||
+          value.storyRole !== "unspecified" ||
+          !!value.background ||
+          !!value.customDescription;
         return (
-          <section
-            key={person.characterId}
-            className="villages-resident-background"
-            aria-label={person.name + " life in this Village"}
-          >
-            <div className="villages-resident-identity">
-              {avatar(person.characterId, person.name)}
-              <h4>{person.name}</h4>
-            </div>
-            <button
-              type="button"
-              className="villages-resident-toggle"
-              aria-expanded={!!opened}
-              aria-controls={prefix}
-              onClick={() => setExpanded((current) => ({ ...current, [person.characterId]: !opened }))}
-            >
-              {avatar(person.characterId, person.name)}
-              <span>
-                <strong>{person.name}</strong>
-                <small>
-                  {RESIDENT_STORY_ROLES[value.storyRole]} · {RESIDENT_HISTORY_MODES[value.historyMode]}
-                </small>
-              </span>
-              <span aria-hidden="true">{opened ? "⌃" : "⌄"}</span>
-            </button>
-            <div className="villages-resident-fields" id={prefix} data-expanded={!!opened}>
-              <div className="villages-resident-choices">
-                <label>
-                  Character history
-                  <select
-                    aria-label={person.name + " character history"}
-                    disabled={disabled}
-                    value={value.historyMode}
-                    onChange={(event) =>
-                      patch({ historyMode: event.target.value as ResidentFoundingContext["historyMode"] })
-                    }
-                  >
-                    {Object.entries(RESIDENT_HISTORY_MODES).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  {error("historyMode")}
-                </label>
-                <label>
-                  Place in the Village’s story
-                  <select
-                    aria-label={person.name + " place in the Village's story"}
-                    disabled={disabled}
-                    value={value.storyRole}
-                    onChange={(event) =>
-                      patch({ storyRole: event.target.value as ResidentFoundingContext["storyRole"] })
-                    }
-                  >
-                    {Object.entries(RESIDENT_STORY_ROLES).map(([key, label]) => (
-                      <option key={key} value={key}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                  {error("storyRole")}
-                </label>
-                {value.storyRole === "custom" ? (
-                  <label className="villages-resident-custom">
-                    Describe their place here
-                    <textarea
-                      aria-label={person.name + " custom place"}
-                      aria-invalid={!!problems.customDescription}
-                      aria-describedby={problems.customDescription ? prefix + "-customDescription-error" : undefined}
-                      rows={2}
-                      maxLength={240}
-                      disabled={disabled}
-                      value={value.customDescription}
-                      onChange={(event) => patch({ customDescription: event.target.value })}
-                    />
-                    {error("customDescription")}
-                  </label>
-                ) : null}
-                {value.historyMode !== "continue" ? (
-                  <p className="villages-resident-help villages-resident-custom">
-                    {value.historyMode === "adapt"
-                      ? "Keep their history except for changes you describe. A blank note keeps it unchanged."
-                      : "Keep who they are. Their former personal history is reference material unless you retain it below; this does not imply amnesia."}
-                  </p>
-                ) : null}
+          <div className="villages-backstory-row" key={row.characterId}>
+            {embedded ? (
+              <div className="villages-backstory-heading">
+                <label htmlFor={"villages-backstory-" + row.characterId}>Backstory</label>
+                <FoundingHelp label={row.name + " backstory"}>
+                  <span style={{ display: "block" }}>
+                    <strong>Use original backstory</strong>: Preserves the character’s existing history wherever their
+                    card describes it.
+                  </span>
+                  <span style={{ display: "block" }}>
+                    <strong>Write custom backstory</strong>: Describe a custom backstory for Villages to use for this
+                    character.
+                  </span>
+                </FoundingHelp>
               </div>
-              <label>
-                {value.storyRole === "lifelong" ? "Their life here before play" : "Why they’re here"}{" "}
-                <small>Optional</small>
-                <textarea
-                  aria-label={person.name + " starting background"}
-                  rows={3}
-                  maxLength={1200}
-                  aria-invalid={!!problems.background}
-                  aria-describedby={problems.background ? prefix + "-background-error" : undefined}
-                  disabled={disabled}
-                  value={value.background}
-                  onChange={(event) => patch({ background: event.target.value })}
-                />
-                <span className="villages-resident-help">
-                  Why they’re here, how their past connects to this setting, or what differs from their card.
-                </span>
-                {error("background")}
-              </label>
-            </div>
-          </section>
+            ) : (
+              <span>
+                {avatar(row.characterId, row.name)}
+                <strong>{row.name}</strong>
+              </span>
+            )}
+            <select
+              id={"villages-backstory-" + row.characterId}
+              aria-label={row.name + " backstory"}
+              value={value.historyMode}
+              aria-invalid={(showErrors && missingBackstory) || undefined}
+              aria-describedby={showErrors && missingBackstory ? missingBackstoryId : undefined}
+              disabled={disabled}
+              onChange={(event) => {
+                onChange(row.characterId, {
+                  ...value,
+                  historyMode: event.target.value as ResidentFoundingContext["historyMode"],
+                });
+              }}
+            >
+              <option value="continue">Use original backstory</option>
+              <option value="village">Write custom backstory</option>
+              {value.historyMode === "adapt" || value.historyMode === "new" ? (
+                <option value={value.historyMode}>{RESIDENT_HISTORY_MODES[value.historyMode]}</option>
+              ) : null}
+            </select>
+            {value.historyMode === "village" || legacy ? (
+              <button
+                type="button"
+                aria-label={"Edit " + row.name + " backstory"}
+                disabled={disabled}
+                onClick={() => open(row.characterId, value)}
+              >
+                Edit
+              </button>
+            ) : null}
+            {showErrors && missingBackstory ? (
+              <p id={missingBackstoryId} role="alert" data-founding-problem tabIndex={-1}>
+                Custom backstory is empty.
+              </p>
+            ) : null}
+            {invalid ? (
+              <button type="button" data-founding-problem onClick={() => open(row.characterId, value)}>
+                {invalid}
+              </button>
+            ) : null}
+          </div>
         );
       })}
+      {editing && person ? (
+        <FoundingDialog
+          title={person.name + "’s backstory"}
+          onClose={close}
+          compact
+          dismissible={false}
+          showCloseButton={false}
+        >
+          {editing.value.historyMode === "village" ? (
+            <FoundingField
+              title="Backstory for this village"
+              error={
+                attempted
+                  ? !editing.value.villageBackstory?.trim()
+                    ? `Write ${person.name}’s backstory for this Village.`
+                    : problems?.villageBackstory
+                  : ""
+              }
+            >
+              <textarea
+                aria-label="Backstory for this village"
+                rows={4}
+                maxLength={1200}
+                value={editing.value.villageBackstory ?? ""}
+                onChange={(event) =>
+                  setEditing({ ...editing, value: { ...editing.value, villageBackstory: event.target.value } })
+                }
+              />
+            </FoundingField>
+          ) : null}
+          {editing.value.storyRole !== "unspecified" || editing.value.background || editing.value.customDescription ? (
+            <div className="villages-legacy-background">
+              <FoundingField title="Existing story position" error={attempted ? problems?.storyRole : ""}>
+                <select
+                  aria-label={person.name + " place in the Village's story"}
+                  value={editing.value.storyRole}
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      value: {
+                        ...editing.value,
+                        storyRole: event.target.value as ResidentFoundingContext["storyRole"],
+                      },
+                    })
+                  }
+                >
+                  {Object.entries(RESIDENT_STORY_ROLES).map(([key, label]) => (
+                    <option key={key} value={key}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </FoundingField>
+              {editing.value.storyRole === "custom" ? (
+                <FoundingField title="Describe their place here" error={attempted ? problems?.customDescription : ""}>
+                  <textarea
+                    aria-label={person.name + " custom place"}
+                    rows={2}
+                    maxLength={240}
+                    value={editing.value.customDescription}
+                    onChange={(event) =>
+                      setEditing({ ...editing, value: { ...editing.value, customDescription: event.target.value } })
+                    }
+                  />
+                </FoundingField>
+              ) : null}
+              {editing.value.background ? (
+                <FoundingField title="Existing starting note" error={attempted ? problems?.background : ""}>
+                  <textarea
+                    aria-label={person.name + " starting background"}
+                    rows={3}
+                    maxLength={1200}
+                    value={editing.value.background}
+                    onChange={(event) =>
+                      setEditing({ ...editing, value: { ...editing.value, background: event.target.value } })
+                    }
+                  />
+                </FoundingField>
+              ) : null}
+            </div>
+          ) : null}
+          <footer>
+            <button type="button" onClick={close}>
+              Close
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              className="villages-forging-primary"
+              onClick={() => {
+                setAttempted(true);
+                if (problems && Object.values(problems).some(Boolean)) return;
+                onChange(editing.id, editing.value);
+                close();
+              }}
+            >
+              Save
+            </button>
+          </footer>
+        </FoundingDialog>
+      ) : null}
     </section>
   );
 }

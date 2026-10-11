@@ -23,7 +23,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupMapGenerationKey: string;
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
-  readonly setupMapOptions: FoundingState["setupMapOptions"];
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];
   readonly setupMapRequestRef: FoundingState["setupMapRequestRef"];
   readonly setupSetting: FoundingState["setupSetting"];
@@ -44,7 +43,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
       setupLorebookDraft,
       setupMapGenerationKey,
       setupMapNegativePrompt,
-      setupMapOptions,
       setupMapPrompt,
       setupMapRequestRef,
       setupSetting,
@@ -83,7 +81,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
           negative:
             setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
           setting: setupSetting,
-          options: setupMapOptions,
           selectedLorebookIds: setupLorebookDraft,
           sceneryArtStyle: sceneryStyle,
           useVisualLore: mapVisualLore,
@@ -110,7 +107,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
     ports.setupMapNegativePrompt,
     ports.setupMapPrompt,
     ports.setupSetting,
-    ports.setupMapOptions,
     ports.setupMapGenerationKey,
     ports.sceneryStyle,
     ports.mapVisualLore,

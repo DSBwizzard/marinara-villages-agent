@@ -1,3 +1,4 @@
+import { savedFoundingStep } from "./founding-steps.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 
@@ -6,6 +7,7 @@ import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { readFoundingDraft, removeFoundingDraft, saveFoundingDraft } from "./villages-founding-draft.js";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
+import { resumeFoundingVenue } from "./founding-template.js";
 import { useCallback, useEffect } from "react";
 
 export function useFoundingPersistSetupDraft(ports: {
@@ -104,7 +106,6 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupImprint: FoundingState["setSetupImprint"];
@@ -116,7 +117,6 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupMapImage: FoundingState["setSetupMapImage"];
   readonly setSetupMapImageSource: FoundingState["setSetupMapImageSource"];
   readonly setSetupMapNegativePrompt: FoundingState["setSetupMapNegativePrompt"];
-  readonly setSetupMapOptions: FoundingState["setSetupMapOptions"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupMapPrompt: FoundingState["setSetupMapPrompt"];
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
@@ -156,7 +156,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupAuthoredFields,
       setSetupEditorOpen,
       setSetupFoundingDetails,
-      setSetupFoundingGuidance,
       setSetupFoundingReason,
       setSetupFoundingVillagerIds,
       setSetupImprint,
@@ -168,7 +167,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupMapImage,
       setSetupMapImageSource,
       setSetupMapNegativePrompt,
-      setSetupMapOptions,
       setSetupMapProblem,
       setSetupMapPrompt,
       setSetupMapReviewed,
@@ -202,16 +200,28 @@ export function createFoundingRestoreSetupDraft(ports: {
       setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
       return;
     }
-    setSetupStep(Math.max(0, Math.min(3, data.step)));
+    setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     setSetupSetting(data.setting);
     setSetupFoundingReason(data.reason);
     setSetupFoundingDetails(data.circumstances);
-    setSetupFoundingGuidance(data.direction);
     setSetupPlayerRole(data.role);
     setSetupImprint(data.imprint);
     setSetupWorldFacts(data.worldFacts);
-    setSetupVenues(data.venues);
+    const inactive = { ...data.workspace?.inactive };
+    for (const [id, saved] of Object.entries(data.zoneDrafts ?? {})) {
+      inactive[id] = {
+        ...(saved.common ? { common: [saved.common] } : {}),
+        ...(saved.personal ? { private: [saved.personal] } : {}),
+        ...inactive[id],
+      };
+    }
+    const venues = data.venues.map((venue) => {
+      const resumed = resumeFoundingVenue(venue, inactive[venue.id] ?? {});
+      inactive[venue.id] = resumed.inactive;
+      return resumed.venue;
+    });
+    setSetupVenues(venues);
     setupZoneDrafts.current = data.zoneDrafts ?? {};
     setSetupFoundingVillagerIds(data.roster);
     setSetupResidentContexts(data.residentContexts ?? {});
@@ -229,7 +239,6 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapOptions(data.mapOptions);
     setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
@@ -240,13 +249,14 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(false);
-    setSetupWorkspace(
-      data.workspace ?? {
+    setSetupWorkspace({
+      ...(data.workspace ?? {
         ...emptyFoundingWorkspace(),
         view: data.editorOpen ? "details" : "map",
         paused: !!data.editorOpen,
-      },
-    );
+      }),
+      inactive,
+    });
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;

@@ -74,6 +74,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           commonDescription: string;
           privateName: string;
           privatePurpose: string;
+          privateDescription?: string;
         }>;
       }>("/setup/venues/suggest", {
         method: "POST",
@@ -158,6 +159,7 @@ export function createFoundingSuggestSetupVenues(ports: {
                       ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
                       name: proposal.privateName,
                       purpose: proposal.privatePurpose,
+                      description: row.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
                       access: draftZonePolicy(
                         row,
                         {
@@ -189,7 +191,6 @@ export function createFoundingSuggestSetupVenues(ports: {
 // writing the village. A half-answered setup never claims to be founded.
 export function createFoundingChooseSetupScenario(ports: {
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
@@ -199,7 +200,6 @@ export function createFoundingChooseSetupScenario(ports: {
   return (value: FoundingScenarioId) => {
     const {
       setSetupFoundingDetails,
-      setSetupFoundingGuidance,
       setSetupFoundingReason,
       setSetupProblem,
       setupFoundingDetails,
@@ -213,7 +213,6 @@ export function createFoundingChooseSetupScenario(ports: {
     const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
     setSetupFoundingReason(value);
     if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
-    setSetupFoundingGuidance("");
     setSetupProblem("");
   };
 }
@@ -270,7 +269,7 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
@@ -290,12 +289,14 @@ export function createFoundingGotoSetupStep(ports: {
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
         : !setupSetting.trim()
-          ? "Describe where we are."
+          ? "Describe the place and world."
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe what brings you together."
+            ? "Describe the starting circumstances."
             : "";
-      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 3 ? setupBlocker() : "");
+      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 4 ? setupBlocker() : "");
       if (problem) {
+        if (peopleProblem) setSetupStep(0);
+        else if (step >= 2 && placeProblem) setSetupStep(1);
         setSetupProblem(problem);
         return;
       }

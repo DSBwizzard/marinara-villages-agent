@@ -13,9 +13,14 @@ export type FoundingVenueSuggestion = {
   commonDescription: string;
   privateName: string;
   privatePurpose: string;
+  privateDescription?: string;
 };
 
-export function parseFoundingVenueSuggestions(value: unknown, ids: readonly string[]): FoundingVenueSuggestion[] {
+export function parseFoundingVenueSuggestions(
+  value: unknown,
+  ids: readonly string[],
+  template?: readonly { id: string; venueClass: string; residentCharacterId?: string | null }[],
+): FoundingVenueSuggestion[] {
   const payload = record(value);
   if (!Array.isArray(payload.venues))
     throw badRequest(
@@ -36,6 +41,11 @@ export function parseFoundingVenueSuggestions(value: unknown, ids: readonly stri
       return result;
     };
     const layout = row.layout;
+    const venue = template?.find((venue) => venue.id === id);
+    if (venue && (venue.venueClass === "gathering" ? layout !== "common" : layout === "exterior"))
+      throw badRequest(
+        "Residences require Common or Private Space; the starting Gathering Place requires Common only.",
+      );
     if (!["exterior", "common", "private", "both"].includes(String(layout)))
       throw badRequest("Choose a valid suggested Zone layout.");
     return {
@@ -46,10 +56,13 @@ export function parseFoundingVenueSuggestions(value: unknown, ids: readonly stri
       description: text("description", 1000, true),
       layout: layout as FoundingVenueSuggestion["layout"],
       commonName: text("commonName", 100, layout === "common" || layout === "both"),
-      commonPurpose: text("commonPurpose", 240),
+      commonPurpose: text("commonPurpose", 240, !!template && (layout === "common" || layout === "both")),
       commonDescription: text("commonDescription", 1000, layout === "common" || layout === "both"),
       privateName: text("privateName", 100, layout === "private" || layout === "both"),
       privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
+      ...(venue?.venueClass === "residence" && !venue.residentCharacterId && (layout === "private" || layout === "both")
+        ? { privateDescription: text("privateDescription", 1000, true) }
+        : {}),
     };
   });
 }

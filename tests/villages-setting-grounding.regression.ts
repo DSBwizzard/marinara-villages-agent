@@ -177,7 +177,7 @@ async function main() {
       setting: "x".repeat(2000),
       foundingReason: "custom",
       foundingDetails: "We share the rent.",
-      foundingGuidance: "",
+      foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
     };
     await proposeCompactFounding(
       {
@@ -194,29 +194,25 @@ async function main() {
       async () => {},
     );
     assert.ok(captured.includes(full.foundingDetails));
+    assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|Player-authored creative preferences/);
     answer = { origin: "", worldFacts: ["The outbreak is ongoing"], openingConditions: [], visualCues: [] };
-    await draftScenarioImprint({ setting: scenarios[6][1], foundingReason: "none", foundingDetails: scenarios[6][2] });
+    await draftScenarioImprint({
+      setting: scenarios[6][1],
+      foundingReason: "none",
+      foundingDetails: scenarios[6][2],
+      foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
+    });
+    assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|"direction":/);
     assert.match(captured, /Distinguish earlier background, ongoing world conditions/);
     assert.doesNotMatch(captured, /Never claim the village was already founded|The village begins on Day 1/);
-    assert.match(
-      buildTownMapPrompt(undefined, scenarios[4][1], { roads: "exclude", structures: "exclude", water: "exclude" }),
-      /retain enclosing architecture/,
+    const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);
+    assert.match(map, /Map details take priority over conflicting Village description/);
+    assert.match(map, /Map details: No water or decorative buildings/);
+    assert.throws(
+      () => buildTownMapPrompt(undefined, "x".repeat(2000), "", null, "s".repeat(600)),
+      /characters over.*no image request was made/,
+      "individually valid maximum inputs share a final allowance",
     );
-    for (const choice of ["auto", "include", "exclude"] as const) {
-      assert.throws(
-        () =>
-          buildTownMapPrompt(
-            undefined,
-            "x".repeat(2000),
-            { roads: choice, structures: choice, water: choice },
-            "",
-            null,
-            "s".repeat(600),
-          ),
-        /characters over.*no image request was made/,
-        "individually valid maximum inputs share a final allowance",
-      );
-    }
     assert.throws(() => validateFirstDayDescription("   ", true), /brings you and the others together/);
     assert.doesNotThrow(() => validateFirstDayDescription("", false));
     const legacy = coerceVillageState({

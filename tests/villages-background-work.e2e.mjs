@@ -193,7 +193,7 @@ try {
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toBeVisible();
   await expect(page.getByText(/3 reusable steps, 4 requests, token usage unavailable/)).toBeVisible();
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
-  await expect(page.getByRole("alert")).toContainText("Failed to fetch");
+  await expect(page.getByRole("alert")).toContainText("Could not reach the server");
   await page.clock.fastForward(30_000);
   await expect.poll(() => heartbeats.length).toBeGreaterThan(1);
   await page.getByRole("button", { name: "Retry unfinished work" }).click();

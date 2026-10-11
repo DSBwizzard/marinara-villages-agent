@@ -57,6 +57,7 @@ async function main() {
   );
   assert.match(villageFoundingSetting(founded), /Shared starting circumstances.*Survivors gathered after the flood/);
   assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
+  assert.doesNotMatch(villageFoundingSetting(founded), /quiet solidarity|Player-authored creative preferences/);
   const openBeginning = {
     ...founded,
     foundingReason: "none",
@@ -164,52 +165,32 @@ async function main() {
       prompt,
       /Venue photographs|sixteen|forty-eight|added by the application|assign or develop Venues/,
     );
-    assert.match(prompt, /Authored layout: Respect repeated living spaces/);
+    assert.match(prompt, /Map details: Respect repeated living spaces/);
     assert.ok(prompt.length <= 4000);
   }
   const tightBase = buildTownMapPrompt(undefined, "x".repeat(1900));
   const exactlyFits = "v".repeat(4000 - tightBase.length - 1 - "Compatible visual lore: ".length);
-  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1900), undefined, [exactlyFits]);
+  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1900), [exactlyFits]);
   assert.equal(tightPrompt.length, 4000, "complete optional entry fits the actual final character allowance");
   assert.ok(tightPrompt.includes("\nCompatible visual lore: "));
   const longSetting = "a".repeat(1990) + "LAST-FACT";
-  assert.ok(buildTownMapPrompt(undefined, longSetting, undefined, "", undefined, "Watercolor").includes("LAST-FACT"));
-  const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", undefined, [
-    "z".repeat(4000),
-    "COMPLETE-SHORT-ENTRY",
-  ]);
+  assert.ok(buildTownMapPrompt(undefined, longSetting, "", undefined, "Watercolor").includes("LAST-FACT"));
+  const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", ["z".repeat(4000), "COMPLETE-SHORT-ENTRY"]);
   assert.ok(!optionalPrompt.includes("zzz"));
   assert.ok(optionalPrompt.includes("COMPLETE-SHORT-ENTRY"));
-  assert.doesNotMatch(
-    buildTownMapNegativePrompt({ roads: "exclude", structures: "exclude" }),
-    /streets, roads|corridors|enclosing/,
-  );
   const defaultPrompt = buildTownMapPrompt(undefined, "cozy forest village");
   assert.ok(defaultPrompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
-  assert.match(defaultPrompt, /Follow the village description for water, paths, and existing structures/);
+  assert.match(defaultPrompt, /follow the Village description for anything Map details leave unspecified/);
   assert.doesNotMatch(defaultPrompt, /Do not include (buildings|water|streets)/);
   assert.match(defaultPrompt, /Do not reserve blank spaces.*placeholder panels.*photograph frames.*writing/);
-  const coastalPrompt = buildTownMapPrompt(undefined, "A fishing village on sea cliffs");
-  assert.match(coastalPrompt, /A fishing village on sea cliffs/);
-  assert.doesNotMatch(coastalPrompt, /Do not include water/);
-  assert.match(
-    buildTownMapPrompt(undefined, "A fishing village on sea cliffs", {
-      roads: "auto",
-      structures: "auto",
-      water: "exclude",
-    }),
-    /Do not include water/,
-  );
-  const imprintMap = buildTownMapPrompt(
-    undefined,
-    "Misty cliffs",
-    { roads: true, structures: false, water: false },
-    "",
-    founded.scenarioImprint,
-  );
+  for (const details of ["No water.", "No buildings; use tents.", "Footpaths only, no roads."]) {
+    const prompt = buildTownMapPrompt(details, "A harbor town with canals, stone buildings and paved roads.");
+    assert.ok(prompt.includes("Map details: " + details));
+    assert.match(prompt, /Map details take priority over conflicting Village description/);
+    assert.ok(prompt.includes("Village description: A harbor town with canals"));
+  }
+  const imprintMap = buildTownMapPrompt(undefined, "Misty cliffs", "", founded.scenarioImprint);
   assert.match(imprintMap, /Reused timber/);
-  assert.match(imprintMap, /Do not include water/);
-  assert.match(imprintMap, /Do not add decorative buildings/);
   assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, labels/);
   assert.match(
     DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
@@ -217,32 +198,11 @@ async function main() {
   );
   assert.doesNotMatch(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /square plots/);
   assert.equal(buildTownMapNegativePrompt(), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
-  assert.match(
-    buildTownMapNegativePrompt({ roads: true, structures: true, water: true }, "foggy artifacts"),
-    /writing, numerals.*foggy artifacts/,
-  );
-  assert.equal(
-    buildTownMapNegativePrompt({ roads: true, structures: true, water: true }, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT),
-    DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
-  );
-  for (let mask = 0; mask < 8; mask += 1) {
-    const prompt = buildTownMapPrompt(undefined, "harbor city with canals", {
-      roads: !!(mask & 1),
-      structures: !!(mask & 2),
-      water: !!(mask & 4),
-    });
-    assert.match(prompt, /Village description.*harbor city with canals/s);
-    assert.equal(prompt.includes("Do not add decorative outdoor routes"), !(mask & 1));
-    assert.equal(prompt.includes("Do not add decorative buildings"), !(mask & 2));
-    assert.equal(prompt.includes("Do not include water"), !(mask & 4));
-  }
+  assert.match(buildTownMapNegativePrompt("foggy artifacts"), /writing, numerals.*foggy artifacts/);
+  assert.equal(buildTownMapNegativePrompt(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT), DEFAULT_TOWN_MAP_NEGATIVE_PROMPT);
   assert.throws(() => buildTownMapPrompt(undefined, "   "), /cannot be blank/);
   assert.throws(() => buildTownMapPrompt(" ".repeat(3), "forest"), /cannot be blank/);
   assert.throws(() => buildTownMapPrompt("x".repeat(MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH + 1), "forest"), /at most/);
-  assert.throws(
-    () => buildTownMapPrompt(undefined, "forest", { roads: "yes", structures: false, water: false }),
-    /must be Auto, Include, or Exclude/,
-  );
   const png = new Uint8Array(24);
   png.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
   new DataView(png.buffer).setUint32(16, 1264);
@@ -318,18 +278,10 @@ async function main() {
       structure: "A corridor and shared hall. ".repeat(4),
       setting: "An indoor observatory. ".repeat(70),
       sceneryArtStyle: "Painted scenery. ".repeat(6),
-      options: { roads: "include", structures: "include", water: "include" },
       useVisualLore: false,
       connectionId: "fixture-image",
     };
-    const expectedPrompt = buildTownMapPrompt(
-      input.structure,
-      input.setting,
-      input.options,
-      "",
-      null,
-      input.sceneryArtStyle.trim(),
-    );
+    const expectedPrompt = buildTownMapPrompt(input.structure, input.setting, "", null, input.sceneryArtStyle.trim());
     assert.ok(expectedPrompt.length > 3000 && expectedPrompt.length <= 4000);
     await assert.rejects(
       generateVillageTownMap({ ...input, structure: "x".repeat(1500), sceneryArtStyle: "s".repeat(600) }),
@@ -423,8 +375,8 @@ async function main() {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/setup/town-map/generate"'));
-  assert.ok(client.includes("Advanced artwork options"));
-  assert.ok(client.includes("setupMapOptions"));
+  assert.ok(client.includes("More options"));
+  assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);
   assert.ok(client.includes("mobile={mobile}"));
   assert.ok(client.includes("setupMapGeneratedKey !== setupMapGenerationKey"));

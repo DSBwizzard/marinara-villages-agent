@@ -27,7 +27,6 @@ export function createTownMapImage(ports: TownMapImagePorts) {
   async function generateVillageTownMap(input: {
     structure?: unknown;
     setting?: unknown;
-    options?: unknown;
     negative?: unknown;
     connectionId?: unknown;
     selectedLorebookIds?: unknown;
@@ -40,8 +39,8 @@ export function createTownMapImage(ports: TownMapImagePorts) {
       throw badRequest("Visual lore must be on or off.");
     const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
     // Validate required inputs before lore reads or image dispatch.
-    const base = buildTownMapPrompt(input.structure, input.setting, input.options, "", input.scenarioImprint, style);
-    const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
+    const base = buildTownMapPrompt(input.structure, input.setting, "", input.scenarioImprint, style);
+    const negativePrompt = buildTownMapNegativePrompt(input.negative);
     const lore =
       input.useVisualLore === false
         ? []

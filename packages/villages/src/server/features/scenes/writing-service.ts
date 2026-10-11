@@ -1,3 +1,4 @@
+import { renderResidentFoundingContext } from "../../domain/rules/resident-founding-context.js";
 import {
   initialStaging,
   replayStaging,
@@ -439,7 +440,7 @@ export function createSceneWriting({
           const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
           const card = resident ? readEffectiveVillagerCard(resident) : null;
           return card?.postHistoryInstructions
-            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}`
+            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${card.foundingContext?.historyMode === "village" ? "\n" + renderResidentFoundingContext(card.name, card.foundingContext) : ""}`
             : "";
         }),
       ]),

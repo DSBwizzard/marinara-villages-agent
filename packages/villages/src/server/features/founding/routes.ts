@@ -89,7 +89,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       structure?: unknown;
       negative?: unknown;
       setting?: unknown;
-      options?: unknown;
       connectionId?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;

@@ -77,7 +77,7 @@ export function FoundingZoneFields({
           const policy = zone.access ?? draftZonePolicy(venue, zone, personal);
           const generatedLater = personal && zone.ownerId !== "player";
           return (
-            <section key={zone.id}>
+            <section key={zone.id} data-zone-id={zone.id}>
               <h4>{zone.name || "Zone"}</h4>
               <label>
                 Zone name

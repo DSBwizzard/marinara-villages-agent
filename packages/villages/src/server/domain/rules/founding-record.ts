@@ -1,6 +1,7 @@
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueImage } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict } from "./errors.js";
+import { validateStartingVenue } from "./founding-template.js";
 import {
   boundText,
   isGlobalGalleryRef,
@@ -170,6 +171,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     throw badRequest("Your own home cannot also belong to a villager.");
   }
   if (founding && record.layoutVersion !== 1) throw badRequest("Choose the venue layout before founding.");
+  if (founding) validateStartingVenue(record, classes, playerHome);
   const explicitZones =
     record.layoutVersion === 1 && founding
       ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage)
@@ -238,6 +240,10 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
   };
   if (founding) {
     initializeVenueAccess(result);
+    if (result.category.toLowerCase() === "public-center" && result.access) {
+      result.access.managerIds = [];
+      for (const zone of result.zones ?? []) if (zone.kind !== "exterior" && zone.access) zone.access.managerIds = [];
+    }
     for (const [actor, destinations] of Object.entries(asRecord(record.destinations))) {
       if (!result.destinations?.[actor])
         throw badRequest("Choose destinations only for assigned residents or workers.");

@@ -137,8 +137,8 @@ async function main() {
       "Bridge: The bridge is painted blue now.",
       "relevant entries are complete and precede generic constants",
     );
-    assert.match(buildTownMapPrompt(undefined, "harbor village", undefined, visual), /Compatible visual lore/);
-    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), undefined, "y".repeat(500)).length <= 4_000);
+    assert.match(buildTownMapPrompt(undefined, "harbor village", visual), /Compatible visual lore/);
+    assert.ok(buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)).length <= 4_000);
   } finally {
     globalThis.fetch = originalFetch;
   }

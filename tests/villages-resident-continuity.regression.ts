@@ -40,6 +40,7 @@ for (const historyMode of Object.keys(RESIDENT_HISTORY_MODES))
     const value = {
       ...context,
       historyMode,
+      ...(historyMode === "village" ? { villageBackstory: "Aqua grew up here." } : {}),
       storyRole,
       customDescription: storyRole === "custom" ? "Guardian bound to the station's foundations." : "",
     };
@@ -127,6 +128,24 @@ let dispatches = 0;
 const model: any = { fitContext: () => ({ messages: [] }), chatComplete: () => dispatches++ };
 assert.throws(() => fitVenueWritingMessages(model, [{ text: profile }], "Hello", 1000), /No reply was requested/);
 assert.equal(dispatches, 0);
+const alternate = { ...defaults, historyMode: "village", villageBackstory: "Aqua grew up here." } as const;
+assert.deepEqual(readResidentFoundingContext(alternate), alternate);
+assert.equal(readResidentFoundingContext({ ...alternate, villageBackstory: " " }), null);
+assert.equal(readResidentFoundingContext({ ...alternate, villageBackstory: "x".repeat(1201) }), null);
+assert.equal(readResidentFoundingContext({ ...alternate, villageBackstory: 42 }), null);
+assert.match(renderResidentFoundingContext("Aqua", alternate), /Historical claims anywhere in the original card/);
+assert.match(renderResidentFoundingContext("Aqua", alternate), /authored instructions/);
+assert.ok(
+  !renderResidentFoundingContext("Aqua", { ...alternate, historyMode: "continue" }).includes("Aqua grew up here."),
+);
+assert.ok(!renderResidentFoundingContext("Aqua", alternate).includes("Place in the Village's story"));
+state.villagers[0].foundingContext = alternate;
+assert.deepEqual(coerceVillageState(state).villagers[0].foundingContext, alternate);
+assert.ok(
+  proposeStartingTies({ ...state, chronicle: [] }, defaultRelationshipState(state.seed), [
+    "Aqua is best friends with Alex",
+  ]).every((tie) => !tie.established),
+);
 console.log(
   "Resident continuity: choices, limits, legacy saves, full identity, relationship exclusions and required context verified.",
 );
@@ -213,7 +232,10 @@ async function setupPersistence() {
               content: JSON.stringify({
                 venues: input.venues.map((venue: any) => ({
                   ...venue,
-                  layout: "exterior",
+                  layout: "common",
+                  commonName: "Common Space",
+                  commonPurpose: "Conversation",
+                  commonDescription: "A table",
                   name: venue.id + " space",
                   form: "Room",
                   description: "A doorway.",
@@ -241,8 +263,16 @@ async function setupPersistence() {
       category: id === "hall" ? "public-center" : "house",
       classes: [id === "hall" ? "gathering" : "residence"],
       layoutVersion: 1,
-      layout: "exterior",
-      spaces: [],
+      layout: "common",
+      spaces: [
+        {
+          id: "common:base",
+          name: "Room",
+          purpose: "Conversation",
+          description: "A table",
+          venueClass: id === "hall" ? "gathering" : "residence",
+        },
+      ],
       privateSpaces: [],
       occupancy: { playerHome: id === "player", residentCharacterId: id === "aqua" ? id : null, homeKind: null },
       presentation: { x: 0.2 + index * 0.2, y: 0.5 },

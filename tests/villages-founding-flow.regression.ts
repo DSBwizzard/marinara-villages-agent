@@ -36,6 +36,18 @@ import {
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const { savedFoundingStep, SETUP_STEPS } =
+    await import("../packages/villages/src/client/features/founding/founding-steps.js");
+  for (const [step, expected] of [
+    [0, 0],
+    [1, 1],
+    [2, 3],
+    [3, 4],
+  ])
+    assert.equal(savedFoundingStep({ step }), expected);
+  for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
+  assert.equal(savedFoundingStep({ step: NaN }), 0);
+
   const serverRoot = join(root, "packages/villages/src/server");
   const { foundingPhotoOverlaps } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
@@ -339,6 +351,8 @@ async function main() {
         {
           venueClass: "residence",
           description: "A hearth and a low table",
+          name: "Hearth room",
+          purpose: "Sharing meals",
           image: insideImage,
           state: {
             condition: "lived in",
@@ -361,8 +375,16 @@ async function main() {
   assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
-    () => parsePlace({ ...parsed, layout: "common", spaces: [{ venueClass: "residence", description: "" }] }, true),
-    /Common Space/,
+    () =>
+      parsePlace(
+        {
+          ...parsed,
+          layout: "common",
+          spaces: [{ venueClass: "residence", name: "Room", purpose: "Meals", description: "" }],
+        },
+        true,
+      ),
+    /visible Zone/,
   );
 
   const client = await clientImplementation();
@@ -374,9 +396,9 @@ async function main() {
     (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
-  assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
-  assert.ok(client.includes("Where are we?"));
-  assert.ok(client.includes("What brings you together?"));
+  assert.ok(client.includes('["People", "Place", "Map", "Venues", "Review"]'));
+  assert.ok(client.includes("Place and world"));
+  assert.ok(client.includes("Starting circumstances"));
   assert.ok(client.includes("Search lorebooks"));
   const editor = await readFile(
     join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
@@ -636,8 +658,10 @@ async function foundingConnectionOwnership() {
                     venues: draftRows.map((row) => ({
                       ...row,
                       name: `${label} ${row.name}`,
-                      commonName: "",
-                      commonDescription: "",
+                      layout: "common",
+                      commonName: "Shared room",
+                      commonPurpose: "Conversation",
+                      commonDescription: "A table",
                       privateName: "",
                       privatePurpose: "",
                       privateDescription: "model secret",

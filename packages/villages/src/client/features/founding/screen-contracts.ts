@@ -80,7 +80,6 @@ export type FoundingScreenController = {
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFocusIssue: FoundingState["setSetupFocusIssue"];
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
@@ -88,7 +87,6 @@ export type FoundingScreenController = {
   readonly setSetupMapBusy: FoundingState["setSetupMapBusy"];
   readonly setSetupMapGeneratedKey: FoundingState["setSetupMapGeneratedKey"];
   readonly setSetupMapNegativePrompt: FoundingState["setSetupMapNegativePrompt"];
-  readonly setSetupMapOptions: FoundingState["setSetupMapOptions"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupMapPrompt: FoundingState["setSetupMapPrompt"];
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
@@ -98,7 +96,6 @@ export type FoundingScreenController = {
   readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
-  readonly setSetupRoleExpanded: FoundingState["setSetupRoleExpanded"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupShowIssues: FoundingState["setSetupShowIssues"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
@@ -109,7 +106,6 @@ export type FoundingScreenController = {
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
   readonly setupFocusIssue: FoundingState["setupFocusIssue"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
-  readonly setupFoundingGuidance: FoundingState["setupFoundingGuidance"];
   readonly setupFoundingReason: FoundingState["setupFoundingReason"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupImageClaim: FoundingState["setupImageClaim"];
@@ -122,7 +118,6 @@ export type FoundingScreenController = {
   readonly setupMapGenerationKey: string;
   readonly setupMapImageSource: FoundingState["setupMapImageSource"];
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
-  readonly setupMapOptions: FoundingState["setupMapOptions"];
   readonly setupMapProblem: FoundingState["setupMapProblem"];
   readonly setupMapProgress: string;
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];
@@ -137,7 +132,6 @@ export type FoundingScreenController = {
   readonly setupPlayerRole: FoundingState["setupPlayerRole"];
   readonly setupProblem: FoundingState["setupProblem"];
   readonly setupResidentContexts: FoundingState["setupResidentContexts"];
-  readonly setupRoleExpanded: FoundingState["setupRoleExpanded"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];

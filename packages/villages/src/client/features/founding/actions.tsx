@@ -10,9 +10,9 @@ import type { ResidentFoundingContext } from "../../../shared/helpers/resident-f
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
-import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
+import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
-import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
+import { emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
@@ -240,7 +240,6 @@ export function useOpenSetup(ports: {
   setSetupEditorOpen: React.Dispatch<SetStateAction<boolean>>;
   setSetupFocusIssue: React.Dispatch<SetStateAction<FoundingIssue>>;
   setSetupFoundingDetails: React.Dispatch<SetStateAction<string>>;
-  setSetupFoundingGuidance: React.Dispatch<SetStateAction<string>>;
   setSetupFoundingReason: React.Dispatch<SetStateAction<"rebuild" | "pioneer" | "prosper" | "custom" | "none">>;
   setSetupFoundingVillagerIds: React.Dispatch<SetStateAction<string[]>>;
   setSetupImprint: React.Dispatch<SetStateAction<ScenarioImprint>>;
@@ -251,7 +250,6 @@ export function useOpenSetup(ports: {
   setSetupMapImage: React.Dispatch<SetStateAction<string>>;
   setSetupMapImageSource: React.Dispatch<SetStateAction<"generate" | "upload">>;
   setSetupMapNegativePrompt: React.Dispatch<SetStateAction<string>>;
-  setSetupMapOptions: React.Dispatch<SetStateAction<TownMapOptions>>;
   setSetupMapProblem: React.Dispatch<SetStateAction<string>>;
   setSetupMapPrompt: React.Dispatch<SetStateAction<string>>;
   setSetupMapSize: React.Dispatch<SetStateAction<{ width: number; height: number }>>;
@@ -288,7 +286,6 @@ export function useOpenSetup(ports: {
     setSetupEditorOpen,
     setSetupFocusIssue,
     setSetupFoundingDetails,
-    setSetupFoundingGuidance,
     setSetupFoundingReason,
     setSetupFoundingVillagerIds,
     setSetupImprint,
@@ -299,7 +296,6 @@ export function useOpenSetup(ports: {
     setSetupMapImage,
     setSetupMapImageSource,
     setSetupMapNegativePrompt,
-    setSetupMapOptions,
     setSetupMapProblem,
     setSetupMapPrompt,
     setSetupMapSize,
@@ -329,7 +325,8 @@ export function useOpenSetup(ports: {
       setSetupWorkspace(emptyFoundingWorkspace());
       setSetupShowIssues(false);
       setSetupFocusIssue(null);
-      setSetupName(fresh ? "" : (village?.village.name ?? ""));
+      // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
+      setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       const storedReason = fresh ? "" : (village?.settings.foundingReason ?? "");
       const isCurrentScenario = FOUNDING_SCENARIOS.some((scenario) => scenario.value === storedReason);
@@ -340,10 +337,8 @@ export function useOpenSetup(ports: {
         : fresh || !storedReason
           ? foundingScenario(reason).premise
           : savedDetails;
-      const guidance = fresh ? "" : (village?.settings.foundingGuidance ?? "");
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
-      setSetupFoundingGuidance(reason === "none" ? "" : guidance);
       setSetupPlayerRole(
         fresh
           ? { ...DEFAULT_PLAYER_ROLE }
@@ -380,7 +375,6 @@ export function useOpenSetup(ports: {
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
       setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
-      setSetupMapOptions({ ...DEFAULT_TOWN_MAP_OPTIONS });
       setSetupMapSource(fresh ? "none" : village?.settings.townMapImageSetAt ? "existing" : "none");
       setSetupMapImage("");
       setSetupMapImageSource(null);
@@ -429,7 +423,6 @@ export function useFoundVillage(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setupBlocker: () => string;
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
   setupFoundingVillagerIds: string[];
   setupLorebookDraft: string[];
@@ -464,7 +457,6 @@ export function useFoundVillage(ports: {
     setSnapshot,
     setupBlocker,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupFoundingVillagerIds,
     setupLorebookDraft,
@@ -504,7 +496,7 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(2);
+        setSetupStep(3);
         window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);
@@ -521,7 +513,7 @@ export function useFoundVillage(ports: {
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
-          foundingGuidance: snapshot?.isFounded ? snapshot.settings.foundingGuidance : setupFoundingGuidance.trim(),
+          ...(snapshot?.isFounded ? { foundingGuidance: snapshot.settings.foundingGuidance } : {}),
           playerRole: snapshot?.isFounded ? (snapshot.settings.playerRole ?? null) : setupPlayerRole,
           scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
@@ -582,7 +574,6 @@ export function useFoundVillage(ports: {
     setupName,
     setupFoundingReason,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupPlayerRole,
     setupWorldFacts,
     setupLorebookDraft,
