@@ -284,6 +284,7 @@ try {
         });
       }
       if (path.endsWith("/setup/town-map/generate")) {
+        assert.equal(route.request().postDataJSON().sceneryStyleProfileId, "engine-paint");
         mapCalls++;
         const body = route.request().postDataJSON();
         assert.equal(Object.hasOwn(body, "options"), false, "map generation has no hidden element toggles");
@@ -319,6 +320,18 @@ try {
           });
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
       }
+      if (path.endsWith("/image-style-profiles"))
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            defaultProfileId: "user-ink",
+            profiles: [
+              { id: "user-ink", name: "My ink map" },
+              { id: "engine-paint", name: "Engine painting" },
+            ],
+          }),
+        });
       const value = path.endsWith("/personas/ada")
         ? { persona: personaPreview }
         : path.endsWith("/personas")
@@ -752,6 +765,11 @@ try {
     await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
     const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
     await expect(mapDialog).toBeVisible();
+    const stylePicker = mapDialog.getByLabel("Scenery style preset", { exact: true });
+    await expect(stylePicker).toHaveValue("");
+    await expect(stylePicker.getByRole("option", { name: "Engine default (My ink map)", exact: true })).toHaveCount(1);
+    await stylePicker.selectOption("engine-paint");
+    await expect(stylePicker).toHaveValue("engine-paint");
     await expect(mapDialog.getByRole("button", { name: "Help: Map", exact: true })).toHaveCount(0);
     for (const label of ["Map details"]) {
       const mapHelp = mapDialog.getByRole("button", { name: "Help: " + label, exact: true });

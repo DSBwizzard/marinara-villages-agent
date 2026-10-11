@@ -21,7 +21,7 @@ import { defaultView } from "../exploration/MapStage.js";
 import { emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
-import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
+import { venueHasCommon } from "./villages-founding-editor";
 import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
@@ -236,6 +236,7 @@ export function useOpenSetup(ports: {
   setPickerOpen: React.Dispatch<SetStateAction<boolean>>;
   setResetArmed: React.Dispatch<SetStateAction<boolean>>;
   setSceneryStyle: React.Dispatch<SetStateAction<string>>;
+  setSceneryStyleProfileId: React.Dispatch<SetStateAction<string | null>>;
   setScreen: React.Dispatch<
     SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
   >;
@@ -284,6 +285,7 @@ export function useOpenSetup(ports: {
     setPickerOpen,
     setResetArmed,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     setScreen,
     setSearch,
     setSelectedSetupVenueId,
@@ -367,11 +369,8 @@ export function useOpenSetup(ports: {
         ),
       );
       setSetupEditorOpen(false);
-      setSceneryStyle(
-        fresh || !village?.isFounded
-          ? SCENERY_STYLES["Painted illustration"]
-          : (village.settings.sceneryArtStyle ?? ""),
-      );
+      setSceneryStyle(fresh || !village?.isFounded ? "" : (village.settings.sceneryArtStyle ?? ""));
+      setSceneryStyleProfileId(fresh || !village?.isFounded ? "" : (village.settings.sceneryStyleProfileId ?? null));
       setPersonalizeHomes(village?.settings.personalizeVenueImagesByDefault !== false);
       setVisualLoreDefault(village?.settings.useVisualLoreByDefault !== false);
       setMapVisualLore(village?.settings.useVisualLoreByDefault !== false);
@@ -416,6 +415,7 @@ export function useFoundVillage(ports: {
   residentContextProblem: "" | "Complete the highlighted resident background fields in People.";
   savedTownMapView: TownMapView;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   selectedResidentContexts: { [k: string]: ResidentFoundingContext };
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setDraftReady: React.Dispatch<SetStateAction<boolean>>;
@@ -452,6 +452,7 @@ export function useFoundVillage(ports: {
     residentContextProblem,
     savedTownMapView,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedResidentContexts,
     setBusy,
     setDraftReady,
@@ -526,6 +527,7 @@ export function useFoundVillage(ports: {
           personalizeVenueImagesByDefault: personalizeHomes,
           useVisualLoreByDefault: visualLoreDefault,
           sceneryArtStyle: sceneryStyle,
+          sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
@@ -571,6 +573,7 @@ export function useFoundVillage(ports: {
     savedTownMapView,
     setupBlocker,
     sceneryStyle,
+    sceneryStyleProfileId,
     mapVisualLore,
     personalizeHomes,
     visualLoreDefault,

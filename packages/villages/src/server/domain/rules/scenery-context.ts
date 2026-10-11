@@ -74,6 +74,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
   return JSON.stringify([
     zoneId,
     village.sceneryArtStyle,
+    village.sceneryStyleProfileId ?? null,
     village.setting,
     village.worldFacts,
     (venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault) ? village.selectedLorebookIds : [],

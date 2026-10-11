@@ -15,6 +15,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly mapVisualLore: FoundingState["mapVisualLore"];
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
+  readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly setSetupMapBusy: FoundingState["setSetupMapBusy"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
@@ -34,6 +35,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
       mapVisualLore,
       persistSetupDraft,
       sceneryStyle,
+      sceneryStyleProfileId,
       setSetupMapBusy,
       setSetupMapProblem,
       setSetupProblem,
@@ -80,6 +82,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
           setting: setupSetting,
           selectedLorebookIds: setupLorebookDraft,
           sceneryArtStyle: sceneryStyle,
+          sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
           scenarioImprint: snapshot?.isFounded
             ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
@@ -106,6 +109,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
     ports.setupSetting,
     ports.setupMapGenerationKey,
     ports.sceneryStyle,
+    ports.sceneryStyleProfileId,
     ports.mapVisualLore,
     ports.setupWorldFacts,
     ports.snapshot?.isFounded,
@@ -143,6 +147,7 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly personaDraft: string;
   readonly personalizeHomes: FoundingState["personalizeHomes"];
   readonly sceneryStyle: FoundingState["sceneryStyle"];
+  readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly selectedResidentContexts: {
     [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
   };
@@ -178,6 +183,7 @@ export function createFoundingGenerateSetupImage(ports: {
       personaDraft,
       personalizeHomes,
       sceneryStyle,
+      sceneryStyleProfileId,
       selectedResidentContexts,
       setSelectedSetupVenueId,
       setSetupImageTarget,
@@ -256,6 +262,7 @@ export function createFoundingGenerateSetupImage(ports: {
             : undefined,
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,
+          sceneryStyleProfileId,
           useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? personalizeHomes,
           useVisualLore: venue.imageContext?.useVisualLore ?? visualLoreDefault,
           villageName: setupName,

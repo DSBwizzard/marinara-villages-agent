@@ -57,6 +57,7 @@ export function useSaveSettings(ports: {
 
 export function useSaveScenerySettings(ports: {
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   personalizeHomes: boolean;
   visualLoreDefault: boolean;
   snapshot: VillageSnapshot | null;
@@ -64,7 +65,15 @@ export function useSaveScenerySettings(ports: {
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
-  const { sceneryStyle, personalizeHomes, visualLoreDefault, setBusy, setSettingsError, setSnapshot } = ports;
+  const {
+    sceneryStyle,
+    sceneryStyleProfileId,
+    personalizeHomes,
+    visualLoreDefault,
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+  } = ports;
   const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(async () => {
     const claim = lifetime.begin();
@@ -76,6 +85,7 @@ export function useSaveScenerySettings(ports: {
         method: "PATCH",
         body: JSON.stringify({
           sceneryArtStyle: sceneryStyle,
+          sceneryStyleProfileId,
           personalizeVenueImagesByDefault: personalizeHomes,
           useVisualLoreByDefault: visualLoreDefault,
         }),
@@ -86,7 +96,16 @@ export function useSaveScenerySettings(ports: {
     } finally {
       if (lifetime.finish(claim)) setBusy(false);
     }
-  }, [sceneryStyle, personalizeHomes, visualLoreDefault, setBusy, setSettingsError, setSnapshot, lifetime]);
+  }, [
+    sceneryStyle,
+    sceneryStyleProfileId,
+    personalizeHomes,
+    visualLoreDefault,
+    setBusy,
+    setSettingsError,
+    setSnapshot,
+    lifetime,
+  ]);
 }
 
 export function useSaveSpriteCardFlip(ports: {

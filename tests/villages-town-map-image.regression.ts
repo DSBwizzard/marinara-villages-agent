@@ -400,11 +400,15 @@ async function main() {
   assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);
   assert.ok(client.includes("mobile={mobile}"));
-  assert.ok(client.includes("setupMapGeneratedKey !== setupMapGenerationKey"));
+  assert.equal(
+    client.includes("setupMapGeneratedKey !== setupMapGenerationKey"),
+    false,
+    "input changes do not gate retained artwork",
+  );
   assert.ok(client.includes("lorebooks: setupLorebookDraft"));
   assert.ok(client.includes("setting: setupSetting.trim()"));
   assert.equal(client.includes('mobileStart="contain"'), false);
-  assert.ok(client.includes("Simple map"));
+  assert.equal(client.includes('["none", "Simple map"'), false, "map artwork is required");
   assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
   assert.equal(

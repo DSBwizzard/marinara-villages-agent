@@ -140,6 +140,7 @@ export function useGenerateReplacementMap(ports: {
           setting: snapshot.settings.setting,
           selectedLorebookIds: snapshot.settings.selectedLorebookIds,
           sceneryArtStyle: snapshot.settings.sceneryArtStyle,
+          sceneryStyleProfileId: snapshot.settings.sceneryStyleProfileId,
           useVisualLore: snapshot.settings.useVisualLoreByDefault,
           scenarioImprint: {
             origin: "",

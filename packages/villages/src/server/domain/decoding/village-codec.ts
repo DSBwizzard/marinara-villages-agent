@@ -2035,6 +2035,10 @@ export function coerceVillageState(value: unknown): VillageState {
           : "sixteen-total-v1",
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
+    sceneryStyleProfileId:
+      typeof raw.sceneryStyleProfileId === "string" && /^[a-zA-Z0-9_-]{0,80}$/.test(raw.sceneryStyleProfileId)
+        ? raw.sceneryStyleProfileId
+        : null,
     personalizeVenueImagesByDefault: raw.personalizeVenueImagesByDefault !== false,
     useVisualLoreByDefault: raw.useVisualLoreByDefault !== false,
     loreTokenBudget: coerceLoreTokenBudget(raw.loreTokenBudget),

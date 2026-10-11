@@ -108,7 +108,17 @@ export async function assertPackagePrivateImportBoundary({ sourceRoot, boundaryP
   ]);
   const expected = boundary.privateEngineImports;
   const runtimeInventory = boundary.privateEngineRuntimeImports ?? [];
-  const declaredSources = new Set(runtimeInventory.map((entry) => entry.source));
+  const publicRuntimeInventory = boundary.publicEngineRuntimeImports ?? [];
+  const declaredSources = new Set([...runtimeInventory, ...publicRuntimeInventory].map((entry) => entry.source));
+  for (const entry of publicRuntimeInventory) {
+    const source = await readFile(resolve(sourceRoot, entry.source), "utf8");
+    const declaration = source.match(/export const PUBLIC_ENGINE_MODULES = \[([\s\S]*?)\] as const/u);
+    const actualModules = declaration
+      ? [...declaration[1].matchAll(/["']([^"']+)["']/gu)].map((match) => match[1])
+      : [];
+    if (JSON.stringify(actualModules) !== JSON.stringify(entry.modules))
+      throw new Error(`${displayName} public runtime dependency inventory differs`);
+  }
   for (const file of await listSourceFiles(sourceRoot)) {
     const source = await readFile(file, "utf8");
     const name = relative(sourceRoot, file).split(sep).join("/");

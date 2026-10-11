@@ -170,6 +170,7 @@ export function villageSettings(
     worldFacts: village.worldFacts,
     selectedLorebookIds: village.selectedLorebookIds,
     sceneryArtStyle: village.sceneryArtStyle,
+    sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
     personalizeVenueImagesByDefault: village.personalizeVenueImagesByDefault,
     useVisualLoreByDefault: village.useVisualLoreByDefault,
     loreTokenBudget: village.loreTokenBudget,

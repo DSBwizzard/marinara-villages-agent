@@ -35,17 +35,17 @@ const bundle = await build({
       const settings=useSettingsState();
       const [snapshot,setSnapshot]=useState(window.initialSnapshot);
       const [screen,setScreen]=useState('home'); const [menuPage,setMenuPage]=useState('index');
-      const [sceneryStyle,setSceneryStyle]=useState(''); const [personalizeHomes,setPersonalizeHomes]=useState(true);
+      const [sceneryStyle,setSceneryStyle]=useState(''); const [sceneryStyleProfileId,setSceneryStyleProfileId]=useState(null); const [personalizeHomes,setPersonalizeHomes]=useState(true);
       const [visualLoreDefault,setVisualLoreDefault]=useState(true); const [venuesDraft,setVenuesDraft]=useState([]);
       const [busy,setBusy]=useState(false); const [personas,setPersonas]=useState([]);
       const unused=()=>{};
-      const session=useSettingsDraftSession({...settings,snapshot,setSceneryStyle,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft});
+      const session=useSettingsDraftSession({...settings,snapshot,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft});
       const loadPersonas=useLoadPersonas({setError:unused,setPersonaDraft:settings.setPersonaDraft,setPersonas});
       const open=useScenesOpenMenu({snapshot,screen,menuPage,setScreen,setMenuPage,openSettings:session.openSettings,
         loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,loadProgressDebug:async()=>{},setFocusedRequestId:unused,
         setSiteProjectId:unused,setSettingsError:settings.setSettingsError});
       const save=useSaveSettings({...settings,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
-      window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
+      window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
       return <pre id='state'>{JSON.stringify({knowledge:settings.knowledgeDraft,persona:settings.personaDraft,lore:settings.lorebookDraft,
         budget:settings.loreTokenBudgetDraft,setting:settings.settingDraft,scenery:sceneryStyle,personalizeHomes,visualLoreDefault,
         venues:venuesDraft,founded:snapshot.isFounded,screen,menuPage,busy,error:settings.settingsError,personas:personas.length})}</pre>;
@@ -357,6 +357,7 @@ async function checkPackage(width) {
   await expect.poll(() => scenerySaves.length).toBe(1);
   assert.deepEqual(scenerySaves[0].request().postDataJSON(), {
     sceneryArtStyle: "Packaged scenery save",
+    sceneryStyleProfileId: null,
     personalizeVenueImagesByDefault: false,
     useVisualLoreByDefault: true,
   });

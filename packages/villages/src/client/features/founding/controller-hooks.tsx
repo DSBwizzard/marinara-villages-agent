@@ -97,6 +97,7 @@ export function useFoundingSetupDraftData(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   selectedSetupVenueId: string;
   setupAuthoredFields: Record<string, string[]>;
   setupEditorAuthoredOriginal: React.RefObject<string[]>;
@@ -249,6 +250,7 @@ export function useFoundingSetupDraftData(ports: {
     personaDraft,
     personalizeHomes,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedSetupVenueId,
     setupAuthoredFields,
     setupEditorAuthoredOriginal,
@@ -306,6 +308,7 @@ export function useFoundingSetupDraftData(ports: {
       lorebooks: setupLorebookDraft,
       loreBudget: setupLoreTokenBudgetDraft,
       artStyle: sceneryStyle,
+      styleProfileId: sceneryStyleProfileId,
       personalizeHomes,
       visualLoreDefault,
       mapVisualLore,
@@ -348,6 +351,7 @@ export function useFoundingSetupDraftData(ports: {
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
       sceneryStyle,
+      sceneryStyleProfileId,
       personalizeHomes,
       visualLoreDefault,
       mapVisualLore,

@@ -65,6 +65,7 @@ export type FoundingScreenController = {
   readonly retrySetupSaving: ReturnType<typeof createFoundingRetrySetupSaving>;
   readonly savedTownMapView: import("../../../shared/contracts/village").TownMapView;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
+  readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
   readonly selectedResidentContexts: ReturnType<typeof useFoundingSelectedResidentContexts>;
   readonly selectedSetupVenueId: FoundingState["selectedSetupVenueId"];
@@ -73,6 +74,7 @@ export type FoundingScreenController = {
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
+  readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person">
   >;

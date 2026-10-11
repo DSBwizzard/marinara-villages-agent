@@ -50,6 +50,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     saveTownMap,
     saveVenue,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedMapVenueId,
     setKnowledgeDraft,
     setLoreTokenBudgetDraft,
@@ -61,6 +62,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     setPlacingMapVenueId,
     setReframingMap,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     setSelectedMapVenueId,
     setSettingDraft,
     setTownMapDraft,
@@ -87,7 +89,12 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
   return (
     <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
       <section className={ELEMENT_TAG + "-venue-card"}>
-        <SceneryStyleFields value={sceneryStyle} onChange={setSceneryStyle} />
+        <SceneryStyleFields
+          value={sceneryStyle}
+          profileId={sceneryStyleProfileId}
+          onChange={setSceneryStyle}
+          onProfileChange={setSceneryStyleProfileId}
+        />
         <label>
           <input
             type="checkbox"

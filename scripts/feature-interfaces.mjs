@@ -31,7 +31,11 @@ export const serverFeatureInterfaces = Object.freeze({
   "generation/interpretation.ts": ["interpretChecks", "recordInterpretationRouting"],
   "generation/model-requests.ts": ["completeWithRoom"],
   "generation/system-interpretation.ts": ["systemInterpretations"],
-  "media/image-generation.ts": ["resolveVillageImageConnectionId", "generateVillageImage"],
+  "media/image-generation.ts": [
+    "resolveVillageImageConnectionId",
+    "generateVillageImage",
+    "readVillageImageStyleCatalog",
+  ],
   "media/location-image.ts": [
     "generateVillageLocationImage",
     "generateFirstPrivateSpaceImage",

@@ -346,6 +346,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
     );
     const decoded = await generateVillageImage({
+      sceneryStyleProfileId: input.sceneryStyleProfileId,
       name: row.name || "Founding venue",
       prompt,
       negativePrompt: "people, faces, text, letters, numbers, numerals, signs, labels, captions, watermark, interface",

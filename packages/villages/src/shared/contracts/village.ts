@@ -616,6 +616,7 @@ export type VillageSettings = {
   worldFacts: string[];
   selectedLorebookIds: string[];
   sceneryArtStyle?: string;
+  sceneryStyleProfileId?: string | null;
   personalizeVenueImagesByDefault?: boolean;
   useVisualLoreByDefault?: boolean;
   loreTokenBudget: number;

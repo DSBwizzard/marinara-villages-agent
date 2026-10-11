@@ -99,6 +99,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonalizeHomes: FoundingState["setPersonalizeHomes"];
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];
+  readonly setSceneryStyleProfileId: FoundingState["setSceneryStyleProfileId"];
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
   >;
@@ -151,6 +152,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setPersonaDraft,
       setPersonalizeHomes,
       setSceneryStyle,
+      setSceneryStyleProfileId,
       setScreen,
       setSelectedSetupVenueId,
       setSetupAuthoredFields,
@@ -230,6 +232,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupLorebookDraft(data.lorebooks);
     setSetupLoreTokenBudgetDraft(data.loreBudget);
     setSceneryStyle(data.artStyle);
+    setSceneryStyleProfileId(data.styleProfileId ?? null);
     setPersonalizeHomes(data.personalizeHomes);
     setVisualLoreDefault(data.visualLoreDefault);
     setMapVisualLore(data.mapVisualLore);

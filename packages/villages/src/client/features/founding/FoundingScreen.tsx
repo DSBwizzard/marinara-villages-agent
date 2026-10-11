@@ -1,3 +1,4 @@
+import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
 import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
@@ -16,7 +17,7 @@ import {
   VillageLorebookPicker,
 } from "./FoundingPanels.js";
 import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
-import { SCENERY_STYLES, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
+import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_ROLE, PlayerRoleFields, PlayerRoleSummary, playerRoleProblem } from "./villages-player-role.js";
@@ -74,6 +75,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     retrySetupSaving,
     savedTownMapView,
     sceneryStyle,
+    sceneryStyleProfileId,
     screen,
     selectedResidentContexts,
     selectedSetupVenueId,
@@ -82,6 +84,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setMovingSetupVenueId,
     setPersonaDraft,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     setScreen,
     setSelectedSetupVenueId,
     setSetupFocusIssue,
@@ -596,33 +599,27 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       </FoundingField>
                       <label>
                         Art style
-                        <select
-                          aria-label="Scenery style preset"
-                          value={
-                            Object.keys(SCENERY_STYLES).find(
-                              (key) => SCENERY_STYLES[key as keyof typeof SCENERY_STYLES] === sceneryStyle,
-                            ) ?? "Custom"
-                          }
-                          onChange={(event) =>
-                            setSceneryStyle(SCENERY_STYLES[event.target.value as keyof typeof SCENERY_STYLES])
-                          }
-                        >
-                          {Object.keys(SCENERY_STYLES).map((key) => (
-                            <option key={key}>{key}</option>
-                          ))}
-                        </select>
+                        <SceneryStylePicker
+                          profileId={sceneryStyleProfileId}
+                          onChange={(id) => {
+                            setSceneryStyleProfileId(id);
+                            if (id !== null) setSceneryStyle("");
+                          }}
+                        />
                       </label>
                       <details>
                         <summary>More options</summary>
-                        <label>
-                          Style description
-                          <textarea
-                            aria-label="Scenery style description"
-                            maxLength={600}
-                            value={sceneryStyle}
-                            onChange={(event) => setSceneryStyle(event.target.value)}
-                          />
-                        </label>
+                        {sceneryStyleProfileId === null ? (
+                          <label>
+                            Style description
+                            <textarea
+                              aria-label="Scenery style description"
+                              maxLength={600}
+                              value={sceneryStyle}
+                              onChange={(event) => setSceneryStyle(event.target.value)}
+                            />
+                          </label>
+                        ) : null}
                         <label>
                           Things to avoid
                           <textarea

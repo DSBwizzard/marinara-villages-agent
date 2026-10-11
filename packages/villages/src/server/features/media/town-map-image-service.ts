@@ -32,6 +32,7 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     selectedLorebookIds?: unknown;
     scenarioImprint?: unknown;
     sceneryArtStyle?: unknown;
+    sceneryStyleProfileId?: unknown;
     useVisualLore?: unknown;
   }): Promise<{ image: string; width: number; height: number }> {
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
@@ -54,6 +55,7 @@ export function createTownMapImage(ports: TownMapImagePorts) {
       lore.map((entry) => "Compatible visual lore: " + entry),
     );
     const generated = await generateVillageImage({
+      sceneryStyleProfileId: input.sceneryStyleProfileId,
       connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,
       name: "Village map",
       prompt,

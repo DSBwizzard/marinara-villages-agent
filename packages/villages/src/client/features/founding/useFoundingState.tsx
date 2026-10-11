@@ -6,7 +6,7 @@ import { emptyScenarioImprint } from "./FoundingPanels.js";
 import type { FoundingScenarioId } from "./scenarios.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { SavedFoundingDraft } from "./villages-founding-draft.js";
-import { type AreaDraftCache, SCENERY_STYLES } from "./villages-founding-editor";
+import { type AreaDraftCache } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
 import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
 import { useRef, useState } from "react";
@@ -56,7 +56,8 @@ export function useFoundingState() {
 
   const setupEditorZoneOriginal = useRef<AreaDraftCache["current"] | undefined>(undefined);
 
-  const [sceneryStyle, setSceneryStyle] = useState(SCENERY_STYLES["Painted illustration"]);
+  const [sceneryStyle, setSceneryStyle] = useState("");
+  const [sceneryStyleProfileId, setSceneryStyleProfileId] = useState<string | null>("");
 
   const [personalizeHomes, setPersonalizeHomes] = useState(true);
 
@@ -186,7 +187,9 @@ export function useFoundingState() {
     setupEditorAuthoredOriginal,
     setupEditorZoneOriginal,
     sceneryStyle,
+    sceneryStyleProfileId,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     personalizeHomes,
     setPersonalizeHomes,
     visualLoreDefault,

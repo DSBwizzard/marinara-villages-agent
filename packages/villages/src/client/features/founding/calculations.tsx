@@ -24,6 +24,7 @@ export function calculateSetupBeginningSourceKey(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   selectedResidentContexts: {
     [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
   };
@@ -38,6 +39,7 @@ export function calculateSetupBeginningSourceKey(ports: {
     personaDraft,
     personalizeHomes,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedResidentContexts,
     setupFoundingDetails,
     setupFoundingReason,
@@ -55,6 +57,7 @@ export function calculateSetupBeginningSourceKey(ports: {
     loreBudget: setupLoreTokenBudgetDraft,
     persona: personaDraft,
     artStyle: sceneryStyle,
+    styleProfileId: sceneryStyleProfileId,
     personalityDefault: personalizeHomes,
     visualLoreDefault,
   });
@@ -90,6 +93,7 @@ export function calculateSetupImageContextKey(ports: {
 export function calculateSetupMapGenerationKey(ports: {
   mapVisualLore: boolean;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   setupLorebookDraft: string[];
   setupMapNegativePrompt: string;
   setupMapPrompt: string;
@@ -100,6 +104,7 @@ export function calculateSetupMapGenerationKey(ports: {
   const {
     mapVisualLore,
     sceneryStyle,
+    sceneryStyleProfileId,
     setupLorebookDraft,
     setupMapNegativePrompt,
     setupMapPrompt,
@@ -112,6 +117,7 @@ export function calculateSetupMapGenerationKey(ports: {
     worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
     lorebooks: setupLorebookDraft,
     artStyle: sceneryStyle,
+    styleProfileId: sceneryStyleProfileId,
     useVisualLore: mapVisualLore,
     structure: setupMapPrompt,
     negative: setupMapNegativePrompt,
