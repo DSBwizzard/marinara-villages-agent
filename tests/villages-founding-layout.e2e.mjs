@@ -786,9 +786,36 @@ try {
     for (const name of ["Roads and paths", "Structures", "Water"]) {
       await expect(mapDialog.getByLabel(name, { exact: true })).toHaveCount(0);
     }
-    await mapDialog.locator(".villages-place-map-editor").evaluate((node) => {
-      node.scrollTop = node.scrollHeight;
+    // Inline Map controls must hand scrolling to the same root as People and Place.
+    await root.evaluate((node) => {
+      node.scrollTop = 0;
     });
+    const mapContext = mapDialog.locator(".villages-map-context");
+    const contextBox = await mapContext.boundingBox();
+    assert.ok(contextBox);
+    const scrollX = contextBox.x + contextBox.width / 2;
+    const scrollY = contextBox.y + contextBox.height / 2;
+    await page.mouse.move(scrollX, scrollY);
+    await page.mouse.wheel(0, 260);
+    await expect.poll(() => root.evaluate((node) => node.scrollTop)).toBeGreaterThan(40);
+    if (width < 600) {
+      await root.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+      const touch = await context.newCDPSession(page);
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: scrollX, y: scrollY }] });
+      for (let step = 1; step <= 6; step++) {
+        await touch.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: scrollX, y: scrollY - step * 24 }],
+        });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect.poll(() => root.evaluate((node) => node.scrollTop)).toBeGreaterThan(40);
+      await touch.detach();
+    }
+    await capture("map-page-scroll");
     await assertMapFooter();
     await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
     await expect(mapDialog.getByLabel("Upload map image", { exact: true })).toBeVisible();

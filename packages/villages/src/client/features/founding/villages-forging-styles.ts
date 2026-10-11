@@ -248,7 +248,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-founding-dialog[data-scroll-body=true] { display:flex; flex-direction:column; overflow:hidden; }
 .villages-forging-v2 .villages-founding-dialog[data-scroll-body=true]>header { flex:none; }
 .villages-forging-v2 .villages-founding-dialog[data-scroll-body=true]>footer { flex:none; margin-top:.65rem; border-top:1px solid #43547d; }
-.villages-place-map-editor { flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; padding:.15rem .2rem; }
+.villages-place-map-editor { min-width:0; padding:.15rem .2rem; }
 .villages-map-sources { display:grid; gap:.5rem; }
 .villages-map-sources>button { display:flex; align-items:center; gap:.75rem; width:100%; text-align:left; }
 .villages-map-sources>button[aria-pressed=true] { background:#30305c; border-color:#aa87ff; }
