@@ -1150,6 +1150,7 @@ try {
     await formHelp.press("Escape");
     await expect(formHelp).toBeFocused();
     await expect(inspector.getByRole("note")).toHaveCount(0);
+    await formHelp.evaluate((element) => element.blur());
     await capture("venue-details");
     await zone("Common");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");

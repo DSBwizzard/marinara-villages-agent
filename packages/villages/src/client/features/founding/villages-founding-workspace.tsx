@@ -131,7 +131,7 @@ export function FoundingWorkspace({
     selected && (
       <section className="villages-workspace-artwork" aria-label={`${area} image`}>
         {image ? (
-          <a href={image.url} target="_blank" rel="noreferrer" aria-label="View photograph">
+          <a href={image.url} target="_blank" rel="noreferrer" aria-label="View image">
             <img src={image.url} alt={`${area} of ${selected.name}`} />
           </a>
         ) : null}
@@ -215,11 +215,6 @@ export function FoundingWorkspace({
             ))}
           </details>
         </details>
-        {area === "exterior" ? (
-          <FoundingHelp label="Exterior image">
-            The image also appears inside this Venue’s required map marker. Adding an image is optional.
-          </FoundingHelp>
-        ) : null}
       </section>
     );
   const fieldProblem = (field: FoundingIssue["field"], zoneId?: string) =>
