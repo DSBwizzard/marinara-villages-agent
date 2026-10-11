@@ -292,7 +292,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             onPlace={interactive && !snapshot?.isFounded ? placeSetupPin : undefined}
             compact={false}
             mobile={false}
-            fitToRoom={interactive}
+            fitToRoom={false}
             compactPhotos={interactive}
             onMovePin={
               interactive && !snapshot?.isFounded && mapReady
@@ -310,9 +310,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
         </div>
         {interactive ? (
           <>
-            <FoundingHelp label="Venue placement">
-              Select a Venue’s Move button, then click its new spot. Arrow keys and Enter also place Venue photographs.
-            </FoundingHelp>
             {placed === setupVenues.length && !setupMapReviewed ? (
               <button type="button" onClick={() => setSetupMapReviewed(true)}>
                 I checked all Venue photographs against this map
@@ -743,6 +740,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               }
               onState={setSetupWorkspace}
               onMove={moveVenue}
+              onSelect={(venue) => {
+                setSelectedSetupVenueId(venue.id);
+                setMovingSetupVenueId(null);
+                setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
+              }}
               onContinue={() => {
                 const next = setupVenues.find(
                   (venue) => venue.presentation.x === null || venue.presentation.y === null,

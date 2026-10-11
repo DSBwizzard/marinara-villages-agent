@@ -161,7 +161,7 @@ const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,ven
 const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
 function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
 window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
-<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} saveStatus='Saved' onState={setState} onMove={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
+<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} saveStatus='Saved' onState={setState} onMove={()=>{}} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
 createRoot(document.getElementById('root')).render(<Harness/>);
 `,
     },
@@ -182,9 +182,9 @@ createRoot(document.getElementById('root')).render(<Harness/>);
     await expect(page.getByLabel("Zone name", { exact: true })).toHaveValue(id);
     await page.getByLabel("Zone used for", { exact: true }).fill("Edited " + id);
   }
-  await page.getByRole("button", { name: "Common", exact: true }).click();
+  await selector.selectOption("common-a");
   await expect(selector).toHaveValue("common-a");
-  await page.getByRole("button", { name: "Private", exact: true }).click();
+  await selector.selectOption("private-a");
   await expect(selector).toHaveValue("private-a");
   await page.getByRole("button", { name: "Review second Private" }).click();
   await expect(selector).toHaveValue("private-b");
@@ -1009,26 +1009,49 @@ try {
     const canvas = placementMap.locator(".marinara-capability-villages-canvas");
     const pins = canvas.locator("button[data-pin-id]");
     const mapView = async () => {
-      const back = inspector.getByRole("button", { name: "Return to map", exact: true });
+      const back = inspector.getByRole("button", { name: "Return to placement", exact: true });
       if (await back.isVisible()) await back.click();
+      await canvas.scrollIntoViewIfNeeded();
     };
     const open = async (index = 0) => {
       await mapView();
       await pins.nth(index).click();
     };
     const zone = async (name) => {
-      await inspector.getByRole("button", { name: "Zones", exact: true }).click();
-      await inspector.getByRole("button", { name, exact: true }).click();
+      const details = inspector.locator(".villages-workspace-space");
+      if (name === "Exterior") {
+        for (const row of await details.all())
+          if ((await row.getAttribute("open")) !== null) await row.locator(":scope > summary").click();
+      } else {
+        const row = details.filter({
+          has: inspector
+            .page()
+            .locator("summary")
+            .filter({ hasText: `${name} Space` }),
+        });
+        if ((await row.getAttribute("open")) === null) await row.locator(":scope > summary").click();
+      }
     };
-    await expect(root.locator(".villages-workspace-list")).toHaveCount(0);
-    await forward("Draft starting Venues").click();
-    await expect(forward("Draft starting Venues")).toBeEnabled();
+    await expect(root.locator(".villages-workspace-list")).toBeVisible();
+    await expect(root.locator("[data-venue-id]")).toHaveCount(homeCount + 2);
+    await root.locator("[data-venue-id]").first().click();
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toBeVisible();
+    await expect(inspector.getByLabel("Exterior description", { exact: true })).toBeVisible();
+    await expect(root.getByRole("dialog")).toHaveCount(0);
+    await mapView();
+    assert.equal(imageCalls, 0, "editing an unplaced Venue starts no image request");
+    await expect(root.locator(".villages-workspace-overview")).toHaveCSS("border-color", "rgb(67, 84, 125)");
+    await expect(root).toHaveCSS("background-color", "rgb(18, 25, 54)");
+    await capture("venue-placement");
+    await forward("Suggest names & descriptions").click();
+    await expect(forward("Suggest names & descriptions")).toBeEnabled();
     assert.equal(suggestionCalls, 1);
     const spots = Array.from({ length: homeCount + 2 }, (_, i) => ({
       x: homeCount === 3 ? 0.22 + (i % 3) * 0.28 : 0.22 + (i % 2) * 0.56,
       y: i < (homeCount === 3 ? 3 : 2) ? 0.28 : 0.72,
     }));
     for (const spot of spots) {
+      await canvas.scrollIntoViewIfNeeded();
       const box = await canvas.boundingBox();
       await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
     }
@@ -1041,8 +1064,8 @@ try {
     await forward("Change starting Venues").click();
     await open();
     const narrow = (await root.locator(".villages-workspace").getAttribute("data-narrow")) === "true";
-    assert.equal(narrow, width - 24 < 704, "704px available-workspace breakpoint");
-    await expect(root.getByRole("dialog")).toHaveCount(narrow ? 1 : 0);
+    assert.equal(narrow, (await root.locator(".villages-workspace").boundingBox()).width < 704);
+    await expect(root.getByRole("dialog")).toHaveCount(0);
     if (width === 1366) {
       // Resume a legacy modal checkpoint using current authored fields and retained prohibited Zone data.
       await inspector.getByLabel("Venue name", { exact: true }).fill("Legacy current edit");
@@ -1087,21 +1110,22 @@ try {
       await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Legacy current edit");
       await open(homeCount + 1);
       await zone("Private");
-      await expect(inspector.getByText(/previous draft and photographs are kept/)).toBeVisible();
+      await expect(inspector.getByText(/previous draft and images are kept/)).toBeVisible();
       await open();
-      await inspector.getByRole("button", { name: "Venue", exact: true }).click();
+      await zone("Exterior");
     }
     await expect(inspector.getByRole("heading", { name: "Before Review", exact: true })).toHaveCount(0);
     await expect(inspector.getByRole("region", { name: "Details needed before Review", exact: true })).toHaveCount(0);
     await inspector.getByLabel("Venue name", { exact: true }).fill("Autosaved name");
     await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
     if (narrow) {
-      const returnButton = inspector.getByRole("button", { name: "Return to map", exact: true });
+      const returnButton = inspector.getByRole("button", { name: "Return to placement", exact: true });
       await returnButton.focus();
       await page.keyboard.press("Shift+Tab");
-      assert.ok(await inspector.evaluate((el) => el.contains(document.activeElement)), "sheet traps keyboard focus");
+      assert.equal(await inspector.getAttribute("aria-modal"), null, "inline detail page does not trap focus");
+      await returnButton.focus();
       await page.keyboard.press("Escape");
-      await expect(pins.first()).toBeFocused();
+      await expect(root.locator("[data-venue-id]").first()).toBeFocused();
       await open();
       await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Autosaved name");
     }
@@ -1114,6 +1138,19 @@ try {
       .getByLabel("Exterior description", { exact: true })
       .fill("A blue door beside the telescope corridor.");
     await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveCount(0);
+    const formHelp = inspector.getByRole("button", { name: "Help: Physical form", exact: true });
+    const beforeHelp = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
+    await formHelp.click();
+    await expect(inspector.getByRole("note")).toBeVisible();
+    assert.deepEqual(
+      await inspector.getByLabel("Physical form", { exact: true }).boundingBox(),
+      beforeHelp,
+      "floating help does not shift fields",
+    );
+    await formHelp.press("Escape");
+    await expect(formHelp).toBeFocused();
+    await expect(inspector.getByRole("note")).toHaveCount(0);
+    await capture("venue-details");
     await zone("Common");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");
     await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
@@ -1162,18 +1199,20 @@ try {
     await expect(inspector.getByText(/hidden until invited/)).toBeVisible();
     await open();
     await mapView();
-    await forward("Draft starting Venues").click();
+    await forward("Suggest names & descriptions").click();
     if (width === 1366) {
       await expect.poll(() => !!releaseSuggestion).toBe(true);
       await open();
-      await inspector.getByRole("button", { name: "Venue", exact: true }).click();
+      await zone("Exterior");
       await inspector.getByLabel("Physical form", { exact: true }).fill("Authored during suggestion");
       releaseSuggestion();
-      await expect(forward("Draft starting Venues")).toBeEnabled();
+      await mapView();
+      await expect(forward("Suggest names & descriptions")).toBeEnabled();
+      await open();
       await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveValue("Authored during suggestion");
     }
     await mapView();
-    await expect(forward("Draft starting Venues")).toBeEnabled();
+    await expect(forward("Suggest names & descriptions")).toBeEnabled();
     assert.equal(suggestionCalls, 2);
     await page.mouse.move(0, 0);
     await pins.first().evaluate((el) => el.blur());
@@ -1213,14 +1252,13 @@ try {
       assert.notDeepEqual(await position(), original);
       const mapHeight = (await placementMap.boundingBox()).height;
       await open();
-      await inspector.evaluate((el) => {
-        el.scrollTop = el.scrollHeight;
-      });
+      await expect(inspector).toHaveCSS("overflow-y", "visible");
+      await mapView();
       assert.equal((await placementMap.boundingBox()).height, mapHeight);
       // Optional image failures and saved responses keep unrelated editing available.
       await open(1);
       await zone("Common");
-      await inspector.getByText("Add photo", { exact: true }).click();
+      await inspector.locator(".villages-workspace-space[open] .villages-workspace-artwork summary").first().click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect(root.getByRole("alert").filter({ hasText: "Optional image unavailable" })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
@@ -1228,18 +1266,21 @@ try {
       await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeDisabled();
       await expect(forward("Save & exit")).toBeDisabled();
       await open();
-      await inspector.getByRole("button", { name: "Venue", exact: true }).click();
+      await zone("Exterior");
       await expect(inspector.getByLabel("Physical form", { exact: true })).toBeEnabled();
       releaseImage();
       await expect(forward("Save & exit")).toBeEnabled();
       await open(1);
       await zone("Common");
       await expect(inspector.locator("img")).toHaveCount(1);
-      await forward("Draft starting Venues").click();
-      await expect(forward("Draft starting Venues")).toBeEnabled();
+      await mapView();
+      await forward("Suggest names & descriptions").click();
+      await expect(forward("Suggest names & descriptions")).toBeEnabled();
+      await open(1);
+      await zone("Common");
       await expect(inspector.locator("img")).toHaveCount(1);
       await zone("Exterior");
-      await inspector.getByText("Add photo", { exact: true }).click();
+      await inspector.locator("[data-zone-id=exterior] .villages-workspace-artwork summary").first().click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect(inspector.getByRole("button", { name: "Generate again", exact: true })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate again", exact: true }).click();
@@ -1374,7 +1415,7 @@ try {
         .getByLabel("Venue placement map. Arrow keys choose a spot; Enter places a Venue.", { exact: true })
         .press("Enter");
       await expect(root.locator(".villages-workspace-toolbar > strong")).toHaveText(
-        `${homeCount + 2} / ${homeCount + 2} placed`,
+        `Starting places${homeCount + 2} of ${homeCount + 2} placed`,
       );
       await capture("artwork-spaces");
       await forward("Save & exit").click();
