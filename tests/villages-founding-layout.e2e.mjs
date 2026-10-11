@@ -1280,13 +1280,13 @@ try {
       await expect(forward("Save & exit")).toBeEnabled();
       await open(1);
       await zone("Common");
-      await expect(inspector.locator("img")).toHaveCount(1);
+      await expect(inspector.locator(".villages-workspace-artwork img")).toHaveCount(1);
       await mapView();
       await forward("Suggest names & descriptions").click();
       await expect(forward("Suggest names & descriptions")).toBeEnabled();
       await open(1);
       await zone("Common");
-      await expect(inspector.locator("img")).toHaveCount(1);
+      await expect(inspector.locator(".villages-workspace-artwork img")).toHaveCount(1);
       await zone("Exterior");
       await inspector.getByRole("region", { name: "exterior image", exact: true }).locator("summary").first().click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
@@ -1303,7 +1303,7 @@ try {
       await forward("Continue to Venues").click();
       await open(1);
       await zone("Exterior");
-      await expect(inspector.locator("img")).toHaveCount(1);
+      await expect(inspector.locator(".villages-workspace-artwork img")).toHaveCount(1);
       await mapView();
       // Quota errors keep the current choices visible and prevent a false saved claim.
       await page.evaluate(() => {
