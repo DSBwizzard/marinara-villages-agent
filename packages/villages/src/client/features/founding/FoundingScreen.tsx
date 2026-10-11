@@ -544,12 +544,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           ) : null}
           {setupStep === 2 ? (
             <section className="villages-forging-card villages-map-panel" aria-label="Map artwork">
-              <h3 aria-label="Map">
-                Map{" "}
-                <FoundingHelp label="Map">
-                  Generate map artwork or upload an image. Place your Venues in the next step.
-                </FoundingHelp>
-              </h3>
+              <h3 aria-label="Map">Map</h3>
               {snapshot?.isFounded ? (
                 <p>
                   Change artwork and Venue photographs in Village Settings → Village Map. Existing locations are
