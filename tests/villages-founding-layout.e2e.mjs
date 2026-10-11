@@ -893,8 +893,8 @@ try {
     const selectedMap = mapDialog.getByRole("img", { name: "Selected village map", exact: true });
     const acceptedSrc = await selectedMap.getAttribute("src");
     for (const [width, height, problem] of [
-      [300, 2056, "too small"],
-      [1024, 2048, "too narrow or wide"],
+      [300, 2056, "higher-resolution"],
+      [1024, 2048, "Choose a wider image"],
     ]) {
       await mapDialog.getByLabel("Upload map image", { exact: true }).setInputFiles({
         name: "invalid-map.png",
@@ -908,7 +908,7 @@ try {
     await mapDialog
       .getByLabel("Upload map image", { exact: true })
       .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
-    await expect(mapDialog.getByRole("alert").filter({ hasText: "too narrow or wide" })).toHaveCount(0);
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
     await bounds();
     await capture("map-page");
     await forward("Back").click();

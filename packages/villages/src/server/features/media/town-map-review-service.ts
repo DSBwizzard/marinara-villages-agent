@@ -1,4 +1,8 @@
-import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
+import {
+  MAP_UPLOAD_UNREADABLE,
+  townMapFileSizeMessage,
+  townMapImageProblem,
+} from "../../../shared/helpers/town-map-upload.js";
 import { coerceTownMapView } from "../../domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
@@ -97,14 +101,18 @@ export function createTownMapReview({
     size: { width: number; height: number } | null;
     view: ReturnType<typeof coerceTownMapView>;
   }> {
-    if (typeof value !== "string") throw badRequest("The town map must be an image or an explicit empty choice.");
+    if (typeof value !== "string")
+      throw badRequest("We couldn't use this map image. Choose the image file again and try uploading it.");
     const image = value.trim();
     if (image.length > 0 && !isTownMapImage(image)) {
-      throw badRequest("The town map must be a base64 image file.");
+      throw badRequest(MAP_UPLOAD_UNREADABLE);
     }
     if (image.length > MAX_TOWN_MAP_IMAGE_LENGTH) {
       throw badRequest(
-        `The town map can be at most ${Math.round(MAX_TOWN_MAP_IMAGE_LENGTH / 1_000_000)} MB of image data.`,
+        townMapFileSizeMessage(
+          Math.ceil((image.length * 3) / 4),
+          Math.floor(((MAX_TOWN_MAP_IMAGE_LENGTH - 64) * 3) / 4),
+        ),
       );
     }
     const size = image.length > 0 ? await inspectVillageImage(image) : null;

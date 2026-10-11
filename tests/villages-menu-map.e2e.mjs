@@ -305,7 +305,7 @@ try {
       mimeType: "image/png",
       buffer: PNG.sync.write(new PNG({ width: 300, height: 2056 })),
     });
-    await expect(page.getByText(/300 x 2056px map is too small/)).toBeVisible();
+    await expect(page.getByText(/This image is 300px wide and 2056px tall/)).toBeVisible();
     assert.equal(writes.length, 3, "Rejected upload does not save a map");
     await upload.setInputFiles({
       name: "map.png",

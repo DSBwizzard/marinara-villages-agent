@@ -1,4 +1,9 @@
-import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
+import {
+  MAP_UPLOAD_FALLBACK,
+  townMapFileSizeMessage,
+  townMapImageProblem,
+  townMapUploadError,
+} from "../../../shared/helpers/town-map-upload.js";
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type {
   ScenarioImprint,
@@ -103,10 +108,7 @@ export function usePickSetupTownMap(ports: {
       setSetupMapProblem("");
       const bytesThatFit = Math.floor(((snapshot.settings.townMapImageMaxLength - 64) * 3) / 4);
       if (file.size > bytesThatFit) {
-        const mb = (bytes: number) => Math.round(bytes / 100_000) / 10;
-        setSetupMapProblem(
-          `That picture is ${mb(file.size)} MB and a village map holds ${mb(bytesThatFit)} MB. Choose a smaller copy.`,
-        );
+        setSetupMapProblem(townMapFileSizeMessage(file.size, bytesThatFit));
         return;
       }
       setSetupMapBusy(true);
@@ -122,7 +124,7 @@ export function usePickSetupTownMap(ports: {
         setSetupMapReviewed(false);
         updateSetupMapRequest(null);
       } catch (cause) {
-        setSetupMapProblem(messageFrom(cause, "That picture could not be used as the village map."));
+        setSetupMapProblem(townMapUploadError(messageFrom(cause, MAP_UPLOAD_FALLBACK)));
       } finally {
         setSetupMapBusy(false);
       }

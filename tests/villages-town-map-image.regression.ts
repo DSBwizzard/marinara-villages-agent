@@ -51,6 +51,8 @@ async function main() {
     [8193, 4096],
   ])
     assert.ok(townMapImageProblem({ width, height }), `${width} x ${height} rejected`);
+  assert.match(townMapImageProblem({ width: 1080, height: 2412 })!, /at most 1620px tall/);
+  assert.match(townMapImageProblem({ width: 2412, height: 1080 })!, /at most 2160px wide/);
   assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
   assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
   assert.equal(MAX_TOWN_MAP_IMAGE_LENGTH, 8_000_000);
