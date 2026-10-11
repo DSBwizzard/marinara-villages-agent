@@ -16,7 +16,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly setSetupMapBusy: FoundingState["setSetupMapBusy"];
-  readonly setSetupMapClock: FoundingState["setSetupMapClock"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
@@ -36,7 +35,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
       persistSetupDraft,
       sceneryStyle,
       setSetupMapBusy,
-      setSetupMapClock,
       setSetupMapProblem,
       setSetupProblem,
       setupDraftData,
@@ -66,7 +64,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
       phase: "starting",
     };
     updateSetupMapRequest(pending);
-    setSetupMapClock(Date.now());
     let dispatched = false;
     try {
       // Keep the receipt ID before the paid request, so a reload only retrieves it.

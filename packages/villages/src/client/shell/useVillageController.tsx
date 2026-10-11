@@ -53,8 +53,6 @@ import {
   calculateSetupHomeCount,
   calculateSetupImageContextKey,
   calculateSetupMapGenerationKey,
-  calculateSetupMapProgress,
-  calculateSetupMapSeconds,
   calculateSetupMapShape,
   calculateSetupMapSrc,
 } from "../features/founding/calculations.js";
@@ -63,7 +61,6 @@ import {
   useFoundingBeginningReference,
   useFoundingDraftReferences,
   useFoundingImageContext,
-  useFoundingMapClock,
   useFoundingMapReceipt,
   useFoundingPreparationPolling,
   useFoundingRosterReconciliation,
@@ -605,8 +602,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupMapRequest,
     setSetupMapRequest,
     setupMapRequestRef,
-    setupMapClock,
-    setSetupMapClock,
     preparationProblem,
     setPreparationProblem,
     connectionSetupProblem,
@@ -690,12 +685,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const updateSetupMapRequest = useUpdateSetupMapRequest({ setSetupMapRequest, setupMapRequestRef });
-
-  useFoundingMapClock({ setSetupMapClock, setupMapBusy });
-
-  const setupMapSeconds = calculateSetupMapSeconds({ setupMapClock, setupMapRequest });
-
-  const setupMapProgress = calculateSetupMapProgress({ setupMapSeconds });
 
   /**
    * The framing the village has saved. The map is drawn with this everywhere
@@ -1653,7 +1642,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     persistSetupDraft,
     sceneryStyle,
     setSetupMapBusy,
-    setSetupMapClock,
     setSetupMapProblem,
     setSetupProblem,
     setupDraftData,
@@ -1991,10 +1979,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupFoundingVillagerIds,
     setupHomeCount,
     setupMapBusy,
-    setupMapGeneratedKey,
-    setupMapGenerationKey,
     setupMapReviewed,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupPlayerRole,
@@ -2529,7 +2514,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupMapImageSource,
     setupMapNegativePrompt,
     setupMapProblem,
-    setupMapProgress,
     setupMapPrompt,
     setupMapRequest,
     setupMapReviewed,

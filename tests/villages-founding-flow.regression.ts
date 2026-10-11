@@ -432,7 +432,7 @@ async function main() {
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
-  assert.ok(client.includes("Use this saved artwork"));
+  assert.equal(client.includes("Use this saved artwork"), false);
   assert.ok(client.includes("Change starting Venues"));
   assert.ok(routes.includes('"/setup/venues/suggest"'));
   assert.equal(routes.includes('"/setup/venues/draft"'), false);

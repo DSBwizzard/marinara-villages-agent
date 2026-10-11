@@ -85,7 +85,6 @@ export type FoundingScreenController = {
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
   readonly setSetupLorebookDraft: FoundingState["setSetupLorebookDraft"];
   readonly setSetupMapBusy: FoundingState["setSetupMapBusy"];
-  readonly setSetupMapGeneratedKey: FoundingState["setSetupMapGeneratedKey"];
   readonly setSetupMapNegativePrompt: FoundingState["setSetupMapNegativePrompt"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupMapPrompt: FoundingState["setSetupMapPrompt"];
@@ -114,12 +113,9 @@ export type FoundingScreenController = {
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupMapBusy: FoundingState["setupMapBusy"];
-  readonly setupMapGeneratedKey: FoundingState["setupMapGeneratedKey"];
-  readonly setupMapGenerationKey: string;
   readonly setupMapImageSource: FoundingState["setupMapImageSource"];
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
   readonly setupMapProblem: FoundingState["setupMapProblem"];
-  readonly setupMapProgress: string;
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];
   readonly setupMapRequest: FoundingState["setupMapRequest"];
   readonly setupMapReviewed: FoundingState["setupMapReviewed"];

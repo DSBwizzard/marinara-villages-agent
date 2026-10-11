@@ -106,8 +106,6 @@ export function useFoundingState() {
 
   const setupMapRequestRef = useRef<SetupMapRequest | null>(null);
 
-  const [setupMapClock, setSetupMapClock] = useState(Date.now());
-
   const [preparationProblem, setPreparationProblem] = useState("");
 
   const [connectionSetupProblem, setConnectionSetupProblem] = useState("Connections are still loading.");
@@ -234,8 +232,6 @@ export function useFoundingState() {
     setupMapRequest,
     setSetupMapRequest,
     setupMapRequestRef,
-    setupMapClock,
-    setSetupMapClock,
     preparationProblem,
     setPreparationProblem,
     connectionSetupProblem,

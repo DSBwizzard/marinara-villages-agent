@@ -85,7 +85,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupLoreTokenBudgetDraft,
     setSetupLorebookDraft,
     setSetupMapBusy,
-    setSetupMapGeneratedKey,
     setSetupMapNegativePrompt,
     setSetupMapProblem,
     setSetupMapPrompt,
@@ -113,12 +112,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupLoreTokenBudgetDraft,
     setupLorebookDraft,
     setupMapBusy,
-    setupMapGeneratedKey,
-    setupMapGenerationKey,
     setupMapImageSource,
     setupMapNegativePrompt,
     setupMapProblem,
-    setupMapProgress,
     setupMapPrompt,
     setupMapRequest,
     setupMapReviewed,
@@ -227,13 +223,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             {setupMapProblem}
           </p>
         ) : null}
-        {interactive && !mapReady ? (
+        {interactive && !mapReady && !setupMapBusy ? (
           <p className="villages-forging-placement" role="status">
-            {setupMapBusy
-              ? setupMapProgress
-              : setupMapProblem
-                ? "Map artwork failed. Return to Map to review the error and try again."
-                : "Generate or upload map artwork on Map."}
+            {setupMapProblem
+              ? "Map artwork failed. Return to Map to review the error and try again."
+              : "Generate or upload map artwork on Map."}
           </p>
         ) : null}
         <div
@@ -585,7 +579,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </div>
                   {setupMapSource === "generate" ? (
                     <>
-                      <p className="villages-map-context">Based on your Place and world description.</p>
                       <FoundingField
                         title="Map details"
                         optional
@@ -658,7 +651,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                             ? "Generate again"
                             : "Generate map"}
                       </button>
-                      {setupMapBusy ? <p role="status">{setupMapProgress}</p> : null}
                       {setupMapProblem ? (
                         <p className={`${ELEMENT_TAG}-error`} role="alert">
                           {setupMapProblem}
@@ -709,24 +701,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         </figcaption>
                       ) : null}
                     </figure>
-                  ) : setupMapBusy ? (
-                    <p>Creating map artwork. Continue editing spaces while this runs.</p>
-                  ) : null}
-                  {setupMapSource === "generate" &&
-                  setupMapImageSource === "generate" &&
-                  setupMapGeneratedKey !== setupMapGenerationKey ? (
-                    <div className="villages-forging-notice">
-                      <p>Your inputs changed. The previous artwork is kept. Review it before continuing.</p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSetupMapGeneratedKey(setupMapGenerationKey);
-                          setSetupMapReviewed(false);
-                        }}
-                      >
-                        Use this saved artwork
-                      </button>
-                    </div>
                   ) : null}
                   {setupMapRequest?.phase === "paused" ? (
                     <button
@@ -895,7 +869,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               {setupProblem}
             </p>
           ) : null}
-          {setupMapBusy && setupStep !== 2 && setupStep !== 3 ? <p role="status">{setupMapProgress}</p> : null}
           {setupMapProblem && setupStep !== 2 && setupStep !== 3 ? (
             <p className={`${ELEMENT_TAG}-error`} role="alert">
               {setupMapProblem}

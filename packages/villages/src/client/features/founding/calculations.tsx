@@ -117,20 +117,6 @@ export function calculateSetupMapGenerationKey(ports: {
     negative: setupMapNegativePrompt,
   });
 }
-export function calculateSetupMapSeconds(ports: {
-  setupMapClock: number;
-  setupMapRequest: import("../../../shared/contracts/village").SetupMapRequest;
-}) {
-  const { setupMapClock, setupMapRequest } = ports;
-  return Math.max(
-    0,
-    Math.floor((setupMapClock - Date.parse(setupMapRequest?.startedAt ?? new Date().toISOString())) / 1000),
-  );
-}
-export function calculateSetupMapProgress(ports: { setupMapSeconds: number }) {
-  const { setupMapSeconds } = ports;
-  return `Waiting for map artwork — ${Math.floor(setupMapSeconds / 60)}m ${setupMapSeconds % 60}s. Image generation can take several minutes. You can continue editing.`;
-}
 export function calculateSetupMapShape(ports: {
   setupMapImageSource: "generate" | "upload";
   setupMapSize: { width: number; height: number };

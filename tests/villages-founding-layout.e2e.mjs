@@ -792,6 +792,7 @@ try {
     await bounds();
     await capture("map-dialog");
     await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
+    await expect(mapDialog.getByText("Based on your Place and world description.", { exact: true })).toHaveCount(0);
     const mapDetails = mapDialog.getByLabel("Map details", { exact: true });
     await expect(mapDetails).toHaveValue("");
     await expect(mapDetails).toHaveAttribute(
@@ -814,7 +815,7 @@ try {
     await root.evaluate((node) => {
       node.scrollTop = 0;
     });
-    const mapContext = mapDialog.locator(".villages-map-context");
+    const mapContext = mapDialog.locator(".villages-founding-field-heading");
     const contextBox = await mapContext.boundingBox();
     assert.ok(contextBox);
     const scrollX = contextBox.x + contextBox.width / 2;
@@ -1279,13 +1280,17 @@ try {
         0,
       );
       await forward("Continue to Venues").click();
-      await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
+      await expect(
+        root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
+      ).toHaveCount(0);
       // Reload while the provider is still drawing: the resumed draft only reads status.
       await forward("Save & exit").click();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-      await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
+      await expect(
+        root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
+      ).toHaveCount(0);
       assert.equal(mapCalls, 2, "resuming an unfinished attempt must not generate again");
       failMapStatus = true;
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
@@ -1320,9 +1325,14 @@ try {
       );
       await root.getByLabel("Map details", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
-      await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
+      await expect(root.getByText(/Your inputs changed/)).toHaveCount(0);
+      await expect(root.getByRole("button", { name: "Use this saved artwork", exact: true })).toHaveCount(0);
       await forward("Continue to Venues").click();
-      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
+      await forward("Review village").click();
+      await expect(root).toHaveAttribute("data-step", "4");
+      await forward("Change map").click();
+      await expect(root).toHaveAttribute("data-step", "2");
+      await forward("Continue to Venues").click();
       // A chosen upload replaces paused recovery, even when the old provider finishes later.
       await forward("Back").click();
       failMapStatus = true;

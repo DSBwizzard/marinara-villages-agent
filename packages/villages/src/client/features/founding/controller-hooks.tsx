@@ -81,18 +81,6 @@ export function useFoundingBeginningReference(ports: {
   }, [setupBeginningSourceKey, snapshot?.isFounded]);
 }
 
-export function useFoundingMapClock(ports: {
-  setSetupMapClock: React.Dispatch<React.SetStateAction<number>>;
-  setupMapBusy: boolean;
-}) {
-  const { setSetupMapClock, setupMapBusy } = ports;
-  useEffect(() => {
-    if (!setupMapBusy) return;
-    const timer = window.setInterval(() => setSetupMapClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [setupMapBusy]);
-}
-
 export function useFoundingAuthoredReference(ports: {
   setupAuthoredFields: Record<string, string[]>;
   setupAuthoredFieldsRef: React.RefObject<Record<string, string[]>>;
@@ -511,10 +499,7 @@ export function useFoundingSetupBlocker(ports: {
   setupFoundingVillagerIds: string[];
   setupHomeCount: number;
   setupMapBusy: boolean;
-  setupMapGeneratedKey: string;
-  setupMapGenerationKey: string;
   setupMapReviewed: boolean;
-  setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupMapSrc: string;
   setupName: string;
   setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
@@ -530,10 +515,7 @@ export function useFoundingSetupBlocker(ports: {
     setupFoundingVillagerIds,
     setupHomeCount,
     setupMapBusy,
-    setupMapGeneratedKey,
-    setupMapGenerationKey,
     setupMapReviewed,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupPlayerRole,
@@ -554,8 +536,6 @@ export function useFoundingSetupBlocker(ports: {
     if (setupSetting.trim().length === 0) return "Describe what the village is like.";
     if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
     if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
-    if (setupMapSource === "generate" && setupMapGeneratedKey !== setupMapGenerationKey)
-      return "Review the saved map against your changed inputs on Map.";
     if (
       !snapshot?.isFounded &&
       setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
@@ -610,14 +590,11 @@ export function useFoundingSetupBlocker(ports: {
   }, [
     setupMapBusy,
     setupMapReviewed,
-    setupMapGeneratedKey,
-    setupMapGenerationKey,
     setupHomeCount,
     setupFoundingVillagerIds,
     catalog,
     setupVenues,
     personaDraft,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupFoundingDetails,
