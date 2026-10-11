@@ -489,9 +489,6 @@ export function villageFoundingSetting(village: {
       ? `Starting conditions (at founding only): ${imprint.openingConditions.join("; ")}`
       : "",
     imprint?.visualCues.length ? `Founding visual cues: ${imprint.visualCues.join("; ")}` : "",
-    village.foundingGuidance?.trim()
-      ? `Player-authored creative preferences (not a guaranteed future): ${village.foundingGuidance.trim()}`
-      : "",
     "Use starting circumstances selectively where they fit this person or place. The resident's card, assigned living space, and verified current facts take precedence. Do not invent shared relationships, player actions, completed events, or a first-day script. Starting play does not mean this place has just been established. Ongoing world conditions remain current setting context; do not expire them merely because setup ends.",
   ]
     .filter(Boolean)

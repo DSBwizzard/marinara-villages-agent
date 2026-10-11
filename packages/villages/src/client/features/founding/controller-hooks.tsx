@@ -165,7 +165,6 @@ export function useFoundingSetupDraftData(ports: {
     };
   }>;
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
   setupFoundingVillagerIds: string[];
   setupImprint: import("../../../shared/contracts/village.js").ScenarioImprint;
@@ -268,7 +267,6 @@ export function useFoundingSetupDraftData(ports: {
     setupEditorOriginal,
     setupEditorZoneOriginal,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupFoundingVillagerIds,
     setupImprint,
@@ -307,7 +305,6 @@ export function useFoundingSetupDraftData(ports: {
       setting: setupSetting,
       reason: setupFoundingReason,
       circumstances: setupFoundingDetails,
-      direction: setupFoundingGuidance,
       role: setupPlayerRole,
       imprint: setupImprint,
       worldFacts: setupWorldFacts,
@@ -351,7 +348,6 @@ export function useFoundingSetupDraftData(ports: {
       setupSetting,
       setupFoundingReason,
       setupFoundingDetails,
-      setupFoundingGuidance,
       setupPlayerRole,
       setupImprint,
       setupWorldFacts,

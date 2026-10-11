@@ -131,7 +131,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
           );
           assert.equal(values.setSetupFoundingReason, reason);
           assert.equal(values.setSetupFoundingDetails, details);
-          assert.equal(values.setSetupFoundingGuidance, reason === "none" ? "" : village.settings.foundingGuidance);
+          assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
           assert.equal(values.setScreen, "setup");
         }
     const fresh = await page.evaluate(() => {
@@ -140,7 +140,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
     });
     assert.equal(fresh.setSetupName, "");
     assert.equal(fresh.setSetupFoundingReason, "custom");
-    assert.equal(fresh.setSetupFoundingGuidance, "");
+    assert.equal(Object.hasOwn(fresh, "setSetupFoundingGuidance"), false);
     assert.notEqual(fresh.setSetupFoundingDetails, "x".repeat(2000));
     assert.deepEqual(errors, []);
     await context.close();
@@ -632,6 +632,8 @@ try {
     await capture("people");
     await forward("Continue to place").click();
     await expect(root).toHaveAttribute("data-step", "1");
+    await expect(root.getByText("Story direction", { exact: true })).toHaveCount(0);
+    await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
     await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
     await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
     const circumstance = root.getByLabel("Starting circumstances", { exact: true });

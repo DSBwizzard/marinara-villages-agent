@@ -57,6 +57,7 @@ async function main() {
   );
   assert.match(villageFoundingSetting(founded), /Shared starting circumstances.*Survivors gathered after the flood/);
   assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
+  assert.doesNotMatch(villageFoundingSetting(founded), /quiet solidarity|Player-authored creative preferences/);
   const openBeginning = {
     ...founded,
     foundingReason: "none",

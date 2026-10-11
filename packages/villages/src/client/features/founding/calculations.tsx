@@ -28,7 +28,6 @@ export function calculateSetupBeginningSourceKey(ports: {
     [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
   };
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "custom" | "rebuild" | "pioneer" | "prosper" | "none";
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
@@ -41,7 +40,6 @@ export function calculateSetupBeginningSourceKey(ports: {
     sceneryStyle,
     selectedResidentContexts,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
@@ -52,7 +50,6 @@ export function calculateSetupBeginningSourceKey(ports: {
     residentContexts: selectedResidentContexts,
     scenario: setupFoundingReason,
     premise: setupFoundingDetails.trim(),
-    direction: setupFoundingGuidance.trim(),
     setting: setupSetting.trim(),
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,

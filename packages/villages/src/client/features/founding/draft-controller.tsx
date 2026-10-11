@@ -105,7 +105,6 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupImprint: FoundingState["setSetupImprint"];
@@ -156,7 +155,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupAuthoredFields,
       setSetupEditorOpen,
       setSetupFoundingDetails,
-      setSetupFoundingGuidance,
       setSetupFoundingReason,
       setSetupFoundingVillagerIds,
       setSetupImprint,
@@ -206,7 +204,6 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupSetting(data.setting);
     setSetupFoundingReason(data.reason);
     setSetupFoundingDetails(data.circumstances);
-    setSetupFoundingGuidance(data.direction);
     setSetupPlayerRole(data.role);
     setSetupImprint(data.imprint);
     setSetupWorldFacts(data.worldFacts);

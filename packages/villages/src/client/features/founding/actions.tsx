@@ -240,7 +240,6 @@ export function useOpenSetup(ports: {
   setSetupEditorOpen: React.Dispatch<SetStateAction<boolean>>;
   setSetupFocusIssue: React.Dispatch<SetStateAction<FoundingIssue>>;
   setSetupFoundingDetails: React.Dispatch<SetStateAction<string>>;
-  setSetupFoundingGuidance: React.Dispatch<SetStateAction<string>>;
   setSetupFoundingReason: React.Dispatch<SetStateAction<"rebuild" | "pioneer" | "prosper" | "custom" | "none">>;
   setSetupFoundingVillagerIds: React.Dispatch<SetStateAction<string[]>>;
   setSetupImprint: React.Dispatch<SetStateAction<ScenarioImprint>>;
@@ -287,7 +286,6 @@ export function useOpenSetup(ports: {
     setSetupEditorOpen,
     setSetupFocusIssue,
     setSetupFoundingDetails,
-    setSetupFoundingGuidance,
     setSetupFoundingReason,
     setSetupFoundingVillagerIds,
     setSetupImprint,
@@ -339,10 +337,8 @@ export function useOpenSetup(ports: {
         : fresh || !storedReason
           ? foundingScenario(reason).premise
           : savedDetails;
-      const guidance = fresh ? "" : (village?.settings.foundingGuidance ?? "");
       setSetupFoundingReason(reason);
       setSetupFoundingDetails(details);
-      setSetupFoundingGuidance(reason === "none" ? "" : guidance);
       setSetupPlayerRole(
         fresh
           ? { ...DEFAULT_PLAYER_ROLE }
@@ -427,7 +423,6 @@ export function useFoundVillage(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
   setupBlocker: () => string;
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
   setupFoundingVillagerIds: string[];
   setupLorebookDraft: string[];
@@ -462,7 +457,6 @@ export function useFoundVillage(ports: {
     setSnapshot,
     setupBlocker,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupFoundingVillagerIds,
     setupLorebookDraft,
@@ -519,7 +513,7 @@ export function useFoundVillage(ports: {
           setting: setupSetting.trim(),
           foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : setupFoundingReason,
           foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : setupFoundingDetails.trim(),
-          foundingGuidance: snapshot?.isFounded ? snapshot.settings.foundingGuidance : setupFoundingGuidance.trim(),
+          ...(snapshot?.isFounded ? { foundingGuidance: snapshot.settings.foundingGuidance } : {}),
           playerRole: snapshot?.isFounded ? (snapshot.settings.playerRole ?? null) : setupPlayerRole,
           scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
           worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
@@ -580,7 +574,6 @@ export function useFoundVillage(ports: {
     setupName,
     setupFoundingReason,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupPlayerRole,
     setupWorldFacts,
     setupLorebookDraft,

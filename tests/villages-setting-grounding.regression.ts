@@ -177,7 +177,7 @@ async function main() {
       setting: "x".repeat(2000),
       foundingReason: "custom",
       foundingDetails: "We share the rent.",
-      foundingGuidance: "",
+      foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
     };
     await proposeCompactFounding(
       {
@@ -194,8 +194,15 @@ async function main() {
       async () => {},
     );
     assert.ok(captured.includes(full.foundingDetails));
+    assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|Player-authored creative preferences/);
     answer = { origin: "", worldFacts: ["The outbreak is ongoing"], openingConditions: [], visualCues: [] };
-    await draftScenarioImprint({ setting: scenarios[6][1], foundingReason: "none", foundingDetails: scenarios[6][2] });
+    await draftScenarioImprint({
+      setting: scenarios[6][1],
+      foundingReason: "none",
+      foundingDetails: scenarios[6][2],
+      foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
+    });
+    assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|"direction":/);
     assert.match(captured, /Distinguish earlier background, ongoing world conditions/);
     assert.doesNotMatch(captured, /Never claim the village was already founded|The village begins on Day 1/);
     const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);

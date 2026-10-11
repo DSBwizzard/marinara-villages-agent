@@ -34,8 +34,6 @@ export function useFoundingState() {
 
   const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>("");
 
-  const [setupFoundingGuidance, setSetupFoundingGuidance] = useState("");
-
   const [setupPlayerRole, setSetupPlayerRole] = useState<PlayerRole | null>({ ...DEFAULT_PLAYER_ROLE });
 
   const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
@@ -170,8 +168,6 @@ export function useFoundingState() {
     setSetupFoundingReason,
     setupFoundingDetails,
     setSetupFoundingDetails,
-    setupFoundingGuidance,
-    setSetupFoundingGuidance,
     setupPlayerRole,
     setSetupPlayerRole,
     setupImprint,

@@ -81,7 +81,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSelectedSetupVenueId,
     setSetupFocusIssue,
     setSetupFoundingDetails,
-    setSetupFoundingGuidance,
     setSetupFoundingVillagerIds,
     setSetupKeyboardSpot,
     setSetupLoreTokenBudgetDraft,
@@ -108,7 +107,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupEditorOpen,
     setupFocusIssue,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingVillagerIds,
     setupImageClaim,
     setupImageTarget,
@@ -785,18 +783,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       />
                     </label>
                   </details>
-                  <details>
-                    <summary>Story direction</summary>
-                    <FoundingField title="Narrative direction" help="A creative preference, not a guaranteed future.">
-                      <textarea
-                        aria-label="Narrative direction"
-                        maxLength={500}
-                        value={setupFoundingGuidance}
-                        disabled={busy || !!snapshot?.isFounded}
-                        onChange={(event) => setSetupFoundingGuidance(event.target.value)}
-                      />
-                    </FoundingField>
-                  </details>
                   {snapshot?.isFounded ? (
                     <label>
                       Current world facts
@@ -916,7 +902,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     </div>
                     <p>{setupSetting}</p>
                     <p>{setupFoundingDetails}</p>
-                    {setupFoundingGuidance ? <p>Direction: {setupFoundingGuidance}</p> : null}
                     <p>
                       {setupMapSource === "none"
                         ? "Logical map"

@@ -191,7 +191,6 @@ export function createFoundingSuggestSetupVenues(ports: {
 // writing the village. A half-answered setup never claims to be founded.
 export function createFoundingChooseSetupScenario(ports: {
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
@@ -201,7 +200,6 @@ export function createFoundingChooseSetupScenario(ports: {
   return (value: FoundingScenarioId) => {
     const {
       setSetupFoundingDetails,
-      setSetupFoundingGuidance,
       setSetupFoundingReason,
       setSetupProblem,
       setupFoundingDetails,
@@ -215,7 +213,6 @@ export function createFoundingChooseSetupScenario(ports: {
     const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
     setSetupFoundingReason(value);
     if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
-    setSetupFoundingGuidance("");
     setSetupProblem("");
   };
 }

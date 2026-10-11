@@ -80,7 +80,6 @@ export type FoundingScreenController = {
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFocusIssue: FoundingState["setSetupFocusIssue"];
   readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingGuidance: FoundingState["setSetupFoundingGuidance"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
@@ -107,7 +106,6 @@ export type FoundingScreenController = {
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
   readonly setupFocusIssue: FoundingState["setupFocusIssue"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
-  readonly setupFoundingGuidance: FoundingState["setupFoundingGuidance"];
   readonly setupFoundingReason: FoundingState["setupFoundingReason"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupImageClaim: FoundingState["setupImageClaim"];
