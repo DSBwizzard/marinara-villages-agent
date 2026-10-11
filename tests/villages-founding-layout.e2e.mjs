@@ -1288,7 +1288,7 @@ try {
       await zone("Common");
       await expect(inspector.locator("img")).toHaveCount(1);
       await zone("Exterior");
-      await inspector.locator("[data-zone-id=exterior] .villages-workspace-artwork summary").first().click();
+      await inspector.getByRole("region", { name: "exterior image", exact: true }).locator("summary").first().click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect(inspector.getByRole("button", { name: "Generate again", exact: true })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate again", exact: true }).click();
