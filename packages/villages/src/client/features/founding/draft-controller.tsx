@@ -1,3 +1,4 @@
+import { savedFoundingStep } from "./founding-steps.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 
@@ -199,7 +200,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
       return;
     }
-    setSetupStep(Math.max(0, Math.min(3, data.step)));
+    setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     setSetupSetting(data.setting);
     setSetupFoundingReason(data.reason);

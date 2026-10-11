@@ -1,6 +1,6 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { ResumeScreenController } from "./screen-contracts.js";
-import { SETUP_STEPS } from "./FoundingPanels.js";
+import { SETUP_STEPS, savedFoundingStep } from "./founding-steps.js";
 
 export function ResumeScreen({ controller }: { controller: ResumeScreenController }) {
   const {
@@ -40,8 +40,8 @@ export function ResumeScreen({ controller }: { controller: ResumeScreenControlle
               <h2>Welcome back to {draft?.name.trim() || "your village"}</h2>
               <p>Your choices, edits, photograph positions, and finished artwork are saved.</p>
               <p>
-                <strong>Resume:</strong> {SETUP_STEPS[draft?.step ?? 0]} · {count} of {draft?.venues.length ?? 0}{" "}
-                photographs placed
+                <strong>Resume:</strong> {SETUP_STEPS[savedFoundingStep(draft)]} · {count} of{" "}
+                {draft?.venues.length ?? 0} photographs placed
               </p>
               <p>{draft?.roster.length ?? 0} villagers selected · Persona and role saved</p>
               {draftSavedAt ? <p>Last saved {new Date(draftSavedAt).toLocaleString()}</p> : null}
@@ -52,7 +52,7 @@ export function ResumeScreen({ controller }: { controller: ResumeScreenControlle
                   disabled={!draft}
                   onClick={() => draft && restoreSetupDraft(draft)}
                 >
-                  Resume {draft?.step === 2 ? "photograph placement" : "founding"}
+                  Resume {savedFoundingStep(draft) === 3 ? "photograph placement" : "founding"}
                 </button>
                 <button
                   type="button"

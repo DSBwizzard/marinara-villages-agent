@@ -36,6 +36,18 @@ import {
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const { savedFoundingStep, SETUP_STEPS } =
+    await import("../packages/villages/src/client/features/founding/founding-steps.js");
+  for (const [step, expected] of [
+    [0, 0],
+    [1, 1],
+    [2, 3],
+    [3, 4],
+  ])
+    assert.equal(savedFoundingStep({ step }), expected);
+  for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
+  assert.equal(savedFoundingStep({ step: NaN }), 0);
+
   const serverRoot = join(root, "packages/villages/src/server");
   const { foundingPhotoOverlaps } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
@@ -384,7 +396,7 @@ async function main() {
     (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
-  assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
+  assert.ok(client.includes('["People", "Place", "Map", "Venues", "Review"]'));
   assert.ok(client.includes("Place and world"));
   assert.ok(client.includes("Starting circumstances"));
   assert.ok(client.includes("Search lorebooks"));

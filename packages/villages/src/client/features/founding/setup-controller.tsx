@@ -269,7 +269,7 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
@@ -293,7 +293,7 @@ export function createFoundingGotoSetupStep(ports: {
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
             ? "Describe the starting circumstances."
             : "";
-      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 3 ? setupBlocker() : "");
+      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 4 ? setupBlocker() : "");
       if (problem) {
         if (peopleProblem) setSetupStep(0);
         else if (step >= 2 && placeProblem) setSetupStep(1);

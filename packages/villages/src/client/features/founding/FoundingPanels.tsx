@@ -29,7 +29,7 @@ export const foundingScenario = (value: FoundingScenarioId) =>
  * The founding wizard, in order. One list so the step strip and the screens it
  * labels cannot drift apart.
  */
-export const SETUP_STEPS = ["People", "Place", "Venues", "Review"] as const;
+export { SETUP_STEPS } from "./founding-steps.js";
 
 export const SETUP_MIN_VILLAGER_COUNT = 1;
 

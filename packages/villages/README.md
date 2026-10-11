@@ -8,6 +8,8 @@ Voice, role, setting, attendance, and privacy regressions now exercise the curre
 
 ## Founding Venue workspace (0.7.1)
 
+Founding proceeds through People, Place, Map, Venues and Review. Map artwork choices and controls appear directly on their own phase; generation remains explicit and can continue while editing Venues. Existing device-local drafts resume on their original phase, with artwork and Venue edits preserved.
+
 The 0.7.1 founding editor selects one Venue through its map photograph. The inspector has Venue and Zones tabs, with Exterior, Common and Private always available. New residences include both managed spaces; at least one is required. The initial Gathering Place has mandatory public Common Space and no owner or Private Space. Form describes the overall physical place; individual spaces have their own purposes and descriptions.
 
 Below 704px of available workspace width, selection opens a full-screen editor sheet. Return to map, Escape, tab switches and Venue changes preserve incomplete edits. Disabled spaces retain their complete draft and optional photographs, including after reload. Older unfounded drafts keep prohibited Gathering Private content inactive and require any missing managed-space details before founding. Existing worlds and later Project layouts retain their rules.
@@ -41,6 +43,7 @@ The requested canvas is 1536 × 1024; the provider may return a different suppor
 Persisted request claims prevent duplicate clicks or lost-response replays from making another image request. Failed uploads and Village saves reuse the saved paid response on deliberate retry, even if images have since been disabled. Blank or invalid output and unknown provider outcomes require an explicit new attempt. The previous signature remains during regeneration and after a failure. Generated lettering can be imperfect; review it before choosing to regenerate. Host document persistence still has the buffered durability limitation described below.
 
 Run `node --import tsx tests/villages-signatures.regression.ts` and `node tests/villages-dossier.e2e.mjs` for handwriting, cropping, recovery, replay, late-effect fences and desktop/mobile profile coverage. Tests use synthetic images and mocked providers.
+
 ## Individual sprite assignments (0.6.164)
 
 Select artwork in Sprite Manager and use **Remove Front assignment** or **Remove Side assignment** in the **Assignments** list beneath Facing. Each action removes only that saved expression/facing assignment and keeps the artwork, framing and other assignments. Save or discard edits to that artwork first. Removing an expression’s last assignment removes its unused expression metadata; if it was the default, another assigned expression becomes the default, or Scenes use the portrait when none remain. Stale requests cannot remove a replacement assignment.

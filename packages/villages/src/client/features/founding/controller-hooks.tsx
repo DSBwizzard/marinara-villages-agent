@@ -1,3 +1,4 @@
+import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../../../shared/helpers/resident-founding-context.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -301,6 +302,7 @@ export function useFoundingSetupDraftData(ports: {
   return useMemo(
     () => ({
       step: setupStep,
+      phase: SETUP_STEPS[setupStep],
       name: setupName,
       setting: setupSetting,
       reason: setupFoundingReason,
@@ -553,13 +555,13 @@ export function useFoundingSetupBlocker(ports: {
     if (setupMapSource !== "none" && setupMapBusy) return "Wait for the requested artwork, or select Simple map.";
     if (setupMapSource !== "none" && !setupMapSrc) return "Generate or upload the chosen map, or select Simple map.";
     if (setupMapSource === "generate" && setupMapGeneratedKey !== setupMapGenerationKey)
-      return "Review the saved map against your changed inputs on Place.";
+      return "Review the saved map against your changed inputs on Map.";
     if (
       !snapshot?.isFounded &&
       setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
     )
       return "Place every starting Venue photograph.";
-    if (setupMapSource !== "none" && !setupMapReviewed) return "Check all Venue photographs against the map on Spaces.";
+    if (setupMapSource !== "none" && !setupMapReviewed) return "Check all Venue photographs against the map on Venues.";
 
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
     const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
@@ -577,7 +579,7 @@ export function useFoundingSetupBlocker(ports: {
           foundingZoneProblem(venue),
       )
     )
-      return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Spaces.";
+      return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Venues.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -599,7 +601,7 @@ export function useFoundingSetupBlocker(ports: {
         ),
       )
     )
-      return "Give each Private Space a name, purpose, and controller on Spaces.";
+      return "Give each Private Space a name, purpose, and controller on Venues.";
     if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
       return "A chosen villager is no longer in your character cards. Choose another villager on People.";
     if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)

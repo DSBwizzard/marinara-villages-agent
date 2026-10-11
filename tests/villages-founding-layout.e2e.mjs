@@ -667,7 +667,7 @@ try {
       assert.equal(imageCalls, 0);
       await page.clock.resume();
     }
-    await forward("Continue to Venues").click();
+    await forward("Continue to Map").click();
     const nameField = root.getByLabel("Village name", { exact: true });
     await expect(nameField).toBeFocused();
     await expect(nameField).toHaveAttribute("aria-invalid", "true");
@@ -680,7 +680,7 @@ try {
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await expect(nameField).toBeFocused();
     await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
-    await forward("Continue to Venues").click();
+    await forward("Continue to Map").click();
     await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
     await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
     const help = root.getByRole("button", { name: "Help: Place and world", exact: true });
@@ -698,7 +698,7 @@ try {
     await help.press("Escape");
     await expect(help).toBeFocused();
     await expect(help).toHaveAttribute("aria-expanded", "false");
-    for (const label of ["Starting circumstances", "Map"]) {
+    for (const label of ["Starting circumstances"]) {
       const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
       await otherHelp.click();
       await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
@@ -719,7 +719,7 @@ try {
     await root
       .getByLabel("Place and world", { exact: true })
       .fill("A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.");
-    await forward("Continue to Venues").click();
+    await forward("Continue to Map").click();
     await expect(circumstance).toBeFocused();
     await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
     if (width === 390 && height === 844) {
@@ -738,10 +738,19 @@ try {
       assert.equal(await place.getAttribute("placeholder"), placeHint, "authored place text stops hint rotation");
     }
 
-    const changeMap = root.getByRole("button", { name: "Change map", exact: true });
     await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
-    await changeMap.click();
-    const mapDialog = root.getByRole("dialog", { name: "Map artwork", exact: true });
+    await capture("place");
+    await forward("Continue to Map").click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    assert.deepEqual(
+      await root
+        .getByRole("list", { name: "Founding phases" })
+        .locator("li")
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
+      ["People", "Place", "Map", "Venues", "Review"],
+    );
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
+    const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
     await expect(mapDialog).toBeVisible();
     await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveAttribute(
       "aria-pressed",
@@ -749,18 +758,10 @@ try {
     );
     await expect(mapDialog.getByRole("img", { name: "Simple map background preview" })).toBeVisible();
     const assertMapFooter = async () => {
-      const dialogBox = await mapDialog.boundingBox();
-      const footerBox = await mapDialog.locator("footer").boundingBox();
-      assert.ok(
-        dialogBox &&
-          footerBox &&
-          footerBox.y >= dialogBox.y &&
-          footerBox.y + footerBox.height <= dialogBox.y + dialogBox.height + 1,
-      );
-      assert.ok(dialogBox.y >= 0 && dialogBox.y + dialogBox.height <= height + 1, "map dialog fits viewport");
+      await expect(forward("Continue to Venues")).toBeVisible();
       assert.ok(
         await mapDialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-        "map dialog has no horizontal overflow",
+        "Map page has no horizontal overflow",
       );
     };
     await assertMapFooter();
@@ -777,7 +778,7 @@ try {
     await expect(mapDialog.getByRole("note")).toHaveText(
       "Describe what you want shown, arranged, or left out of the artwork.",
     );
-    await mapDialog.getByRole("heading", { name: "Map artwork", exact: true }).click();
+    await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
     await expect(mapDialog.getByRole("note")).toHaveCount(0);
     await capture("map-details");
     await mapDialog.getByText("More options", { exact: true }).click();
@@ -793,14 +794,21 @@ try {
     await expect(mapDialog.getByLabel("Upload map image", { exact: true })).toBeVisible();
     await assertMapFooter();
     await mapDialog.getByRole("button", { name: "Simple map", exact: true }).click();
-    await mapDialog.getByRole("button", { name: "Done", exact: true }).click();
-    await expect(changeMap).toBeFocused();
-    await changeMap.click();
-    await mapDialog.press("Escape");
-    await expect(changeMap).toBeFocused();
-    assert.equal(mapCalls, 0, "opening and closing map choices never generates artwork");
+    assert.equal(mapCalls, 0, "browsing map choices never generates artwork");
+    await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
+    await mapDialog.getByLabel("Map details", { exact: true }).fill("Keep this authored map detail.");
+    await forward("Save & exit").click();
+    await expect(root.getByText(/Resume: Map/)).toBeVisible();
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await root.getByRole("button", { name: "Resume founding", exact: true }).click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    await expect(mapDialog.getByLabel("Map details", { exact: true })).toHaveValue("Keep this authored map detail.");
+    await mapDialog.getByRole("button", { name: "Simple map", exact: true }).click();
     await bounds();
-    await capture("place");
+    await capture("map-page");
+    await forward("Back").click();
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook");
     await forward("Back").click();
     await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
     if (width === 1366)
@@ -810,8 +818,9 @@ try {
     else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
     await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
     await forward("Continue to place").click();
+    await forward("Continue to Map").click();
     await forward("Continue to Venues").click();
-    await expect(root).toHaveAttribute("data-step", "2");
+    await expect(root).toHaveAttribute("data-step", "3");
     const phaseHeading = root.locator(".villages-forging-heading");
     await expect(phaseHeading).toBeVisible();
     assert.equal(await phaseHeading.evaluate((element) => getComputedStyle(element).position), "static");
@@ -848,7 +857,7 @@ try {
     await expect(pins).toHaveCount(homeCount + 2);
     // A complete suggested draft proceeds without visiting each editor or making image requests.
     await forward("Review village").click();
-    await expect(root).toHaveAttribute("data-step", "3");
+    await expect(root).toHaveAttribute("data-step", "4");
     assert.equal(imageCalls, 0);
     await forward("Change starting Venues").click();
     await open();
@@ -1057,10 +1066,12 @@ try {
       await inspector.getByRole("button", { name: "Generate again", exact: true }).click();
       await expect.poll(() => imageCalls === 4).toBe(true);
       await forward("Back").click();
+      await forward("Back").click();
       await root.getByLabel("Village name", { exact: true }).fill("Changed while generating");
       releaseImage();
       await expect(root.getByRole("alert").filter({ hasText: "changed while its image" })).toBeVisible();
       await root.getByLabel("Village name", { exact: true }).fill("Willowbrook");
+      await forward("Continue to Map").click();
       await forward("Continue to Venues").click();
       await open(1);
       await zone("Exterior");
@@ -1074,9 +1085,10 @@ try {
         };
       });
       await forward("Back").click();
+      await forward("Back").click();
       await root.getByLabel("Village name", { exact: true }).fill("Willowbrook revised");
       await expect(root.locator(".villages-forging-saved")).toHaveText("Draft not saved");
-      await expect(forward("Continue to Venues")).toBeDisabled();
+      await expect(forward("Continue to Map")).toBeDisabled();
       await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
       await forward("Save & exit").click();
       await expect(root).toHaveAttribute("data-step", "1");
@@ -1118,6 +1130,7 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume founding", exact: true }).click();
       await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
+      await forward("Continue to Map").click();
       await forward("Continue to Venues").click();
     }
     await mapView();
@@ -1125,9 +1138,8 @@ try {
     await capture("venues");
     if (width === 1366 || (width === 390 && height === 844)) {
       await forward("Back").click();
-      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await root.getByRole("button", { name: "Generate artwork", exact: true }).click();
-      const artworkDialog = root.getByRole("dialog", { name: "Map artwork", exact: true });
+      const artworkDialog = root.getByRole("region", { name: "Map artwork", exact: true });
       await expect(artworkDialog.getByText(/expected AI request|Read-only forecast/)).toHaveCount(0);
       await expect(artworkDialog.getByText("Choose artwork here, or use Simple map.", { exact: true })).toHaveCount(0);
       await expect(artworkDialog.getByText("More options", { exact: true })).toBeVisible();
@@ -1135,12 +1147,8 @@ try {
       await root.getByLabel("Map details", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
       await root.getByRole("button", { name: "Generate map", exact: true }).click();
       await expect.poll(() => !!releaseMap).toBe(true);
-      await root
-        .getByRole("dialog", { name: "Map artwork", exact: true })
-        .getByRole("button", { name: "Done", exact: true })
-        .click();
       await forward("Continue to Venues").click();
-      await expect(root).toHaveAttribute("data-step", "2");
+      await expect(root).toHaveAttribute("data-step", "3");
       await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(0);
       releaseMap();
       await expect(
@@ -1148,7 +1156,6 @@ try {
       ).toBeVisible();
       await expect(root.locator(".villages-forging-placement")).toContainText("Map artwork failed");
       await forward("Back").click();
-      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(
         root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
       ).toBeVisible();
@@ -1158,10 +1165,6 @@ try {
       await expect(root.getByRole("alert").filter({ hasText: "The generated map is too large to store." })).toHaveCount(
         0,
       );
-      await root
-        .getByRole("dialog", { name: "Map artwork", exact: true })
-        .getByRole("button", { name: "Done", exact: true })
-        .click();
       await forward("Continue to Venues").click();
       await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
       // Reload while the provider is still drawing: the resumed draft only reads status.
@@ -1198,7 +1201,6 @@ try {
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await forward("Back").click();
-      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
       await expect(root.getByLabel("Map details", { exact: true })).toHaveValue(
         "One floor; bedrooms east, telescope hall west.",
@@ -1206,15 +1208,10 @@ try {
       await root.getByLabel("Map details", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
-      await root
-        .getByRole("dialog", { name: "Map artwork", exact: true })
-        .getByRole("button", { name: "Done", exact: true })
-        .click();
       await forward("Continue to Venues").click();
       await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       // A chosen upload replaces paused recovery, even when the old provider finishes later.
       await forward("Back").click();
-      await root.getByRole("button", { name: "Change map", exact: true }).click();
       failMapStatus = true;
       await root.getByRole("button", { name: "Generate again", exact: true }).click();
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
@@ -1231,10 +1228,6 @@ try {
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toHaveCount(0);
       failMapStatus = false;
       releaseMap();
-      await root
-        .getByRole("dialog", { name: "Map artwork", exact: true })
-        .getByRole("button", { name: "Done", exact: true })
-        .click();
       await forward("Continue to Venues").click();
       await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
       await forward("Save & exit").click();
@@ -1243,23 +1236,62 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await forward("Back").click();
-      await root.getByRole("button", { name: "Change map", exact: true }).click();
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
       await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
       assert.equal(mapCalls, 3, "upload and reload do not dispatch another image request");
-      await root
-        .getByRole("dialog", { name: "Map artwork", exact: true })
-        .getByRole("button", { name: "Done", exact: true })
-        .click();
       await forward("Continue to Venues").click();
     }
     await forward("Review village").click();
-    await expect(root).toHaveAttribute("data-step", "3");
+    await expect(root).toHaveAttribute("data-step", "4");
     await expect(root.getByRole("button", { name: "Change people & role", exact: true })).toBeVisible();
     await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
       /[Gg]uardian of a relic/,
     );
-    await expect(root.getByRole("button", { name: "Change place & map", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Change place", exact: true })).toBeVisible();
+    await root.getByRole("button", { name: "Change map", exact: true }).click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    await forward("Continue to Venues").click();
+    await forward("Review village").click();
+    if (width === 1366) {
+      for (const legacyStep of [2, 3]) {
+        await forward("Save & exit").click();
+        await page.evaluate(async (legacyStep) => {
+          const db = await new Promise((resolve) => {
+            const open = indexedDB.open("villages-founding-v2", 1);
+            open.onsuccess = () => resolve(open.result);
+          });
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction("drafts", "readwrite");
+            const cursor = tx.objectStore("drafts").openCursor();
+            cursor.onsuccess = () => {
+              const row = cursor.result;
+              if (!row) return;
+              const saved = row.value;
+              delete saved.data.phase;
+              saved.data.step = legacyStep;
+              row.update({ ...saved, revision: saved.revision + 1 });
+              row.continue();
+            };
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+          });
+          db.close();
+        }, legacyStep);
+        await page.reload();
+        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await expect(root.getByText(new RegExp("Resume: " + (legacyStep === 2 ? "Venues" : "Review")))).toBeVisible();
+        await root
+          .getByRole("button", {
+            name: legacyStep === 2 ? "Resume photograph placement" : "Resume founding",
+            exact: true,
+          })
+          .click();
+        await expect(root).toHaveAttribute("data-step", String(legacyStep + 1));
+        await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
+        if (legacyStep === 2) await forward("Review village").click();
+        assert.equal(mapCalls, 3, "legacy resume does not generate new artwork");
+      }
+    }
     await expect(root.getByRole("button", { name: "Change starting Venues", exact: true })).toBeVisible();
     await bounds();
     await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
