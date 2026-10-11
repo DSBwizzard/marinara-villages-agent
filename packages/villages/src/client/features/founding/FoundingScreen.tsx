@@ -28,6 +28,12 @@ const PLACE_EXAMPLES = [
   "A remote space station orbiting an icy moon, supplied by occasional cargo ships.",
   "An old countryside estate with gardens, workshops, and a small town nearby.",
 ];
+const MAP_EXAMPLES = [
+  "An inn beside the river, with homes around a central square.",
+  "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
+  "Shops around an open courtyard, with covered paths connecting each entrance.",
+  "Connected station compartments, with an airlock beside the workshop.",
+];
 const CIRCUMSTANCE_EXAMPLES = [
   "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.",
   "The others and I have rented an abandoned observatory. The power works, but the living quarters need attention.",
@@ -584,13 +590,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         optional
                         help="Describe what you want shown, arranged, or left out of the artwork."
                       >
-                        <textarea
+                        <CircumstanceInput
+                          examples={MAP_EXAMPLES}
                           aria-label="Map details"
                           rows={3}
                           maxLength={1500}
                           value={setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? "" : setupMapPrompt}
                           onChange={(event) => setSetupMapPrompt(event.target.value)}
-                          placeholder="An inn beside the river, with homes around a central square."
                         />
                       </FoundingField>
                       <label>
@@ -691,13 +697,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         height={setupMapSize?.height}
                         alt="Selected village map"
                       />
-                      {setupMapSize ? (
+                      {setupMapSize &&
+                      setupMapImageSource === "generate" &&
+                      Math.abs(setupMapSize.width / setupMapSize.height - 1.5) > 0.2 ? (
                         <figcaption>
-                          {setupMapSize.width} × {setupMapSize.height} pixels.
-                          {setupMapImageSource === "generate" &&
-                          Math.abs(setupMapSize.width / setupMapSize.height - 1.5) > 0.2
-                            ? " The image provider returned a different shape from the requested 3:2 landscape map. This preview keeps the original proportions."
-                            : ""}
+                          The image provider returned a different shape from the requested 3:2 landscape map. This
+                          preview keeps the original proportions.
                         </figcaption>
                       ) : null}
                     </figure>

@@ -795,10 +795,35 @@ try {
     await expect(mapDialog.getByText("Based on your Place and world description.", { exact: true })).toHaveCount(0);
     const mapDetails = mapDialog.getByLabel("Map details", { exact: true });
     await expect(mapDetails).toHaveValue("");
-    await expect(mapDetails).toHaveAttribute(
-      "placeholder",
+    const mapHints = [
       "An inn beside the river, with homes around a central square.",
-    );
+      "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
+      "Shops around an open courtyard, with covered paths connecting each entrance.",
+      "Connected station compartments, with an airlock beside the workshop.",
+    ];
+    assert.ok(mapHints.includes(await mapDetails.getAttribute("placeholder")));
+    if (width === 390 && height === 844) {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+      const firstHint = await mapDetails.getAttribute("placeholder");
+      const seen = new Set([firstHint]);
+      for (let tick = 1; tick <= 4; tick++) {
+        await page.clock.runFor(4000);
+        const hint = await mapDetails.getAttribute("placeholder");
+        if (tick < 4) {
+          assert.ok(mapHints.includes(hint) && !seen.has(hint));
+          seen.add(hint);
+        } else assert.equal(hint, firstHint, "Map details cycle back after four hints");
+      }
+      await expect(mapDetails).toHaveValue("");
+      await mapDetails.fill("Keep this map detail intact.");
+      const hint = await mapDetails.getAttribute("placeholder");
+      await page.clock.runFor(8000);
+      await expect(mapDetails).toHaveValue("Keep this map detail intact.");
+      assert.equal(await mapDetails.getAttribute("placeholder"), hint, "Authored Map details stop hint rotation");
+      assert.equal(mapCalls, 0, "Hint rotation makes no generation requests");
+      await mapDetails.fill("");
+      await page.clock.resume();
+    }
     await mapDialog.getByRole("button", { name: "Help: Map details", exact: true }).click();
     await expect(mapDialog.getByRole("note")).toHaveText(
       "Describe what you want shown, arranged, or left out of the artwork.",
@@ -913,6 +938,7 @@ try {
     await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
     await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
     await expect(selectedMap).toHaveAttribute("src", acceptedSrc);
+    await expect(mapDialog.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
     assert.equal(mapCalls, 0, "Changing source after an upload error does not generate artwork");
     await mapDialog
       .getByLabel("Upload map image", { exact: true })
@@ -1319,7 +1345,13 @@ try {
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await forward("Back").click();
-      await expect(root.getByText(/1536 × 1024 pixels/)).toBeVisible();
+      assert.deepEqual(
+        await root
+          .getByRole("img", { name: "Selected village map", exact: true })
+          .evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+        [1536, 1024],
+      );
+      await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
       await expect(root.getByLabel("Map details", { exact: true })).toHaveValue(
         "One floor; bedrooms east, telescope hall west.",
       );
@@ -1347,7 +1379,13 @@ try {
       await root
         .getByLabel("Upload map image", { exact: true })
         .setInputFiles({ name: "chosen-map.png", mimeType: "image/png", buffer: PNG.sync.write(uploadArt) });
-      await expect(root.getByText(/1024 × 1024 pixels/)).toBeVisible();
+      assert.deepEqual(
+        await root
+          .getByRole("img", { name: "Selected village map", exact: true })
+          .evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+        [1024, 1024],
+      );
+      await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toHaveCount(0);
       failMapStatus = false;
       releaseMap();
@@ -1360,7 +1398,13 @@ try {
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await forward("Back").click();
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
-      await expect(root.getByText(/1024 × 1024 pixels/)).toBeVisible();
+      assert.deepEqual(
+        await root
+          .getByRole("img", { name: "Selected village map", exact: true })
+          .evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+        [1024, 1024],
+      );
+      await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
       assert.equal(mapCalls, 3, "upload and reload do not dispatch another image request");
       await forward("Continue to Venues").click();
     }
