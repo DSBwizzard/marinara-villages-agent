@@ -752,6 +752,25 @@ try {
     await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
     const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
     await expect(mapDialog).toBeVisible();
+    for (const label of ["Map", "Map details"]) {
+      const mapHelp = mapDialog.getByRole("button", { name: "Help: " + label, exact: true });
+      const panelHeight = (await mapDialog.boundingBox()).height;
+      await mapHelp.click();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "true");
+      const note = mapDialog.getByRole("note");
+      await expect(note).toBeVisible();
+      assert.equal((await mapDialog.boundingBox()).height, panelHeight, label + " help floats without expanding Map");
+      await bounds();
+      await capture(label === "Map" ? "map-help" : "map-details-help");
+      await note.click();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "true");
+      await mapHelp.press("Escape");
+      await expect(mapHelp).toBeFocused();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
+      await mapHelp.click();
+      await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
+    }
     await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
     await expect(mapDialog.getByRole("group", { name: "Map source", exact: true }).getByRole("button")).toHaveCount(2);
     await expect(mapDialog.getByRole("button", { name: "Generate artwork", exact: true })).toHaveAttribute(
