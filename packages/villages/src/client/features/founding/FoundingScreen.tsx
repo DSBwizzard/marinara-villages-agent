@@ -735,7 +735,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 setMovingSetupVenueId(null);
                 setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
               }}
-              onComplete={openIssue}
               onContinue={() => {
                 const next = setupVenues.find(
                   (venue) => venue.presentation.x === null || venue.presentation.y === null,
