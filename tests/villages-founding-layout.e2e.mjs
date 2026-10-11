@@ -905,6 +905,14 @@ try {
       await expect(selectedMap).toHaveAttribute("src", acceptedSrc);
       assert.equal(mapCalls, 0, "Rejected uploads make no generation requests");
     }
+    const generateChoice = mapDialog.getByRole("button", { name: "Generate artwork", exact: true });
+    await expect(generateChoice).toContainText("Generate a map from the information provided so far");
+    await generateChoice.click();
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
+    await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
+    await expect(selectedMap).toHaveAttribute("src", acceptedSrc);
+    assert.equal(mapCalls, 0, "Changing source after an upload error does not generate artwork");
     await mapDialog
       .getByLabel("Upload map image", { exact: true })
       .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });

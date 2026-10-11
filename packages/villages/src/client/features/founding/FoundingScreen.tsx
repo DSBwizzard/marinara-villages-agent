@@ -560,7 +560,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <div className="villages-map-sources" role="group" aria-label="Map source">
                     {(
                       [
-                        ["generate", "Generate artwork", "Create a map from Place and world."],
+                        ["generate", "Generate artwork", "Generate a map from the information provided so far"],
                         ["upload", "Upload image", "Use your own map artwork."],
                       ] as const
                     ).map(([value, label, description]) => (
@@ -570,6 +570,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         aria-label={label}
                         aria-pressed={setupMapSource === value}
                         onClick={() => {
+                          if (setupMapSource === "upload" && value === "generate") setSetupMapProblem("");
                           setSetupMapSource(value);
                           setSetupMapReviewed(false);
                         }}
