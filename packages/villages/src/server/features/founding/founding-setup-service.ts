@@ -135,7 +135,7 @@ export function createFoundingSetup({
     const worldFacts = founding
       ? (scenarioImprint?.worldFacts ?? [])
       : readWorldFacts(input.worldFacts ?? village.worldFacts);
-    const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView);
+    const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView, village.townMapImage);
     if (founding && !townMap.image) throw badRequest("Generate or upload map artwork before founding.");
     if (
       !founding &&

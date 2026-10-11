@@ -1,3 +1,4 @@
+import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
@@ -175,6 +176,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             />
             {mapReplaceOpen ? (
               <>
+                <p className={ELEMENT_TAG + "-hint"}>{MAP_UPLOAD_GUIDANCE}</p>
                 <div className={ELEMENT_TAG + "-row"}>
                   <button
                     type="button"

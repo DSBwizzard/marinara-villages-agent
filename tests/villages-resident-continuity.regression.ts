@@ -1,3 +1,4 @@
+import { PNG } from "pngjs";
 import assert from "node:assert/strict";
 import {
   DEFAULT_RESIDENT_FOUNDING_CONTEXT as defaults,
@@ -168,7 +169,7 @@ async function setupPersistence() {
   const originalFetch = globalThis.fetch;
   const originalQueue = globalThis.queueMicrotask;
   globalThis.fetch = async (url) => {
-    if (String(url).endsWith("/api/image-metadata/inspect")) return Response.json({ width: 1, height: 1 });
+    if (String(url).endsWith("/api/image-metadata/inspect")) return Response.json({ width: 1536, height: 1024 });
     assert.match(String(url), /\/api\/connections$/);
     return Response.json([{ id: "fixture", provider: "openai" }]);
   };
@@ -250,8 +251,7 @@ async function setupPersistence() {
     },
   } as any);
   const input = {
-    townMapImage:
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8AAAwAB/AGtLQAAAABJRU5ErkJggg==",
+    townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
     name: "Station Fields",
     setting: "An orbital observatory in an undecided world.",
     foundingReason: "none",

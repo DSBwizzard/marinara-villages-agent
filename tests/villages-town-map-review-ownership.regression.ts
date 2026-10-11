@@ -25,7 +25,7 @@ function deferred() {
   });
   return { promise, resolve };
 }
-function fixture(name: string) {
+function fixture(name: string, dimensions = { width: 1400, height: 900 }) {
   const state = defaultVillageState();
   state.name = name;
   state.setupAt = state.foundedAt = stamp;
@@ -70,7 +70,7 @@ function fixture(name: string) {
         owners.push(scopedActivation());
       }
       if (failure) throw failure;
-      return { width: 1400, height: 900 };
+      return dimensions;
     },
     async mutateVillageState(update) {
       note("mutate");
@@ -173,7 +173,19 @@ const unreadable = fixture("Unreadable"),
   failure = Error("Inspection unavailable");
 unreadable.failWith(failure);
 await assert.rejects(unreadable.service.replaceVillageTownMap(replacement("Failed")), (error) => error === failure);
-assert.deepEqual(unreadable.calls, ["inspect:" + image("Failed")]);
+assert.deepEqual(unreadable.calls, ["read", "inspect:" + image("Failed")]);
+
+const narrow = fixture("Narrow", { width: 300, height: 2056 });
+await assert.rejects(narrow.service.replaceVillageTownMap(replacement("Invalid upload")), /too small/);
+assert.equal(narrow.state.townMapImage, image("Narrow"));
+assert(!narrow.calls.includes("mutate"), "Invalid dimensions are rejected before saved map/pin writes.");
+await narrow.service.replaceVillageTownMap({
+  ...replacement("Narrow"),
+  placements: [{ venueId: "same", fromX: 0.2, fromY: 0.3, x: 0.2, y: 0.3 }],
+});
+assert.equal(narrow.state.townMapImage, image("Narrow"), "Unchanged legacy artwork remains usable.");
+const wide = fixture("Wide", { width: 2050, height: 1024 });
+await assert.rejects(wide.service.readTownMapSubmission(image("New wide")), /too narrow or wide/);
 
 const a = createActivationScope(),
   b = createActivationScope();

@@ -1,3 +1,4 @@
+import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type {
   ScenarioImprint,
@@ -112,6 +113,8 @@ export function usePickSetupTownMap(ports: {
       try {
         const image = await readFileAsDataUrl(file);
         const size = await measureImage(image);
+        const problem = townMapImageProblem(size);
+        if (problem) throw new Error(problem);
         setSetupMapImage(image);
         setSetupMapImageSource("upload");
         setSetupMapSize(size);

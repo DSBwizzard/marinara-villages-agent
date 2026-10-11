@@ -1,3 +1,4 @@
+import { townMapImageProblem } from "../packages/villages/src/shared/helpers/town-map-upload.js";
 import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
@@ -32,6 +33,24 @@ async function main() {
   );
   const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
+  for (const [width, height] of [
+    [1536, 1024],
+    [1024, 1024],
+    [768, 1152],
+    [2048, 1024],
+    [4000, 4000],
+  ])
+    assert.equal(townMapImageProblem({ width, height }), null, `${width} x ${height} accepted`);
+  for (const [width, height] of [
+    [300, 2056],
+    [1024, 700],
+    [1023, 768],
+    [768, 1153],
+    [2049, 1024],
+    [4001, 4000],
+    [8193, 4096],
+  ])
+    assert.ok(townMapImageProblem({ width, height }), `${width} x ${height} rejected`);
   assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
   assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
   assert.equal(MAX_TOWN_MAP_IMAGE_LENGTH, 8_000_000);

@@ -5,7 +5,7 @@ import { PNG } from "pngjs";
 import { chromium, expect } from "@playwright/test";
 import { build } from "esbuild";
 
-const art = new PNG({ width: 1280, height: 720 });
+const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
 const mapImage = "data:image/png;base64," + PNG.sync.write(art).toString("base64");
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
@@ -35,10 +35,10 @@ const snapshot = {
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     townMapImageSetAt: "",
-    townMapExpectedWidth: 1280,
-    townMapExpectedHeight: 720,
-    townMapGenerationWidth: 1280,
-    townMapGenerationHeight: 720,
+    townMapExpectedWidth: 1536,
+    townMapExpectedHeight: 1024,
+    townMapGenerationWidth: 1536,
+    townMapGenerationHeight: 1024,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     villageNameMaxLength: 80,
     foundingDetailsMaxLength: 2000,
@@ -305,7 +305,7 @@ try {
             ...mapReceipt,
             status: mapCalls === 1 ? "failed" : "complete",
             error: mapCalls === 1 ? "The generated map is too large to store." : "",
-            result: mapCalls === 1 ? null : { image: mapImage, width: 1280, height: 720 },
+            result: mapCalls === 1 ? null : { image: mapImage, width: 1536, height: 1024 },
           };
         };
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
@@ -885,6 +885,30 @@ try {
       .getByLabel("Upload map image", { exact: true })
       .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
     await expect(mapDialog.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
+    await expect(
+      mapDialog.getByText("Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const selectedMap = mapDialog.getByRole("img", { name: "Selected village map", exact: true });
+    const acceptedSrc = await selectedMap.getAttribute("src");
+    for (const [width, height, problem] of [
+      [300, 2056, "too small"],
+      [1024, 2048, "too narrow or wide"],
+    ]) {
+      await mapDialog.getByLabel("Upload map image", { exact: true }).setInputFiles({
+        name: "invalid-map.png",
+        mimeType: "image/png",
+        buffer: PNG.sync.write(new PNG({ width, height })),
+      });
+      await expect(mapDialog.getByRole("alert").filter({ hasText: problem })).toBeVisible();
+      await expect(selectedMap).toHaveAttribute("src", acceptedSrc);
+      assert.equal(mapCalls, 0, "Rejected uploads make no generation requests");
+    }
+    await mapDialog
+      .getByLabel("Upload map image", { exact: true })
+      .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "too narrow or wide" })).toHaveCount(0);
     await bounds();
     await capture("map-page");
     await forward("Back").click();
@@ -1282,7 +1306,7 @@ try {
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
       await forward("Back").click();
-      await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
+      await expect(root.getByText(/1536 × 1024 pixels/)).toBeVisible();
       await expect(root.getByLabel("Map details", { exact: true })).toHaveValue(
         "One floor; bedrooms east, telescope hall west.",
       );
@@ -1300,12 +1324,12 @@ try {
         .getByRole("group", { name: "Map source", exact: true })
         .getByRole("button", { name: "Upload image", exact: true })
         .click();
-      const uploadArt = new PNG({ width: 640, height: 640 });
+      const uploadArt = new PNG({ width: 1024, height: 1024 });
       uploadArt.data.fill(110);
       await root
         .getByLabel("Upload map image", { exact: true })
         .setInputFiles({ name: "chosen-map.png", mimeType: "image/png", buffer: PNG.sync.write(uploadArt) });
-      await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
+      await expect(root.getByText(/1024 × 1024 pixels/)).toBeVisible();
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toHaveCount(0);
       failMapStatus = false;
       releaseMap();
@@ -1318,7 +1342,7 @@ try {
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       await forward("Back").click();
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
-      await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
+      await expect(root.getByText(/1024 × 1024 pixels/)).toBeVisible();
       assert.equal(mapCalls, 3, "upload and reload do not dispatch another image request");
       await forward("Continue to Venues").click();
     }

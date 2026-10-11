@@ -1,3 +1,4 @@
+import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
 import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
 import { request } from "../../shared/api.js";
@@ -667,6 +668,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   ) : null}
                   {setupMapSource === "upload" ? (
                     <>
+                      <p className="villages-map-context">{MAP_UPLOAD_GUIDANCE}</p>
                       <label>
                         Upload image
                         <input

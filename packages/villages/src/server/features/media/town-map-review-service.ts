@@ -1,3 +1,4 @@
+import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import { coerceTownMapView } from "../../domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
@@ -28,7 +29,8 @@ export function createTownMapReview({
   /** Replace the background and its complete pin layout in one village write. */
   async function replaceVillageTownMap(value: unknown): Promise<VillageSnapshot> {
     const body = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-    const submitted = await readTownMapSubmission(body.image, body.view);
+    const current = await readVillageState();
+    const submitted = await readTownMapSubmission(body.image, body.view, current.townMapImage);
     if (typeof body.expectedMapSetAt !== "string") throw badRequest("Reload the village map before replacing it.");
     if (!Array.isArray(body.placements)) throw badRequest("Review every Venue photograph before saving the map.");
     const positions = new Map<
@@ -89,6 +91,7 @@ export function createTownMapReview({
   async function readTownMapSubmission(
     value: unknown,
     view?: unknown,
+    retainedImage = "",
   ): Promise<{
     image: string;
     size: { width: number; height: number } | null;
@@ -104,9 +107,15 @@ export function createTownMapReview({
         `The town map can be at most ${Math.round(MAX_TOWN_MAP_IMAGE_LENGTH / 1_000_000)} MB of image data.`,
       );
     }
+    const size = image.length > 0 ? await inspectVillageImage(image) : null;
+    // Only an exact saved image is grandfathered; new submissions are always checked.
+    if (size && image !== retainedImage) {
+      const problem = townMapImageProblem(size);
+      if (problem) throw badRequest(problem);
+    }
     return {
       image,
-      size: image.length > 0 ? await inspectVillageImage(image) : null,
+      size,
       view: image.length > 0 ? coerceTownMapView(view) : { ...DEFAULT_TOWN_MAP_VIEW },
     };
   }

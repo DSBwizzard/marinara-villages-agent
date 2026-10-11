@@ -1,3 +1,4 @@
+import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import type { TownMapView, VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { measureImage, placeSpot, readFileAsDataUrl } from "../../shared/presentation.js";
@@ -184,6 +185,8 @@ export function usePickTownMap(ports: {
       try {
         const image = await readFileAsDataUrl(file);
         const size = await measureImage(image);
+        const problem = townMapImageProblem(size);
+        if (problem) throw new Error(problem);
         setTownMapPick({ image, size });
         setMapRemoveDraft(false);
         // A fresh picture opens on the fit that fills the frame, because that is
