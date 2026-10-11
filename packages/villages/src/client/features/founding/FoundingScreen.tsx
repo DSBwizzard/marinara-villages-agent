@@ -724,10 +724,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               suggestionsBusy={setupSuggestionsBusy}
               suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
               usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
-              saveStatus={
-                draftSaveError ||
-                (draftSaving ? "Saving changes…" : draftSavedAt ? "Changes saved" : "Draft not saved yet")
-              }
+              saveError={draftSaveError || undefined}
               onState={setSetupWorkspace}
               onMove={moveVenue}
               onSelect={(venue) => {

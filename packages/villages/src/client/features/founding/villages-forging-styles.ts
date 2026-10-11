@@ -204,7 +204,7 @@ export const VILLAGES_FORGING_STYLES = `
 
 
 
-.villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 1rem 1rem auto; margin:0; width:min(28rem,calc(100vw - 2rem)); height:min(30rem,75dvh); max-height:calc(100dvh - 1rem); padding:.75rem; display:flex; flex-direction:column; gap:.4rem; border:1px solid #8574be; overflow:hidden; background:#192441; }
+.villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 1rem 1rem auto; margin:0; width:min(28rem,calc(100vw - 2rem)); height:min(26rem,65dvh); max-height:calc(100dvh - 1rem); padding:.75rem; display:flex; flex-direction:column; gap:.4rem; border:1px solid #8574be; overflow:hidden; background:#192441; }
 .villages-forging-v2 dialog.villages-workspace-sheet:not([open]) { display:none; }
 .villages-workspace-sheet::backdrop { background:#090c1a66; }
 .villages-workspace-sheet-header { flex:none; margin:0!important; }
@@ -218,6 +218,9 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-workspace-tabs { display:flex; flex:none; border-bottom:1px solid #596b9b; }
 .villages-forging-v2 .villages-workspace-tabs button { flex:1; min-width:0; border:0; border-radius:0; background:transparent; padding:.35rem; color:#c1cce5; font-size:.9rem; }
 .villages-forging-v2 .villages-workspace-tabs button[aria-selected=true] { color:#c4a8ff; border-bottom:3px solid #aa87ff; }
+.villages-forging-v2 .villages-workspace-sheet .villages-founding-help>button { display:grid; place-items:center; width:44px; min-width:44px; height:44px; min-height:44px; padding:0; border:0; border-radius:0; background:transparent; color:inherit; box-shadow:none; }
+.villages-workspace-sheet .villages-founding-field-heading,.villages-workspace-sheet .villages-workspace-purpose,.villages-workspace-sheet .villages-workspace-inclusion,.villages-workspace-sheet-body section { position:relative; }
+.villages-workspace-sheet .villages-founding-help-text { position:absolute; z-index:3; top:100%; right:0; width:min(28rem,100%); max-width:none; box-sizing:border-box; border:1px solid #596b9b; border-radius:.5rem; background:#19213b; color:#f3f3ff; padding:.65rem; box-shadow:0 .3rem 1rem #0006; }
 .villages-workspace-sheet-body { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:.25rem .1rem; }
 .villages-workspace-inclusion { display:flex; align-items:center; justify-content:space-between; }
 .villages-workspace-purpose { color:#c1cce5; display:flex; align-items:center; justify-content:space-between; margin:0 0 .35rem; }
@@ -229,12 +232,12 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-workspace-sheet .villages-workspace-artwork img { max-height:6rem; }
 .villages-workspace-sheet-footer { flex:none; display:block!important; border-top:1px solid #43547d; padding-top:.35rem!important; margin:0; }
 .villages-workspace-sheet-footer p { font-size:.75rem; color:#c1cce5; text-align:center; margin:0 0 .25rem; }
-.villages-workspace-sheet-footer>div { display:flex; gap:.5rem; }
-.villages-workspace-sheet-footer button { flex:1; min-width:0; }
+.villages-workspace-sheet-footer>div { display:flex; justify-content:flex-end; gap:.5rem; }
+.villages-forging-v2 .villages-workspace-sheet-footer button { flex:none; width:auto; min-width:0; min-height:44px; padding:.25rem .65rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
 .villages-workspace-tray { display:flex; overflow-x:auto; gap:.6rem; }
 .villages-forging-v2 .villages-workspace-tray button { flex:0 0 5rem; font-size:.8rem; padding:.4rem; }
 .villages-workspace-tray .villages-workspace-photo { display:block; margin:0 auto .3rem; }
-@media(max-width:727px) { .villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 0 0; width:100%; max-width:100%; height:min(30rem,70dvh); border-radius:1rem 1rem 0 0; padding:.6rem .75rem max(.6rem,env(safe-area-inset-bottom)); } }
+@media(max-width:727px) { .villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 0 0; width:100%; max-width:100%; height:min(26rem,60dvh); border-radius:1rem 1rem 0 0; padding:.6rem .75rem max(.6rem,env(safe-area-inset-bottom)); } }
 
 /* Venues shares the earlier founding panels and document scrolling. */
 .villages-workspace { min-width:0; }

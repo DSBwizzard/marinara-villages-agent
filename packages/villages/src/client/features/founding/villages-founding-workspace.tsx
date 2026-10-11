@@ -22,7 +22,7 @@ export function FoundingWorkspace({
   suggestionsBusy,
   suggestionsChanged,
   usagePreview,
-  saveStatus,
+  saveError,
   onState,
   onMove,
   onSelect,
@@ -48,7 +48,7 @@ export function FoundingWorkspace({
   suggestionsBusy: boolean;
   suggestionsChanged: boolean;
   usagePreview: ReactNode;
-  saveStatus: string;
+  saveError?: string;
   onState(state: FoundingWorkspaceState): void;
   onMove(venue: VillageVenue): void;
   onSelect(venue: VillageVenue): void;
@@ -685,7 +685,7 @@ export function FoundingWorkspace({
               )}
             </div>
             <footer className="villages-workspace-sheet-footer">
-              <p role="status">{saveStatus}</p>
+              {saveError ? <p role="alert">{saveError}</p> : null}
               <div>
                 {!existing ? (
                   <button type="button" disabled={!mapReady} onClick={() => onMove(selected)}>

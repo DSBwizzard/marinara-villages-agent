@@ -161,7 +161,7 @@ const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,ven
 const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
 function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
 window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
-<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} saveStatus='Saved' onState={setState} onMove={()=>{}} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
+<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} onState={setState} onMove={()=>{}} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
 createRoot(document.getElementById('root')).render(<Harness/>);
 `,
     },
@@ -1154,8 +1154,24 @@ try {
     await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveCount(0);
     const formHelp = inspector.getByRole("button", { name: "Help: Form", exact: true });
     const beforeHelp = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
+    await expect(formHelp).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(formHelp).toHaveCSS("border-top-width", "0px");
+    await expect(formHelp.locator("span")).toHaveCSS("border-radius", "50%");
+    await expect(inspector.getByText("Changes saved", { exact: true })).toHaveCount(0);
+    const doneBox = await inspector.getByRole("button", { name: "Done", exact: true }).boundingBox();
+    const moveBox = await inspector.getByRole("button", { name: "Move photograph", exact: true }).boundingBox();
+    assert.ok(
+      doneBox.height <= 45 && moveBox.height <= 45 && doneBox.width < 100 && moveBox.width < 170,
+      "compact footer buttons",
+    );
+    const descriptionBeforeHelp = await inspector.getByLabel("Exterior description", { exact: true }).boundingBox();
     await formHelp.click();
     await expect(inspector.getByRole("note")).toBeVisible();
+    assert.deepEqual(
+      await inspector.getByLabel("Exterior description", { exact: true }).boundingBox(),
+      descriptionBeforeHelp,
+      "help floats without shifting description",
+    );
     assert.deepEqual(
       await inspector.getByLabel("Physical form", { exact: true }).boundingBox(),
       beforeHelp,
