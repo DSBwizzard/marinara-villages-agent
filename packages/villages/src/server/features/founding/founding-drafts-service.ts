@@ -143,6 +143,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       "System",
     );
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 4000, {
+      responseFormat: { type: "json_object" },
       temperature: 0.7,
       reasoningEffort: "none",
       retryEmpty: false,
@@ -152,9 +153,19 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System model ran out of output room while drafting Venues. Your draft is unchanged; check the connection's output and thinking settings or choose another model, then retry.",
       );
+    const content = (completion.content ?? "").trim();
+    if (!content)
+      throw badRequest(
+        "The System model returned an empty Venue reply. Your draft is unchanged; check the connection's output and thinking settings, then explicitly retry.",
+      );
+    const payload = extractJsonObject(content);
+    if (!payload)
+      throw badRequest(
+        "The System model returned invalid JSON for Venue suggestions. Your draft is unchanged; choose a System connection supporting JSON responses, then explicitly retry.",
+      );
     return {
       venues: parseFoundingVenueSuggestions(
-        extractJsonObject(completion.content ?? ""),
+        payload,
         rows.map((row) => row.id),
         rows,
       ),
