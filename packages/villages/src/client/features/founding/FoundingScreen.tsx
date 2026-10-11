@@ -14,9 +14,7 @@ import {
   SETUP_STEPS,
   VillageLorebookPicker,
 } from "./FoundingPanels.js";
-import { FoundingDialog } from "./FoundingDialog.js";
 import { FoundingField, FoundingHelp, CircumstanceInput } from "./FoundingField.js";
-import { evenlySpacedFoundingPins } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
@@ -220,10 +218,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
       setSetupPlacementError("");
     };
-    const mapReady = setupMapSource === "none" || (!!setupMapSrc && !setupMapBusy);
+    const mapReady = !!snapshot?.isFounded || (!!setupMapSrc && !setupMapBusy);
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
-        {setupMapProblem && setupMapSource !== "none" ? (
+        {setupMapProblem ? (
           <p className={`${ELEMENT_TAG}-error`} role="alert">
             {setupMapProblem}
           </p>
@@ -233,8 +231,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             {setupMapBusy
               ? setupMapProgress
               : setupMapProblem
-                ? "Map artwork failed. Return to Map to review the error and try again, or select Simple map."
-                : "Choose map artwork on Map, or select Simple map."}
+                ? "Map artwork failed. Return to Map to review the error and try again."
+                : "Generate or upload map artwork on Map."}
           </p>
         ) : null}
         <div
@@ -311,11 +309,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             <FoundingHelp label="Venue placement">
               Select a Venue’s Move button, then click its new spot. Arrow keys and Enter also place Venue photographs.
             </FoundingHelp>
-            {setupMapSource === "none" ? (
-              <FoundingHelp label="Simple map placement">
-                Spaces Venue photographs evenly on this logical map.
-              </FoundingHelp>
-            ) : placed === setupVenues.length && !setupMapReviewed ? (
+            {placed === setupVenues.length && !setupMapReviewed ? (
               <button type="button" onClick={() => setSetupMapReviewed(true)}>
                 I checked all Venue photographs against this map
               </button>
@@ -552,7 +546,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               <h3 aria-label="Map">
                 Map{" "}
                 <FoundingHelp label="Map">
-                  Choose a simple background, generate artwork, or upload an image. Place your Venues in the next step.
+                  Generate map artwork or upload an image. Place your Venues in the next step.
                 </FoundingHelp>
               </h3>
               {snapshot?.isFounded ? (
@@ -565,7 +559,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <div className="villages-map-sources" role="group" aria-label="Map source">
                     {(
                       [
-                        ["none", "Simple map", "A clean background for your Venues."],
                         ["generate", "Generate artwork", "Create a map from Place and world."],
                         ["upload", "Upload image", "Use your own map artwork."],
                       ] as const
@@ -577,13 +570,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         aria-pressed={setupMapSource === value}
                         onClick={() => {
                           setSetupMapSource(value);
-                          setSetupMapReviewed(value === "none");
+                          setSetupMapReviewed(false);
                         }}
                       >
                         <span className="villages-map-source-indicator" aria-hidden="true" />
                         <span>
                           <span className="villages-map-source-title">{label}</span>
-                          {setupMapSource === "none" ? <small>{description}</small> : null}
+                          <small>{description}</small>
                         </span>
                       </button>
                     ))}
@@ -694,16 +687,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       ) : null}
                     </>
                   ) : null}
-                  {setupMapSource === "none" ? (
-                    <div className="villages-simple-map-preview">
-                      <div role="img" aria-label="Simple map background preview">
-                        <span />
-                        <span />
-                        <span />
-                      </div>
-                      <p>Place your Venues in the next step.</p>
-                    </div>
-                  ) : setupMapSrc ? (
+                  {setupMapSrc ? (
                     <figure>
                       <img
                         className="villages-forging-preview"
@@ -793,19 +777,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 setMovingSetupVenueId(next?.id ?? null);
                 setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
               }}
-              onArrange={
-                setupMapSource === "none" && !snapshot?.isFounded
-                  ? () => {
-                      const spots = evenlySpacedFoundingPins(setupVenues.length);
-                      setSetupVenues((rows) =>
-                        rows.map((row, index) => ({ ...row, presentation: { ...row.presentation, ...spots[index] } })),
-                      );
-                      setSetupMapReviewed(true);
-                      setMovingSetupVenueId(null);
-                      setSetupPlacementError("");
-                    }
-                  : undefined
-              }
               onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
               onDraft={() => void suggestSetupVenues()}
               onGenerate={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
@@ -872,13 +843,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         Change map
                       </button>
                     </div>
-                    <p>
-                      {setupMapSource === "none"
-                        ? "Simple map"
-                        : setupMapSource === "upload"
-                          ? "Uploaded artwork"
-                          : "Chosen artwork"}
-                    </p>
+                    <p>{setupMapSource === "upload" ? "Uploaded artwork" : "Chosen artwork"}</p>
                     {setupMapPrompt && setupMapPrompt !== snapshot?.settings.townMapLayoutPrompt ? (
                       <p>Map details: {setupMapPrompt}</p>
                     ) : null}

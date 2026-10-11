@@ -234,6 +234,8 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupHomeCount: number;
+  readonly setupMapBusy: FoundingState["setupMapBusy"];
+  readonly setupMapSrc: string | null;
   readonly setupName: FoundingState["setupName"];
   readonly setupPlayerRole: FoundingState["setupPlayerRole"];
   readonly setupSetting: FoundingState["setupSetting"];
@@ -260,6 +262,8 @@ export function createFoundingGotoSetupStep(ports: {
       setupFoundingDetails,
       setupFoundingVillagerIds,
       setupHomeCount,
+      setupMapBusy,
+      setupMapSrc,
       setupName,
       setupPlayerRole,
       setupSetting,
@@ -293,10 +297,19 @@ export function createFoundingGotoSetupStep(ports: {
           : !snapshot?.isFounded && !setupFoundingDetails.trim()
             ? "Describe the starting circumstances."
             : "";
-      const problem = peopleProblem || (step >= 2 ? placeProblem : "") || (step >= 4 ? setupBlocker() : "");
+      const mapProblem =
+        !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
+          ? "Generate or upload map artwork on Map before continuing."
+          : "";
+      const problem =
+        peopleProblem ||
+        (step >= 2 ? placeProblem : "") ||
+        (step >= 3 ? mapProblem : "") ||
+        (step >= 4 ? setupBlocker() : "");
       if (problem) {
         if (peopleProblem) setSetupStep(0);
         else if (step >= 2 && placeProblem) setSetupStep(1);
+        else if (step >= 3 && mapProblem) setSetupStep(2);
         setSetupProblem(problem);
         return;
       }

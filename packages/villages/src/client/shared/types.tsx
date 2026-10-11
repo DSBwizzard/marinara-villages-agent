@@ -2,7 +2,7 @@ import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/c
 import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
-export type SetupMapSource = "existing" | "generate" | "upload" | "none";
+export type SetupMapSource = "existing" | "generate" | "upload";
 
 export type SetupVenueDraft = VillageVenue;
 

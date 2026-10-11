@@ -8,7 +8,7 @@ Voice, role, setting, attendance, and privacy regressions now exercise the curre
 
 ## Founding Venue workspace (0.7.1)
 
-Founding proceeds through People, Place, Map, Venues and Review. Map artwork choices and controls appear directly on their own phase; generation remains explicit and can continue while editing Venues. Existing device-local drafts resume on their original phase, with artwork and Venue edits preserved.
+Founding proceeds through People, Place, Map, Venues and Review. Map artwork is required for new villages, through explicit generation or upload. Older unfinished Simple map drafts keep their edits and return to Map when artwork is missing. Map artwork choices and controls appear directly on their own phase; generation remains explicit and can continue while editing Venues. Existing device-local drafts resume on their original phase, with artwork and Venue edits preserved.
 
 The 0.7.1 founding editor selects one Venue through its map photograph. The inspector has Venue and Zones tabs, with Exterior, Common and Private always available. New residences include both managed spaces; at least one is required. The initial Gathering Place has mandatory public Common Space and no owner or Private Space. Form describes the overall physical place; individual spaces have their own purposes and descriptions.
 

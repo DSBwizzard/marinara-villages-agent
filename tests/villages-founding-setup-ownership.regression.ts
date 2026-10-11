@@ -29,6 +29,7 @@ function input(name: string) {
   return {
     name,
     setting: "An observatory village",
+    townMapImage: "test-map",
     foundingReason: "none",
     foundingDetails: "We begin our first day as neighbours.",
     playerPersonaId: "player",
@@ -109,8 +110,8 @@ function fixture(name: string) {
     },
     async readTownMapSubmission(value) {
       note("map");
-      assert.equal(value, "");
-      return { image: "", size: null, view: DEFAULT_TOWN_MAP_VIEW };
+      assert.equal(value, "test-map");
+      return { image: "test-map", size: null, view: DEFAULT_TOWN_MAP_VIEW };
     },
     async readVillageConnectionSettings() {
       note("connections");

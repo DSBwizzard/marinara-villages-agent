@@ -1922,6 +1922,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupFoundingDetails,
     setupFoundingVillagerIds,
     setupHomeCount,
+    setupMapBusy,
+    setupMapSrc,
     setupName,
     setupPlayerRole,
     setupSetting,

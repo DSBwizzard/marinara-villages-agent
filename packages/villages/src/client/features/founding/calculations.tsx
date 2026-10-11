@@ -153,13 +153,11 @@ export function calculateSetupMapSrc(ports: {
   townMapImage: string;
 }) {
   const { setupMapImage, setupMapImageSource, setupMapSource, townMapImage } = ports;
-  return setupMapSource === "none"
-    ? null
-    : setupMapSource === "existing"
-      ? townMapImage || null
-      : setupMapImageSource === setupMapSource
-        ? setupMapImage || null
-        : null;
+  return setupMapSource === "existing"
+    ? townMapImage || null
+    : setupMapImageSource === setupMapSource
+      ? setupMapImage || null
+      : null;
 }
 export function calculatePlaceCount(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;

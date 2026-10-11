@@ -256,14 +256,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-map-sources>button[aria-pressed=true] .villages-map-source-indicator { background:#9470ef; border-color:#bb9cff; box-shadow:inset 0 0 0 3px #30305c; }
 .villages-map-source-title { display:block; }
 .villages-map-sources small { display:block; color:#b8c3e8; margin-top:.2rem; line-height:1.4; }
-.villages-map-context,.villages-simple-map-preview p { color:#b8c3e8; font-size:.9rem; line-height:1.4; }
 .villages-place-map-editor .villages-founding-field-heading label small { color:#b8c3e8; font-size:.8rem; margin-left:.5rem; }
+.villages-map-context { color:#b8c3e8; font-size:.9rem; line-height:1.4; }
 .villages-map-generate { width:100%; margin-top:.65rem; }
-.villages-simple-map-preview { margin-top:.8rem; }
-.villages-simple-map-preview>div { position:relative; width:100%; aspect-ratio:3/2; max-height:10rem; border:1px solid #596b9b; border-radius:.5rem; background:#192c4c; }
-.villages-simple-map-preview span { position:absolute; width:.85rem; height:.85rem; border:2px solid #eeeaff; border-radius:50%; box-shadow:0 0 0 2px #10172f; }
-.villages-simple-map-preview span:nth-child(1) { left:30%; top:60%; background:#27b8a5; }
-.villages-simple-map-preview span:nth-child(2) { left:48%; top:30%; background:#9470ef; }
-.villages-simple-map-preview span:nth-child(3) { left:72%; top:72%; background:#eaae46; }
 .villages-place-map-editor input[type=checkbox] { display:inline-block; width:1.2rem; min-height:0; vertical-align:middle; }
 `;

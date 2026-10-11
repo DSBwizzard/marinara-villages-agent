@@ -200,6 +200,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
       return;
     }
+    const legacySimpleMap = data.mapSource === "none";
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     setSetupSetting(data.setting);
@@ -232,14 +233,14 @@ export function createFoundingRestoreSetupDraft(ports: {
     setPersonalizeHomes(data.personalizeHomes);
     setVisualLoreDefault(data.visualLoreDefault);
     setMapVisualLore(data.mapVisualLore);
-    setSetupMapSource(data.mapSource);
+    setSetupMapSource(data.mapSource === "none" ? (data.mapImage ? data.mapImageSource : "generate") : data.mapSource);
     setSetupMapImage(data.mapImage);
     setSetupMapImageSource(data.mapImageSource);
     setSetupMapGeneratedKey(data.mapGeneratedKey);
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapReviewed(data.mapReviewed);
+    setSetupMapReviewed(legacySimpleMap ? false : data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
     updateSetupMapRequest(mapRequest);

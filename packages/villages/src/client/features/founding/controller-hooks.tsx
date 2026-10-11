@@ -552,8 +552,8 @@ export function useFoundingSetupBlocker(ports: {
     if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
       return "Use at most four current world facts of 160 characters each.";
     if (setupSetting.trim().length === 0) return "Describe what the village is like.";
-    if (setupMapSource !== "none" && setupMapBusy) return "Wait for the requested artwork, or select Simple map.";
-    if (setupMapSource !== "none" && !setupMapSrc) return "Generate or upload the chosen map, or select Simple map.";
+    if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
+    if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
     if (setupMapSource === "generate" && setupMapGeneratedKey !== setupMapGenerationKey)
       return "Review the saved map against your changed inputs on Map.";
     if (
@@ -561,7 +561,7 @@ export function useFoundingSetupBlocker(ports: {
       setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
     )
       return "Place every starting Venue photograph.";
-    if (setupMapSource !== "none" && !setupMapReviewed) return "Check all Venue photographs against the map on Venues.";
+    if (!snapshot?.isFounded && !setupMapReviewed) return "Check all Venue photographs against the map on Venues.";
 
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
     const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);

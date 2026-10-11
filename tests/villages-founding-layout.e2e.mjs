@@ -752,11 +752,16 @@ try {
     await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
     const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
     await expect(mapDialog).toBeVisible();
-    await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveAttribute(
+    await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
+    await expect(mapDialog.getByRole("group", { name: "Map source", exact: true }).getByRole("button")).toHaveCount(2);
+    await expect(mapDialog.getByRole("button", { name: "Generate artwork", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await expect(mapDialog.getByRole("img", { name: "Simple map background preview" })).toBeVisible();
+    await forward("Continue to Venues").click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    await expect(root.getByRole("alert").filter({ hasText: "Generate or upload map artwork" })).toBeVisible();
+    assert.equal(mapCalls, 0, "missing artwork does not start generation");
     const assertMapFooter = async () => {
       await expect(forward("Continue to Venues")).toBeVisible();
       assert.ok(
@@ -820,18 +825,47 @@ try {
     await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
     await expect(mapDialog.getByLabel("Upload map image", { exact: true })).toBeVisible();
     await assertMapFooter();
-    await mapDialog.getByRole("button", { name: "Simple map", exact: true }).click();
     assert.equal(mapCalls, 0, "browsing map choices never generates artwork");
     await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
     await mapDialog.getByLabel("Map details", { exact: true }).fill("Keep this authored map detail.");
     await forward("Save & exit").click();
     await expect(root.getByText(/Resume: Map/)).toBeVisible();
+    if (width === 1366) {
+      await page.evaluate(async () => {
+        const db = await new Promise((resolve) => {
+          const open = indexedDB.open("villages-founding-v2", 1);
+          open.onsuccess = () => resolve(open.result);
+        });
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction("drafts", "readwrite");
+          const cursor = tx.objectStore("drafts").openCursor();
+          cursor.onsuccess = () => {
+            const row = cursor.result;
+            if (!row) return;
+            const saved = row.value;
+            delete saved.data.phase;
+            saved.data.step = 2;
+            saved.data.mapSource = "none";
+            row.update({ ...saved, revision: saved.revision + 1 });
+            row.continue();
+          };
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+      });
+    }
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(root.getByText(/Resume: Map/)).toBeVisible();
     await root.getByRole("button", { name: "Resume founding", exact: true }).click();
     await expect(root).toHaveAttribute("data-step", "2");
     await expect(mapDialog.getByLabel("Map details", { exact: true })).toHaveValue("Keep this authored map detail.");
-    await mapDialog.getByRole("button", { name: "Simple map", exact: true }).click();
+    await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
+    await mapDialog
+      .getByLabel("Upload map image", { exact: true })
+      .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
+    await expect(mapDialog.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
     await bounds();
     await capture("map-page");
     await forward("Back").click();
@@ -851,7 +885,7 @@ try {
     const phaseHeading = root.locator(".villages-forging-heading");
     await expect(phaseHeading).toBeVisible();
     assert.equal(await phaseHeading.evaluate((element) => getComputedStyle(element).position), "static");
-    await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(0);
 
     const inspector = root.locator(".villages-workspace-inspector");
     const placementMap = root.locator(".marinara-capability-villages-setup-map-viewport");
@@ -882,6 +916,7 @@ try {
       await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
     }
     await expect(pins).toHaveCount(homeCount + 2);
+
     // A complete suggested draft proceeds without visiting each editor or making image requests.
     await forward("Review village").click();
     await expect(root).toHaveAttribute("data-step", "4");
@@ -1327,6 +1362,7 @@ try {
     await forward("Found village").click();
     await expect.poll(() => foundingPayload).toBeTruthy();
     assert.equal(foundingPayload.venues.length, homeCount + 2);
+    assert.ok(foundingPayload.townMapImage.startsWith("data:image/png;base64,"));
     assert.equal(foundingPayload.playerRole.title, "Harbor Patron");
     if (width === 1366) {
       assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "custom");

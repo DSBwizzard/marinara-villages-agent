@@ -47,6 +47,9 @@ async function main() {
     assert.equal(savedFoundingStep({ step }), expected);
   for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
   assert.equal(savedFoundingStep({ step: NaN }), 0);
+  assert.equal(savedFoundingStep({ step: 2, mapSource: "none" }), 2);
+  assert.equal(savedFoundingStep({ step: 3, mapSource: "none" }), 2);
+  assert.equal(savedFoundingStep({ step: 3, phase: "Review", mapSource: "none", mapImage: "cached" }), 4);
 
   const serverRoot = join(root, "packages/villages/src/server");
   const { foundingPhotoOverlaps } = await import(
@@ -60,7 +63,7 @@ async function main() {
   const unexpected = () => {
     throw Error("Unexpected connection in a setup validation probe.");
   };
-  const { runVillageSetup } = createFoundingSetup({
+  const setupPorts = {
     readVillageState: unexpected,
     mutateVillageState: unexpected,
     buildVillageSnapshot: unexpected,
@@ -76,7 +79,8 @@ async function main() {
     proposeVillage: unexpected,
     proposePublicVenueNames: unexpected,
     draftVillageVenueDescriptions: unexpected,
-  });
+  };
+  const { runVillageSetup } = createFoundingSetup(setupPorts);
   const { parsePlace } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { assertFoundingScenarioLocked } =
     await import("../packages/villages/src/server/domain/rules/founding-record.ts");
@@ -295,6 +299,20 @@ async function main() {
     /locked/,
   );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
+  const noMapSetup = createFoundingSetup({
+    ...setupPorts,
+    readVillageState: async () => coerceVillageState({ wishSystemVersion: 3 }),
+    readTownMapSubmission: async () => ({
+      image: "",
+      size: null,
+      view: { fit: "cover" as const, focusX: 50, focusY: 50, zoom: 1 },
+    }),
+  });
+  await assert.rejects(
+    noMapSetup.runVillageSetup({ ...identity, foundingReason: "custom", foundingDetails: "We gather at dawn." }),
+    /Generate or upload map artwork before founding/,
+  );
+
   for (const foundingReason of [
     "fresh-start",
     "refuge",

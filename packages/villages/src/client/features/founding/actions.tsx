@@ -169,8 +169,8 @@ export function usePlaceSetupPin(ports: {
         : (rows.find((row) => row.id === movingSetupVenueId) ??
           rows.find((row) => row.presentation.x === null || row.presentation.y === null));
       if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
-      if (setupMapSource !== "none" && (!setupMapSrc || setupMapBusy)) {
-        setSetupPlacementError("Wait for the selected artwork before placing Venue photographs, or use Simple map.");
+      if (!setupMapSrc || setupMapBusy) {
+        setSetupPlacementError("Wait for the selected artwork before placing Venue photographs.");
         return;
       }
       if (
@@ -375,7 +375,7 @@ export function useOpenSetup(ports: {
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
       setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
-      setSetupMapSource(fresh ? "none" : village?.settings.townMapImageSetAt ? "existing" : "none");
+      setSetupMapSource(!fresh && village?.isFounded ? "existing" : "generate");
       setSetupMapImage("");
       setSetupMapImageSource(null);
       setSetupMapGeneratedKey("");
