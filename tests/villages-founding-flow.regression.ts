@@ -34,6 +34,67 @@ import {
   installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 
+async function reviewNavigation() {
+  const { createFoundingGotoSetupStep } =
+    await import("../packages/villages/src/client/features/founding/setup-controller.js");
+  let reviewed = false,
+    step = 4,
+    problem = "",
+    blocked = "Place every starting Venue photograph.";
+  const ports = {
+    catalog: [{ id: "resident" }],
+    connectionSetupProblem: "",
+    loadCatalog: async () => {},
+    loadLorebooks: async () => {},
+    loadPersonas: async () => {},
+    personaDraft: "player",
+    personas: [{ id: "player" }],
+    residentContextProblem: "",
+    setMovingSetupVenueId() {},
+    setSetupEditorOpen() {},
+    setSetupProblem: (value: string) => {
+      problem = value;
+    },
+    setSetupStep: (value: number) => {
+      step = value;
+    },
+    setSetupMapReviewed: (value: boolean) => {
+      reviewed = value;
+    },
+    setupBlocker: (reviewingMap?: boolean) => {
+      assert.equal(reviewingMap, true);
+      return blocked;
+    },
+    setupFoundingDetails: "Neighbors sharing a home",
+    setupFoundingVillagerIds: ["resident"],
+    setupHomeCount: 1,
+    setupMapBusy: false,
+    setupMapSrc: "map",
+    setupName: "Village",
+    setupPlayerRole: { enabled: true, title: "Project Coordinator", explanation: "" },
+    setupSetting: "Coastal rooms",
+    setupStep: 4,
+    setupSuggestionsBusy: false,
+    setupVenueBusy: false,
+    snapshot: { isFounded: true },
+  };
+  const goto = createFoundingGotoSetupStep(ports as any);
+  goto(4);
+  assert.equal(reviewed, false, "re-entering restored Review cannot acknowledge an invalid map");
+  assert.match(problem, /Place every/);
+  blocked = "";
+  goto(4);
+  assert.equal(reviewed, true, "successful Review navigation incorporates map acknowledgment");
+  assert.equal(step, 4);
+  assert.equal(problem, "");
+  reviewed = false;
+  ports.setupMapSrc = "";
+  ports.snapshot.isFounded = false;
+  goto(4);
+  assert.equal(reviewed, false, "missing artwork cannot be acknowledged");
+  assert.match(problem, /Generate or upload map artwork/);
+}
+
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const { savedFoundingStep, SETUP_STEPS } =
@@ -957,6 +1018,7 @@ async function foundingConnectionOwnership() {
 }
 
 await main()
+  .then(reviewNavigation)
   .then(foundingConnectionOwnership)
   .catch((error) => {
     console.error(error);

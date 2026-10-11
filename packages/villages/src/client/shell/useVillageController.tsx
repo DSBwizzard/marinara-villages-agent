@@ -1902,6 +1902,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const gotoSetupStep = createFoundingGotoSetupStep({
+    setSetupMapReviewed,
     catalog,
     connectionSetupProblem,
     loadCatalog,

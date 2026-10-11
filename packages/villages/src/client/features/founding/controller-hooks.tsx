@@ -528,85 +528,89 @@ export function useFoundingSetupBlocker(ports: {
     setupWorldFacts,
     snapshot,
   } = ports;
-  return useCallback((): string => {
-    if (setupName.trim().length === 0) return "Give the village a name.";
-    if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
-    if (!snapshot?.isFounded && !setupFoundingDetails.trim())
-      return "Describe what brings you and the others together here.";
-    if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) return playerRoleProblem(setupPlayerRole);
-    const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
-    if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
-      return "Use at most four current world facts of 160 characters each.";
-    if (setupSetting.trim().length === 0) return "Describe what the village is like.";
-    if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
-    if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
-    if (
-      !snapshot?.isFounded &&
-      setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
-    )
-      return "Place every starting Venue photograph.";
-    if (!snapshot?.isFounded && !setupMapReviewed) return "Check all Venue photographs against the map on Venues.";
+  return useCallback(
+    (reviewingMap = false): string => {
+      if (setupName.trim().length === 0) return "Give the village a name.";
+      if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
+      if (!snapshot?.isFounded && !setupFoundingDetails.trim())
+        return "Describe what brings you and the others together here.";
+      if (!snapshot?.isFounded && playerRoleProblem(setupPlayerRole)) return playerRoleProblem(setupPlayerRole);
+      const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
+      if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
+        return "Use at most four current world facts of 160 characters each.";
+      if (setupSetting.trim().length === 0) return "Describe what the village is like.";
+      if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
+      if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
+      if (
+        !snapshot?.isFounded &&
+        setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
+      )
+        return "Place every starting Venue photograph.";
+      if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap)
+        return "Check all Venue photographs against the map on Venues.";
 
-    const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
-    const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
-    if (villagerHomes.length < SETUP_MIN_VILLAGER_COUNT || villagerHomes.length > SETUP_MAX_VILLAGER_COUNT) {
-      return "Place one to three homes for initial villagers.";
-    }
-    if (!residences.some((venue) => venue.occupancy.playerHome)) return "One Residence has to be yours.";
-    if (
-      setupVenues.some(
-        (venue) =>
-          !venue.name.trim() ||
-          !venue.form?.trim() ||
-          !venue.description.trim() ||
-          (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
-          foundingZoneProblem(venue),
+      const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
+      const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
+      if (villagerHomes.length < SETUP_MIN_VILLAGER_COUNT || villagerHomes.length > SETUP_MAX_VILLAGER_COUNT) {
+        return "Place one to three homes for initial villagers.";
+      }
+      if (!residences.some((venue) => venue.occupancy.playerHome)) return "One Residence has to be yours.";
+      if (
+        setupVenues.some(
+          (venue) =>
+            !venue.name.trim() ||
+            !venue.form?.trim() ||
+            !venue.description.trim() ||
+            (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
+            foundingZoneProblem(venue),
+        )
       )
-    )
-      return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Venues.";
-    const occupants = villagerHomes
-      .map((home) => home.occupancy.residentCharacterId)
-      .filter((id): id is string => id !== null);
-    if (occupants.length !== villagerHomes.length) return "Choose who lives in each villager home.";
-    if (new Set(occupants).size !== occupants.length) return "A villager can only live in one house.";
-    if (
-      !snapshot?.isFounded &&
-      (occupants.length !== setupHomeCount || occupants.some((id) => !setupFoundingVillagerIds.includes(id)))
-    )
-      return "Assign every villager chosen on People to one Residence.";
-    if (
-      setupVenues.some((venue) =>
-        venue.privateSpaces?.some(
-          (room) =>
-            !room.access &&
-            (!room.name?.trim() ||
-              !room.purpose?.trim() ||
-              (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
-        ),
+        return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Venues.";
+      const occupants = villagerHomes
+        .map((home) => home.occupancy.residentCharacterId)
+        .filter((id): id is string => id !== null);
+      if (occupants.length !== villagerHomes.length) return "Choose who lives in each villager home.";
+      if (new Set(occupants).size !== occupants.length) return "A villager can only live in one house.";
+      if (
+        !snapshot?.isFounded &&
+        (occupants.length !== setupHomeCount || occupants.some((id) => !setupFoundingVillagerIds.includes(id)))
       )
-    )
-      return "Give each Private Space a name, purpose, and controller on Venues.";
-    if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
-      return "A chosen villager is no longer in your character cards. Choose another villager on People.";
-    if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)
-      return "Place one Gathering Place.";
-    return "";
-  }, [
-    setupMapBusy,
-    setupMapReviewed,
-    setupHomeCount,
-    setupFoundingVillagerIds,
-    catalog,
-    setupVenues,
-    personaDraft,
-    setupMapSrc,
-    setupName,
-    setupFoundingDetails,
-    setupPlayerRole,
-    snapshot?.isFounded,
-    setupWorldFacts,
-    setupSetting,
-  ]);
+        return "Assign every villager chosen on People to one Residence.";
+      if (
+        setupVenues.some((venue) =>
+          venue.privateSpaces?.some(
+            (room) =>
+              !room.access &&
+              (!room.name?.trim() ||
+                !room.purpose?.trim() ||
+                (!["residence", "workplace"].includes(room.venueClass) && !room.controllerIds?.length)),
+          ),
+        )
+      )
+        return "Give each Private Space a name, purpose, and controller on Venues.";
+      if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
+        return "A chosen villager is no longer in your character cards. Choose another villager on People.";
+      if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)
+        return "Place one Gathering Place.";
+      return "";
+    },
+    [
+      setupMapBusy,
+      setupMapReviewed,
+      setupHomeCount,
+      setupFoundingVillagerIds,
+      catalog,
+      setupVenues,
+      personaDraft,
+      setupMapSrc,
+      setupName,
+      setupFoundingDetails,
+      setupPlayerRole,
+      snapshot?.isFounded,
+      setupWorldFacts,
+      setupSetting,
+    ],
+  );
 }
 
 export function useFoundingPreparationPolling(ports: {

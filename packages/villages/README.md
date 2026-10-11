@@ -16,7 +16,7 @@ Below 704px of available workspace width, selection opens a full-screen editor s
 
 Map photographs rest at 36px with 44px touch targets and enlarge temporarily on desktop hover or keyboard focus. Artwork remains deliberate. Villager Private interiors remain server-protected until discovered; Common Purpose survives suggestions and final snapshots. The founding browser suite uses mocked requests and synthetic art; packaged Docker acceptance is separate from provider-free startup smoke.
 
-Venue and Zone edits save into the device-local draft as they change. Complete suggestions can proceed through placement to Review without visiting every editor. Review opens the exact Venue, Zone and missing field. Drag, Move, and arrow-key/Enter placement remain available; rejected moves retain their coordinates. Save failures and revision conflicts retain recovery controls and block leaving or founding until resolved.
+Compact Venue rows show Complete, Place or Edit and open the next required action. The editor keeps Name, Form and Exterior description visible, with Common/Private Space and optional image controls expandable. Entering Review incorporates map acknowledgment after validating artwork, every photograph placement and required details; changing a placement clears that acknowledgment. Venue and Zone edits save into the device-local draft as they change. Complete suggestions can proceed through placement to Review without visiting every editor. Review opens the exact Venue, Zone and missing field. Drag, Move, and arrow-key/Enter placement remain available; rejected moves retain their coordinates. Save failures and revision conflicts retain recovery controls and block leaving or founding until resolved.
 
 ## Venue and Zone access (0.6.168)
 

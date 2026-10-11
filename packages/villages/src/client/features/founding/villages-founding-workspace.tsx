@@ -26,6 +26,7 @@ export function FoundingWorkspace({
   onState,
   onMove,
   onSelect,
+  onComplete,
   onContinue,
   onArrange,
   onPatch,
@@ -52,6 +53,7 @@ export function FoundingWorkspace({
   onState(state: FoundingWorkspaceState): void;
   onMove(venue: VillageVenue): void;
   onSelect(venue: VillageVenue): void;
+  onComplete?(issue: FoundingIssue): void;
   onContinue(): void;
   onArrange?: () => void;
   onPatch(venue: VillageVenue): void;
@@ -67,6 +69,7 @@ export function FoundingWorkspace({
   const selected = venues.find((venue) => venue.id === selectedId);
   const placement = venues.find((venue) => venue.id === placementId);
   const placed = venues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
+  const incomplete = new Set(issues.filter((issue) => issue.field !== "placement").map((issue) => issue.venueId)).size;
   const section = selected ? (state.sections[selected.id] ?? "venue") : "venue";
   const selectedZone = selected ? (state.zones[selected.id] ?? "exterior") : "exterior";
   const existingZoneId =
@@ -363,15 +366,14 @@ export function FoundingWorkspace({
       data-narrow={narrow}
     >
       <div className="villages-workspace-overview villages-forging-card" hidden={sheet}>
-        <h3>Venues</h3>
         <section className="villages-workspace-map" aria-label="Place Venues">
           <div className="villages-founding-field-heading villages-workspace-toolbar">
             <strong role="status">
-              <span>
+              <h3>
                 {placement
                   ? `${placement.presentation.x === null ? "Place" : "Move"} ${placement.name || "Venue"}`
-                  : "Starting places"}
-              </span>
+                  : "Venues"}
+              </h3>
               <small>
                 {placed} of {venues.length} placed
               </small>
@@ -385,7 +387,7 @@ export function FoundingWorkspace({
           <p>
             {placement
               ? `Tap the map to ${placement.presentation.x === null ? "place" : "move"} ${placement.name || "this Venue"}.`
-              : "Select a photograph or Edit to change a Venue’s details."}
+              : "Tap a photograph to edit or move."}
           </p>
           {onArrange ? (
             <button type="button" aria-label="Arrange automatically" onClick={onArrange}>
@@ -411,30 +413,40 @@ export function FoundingWorkspace({
           {venues.map((venue) => {
             const isPlaced = venue.presentation.x !== null && venue.presentation.y !== null;
             const problems = issues.filter((issue) => issue.venueId === venue.id && issue.field !== "placement");
+            const action = problems.length ? "Complete" : !isPlaced && !existing ? "Place" : "Edit";
             return (
               <button
                 key={venue.id}
                 type="button"
                 data-venue-id={venue.id}
                 className="villages-workspace-venue"
-                aria-label={`Edit ${venue.name || "Venue"}`}
+                aria-label={`${action} ${venue.name || "Venue"}`}
                 aria-pressed={selectedId === venue.id}
-                onClick={() => onSelect(venue)}
+                onClick={() => {
+                  if (problems.length && onComplete) onComplete(problems[0]);
+                  else if (action === "Place") onMove(venue);
+                  else onSelect(venue);
+                }}
               >
                 <span className="villages-workspace-photo" aria-hidden="true">
                   {venue.presentation.image ? <img src={venue.presentation.image.url} alt="" /> : <span />}
                 </span>
                 <span>
                   <strong>{venue.name || "Venue"}</strong>
-                  <small>
-                    {isPlaced ? "Placed" : "Not placed"}
-                    {problems.length ? " · Needs details" : ""}
-                  </small>
+                  <small>{problems.length ? "Needs details" : !isPlaced && !existing ? "Not placed" : "Ready"}</small>
                 </span>
-                <span className="villages-people-action">Edit</span>
+                <span className="villages-people-action">{action}</span>
               </button>
             );
           })}
+          <p className="villages-workspace-summary" role="status">
+            {placed} of {venues.length} placed ·{" "}
+            {incomplete
+              ? `${incomplete} ${incomplete === 1 ? "needs" : "need"} details`
+              : placed < venues.length
+                ? `${venues.length - placed} to place`
+                : "Ready for review"}
+          </p>
         </section>
       </div>
       <aside
@@ -452,11 +464,14 @@ export function FoundingWorkspace({
         {selected ? (
           <>
             <header className="villages-workspace-detail-heading">
+              <span className="villages-workspace-photo" aria-hidden="true">
+                {selected.presentation.image ? <img src={selected.presentation.image.url} alt="" /> : <span />}
+              </span>
               <h3>{selected.name || "Venue"}</h3>
             </header>
             <div className="villages-workspace-back">
               <button type="button" onClick={dismiss}>
-                Return to placement
+                Back to venues
               </button>
             </div>
             <div className="villages-workspace-assignment">
@@ -468,11 +483,6 @@ export function FoundingWorkspace({
                     : `Residence · ${people.find((person) => person.id === selected.occupancy.residentCharacterId)?.name ?? "Assigned resident"}`}{" "}
                 · {selected.presentation.x === null || selected.presentation.y === null ? "Not placed" : "Placed"}
               </p>
-              {!existing ? (
-                <button type="button" disabled={!mapReady} onClick={() => onMove(selected)}>
-                  Move
-                </button>
-              ) : null}
             </div>
             {locked ? (
               <p role="status">
@@ -481,7 +491,7 @@ export function FoundingWorkspace({
               </p>
             ) : null}
             <fieldset disabled={locked}>
-              <FoundingField title="Venue name" help="The name of the overall place." error={fieldProblem("name")}>
+              <FoundingField title="Name" help="The name of the overall place." error={fieldProblem("name")}>
                 <input
                   aria-label="Venue name"
                   maxLength={100}
@@ -489,15 +499,11 @@ export function FoundingWorkspace({
                   onChange={(event) => onPatch({ ...selected, name: event.target.value })}
                 />
               </FoundingField>
-              <FoundingField
-                title="Physical form"
-                help="Describe the overall physical place."
-                error={fieldProblem("form")}
-              >
+              <FoundingField title="Form" help="Describe the overall physical place." error={fieldProblem("form")}>
                 <textarea
                   aria-label="Physical form"
                   maxLength={240}
-                  rows={3}
+                  rows={1}
                   value={selected.form ?? ""}
                   onChange={(event) => onPatch({ ...selected, form: event.target.value })}
                 />
@@ -562,7 +568,6 @@ export function FoundingWorkspace({
                   onChange={(event) => onPatch({ ...selected, description: event.target.value })}
                 />
               </FoundingField>
-              {imageFields("exterior", selected.presentation.image)}
             </section>
             {existing ? (
               <>
@@ -620,6 +625,19 @@ export function FoundingWorkspace({
                 );
               })
             )}
+            {imageFields("exterior", selected.presentation.image)}
+            {!existing ? (
+              <button
+                type="button"
+                className="villages-workspace-move"
+                disabled={!mapReady}
+                onClick={() => onMove(selected)}
+              >
+                {selected.presentation.x === null || selected.presentation.y === null
+                  ? "Place photograph"
+                  : "Move photograph"}
+              </button>
+            ) : null}
             <p className="villages-workspace-save" role="status">
               {saveStatus}
             </p>

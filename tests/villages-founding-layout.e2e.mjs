@@ -1009,7 +1009,7 @@ try {
     const canvas = placementMap.locator(".marinara-capability-villages-canvas");
     const pins = canvas.locator("button[data-pin-id]");
     const mapView = async () => {
-      const back = inspector.getByRole("button", { name: "Return to placement", exact: true });
+      const back = inspector.getByRole("button", { name: "Back to venues", exact: true });
       if (await back.isVisible()) await back.click();
       await canvas.scrollIntoViewIfNeeded();
     };
@@ -1034,6 +1034,7 @@ try {
     };
     await expect(root.locator(".villages-workspace-list")).toBeVisible();
     await expect(root.locator("[data-venue-id]")).toHaveCount(homeCount + 2);
+    await expect(forward("Review village")).toBeDisabled();
     await root.locator("[data-venue-id]").first().click();
     await expect(inspector.getByLabel("Venue name", { exact: true })).toBeVisible();
     await expect(inspector.getByLabel("Exterior description", { exact: true })).toBeVisible();
@@ -1046,6 +1047,8 @@ try {
     await forward("Suggest names & descriptions").click();
     await expect(forward("Suggest names & descriptions")).toBeEnabled();
     assert.equal(suggestionCalls, 1);
+    await expect(root.locator("[data-venue-id]").first()).toContainText("Place");
+    await expect(forward("Review village")).toBeDisabled();
     const spots = Array.from({ length: homeCount + 2 }, (_, i) => ({
       x: homeCount === 3 ? 0.22 + (i % 3) * 0.28 : 0.22 + (i % 2) * 0.56,
       y: i < (homeCount === 3 ? 3 : 2) ? 0.28 : 0.72,
@@ -1056,6 +1059,7 @@ try {
       await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
     }
     await expect(pins).toHaveCount(homeCount + 2);
+    await expect(root.locator(".villages-workspace-summary")).toContainText("Ready for review");
 
     // A complete suggested draft proceeds without visiting each editor or making image requests.
     await forward("Review village").click();
@@ -1119,7 +1123,7 @@ try {
     await inspector.getByLabel("Venue name", { exact: true }).fill("Autosaved name");
     await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
     if (narrow) {
-      const returnButton = inspector.getByRole("button", { name: "Return to placement", exact: true });
+      const returnButton = inspector.getByRole("button", { name: "Back to venues", exact: true });
       await returnButton.focus();
       await page.keyboard.press("Shift+Tab");
       assert.equal(await inspector.getAttribute("aria-modal"), null, "inline detail page does not trap focus");
@@ -1138,7 +1142,7 @@ try {
       .getByLabel("Exterior description", { exact: true })
       .fill("A blue door beside the telescope corridor.");
     await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveCount(0);
-    const formHelp = inspector.getByRole("button", { name: "Help: Physical form", exact: true });
+    const formHelp = inspector.getByRole("button", { name: "Help: Form", exact: true });
     const beforeHelp = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
     await formHelp.click();
     await expect(inspector.getByRole("note")).toBeVisible();
@@ -1178,7 +1182,10 @@ try {
     );
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("");
     await mapView();
-    await forward("Review village").click();
+    await expect(forward("Review village")).toBeDisabled();
+    const incompleteRow = root.locator("[data-venue-id]").filter({ hasText: "Needs details" });
+    await expect(incompleteRow).toContainText("Complete");
+    await incompleteRow.first().click();
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeFocused();
     await expect(inspector.getByRole("alert").filter({ hasText: "Describe the Zone appearance." })).toHaveCSS(
       "color",
@@ -1406,17 +1413,17 @@ try {
       await root.getByRole("button", { name: "Check map status", exact: true }).click();
       await expect(
         root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }),
-      ).toBeVisible();
+      ).toHaveCount(0);
       await forward("Review village").click();
-      await expect(root.getByRole("alert")).toContainText("Check all");
-      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
+      await expect(root).toHaveAttribute("data-step", "4");
+      await forward("Change starting Venues").click();
       await open();
-      await inspector.getByRole("button", { name: "Move", exact: true }).click();
+      await inspector.getByRole("button", { name: "Move photograph", exact: true }).click();
       await root
         .getByLabel("Venue placement map. Arrow keys choose a spot; Enter places a Venue.", { exact: true })
         .press("Enter");
       await expect(root.locator(".villages-workspace-toolbar > strong")).toHaveText(
-        `Starting places${homeCount + 2} of ${homeCount + 2} placed`,
+        `Venues${homeCount + 2} of ${homeCount + 2} placed`,
       );
       await capture("artwork-spaces");
       await forward("Save & exit").click();
@@ -1471,7 +1478,8 @@ try {
       failMapStatus = false;
       releaseMap();
       await forward("Continue to Venues").click();
-      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
+      await forward("Review village").click();
+      await forward("Change starting Venues").click();
       await forward("Save & exit").click();
       await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
       await page.reload();

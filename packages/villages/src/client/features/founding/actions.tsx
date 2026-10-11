@@ -196,7 +196,7 @@ export function usePlaceSetupPin(ports: {
         setSetupWorkspace((state) => ({ ...state, paused: true }));
       setMovingSetupVenueId(null);
       setSetupPlacementError("");
-      if (next.every((row) => row.presentation.x !== null && row.presentation.y !== null)) setSetupMapReviewed(true);
+      setSetupMapReviewed(false);
     },
     [movingSetupVenueId, setupEditorOpen, setupWorkspace.paused, setupMapSource, setupMapSrc, setupMapBusy],
   );

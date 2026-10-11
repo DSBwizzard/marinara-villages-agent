@@ -126,7 +126,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupMapProblem,
     setupMapPrompt,
     setupMapRequest,
-    setupMapReviewed,
     setupMapShape,
     setupMapSize,
     setupMapSource,
@@ -308,15 +307,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             placementCursor={interactive ? setupKeyboardSpot : undefined}
           />
         </div>
-        {interactive ? (
-          <>
-            {placed === setupVenues.length && !setupMapReviewed ? (
-              <button type="button" onClick={() => setSetupMapReviewed(true)}>
-                I checked all Venue photographs against this map
-              </button>
-            ) : null}
-          </>
-        ) : null}
       </div>
     );
     const chooseRoster = (ids: string[]) => {
@@ -745,6 +735,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 setMovingSetupVenueId(null);
                 setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
               }}
+              onComplete={openIssue}
               onContinue={() => {
                 const next = setupVenues.find(
                   (venue) => venue.presentation.x === null || venue.presentation.y === null,
@@ -926,7 +917,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           <button
             type="button"
             className="villages-forging-primary"
-            disabled={busy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError}
+            disabled={
+              busy ||
+              setupEditorOpen ||
+              setupSuggestionsBusy ||
+              setupVenueBusy ||
+              !!draftSaveError ||
+              (setupStep === 3 && setupIssues.length > 0)
+            }
             onClick={() => {
               setValidationAttempt((attempt) => attempt + 1);
               setValidatedFields((fields) => [

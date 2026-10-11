@@ -230,7 +230,8 @@ export function createFoundingGotoSetupStep(ports: {
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupStep: FoundingState["setSetupStep"];
-  readonly setupBlocker: () => string;
+  readonly setupBlocker: (reviewingMap?: boolean) => string;
+  readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
   readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupHomeCount: number;
@@ -259,6 +260,7 @@ export function createFoundingGotoSetupStep(ports: {
       setSetupProblem,
       setSetupStep,
       setupBlocker,
+      setSetupMapReviewed,
       setupFoundingDetails,
       setupFoundingVillagerIds,
       setupHomeCount,
@@ -277,7 +279,7 @@ export function createFoundingGotoSetupStep(ports: {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep) {
+    if (step > setupStep || step === 4) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -305,7 +307,7 @@ export function createFoundingGotoSetupStep(ports: {
         peopleProblem ||
         (step >= 2 ? placeProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
-        (step >= 4 ? setupBlocker() : "");
+        (step >= 4 ? setupBlocker(step === 4) : "");
       if (problem) {
         if (peopleProblem) setSetupStep(0);
         else if (step >= 2 && placeProblem) setSetupStep(1);
@@ -315,6 +317,7 @@ export function createFoundingGotoSetupStep(ports: {
       }
     }
     setSetupProblem("");
+    if (step === 4) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();
