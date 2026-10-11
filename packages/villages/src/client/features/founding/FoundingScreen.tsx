@@ -32,8 +32,8 @@ const PLACE_EXAMPLES = [
 const MAP_EXAMPLES = [
   "An inn beside the river, with homes around a central square.",
   "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
-  "Shops around an open courtyard, with covered paths connecting each entrance.",
-  "Connected station compartments, with an airlock beside the workshop.",
+  "Leave out cars and parking lots; connect the shops with covered paths.",
+  "Show only the station interior; leave out planets, stars, and exterior views.",
 ];
 const CIRCUMSTANCE_EXAMPLES = [
   "This village has existed for generations. I already live here, and everyone is preparing for the annual harvest festival.",
@@ -607,19 +607,19 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           }}
                         />
                       </label>
+                      {sceneryStyleProfileId === null ? (
+                        <label>
+                          Style description
+                          <textarea
+                            aria-label="Scenery style description"
+                            maxLength={600}
+                            value={sceneryStyle}
+                            onChange={(event) => setSceneryStyle(event.target.value)}
+                          />
+                        </label>
+                      ) : null}
                       <details>
                         <summary>More options</summary>
-                        {sceneryStyleProfileId === null ? (
-                          <label>
-                            Style description
-                            <textarea
-                              aria-label="Scenery style description"
-                              maxLength={600}
-                              value={sceneryStyle}
-                              onChange={(event) => setSceneryStyle(event.target.value)}
-                            />
-                          </label>
-                        ) : null}
                         <label>
                           Things to avoid
                           <textarea

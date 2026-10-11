@@ -817,8 +817,8 @@ try {
     const mapHints = [
       "An inn beside the river, with homes around a central square.",
       "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
-      "Shops around an open courtyard, with covered paths connecting each entrance.",
-      "Connected station compartments, with an airlock beside the workshop.",
+      "Leave out cars and parking lots; connect the shops with covered paths.",
+      "Show only the station interior; leave out planets, stars, and exterior views.",
     ];
     assert.ok(mapHints.includes(await mapDetails.getAttribute("placeholder")));
     if (width === 390 && height === 844) {
@@ -850,6 +850,26 @@ try {
     await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
     await expect(mapDialog.getByRole("note")).toHaveCount(0);
     await capture("map-details");
+    const customStyle = mapDialog.getByLabel("Scenery style description", { exact: true });
+    await expect(customStyle).toHaveCount(0);
+    await stylePicker.selectOption("@custom");
+    await expect(customStyle).toBeVisible();
+    await expect(customStyle.locator("xpath=ancestor::details")).toHaveCount(0);
+    assert.ok(
+      await customStyle.evaluate((node) =>
+        Boolean(node.compareDocumentPosition(node.parentElement.nextElementSibling) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ),
+      "Custom style appears above More options",
+    );
+    await capture("map-custom-style");
+    await customStyle.fill("Soft watercolor washes.");
+    await mapDialog.getByText("More options", { exact: true }).click();
+    await mapDialog.getByText("More options", { exact: true }).click();
+    await expect(customStyle).toBeVisible();
+    await expect(customStyle).toHaveValue("Soft watercolor washes.");
+    await stylePicker.selectOption("engine-paint");
+    await expect(customStyle).toHaveCount(0);
+    assert.equal(mapCalls, 0, "Changing custom style visibility makes no generation requests");
     await mapDialog.getByText("More options", { exact: true }).click();
     await expect(mapDialog.getByText("Things to avoid", { exact: true })).toBeVisible();
     for (const name of ["Roads and paths", "Structures", "Water"]) {
