@@ -97,6 +97,13 @@ assert.throws(() => trimSignaturePixels(solidInset), /solid background/);
 const clipped = new PNG({ width: 30, height: 30 });
 for (let y = 10; y < 20; y++) for (let x = 0; x < 10; x++) clipped.data.set([0, 0, 0, 255], (y * 30 + x) * 4);
 assert.throws(() => trimSignaturePixels(clipped), /canvas edge/);
+const tinyBand = new PNG({ width: 300, height: 200 });
+for (let x = 20; x < 280; x++) tinyBand.data.set([0, 0, 0, 255], (100 * 300 + x) * 4);
+assert.throws(
+  () => trimSignaturePixels(tinyBand),
+  /too narrow/,
+  "A long hairline cannot shrink to a microscopic signature",
+);
 const richResident = structuredClone(village.villagers[0]!);
 richResident.cardSnapshot.backstory = "Signs fishing logs with a tiny hook.";
 richResident.cardSnapshot.exampleDialogue = "Aye, leave it to me.";

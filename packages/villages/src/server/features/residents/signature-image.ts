@@ -109,6 +109,12 @@ export function trimSignaturePixels(pixels: { width: number; height: number; dat
   }
   if (right < left)
     throw badRequest("The generated signature is blank or too faint. Your local signature is still available.");
+  const markWidth = right - left + 1,
+    markHeight = bottom - top + 1;
+  if (markWidth > markHeight * 20 || markHeight > markWidth * 4)
+    throw badRequest(
+      "The generated signature is too narrow to read at profile size. Your previous signature is still available; try generating again.",
+    );
   const area = (right - left + 1) * (bottom - top + 1);
   if (area > width * height * 0.25) {
     let solid = 0;
