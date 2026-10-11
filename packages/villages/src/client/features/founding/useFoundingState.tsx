@@ -1,8 +1,8 @@
 import type { PlayerRole } from "../../../shared/contracts/player-role.js";
 import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
 import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
-import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
-import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint } from "./FoundingPanels.js";
+import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
+import { emptyScenarioImprint } from "./FoundingPanels.js";
 import type { FoundingScenarioId } from "./scenarios.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { SavedFoundingDraft } from "./villages-founding-draft.js";
@@ -85,8 +85,6 @@ export function useFoundingState() {
   const [setupVenueBusy, setSetupVenueBusy] = useState(false);
 
   const [setupPlacementError, setSetupPlacementError] = useState("");
-
-  const [setupMapOptions, setSetupMapOptions] = useState<TownMapOptions>(DEFAULT_TOWN_MAP_OPTIONS);
 
   const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("generate");
 
@@ -219,8 +217,6 @@ export function useFoundingState() {
     setSetupVenueBusy,
     setupPlacementError,
     setSetupPlacementError,
-    setupMapOptions,
-    setSetupMapOptions,
     setupMapSource,
     setSetupMapSource,
     setupMapImage,

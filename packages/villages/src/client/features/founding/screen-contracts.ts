@@ -88,7 +88,6 @@ export type FoundingScreenController = {
   readonly setSetupMapBusy: FoundingState["setSetupMapBusy"];
   readonly setSetupMapGeneratedKey: FoundingState["setSetupMapGeneratedKey"];
   readonly setSetupMapNegativePrompt: FoundingState["setSetupMapNegativePrompt"];
-  readonly setSetupMapOptions: FoundingState["setSetupMapOptions"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupMapPrompt: FoundingState["setSetupMapPrompt"];
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
@@ -121,7 +120,6 @@ export type FoundingScreenController = {
   readonly setupMapGenerationKey: string;
   readonly setupMapImageSource: FoundingState["setupMapImageSource"];
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
-  readonly setupMapOptions: FoundingState["setupMapOptions"];
   readonly setupMapProblem: FoundingState["setupMapProblem"];
   readonly setupMapProgress: string;
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];

@@ -177,7 +177,6 @@ export function useFoundingSetupDraftData(ports: {
   setupMapImage: string;
   setupMapImageSource: "generate" | "upload";
   setupMapNegativePrompt: string;
-  setupMapOptions: import("../../shared/types.js").TownMapOptions;
   setupMapProblem: string;
   setupMapPrompt: string;
   setupMapRequest: import("../../../shared/contracts/village.js").SetupMapRequest;
@@ -281,7 +280,6 @@ export function useFoundingSetupDraftData(ports: {
     setupMapImage,
     setupMapImageSource,
     setupMapNegativePrompt,
-    setupMapOptions,
     setupMapProblem,
     setupMapPrompt,
     setupMapRequest,
@@ -331,7 +329,6 @@ export function useFoundingSetupDraftData(ports: {
       mapSize: setupMapSize,
       mapPrompt: setupMapPrompt,
       mapNegative: setupMapNegativePrompt,
-      mapOptions: setupMapOptions,
       mapReviewed: setupMapReviewed,
       mapProblem: setupMapProblem,
       mapRequest: setupMapRequest,
@@ -375,7 +372,6 @@ export function useFoundingSetupDraftData(ports: {
       setupMapSize,
       setupMapPrompt,
       setupMapNegativePrompt,
-      setupMapOptions,
       setupMapReviewed,
       setupMapProblem,
       setupMapRequest,

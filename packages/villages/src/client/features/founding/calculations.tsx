@@ -95,7 +95,6 @@ export function calculateSetupMapGenerationKey(ports: {
   sceneryStyle: string;
   setupLorebookDraft: string[];
   setupMapNegativePrompt: string;
-  setupMapOptions: import("../../shared/types").TownMapOptions;
   setupMapPrompt: string;
   setupSetting: string;
   setupWorldFacts: string[];
@@ -106,7 +105,6 @@ export function calculateSetupMapGenerationKey(ports: {
     sceneryStyle,
     setupLorebookDraft,
     setupMapNegativePrompt,
-    setupMapOptions,
     setupMapPrompt,
     setupSetting,
     setupWorldFacts,
@@ -120,7 +118,6 @@ export function calculateSetupMapGenerationKey(ports: {
     useVisualLore: mapVisualLore,
     structure: setupMapPrompt,
     negative: setupMapNegativePrompt,
-    options: setupMapOptions,
   });
 }
 export function calculateSetupMapSeconds(ports: {

@@ -117,7 +117,6 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupMapImage: FoundingState["setSetupMapImage"];
   readonly setSetupMapImageSource: FoundingState["setSetupMapImageSource"];
   readonly setSetupMapNegativePrompt: FoundingState["setSetupMapNegativePrompt"];
-  readonly setSetupMapOptions: FoundingState["setSetupMapOptions"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupMapPrompt: FoundingState["setSetupMapPrompt"];
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
@@ -169,7 +168,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupMapImage,
       setSetupMapImageSource,
       setSetupMapNegativePrompt,
-      setSetupMapOptions,
       setSetupMapProblem,
       setSetupMapPrompt,
       setSetupMapReviewed,
@@ -243,7 +241,6 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapOptions(data.mapOptions);
     setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;

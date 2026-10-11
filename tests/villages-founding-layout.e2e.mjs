@@ -286,6 +286,12 @@ try {
       if (path.endsWith("/setup/town-map/generate")) {
         mapCalls++;
         const body = route.request().postDataJSON();
+        assert.equal(Object.hasOwn(body, "options"), false, "map generation has no hidden element toggles");
+        assert.equal(
+          Object.hasOwn(JSON.parse(body.sourceKey), "options"),
+          false,
+          "toggle choices are absent from generation identity",
+        );
         mapReceipt = {
           id: body.actionId,
           sourceKey: body.sourceKey,
@@ -767,13 +773,16 @@ try {
     );
     await mapDialog.getByRole("button", { name: "Help: Map details", exact: true }).click();
     await expect(mapDialog.getByRole("note")).toHaveText(
-      "Describe anything you want shown or arranged in the artwork.",
+      "Describe what you want shown, arranged, or left out of the artwork.",
     );
     await mapDialog.getByRole("heading", { name: "Map artwork", exact: true }).click();
     await expect(mapDialog.getByRole("note")).toHaveCount(0);
     await capture("map-details");
     await mapDialog.getByText("More options", { exact: true }).click();
     await expect(mapDialog.getByText("Things to avoid", { exact: true })).toBeVisible();
+    for (const name of ["Roads and paths", "Structures", "Water"]) {
+      await expect(mapDialog.getByLabel(name, { exact: true })).toHaveCount(0);
+    }
     await mapDialog.locator(".villages-place-map-editor").evaluate((node) => {
       node.scrollTop = node.scrollHeight;
     });

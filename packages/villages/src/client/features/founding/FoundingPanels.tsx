@@ -9,7 +9,7 @@ import type {
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { Portrait, PortraitMap, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
+import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { startingZone } from "./founding-template.js";
@@ -24,8 +24,6 @@ export const emptyScenarioImprint = (): ScenarioImprint => ({
 
 export const foundingScenario = (value: FoundingScenarioId) =>
   FOUNDING_SCENARIOS.find((scenario) => scenario.value === value)!;
-
-export const DEFAULT_TOWN_MAP_OPTIONS: TownMapOptions = { roads: "auto", structures: "auto", water: "auto" };
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it

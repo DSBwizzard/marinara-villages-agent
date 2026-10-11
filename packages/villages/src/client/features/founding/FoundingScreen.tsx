@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { RESIDENT_HISTORY_MODES, RESIDENT_STORY_ROLES } from "../../../shared/helpers/resident-founding-context.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { MapElementChoice, SetupVenueDraft } from "../../shared/types.js";
+import type { SetupVenueDraft } from "../../shared/types.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
@@ -89,7 +89,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupMapBusy,
     setSetupMapGeneratedKey,
     setSetupMapNegativePrompt,
-    setSetupMapOptions,
     setSetupMapProblem,
     setSetupMapPrompt,
     setSetupMapReviewed,
@@ -121,7 +120,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupMapGenerationKey,
     setupMapImageSource,
     setupMapNegativePrompt,
-    setupMapOptions,
     setupMapProblem,
     setupMapProgress,
     setupMapPrompt,
@@ -588,7 +586,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                 <FoundingField
                                   title="Map details"
                                   optional
-                                  help="Describe anything you want shown or arranged in the artwork."
+                                  help="Describe what you want shown, arranged, or left out of the artwork."
                                 >
                                   <textarea
                                     aria-label="Map details"
@@ -630,30 +628,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                                       onChange={(event) => setSceneryStyle(event.target.value)}
                                     />
                                   </label>
-                                  {(
-                                    [
-                                      ["roads", "Roads and paths"],
-                                      ["structures", "Structures"],
-                                      ["water", "Water"],
-                                    ] as const
-                                  ).map(([key, label]) => (
-                                    <label key={key}>
-                                      {label}
-                                      <select
-                                        value={setupMapOptions[key]}
-                                        onChange={(event) =>
-                                          setSetupMapOptions((current) => ({
-                                            ...current,
-                                            [key]: event.target.value as MapElementChoice,
-                                          }))
-                                        }
-                                      >
-                                        <option value="auto">Auto</option>
-                                        <option value="include">Include</option>
-                                        <option value="exclude">Exclude</option>
-                                      </select>
-                                    </label>
-                                  ))}
                                   <label>
                                     Things to avoid
                                     <textarea

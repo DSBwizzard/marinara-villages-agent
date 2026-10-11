@@ -10,9 +10,9 @@ import type { ResidentFoundingContext } from "../../../shared/helpers/resident-f
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
 import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
-import type { SetupMapSource, SetupVenueDraft, TownMapOptions } from "../../shared/types.js";
+import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
-import { DEFAULT_TOWN_MAP_OPTIONS, emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
+import { emptyScenarioImprint, foundingScenario } from "./FoundingPanels.js";
 import { FOUNDING_SCENARIOS, type FoundingScenarioId } from "./scenarios.js";
 import { removeFoundingDraft } from "./villages-founding-draft.js";
 import { SCENERY_STYLES, venueHasCommon } from "./villages-founding-editor";
@@ -251,7 +251,6 @@ export function useOpenSetup(ports: {
   setSetupMapImage: React.Dispatch<SetStateAction<string>>;
   setSetupMapImageSource: React.Dispatch<SetStateAction<"generate" | "upload">>;
   setSetupMapNegativePrompt: React.Dispatch<SetStateAction<string>>;
-  setSetupMapOptions: React.Dispatch<SetStateAction<TownMapOptions>>;
   setSetupMapProblem: React.Dispatch<SetStateAction<string>>;
   setSetupMapPrompt: React.Dispatch<SetStateAction<string>>;
   setSetupMapSize: React.Dispatch<SetStateAction<{ width: number; height: number }>>;
@@ -299,7 +298,6 @@ export function useOpenSetup(ports: {
     setSetupMapImage,
     setSetupMapImageSource,
     setSetupMapNegativePrompt,
-    setSetupMapOptions,
     setSetupMapProblem,
     setSetupMapPrompt,
     setSetupMapSize,
@@ -381,7 +379,6 @@ export function useOpenSetup(ports: {
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
       setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
-      setSetupMapOptions({ ...DEFAULT_TOWN_MAP_OPTIONS });
       setSetupMapSource(fresh ? "none" : village?.settings.townMapImageSetAt ? "existing" : "none");
       setSetupMapImage("");
       setSetupMapImageSource(null);
