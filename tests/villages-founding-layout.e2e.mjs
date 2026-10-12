@@ -1269,10 +1269,29 @@ try {
     await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveCount(0);
     await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveCount(0);
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
+    await expect(inspector.locator(".villages-workspace-sheet-body > header")).toBeVisible();
+    assert.equal(await inspector.getByLabel("Zone used for", { exact: true }).evaluate((el) => el.tagName), "TEXTAREA");
+    await expect(inspector.getByRole("button", { name: "Edit Zone used for" })).toHaveCount(0);
+    await expect(inspector.getByText("Access", { exact: true })).toHaveCount(0);
+    await expect(inspector.getByRole("button", { name: "Help: Zone access" })).toHaveCount(0);
     await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
     const commonHeaderBox = await inspector.locator("header").boundingBox();
     const commonTabsBox = await inspector.getByRole("tablist").boundingBox();
     assert.ok(commonTabsBox.y + commonTabsBox.height <= commonHeaderBox.y, "Common tab precedes its space fields");
+    const scrollBody = inspector.locator(".villages-workspace-sheet-body");
+    const headerBeforeScroll = await inspector.locator("header").boundingBox();
+    await scrollBody.evaluate((el) => {
+      el.style.height = "150px";
+      el.style.flex = "none";
+      el.scrollTop = 60;
+    });
+    const headerAfterScroll = await inspector.locator("header").boundingBox();
+    assert.ok(headerAfterScroll.y < headerBeforeScroll.y - 30, "name and description scroll with tab content");
+    await scrollBody.evaluate((el) => {
+      el.style.removeProperty("height");
+      el.style.removeProperty("flex");
+      el.scrollTop = 0;
+    });
     await capture("venue-common-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");
     await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
