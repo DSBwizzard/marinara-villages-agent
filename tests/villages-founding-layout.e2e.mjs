@@ -1334,6 +1334,11 @@ try {
       await open(1);
       await zone("Common");
       await expect(inspector.locator(".villages-workspace-artwork img")).toHaveCount(1);
+      await expect(inspector.locator(".villages-workspace-artwork img")).toBeHidden();
+      await inspector.locator(".villages-workspace-image-options > summary").first().click();
+      await expect(inspector.locator(".villages-workspace-artwork img")).toBeVisible();
+      await inspector.locator(".villages-workspace-image-options > summary").first().click();
+      await expect(inspector.locator(".villages-workspace-artwork img")).toBeHidden();
       await mapView();
       await forward("Suggest names & descriptions").click();
       await expect(forward("Suggest names & descriptions")).toBeEnabled();

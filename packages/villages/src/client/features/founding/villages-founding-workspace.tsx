@@ -144,16 +144,16 @@ export function FoundingWorkspace({
   const imageFields = (area: Area, image: VillageVenueImage | null | undefined, id?: string) =>
     selected && (
       <section className="villages-workspace-artwork" aria-label={`${area} image`}>
-        {image ? (
-          <a href={image.url} target="_blank" rel="noreferrer" aria-label="View image">
-            <img src={image.url} alt={`${area} of ${selected.name}`} />
-          </a>
-        ) : null}
         <details className="villages-workspace-image-options">
           <summary>
             {image ? "Change image" : area === "exterior" ? "Add exterior image" : "Add space image"}{" "}
             <small>Optional</small>
           </summary>
+          {image ? (
+            <a href={image.url} target="_blank" rel="noreferrer" aria-label="View image">
+              <img src={image.url} alt={`${area} of ${selected.name}`} />
+            </a>
+          ) : null}
           <button type="button" disabled={imageBusy} onClick={() => onGenerate(selected, area, id)}>
             {image ? "Generate again" : "Generate image"}
           </button>

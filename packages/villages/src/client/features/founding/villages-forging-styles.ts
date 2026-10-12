@@ -241,7 +241,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-workspace-tray { display:flex; overflow-x:auto; gap:.6rem; }
 .villages-forging-v2 .villages-workspace-tray button { flex:0 0 5rem; font-size:.8rem; padding:.4rem; }
 .villages-workspace-tray .villages-workspace-photo { display:block; margin:0 auto .3rem; }
-@media(max-width:727px) { .villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 0 0; width:100%; max-width:100%; height:min(26rem,60dvh); border-radius:1rem 1rem 0 0; padding:.6rem .75rem max(.6rem,env(safe-area-inset-bottom)); } }
+@media(max-width:727px) { .villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 0 0; width:100%; max-width:100%; height:min(31rem,70dvh); border-radius:1rem 1rem 0 0; padding:.6rem .75rem max(.6rem,env(safe-area-inset-bottom)); } }
 
 /* Venues shares the earlier founding panels and document scrolling. */
 .villages-workspace { min-width:0; }
