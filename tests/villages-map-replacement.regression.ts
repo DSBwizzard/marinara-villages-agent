@@ -111,7 +111,7 @@ async function main() {
     );
     await assert.rejects(
       replaceVillageTownMap({ image: "data:text/plain;base64,SGVsbG8=", expectedMapSetAt: at, placements }),
-      /base64 image file/,
+      /readable image/,
     );
     assert.equal((await readVillageState()).townMapImage, original.townMapImage);
     await replaceVillageTownMap({

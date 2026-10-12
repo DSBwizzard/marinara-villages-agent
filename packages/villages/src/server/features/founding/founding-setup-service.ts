@@ -1,3 +1,4 @@
+import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
@@ -86,6 +87,7 @@ export function createFoundingSetup({
     worldFacts?: unknown;
     selectedLorebookIds?: unknown;
     sceneryArtStyle?: unknown;
+    sceneryStyleProfileId?: unknown;
     personalizeVenueImagesByDefault?: unknown;
     useVisualLoreByDefault?: unknown;
     loreTokenBudget?: unknown;
@@ -135,7 +137,8 @@ export function createFoundingSetup({
     const worldFacts = founding
       ? (scenarioImprint?.worldFacts ?? [])
       : readWorldFacts(input.worldFacts ?? village.worldFacts);
-    const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView);
+    const townMap = await readTownMapSubmission(input.townMapImage ?? "", input.townMapView, village.townMapImage);
+    if (founding && !townMap.image) throw badRequest("Generate or upload map artwork before founding.");
     if (
       !founding &&
       (townMap.image !== village.townMapImage || JSON.stringify(townMap.view) !== JSON.stringify(village.townMapView))
@@ -304,6 +307,8 @@ export function createFoundingSetup({
       state.playerPersonaMissing = false;
       assertVillageVenueCapacity(state, venues);
       state.venues = venues;
+      if (input.sceneryStyleProfileId !== undefined)
+        state.sceneryStyleProfileId = readSceneryStyleProfileId(input.sceneryStyleProfileId);
       if (input.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(input.sceneryArtStyle);
       else if (founding) state.sceneryArtStyle = DEFAULT_SCENERY_STYLE;
       if (input.personalizeVenueImagesByDefault !== undefined)

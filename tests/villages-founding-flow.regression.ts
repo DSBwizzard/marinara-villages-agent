@@ -36,6 +36,21 @@ import {
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const { savedFoundingStep, SETUP_STEPS } =
+    await import("../packages/villages/src/client/features/founding/founding-steps.js");
+  for (const [step, expected] of [
+    [0, 0],
+    [1, 1],
+    [2, 3],
+    [3, 4],
+  ])
+    assert.equal(savedFoundingStep({ step }), expected);
+  for (const [step, phase] of SETUP_STEPS.entries()) assert.equal(savedFoundingStep({ step, phase }), step);
+  assert.equal(savedFoundingStep({ step: NaN }), 0);
+  assert.equal(savedFoundingStep({ step: 2, mapSource: "none" }), 2);
+  assert.equal(savedFoundingStep({ step: 3, mapSource: "none" }), 2);
+  assert.equal(savedFoundingStep({ step: 3, phase: "Review", mapSource: "none", mapImage: "cached" }), 4);
+
   const serverRoot = join(root, "packages/villages/src/server");
   const { foundingPhotoOverlaps } = await import(
     pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
@@ -48,7 +63,7 @@ async function main() {
   const unexpected = () => {
     throw Error("Unexpected connection in a setup validation probe.");
   };
-  const { runVillageSetup } = createFoundingSetup({
+  const setupPorts = {
     readVillageState: unexpected,
     mutateVillageState: unexpected,
     buildVillageSnapshot: unexpected,
@@ -64,7 +79,8 @@ async function main() {
     proposeVillage: unexpected,
     proposePublicVenueNames: unexpected,
     draftVillageVenueDescriptions: unexpected,
-  });
+  };
+  const { runVillageSetup } = createFoundingSetup(setupPorts);
   const { parsePlace } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { assertFoundingScenarioLocked } =
     await import("../packages/villages/src/server/domain/rules/founding-record.ts");
@@ -283,6 +299,20 @@ async function main() {
     /locked/,
   );
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
+  const noMapSetup = createFoundingSetup({
+    ...setupPorts,
+    readVillageState: async () => coerceVillageState({ wishSystemVersion: 3 }),
+    readTownMapSubmission: async () => ({
+      image: "",
+      size: null,
+      view: { fit: "cover" as const, focusX: 50, focusY: 50, zoom: 1 },
+    }),
+  });
+  await assert.rejects(
+    noMapSetup.runVillageSetup({ ...identity, foundingReason: "custom", foundingDetails: "We gather at dawn." }),
+    /Generate or upload map artwork before founding/,
+  );
+
   for (const foundingReason of [
     "fresh-start",
     "refuge",
@@ -339,6 +369,8 @@ async function main() {
         {
           venueClass: "residence",
           description: "A hearth and a low table",
+          name: "Hearth room",
+          purpose: "Sharing meals",
           image: insideImage,
           state: {
             condition: "lived in",
@@ -361,8 +393,16 @@ async function main() {
   assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
-    () => parsePlace({ ...parsed, layout: "common", spaces: [{ venueClass: "residence", description: "" }] }, true),
-    /Common Space/,
+    () =>
+      parsePlace(
+        {
+          ...parsed,
+          layout: "common",
+          spaces: [{ venueClass: "residence", name: "Room", purpose: "Meals", description: "" }],
+        },
+        true,
+      ),
+    /visible Zone/,
   );
 
   const client = await clientImplementation();
@@ -374,9 +414,9 @@ async function main() {
     (await readFile(join(serverRoot, "features/residents/resident-agenda-service.ts"), "utf8")) +
     (await readFile(join(serverRoot, "domain/rules/founding-record.ts"), "utf8"));
   const drafts = await readFile(join(serverRoot, "features/founding/founding-drafts-service.ts"), "utf8");
-  assert.ok(client.includes('["People", "Place", "Venues", "Review"]'));
-  assert.ok(client.includes("Where are we?"));
-  assert.ok(client.includes("What brings you together?"));
+  assert.ok(client.includes('["People", "Place", "Map", "Venues", "Review"]'));
+  assert.ok(client.includes("Place and world"));
+  assert.ok(client.includes("Starting circumstances"));
   assert.ok(client.includes("Search lorebooks"));
   const editor = await readFile(
     join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
@@ -392,7 +432,7 @@ async function main() {
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");
   assert.ok(client.includes('setScreen("preparing")'));
-  assert.ok(client.includes("Use this saved artwork"));
+  assert.equal(client.includes("Use this saved artwork"), false);
   assert.ok(client.includes("Change starting Venues"));
   assert.ok(routes.includes('"/setup/venues/suggest"'));
   assert.equal(routes.includes('"/setup/venues/draft"'), false);
@@ -636,8 +676,10 @@ async function foundingConnectionOwnership() {
                     venues: draftRows.map((row) => ({
                       ...row,
                       name: `${label} ${row.name}`,
-                      commonName: "",
-                      commonDescription: "",
+                      layout: "common",
+                      commonName: "Shared room",
+                      commonPurpose: "Conversation",
+                      commonDescription: "A table",
                       privateName: "",
                       privatePurpose: "",
                       privateDescription: "model secret",

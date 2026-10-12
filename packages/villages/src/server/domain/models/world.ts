@@ -1224,6 +1224,7 @@ export type VillageState = {
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
+  sceneryStyleProfileId?: string | null;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
@@ -1708,6 +1709,7 @@ export type VillageSettingsView = {
   worldFacts: string[];
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
+  sceneryStyleProfileId?: string | null;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;

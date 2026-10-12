@@ -198,7 +198,15 @@ const home = coerceVillageState({
         residentIds: ["same"],
         workerIds: ["same", "other"],
         spaces: [],
-        privateSpaces: [{ ...defaultVenueSpace("residence", "Secret writing"), id: "personal", ownerId: "same" }],
+        privateSpaces: [
+          {
+            ...defaultVenueSpace("residence", "Secret writing"),
+            id: "personal",
+            ownerId: "same",
+            name: "Bedroom",
+            purpose: "Rest",
+          },
+        ],
       },
       true,
     ),

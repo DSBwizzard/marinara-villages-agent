@@ -32,7 +32,8 @@ async function main() {
   };
   const disabled = { ...custom, enabled: false };
   assert.equal(DEFAULT_PLAYER_ROLE.title, "Project Coordinator");
-  assert.deepEqual(CLIENT_DEFAULT, DEFAULT_PLAYER_ROLE, "client and server founding defaults agree");
+  assert.equal(CLIENT_DEFAULT.title, "", "new founding UI asks for a title instead of filling an example");
+  assert.match(playerRoleProblem(CLIENT_DEFAULT), /Give your village role a title/);
   assert.deepEqual(playerRoleForSetup(null, undefined, true), DEFAULT_PLAYER_ROLE);
   assert.equal(playerRoleForSetup(null, undefined, false), null);
   assert.deepEqual(playerRoleForSetup(custom, undefined, false), custom, "older requests preserve the saved role");
@@ -43,7 +44,6 @@ async function main() {
     {},
     { ...custom, enabled: "yes" },
     { ...custom, title: " " },
-    { ...custom, explanation: " " },
     { ...custom, title: "x".repeat(81) },
     { ...custom, explanation: "x".repeat(1001) },
   ])
@@ -56,7 +56,9 @@ async function main() {
   assert.match(playerRoleProblem(disabled), /coordinates construction projects/);
   assert.throws(() => playerRoleForSetup(null, disabled, true), /coordinates construction projects/);
   assert.deepEqual(playerRoleForSetup(disabled, disabled, false), disabled, "saved roles stay compatible");
-  assert.ok(playerRoleProblem({ ...custom, explanation: " " }));
+  assert.equal(playerRoleProblem({ ...custom, explanation: " " }), "");
+  assert.equal(readPlayerRole({ enabled: true, title: "Architect" }).explanation, "");
+  assert.equal(DEFAULT_PLAYER_ROLE.explanation, "");
   for (const next of [disabled, DEFAULT_PLAYER_ROLE, null])
     assert.throws(
       () => playerRoleForSetup(custom, next, false),

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
 type Total = {
@@ -65,8 +66,80 @@ const money = (n: number, currency = "USD") => (currency === "CNY" ? "¥" : "$")
 
 export function VillagesUsageMeter({ request, element }: { request: Request; element: HTMLElement }) {
   const [visible, setVisible] = useState(true);
+  const [overlayParent, setOverlayParent] = useState<Element>(() => document.fullscreenElement ?? document.body);
+  const overlay = useRef<HTMLElement>(null);
+  const [bounds, setBounds] = useState({ top: 0, right: 0, width: 0, height: 0 });
+  useEffect(() => {
+    const sync = () => {
+      const rect = element.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const left = Math.max(rect.left, viewport?.offsetLeft ?? 0);
+      const top = Math.max(rect.top, viewport?.offsetTop ?? 0);
+      const right = Math.min(rect.right, (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth));
+      const bottom = Math.min(rect.bottom, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight));
+      const next = {
+        top: top + 4,
+        right: window.innerWidth - right + 6,
+        width: Math.max(0, right - left - 12),
+        height: Math.max(0, bottom - top - 12),
+      };
+      setBounds((current) =>
+        Object.keys(next).every((key) => current[key as keyof typeof next] === next[key as keyof typeof next])
+          ? current
+          : next,
+      );
+    };
+    const observer = new ResizeObserver(sync);
+    observer.observe(element);
+    window.addEventListener("resize", sync);
+    document.addEventListener("scroll", sync, true);
+    document.addEventListener("fullscreenchange", sync);
+    window.visualViewport?.addEventListener("resize", sync);
+    window.visualViewport?.addEventListener("scroll", sync);
+    sync();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", sync);
+      document.removeEventListener("scroll", sync, true);
+      document.removeEventListener("fullscreenchange", sync);
+      window.visualViewport?.removeEventListener("resize", sync);
+      window.visualViewport?.removeEventListener("scroll", sync);
+    };
+  }, [element]);
+  // A modal makes the rest of the document inert. Mount inside it, then use the
+  // browser top layer so the meter stays both visible and interactive.
+  useEffect(() => {
+    const sync = () => {
+      const dialogs = [...document.querySelectorAll<HTMLDialogElement>("dialog:modal")];
+      const parent = dialogs.at(-1) ?? document.fullscreenElement ?? document.body;
+      setOverlayParent((current) => (current === parent ? current : parent));
+    };
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
+    document.addEventListener("fullscreenchange", sync);
+    sync();
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("fullscreenchange", sync);
+    };
+  }, []);
   const [enabled, setEnabled] = useState(false),
     [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!enabled || !visible) setOpen(false);
+  }, [enabled, visible]);
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", dismiss, true);
+    return () => document.removeEventListener("keydown", dismiss, true);
+  }, [open]);
   const [view, setView] = useState<View | null>(null),
     [error, setError] = useState("");
   const [selected, setSelected] = useState(""),
@@ -142,7 +215,14 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       setBusy(false);
     }
   };
-  if (!enabled || !visible) return null;
+  useEffect(() => {
+    const node = overlay.current;
+    if (enabled && visible && node && !node.matches(":popover-open")) node.showPopover();
+    return () => {
+      if (node?.matches(":popover-open")) node.hidePopover();
+    };
+  }, [enabled, visible, overlayParent, bounds.width, bounds.height]);
+  if (!enabled || !visible || bounds.width < 44 || bounds.height < 44) return null;
   const total = view?.totals,
     fx = view?.exchangeRate?.yuanPerDollar;
   const cost = (n: Total) => {
@@ -181,16 +261,28 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       body: JSON.stringify({ connectionId: row.connectionId, model: row.model, rate }),
     });
   };
-  return (
+  return createPortal(
     <aside
       aria-label="Villages AI usage"
+      ref={overlay}
+      popover="manual"
       style={{
-        flex: "0 0 auto",
+        position: "fixed",
+        boxSizing: "border-box",
+        inset: `${bounds.top}px ${bounds.right}px auto auto`,
+        margin: 0,
+        border: 0,
+        width: open ? Math.min(384, bounds.width) : "max-content",
+        maxWidth: bounds.width,
+        maxHeight: bounds.height,
+        overflow: "auto",
+        zIndex: 2147483647,
         minWidth: 0,
-        padding: "4px 8px",
+        padding: open ? "6px 8px" : "0",
         color: "var(--foreground, #f5f5f5)",
-        background: "var(--background, #20232a)",
-        borderBottom: "1px solid var(--border, #888)",
+        background: open ? "var(--background, #20232a)" : "transparent",
+        borderRadius: 16,
+        boxShadow: open ? "0 6px 24px #0008" : "none",
         font: "12px/1.5 Arial,sans-serif",
         overflowWrap: "anywhere",
       }}
@@ -198,71 +290,84 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", alignItems: "center" }}>
         <button
           type="button"
+          aria-label="Villages AI usage"
           aria-expanded={open}
+          title={
+            error ||
+            view?.error ||
+            (!total
+              ? "Loading usage"
+              : total.unknown === total.requests && total.requests > 0
+                ? "Cost unknown"
+                : `${total.unknown ? "Partial estimate; some costs are unknown. " : "Estimated usage. "}${total.yuan && !fx ? "Yuan conversion unavailable; showing known USD only. " : ""}Tap for full usage details.`)
+          }
           onClick={() => setOpen(!open)}
           style={{
-            flex: "1 1 15rem",
+            minHeight: 44,
+            maxWidth: "100%",
+            borderRadius: 16,
             minWidth: 0,
             textAlign: "left",
             color: "inherit",
-            background: "transparent",
-            border: 0,
+            background: "var(--popover, #252b38)",
+            border: "1px solid var(--border, #888)",
+            padding: "2px 8px",
+            fontSize: 11,
             cursor: "pointer",
             whiteSpace: "normal",
           }}
         >
-          Villages AI usage ·{" "}
-          {total
-            ? (total.unknown === total.requests && total.requests > 0
-                ? "Cost unavailable"
-                : cost(total) + " estimated") +
-              " · " +
-              total.requests +
-              " requests · " +
-              total.tokens.toLocaleString() +
-              " known tokens" +
-              (total.unknownTokens ? " · " + total.unknownTokens + " with unavailable token totals" : "") +
-              (view?.running ? " · " + view.running + " running" : "") +
-              (total.unknown ? " · " + total.unknown + " unpriced/unknown" : "")
-            : "Loading usage…"}
-        </button>
-        <button
-          type="button"
-          disabled={busy || !view}
-          onClick={() => void mutate("/usage/reset", { method: "POST" })}
-          title="Clear the displayed totals and recent requests. Saved prices and aggregate history are kept."
-        >
-          Reset usage
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            if (mutating.current) return;
-            setBusy(true);
-            try {
-              await request("/debug/runtime", { method: "PATCH", body: JSON.stringify({ showUsageMeter: false }) });
-              window.dispatchEvent(new CustomEvent("villages-usage-visibility", { detail: false }));
-            } catch {
-              setError("Usage display could not be hidden");
-            } finally {
-              setBusy(false);
-            }
-          }}
-          title="Show again in DEBUG Settings → Show AI usage meter"
-        >
-          Hide usage
+          {error || view?.error || !total || (total.unknown === total.requests && total.requests > 0)
+            ? "$\u2014"
+            : "$" + ((total.usd ?? total.dollars) + (fx ? (total.yuan ?? 0) / fx : 0)).toFixed(2)}{" "}
+          <span aria-hidden="true">{open ? "⌃" : "⌄"}</span>
         </button>
       </div>
       {open && view ? (
         <div
           style={{
-            maxHeight: "min(50vh, 28rem)",
+            maxHeight: "min(40vh, 20rem)",
             overflow: "auto",
             padding: "4px 0",
             borderTop: "1px solid var(--border, #888)",
           }}
         >
+          <p>
+            {view.totals.requests} requests · {view.totals.tokens.toLocaleString()} known tokens
+            {view.totals.unknownTokens ? " · " + view.totals.unknownTokens + " with unavailable token totals" : ""}
+            {view.totals.unknown ? " · " + view.totals.unknown + " unpriced/unknown" : ""}
+            {view.running ? " · " + view.running + " running" : ""} · {cost(view.totals)} estimated
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {" "}
+            <button
+              type="button"
+              disabled={busy || !view}
+              onClick={() => void mutate("/usage/reset", { method: "POST" })}
+              title="Clear the displayed totals and recent requests. Saved prices and aggregate history are kept."
+            >
+              Reset usage
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                if (mutating.current) return;
+                setBusy(true);
+                try {
+                  await request("/debug/runtime", { method: "PATCH", body: JSON.stringify({ showUsageMeter: false }) });
+                  window.dispatchEvent(new CustomEvent("villages-usage-visibility", { detail: false }));
+                } catch {
+                  setError("Usage display could not be hidden");
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              title="Show again in DEBUG Settings → Show AI usage meter"
+            >
+              Hide usage
+            </button>
+          </div>
           <p>
             Since reset: {new Date(view.since).toLocaleString()}. Today: {cost(view.today)} estimated /{" "}
             {view.today.requests} requests.
@@ -426,7 +531,8 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
           ))}
         </div>
       ) : null}
-      {error || view?.error ? <p role="status">{error || view?.error}</p> : null}
-    </aside>
+      {open && (error || view?.error) ? <p role="alert">{error || view?.error}</p> : null}
+    </aside>,
+    overlayParent,
   );
 }

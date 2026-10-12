@@ -442,16 +442,12 @@ export function MapStage({
       onPlace(round4(x), round4(y), {
         width: picture.width,
         height: picture.height,
-        photoWidth:
-          photoRect?.width ??
-          (compactPhotos
-            ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 88
-            : 58),
-        photoHeight:
-          photoRect?.height ??
-          (compactPhotos
-            ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 88
-            : 58),
+        photoWidth: compactPhotos
+          ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 36
+          : (photoRect?.width ?? 58),
+        photoHeight: compactPhotos
+          ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 36
+          : (photoRect?.height ?? 58),
       });
     },
     [onPlace, picking, picture, compactPhotos],
@@ -826,8 +822,16 @@ export function MapStage({
                     onMovePin?.(pin.id, round4(x), round4(y), {
                       width: picture.width,
                       height: picture.height,
-                      photoWidth: photo?.width ?? 88,
-                      photoHeight: photo?.height ?? 88,
+                      photoWidth: compactPhotos
+                        ? parseFloat(
+                            getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width"),
+                          ) || 36
+                        : (photo?.width ?? 88),
+                      photoHeight: compactPhotos
+                        ? parseFloat(
+                            getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width"),
+                          ) || 36
+                        : (photo?.height ?? 88),
                     });
                   }}
                   onPointerCancel={() => {

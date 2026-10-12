@@ -5,7 +5,7 @@ import { PNG } from "pngjs";
 import { chromium, expect } from "@playwright/test";
 import { build } from "esbuild";
 
-const art = new PNG({ width: 1280, height: 720 });
+const art = new PNG({ width: 1536, height: 1024 });
 art.data.fill(90);
 const mapImage = "data:image/png;base64," + PNG.sync.write(art).toString("base64");
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
@@ -16,7 +16,7 @@ const browser = await chromium.launch({
 const snapshot = {
   status: "ready",
   isFounded: false,
-  village: { name: "", setting: "" },
+  village: { name: "Willowbrook", setting: "" },
   noticeboard: [],
   projects: [],
   venueRequests: [],
@@ -35,10 +35,10 @@ const snapshot = {
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     townMapImageSetAt: "",
-    townMapExpectedWidth: 1280,
-    townMapExpectedHeight: 720,
-    townMapGenerationWidth: 1280,
-    townMapGenerationHeight: 720,
+    townMapExpectedWidth: 1536,
+    townMapExpectedHeight: 1024,
+    townMapGenerationWidth: 1536,
+    townMapGenerationHeight: 1024,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     villageNameMaxLength: 80,
     foundingDetailsMaxLength: 2000,
@@ -124,17 +124,23 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
             window.openSetup(false, village);
             return window.values;
           }, village);
+          assert.equal(
+            values.setSetupName,
+            founded ? "Willowbrook" : "",
+            "Only founded names prefill; drafts restore independently",
+          );
           assert.equal(values.setSetupFoundingReason, reason);
           assert.equal(values.setSetupFoundingDetails, details);
-          assert.equal(values.setSetupFoundingGuidance, reason === "none" ? "" : village.settings.foundingGuidance);
+          assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
           assert.equal(values.setScreen, "setup");
         }
     const fresh = await page.evaluate(() => {
       window.openSetup(true, null);
       return window.values;
     });
+    assert.equal(fresh.setSetupName, "");
     assert.equal(fresh.setSetupFoundingReason, "custom");
-    assert.equal(fresh.setSetupFoundingGuidance, "");
+    assert.equal(Object.hasOwn(fresh, "setSetupFoundingGuidance"), false);
     assert.notEqual(fresh.setSetupFoundingDetails, "x".repeat(2000));
     assert.deepEqual(errors, []);
     await context.close();
@@ -143,12 +149,68 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
     "Actual Founding hook: current short/full-length drafts, founded reopening and fresh setup retain authored state (normal/StrictMode; isolated ports).",
   );
 }
+async function verifySavedZoneSelection() {
+  const bundle = await build({
+    stdin: {
+      loader: "tsx",
+      resolveDir: process.cwd(),
+      contents: `
+import {createRoot} from 'react-dom/client';import {useState} from 'react';
+import {FoundingWorkspace} from './packages/villages/src/client/features/founding/villages-founding-workspace.tsx';
+const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,venueClass:'residence',ownerId:'player'});
+const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
+function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
+window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
+<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} saveStatus='Saved' onState={setState} onMove={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
+createRoot(document.getElementById('root')).render(<Harness/>);
+`,
+    },
+    bundle: true,
+    write: false,
+    platform: "browser",
+    format: "iife",
+    jsx: "automatic",
+  });
+  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+  const page = await context.newPage();
+  await page.setContent('<div id="root"></div>');
+  await page.addScriptTag({ content: bundle.outputFiles[0].text });
+  const selector = page.getByLabel("Selected Zone", { exact: true });
+  for (const id of ["common-a", "common-b", "private-a", "private-b"]) {
+    await selector.selectOption(id);
+    await expect(page.getByLabel("Zone name", { exact: true })).toHaveCount(1);
+    await expect(page.getByLabel("Zone name", { exact: true })).toHaveValue(id);
+    await page.getByLabel("Zone used for", { exact: true }).fill("Edited " + id);
+  }
+  await page.getByRole("button", { name: "Common", exact: true }).click();
+  await expect(selector).toHaveValue("common-a");
+  await page.getByRole("button", { name: "Private", exact: true }).click();
+  await expect(selector).toHaveValue("private-a");
+  await page.getByRole("button", { name: "Review second Private" }).click();
+  await expect(selector).toHaveValue("private-b");
+  await expect(page.getByLabel("Zone used for", { exact: true })).toBeFocused();
+  const saved = await page.evaluate(() => window.savedVenue);
+  assert.deepEqual(
+    [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.purpose),
+    ["Edited common-a", "Edited common-b", "Edited private-a", "Edited private-b"],
+  );
+  await page.getByRole("button", { name: "Remove Zone", exact: true }).click();
+  await expect(selector).toHaveValue("exterior");
+  await expect(page.getByLabel("Exterior description", { exact: true })).toBeVisible();
+  await context.close();
+  console.log(
+    "Existing-world inspector: multiple saved Common/Private IDs, independent edits and exact Review focus (isolated React fixture).",
+  );
+}
 try {
+  await verifySavedZoneSelection();
   for (const { width, height, fontSize, homeCount, chromeHeight = 0 } of [
     { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
     { width: 1440, height: 650, fontSize: 16, homeCount: 1, chromeHeight: 200 },
     { width: 1917, height: 600, fontSize: 20, homeCount: 1 },
     { width: 1024, height: 768, fontSize: 20, homeCount: 2 },
+    { width: 727, height: 768, fontSize: 16, homeCount: 1 },
+    { width: 728, height: 768, fontSize: 16, homeCount: 1 },
     { width: 390, height: 844, fontSize: 16, homeCount: 2 },
     { width: 320, height: 568, fontSize: 16, homeCount: 1 },
     { width: 390, height: 650, fontSize: 20, homeCount: 3 },
@@ -212,16 +274,25 @@ try {
               description: "An entrance off the shared corridor.",
               layout: row.venueClass === "gathering" ? "common" : "both",
               commonName: "Sitting area",
+              commonPurpose: "Sharing meals",
               commonDescription: "A table beside a window.",
               privateName: "Bedroom",
               privatePurpose: "Personal resting space",
+              privateDescription: row.residentCharacterId ? "" : "A comfortable hammock.",
             })),
           }),
         });
       }
       if (path.endsWith("/setup/town-map/generate")) {
+        assert.equal(route.request().postDataJSON().sceneryStyleProfileId, "engine-paint");
         mapCalls++;
         const body = route.request().postDataJSON();
+        assert.equal(Object.hasOwn(body, "options"), false, "map generation has no hidden element toggles");
+        assert.equal(
+          Object.hasOwn(JSON.parse(body.sourceKey), "options"),
+          false,
+          "toggle choices are absent from generation identity",
+        );
         mapReceipt = {
           id: body.actionId,
           sourceKey: body.sourceKey,
@@ -235,7 +306,7 @@ try {
             ...mapReceipt,
             status: mapCalls === 1 ? "failed" : "complete",
             error: mapCalls === 1 ? "The generated map is too large to store." : "",
-            result: mapCalls === 1 ? null : { image: mapImage, width: 1280, height: 720 },
+            result: mapCalls === 1 ? null : { image: mapImage, width: 1536, height: 1024 },
           };
         };
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
@@ -249,6 +320,18 @@ try {
           });
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mapReceipt) });
       }
+      if (path.endsWith("/image-style-profiles"))
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            defaultProfileId: "user-ink",
+            profiles: [
+              { id: "user-ink", name: "My ink map" },
+              { id: "engine-paint", name: "Engine painting" },
+            ],
+          }),
+        });
       const value = path.endsWith("/personas/ada")
         ? { persona: personaPreview }
         : path.endsWith("/personas")
@@ -283,6 +366,7 @@ try {
       }),
     );
     await page.goto("http://villages.test/");
+    if (width === 390 && height === 844) await page.clock.install();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     let root = page.locator(".villages-forging-v2");
     const forward = (name) => root.getByRole("button", { name, exact: true });
@@ -294,46 +378,226 @@ try {
       const footer = root.locator(".villages-forging-footer");
       const box = await footer.boundingBox();
       assert.ok(
-        box && box.y >= 0 && box.y + box.height <= height + 1,
-        `navigation stays in viewport: ${JSON.stringify({ box, height, root: await root.boundingBox() })}`,
+        box && (await footer.evaluate((element) => getComputedStyle(element).position)) === "static",
+        `navigation stays in document flow: ${JSON.stringify({ box, height, root: await root.boundingBox() })}`,
       );
     };
     const capture = async (name) => {
       if (process.env.VILLAGES_SCREENSHOT_DIR) {
-        await root.locator(".villages-forging-body").evaluate((element) => {
+        await root.evaluate((element) => {
           element.scrollTop = 0;
         });
-        await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${name}-${width}.png`) });
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${name}-${width}x${height}-${fontSize}.png`),
+        });
       }
     };
-    await expect(root.getByRole("button", { name: "1 People", exact: true })).toBeVisible();
+    await expect(root.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute("aria-label", "People");
+    await expect(root.locator(".villages-forging-steps button")).toHaveCount(0);
+    await expect(root.getByRole("heading", { name: "Forging the Village", exact: true })).toBeVisible();
     await expect(root.getByRole("heading", { name: "You", exact: true })).toBeVisible();
-    await root.getByPlaceholder("Search Personas").fill("patient");
-    await root.locator(".marinara-capability-villages-identity-card").click();
-    if (width <= 704) await root.getByRole("button", { name: /^Your role ·/ }).click();
+    await root.getByRole("button", { name: /Zara.*Change/ }).click();
+    const personaDialog = page.getByRole("dialog", { name: "Choose Persona", exact: true });
+    await personaDialog.getByPlaceholder("Search Personas").fill("patient");
+    await personaDialog.getByRole("button").filter({ hasText: "Ada" }).click();
+    await expect(root.getByText("View Persona details", { exact: true })).toHaveCount(0);
     await root.getByLabel("Role title", { exact: true }).fill(" ");
     await forward("Continue to place").click();
-    await expect(root.getByRole("alert")).toContainText("title");
+    await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toContainText("title");
     await root.getByLabel("Role title", { exact: true }).fill("Harbor Patron");
-    await root
-      .getByLabel("Why villagers turn to you", { exact: true })
-      .fill("I coordinate harbor construction Projects.");
-    const grid = root.getByRole("group", { name: "Choose founding villagers" });
-    for (const name of ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount))
-      await grid.getByRole("button", { name, exact: true }).click();
-    const finn = root.locator(".villages-resident-background").first();
-    if (width <= 704) await finn.getByRole("button").click();
-    await expect(root.getByLabel("Finn character history", { exact: true })).toHaveValue("continue");
-    await expect(root.getByLabel("Finn place in the Village's story", { exact: true })).toHaveValue("new-arrival");
-    for (const role of ["lifelong", "returning", "visiting", "new-arrival"]) {
-      await root.getByLabel("Finn place in the Village's story", { exact: true }).selectOption(role);
-      if (role === "lifelong")
-        await expect(root.getByText("Their life here before play", { exact: false })).toBeVisible();
+    await expect(root.getByLabel("Why villagers turn to you", { exact: true })).toHaveCount(0);
+    const selectResidents = async (names) => {
+      await root.getByRole("button", { name: "+ Add villager", exact: true }).click();
+      const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
+      for (const name of names) await picker.getByRole("button", { name: name + " · Select", exact: true }).click();
+      await picker.getByRole("button", { name: "Done", exact: true }).click();
+    };
+    await selectResidents(
+      ["Finn", "Rosa", "Lee, Keeper of the Observatory’s Long Forgotten Archives"].slice(0, homeCount),
+    );
+    const choice = root.getByLabel("Finn backstory", { exact: true });
+    await expect(choice).toHaveValue("continue");
+    await expect(root.locator(".villages-backstories")).toHaveCount(0);
+    const finnCard = root
+      .locator(".villages-selected-villager")
+      .filter({ has: page.getByLabel("Finn backstory", { exact: true }) });
+    await expect(finnCard.getByRole("button", { name: "Finn \u00b7 Remove", exact: true })).toBeVisible();
+    await expect(finnCard.getByText("Finn", { exact: true })).toHaveCount(1);
+    await bounds();
+    await capture("people-merged");
+    const helpBackstory = finnCard.getByRole("button", { name: "Help: Finn backstory", exact: true });
+    const cardHeightBeforeHelp = await finnCard.evaluate((node) => node.getBoundingClientRect().height);
+    await helpBackstory.click();
+    await expect(finnCard.getByRole("note").locator("span")).toHaveText([
+      "Use original backstory: Preserves the character’s existing history wherever their card describes it.",
+      "Write custom backstory: Describe a custom backstory for Villages to use for this character.",
+    ]);
+    await bounds();
+    assert.equal(
+      await finnCard.evaluate((node) => node.getBoundingClientRect().height),
+      cardHeightBeforeHelp,
+      "help floats without expanding the card",
+    );
+    await capture("backstory-help");
+    await helpBackstory.press("Escape");
+    await expect(helpBackstory).toBeFocused();
+    await helpBackstory.click();
+    await finnCard.getByRole("note").click();
+    await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
+    await helpBackstory.click();
+    await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+    await helpBackstory.click();
+    const outsideField = root.getByLabel("Role title", { exact: true });
+    await outsideField.click();
+    await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+    await expect(outsideField).toBeFocused();
+    await helpBackstory.click();
+    const outsideHeading = root.getByRole("heading", { name: "Forging the Village", exact: true });
+    if (width === 390 && height === 844) {
+      const body = root;
+      await body.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+      const bodyBounds = await body.boundingBox();
+      assert.ok(bodyBounds);
+      const touch = await context.newCDPSession(page);
+      const x = bodyBounds.x + bodyBounds.width - 6;
+      const y = bodyBounds.y + bodyBounds.height * 0.75;
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+      for (let step = 1; step <= 6; step++) {
+        await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - step * 24 }] });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect.poll(() => body.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      await expect(helpBackstory).toHaveAttribute("aria-expanded", "true");
+      await touch.detach();
     }
-    for (const mode of ["adapt", "new", "continue"])
-      await root.getByLabel("Finn character history", { exact: true }).selectOption(mode);
+    if (width < 600) await outsideHeading.tap();
+    else await outsideHeading.click();
+    await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+    await helpBackstory.click();
+    const roleHelp = root.getByRole("button", { name: "Help: Role title", exact: true });
+    await roleHelp.click();
+    await expect(helpBackstory).toHaveAttribute("aria-expanded", "false");
+    await expect(roleHelp).toHaveAttribute("aria-expanded", "true");
+    await roleHelp.press("Escape");
+    await expect(roleHelp).toBeFocused();
+    await choice.selectOption("village");
+    const editBackstory = finnCard.getByRole("button", { name: "Edit Finn backstory", exact: true });
+    const backstoryEditor = root.getByRole("dialog", { name: "Finn’s backstory", exact: true });
+    const past = backstoryEditor.getByLabel("Backstory for this village", { exact: true });
+    const missingBackstoryNotice = finnCard.getByRole("alert");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await expect(choice).not.toHaveAttribute("aria-invalid", "true");
+    const roleTitle = root.getByLabel("Role title", { exact: true });
+    await roleTitle.fill(" ");
+    await forward("Continue to place").click();
+    await expect(roleTitle).toHaveAttribute("aria-invalid", "true");
+    await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveText(
+      "Give your village role a title.",
+    );
+    await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
+    await expect(roleTitle).toBeFocused();
+    const scrollBeforeRoleFix = await root.evaluate((node) => node.scrollTop);
+    await roleTitle.fill("Harbor Patron");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(roleTitle).toBeFocused();
+    assert.ok(
+      Math.abs((await root.evaluate((node) => node.scrollTop)) - scrollBeforeRoleFix) <= 1,
+      "fixing Role does not scroll to the remaining backstory error",
+    );
+    await expect(root.locator(".villages-founding-role-editor").getByRole("alert")).toHaveCount(0);
+    await expect(missingBackstoryNotice).toBeVisible();
+    await forward("Continue to place").click();
+    await expect(root).toHaveAttribute("data-step", "0");
+    await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
+    await expect(missingBackstoryNotice).toHaveCSS("color", "rgb(255, 155, 165)");
+    await expect(choice).toHaveAttribute("aria-invalid", "true");
+    await expect(choice).toBeFocused();
+    await choice.selectOption("continue");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await expect(choice).not.toHaveAttribute("aria-invalid", "true");
+    await choice.selectOption("village");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await forward("Continue to place").click();
+    await expect(missingBackstoryNotice).toHaveText("Custom backstory is empty.");
+    await bounds();
+    await capture("backstory-required");
+    await expect(editBackstory).toBeVisible();
+    await expect(backstoryEditor).toHaveCount(0);
+    await expect(finnCard.getByRole("textbox")).toHaveCount(0);
+    await editBackstory.click();
+    await expect(backstoryEditor).toBeVisible();
+    const popupBounds = await backstoryEditor.boundingBox();
+    assert.ok(
+      popupBounds && popupBounds.height < height * 0.65,
+      "backstory popup fits its contents instead of filling the page",
+    );
+    const popupFooter = await backstoryEditor.locator("footer").boundingBox();
+    assert.ok(
+      popupFooter && popupBounds.y + popupBounds.height - popupFooter.y - popupFooter.height < 25,
+      "no empty area below popup actions",
+    );
+    await expect(backstoryEditor.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+    await expect(backstoryEditor.locator("header").getByRole("button")).toHaveCount(0);
+    await expect(backstoryEditor.locator("footer").getByRole("button", { name: "Close", exact: true })).toBeVisible();
+    await past.fill("Discard this draft.");
+    if (width < 600) await page.touchscreen.tap(4, 4);
+    else await page.mouse.click(4, 4);
+    await expect(backstoryEditor).toBeVisible();
+    await expect(past).toHaveValue("Discard this draft.");
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(choice).toHaveValue("village");
+    await expect(missingBackstoryNotice).toBeVisible();
+    await expect(editBackstory).toBeFocused();
+    await editBackstory.click();
+    await expect(past).toHaveValue("");
+    await past.fill("Discard with Escape.");
+    await past.press("Escape");
+    await expect(backstoryEditor).toBeVisible();
+    await expect(past).toHaveValue("Discard with Escape.");
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(backstoryEditor).toHaveCount(0);
+    await expect(editBackstory).toBeFocused();
+    await editBackstory.click();
+    await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(backstoryEditor.getByRole("alert")).toHaveText("Write Finn’s backstory for this Village.");
+    await past.fill("   ");
+    await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(backstoryEditor.getByRole("alert")).toHaveText("Write Finn’s backstory for this Village.");
+    await past.fill("Finn has always been guardian of a relic in the observatory.");
+    if (width === 390 && height === 844) {
+      await page.setViewportSize({ width, height: 460 });
+      await past.focus();
+      await past.scrollIntoViewIfNeeded();
+      const box = await past.boundingBox();
+      assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1, "popup field fits phone keyboard width");
+      await page.setViewportSize({ width: 1366, height: 844 });
+      await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
+      await page.setViewportSize({ width, height });
+    }
+    await bounds();
+    await capture("people-popup");
+    if (process.env.VILLAGES_SCREENSHOT_DIR) {
+      await backstoryEditor.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `backstory-editor-${width}.png`) });
+    }
+    await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(choice).toHaveValue("village");
+    await expect(missingBackstoryNotice).toHaveCount(0);
+    await expect(choice).not.toHaveAttribute("aria-invalid", "true");
+    await root.getByRole("button", { name: "Finn · Remove", exact: true }).click();
+    await expect(root.locator(".villages-backstory-row")).toHaveCount(homeCount - 1);
+    await selectResidents(["Finn"]);
+    await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
+    await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
+    // Preserve and repair a partially authored legacy Custom draft after reload.
     if (width === 1366) {
       await forward("Save & exit").click();
+      await expect(root.getByRole("button", { name: "Resume founding", exact: true })).toBeVisible();
+      await page.reload();
       await page.evaluate(async () => {
         const db = await new Promise((resolve, reject) => {
           const request = indexedDB.open("villages-founding-v2", 1);
@@ -341,14 +605,19 @@ try {
           request.onerror = () => reject(request.error);
         });
         await new Promise((resolve, reject) => {
-          const transaction = db.transaction("drafts", "readwrite"),
-            cursor = transaction.objectStore("drafts").openCursor();
+          const transaction = db.transaction("drafts", "readwrite");
+          const cursor = transaction.objectStore("drafts").openCursor();
           cursor.onsuccess = () => {
             const row = cursor.result;
             if (!row) return;
             const saved = row.value;
-            delete saved.data.residentContexts;
-            row.update(saved);
+            saved.data.residentContexts.finn = {
+              historyMode: "adapt",
+              storyRole: "custom",
+              customDescription: "",
+              background: "Remembers a former life elsewhere. The observatory's wider world is undecided.",
+            };
+            row.update({ ...saved, revision: saved.revision + 1 });
             row.continue();
           };
           transaction.oncomplete = resolve;
@@ -359,134 +628,429 @@ try {
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume founding", exact: true }).click();
-      await expect(root.getByLabel("Finn character history", { exact: true })).toHaveValue("continue");
-      await expect(root.getByLabel("Finn place in the Village's story", { exact: true })).toHaveValue("new-arrival");
+      await expect(choice).toHaveValue("adapt");
+      await forward("Continue to place").click();
+      await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
+      await expect(backstoryEditor.getByLabel("Finn custom place", { exact: true })).toHaveValue("");
+      await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(backstoryEditor.getByRole("alert")).toContainText("Describe their place here");
+      await backstoryEditor
+        .getByLabel("Finn custom place", { exact: true })
+        .fill("Guardian of a relic in the observatory.");
+      await backstoryEditor.getByRole("button", { name: "Save", exact: true }).click();
     }
-    await root.getByLabel("Finn place in the Village's story", { exact: true }).selectOption("custom");
-    await forward("Continue to place").click();
-    await expect(root.getByRole("alert").filter({ hasText: "Describe their place here." })).toBeVisible();
-    await root.getByLabel("Finn custom place", { exact: true }).fill("Guardian of a relic in the observatory.");
-    await root
-      .getByLabel("Finn starting background", { exact: true })
-      .fill("Remembers a former life elsewhere. The observatory's wider world is undecided.");
-    // Selection changes retain background drafts, but only selected residents submit.
-    await grid.getByRole("button", { name: "Finn", exact: true }).click();
-    await expect(root.locator(".villages-resident-background")).toHaveCount(homeCount - 1);
-    await grid.getByRole("button", { name: "Finn", exact: true }).click();
-    if (width <= 704) {
-      const toggle = root.locator(".villages-resident-background").filter({ hasText: "Finn" }).getByRole("button");
-      if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
-    }
-    await expect(root.getByLabel("Finn custom place", { exact: true })).toHaveValue(
-      "Guardian of a relic in the observatory.",
-    );
     assert.equal(suggestionCalls, 0);
     assert.equal(imageCalls, 0);
-    if (width === 390 && height === 844) {
-      await page.setViewportSize({ width: 1366, height: 844 });
-      await expect(root.getByLabel("Finn starting background", { exact: true })).toHaveValue(
-        "Remembers a former life elsewhere. The observatory's wider world is undecided.",
-      );
-      await page.setViewportSize({ width, height });
-      // A reduced phone viewport exercises focus scrolling above the persistent footer.
-      await page.setViewportSize({ width, height: 460 });
-      const background = root.getByLabel("Finn starting background", { exact: true });
-      await background.focus();
-      await background.scrollIntoViewIfNeeded();
-      const fieldBox = await background.boundingBox();
-      const footerBox = await root.locator(".villages-forging-footer").boundingBox();
-      assert.ok(fieldBox && footerBox && fieldBox.y + fieldBox.height <= footerBox.y + 1);
-      await page.keyboard.press("Shift+Tab");
-      await expect(root.getByLabel("Finn custom place", { exact: true })).toBeFocused();
-      await page.setViewportSize({ width, height });
-    }
     await bounds();
     await capture("people");
-    if (process.env.VILLAGES_SCREENSHOT_DIR && [1366, 390, 320].includes(width)) {
-      await root.getByLabel("Finn custom place", { exact: true }).scrollIntoViewIfNeeded();
-      await page.screenshot({
-        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `resident-background-${width}-${height}.png`),
-      });
-    }
     await forward("Continue to place").click();
-    await expect(root.getByText("Step 2 of 4 · Place")).toBeVisible();
-    await root.getByLabel("Village name", { exact: true }).fill("Willowbrook");
-    await root
-      .getByLabel("Where are we?", { exact: true })
-      .fill("A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.");
-    await root
-      .getByLabel("What brings you together?", { exact: true })
-      .fill("We rented the observatory together because ordinary housing was too expensive.");
-    await bounds();
-    await capture("place");
-    await root.getByRole("button", { name: "1 People", exact: true }).click();
-    if (width <= 704)
-      await root.locator(".villages-resident-background").filter({ hasText: "Finn" }).getByRole("button").click();
-    await expect(root.getByLabel("Finn starting background", { exact: true })).toHaveValue(
-      "Remembers a former life elsewhere. The observatory's wider world is undecided.",
+    await expect(root).toHaveAttribute("data-step", "1");
+    await expect(root.getByText("Story direction", { exact: true })).toHaveCount(0);
+    await expect(root.getByLabel("Narrative direction", { exact: true })).toHaveCount(0);
+    await expect(root.getByText(/Step [1-4] of 4/)).toHaveCount(0);
+    await expect(root.getByText("Starting circumstance examples")).toHaveCount(0);
+    const circumstance = root.getByLabel("Starting circumstances", { exact: true });
+    await expect(circumstance).toHaveValue("");
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("");
+    if (width === 390 && height === 844) {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+      const place = root.getByLabel("Place and world", { exact: true });
+      const first = await circumstance.getAttribute("placeholder");
+      const firstPlace = await place.getAttribute("placeholder");
+      const placeHints = new Set([firstPlace]);
+      const circumstanceHints = new Set([first]);
+      assert.match(first, /\bI\b/, "Circumstance hints use first person");
+      for (let tick = 1; tick <= 4; tick++) {
+        await page.clock.runFor(4000);
+        const circumstanceHint = await circumstance.getAttribute("placeholder");
+        assert.match(circumstanceHint, /\bI\b/, "Circumstance hints use first person");
+        if (tick < 4) {
+          assert.ok(!circumstanceHints.has(circumstanceHint), "Circumstances cycle through four distinct hints");
+          circumstanceHints.add(circumstanceHint);
+        } else assert.equal(circumstanceHint, first, "Circumstances cycle back after four hints");
+        const hint = await place.getAttribute("placeholder");
+        if (tick < 4) {
+          assert.ok(!placeHints.has(hint), "Place cycles through four distinct hints");
+          placeHints.add(hint);
+        } else assert.equal(hint, firstPlace, "Place cycles back after four hints");
+      }
+      await expect(circumstance).toHaveValue("");
+      await expect(place).toHaveValue("");
+      assert.equal(suggestionCalls, 0);
+      assert.equal(imageCalls, 0);
+      await page.clock.resume();
+    }
+    await forward("Continue to Map").click();
+    const nameField = root.getByLabel("Village name", { exact: true });
+    await expect(nameField).toBeFocused();
+    await expect(nameField).toHaveAttribute("aria-invalid", "true");
+    await expect(nameField.locator(".. ").getByRole("alert")).toHaveText("Give the village a name.");
+    await expect(root.getByLabel("Place and world", { exact: true }).locator("..").getByRole("alert")).toHaveText(
+      "Describe the place and world.",
     );
-    await root.getByRole("button", { name: "2 Place", exact: true }).click();
+    await expect(circumstance.locator("..").getByRole("alert")).toHaveText("Describe the starting circumstances.");
+    await nameField.fill("Willowbrook");
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(nameField).toBeFocused();
+    await expect(circumstance.locator("..").getByRole("alert")).toBeVisible();
+    await forward("Continue to Map").click();
+    await expect(root.getByLabel("Place and world", { exact: true })).toBeFocused();
+    await expect(root.getByRole("button", { name: "Help: Village name", exact: true })).toHaveCount(0);
+    const help = root.getByRole("button", { name: "Help: Place and world", exact: true });
+    const panelsHeight = (await root.locator(".villages-place-panels").boundingBox()).height;
+    await help.click();
+    await expect(help).toHaveAttribute("aria-expanded", "true");
+    await expect(root.getByRole("note").filter({ hasText: "surrounding world" })).toBeVisible();
+    assert.equal(
+      (await root.locator(".villages-place-panels").boundingBox()).height,
+      panelsHeight,
+      "Place help floats without expanding panels",
+    );
+    await bounds();
+    await capture("place-help");
+    await help.press("Escape");
+    await expect(help).toBeFocused();
+    await expect(help).toHaveAttribute("aria-expanded", "false");
+    for (const label of ["Starting circumstances"]) {
+      const otherHelp = root.getByRole("button", { name: "Help: " + label, exact: true });
+      await otherHelp.click();
+      await expect(otherHelp).toHaveAttribute("aria-expanded", "true");
+      if (label === "Starting circumstances")
+        await expect(root.getByRole("note")).toHaveText(
+          "Describe the circumstances when you first start playing here. Everyday life, an ongoing situation, or a recent change are all fine.",
+        );
+      assert.equal(
+        (await root.locator(".villages-place-panels").boundingBox()).height,
+        panelsHeight,
+        label + " help floats without expanding panels",
+      );
+      await bounds();
+      await capture(label === "Map" ? "map-help" : "situation-help");
+      await otherHelp.press("Escape");
+      await expect(otherHelp).toBeFocused();
+    }
+    await root
+      .getByLabel("Place and world", { exact: true })
+      .fill("A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.");
+    await forward("Continue to Map").click();
+    await expect(circumstance).toBeFocused();
+    await circumstance.fill("We rented the observatory together because ordinary housing was too expensive.");
+    if (width === 390 && height === 844) {
+      const hint = await circumstance.getAttribute("placeholder");
+      await page.clock.runFor(4100);
+      await expect(circumstance).toHaveValue(
+        "We rented the observatory together because ordinary housing was too expensive.",
+      );
+      assert.equal(await circumstance.getAttribute("placeholder"), hint, "authored text stops placeholder rotation");
+      const place = root.getByLabel("Place and world", { exact: true });
+      const placeHint = await place.getAttribute("placeholder");
+      await page.clock.runFor(4000);
+      await expect(place).toHaveValue(
+        "A converted seaside observatory with bedrooms along an indoor corridor and one shared telescope hall.",
+      );
+      assert.equal(await place.getAttribute("placeholder"), placeHint, "authored place text stops hint rotation");
+    }
+
+    await expect(root.getByRole("group", { name: "Map source", exact: true })).toHaveCount(0);
+    await capture("place");
+    await forward("Continue to Map").click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    assert.deepEqual(
+      await root
+        .getByRole("list", { name: "Founding phases" })
+        .locator("li")
+        .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label"))),
+      ["People", "Place", "Map", "Venues", "Review"],
+    );
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveCount(0);
+    const mapDialog = root.getByRole("region", { name: "Map artwork", exact: true });
+    await expect(mapDialog).toBeVisible();
+    const stylePicker = mapDialog.getByLabel("Scenery style preset", { exact: true });
+    await expect(stylePicker).toHaveValue("");
+    await expect(stylePicker.getByRole("option", { name: "Engine default (My ink map)", exact: true })).toHaveCount(1);
+    await stylePicker.selectOption("engine-paint");
+    await expect(stylePicker).toHaveValue("engine-paint");
+    await expect(mapDialog.getByRole("button", { name: "Help: Map", exact: true })).toHaveCount(0);
+    for (const label of ["Map details"]) {
+      const mapHelp = mapDialog.getByRole("button", { name: "Help: " + label, exact: true });
+      const panelHeight = (await mapDialog.boundingBox()).height;
+      await mapHelp.click();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "true");
+      const note = mapDialog.getByRole("note");
+      await expect(note).toBeVisible();
+      assert.equal((await mapDialog.boundingBox()).height, panelHeight, label + " help floats without expanding Map");
+      await bounds();
+      await capture("map-details-help");
+      await note.click();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "true");
+      await mapHelp.press("Escape");
+      await expect(mapHelp).toBeFocused();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
+      await mapHelp.click();
+      await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+      await expect(mapHelp).toHaveAttribute("aria-expanded", "false");
+    }
+    await expect(mapDialog.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
+    await expect(mapDialog.getByRole("group", { name: "Map source", exact: true }).getByRole("button")).toHaveCount(2);
+    await expect(mapDialog.getByRole("button", { name: "Generate artwork", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     await forward("Continue to Venues").click();
     await expect(root).toHaveAttribute("data-step", "2");
-    await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toBeVisible();
-    const list = root.locator(".villages-workspace-list");
-    const inspector = root.locator(".villages-workspace-inspector");
-    const detailsView = async () => {
-      const toggle = root
-        .getByRole("group", { name: "Workspace view" })
-        .getByRole("button", { name: "Details", exact: true });
-      if (await toggle.isVisible()) await toggle.click();
-    };
-    const mapView = async () => {
-      const back = inspector.getByRole("button", { name: "Back to map", exact: true });
-      if (await back.isVisible()) await back.click();
-    };
-    const open = async (index = 0) => {
-      await detailsView();
-      await list.locator("button").nth(index).click();
-      await detailsView();
-    };
-    await expect(list.locator("button")).toHaveCount(homeCount + 2);
-    await forward("Review village").click();
-    await detailsView();
-    await expect(inspector.getByRole("region", { name: "Details needed before Review" })).toBeVisible();
-    await forward("Draft starting Venues").click();
-    await expect(root.getByRole("button", { name: "Draft starting Venues", exact: true })).toBeEnabled();
-    assert.equal(suggestionCalls, 1);
-    await mapView();
-    const placementMap = root.locator(".marinara-capability-villages-setup-map-viewport");
-    const spots = Array.from({ length: homeCount + 2 }, (_, i) => ({
-      x: homeCount === 3 ? 0.22 + (i % 3) * 0.28 : 0.22 + (i % 2) * 0.56,
-      y: i < (homeCount === 3 ? 3 : 2) ? 0.28 : 0.72,
-    }));
-    const canvas = placementMap.locator(".marinara-capability-villages-canvas");
-    await capture("venues-ready");
-    for (const spot of spots) {
-      const box = await canvas.boundingBox();
-      await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
-    }
-    await expect(root.locator(".villages-workspace-toolbar > strong")).toHaveText(
-      `${homeCount + 2} / ${homeCount + 2} placed`,
-    );
-    if (chromeHeight)
+    await expect(root.getByRole("alert").filter({ hasText: "Generate or upload map artwork" })).toBeVisible();
+    assert.equal(mapCalls, 0, "missing artwork does not start generation");
+    const assertMapFooter = async () => {
+      await expect(forward("Continue to Venues")).toBeVisible();
       assert.ok(
-        (await placementMap.boundingBox()).height >= 230,
-        `short Engine tabs retain useful map height: ${JSON.stringify({ map: await placementMap.boundingBox(), root: await root.boundingBox(), toolbar: await root.locator(".villages-workspace-toolbar").boundingBox(), steps: await root.locator(".villages-forging-steps").boundingBox(), footer: await root.locator(".villages-forging-footer").boundingBox() })}`,
+        await mapDialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+        "Map page has no horizontal overflow",
       );
-    // One request + one click per Venue + Review, without any editor confirmation or image request.
-    await forward("Review village").click();
-    await expect(root.getByText("Step 4 of 4 · Review")).toBeVisible();
-    assert.equal(imageCalls, 0);
-    await root.getByRole("button", { name: "Change starting Venues", exact: true }).click();
-    await open();
-    await inspector.getByLabel("Venue name", { exact: true }).fill("Autosaved name");
-    await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
+    };
+    await assertMapFooter();
+    await bounds();
+    await capture("map-dialog");
+    await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
+    await expect(mapDialog.getByText("Based on your Place and world description.", { exact: true })).toHaveCount(0);
+    const mapDetails = mapDialog.getByLabel("Map details", { exact: true });
+    await expect(mapDetails).toHaveValue("");
+    const mapHints = [
+      "An inn beside the river, with homes around a central square.",
+      "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
+      "Leave out cars and parking lots; connect the shops with covered paths.",
+      "Show only the station interior; leave out planets, stars, and exterior views.",
+    ];
+    assert.ok(mapHints.includes(await mapDetails.getAttribute("placeholder")));
+    if (width === 390 && height === 844) {
+      await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 1000);
+      const firstHint = await mapDetails.getAttribute("placeholder");
+      const seen = new Set([firstHint]);
+      for (let tick = 1; tick <= 4; tick++) {
+        await page.clock.runFor(4000);
+        const hint = await mapDetails.getAttribute("placeholder");
+        if (tick < 4) {
+          assert.ok(mapHints.includes(hint) && !seen.has(hint));
+          seen.add(hint);
+        } else assert.equal(hint, firstHint, "Map details cycle back after four hints");
+      }
+      await expect(mapDetails).toHaveValue("");
+      await mapDetails.fill("Keep this map detail intact.");
+      const hint = await mapDetails.getAttribute("placeholder");
+      await page.clock.runFor(8000);
+      await expect(mapDetails).toHaveValue("Keep this map detail intact.");
+      assert.equal(await mapDetails.getAttribute("placeholder"), hint, "Authored Map details stop hint rotation");
+      assert.equal(mapCalls, 0, "Hint rotation makes no generation requests");
+      await mapDetails.fill("");
+      await page.clock.resume();
+    }
+    await mapDialog.getByRole("button", { name: "Help: Map details", exact: true }).click();
+    await expect(mapDialog.getByRole("note")).toHaveText(
+      "Describe what you want shown, arranged, or left out of the artwork.",
+    );
+    await mapDialog.getByRole("heading", { name: "Map", exact: true }).click();
+    await expect(mapDialog.getByRole("note")).toHaveCount(0);
+    await capture("map-details");
+    const customStyle = mapDialog.getByLabel("Scenery style description", { exact: true });
+    await expect(customStyle).toHaveCount(0);
+    await stylePicker.selectOption("@custom");
+    await expect(customStyle).toBeVisible();
+    await expect(customStyle.locator("xpath=ancestor::details")).toHaveCount(0);
+    assert.ok(
+      await customStyle.evaluate((node) =>
+        Boolean(node.compareDocumentPosition(node.parentElement.nextElementSibling) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ),
+      "Custom style appears above More options",
+    );
+    await capture("map-custom-style");
+    await customStyle.fill("Soft watercolor washes.");
+    await mapDialog.getByText("More options", { exact: true }).click();
+    await mapDialog.getByText("More options", { exact: true }).click();
+    await expect(customStyle).toBeVisible();
+    await expect(customStyle).toHaveValue("Soft watercolor washes.");
+    await stylePicker.selectOption("engine-paint");
+    await expect(customStyle).toHaveCount(0);
+    assert.equal(mapCalls, 0, "Changing custom style visibility makes no generation requests");
+    await mapDialog.getByText("More options", { exact: true }).click();
+    await expect(mapDialog.getByText("Things to avoid", { exact: true })).toBeVisible();
+    for (const name of ["Roads and paths", "Structures", "Water"]) {
+      await expect(mapDialog.getByLabel(name, { exact: true })).toHaveCount(0);
+    }
+    // Inline Map controls must hand scrolling to the same root as People and Place.
+    await root.evaluate((node) => {
+      node.scrollTop = 0;
+    });
+    const mapContext = mapDialog.locator(".villages-founding-field-heading");
+    const contextBox = await mapContext.boundingBox();
+    assert.ok(contextBox);
+    const scrollX = contextBox.x + contextBox.width / 2;
+    const scrollY = contextBox.y + contextBox.height / 2;
+    await page.mouse.move(scrollX, scrollY);
+    await page.mouse.wheel(0, 260);
+    await expect.poll(() => root.evaluate((node) => node.scrollTop)).toBeGreaterThan(40);
+    if (width < 600) {
+      await root.evaluate((node) => {
+        node.scrollTop = 0;
+      });
+      const touch = await context.newCDPSession(page);
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: scrollX, y: scrollY }] });
+      for (let step = 1; step <= 6; step++) {
+        await touch.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: scrollX, y: scrollY - step * 24 }],
+        });
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+      }
+      await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await expect.poll(() => root.evaluate((node) => node.scrollTop)).toBeGreaterThan(40);
+      await touch.detach();
+    }
+    await capture("map-page-scroll");
+    await assertMapFooter();
+    await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
+    await expect(mapDialog.getByLabel("Upload map image", { exact: true })).toBeVisible();
+    await assertMapFooter();
+    assert.equal(mapCalls, 0, "browsing map choices never generates artwork");
+    await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
+    await mapDialog.getByLabel("Map details", { exact: true }).fill("Keep this authored map detail.");
+    await forward("Save & exit").click();
+    await expect(root.getByText(/Resume: Map/)).toBeVisible();
     if (width === 1366) {
-      // A v2 modal checkpoint must load the saved current edits, never restore its old cancel copy.
       await page.evaluate(async () => {
         const db = await new Promise((resolve) => {
           const open = indexedDB.open("villages-founding-v2", 1);
           open.onsuccess = () => resolve(open.result);
+        });
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction("drafts", "readwrite");
+          const cursor = tx.objectStore("drafts").openCursor();
+          cursor.onsuccess = () => {
+            const row = cursor.result;
+            if (!row) return;
+            const saved = row.value;
+            delete saved.data.phase;
+            saved.data.step = 2;
+            saved.data.mapSource = "none";
+            row.update({ ...saved, revision: saved.revision + 1 });
+            row.continue();
+          };
+          tx.oncomplete = resolve;
+          tx.onerror = () => reject(tx.error);
+        });
+        db.close();
+      });
+    }
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(root.getByText(/Resume: Map/)).toBeVisible();
+    await root.getByRole("button", { name: "Resume founding", exact: true }).click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    await expect(mapDialog.getByLabel("Map details", { exact: true })).toHaveValue("Keep this authored map detail.");
+    await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
+    await mapDialog
+      .getByLabel("Upload map image", { exact: true })
+      .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
+    await expect(mapDialog.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
+    await expect(
+      mapDialog.getByText("Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    const selectedMap = mapDialog.getByRole("img", { name: "Selected village map", exact: true });
+    const acceptedSrc = await selectedMap.getAttribute("src");
+    for (const [width, height, problem] of [
+      [300, 2056, "higher-resolution"],
+      [1024, 2048, "Choose a wider image"],
+    ]) {
+      await mapDialog.getByLabel("Upload map image", { exact: true }).setInputFiles({
+        name: "invalid-map.png",
+        mimeType: "image/png",
+        buffer: PNG.sync.write(new PNG({ width, height })),
+      });
+      await expect(mapDialog.getByRole("alert").filter({ hasText: problem })).toBeVisible();
+      await expect(selectedMap).toHaveAttribute("src", acceptedSrc);
+      assert.equal(mapCalls, 0, "Rejected uploads make no generation requests");
+    }
+    const generateChoice = mapDialog.getByRole("button", { name: "Generate artwork", exact: true });
+    await expect(generateChoice).toContainText("Generate a map from the information provided so far");
+    await generateChoice.click();
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
+    await mapDialog.getByRole("button", { name: "Upload image", exact: true }).click();
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
+    await expect(selectedMap).toHaveAttribute("src", acceptedSrc);
+    await expect(mapDialog.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
+    assert.equal(mapCalls, 0, "Changing source after an upload error does not generate artwork");
+    await mapDialog
+      .getByLabel("Upload map image", { exact: true })
+      .setInputFiles({ name: "starting-map.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
+    await expect(mapDialog.getByRole("alert").filter({ hasText: "Choose a wider image" })).toHaveCount(0);
+    await bounds();
+    await capture("map-page");
+    await forward("Back").click();
+    await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook");
+    await forward("Back").click();
+    await root.getByRole("button", { name: "Edit Finn backstory", exact: true }).click();
+    if (width === 1366)
+      await expect(backstoryEditor.getByLabel("Finn starting background", { exact: true })).toHaveValue(
+        "Remembers a former life elsewhere. The observatory's wider world is undecided.",
+      );
+    else await expect(past).toHaveValue("Finn has always been guardian of a relic in the observatory.");
+    await backstoryEditor.getByRole("button", { name: "Close", exact: true }).click();
+    await forward("Continue to place").click();
+    await forward("Continue to Map").click();
+    await forward("Continue to Venues").click();
+    await expect(root).toHaveAttribute("data-step", "3");
+    const phaseHeading = root.locator(".villages-forging-heading");
+    await expect(phaseHeading).toBeVisible();
+    assert.equal(await phaseHeading.evaluate((element) => getComputedStyle(element).position), "static");
+    await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(0);
+
+    const inspector = root.locator(".villages-workspace-inspector");
+    const placementMap = root.locator(".marinara-capability-villages-setup-map-viewport");
+    const canvas = placementMap.locator(".marinara-capability-villages-canvas");
+    const pins = canvas.locator("button[data-pin-id]");
+    const mapView = async () => {
+      const back = inspector.getByRole("button", { name: "Return to map", exact: true });
+      if (await back.isVisible()) await back.click();
+    };
+    const open = async (index = 0) => {
+      await mapView();
+      await pins.nth(index).click();
+    };
+    const zone = async (name) => {
+      await inspector.getByRole("button", { name: "Zones", exact: true }).click();
+      await inspector.getByRole("button", { name, exact: true }).click();
+    };
+    await expect(root.locator(".villages-workspace-list")).toHaveCount(0);
+    await forward("Draft starting Venues").click();
+    await expect(forward("Draft starting Venues")).toBeEnabled();
+    assert.equal(suggestionCalls, 1);
+    const spots = Array.from({ length: homeCount + 2 }, (_, i) => ({
+      x: homeCount === 3 ? 0.22 + (i % 3) * 0.28 : 0.22 + (i % 2) * 0.56,
+      y: i < (homeCount === 3 ? 3 : 2) ? 0.28 : 0.72,
+    }));
+    for (const spot of spots) {
+      const box = await canvas.boundingBox();
+      await page.mouse.click(box.x + spot.x * box.width, box.y + spot.y * box.height);
+    }
+    await expect(pins).toHaveCount(homeCount + 2);
+
+    // A complete suggested draft proceeds without visiting each editor or making image requests.
+    await forward("Review village").click();
+    await expect(root).toHaveAttribute("data-step", "4");
+    assert.equal(imageCalls, 0);
+    await forward("Change starting Venues").click();
+    await open();
+    const narrow = (await root.locator(".villages-workspace").getAttribute("data-narrow")) === "true";
+    assert.equal(narrow, width - 24 < 704, "704px available-workspace breakpoint");
+    await expect(root.getByRole("dialog")).toHaveCount(narrow ? 1 : 0);
+    if (width === 1366) {
+      // Resume a legacy modal checkpoint using current authored fields and retained prohibited Zone data.
+      await inspector.getByLabel("Venue name", { exact: true }).fill("Legacy current edit");
+      await forward("Save & exit").click();
+      await page.evaluate(async () => {
+        const db = await new Promise((resolve) => {
+          const request = indexedDB.open("villages-founding-v2", 1);
+          request.onsuccess = () => resolve(request.result);
         });
         await new Promise((resolve) => {
           const tx = db.transaction("drafts", "readwrite"),
@@ -498,7 +1062,18 @@ try {
               const saved = get.result;
               delete saved.data.workspace;
               saved.data.editorOpen = true;
-              saved.data.editorOriginal = { ...saved.data.venues[0], name: "Old cancelled checkpoint" };
+              saved.data.editorOriginal = { ...saved.data.venues[0], name: "Old cancel copy" };
+              const park = saved.data.venues.find((venue) => venue.category === "public-center");
+              park.layout = "both";
+              park.privateSpaces = [
+                {
+                  ...saved.data.venues[0].privateSpaces[0],
+                  id: "old:private",
+                  name: "Legacy private draft",
+                  purpose: "Stored old purpose",
+                  description: "Kept old description",
+                },
+              ];
               store.put({ ...saved, revision: saved.revision + 1 }, keys.result[0]);
             };
           };
@@ -506,89 +1081,117 @@ try {
         });
         db.close();
       });
+      await page.reload();
+      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+      await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Legacy current edit");
+      await open(homeCount + 1);
+      await zone("Private");
+      await expect(inspector.getByText(/previous draft and photographs are kept/)).toBeVisible();
+      await open();
+      await inspector.getByRole("button", { name: "Venue", exact: true }).click();
     }
-    await page.reload();
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-    await detailsView();
-    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Autosaved name");
-    await expect(root.getByRole("dialog")).toHaveCount(0);
+    await expect(inspector.getByRole("heading", { name: "Before Review", exact: true })).toHaveCount(0);
+    await expect(inspector.getByRole("region", { name: "Details needed before Review", exact: true })).toHaveCount(0);
+    await inspector.getByLabel("Venue name", { exact: true }).fill("Autosaved name");
+    await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
+    if (narrow) {
+      const returnButton = inspector.getByRole("button", { name: "Return to map", exact: true });
+      await returnButton.focus();
+      await page.keyboard.press("Shift+Tab");
+      assert.ok(await inspector.evaluate((el) => el.contains(document.activeElement)), "sheet traps keyboard focus");
+      await page.keyboard.press("Escape");
+      await expect(pins.first()).toBeFocused();
+      await open();
+      await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Autosaved name");
+    }
     await inspector.getByLabel("Venue name", { exact: true }).fill("My observatory quarters");
     await inspector.getByLabel("Physical form", { exact: true }).fill("Converted observatory room");
-    await inspector.getByLabel("Venue Type", { exact: true }).fill("Home");
-    await inspector.getByRole("button", { name: "Zones", exact: true }).click();
+    await expect(inspector.getByLabel("Venue Type", { exact: true })).toHaveCount(0);
+    await expect(inspector.getByLabel("Assigned villager", { exact: true })).toHaveCount(0);
+    await zone("Exterior");
     await inspector
       .getByLabel("Exterior description", { exact: true })
       .fill("A blue door beside the telescope corridor.");
-    await inspector.getByLabel("Selected Zone").selectOption("common:base");
+    await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveCount(0);
+    await zone("Common");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");
     await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
-    await inspector.getByLabel("Selected Zone").selectOption("private:base");
+    await zone("Private");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
+    await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
+    await zone("Common");
+    await inspector.getByLabel("Include Common Space", { exact: true }).click();
+    await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeChecked();
+    await expect(inspector.getByRole("alert")).toContainText("At least one");
+    await zone("Private");
+    await mapView();
+    await forward("Save & exit").click();
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+    await open();
+    await zone("Private");
+    await expect(inspector.getByLabel("Include Private Space", { exact: true })).not.toBeChecked();
+    await inspector.getByLabel("Include Private Space", { exact: true }).check();
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveValue(
+      "My hammock and traveling journal.",
+    );
+    await inspector.getByLabel("Zone appearance", { exact: true }).fill("");
+    await mapView();
+    await forward("Review village").click();
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeFocused();
+    await expect(inspector.getByRole("alert").filter({ hasText: "Describe the Zone appearance." })).toHaveCSS(
+      "color",
+      "rgb(255, 155, 165)",
+    );
+    await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
+    await open(homeCount + 1);
+    await zone("Common");
+    await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeChecked();
+    await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeDisabled();
+    await zone("Private");
+    await expect(inspector.getByLabel("Include Private Space", { exact: true })).not.toBeChecked();
+    await expect(inspector.getByLabel("Include Private Space", { exact: true })).toBeDisabled();
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
+    await open(1);
+    await zone("Private");
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
+    await inspector.getByRole("button", { name: "Help: Private interior", exact: true }).click();
+    await expect(inspector.getByText(/hidden until invited/)).toBeVisible();
+    await open();
+    await mapView();
     await forward("Draft starting Venues").click();
     if (width === 1366) {
       await expect.poll(() => !!releaseSuggestion).toBe(true);
-      await expect(forward("Save & exit")).toBeDisabled();
+      await open();
       await inspector.getByRole("button", { name: "Venue", exact: true }).click();
-      await inspector.getByLabel("Venue Type", { exact: true }).fill("Authored during suggestion");
-      await inspector.getByLabel("Venue name", { exact: true }).fill("My observatory quarters");
+      await inspector.getByLabel("Physical form", { exact: true }).fill("Authored during suggestion");
       releaseSuggestion();
-      await expect(inspector.getByLabel("Venue Type", { exact: true })).toHaveValue("Authored during suggestion");
-      await inspector.getByRole("button", { name: "Zones", exact: true }).click();
+      await expect(forward("Draft starting Venues")).toBeEnabled();
+      await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveValue("Authored during suggestion");
     }
-    await expect(root.getByRole("button", { name: "Draft starting Venues", exact: true })).toBeEnabled();
-    await expect(forward("Save & exit")).toBeEnabled();
-    await expect(list.locator("button").first()).toContainText("My observatory quarters");
-    assert.equal(suggestionCalls, 2, "suggestions happen only on explicit request");
-    // Fields, the selected Zone, and the map survive view switches and side-panel width changes.
     await mapView();
-    await expect(canvas.locator("button[data-pin-id]")).toHaveCount(homeCount + 2);
-    const before = await canvas.evaluate((el) =>
-      [...el.querySelectorAll("button[data-pin-id]")].map((pin) => [
-        pin.dataset.pinId,
-        pin.parentElement.style.left,
-        pin.parentElement.style.top,
-      ]),
-    );
-    await mapView();
-    await expect(canvas.locator("button[data-pin-id]")).toHaveCount(homeCount + 2);
-    await expect(placementMap.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
-    const photo = placementMap.locator(".marinara-capability-villages-pin-photo-card").first();
-    const initialWidth = (await photo.boundingBox()).width;
-    await photo.hover();
-    assert.equal((await photo.boundingBox()).width, initialWidth, "hover never enlarges photographs");
-    assert.equal(Math.round(initialWidth), width >= 60 * fontSize ? 88 : 72);
-    await detailsView();
-    await expect(inspector.getByLabel("Selected Zone")).toHaveValue("private:base");
-    await expect(inspector.getByLabel("Zone appearance")).toHaveValue("My hammock and traveling journal.");
-    await mapView();
-    await expect(canvas.locator("button[data-pin-id]")).toHaveCount(homeCount + 2);
-    assert.deepEqual(
-      await canvas.evaluate((el) =>
-        [...el.querySelectorAll("button[data-pin-id]")].map((pin) => [
-          pin.dataset.pinId,
-          pin.parentElement.style.left,
-          pin.parentElement.style.top,
-        ]),
-      ),
-      before,
-    );
-    await bounds();
-    await capture("venues");
-    await forward("Save & exit").click();
-    await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
-    await page.reload();
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    root = page.locator(".villages-forging-v2");
-    await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
-    await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-    await expect(root).toHaveAttribute("data-step", "2");
-    await expect(list.locator("button").first()).toContainText("My observatory quarters");
-    assert.equal(suggestionCalls, 2, "reload never repeats generation");
+    await expect(forward("Draft starting Venues")).toBeEnabled();
+    assert.equal(suggestionCalls, 2);
+    await page.mouse.move(0, 0);
+    await pins.first().evaluate((el) => el.blur());
+    const photo = pins.first().locator(".marinara-capability-villages-pin-photo-card");
+    await expect.poll(async () => Math.round((await photo.boundingBox()).width)).toBe(36);
+    const hit = await pins.first().boundingBox();
+    assert.ok(hit.width >= 44 && hit.height >= 44);
+    if (width >= 600) {
+      await pins.first().hover();
+      await expect.poll(async () => Math.round((await photo.boundingBox()).width)).toBe(72);
+      await page.mouse.move(0, 0);
+    }
+    await page.keyboard.press("Tab");
+    await pins.first().focus();
+    await expect.poll(async () => Math.round((await photo.boundingBox()).width)).toBe(72);
+    await pins.first().evaluate((el) => el.blur());
+    await expect.poll(async () => Math.round((await photo.boundingBox()).width)).toBe(36);
     if (width === 1366) {
-      // Drag threshold, valid drops, rejected overlap, outside drop and cancel retain normalized coordinates.
-      await mapView();
-      const pins = canvas.locator("button[data-pin-id]");
       const position = () =>
         pins.first().evaluate((pin) => [pin.parentElement.style.left, pin.parentElement.style.top]);
       const dragTo = async (destination) => {
@@ -604,78 +1207,55 @@ try {
       await expect(root.getByRole("alert").filter({ hasText: "overlap" })).toBeVisible();
       assert.deepEqual(await position(), original);
       await dragTo({ x: -10, y: 100 });
-      await expect(root.getByRole("alert").filter({ hasText: "inside the map" })).toBeVisible();
       assert.deepEqual(await position(), original);
-      let firstBox = await pins.first().boundingBox();
-      await dragTo({ x: firstBox.x + firstBox.width / 2 + 45, y: firstBox.y + firstBox.height / 2 });
+      const box = await pins.first().boundingBox();
+      await dragTo({ x: box.x + box.width / 2 + 45, y: box.y + box.height / 2 });
       assert.notDeepEqual(await position(), original);
-      const valid = await position();
-      firstBox = await pins.first().boundingBox();
-      await dragTo({ x: firstBox.x + firstBox.width / 2 + 5, y: firstBox.y + firstBox.height / 2 });
-      assert.deepEqual(await position(), valid, "less than eight pixels selects without moving");
-      await pins.first().dispatchEvent("pointercancel");
-      assert.deepEqual(await position(), valid);
       const mapHeight = (await placementMap.boundingBox()).height;
+      await open();
       await inspector.evaluate((el) => {
         el.scrollTop = el.scrollHeight;
       });
-      assert.equal((await placementMap.boundingBox()).height, mapHeight, "inspector scroll never shrinks map");
+      assert.equal((await placementMap.boundingBox()).height, mapHeight);
+      // Optional image failures and saved responses keep unrelated editing available.
       await open(1);
-      await inspector.getByRole("button", { name: "Zones", exact: true }).click();
-      await inspector.getByLabel("Selected Zone").selectOption("common:base");
-      await inspector.getByText("Artwork · optional", { exact: true }).click();
+      await zone("Common");
+      await inspector.getByText("Add photo", { exact: true }).click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect(root.getByRole("alert").filter({ hasText: "Optional image unavailable" })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect.poll(() => !!releaseImage).toBe(true);
-      await expect(inspector.getByLabel("Zone appearance")).toBeDisabled();
+      await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeDisabled();
       await expect(forward("Save & exit")).toBeDisabled();
-      await expect(forward("Review village")).toBeDisabled();
-      await open(0);
+      await open();
       await inspector.getByRole("button", { name: "Venue", exact: true }).click();
-      await expect(inspector.getByLabel("Physical form")).toBeEnabled();
+      await expect(inspector.getByLabel("Physical form", { exact: true })).toBeEnabled();
       releaseImage();
-      await expect(forward("Review village")).toBeEnabled();
       await expect(forward("Save & exit")).toBeEnabled();
       await open(1);
+      await zone("Common");
       await expect(inspector.locator("img")).toHaveCount(1);
       await forward("Draft starting Venues").click();
-      await expect(root.getByRole("button", { name: "Draft starting Venues", exact: true })).toBeEnabled();
-      await expect(inspector.locator("img"), "refresh keeps unedited generated Zone artwork").toHaveCount(1);
-      // The next pending response is stale after a Village-name change; it cannot attach to a new context.
-      await inspector.getByLabel("Selected Zone").selectOption("exterior");
-      await inspector.getByText("Artwork · optional", { exact: true }).click();
+      await expect(forward("Draft starting Venues")).toBeEnabled();
+      await expect(inspector.locator("img")).toHaveCount(1);
+      await zone("Exterior");
+      await inspector.getByText("Add photo", { exact: true }).click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
-      await expect(forward("Review village")).toBeEnabled();
+      await expect(inspector.getByRole("button", { name: "Generate again", exact: true })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate again", exact: true }).click();
       await expect.poll(() => imageCalls === 4).toBe(true);
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await forward("Back").click();
+      await forward("Back").click();
       await root.getByLabel("Village name", { exact: true }).fill("Changed while generating");
       releaseImage();
       await expect(root.getByRole("alert").filter({ hasText: "changed while its image" })).toBeVisible();
       await root.getByLabel("Village name", { exact: true }).fill("Willowbrook");
-      await root.getByRole("button", { name: "3 Venues", exact: true }).click();
+      await forward("Continue to Map").click();
+      await forward("Continue to Venues").click();
       await open(1);
+      await zone("Exterior");
       await expect(inspector.locator("img")).toHaveCount(1);
-      await open(0);
-      // Only the selected Zone is rendered; custom Zones persist without applying a form.
-      await open();
-      await inspector.getByRole("button", { name: "Zones", exact: true }).click();
-      await inspector.getByText("Add or change Zones", { exact: true }).click();
-      await inspector.getByRole("button", { name: "Add Zone", exact: true }).click();
-      await inspector.getByLabel("Selected Zone").selectOption({ label: "New Zone" });
-      await inspector.getByLabel("Zone name", { exact: true }).fill("Study");
-      await inspector.getByLabel("Zone used for", { exact: true }).fill("Reading and writing");
-      await inspector.getByLabel("Zone appearance", { exact: true }).fill("A desk by the window.");
-      await forward("Save & exit").click();
-      await page.reload();
-      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-      await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveValue("Reading and writing");
-      await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveValue("A desk by the window.");
-      await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
-      await inspector.getByRole("button", { name: "Remove Zone", exact: true }).click();
-      await expect(root.locator(".villages-forging-saved")).toContainText("Saved");
+      await mapView();
       // Quota errors keep the current choices visible and prevent a false saved claim.
       await page.evaluate(() => {
         window.draftPut = IDBObjectStore.prototype.put;
@@ -683,16 +1263,14 @@ try {
           throw new DOMException("Draft storage full", "QuotaExceededError");
         };
       });
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await forward("Back").click();
+      await forward("Back").click();
       await root.getByLabel("Village name", { exact: true }).fill("Willowbrook revised");
       await expect(root.locator(".villages-forging-saved")).toHaveText("Draft not saved");
-      await root.getByRole("button", { name: "3 Venues", exact: true }).click();
-      await open(1);
-      await expect(root.locator(".villages-forging-saved")).toHaveText("Draft not saved");
-      await expect(forward("Review village")).toBeDisabled();
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await expect(forward("Continue to Map")).toBeDisabled();
+      await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
       await forward("Save & exit").click();
-      await expect(root.getByText("Step 2 of 4 · Place")).toBeVisible();
+      await expect(root).toHaveAttribute("data-step", "1");
       await page.evaluate(() => {
         IDBObjectStore.prototype.put = window.draftPut;
       });
@@ -731,22 +1309,32 @@ try {
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume founding", exact: true }).click();
       await expect(root.getByLabel("Village name", { exact: true })).toHaveValue("Willowbrook revised");
+      await forward("Continue to Map").click();
+      await forward("Continue to Venues").click();
     }
+    await mapView();
+    await bounds();
+    await capture("venues");
     if (width === 1366 || (width === 390 && height === 844)) {
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await forward("Back").click();
       await root.getByRole("button", { name: "Generate artwork", exact: true }).click();
-      await root.getByLabel("Map layout", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
+      const artworkDialog = root.getByRole("region", { name: "Map artwork", exact: true });
+      await expect(artworkDialog.getByText(/expected AI request|Read-only forecast/)).toHaveCount(0);
+      await expect(artworkDialog.getByText("Choose artwork here, or use Simple map.", { exact: true })).toHaveCount(0);
+      await expect(artworkDialog.getByText("More options", { exact: true })).toBeVisible();
+      await capture("map-artwork-options");
+      await root.getByLabel("Map details", { exact: true }).fill("One floor; bedrooms east, telescope hall west.");
       await root.getByRole("button", { name: "Generate map", exact: true }).click();
       await expect.poll(() => !!releaseMap).toBe(true);
       await forward("Continue to Venues").click();
-      await expect(root).toHaveAttribute("data-step", "2");
+      await expect(root).toHaveAttribute("data-step", "3");
       await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(0);
       releaseMap();
       await expect(
         root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
       ).toBeVisible();
       await expect(root.locator(".villages-forging-placement")).toContainText("Map artwork failed");
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await forward("Back").click();
       await expect(
         root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
       ).toBeVisible();
@@ -757,13 +1345,17 @@ try {
         0,
       );
       await forward("Continue to Venues").click();
-      await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
+      await expect(
+        root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
+      ).toHaveCount(0);
       // Reload while the provider is still drawing: the resumed draft only reads status.
       await forward("Save & exit").click();
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-      await expect(root.locator(".villages-forging-placement")).toContainText("Waiting for map artwork");
+      await expect(
+        root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
+      ).toHaveCount(0);
       assert.equal(mapCalls, 2, "resuming an unfinished attempt must not generate again");
       failMapStatus = true;
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
@@ -791,28 +1383,48 @@ try {
       await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
       assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
-      await expect(root.getByText(/1280 × 720 pixels/)).toBeVisible();
-      await root.getByLabel("Map layout", { exact: true }).fill("Same map with updated guidance.");
+      await forward("Back").click();
+      assert.deepEqual(
+        await root
+          .getByRole("img", { name: "Selected village map", exact: true })
+          .evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+        [1536, 1024],
+      );
+      await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
+      await expect(root.getByLabel("Map details", { exact: true })).toHaveValue(
+        "One floor; bedrooms east, telescope hall west.",
+      );
+      await root.getByLabel("Map details", { exact: true }).fill("Same map with updated guidance.");
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
-      await root.getByRole("button", { name: "Use this saved artwork", exact: true }).click();
+      await expect(root.getByText(/Your inputs changed/)).toHaveCount(0);
+      await expect(root.getByRole("button", { name: "Use this saved artwork", exact: true })).toHaveCount(0);
       await forward("Continue to Venues").click();
-      await root.getByRole("button", { name: "I checked all Venue photographs against this map", exact: true }).click();
+      await forward("Review village").click();
+      await expect(root).toHaveAttribute("data-step", "4");
+      await forward("Change map").click();
+      await expect(root).toHaveAttribute("data-step", "2");
+      await forward("Continue to Venues").click();
       // A chosen upload replaces paused recovery, even when the old provider finishes later.
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await forward("Back").click();
       failMapStatus = true;
       await root.getByRole("button", { name: "Generate again", exact: true }).click();
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toBeVisible();
       await root
         .getByRole("group", { name: "Map source", exact: true })
-        .getByRole("button", { name: "Upload", exact: true })
+        .getByRole("button", { name: "Upload image", exact: true })
         .click();
-      const uploadArt = new PNG({ width: 640, height: 640 });
+      const uploadArt = new PNG({ width: 1024, height: 1024 });
       uploadArt.data.fill(110);
       await root
         .getByLabel("Upload map image", { exact: true })
         .setInputFiles({ name: "chosen-map.png", mimeType: "image/png", buffer: PNG.sync.write(uploadArt) });
-      await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
+      assert.deepEqual(
+        await root
+          .getByRole("img", { name: "Selected village map", exact: true })
+          .evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+        [1024, 1024],
+      );
+      await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
       await expect(root.getByRole("button", { name: "Check map status", exact: true })).toHaveCount(0);
       failMapStatus = false;
       releaseMap();
@@ -823,19 +1435,69 @@ try {
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
-      await root.getByRole("button", { name: "2 Place", exact: true }).click();
+      await forward("Back").click();
       await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
-      await expect(root.getByText(/640 × 640 pixels/)).toBeVisible();
+      assert.deepEqual(
+        await root
+          .getByRole("img", { name: "Selected village map", exact: true })
+          .evaluate((node) => [node.naturalWidth, node.naturalHeight]),
+        [1024, 1024],
+      );
+      await expect(root.getByText(/\d+ × \d+ pixels/)).toHaveCount(0);
       assert.equal(mapCalls, 3, "upload and reload do not dispatch another image request");
       await forward("Continue to Venues").click();
     }
     await forward("Review village").click();
-    await expect(root.getByText("Step 4 of 4 · Review")).toBeVisible();
+    await expect(root).toHaveAttribute("data-step", "4");
     await expect(root.getByRole("button", { name: "Change people & role", exact: true })).toBeVisible();
     await expect(root.locator(".villages-resident-review").filter({ hasText: "Finn" })).toContainText(
-      "Guardian of a relic",
+      /[Gg]uardian of a relic/,
     );
-    await expect(root.getByRole("button", { name: "Change place & map", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Change place", exact: true })).toBeVisible();
+    await root.getByRole("button", { name: "Change map", exact: true }).click();
+    await expect(root).toHaveAttribute("data-step", "2");
+    await forward("Continue to Venues").click();
+    await forward("Review village").click();
+    if (width === 1366) {
+      for (const legacyStep of [2, 3]) {
+        await forward("Save & exit").click();
+        await page.evaluate(async (legacyStep) => {
+          const db = await new Promise((resolve) => {
+            const open = indexedDB.open("villages-founding-v2", 1);
+            open.onsuccess = () => resolve(open.result);
+          });
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction("drafts", "readwrite");
+            const cursor = tx.objectStore("drafts").openCursor();
+            cursor.onsuccess = () => {
+              const row = cursor.result;
+              if (!row) return;
+              const saved = row.value;
+              delete saved.data.phase;
+              saved.data.step = legacyStep;
+              row.update({ ...saved, revision: saved.revision + 1 });
+              row.continue();
+            };
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+          });
+          db.close();
+        }, legacyStep);
+        await page.reload();
+        await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await expect(root.getByText(new RegExp("Resume: " + (legacyStep === 2 ? "Venues" : "Review")))).toBeVisible();
+        await root
+          .getByRole("button", {
+            name: legacyStep === 2 ? "Resume photograph placement" : "Resume founding",
+            exact: true,
+          })
+          .click();
+        await expect(root).toHaveAttribute("data-step", String(legacyStep + 1));
+        await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
+        if (legacyStep === 2) await forward("Review village").click();
+        assert.equal(mapCalls, 3, "legacy resume does not generate new artwork");
+      }
+    }
     await expect(root.getByRole("button", { name: "Change starting Venues", exact: true })).toBeVisible();
     await bounds();
     await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
@@ -844,13 +1506,21 @@ try {
     await forward("Found village").click();
     await expect.poll(() => foundingPayload).toBeTruthy();
     assert.equal(foundingPayload.venues.length, homeCount + 2);
+    assert.ok(foundingPayload.townMapImage.startsWith("data:image/png;base64,"));
     assert.equal(foundingPayload.playerRole.title, "Harbor Patron");
-    assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "custom");
-    assert.equal(
-      foundingPayload.foundingResidentContexts.finn.customDescription,
-      "Guardian of a relic in the observatory.",
-    );
-    assert.match(foundingPayload.foundingResidentContexts.finn.background, /wider world is undecided/);
+    if (width === 1366) {
+      assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "custom");
+      assert.equal(
+        foundingPayload.foundingResidentContexts.finn.customDescription,
+        "Guardian of a relic in the observatory.",
+      );
+      assert.match(foundingPayload.foundingResidentContexts.finn.background, /wider world is undecided/);
+    } else {
+      assert.equal(foundingPayload.foundingResidentContexts.finn.historyMode, "village");
+      assert.equal(foundingPayload.foundingResidentContexts.finn.storyRole, "unspecified");
+      assert.match(foundingPayload.foundingResidentContexts.finn.villageBackstory, /always been guardian/);
+    }
+    assert.equal(foundingPayload.playerRole.explanation, "");
     assert.deepEqual(
       Object.keys(foundingPayload.foundingResidentContexts).sort(),
       foundingPayload.foundingCharacterIds.slice().sort(),

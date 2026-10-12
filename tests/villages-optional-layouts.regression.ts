@@ -28,7 +28,11 @@ import {
   placeNewVenueProject,
   openFinishedProject,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { assertResidencePrivateDestination } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import {
+  assertResidencePrivateDestination,
+  readBaseVenueLayout,
+} from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
@@ -50,7 +54,13 @@ function draft(layout: string, role = "residence", owner = "a") {
     },
     spaces:
       layout === "common" || layout === "both"
-        ? [defaultVenueSpace(role as "residence", "An unfurnished Common Space.")]
+        ? [
+            {
+              ...defaultVenueSpace(role as "residence", "An unfurnished Common Space."),
+              name: "Common Space",
+              purpose: "Everyday activities",
+            },
+          ]
         : [],
     privateSpaces:
       layout === "private" || layout === "both"
@@ -68,8 +78,11 @@ function draft(layout: string, role = "residence", owner = "a") {
   };
 }
 function place(layout: string, role = "residence", owner = "a"): VillageVenue {
-  return coerceVillageState({ wishSystemVersion: 3, venues: [parsePlace(draft(layout, role, owner), true)] })
-    .venues[0]!;
+  const source = draft(layout, role, owner);
+  const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
+  const parsed = { ...parsePlace(source, false), zones };
+  initializeVenueAccess(parsed);
+  return coerceVillageState({ wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "gathering", "other"]) {
@@ -87,12 +100,16 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     }
   }
 }
-assert.throws(() => parsePlace({ ...draft("exterior"), layout: undefined }, true), /Choose the venue layout/);
+assert.throws(() => parsePlace({ ...draft("common"), layout: undefined }, true), /Choose the venue layout/);
 assert.throws(() => parsePlace({ ...draft("exterior"), layoutVersion: undefined }, true), /Choose the venue layout/);
 assert.throws(() => parsePlace({ ...draft("both"), spaces: [] }, true), /matching its selected layout/);
 assert.throws(
-  () => parsePlace({ ...draft("common"), spaces: [defaultVenueSpace("residence")] }, true),
-  /Describe the Common Space/,
+  () =>
+    parsePlace(
+      { ...draft("common"), spaces: [{ ...defaultVenueSpace("residence"), name: "Room", purpose: "Meals" }] },
+      true,
+    ),
+  /visible Zone/,
 );
 assert.throws(
   () =>

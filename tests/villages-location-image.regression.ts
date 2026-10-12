@@ -30,6 +30,7 @@ import { clientImplementation } from "./client-source.js";
 //     player nothing at all, which is asserted by making the first lookup fail
 //     and watching the picture land anyway.
 import assert from "node:assert/strict";
+import { PNG } from "pngjs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -648,7 +649,10 @@ async function main() {
     }
     if (url.pathname === AVATAR_PATH) return json({ image: TINY_PNG, prompt: body?.appearance });
     if (url.pathname === "/api/connections") return json(connectionRows);
-    if (url.pathname === "/api/image-metadata/inspect") return json({ width: 1, height: 1 });
+    if (url.pathname === "/api/image-metadata/inspect") {
+      const image = Buffer.from(body.image.split(",")[1], "base64");
+      return json({ width: image.readUInt32BE(16), height: image.readUInt32BE(20) });
+    }
     throw new Error(`the test's Engine does not serve ${url.pathname}`);
   }) as any;
 
@@ -788,6 +792,7 @@ async function main() {
   });
   const founded = await post("/api/villages/setup", {
     name: "Ashcroft",
+    townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
     setting: settingText,
     foundingReason: "pioneer",
     foundingDetails: "The group arrives at the riverside and opens the first shared path.",
@@ -811,7 +816,14 @@ async function main() {
         form: "A converted diner",
         classes: ["residence"],
         description: "A modest home for the player.",
-        spaces: [{ venueClass: "residence", description: "A warm room with tables and a small hearth." }],
+        spaces: [
+          {
+            venueClass: "residence",
+            name: "Hearth room",
+            purpose: "Meals",
+            description: "A warm room with tables and a small hearth.",
+          },
+        ],
         presentation: { x: 0.2, y: 0.3 },
         occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
       },
@@ -832,7 +844,14 @@ async function main() {
         form: "A sleeping pod",
         classes: ["residence"],
         description: "Millie's small home.",
-        spaces: [{ venueClass: "residence", description: "A compact room with a woven mat." }],
+        spaces: [
+          {
+            venueClass: "residence",
+            name: "Common room",
+            purpose: "Rest",
+            description: "A compact room with a woven mat.",
+          },
+        ],
         presentation: { x: 0.4, y: 0.5 },
         occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
       },
@@ -844,14 +863,21 @@ async function main() {
         form: "An open square",
         classes: ["gathering"],
         description: "A public square where neighbours meet.",
-        spaces: [{ venueClass: "gathering", description: "An open central yard with benches." }],
+        spaces: [
+          {
+            venueClass: "gathering",
+            name: "Square",
+            purpose: "Conversation",
+            description: "An open central yard with benches.",
+          },
+        ],
         category: "public-center",
         presentation: { x: 0.6, y: 0.7 },
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       },
     ],
   });
-  assert.equal(founded.statusCode, 200);
+  assert.equal(founded.statusCode, 200, founded.body);
   let preparation = (await readVillageState()).foundingPreparation;
   for (let attempt = 0; attempt < 30 && !preparation?.venueDetailsSeeded; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 20));

@@ -5,6 +5,7 @@ export const DEFAULT_NARRATION_STYLE =
   "An immersive, living village. Continue the scene through specific dialogue, actions, discoveries, and consequences.";
 
 export const VENUE_SCENE_WRITING_FOUNDATION = `## Scene writing
+When a resident has an explicit village-specific backstory, it governs historical claims across every field of their original card, including authored instructions. Preserve their identity, voice, personality, appearance, skills, secrets and knowledge limits; prior personal events are reference material unless retained in that backstory. Later verified developments still take precedence.
 ${DEFAULT_NARRATION_STYLE}
 You are the Game Master of this Scene: the narrator and every server-listed resident, while the player plays their own persona. Sustain a living world and respond with new content from where the encounter left off.
 

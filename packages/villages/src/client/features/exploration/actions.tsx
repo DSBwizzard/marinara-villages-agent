@@ -1,3 +1,9 @@
+import {
+  MAP_UPLOAD_FALLBACK,
+  townMapFileSizeMessage,
+  townMapImageProblem,
+  townMapUploadError,
+} from "../../../shared/helpers/town-map-upload.js";
 import type { TownMapView, VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { measureImage, placeSpot, readFileAsDataUrl } from "../../shared/presentation.js";
@@ -134,6 +140,7 @@ export function useGenerateReplacementMap(ports: {
           setting: snapshot.settings.setting,
           selectedLorebookIds: snapshot.settings.selectedLorebookIds,
           sceneryArtStyle: snapshot.settings.sceneryArtStyle,
+          sceneryStyleProfileId: snapshot.settings.sceneryStyleProfileId,
           useVisualLore: snapshot.settings.useVisualLoreByDefault,
           scenarioImprint: {
             origin: "",
@@ -174,16 +181,15 @@ export function usePickTownMap(ports: {
       // the stored limit is converted back to a file size once, here.
       const bytesThatFit = Math.floor(((snapshot.settings.townMapImageMaxLength - 64) * 3) / 4);
       if (file.size > bytesThatFit) {
-        const mb = (bytes: number) => Math.round(bytes / 100_000) / 10;
-        setSettingsError(
-          `That picture is ${mb(file.size)} MB and the village map holds ${mb(bytesThatFit)} MB. Try a smaller copy.`,
-        );
+        setSettingsError(townMapFileSizeMessage(file.size, bytesThatFit));
         return;
       }
       setBusy(true);
       try {
         const image = await readFileAsDataUrl(file);
         const size = await measureImage(image);
+        const problem = townMapImageProblem(size);
+        if (problem) throw new Error(problem);
         setTownMapPick({ image, size });
         setMapRemoveDraft(false);
         // A fresh picture opens on the fit that fills the frame, because that is
@@ -191,7 +197,7 @@ export function usePickTownMap(ports: {
         // picture parked in a box, and the other two are one press away.
         setTownMapDraft(defaultView("cover"));
       } catch (cause) {
-        setSettingsError(messageFrom(cause, "That picture could not be used as the village map."));
+        setSettingsError(townMapUploadError(messageFrom(cause, MAP_UPLOAD_FALLBACK)));
       } finally {
         setBusy(false);
       }

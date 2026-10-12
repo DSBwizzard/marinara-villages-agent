@@ -1,3 +1,4 @@
+import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { DEFAULT_RESIDENT_FOUNDING_CONTEXT } from "../../../shared/helpers/resident-founding-context.js";
 import { messageFrom, request } from "../../shared/api.js";
@@ -80,18 +81,6 @@ export function useFoundingBeginningReference(ports: {
   }, [setupBeginningSourceKey, snapshot?.isFounded]);
 }
 
-export function useFoundingMapClock(ports: {
-  setSetupMapClock: React.Dispatch<React.SetStateAction<number>>;
-  setupMapBusy: boolean;
-}) {
-  const { setSetupMapClock, setupMapBusy } = ports;
-  useEffect(() => {
-    if (!setupMapBusy) return;
-    const timer = window.setInterval(() => setSetupMapClock(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [setupMapBusy]);
-}
-
 export function useFoundingAuthoredReference(ports: {
   setupAuthoredFields: Record<string, string[]>;
   setupAuthoredFieldsRef: React.RefObject<Record<string, string[]>>;
@@ -108,6 +97,7 @@ export function useFoundingSetupDraftData(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   sceneryStyle: string;
+  sceneryStyleProfileId: string | null;
   selectedSetupVenueId: string;
   setupAuthoredFields: Record<string, string[]>;
   setupEditorAuthoredOriginal: React.RefObject<string[]>;
@@ -165,7 +155,6 @@ export function useFoundingSetupDraftData(ports: {
     };
   }>;
   setupFoundingDetails: string;
-  setupFoundingGuidance: string;
   setupFoundingReason: "rebuild" | "pioneer" | "prosper" | "custom" | "none";
   setupFoundingVillagerIds: string[];
   setupImprint: import("../../../shared/contracts/village.js").ScenarioImprint;
@@ -177,7 +166,6 @@ export function useFoundingSetupDraftData(ports: {
   setupMapImage: string;
   setupMapImageSource: "generate" | "upload";
   setupMapNegativePrompt: string;
-  setupMapOptions: import("../../shared/types.js").TownMapOptions;
   setupMapProblem: string;
   setupMapPrompt: string;
   setupMapRequest: import("../../../shared/contracts/village.js").SetupMapRequest;
@@ -262,6 +250,7 @@ export function useFoundingSetupDraftData(ports: {
     personaDraft,
     personalizeHomes,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedSetupVenueId,
     setupAuthoredFields,
     setupEditorAuthoredOriginal,
@@ -269,7 +258,6 @@ export function useFoundingSetupDraftData(ports: {
     setupEditorOriginal,
     setupEditorZoneOriginal,
     setupFoundingDetails,
-    setupFoundingGuidance,
     setupFoundingReason,
     setupFoundingVillagerIds,
     setupImprint,
@@ -281,7 +269,6 @@ export function useFoundingSetupDraftData(ports: {
     setupMapImage,
     setupMapImageSource,
     setupMapNegativePrompt,
-    setupMapOptions,
     setupMapProblem,
     setupMapPrompt,
     setupMapRequest,
@@ -305,11 +292,11 @@ export function useFoundingSetupDraftData(ports: {
   return useMemo(
     () => ({
       step: setupStep,
+      phase: SETUP_STEPS[setupStep],
       name: setupName,
       setting: setupSetting,
       reason: setupFoundingReason,
       circumstances: setupFoundingDetails,
-      direction: setupFoundingGuidance,
       role: setupPlayerRole,
       imprint: setupImprint,
       worldFacts: setupWorldFacts,
@@ -321,6 +308,7 @@ export function useFoundingSetupDraftData(ports: {
       lorebooks: setupLorebookDraft,
       loreBudget: setupLoreTokenBudgetDraft,
       artStyle: sceneryStyle,
+      styleProfileId: sceneryStyleProfileId,
       personalizeHomes,
       visualLoreDefault,
       mapVisualLore,
@@ -331,7 +319,6 @@ export function useFoundingSetupDraftData(ports: {
       mapSize: setupMapSize,
       mapPrompt: setupMapPrompt,
       mapNegative: setupMapNegativePrompt,
-      mapOptions: setupMapOptions,
       mapReviewed: setupMapReviewed,
       mapProblem: setupMapProblem,
       mapRequest: setupMapRequest,
@@ -354,7 +341,6 @@ export function useFoundingSetupDraftData(ports: {
       setupSetting,
       setupFoundingReason,
       setupFoundingDetails,
-      setupFoundingGuidance,
       setupPlayerRole,
       setupImprint,
       setupWorldFacts,
@@ -365,6 +351,7 @@ export function useFoundingSetupDraftData(ports: {
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
       sceneryStyle,
+      sceneryStyleProfileId,
       personalizeHomes,
       visualLoreDefault,
       mapVisualLore,
@@ -375,7 +362,6 @@ export function useFoundingSetupDraftData(ports: {
       setupMapSize,
       setupMapPrompt,
       setupMapNegativePrompt,
-      setupMapOptions,
       setupMapReviewed,
       setupMapProblem,
       setupMapRequest,
@@ -408,19 +394,26 @@ export function useFoundingRosterReconciliation(ports: {
       const center = rows.find((row) => row.category === "public-center");
       const emptyVenue = (residence: boolean, player = false) => {
         const row = newSetupVenue(freshRowKey(), residence ? "residence" : "gathering", 0.5, 0.5, player);
-        return { ...row, layout: "exterior" as const, presentation: { ...row.presentation, x: null, y: null } };
+        return { ...row, presentation: { ...row.presentation, x: null, y: null } };
       };
       const next = [
         home ?? emptyVenue(true, true),
-        ...setupFoundingVillagerIds.map(
-          (id) =>
-            rows.find((row) => row.occupancy.residentCharacterId === id) ?? {
-              ...emptyVenue(true),
-              name: (catalog?.find((person) => person.id === id)?.name ?? "Villager") + "'s living space",
-              residentIds: [id],
-              occupancy: { playerHome: false, residentCharacterId: id, homeKind: null },
-            },
-        ),
+        ...setupFoundingVillagerIds.map((id) => {
+          const existing = rows.find((row) => row.occupancy.residentCharacterId === id);
+          if (existing) return existing;
+          const venue = emptyVenue(true);
+          return {
+            ...venue,
+            name: (catalog?.find((person) => person.id === id)?.name ?? "Villager") + "'s living space",
+            residentIds: [id],
+            occupancy: { playerHome: false, residentCharacterId: id, homeKind: null },
+            privateSpaces: venue.privateSpaces?.map((zone) => ({
+              ...zone,
+              ownerId: id,
+              access: { ...zone.access!, managerIds: [id], memberIds: [id] },
+            })),
+          };
+        }),
         center ?? emptyVenue(false),
       ];
       return next.length === rows.length && next.every((row, index) => row === rows[index]) ? rows : next;
@@ -510,10 +503,7 @@ export function useFoundingSetupBlocker(ports: {
   setupFoundingVillagerIds: string[];
   setupHomeCount: number;
   setupMapBusy: boolean;
-  setupMapGeneratedKey: string;
-  setupMapGenerationKey: string;
   setupMapReviewed: boolean;
-  setupMapSource: import("../../shared/types.js").SetupMapSource;
   setupMapSrc: string;
   setupName: string;
   setupPlayerRole: import("../../../shared/contracts/player-role.js").PlayerRole;
@@ -529,10 +519,7 @@ export function useFoundingSetupBlocker(ports: {
     setupFoundingVillagerIds,
     setupHomeCount,
     setupMapBusy,
-    setupMapGeneratedKey,
-    setupMapGenerationKey,
     setupMapReviewed,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupPlayerRole,
@@ -551,16 +538,14 @@ export function useFoundingSetupBlocker(ports: {
     if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
       return "Use at most four current world facts of 160 characters each.";
     if (setupSetting.trim().length === 0) return "Describe what the village is like.";
-    if (setupMapSource !== "none" && setupMapBusy) return "Wait for the requested artwork, or select Simple map.";
-    if (setupMapSource !== "none" && !setupMapSrc) return "Generate or upload the chosen map, or select Simple map.";
-    if (setupMapSource === "generate" && setupMapGeneratedKey !== setupMapGenerationKey)
-      return "Review the saved map against your changed inputs on Place.";
+    if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
+    if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
     if (
       !snapshot?.isFounded &&
       setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
     )
       return "Place every starting Venue photograph.";
-    if (setupMapSource !== "none" && !setupMapReviewed) return "Check all Venue photographs against the map on Spaces.";
+    if (!snapshot?.isFounded && !setupMapReviewed) return "Check all Venue photographs against the map on Venues.";
 
     const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
     const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
@@ -578,7 +563,7 @@ export function useFoundingSetupBlocker(ports: {
           foundingZoneProblem(venue),
       )
     )
-      return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Spaces.";
+      return "Complete each Venue's physical form, Entrance appearance and Zone name, use and appearance on Venues.";
     const occupants = villagerHomes
       .map((home) => home.occupancy.residentCharacterId)
       .filter((id): id is string => id !== null);
@@ -600,7 +585,7 @@ export function useFoundingSetupBlocker(ports: {
         ),
       )
     )
-      return "Give each Private Space a name, purpose, and controller on Spaces.";
+      return "Give each Private Space a name, purpose, and controller on Venues.";
     if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
       return "A chosen villager is no longer in your character cards. Choose another villager on People.";
     if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)
@@ -609,14 +594,11 @@ export function useFoundingSetupBlocker(ports: {
   }, [
     setupMapBusy,
     setupMapReviewed,
-    setupMapGeneratedKey,
-    setupMapGenerationKey,
     setupHomeCount,
     setupFoundingVillagerIds,
     catalog,
     setupVenues,
     personaDraft,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupFoundingDetails,

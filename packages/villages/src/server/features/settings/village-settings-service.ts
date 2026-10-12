@@ -1,3 +1,4 @@
+import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import type { VillageSnapshot, VillageState, VillageStoryPace } from "../../domain/models/world.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
@@ -195,10 +196,13 @@ export function createVillageSettings({
 
   async function setScenerySettings(value: {
     sceneryArtStyle?: unknown;
+    sceneryStyleProfileId?: unknown;
     personalizeVenueImagesByDefault?: unknown;
     useVisualLoreByDefault?: unknown;
   }): Promise<VillageSnapshot> {
     await mutateVillageState((state) => {
+      if (value.sceneryStyleProfileId !== undefined)
+        state.sceneryStyleProfileId = readSceneryStyleProfileId(value.sceneryStyleProfileId);
       if (value.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(value.sceneryArtStyle);
       if (value.personalizeVenueImagesByDefault !== undefined)
         state.personalizeVenueImagesByDefault = readBool(value.personalizeVenueImagesByDefault);

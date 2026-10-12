@@ -23,6 +23,7 @@ import {
   setSpriteDefault,
   setSpriteFraming,
 } from "./sprite-manager.js";
+import { readVillageImageStyleCatalog } from "./image-generation.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerSpriteManagerRoutes(engine: FastifyInstance) {
@@ -60,6 +61,13 @@ export function registerSpriteManagerRoutes(engine: FastifyInstance) {
 }
 export function registerTownMapRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get("/image-style-profiles", async (_request, reply) => {
+    try {
+      return await readVillageImageStyleCatalog();
+    } catch (error) {
+      return fail(reply, error, "reading Engine image styles");
+    }
+  });
   app.get("/town-map", async (_request, reply) => {
     try {
       return await readVillageTownMapImage();

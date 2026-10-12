@@ -113,9 +113,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Suggest the required starting Venues for this shared-life setting. These are editable drafts, not saved facts.",
             "A village may be indoors or already established. Living spaces may be rooms, cells, bunks, apartments, tents, or buildings. Follow the player's setting; do not assume cottages.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
-            "Exterior is each Venue's entrance and approach, including an indoor corridor if appropriate. Common and Private Space are independent optional areas; choose a fitting layout.",
-            "Only suggest Private Space names and structural purposes. Never return private descriptions, images, objects or resident secrets. A Gathering Place with a Private Space is controlled by the player.",
-            'Venue Type identifies the place (home, bakery, church); Physical form describes its structure. Every Zone needs a concrete use, independent of access. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","layout":"exterior|common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone"}]}.',
+            "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Gathering Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
+            "For villager Private Space suggest only names and structural purposes; never descriptions, images, objects or resident secrets. For the player's included Private Space also supply privateDescription: a short visible physical description. Identify the player's residence by its absent residentCharacterId.",
+            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"player residence only"}]}.',
             "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 1000.",
             `Return exactly ${rows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Do not omit the player's living space or the Gathering Place.`,
           ].join("\n"),
@@ -135,12 +135,13 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             venueType: "",
             form: "",
             description: "",
-            layout: "exterior|common|private|both",
+            layout: row.venueClass === "gathering" ? "common" : "common|private|both",
             commonName: "",
             commonPurpose: "",
             commonDescription: "",
             privateName: "",
             privatePurpose: "",
+            privateDescription: "",
           })),
         },
       }),
@@ -161,6 +162,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       venues: parseFoundingVenueSuggestions(
         extractJsonObject(completion.content ?? ""),
         rows.map((row) => row.id),
+        rows,
       ),
     };
   }
@@ -350,6 +352,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
     );
     const decoded = await generateVillageImage({
+      sceneryStyleProfileId: input.sceneryStyleProfileId,
       name: row.name || "Founding venue",
       prompt,
       negativePrompt: LOCATION_NEGATIVE_PROMPT,

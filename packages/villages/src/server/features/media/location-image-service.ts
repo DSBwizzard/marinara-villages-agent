@@ -151,6 +151,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       village.sceneryArtStyle,
     );
     const decoded = await generateVillageImage({
+      sceneryStyleProfileId: village.sceneryStyleProfileId,
       connectionId,
       name: venue.name,
       prompt,
