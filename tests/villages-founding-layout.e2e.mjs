@@ -1205,6 +1205,9 @@ try {
     const tabsBox = await inspector.getByRole("tablist").boundingBox();
     assert.ok(tabsBox.y + tabsBox.height <= formBox.y, "tabs precede editable fields");
     await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
+    await expect(inspector.locator(".villages-workspace-title")).toHaveCSS("margin-top", "0px");
+    await expect(inspector.locator(".villages-workspace-title")).toHaveCSS("margin-bottom", "0px");
+    await expect(inspector.locator(".villages-workspace-title")).toHaveCSS("padding-top", "0px");
     await expect(inspector.getByRole("button", { name: "Close Venue editor" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
@@ -1226,7 +1229,7 @@ try {
     await expect(inspector.getByText("Changes saved", { exact: true })).toHaveCount(0);
     const doneBox = await inspector.getByRole("button", { name: "Done", exact: true }).boundingBox();
     await expect(inspector.getByRole("button", { name: "Move photograph", exact: true })).toHaveCount(0);
-    assert.ok(doneBox.height <= 45 && doneBox.width < 100, "compact Done button");
+    assert.ok(doneBox.height <= 33 && doneBox.width < 100, "compact Done button");
     const dialogBox = await inspector.boundingBox();
     const footerBox = await inspector.locator("footer").boundingBox();
     assert.ok(

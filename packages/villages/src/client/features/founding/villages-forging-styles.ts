@@ -204,10 +204,10 @@ export const VILLAGES_FORGING_STYLES = `
 
 
 
-.villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 1rem 1rem auto; margin:0; width:min(28rem,calc(100vw - 2rem)); height:min(26rem,65dvh); max-height:calc(100dvh - 1rem); padding:.75rem; padding-bottom:calc(44px + .75rem)!important; display:flex; flex-direction:column; gap:.4rem; border:1px solid #8574be; overflow:hidden; background:#192441; }
+.villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 1rem 1rem auto; margin:0; width:min(28rem,calc(100vw - 2rem)); height:min(26rem,65dvh); max-height:calc(100dvh - 1rem); padding:.75rem; padding-bottom:calc(32px + .45rem)!important; display:flex; flex-direction:column; gap:.25rem; border:1px solid #8574be; overflow:hidden; background:#192441; }
 .villages-forging-v2 dialog.villages-workspace-sheet:not([open]) { display:none; }
 .villages-workspace-sheet::backdrop { background:#090c1a66; }
-.villages-workspace-title { flex:none; margin:0; padding:.15rem .5rem; color:#c1cce5; font-size:.8rem; line-height:1.3; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.villages-forging-v2 .villages-workspace-sheet .villages-workspace-title { flex:none; margin:0!important; padding:0 .1rem!important; color:#c1cce5; font-size:.9rem; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .villages-forging-v2 .villages-workspace-sheet-header { flex:none; display:flex; flex-direction:column; align-items:stretch; gap:.35rem; padding:.5rem; border-radius:.65rem; margin:0!important; }
 .villages-forging-v2 .villages-workspace-sheet-header textarea { width:100%; min-width:0; min-height:44px; border:1px solid #65799c; border-radius:.45rem; padding:.4rem; color:#f3f3ff; background:#0c1830; font:inherit; resize:vertical; }
 .villages-workspace-sheet-header>textarea { font-weight:700; }
@@ -243,14 +243,14 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-workspace-image-viewer button { display:block; margin:0 0 .4rem auto; min-height:32px; padding:.25rem .5rem; border:1px solid #65799c; border-radius:.4rem; background:#192c4c; color:inherit; }
 .villages-workspace-image-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.35rem; margin-top:.35rem; }
 .villages-forging-v2 .villages-workspace-image-actions button { min-width:0; min-height:44px; padding:.25rem; font-size:.75rem; line-height:1.2; }
-.villages-forging-v2 .villages-workspace-sheet-footer { position:absolute; bottom:0; left:0; right:0; flex:none; display:block!important; border-top:1px solid #43547d; padding:.35rem .75rem!important; margin:0!important; min-height:0; background:#192c4c; }
+.villages-forging-v2 .villages-workspace-sheet-footer { position:absolute; bottom:0; left:0; right:0; flex:none; display:block!important; border-top:1px solid #43547d; padding:.2rem .75rem!important; margin:0!important; min-height:0; background:#192c4c; }
 .villages-workspace-sheet-footer p { font-size:.75rem; color:#c1cce5; text-align:center; margin:0 0 .25rem; }
 .villages-workspace-sheet-footer>div { display:flex; justify-content:flex-end; gap:.5rem; }
-.villages-forging-v2 .villages-workspace-sheet-footer button { flex:none; width:auto; min-width:0; min-height:44px; padding:.25rem .65rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
+.villages-forging-v2 .villages-workspace-sheet-footer button { flex:none; width:auto; min-width:0; min-height:32px; padding:.15rem .65rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
 .villages-workspace-tray { display:flex; overflow-x:auto; gap:.6rem; }
 .villages-forging-v2 .villages-workspace-tray button { flex:0 0 5rem; font-size:.8rem; padding:.4rem; }
 .villages-workspace-tray .villages-workspace-photo { display:block; margin:0 auto .3rem; }
-@media(max-width:727px) { .villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 0 0; width:100%; max-width:100%; height:min(31rem,70dvh); border-radius:1rem 1rem 0 0; padding:.6rem .75rem max(.6rem,env(safe-area-inset-bottom)); } }
+@media(max-width:727px) { .villages-forging-v2 dialog.villages-workspace-sheet { inset:auto 0 0; width:100%; max-width:100%; height:min(31rem,70dvh); border-radius:1rem 1rem 0 0; padding:.35rem .75rem max(.35rem,env(safe-area-inset-bottom)); } }
 
 /* Venues shares the earlier founding panels and document scrolling. */
 .villages-workspace { min-width:0; }
