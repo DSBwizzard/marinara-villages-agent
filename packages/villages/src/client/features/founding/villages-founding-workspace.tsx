@@ -495,12 +495,10 @@ export function FoundingWorkspace({
         {selected ? (
           <>
             <header className="villages-workspace-sheet-header">
-              <label className="villages-workspace-caption" htmlFor={tabId + "name"}>
-                Venue name
-              </label>
               <textarea
                 id={tabId + "name"}
                 aria-label="Venue name"
+                placeholder="Venue name"
                 rows={1}
                 maxLength={100}
                 disabled={locked}
@@ -509,13 +507,11 @@ export function FoundingWorkspace({
                 onChange={(event) => onPatch({ ...selected, name: event.target.value })}
               />
               {fieldProblem("name") ? <p role="alert">{fieldProblem("name")}</p> : null}
-              <label className="villages-workspace-caption" htmlFor={tabId + "form"}>
-                Venue form
-              </label>
               <div className="villages-workspace-sheet-summary">
                 <textarea
                   id={tabId + "form"}
                   aria-label="Physical form"
+                  placeholder="Venue form"
                   rows={2}
                   maxLength={240}
                   disabled={locked}

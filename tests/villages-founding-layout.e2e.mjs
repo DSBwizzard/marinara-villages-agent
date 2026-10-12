@@ -1160,8 +1160,9 @@ try {
     await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
     await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(2);
-    await expect(inspector.locator("header").getByText("Venue name", { exact: true })).toBeVisible();
-    await expect(inspector.locator("header").getByText("Venue form", { exact: true })).toBeVisible();
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveAttribute("placeholder", "Venue name");
+    await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveAttribute("placeholder", "Venue form");
+    await expect(inspector.locator("header label")).toHaveCount(0);
     const entranceHelp = inspector.getByRole("button", { name: "Help: Entrance and approach", exact: true });
     await entranceHelp.click();
     await expect(inspector.getByRole("note")).toHaveText(
