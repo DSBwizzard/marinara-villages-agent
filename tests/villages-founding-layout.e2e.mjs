@@ -1211,7 +1211,17 @@ try {
     await expect(inspector.getByRole("button", { name: "Close Venue editor" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
-    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(2);
+    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(3);
+    assert.deepEqual(
+      await inspector
+        .locator("header textarea")
+        .evaluateAll((fields) => fields.map((field) => field.getAttribute("aria-label"))),
+      ["Venue name", "Physical form", "Exterior description"],
+    );
+    await expect(inspector.getByLabel("Exterior description", { exact: true })).toHaveAttribute(
+      "placeholder",
+      "Zone appearance",
+    );
     await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveAttribute("placeholder", "Venue name");
     await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveAttribute("placeholder", "Venue form");
     await expect(inspector.locator("header label")).toHaveCount(0);
@@ -1266,6 +1276,12 @@ try {
     await zone("Common");
     await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
     await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
+    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(3);
+    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("aria-label", "Zone name");
+    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("placeholder", "Zone name");
+    await expect(inspector.locator("header textarea").nth(1)).toHaveAttribute("aria-label", "Zone used for");
+    await expect(inspector.locator("header textarea").nth(2)).toHaveAttribute("aria-label", "Zone appearance");
+    await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveAttribute("placeholder", "Zone purpose");
     await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveCount(0);
     await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveCount(0);
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
@@ -1298,6 +1314,12 @@ try {
     await zone("Private");
     await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
     await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
+    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(3);
+    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("aria-label", "Zone name");
+    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("placeholder", "Zone name");
+    await expect(inspector.locator("header textarea").nth(1)).toHaveAttribute("aria-label", "Zone used for");
+    await expect(inspector.locator("header textarea").nth(2)).toHaveAttribute("aria-label", "Zone appearance");
+    await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveAttribute("placeholder", "Zone purpose");
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
     await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
     await capture("venue-private-sheet");

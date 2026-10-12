@@ -96,18 +96,22 @@ export function FoundingZoneFields({
                   </label>
                 </>
               ) : null}
-              <label>
-                Used for
-                <input
-                  aria-label="Zone used for"
-                  disabled={busy}
-                  maxLength={240}
-                  value={zone.purpose ?? ""}
-                  placeholder="Eating together, sleeping, worship, washing…"
-                  onChange={(event) => patch({ purpose: event.target.value })}
-                />
-              </label>
-              <p>Describe the activities here. Access is a separate choice.</p>
+              {!identityInHeader ? (
+                <>
+                  <label>
+                    Used for
+                    <input
+                      aria-label="Zone used for"
+                      disabled={busy}
+                      maxLength={240}
+                      value={zone.purpose ?? ""}
+                      placeholder="Eating together, sleeping, worship, washing…"
+                      onChange={(event) => patch({ purpose: event.target.value })}
+                    />
+                  </label>
+                  <p>Describe the activities here. Access is a separate choice.</p>
+                </>
+              ) : null}
               {(venue.classes?.length ?? 0) > 1 ? (
                 <label>
                   Zone role
