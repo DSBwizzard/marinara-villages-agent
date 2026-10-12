@@ -143,21 +143,27 @@ export function FoundingWorkspace({
     selected && (
       <section className="villages-workspace-artwork" aria-label={`${area} image`}>
         <details className="villages-workspace-image-options">
-          <summary>
-            {image ? "Change image" : area === "exterior" ? "Add exterior image" : "Add space image"}{" "}
-            <small>Optional</small>
-          </summary>
+          <summary>Image options</summary>
           {image ? (
             <a href={image.url} target="_blank" rel="noreferrer" aria-label="View image">
               <img src={image.url} alt={`${area} of ${selected.name}`} />
             </a>
           ) : null}
-          <button type="button" disabled={imageBusy} onClick={() => onGenerate(selected, area, id)}>
-            {image ? "Generate again" : "Generate image"}
-          </button>
-          <label>
-            Upload image
+          <div className="villages-workspace-image-actions">
+            <button type="button" disabled={imageBusy} onClick={() => onGenerate(selected, area, id)}>
+              {image ? "Generate again" : "Generate image"}
+            </button>
+            <button
+              type="button"
+              disabled={imageBusy}
+              onClick={(event) =>
+                event.currentTarget.parentElement?.querySelector<HTMLInputElement>('input[type="file"]')?.click()
+              }
+            >
+              Upload image
+            </button>
             <input
+              hidden
               aria-label={`Upload ${area} image`}
               type="file"
               accept="image/*"
@@ -168,32 +174,36 @@ export function FoundingWorkspace({
                 if (file) onUpload(selected, area, file, id);
               }}
             />
-          </label>
-          {image ? (
-            <button
-              type="button"
-              disabled={imageBusy}
-              onClick={() =>
-                onPatch(
-                  area === "exterior"
-                    ? { ...selected, presentation: { ...selected.presentation, image: null } }
-                    : area === "private"
-                      ? {
-                          ...selected,
-                          privateSpaces: selected.privateSpaces?.map((zone) =>
-                            zone.id === id ? { ...zone, image: null } : zone,
-                          ),
-                        }
-                      : {
-                          ...selected,
-                          spaces: selected.spaces?.map((zone) => (zone.id === id ? { ...zone, image: null } : zone)),
-                        },
-                )
-              }
-            >
-              Remove image
-            </button>
-          ) : null}
+            {image ? (
+              <button
+                type="button"
+                disabled={imageBusy}
+                onClick={() =>
+                  onPatch(
+                    area === "exterior"
+                      ? { ...selected, presentation: { ...selected.presentation, image: null } }
+                      : area === "private"
+                        ? {
+                            ...selected,
+                            privateSpaces: selected.privateSpaces?.map((zone) =>
+                              zone.id === id ? { ...zone, image: null } : zone,
+                            ),
+                          }
+                        : {
+                            ...selected,
+                            spaces: selected.spaces?.map((zone) => (zone.id === id ? { ...zone, image: null } : zone)),
+                          },
+                  )
+                }
+              >
+                Remove image
+              </button>
+            ) : (
+              <button type="button" disabled>
+                Remove image
+              </button>
+            )}
+          </div>
         </details>
       </section>
     );

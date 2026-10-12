@@ -234,6 +234,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-workspace-included input { width:1.2rem; min-height:1.2rem; height:1.2rem; accent-color:#aa87ff; }
 .villages-workspace-sheet .villages-workspace-artwork { margin:.4rem 0; font-size:.9rem; }
 .villages-workspace-sheet .villages-workspace-artwork img { max-height:6rem; }
+.villages-workspace-image-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.35rem; margin-top:.35rem; }
+.villages-forging-v2 .villages-workspace-image-actions button { min-width:0; min-height:44px; padding:.25rem; font-size:.75rem; line-height:1.2; }
 .villages-forging-v2 .villages-workspace-sheet-footer { position:absolute; bottom:0; left:0; right:0; flex:none; display:block!important; border-top:1px solid #43547d; padding:.35rem .75rem!important; margin:0!important; min-height:0; background:#192c4c; }
 .villages-workspace-sheet-footer p { font-size:.75rem; color:#c1cce5; text-align:center; margin:0 0 .25rem; }
 .villages-workspace-sheet-footer>div { display:flex; justify-content:flex-end; gap:.5rem; }

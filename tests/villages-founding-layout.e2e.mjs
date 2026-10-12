@@ -1047,6 +1047,15 @@ try {
     await expect(inspector.getByLabel("Venue name", { exact: true })).toBeVisible();
     await expect(inspector.getByLabel("Exterior description", { exact: true })).toBeVisible();
     await expect(root.getByRole("dialog", { name: "Venue editor", exact: true })).toHaveCount(1);
+    await inspector.locator(".villages-workspace-image-options > summary").click();
+    const initialActions = await inspector.locator(".villages-workspace-image-actions > button").all();
+    assert.equal(initialActions.length, 3);
+    const initialBoxes = await Promise.all(initialActions.map((button) => button.boundingBox()));
+    assert.ok(
+      initialBoxes.every((box) => Math.abs(box.y - initialBoxes[0].y) < 1),
+      "three image actions stay side by side at every viewport",
+    );
+    await inspector.locator(".villages-workspace-image-options > summary").click();
     await inspector.getByRole("button", { name: "Done", exact: true }).click();
     await expect(root.locator("[data-venue-id]").first()).toBeFocused();
     await mapView();
@@ -1345,6 +1354,20 @@ try {
       await expect(inspector.locator(".villages-workspace-artwork img")).toBeHidden();
       await inspector.locator(".villages-workspace-image-options > summary").first().click();
       await expect(inspector.locator(".villages-workspace-artwork img")).toBeVisible();
+      await expect(inspector.locator(".villages-workspace-image-options > summary")).toHaveText("Image options");
+      await expect(inspector.locator(".villages-workspace-image-actions > button")).toHaveCount(3);
+      const imageButtons = await inspector.locator(".villages-workspace-image-actions > button").all();
+      const imageButtonBoxes = await Promise.all(imageButtons.map((button) => button.boundingBox()));
+      assert.ok(
+        imageButtonBoxes.every((box) => Math.abs(box.y - imageButtonBoxes[0].y) < 1),
+        "image actions share one row",
+      );
+      await expect(inspector.getByLabel("Upload interior image", { exact: true })).toBeHidden();
+      const filePickerPromise = page.waitForEvent("filechooser");
+      await inspector.getByRole("button", { name: "Upload image", exact: true }).click();
+      const filePicker = await filePickerPromise;
+      assert.equal(await filePicker.element().getAttribute("aria-label"), "Upload interior image");
+      await filePicker.setFiles([]);
       await inspector.locator(".villages-workspace-image-options > summary").first().click();
       await expect(inspector.locator(".villages-workspace-artwork img")).toBeHidden();
       await mapView();
