@@ -181,7 +181,6 @@ export function createFoundingGenerateSetupImage(ports: {
     const {
       element,
       personaDraft,
-      personalizeHomes,
       sceneryStyle,
       sceneryStyleProfileId,
       selectedResidentContexts,
@@ -203,7 +202,6 @@ export function createFoundingGenerateSetupImage(ports: {
       setupVenuesRef,
       setupWorldFacts,
       snapshot,
-      visualLoreDefault,
       withSetupImage,
     } = ports;
 
@@ -263,8 +261,8 @@ export function createFoundingGenerateSetupImage(ports: {
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
-          useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? personalizeHomes,
-          useVisualLore: venue.imageContext?.useVisualLore ?? visualLoreDefault,
+          useAssignedVillagerContext: true,
+          useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
           foundingDetails: setupFoundingDetails,

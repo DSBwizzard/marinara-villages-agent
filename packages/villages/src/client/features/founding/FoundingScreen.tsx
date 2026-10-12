@@ -717,7 +717,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               imageBusy={setupVenueBusy}
               suggestionsBusy={setupSuggestionsBusy}
               suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
-              usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
               saveError={draftSaveError || undefined}
               onState={setSetupWorkspace}
               onSelect={(venue) => {

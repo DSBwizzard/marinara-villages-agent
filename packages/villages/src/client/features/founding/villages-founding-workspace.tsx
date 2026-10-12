@@ -21,7 +21,6 @@ export function FoundingWorkspace({
   imageBusy,
   suggestionsBusy,
   suggestionsChanged,
-  usagePreview,
   saveError,
   onState,
   onSelect,
@@ -46,7 +45,6 @@ export function FoundingWorkspace({
   imageBusy: boolean;
   suggestionsBusy: boolean;
   suggestionsChanged: boolean;
-  usagePreview: ReactNode;
   saveError?: string;
   onState(state: FoundingWorkspaceState): void;
   onSelect(venue: VillageVenue): void;
@@ -157,7 +155,6 @@ export function FoundingWorkspace({
           <button type="button" disabled={imageBusy} onClick={() => onGenerate(selected, area, id)}>
             {image ? "Generate again" : "Generate image"}
           </button>
-          {usagePreview}
           <label>
             Upload image
             <input
@@ -197,37 +194,6 @@ export function FoundingWorkspace({
               Remove image
             </button>
           ) : null}
-          <details>
-            <summary>Artwork context</summary>
-            <FoundingHelp label="Artwork context">
-              Form, the selected Zone’s purpose and description, and shared scenery style inform this artwork.
-            </FoundingHelp>
-            {(
-              [
-                ["useAssignedVillagerContext", "Use assigned resident’s personality"],
-                ["useVisualLore", "Use selected Village lorebooks"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key}>
-                <input
-                  type="checkbox"
-                  disabled={locked}
-                  checked={selected.imageContext?.[key] ?? true}
-                  onChange={(event) =>
-                    onPatch({
-                      ...selected,
-                      imageContext: {
-                        useAssignedVillagerContext: selected.imageContext?.useAssignedVillagerContext ?? true,
-                        useVisualLore: selected.imageContext?.useVisualLore ?? true,
-                        [key]: event.target.checked,
-                      },
-                    })
-                  }
-                />
-                {label}
-              </label>
-            ))}
-          </details>
         </details>
       </section>
     );

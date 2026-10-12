@@ -161,7 +161,7 @@ const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,ven
 const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
 function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
 window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
-<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} onState={setState} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
+<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} onState={setState} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
 createRoot(document.getElementById('root')).render(<Harness/>);
 `,
     },
@@ -238,6 +238,9 @@ try {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/setup/venue-image/generate")) {
         imageCalls++;
+        const imageBody = route.request().postDataJSON();
+        assert.equal(imageBody.useAssignedVillagerContext, true, "assigned personality is automatic");
+        assert.equal(imageBody.useVisualLore, true, "selected lore context is automatic");
         if (imageCalls === 1)
           return route.fulfill({
             status: 503,
@@ -1095,6 +1098,8 @@ try {
             const get = store.get(keys.result[0]);
             get.onsuccess = () => {
               const saved = get.result;
+              for (const venue of saved.data.venues)
+                venue.imageContext = { useAssignedVillagerContext: false, useVisualLore: false };
               delete saved.data.workspace;
               saved.data.editorOpen = true;
               saved.data.editorOriginal = { ...saved.data.venues[0], name: "Old cancel copy" };
@@ -1320,6 +1325,9 @@ try {
       await open(1);
       await zone("Common");
       await inspector.locator(".villages-workspace-artwork summary").first().click();
+      await expect(inspector.getByText("Artwork context", { exact: true })).toHaveCount(0);
+      await expect(inspector.getByRole("checkbox", { name: "Use assigned resident’s personality" })).toHaveCount(0);
+      await expect(inspector.getByText(/expected AI request|Read-only forecast/)).toHaveCount(0);
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect(root.getByRole("alert").filter({ hasText: "Optional image unavailable" })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
