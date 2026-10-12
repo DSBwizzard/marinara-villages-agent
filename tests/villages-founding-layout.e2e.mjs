@@ -211,7 +211,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
     ["Edited common-a", "Edited common-b", "Edited private-a", "Edited private-b"],
   );
   await page.getByRole("button", { name: "Remove Zone", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Venue", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Exterior", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Exterior description", { exact: true })).toBeVisible();
   await context.close();
   console.log(
@@ -1037,7 +1037,9 @@ try {
       await pins.nth(index).click();
     };
     const zone = async (name) => {
-      await inspector.getByRole("tab", { name: name === "Exterior" ? "Venue" : name + " Space", exact: true }).click();
+      await inspector
+        .getByRole("tab", { name: name === "Exterior" ? "Exterior" : name + " Space", exact: true })
+        .click();
       await expect(inspector.getByRole("tabpanel")).toHaveCount(1);
       await expect(inspector.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
       const sheetBox = await inspector.boundingBox();
@@ -1203,20 +1205,17 @@ try {
     await expect(inspector.locator(".villages-workspace-photo")).toHaveCount(0);
     const formBox = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
     const tabsBox = await inspector.getByRole("tablist").boundingBox();
-    assert.ok(tabsBox.y + tabsBox.height <= formBox.y, "tabs precede editable fields");
-    await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
-    await expect(inspector.locator(".villages-workspace-title")).toHaveCSS("margin-top", "0px");
-    await expect(inspector.locator(".villages-workspace-title")).toHaveCSS("margin-bottom", "0px");
-    await expect(inspector.locator(".villages-workspace-title")).toHaveCSS("padding-top", "0px");
+    assert.ok(formBox.y + formBox.height <= tabsBox.y, "Venue identity precedes zone tabs");
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
     await expect(inspector.getByRole("button", { name: "Close Venue editor" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
-    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(3);
+    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(2);
     assert.deepEqual(
       await inspector
         .locator("header textarea")
         .evaluateAll((fields) => fields.map((field) => field.getAttribute("aria-label"))),
-      ["Venue name", "Physical form", "Exterior description"],
+      ["Venue name", "Physical form"],
     );
     await expect(inspector.getByLabel("Exterior description", { exact: true })).toHaveAttribute(
       "placeholder",
@@ -1224,7 +1223,7 @@ try {
     );
     await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveAttribute("placeholder", "Venue name");
     await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveAttribute("placeholder", "Venue form");
-    await expect(inspector.locator("header label")).toHaveCount(0);
+    await expect(inspector.locator("header label")).toHaveCount(2);
     const entranceHelp = inspector.getByRole("button", { name: "Help: Entrance and approach", exact: true });
     await entranceHelp.click();
     await expect(inspector.getByRole("note")).toHaveText(
@@ -1274,24 +1273,40 @@ try {
     await formHelp.evaluate((element) => element.blur());
     await capture("venue-details");
     await zone("Common");
-    await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
-    await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
-    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(3);
-    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("aria-label", "Zone name");
-    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("placeholder", "Zone name");
-    await expect(inspector.locator("header textarea").nth(1)).toHaveAttribute("aria-label", "Zone used for");
-    await expect(inspector.locator("header textarea").nth(2)).toHaveAttribute("aria-label", "Zone appearance");
+    await expect(
+      inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone name", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone appearance", { exact: true }),
+    ).toBeVisible();
+    await expect(inspector.locator(".villages-workspace-zone-fields").getByRole("textbox")).toHaveCount(3);
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
+      "aria-label",
+      "Zone name",
+    );
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
+      "placeholder",
+      "Zone name",
+    );
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(1)).toHaveAttribute(
+      "aria-label",
+      "Zone used for",
+    );
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(2)).toHaveAttribute(
+      "aria-label",
+      "Zone appearance",
+    );
     await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveAttribute("placeholder", "Zone purpose");
-    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveCount(0);
-    await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveCount(0);
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
+    await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveValue("Converted observatory room");
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
     await expect(inspector.locator(".villages-workspace-sheet-body > header")).toBeVisible();
     assert.equal(await inspector.getByLabel("Zone used for", { exact: true }).evaluate((el) => el.tagName), "TEXTAREA");
     await expect(inspector.getByRole("button", { name: "Edit Zone used for" })).toHaveCount(0);
     await expect(inspector.getByText("Access", { exact: true })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Help: Zone access" })).toHaveCount(0);
-    await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
-    const commonHeaderBox = await inspector.locator("header").boundingBox();
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
+    const commonHeaderBox = await inspector.locator(".villages-workspace-zone-fields").boundingBox();
     const commonTabsBox = await inspector.getByRole("tablist").boundingBox();
     assert.ok(commonTabsBox.y + commonTabsBox.height <= commonHeaderBox.y, "Common tab precedes its space fields");
     const scrollBody = inspector.locator(".villages-workspace-sheet-body");
@@ -1308,20 +1323,42 @@ try {
       el.style.removeProperty("flex");
       el.scrollTop = 0;
     });
+    const commonInclude = await inspector.getByLabel("Include Common Space", { exact: true }).boundingBox();
+    const commonName = await inspector.getByLabel("Zone name", { exact: true }).boundingBox();
+    assert.ok(commonInclude.y < commonName.y, "Included precedes Common Zone name");
     await capture("venue-common-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");
     await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
     await zone("Private");
-    await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
-    await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
-    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(3);
-    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("aria-label", "Zone name");
-    await expect(inspector.locator("header textarea").nth(0)).toHaveAttribute("placeholder", "Zone name");
-    await expect(inspector.locator("header textarea").nth(1)).toHaveAttribute("aria-label", "Zone used for");
-    await expect(inspector.locator("header textarea").nth(2)).toHaveAttribute("aria-label", "Zone appearance");
+    await expect(
+      inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone name", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      inspector.locator(".villages-workspace-zone-fields").getByLabel("Zone appearance", { exact: true }),
+    ).toBeVisible();
+    await expect(inspector.locator(".villages-workspace-zone-fields").getByRole("textbox")).toHaveCount(3);
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
+      "aria-label",
+      "Zone name",
+    );
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(0)).toHaveAttribute(
+      "placeholder",
+      "Zone name",
+    );
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(1)).toHaveAttribute(
+      "aria-label",
+      "Zone used for",
+    );
+    await expect(inspector.locator(".villages-workspace-zone-fields textarea").nth(2)).toHaveAttribute(
+      "aria-label",
+      "Zone appearance",
+    );
     await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveAttribute("placeholder", "Zone purpose");
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
-    await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("My observatory quarters");
+    const privateInclude = await inspector.getByLabel("Include Private Space", { exact: true }).boundingBox();
+    const privateName = await inspector.getByLabel("Zone name", { exact: true }).boundingBox();
+    assert.ok(privateInclude.y < privateName.y, "Included precedes Private Zone name");
     await capture("venue-private-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
     await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();
