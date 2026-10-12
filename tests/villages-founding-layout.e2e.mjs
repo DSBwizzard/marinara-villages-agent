@@ -161,7 +161,7 @@ const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,ven
 const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
 function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
 window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
-<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} onState={setState} onMove={()=>{}} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
+<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} usagePreview={null} onState={setState} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
 createRoot(document.getElementById('root')).render(<Harness/>);
 `,
     },
@@ -1156,8 +1156,10 @@ try {
     const formBox = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
     const tabsBox = await inspector.getByRole("tablist").boundingBox();
     assert.ok(formBox.y + formBox.height <= tabsBox.y, "overall Venue description stays above space tabs");
-    const closeBox = await inspector.getByRole("button", { name: "Close Venue editor" }).boundingBox();
-    assert.ok(closeBox.width <= 33 && closeBox.height <= 33, "compact close button");
+    await expect(inspector.getByRole("button", { name: "Close Venue editor" })).toHaveCount(0);
+    await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
+    await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
+    await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(2);
     const entranceHelp = inspector.getByRole("button", { name: "Help: Entrance and approach", exact: true });
     await entranceHelp.click();
     await expect(inspector.getByRole("note")).toHaveText(
@@ -1171,11 +1173,10 @@ try {
     await expect(formHelp.locator("span")).toHaveCSS("border-radius", "50%");
     await expect(inspector.getByText("Changes saved", { exact: true })).toHaveCount(0);
     const doneBox = await inspector.getByRole("button", { name: "Done", exact: true }).boundingBox();
-    const moveBox = await inspector.getByRole("button", { name: "Move photograph", exact: true }).boundingBox();
-    assert.ok(
-      doneBox.height <= 45 && moveBox.height <= 45 && doneBox.width < 100 && moveBox.width < 170,
-      "compact footer buttons",
-    );
+    await expect(inspector.getByRole("button", { name: "Move photograph", exact: true })).toHaveCount(0);
+    assert.ok(doneBox.height <= 45 && doneBox.width < 100, "compact Done button");
+    const dialogBox = await inspector.boundingBox();
+    assert.ok(dialogBox.y + dialogBox.height - (doneBox.y + doneBox.height) < 25, "Done sits at bottom of sheet");
     const descriptionBeforeHelp = await inspector.getByLabel("Exterior description", { exact: true }).boundingBox();
     await formHelp.click();
     await expect(inspector.getByRole("note")).toBeVisible();
@@ -1455,10 +1456,7 @@ try {
       await expect(root).toHaveAttribute("data-step", "4");
       await forward("Change starting Venues").click();
       await open();
-      await inspector.getByRole("button", { name: "Move photograph", exact: true }).click();
-      await root
-        .getByLabel("Venue placement map. Arrow keys choose a spot; Enter places a Venue.", { exact: true })
-        .press("Enter");
+      await mapView();
       await expect(root.locator(".villages-workspace-toolbar > strong")).toHaveText(
         `Venues${homeCount + 2} of ${homeCount + 2} placed`,
       );

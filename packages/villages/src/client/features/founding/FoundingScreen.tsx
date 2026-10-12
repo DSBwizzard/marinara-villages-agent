@@ -217,12 +217,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       }));
       setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
     };
-    const moveVenue = (venue: SetupVenueDraft) => {
-      setSelectedSetupVenueId(venue.id);
-      setMovingSetupVenueId(venue.id);
-      setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
-      setSetupPlacementError("");
-    };
     const mapReady = !!snapshot?.isFounded || (!!setupMapSrc && !setupMapBusy);
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
@@ -726,7 +720,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               usagePreview={<VillagesBurstPreview request={request} action="images" args={{ count: 1 }} />}
               saveError={draftSaveError || undefined}
               onState={setSetupWorkspace}
-              onMove={moveVenue}
               onSelect={(venue) => {
                 setSelectedSetupVenueId(venue.id);
                 setMovingSetupVenueId(null);

@@ -24,7 +24,6 @@ export function FoundingWorkspace({
   usagePreview,
   saveError,
   onState,
-  onMove,
   onSelect,
   onContinue,
   onArrange,
@@ -50,7 +49,6 @@ export function FoundingWorkspace({
   usagePreview: ReactNode;
   saveError?: string;
   onState(state: FoundingWorkspaceState): void;
-  onMove(venue: VillageVenue): void;
   onSelect(venue: VillageVenue): void;
   onContinue(): void;
   onArrange?: () => void;
@@ -421,7 +419,7 @@ export function FoundingWorkspace({
           <p>
             {placement
               ? `Tap the map to ${placement.presentation.x === null ? "place" : "move"} ${placement.name || "this Venue"}.`
-              : "Tap a photograph to edit or move."}
+              : "Tap a photograph to edit."}
           </p>
           {onArrange ? (
             <button type="button" aria-label="Arrange automatically" onClick={onArrange}>
@@ -497,29 +495,30 @@ export function FoundingWorkspace({
         {selected ? (
           <>
             <header className="villages-workspace-sheet-header">
-              {inlineField(
-                "Venue name",
-                selected.name,
-                (name) => onPatch({ ...selected, name }),
-                100,
-                "Venue name",
-                fieldProblem("name"),
-              )}
-              <button type="button" data-close-sheet aria-label="Close Venue editor" onClick={dismiss}>
-                ×
-              </button>
+              <textarea
+                aria-label="Venue name"
+                rows={1}
+                maxLength={100}
+                disabled={locked}
+                value={selected.name}
+                aria-invalid={!!fieldProblem("name")}
+                onChange={(event) => onPatch({ ...selected, name: event.target.value })}
+              />
+              {fieldProblem("name") ? <p role="alert">{fieldProblem("name")}</p> : null}
+              <div className="villages-workspace-sheet-summary">
+                <textarea
+                  aria-label="Physical form"
+                  rows={2}
+                  maxLength={240}
+                  disabled={locked}
+                  value={selected.form ?? ""}
+                  aria-invalid={!!fieldProblem("form")}
+                  onChange={(event) => onPatch({ ...selected, form: event.target.value })}
+                />
+                <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
+              </div>
+              {fieldProblem("form") ? <p role="alert">{fieldProblem("form")}</p> : null}
             </header>
-            <div className="villages-workspace-sheet-summary">
-              {inlineField(
-                "Physical form",
-                selected.form ?? "",
-                (form) => onPatch({ ...selected, form }),
-                240,
-                "What kind of place?",
-                fieldProblem("form"),
-              )}
-              <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
-            </div>
             <div role="tablist" aria-label="Venue spaces" className="villages-workspace-tabs">
               {(["exterior", "common", "private"] as const).map((tab) => (
                 <button
@@ -690,14 +689,7 @@ export function FoundingWorkspace({
             <footer className="villages-workspace-sheet-footer">
               {saveError ? <p role="alert">{saveError}</p> : null}
               <div>
-                {!existing ? (
-                  <button type="button" disabled={!mapReady} onClick={() => onMove(selected)}>
-                    {selected.presentation.x === null || selected.presentation.y === null
-                      ? "Place photograph"
-                      : "Move photograph"}
-                  </button>
-                ) : null}
-                <button type="button" className="villages-forging-primary" onClick={dismiss}>
+                <button type="button" data-close-sheet className="villages-forging-primary" onClick={dismiss}>
                   Done
                 </button>
               </div>
