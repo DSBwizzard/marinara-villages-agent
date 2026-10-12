@@ -8,6 +8,12 @@ import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import {
+  LOCATION_IMAGE_WIDTH,
+  LOCATION_IMAGE_HEIGHT,
+  LOCATION_NEGATIVE_PROMPT,
+  venueImageCompositionPrompt,
+} from "../../domain/rules/location-image-rules.js";
+import {
   DEFAULT_LORE_TOKEN_BUDGET,
   readLoreTokenBudget,
   readSelectedLorebookIds,
@@ -331,7 +337,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         row.layout
           ? `Selected layout: ${row.layout}. Only these areas exist: ${JSON.stringify(Array.isArray(row.areas) ? row.areas.map((area) => ({ id: record(area).id, name: record(area).name })) : [])}. Do not invent other interiors or adjoining rooms. Do not reveal hidden private contents.`
           : "",
-        "No people, lettering, numerals, signs, labels, or interface graphics.",
+        venueImageCompositionPrompt(area === "exterior" ? "exterior" : "interior"),
       ],
       [
         `Setting: ${setting}.`,
@@ -346,9 +352,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const decoded = await generateVillageImage({
       name: row.name || "Founding venue",
       prompt,
-      negativePrompt: "people, faces, text, letters, numbers, numerals, signs, labels, captions, watermark, interface",
-      width: 1216,
-      height: 832,
+      negativePrompt: LOCATION_NEGATIVE_PROMPT,
+      width: LOCATION_IMAGE_WIDTH,
+      height: LOCATION_IMAGE_HEIGHT,
       maxBase64Length: Math.ceil(MAX_VENUE_IMAGE_BYTES / 3) * 4,
     });
     return uploadVillageGalleryImage({
@@ -356,8 +362,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       mime: decoded.mime,
       name: row.name || "Founding venue",
       prompt,
-      width: 1216,
-      height: 832,
+      width: LOCATION_IMAGE_WIDTH,
+      height: LOCATION_IMAGE_HEIGHT,
     });
   }
 

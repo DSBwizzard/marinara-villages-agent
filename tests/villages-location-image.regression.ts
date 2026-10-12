@@ -194,26 +194,18 @@ async function main() {
   };
   const setting = "A mill town at the foot of a ridge.";
   const village = coerceVillageState({ wishSystemVersion: 3, setting });
-  assert.equal(
-    buildLocationPrompt(
-      village,
-      coerceVillageState({
-        wishSystemVersion: 3,
-        venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
-      }).venues[0]!,
-      moment,
-    ),
-    [
-      "A wide, empty exterior view of the mill pond and its approach in Willowbrook. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.",
-      "Venue roles: other.",
-      "Venue form: where the grain is ground.",
-      `Village setting and theme: ${setting}.`,
-      `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
-      "Honor these facts and do not invent conflicting architecture, technology or geography.",
-      "Painted background art for a story: no people, no animals, no text, no lettering, no watermark.",
-    ].join(" "),
-    "the prompt is the place, the village, the weather, and an explicit refusal of people",
+  const exteriorPrompt = buildLocationPrompt(
+    village,
+    coerceVillageState({
+      wishSystemVersion: 3,
+      venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
+    }).venues[0]!,
+    moment,
   );
+  for (const fact of ["the mill pond", "where the grain is ground", setting, describeMoment(moment), moment.weather])
+    assert.ok(exteriorPrompt.includes(fact), `${fact} informs the exterior image`);
+  assert.match(exteriorPrompt, /entrance and approach, not its enterable interior/u);
+  assert.match(exteriorPrompt, /recognizable at thumbnail size/u);
   const interiorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
@@ -226,6 +218,15 @@ async function main() {
   );
   assert.match(interiorPrompt, /interior view/u);
   assert.match(interiorPrompt, /A timbered room/u);
+  for (const prompt of [exteriorPrompt, interiorPrompt]) {
+    assert.match(prompt, /eye-level landscape view/u);
+    assert.match(prompt, /scenery to every edge/u);
+    assert.match(prompt, /works behind chat overlays/u);
+    assert.match(prompt, /Do not draw an overhead map, floor plan, cutaway/u);
+    assert.match(prompt, /application supplies the Polaroid frame/u);
+  }
+  assert.match(interiorPrompt, /only the selected Zone as experienced from within it/u);
+  assert.doesNotMatch(interiorPrompt, /recognizable at thumbnail size/u);
   assert.doesNotMatch(interiorPrompt, /building from outside/u);
   assert.match(
     buildLocationPrompt(
@@ -320,7 +321,9 @@ async function main() {
     coerceVillageState({ wishSystemVersion: 3, venues: [{ id: "mill", name: "the mill pond", form: "" }] }).venues[0]!,
     moment,
   );
-  assert.ok(chatty.length < 1_200, "a two-thousand-character setting is cut for a picture rather than refused");
+  assert.ok(chatty.includes(`Village setting and theme: ${"y".repeat(400)}.`));
+  assert.ok(!chatty.includes("y".repeat(401)), "a long setting is truncated before adding composition guidance");
+  assert.ok(chatty.length <= 4_000, "the composed prompt stays within the shared image allowance");
 
   // ── What a stored picture is allowed to be ────────────────────────────────
   // A reference is only worth keeping if all of it is well formed. Half of one

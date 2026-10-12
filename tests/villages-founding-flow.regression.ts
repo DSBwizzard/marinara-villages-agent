@@ -738,12 +738,21 @@ async function foundingConnectionOwnership() {
       oldFetch = globalThis.fetch;
     const clearA = installDefaultActivation(a.scope, () => {});
     let clearB = () => {};
-    globalThis.fetch = async (input) => {
+    globalThis.fetch = async (input, init) => {
       const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
       assert(owner);
       const path = new URL(String(input)).pathname;
       if (path === "/api/lorebooks") await owner.pause("lore");
-      if (path === "/api/characters/avatar-generation") await owner.pause("provider");
+      if (path === "/api/characters/avatar-generation") {
+        const request = JSON.parse(String(init?.body));
+        assert.match(request.appearance, /eye-level landscape view/u);
+        assert.match(request.appearance, /works behind chat overlays/u);
+        assert.match(request.appearance, /recognizable at thumbnail size/u);
+        assert.match(request.appearance, /application supplies the Polaroid frame/u);
+        assert.equal(request.width, 1216);
+        assert.equal(request.height, 832);
+        await owner.pause("provider");
+      }
       if (path === "/api/global-gallery/upload") await owner.pause("gallery");
       const payload =
         path === "/api/connections"
