@@ -211,7 +211,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
     ["Edited common-a", "Edited common-b", "Edited private-a", "Edited private-b"],
   );
   await page.getByRole("button", { name: "Remove Zone", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Exterior", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Venue", exact: true })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Exterior description", { exact: true })).toBeVisible();
   await context.close();
   console.log(
@@ -1037,9 +1037,7 @@ try {
       await pins.nth(index).click();
     };
     const zone = async (name) => {
-      await inspector
-        .getByRole("tab", { name: name === "Exterior" ? "Exterior" : name + " Space", exact: true })
-        .click();
+      await inspector.getByRole("tab", { name: name === "Exterior" ? "Venue" : name + " Space", exact: true }).click();
       await expect(inspector.getByRole("tabpanel")).toHaveCount(1);
       await expect(inspector.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
       const sheetBox = await inspector.boundingBox();
@@ -1205,7 +1203,8 @@ try {
     await expect(inspector.locator(".villages-workspace-photo")).toHaveCount(0);
     const formBox = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
     const tabsBox = await inspector.getByRole("tablist").boundingBox();
-    assert.ok(formBox.y + formBox.height <= tabsBox.y, "overall Venue description stays above space tabs");
+    assert.ok(tabsBox.y + tabsBox.height <= formBox.y, "tabs precede editable fields");
+    await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
     await expect(inspector.getByRole("button", { name: "Close Venue editor" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
@@ -1267,6 +1266,10 @@ try {
     await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveCount(0);
     await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveCount(0);
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
+    await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
+    const commonHeaderBox = await inspector.locator("header").boundingBox();
+    const commonTabsBox = await inspector.getByRole("tablist").boundingBox();
+    assert.ok(commonTabsBox.y + commonTabsBox.height <= commonHeaderBox.y, "Common tab precedes its space fields");
     await capture("venue-common-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");
     await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
@@ -1274,6 +1277,7 @@ try {
     await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
     await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
+    await expect(inspector.locator(".villages-workspace-title")).toHaveText("My observatory quarters");
     await capture("venue-private-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
     await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();

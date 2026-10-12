@@ -536,6 +536,53 @@ export function FoundingWorkspace({
       >
         {selected ? (
           <>
+            <p className="villages-workspace-title" aria-label="Editing venue">
+              {selected.name || "Venue"}
+            </p>
+            <div role="tablist" aria-label="Venue spaces" className="villages-workspace-tabs">
+              {(["exterior", "common", "private"] as const).map((tab) => (
+                <button
+                  type="button"
+                  role="tab"
+                  key={tab}
+                  id={tabId + tab}
+                  aria-controls={tabId + "panel"}
+                  aria-selected={activeTab === tab}
+                  tabIndex={activeTab === tab ? 0 : -1}
+                  onKeyDown={(event) => {
+                    const tabs = ["exterior", "common", "private"];
+                    const index = tabs.indexOf(activeTab);
+                    const next =
+                      event.key === "ArrowRight"
+                        ? tabs[(index + 1) % 3]
+                        : event.key === "ArrowLeft"
+                          ? tabs[(index + 2) % 3]
+                          : event.key === "Home"
+                            ? tabs[0]
+                            : event.key === "End"
+                              ? tabs[2]
+                              : null;
+                    if (next) {
+                      event.preventDefault();
+                      changeZone(next);
+                      inspector.current?.querySelector<HTMLElement>("#" + CSS.escape(tabId + next))?.focus();
+                    }
+                  }}
+                  onClick={() => {
+                    setInclusionProblem("");
+                    changeZone(
+                      existing && tab !== "exterior"
+                        ? activeTab === tab
+                          ? existingZoneId
+                          : ((tab === "common" ? selected.spaces?.[0]?.id : selected.privateSpaces?.[0]?.id) ?? tab)
+                        : tab,
+                    );
+                  }}
+                >
+                  {tab === "exterior" ? "Venue" : tab === "common" ? "Common Space" : "Private Space"}
+                </button>
+              ))}
+            </div>
             <header
               className="villages-workspace-sheet-header"
               data-zone-id={activeTab === "exterior" ? "exterior" : headerZone?.id}
@@ -614,50 +661,6 @@ export function FoundingWorkspace({
                 </>
               )}
             </header>
-            <div role="tablist" aria-label="Venue spaces" className="villages-workspace-tabs">
-              {(["exterior", "common", "private"] as const).map((tab) => (
-                <button
-                  type="button"
-                  role="tab"
-                  key={tab}
-                  id={tabId + tab}
-                  aria-controls={tabId + "panel"}
-                  aria-selected={activeTab === tab}
-                  tabIndex={activeTab === tab ? 0 : -1}
-                  onKeyDown={(event) => {
-                    const tabs = ["exterior", "common", "private"];
-                    const index = tabs.indexOf(activeTab);
-                    const next =
-                      event.key === "ArrowRight"
-                        ? tabs[(index + 1) % 3]
-                        : event.key === "ArrowLeft"
-                          ? tabs[(index + 2) % 3]
-                          : event.key === "Home"
-                            ? tabs[0]
-                            : event.key === "End"
-                              ? tabs[2]
-                              : null;
-                    if (next) {
-                      event.preventDefault();
-                      changeZone(next);
-                      inspector.current?.querySelector<HTMLElement>("#" + CSS.escape(tabId + next))?.focus();
-                    }
-                  }}
-                  onClick={() => {
-                    setInclusionProblem("");
-                    changeZone(
-                      existing && tab !== "exterior"
-                        ? activeTab === tab
-                          ? existingZoneId
-                          : ((tab === "common" ? selected.spaces?.[0]?.id : selected.privateSpaces?.[0]?.id) ?? tab)
-                        : tab,
-                    );
-                  }}
-                >
-                  {tab === "exterior" ? "Exterior" : tab === "common" ? "Common Space" : "Private Space"}
-                </button>
-              ))}
-            </div>
             <div
               className="villages-workspace-sheet-body"
               role="tabpanel"
