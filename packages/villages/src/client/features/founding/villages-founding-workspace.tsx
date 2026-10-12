@@ -497,9 +497,6 @@ export function FoundingWorkspace({
         {selected ? (
           <>
             <header className="villages-workspace-sheet-header">
-              <span className="villages-workspace-photo" aria-hidden="true">
-                {selected.presentation.image ? <img src={selected.presentation.image.url} alt="" /> : <span />}
-              </span>
               {inlineField(
                 "Venue name",
                 selected.name,
@@ -512,6 +509,17 @@ export function FoundingWorkspace({
                 ×
               </button>
             </header>
+            <div className="villages-workspace-sheet-summary">
+              {inlineField(
+                "Physical form",
+                selected.form ?? "",
+                (form) => onPatch({ ...selected, form }),
+                240,
+                "What kind of place?",
+                fieldProblem("form"),
+              )}
+              <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
+            </div>
             <div role="tablist" aria-label="Venue spaces" className="villages-workspace-tabs">
               {(["exterior", "common", "private"] as const).map((tab) => (
                 <button
@@ -565,16 +573,11 @@ export function FoundingWorkspace({
               {locked ? <p role="status">Preparing image. These physical details are temporarily locked.</p> : null}
               {activeTab === "exterior" ? (
                 <section data-zone-id="exterior">
-                  {inlineField(
-                    "Physical form",
-                    selected.form ?? "",
-                    (form) => onPatch({ ...selected, form }),
-                    240,
-                    "What kind of place?",
-                    fieldProblem("form"),
-                  )}
                   <div className="villages-workspace-purpose">
-                    Entrance and approach <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
+                    Entrance and approach{" "}
+                    <FoundingHelp label="Entrance and approach">
+                      Describe the entrance, approach and visible exterior of this Venue.
+                    </FoundingHelp>
                   </div>
                   <textarea
                     aria-label="Exterior description"

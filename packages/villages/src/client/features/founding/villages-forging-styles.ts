@@ -210,6 +210,9 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-workspace-sheet-header { flex:none; margin:0!important; }
 .villages-workspace-sheet-header .villages-workspace-inline { flex:1; min-width:0; }
 .villages-workspace-sheet-header input { font-weight:700; }
+.villages-forging-v2 .villages-workspace-sheet [data-close-sheet] { flex:none; width:32px; min-width:32px; height:32px; min-height:32px; padding:0; border:0; background:transparent; font-size:1rem; line-height:1; }
+.villages-workspace-sheet-summary { flex:none; position:relative; display:flex; align-items:center; gap:.2rem; }
+.villages-workspace-sheet-summary .villages-workspace-inline { flex:1; min-width:0; }
 .villages-workspace-inline { display:flex; align-items:center; flex-wrap:wrap; gap:.2rem; }
 .villages-forging-v2 .villages-workspace-inline input { flex:1; width:0; padding:.2rem; background:transparent; border-color:transparent; }
 .villages-forging-v2 .villages-workspace-inline input:focus { border-color:#aa87ff; background:#10172f; }

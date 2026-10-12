@@ -1152,6 +1152,18 @@ try {
       .getByLabel("Exterior description", { exact: true })
       .fill("A blue door beside the telescope corridor.");
     await expect(inspector.getByLabel("Zone used for", { exact: true })).toHaveCount(0);
+    await expect(inspector.locator(".villages-workspace-photo")).toHaveCount(0);
+    const formBox = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
+    const tabsBox = await inspector.getByRole("tablist").boundingBox();
+    assert.ok(formBox.y + formBox.height <= tabsBox.y, "overall Venue description stays above space tabs");
+    const closeBox = await inspector.getByRole("button", { name: "Close Venue editor" }).boundingBox();
+    assert.ok(closeBox.width <= 33 && closeBox.height <= 33, "compact close button");
+    const entranceHelp = inspector.getByRole("button", { name: "Help: Entrance and approach", exact: true });
+    await entranceHelp.click();
+    await expect(inspector.getByRole("note")).toHaveText(
+      "Describe the entrance, approach and visible exterior of this Venue.",
+    );
+    await entranceHelp.press("Escape");
     const formHelp = inspector.getByRole("button", { name: "Help: Form", exact: true });
     const beforeHelp = await inspector.getByLabel("Physical form", { exact: true }).boundingBox();
     await expect(formHelp).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
