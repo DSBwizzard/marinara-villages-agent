@@ -44,12 +44,14 @@ export function FoundingZoneFields({
   imageFields,
   editAccess = true,
   selectedZoneId,
+  identityInHeader = false,
 }: {
   venue: VillageVenue;
   people: { id: string; name: string }[];
   busy: boolean;
   editAccess?: boolean;
   selectedZoneId?: string;
+  identityInHeader?: boolean;
   onPatch(venue: VillageVenue): void;
   imageFields(
     area: "exterior" | "interior" | "private",
@@ -78,18 +80,22 @@ export function FoundingZoneFields({
           const generatedLater = personal && zone.ownerId !== "player";
           return (
             <section key={zone.id} data-zone-id={zone.id}>
-              <h4>{zone.name || "Zone"}</h4>
-              <label>
-                Zone name
-                <input
-                  aria-label="Zone name"
-                  disabled={busy}
-                  maxLength={100}
-                  value={zone.name ?? ""}
-                  placeholder="Living room, bedroom, foyer…"
-                  onChange={(event) => patch({ name: event.target.value })}
-                />
-              </label>
+              {!identityInHeader ? (
+                <>
+                  <h4>{zone.name || "Zone"}</h4>
+                  <label>
+                    Zone name
+                    <input
+                      aria-label="Zone name"
+                      disabled={busy}
+                      maxLength={100}
+                      value={zone.name ?? ""}
+                      placeholder="Living room, bedroom, foyer…"
+                      onChange={(event) => patch({ name: event.target.value })}
+                    />
+                  </label>
+                </>
+              ) : null}
               <label>
                 Used for
                 <input
@@ -126,7 +132,7 @@ export function FoundingZoneFields({
               ) : null}
               {generatedLater ? (
                 <p>Appearance is prepared for the assigned resident after founding and stays hidden until entry.</p>
-              ) : (
+              ) : !identityInHeader ? (
                 <label>
                   Appearance
                   <textarea
@@ -143,7 +149,7 @@ export function FoundingZoneFields({
                     onChange={(event) => patch({ description: event.target.value })}
                   />
                 </label>
-              )}
+              ) : null}
               {editAccess ? (
                 <>
                   {personal && !zone.access && !["residence", "workplace"].includes(zone.venueClass) ? (

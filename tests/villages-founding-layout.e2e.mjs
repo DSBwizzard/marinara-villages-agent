@@ -183,6 +183,8 @@ createRoot(document.getElementById('root')).render(<Harness/>);
     await selector.selectOption(id);
     await expect(page.getByLabel("Zone name", { exact: true })).toHaveCount(1);
     await expect(page.getByLabel("Zone name", { exact: true })).toHaveValue(id);
+    await page.getByLabel("Zone name", { exact: true }).fill("Named " + id);
+    await page.getByLabel("Zone appearance", { exact: true }).fill("Described " + id);
     await page.getByLabel("Zone used for", { exact: true }).fill("Edited " + id);
   }
   await page.getByRole("tab", { name: "Common Space", exact: true }).click();
@@ -195,6 +197,15 @@ createRoot(document.getElementById('root')).render(<Harness/>);
   await expect(selector).toHaveValue("private-b");
   await expect(page.getByLabel("Zone used for", { exact: true })).toBeFocused();
   const saved = await page.evaluate(() => window.savedVenue);
+  assert.equal(saved.name, "Saved residence", "space header edits preserve Venue name");
+  assert.deepEqual(
+    [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.name),
+    ["Named common-a", "Named common-b", "Named private-a", "Named private-b"],
+  );
+  assert.deepEqual(
+    [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.description),
+    ["Described common-a", "Described common-b", "Described private-a", "Described private-b"],
+  );
   assert.deepEqual(
     [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.purpose),
     ["Edited common-a", "Edited common-b", "Edited private-a", "Edited private-b"],
@@ -1132,6 +1143,7 @@ try {
               const saved = get.result;
               for (const venue of saved.data.venues)
                 venue.imageContext = { useAssignedVillagerContext: false, useVisualLore: false };
+              saved.data.interruptedGeneration = true;
               delete saved.data.workspace;
               saved.data.editorOpen = true;
               saved.data.editorOriginal = { ...saved.data.venues[0], name: "Old cancel copy" };
@@ -1156,6 +1168,7 @@ try {
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+      await expect(root.getByText(/generation request was interrupted and may have been billed/)).toHaveCount(0);
       await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveValue("Legacy current edit");
       await open(homeCount + 1);
       await zone("Private");
@@ -1249,10 +1262,18 @@ try {
     await formHelp.evaluate((element) => element.blur());
     await capture("venue-details");
     await zone("Common");
+    await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
+    await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
+    await expect(inspector.getByLabel("Venue name", { exact: true })).toHaveCount(0);
+    await expect(inspector.getByLabel("Physical form", { exact: true })).toHaveCount(0);
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
     await capture("venue-common-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("A quiet sitting room overlooking the sea.");
     await inspector.getByLabel("Zone used for", { exact: true }).fill("Relaxing together");
     await zone("Private");
+    await expect(inspector.locator("header").getByLabel("Zone name", { exact: true })).toBeVisible();
+    await expect(inspector.locator("header").getByLabel("Zone appearance", { exact: true })).toBeVisible();
+    await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(1);
     await capture("venue-private-sheet");
     await inspector.getByLabel("Zone appearance", { exact: true }).fill("My hammock and traveling journal.");
     await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();

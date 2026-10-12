@@ -265,11 +265,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;
     setSetupKeyboardSpot(data.keyboardSpot);
-    setSetupProblem(
-      data.interruptedGeneration
-        ? "A generation request was interrupted and may have been billed. Saved results are kept. Generate again only when you choose."
-        : "",
-    );
+    setSetupProblem("");
     setDraftReady(true);
     setScreen("setup");
     void loadPersonas();

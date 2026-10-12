@@ -1,4 +1,4 @@
-import { FoundingField, FoundingHelp } from "./FoundingField.js";
+import { FoundingHelp } from "./FoundingField.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { includeFoundingZone } from "./founding-template.js";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
@@ -100,6 +100,29 @@ export function FoundingWorkspace({
     !!(selected && state.inactive?.[selected.id]?.private?.some((zone) => zone.id === selectedZone));
   const zoneTab = selectedZone === "exterior" ? "exterior" : personal ? "private" : "common";
   const activeTab = section === "venue" ? "exterior" : zoneTab;
+  const headerZone =
+    activeTab === "exterior"
+      ? undefined
+      : ((activeTab === "private" ? selected?.privateSpaces : selected?.spaces)?.find(
+          (zone) => zone.id === existingZoneId,
+        ) ?? (activeTab === "private" ? selected?.privateSpaces : selected?.spaces)?.[0]);
+  const privateHeaderHidden = activeTab === "private" && headerZone?.ownerId !== "player";
+  const patchHeaderZone = (patch: { name?: string; description?: string }) => {
+    if (!selected || !headerZone) return;
+    onPatch(
+      activeTab === "private"
+        ? {
+            ...selected,
+            privateSpaces: selected.privateSpaces?.map((zone) =>
+              zone.id === headerZone.id ? { ...zone, ...patch } : zone,
+            ),
+          }
+        : {
+            ...selected,
+            spaces: selected.spaces?.map((zone) => (zone.id === headerZone.id ? { ...zone, ...patch } : zone)),
+          },
+    );
+  };
   const locked = !!selected && imageTarget?.venueId === selected.id;
   const sheet = state.view === "details" && !!selected;
   const dismiss = () => onState({ ...state, paused: false, view: "map" });
@@ -170,11 +193,13 @@ export function FoundingWorkspace({
       "zone-appearance": "Zone appearance",
       controller: "Zone controllers",
     };
-    const zone = [...(root.current?.querySelectorAll<HTMLElement>("[data-zone-id]") ?? [])].find(
+    const containers = [...(inspector.current?.querySelectorAll<HTMLElement>("[data-zone-id]") ?? [])].filter(
       (element) => element.dataset.zoneId === focusIssue.zoneId,
     );
-    if (focusIssue.zoneId && !zone) return;
-    const field = (zone ?? root.current)?.querySelector<HTMLElement>(`[aria-label="${labels[focusIssue.field]}"]`);
+    const selector = `[aria-label="${labels[focusIssue.field]}"]`;
+    const field = focusIssue.zoneId
+      ? containers.map((element) => element.querySelector<HTMLElement>(selector)).find(Boolean)
+      : inspector.current?.querySelector<HTMLElement>(selector);
     field?.focus();
     field?.scrollIntoView({ block: "nearest" });
   }, [focusIssue, selectedId, section, zoneTab, sheet]);
@@ -365,14 +390,6 @@ export function FoundingWorkspace({
               return (
                 <section key={zone.id} data-zone-id={zone.id}>
                   {inlineField(
-                    "Zone name",
-                    zone.name ?? "",
-                    (value) => patch({ name: value }),
-                    100,
-                    "Space name",
-                    fieldProblem("zone-name", zone.id),
-                  )}
-                  {inlineField(
                     "Zone used for",
                     zone.purpose ?? "",
                     (value) => patch({ purpose: value }),
@@ -384,22 +401,7 @@ export function FoundingWorkspace({
                     <FoundingHelp label="Private interior">
                       The private interior is prepared for this resident after founding and stays hidden until invited.
                     </FoundingHelp>
-                  ) : (
-                    <FoundingField
-                      title="Description"
-                      help="Describe the visible interior of this space."
-                      error={fieldProblem("zone-appearance", zone.id)}
-                    >
-                      <textarea
-                        aria-label="Zone appearance"
-                        rows={3}
-                        maxLength={1000}
-                        disabled={locked}
-                        value={zone.description}
-                        onChange={(event) => patch({ description: event.target.value })}
-                      />
-                    </FoundingField>
-                  )}
+                  ) : null}
                   <div className="villages-founding-field-heading">
                     Access{" "}
                     <FoundingHelp label="Zone access">
@@ -534,34 +536,83 @@ export function FoundingWorkspace({
       >
         {selected ? (
           <>
-            <header className="villages-workspace-sheet-header">
+            <header
+              className="villages-workspace-sheet-header"
+              data-zone-id={activeTab === "exterior" ? "exterior" : headerZone?.id}
+            >
               <textarea
                 id={tabId + "name"}
-                aria-label="Venue name"
-                placeholder="Venue name"
+                aria-label={activeTab === "exterior" ? "Venue name" : "Zone name"}
+                placeholder={
+                  activeTab === "exterior"
+                    ? "Venue name"
+                    : activeTab === "private"
+                      ? "Private Space name"
+                      : "Common Space name"
+                }
                 rows={1}
                 maxLength={100}
-                disabled={locked}
-                value={selected.name}
-                aria-invalid={!!fieldProblem("name")}
-                onChange={(event) => onPatch({ ...selected, name: event.target.value })}
+                disabled={locked || (activeTab !== "exterior" && !headerZone)}
+                value={activeTab === "exterior" ? selected.name : (headerZone?.name ?? "")}
+                aria-invalid={
+                  !!fieldProblem(
+                    activeTab === "exterior" ? "name" : "zone-name",
+                    activeTab === "exterior" ? undefined : headerZone?.id,
+                  )
+                }
+                onChange={(event) =>
+                  activeTab === "exterior"
+                    ? onPatch({ ...selected, name: event.target.value })
+                    : patchHeaderZone({ name: event.target.value })
+                }
               />
-              {fieldProblem("name") ? <p role="alert">{fieldProblem("name")}</p> : null}
-              <div className="villages-workspace-sheet-summary">
-                <textarea
-                  id={tabId + "form"}
-                  aria-label="Physical form"
-                  placeholder="Venue form"
-                  rows={2}
-                  maxLength={240}
-                  disabled={locked}
-                  value={selected.form ?? ""}
-                  aria-invalid={!!fieldProblem("form")}
-                  onChange={(event) => onPatch({ ...selected, form: event.target.value })}
-                />
-                <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
-              </div>
-              {fieldProblem("form") ? <p role="alert">{fieldProblem("form")}</p> : null}
+              {activeTab === "exterior" ? (
+                <>
+                  {fieldProblem("name") ? <p role="alert">{fieldProblem("name")}</p> : null}
+                  <div className="villages-workspace-sheet-summary">
+                    <textarea
+                      id={tabId + "form"}
+                      aria-label="Physical form"
+                      placeholder="Venue form"
+                      rows={2}
+                      maxLength={240}
+                      disabled={locked}
+                      value={selected.form ?? ""}
+                      aria-invalid={!!fieldProblem("form")}
+                      onChange={(event) => onPatch({ ...selected, form: event.target.value })}
+                    />
+                    <FoundingHelp label="Form">Describe the overall physical place.</FoundingHelp>
+                  </div>
+                  {fieldProblem("form") ? <p role="alert">{fieldProblem("form")}</p> : null}
+                </>
+              ) : (
+                <>
+                  {fieldProblem("zone-name", headerZone?.id) ? (
+                    <p role="alert">{fieldProblem("zone-name", headerZone?.id)}</p>
+                  ) : null}
+                  {headerZone && !privateHeaderHidden ? (
+                    <div className="villages-workspace-sheet-summary">
+                      <textarea
+                        id={tabId + "form"}
+                        aria-label="Zone appearance"
+                        placeholder="Space description"
+                        rows={3}
+                        maxLength={1000}
+                        disabled={locked}
+                        value={headerZone.description}
+                        aria-invalid={!!fieldProblem("zone-appearance", headerZone.id)}
+                        onChange={(event) => patchHeaderZone({ description: event.target.value })}
+                      />
+                      <FoundingHelp label="Space description">
+                        Describe the visible interior of this space.
+                      </FoundingHelp>
+                    </div>
+                  ) : null}
+                  {headerZone && !privateHeaderHidden && fieldProblem("zone-appearance", headerZone.id) ? (
+                    <p role="alert">{fieldProblem("zone-appearance", headerZone.id)}</p>
+                  ) : null}
+                </>
+              )}
             </header>
             <div role="tablist" aria-label="Venue spaces" className="villages-workspace-tabs">
               {(["exterior", "common", "private"] as const).map((tab) => (
@@ -723,6 +774,7 @@ export function FoundingWorkspace({
                       }}
                       imageFields={imageFields}
                       selectedZoneId={existingZoneId}
+                      identityInHeader
                     />
                   ) : null}
                 </>
