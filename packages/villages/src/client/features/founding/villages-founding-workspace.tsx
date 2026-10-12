@@ -3,7 +3,7 @@ import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/
 import { includeFoundingZone } from "./founding-template.js";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
 import { FoundingZoneFields } from "./villages-founding-zones.js";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 type Area = "exterior" | "interior" | "private";
 export function FoundingWorkspace({
@@ -57,6 +57,25 @@ export function FoundingWorkspace({
 }) {
   const root = useRef<HTMLDivElement>(null);
   const inspector = useRef<HTMLDialogElement>(null);
+  const viewer = useRef<HTMLDialogElement>(null);
+  const backdropPress = useRef(false);
+  const viewerBackdropPress = useRef(false);
+  const uploadPending = useRef(false);
+  const uploadOpener = useRef<HTMLButtonElement | null>(null);
+  const [preview, setPreview] = useState<{ url: string; label: string } | null>(null);
+  const finishUpload = useCallback(() => {
+    if (!uploadPending.current) return;
+    requestAnimationFrame(() => {
+      if (!uploadPending.current) return;
+      uploadPending.current = false;
+      if (inspector.current?.open && !viewer.current?.open && uploadOpener.current?.isConnected)
+        uploadOpener.current.focus({ preventScroll: true });
+    });
+  }, []);
+  const outside = (node: HTMLDialogElement, x: number, y: number) => {
+    const box = node.getBoundingClientRect();
+    return x < box.left || x > box.right || y < box.top || y > box.bottom;
+  };
   const tabId = useId();
   const [narrow, setNarrow] = useState(false);
   const [inclusionProblem, setInclusionProblem] = useState("");
@@ -97,9 +116,21 @@ export function FoundingWorkspace({
     const opener = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const pickerCancel = (event: Event) => {
+      if (event.target instanceof HTMLInputElement && event.target.type === "file") {
+        event.stopPropagation();
+        finishUpload();
+      }
+    };
+    node.addEventListener("cancel", pickerCancel, true);
+    window.addEventListener("focus", finishUpload);
     node.showModal();
     node.querySelector<HTMLElement>("[data-close-sheet]")?.focus();
     return () => {
+      node.removeEventListener("cancel", pickerCancel, true);
+      window.removeEventListener("focus", finishUpload);
+      uploadPending.current = false;
+      backdropPress.current = false;
       node.close();
       document.body.style.overflow = previousOverflow;
       if (opener instanceof HTMLElement && opener.isConnected && opener !== document.body)
@@ -109,7 +140,22 @@ export function FoundingWorkspace({
           .find((element) => (element.dataset.venueId ?? element.dataset.pinId) === selectedId)
           ?.focus({ preventScroll: true });
     };
-  }, [sheet, selectedId]);
+  }, [sheet, selectedId, finishUpload]);
+  useEffect(() => {
+    setPreview(null);
+  }, [sheet, selectedId, activeTab]);
+  useEffect(() => {
+    const node = viewer.current;
+    if (!preview || !sheet || !node) return;
+    const opener = document.activeElement;
+    node.showModal();
+    return () => {
+      node.close();
+      viewerBackdropPress.current = false;
+      if (inspector.current?.open && opener instanceof HTMLElement && opener.isConnected)
+        opener.focus({ preventScroll: true });
+    };
+  }, [preview, sheet]);
   useEffect(() => {
     if (!focusIssue || focusIssue.venueId !== selectedId) return;
     const labels: Record<FoundingIssue["field"], string> = {
@@ -142,69 +188,77 @@ export function FoundingWorkspace({
   const imageFields = (area: Area, image: VillageVenueImage | null | undefined, id?: string) =>
     selected && (
       <section className="villages-workspace-artwork" aria-label={`${area} image`}>
-        <details className="villages-workspace-image-options">
-          <summary>Image options</summary>
+        <div className="villages-workspace-image-actions">
+          <button type="button" disabled={imageBusy} onClick={() => onGenerate(selected, area, id)}>
+            {image ? "Generate again" : "Generate image"}
+          </button>
+          <button
+            type="button"
+            disabled={imageBusy}
+            onClick={(event) => {
+              uploadPending.current = true;
+              backdropPress.current = false;
+              uploadOpener.current = event.currentTarget;
+              event.currentTarget.parentElement?.querySelector<HTMLInputElement>('input[type="file"]')?.click();
+            }}
+          >
+            Upload image
+          </button>
+          <input
+            hidden
+            aria-label={`Upload ${area} image`}
+            type="file"
+            accept="image/*"
+            disabled={imageBusy}
+            onChange={(event) => {
+              finishUpload();
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) onUpload(selected, area, file, id);
+            }}
+          />
           {image ? (
-            <a href={image.url} target="_blank" rel="noreferrer" aria-label="View image">
-              <img src={image.url} alt={`${area} of ${selected.name}`} />
-            </a>
-          ) : null}
-          <div className="villages-workspace-image-actions">
-            <button type="button" disabled={imageBusy} onClick={() => onGenerate(selected, area, id)}>
-              {image ? "Generate again" : "Generate image"}
-            </button>
             <button
               type="button"
               disabled={imageBusy}
-              onClick={(event) =>
-                event.currentTarget.parentElement?.querySelector<HTMLInputElement>('input[type="file"]')?.click()
+              onClick={() =>
+                onPatch(
+                  area === "exterior"
+                    ? { ...selected, presentation: { ...selected.presentation, image: null } }
+                    : area === "private"
+                      ? {
+                          ...selected,
+                          privateSpaces: selected.privateSpaces?.map((zone) =>
+                            zone.id === id ? { ...zone, image: null } : zone,
+                          ),
+                        }
+                      : {
+                          ...selected,
+                          spaces: selected.spaces?.map((zone) => (zone.id === id ? { ...zone, image: null } : zone)),
+                        },
+                )
               }
             >
-              Upload image
+              Remove image
             </button>
-            <input
-              hidden
-              aria-label={`Upload ${area} image`}
-              type="file"
-              accept="image/*"
-              disabled={imageBusy}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) onUpload(selected, area, file, id);
-              }}
-            />
-            {image ? (
-              <button
-                type="button"
-                disabled={imageBusy}
-                onClick={() =>
-                  onPatch(
-                    area === "exterior"
-                      ? { ...selected, presentation: { ...selected.presentation, image: null } }
-                      : area === "private"
-                        ? {
-                            ...selected,
-                            privateSpaces: selected.privateSpaces?.map((zone) =>
-                              zone.id === id ? { ...zone, image: null } : zone,
-                            ),
-                          }
-                        : {
-                            ...selected,
-                            spaces: selected.spaces?.map((zone) => (zone.id === id ? { ...zone, image: null } : zone)),
-                          },
-                  )
-                }
-              >
-                Remove image
-              </button>
-            ) : (
-              <button type="button" disabled>
-                Remove image
-              </button>
-            )}
-          </div>
-        </details>
+          ) : (
+            <button type="button" disabled>
+              Remove image
+            </button>
+          )}
+        </div>
+        {image ? (
+          <button
+            type="button"
+            className="villages-workspace-image-preview"
+            aria-label="View image"
+            onClick={() => setPreview({ url: image.url, label: `${area} of ${selected.name}` })}
+          >
+            <img src={image.url} alt={`${area} of ${selected.name}`} />
+          </button>
+        ) : (
+          <div className="villages-workspace-image-placeholder">No image yet</div>
+        )}
       </section>
     );
   const fieldProblem = (field: FoundingIssue["field"], zoneId?: string) =>
@@ -454,16 +508,26 @@ export function FoundingWorkspace({
         aria-modal="true"
         onCancel={(event) => {
           event.preventDefault();
-          dismiss();
+          if (event.target === event.currentTarget && !uploadPending.current) dismiss();
+        }}
+        onPointerCancel={() => {
+          backdropPress.current = false;
+        }}
+        onPointerDown={(event) => {
+          backdropPress.current =
+            !uploadPending.current &&
+            event.target === event.currentTarget &&
+            outside(event.currentTarget, event.clientX, event.clientY);
+          if (uploadPending.current) finishUpload();
         }}
         onClick={(event) => {
-          if (event.target !== event.currentTarget) return;
-          const box = event.currentTarget.getBoundingClientRect();
+          const beganOutside = backdropPress.current;
+          backdropPress.current = false;
           if (
-            event.clientX < box.left ||
-            event.clientX > box.right ||
-            event.clientY < box.top ||
-            event.clientY > box.bottom
+            beganOutside &&
+            !uploadPending.current &&
+            event.target === event.currentTarget &&
+            outside(event.currentTarget, event.clientX, event.clientY)
           )
             dismiss();
         }}
@@ -676,6 +740,38 @@ export function FoundingWorkspace({
             </footer>
           </>
         ) : null}
+      </dialog>
+      <dialog
+        ref={viewer}
+        className="villages-workspace-image-viewer"
+        aria-label="Venue image viewer"
+        onCancel={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setPreview(null);
+        }}
+        onPointerCancel={() => {
+          viewerBackdropPress.current = false;
+        }}
+        onPointerDown={(event) => {
+          viewerBackdropPress.current =
+            event.target === event.currentTarget && outside(event.currentTarget, event.clientX, event.clientY);
+        }}
+        onClick={(event) => {
+          const beganOutside = viewerBackdropPress.current;
+          viewerBackdropPress.current = false;
+          if (
+            beganOutside &&
+            event.target === event.currentTarget &&
+            outside(event.currentTarget, event.clientX, event.clientY)
+          )
+            setPreview(null);
+        }}
+      >
+        <button type="button" onClick={() => setPreview(null)}>
+          Close image
+        </button>
+        {preview ? <img src={preview.url} alt={preview.label} /> : null}
       </dialog>
     </div>
   );

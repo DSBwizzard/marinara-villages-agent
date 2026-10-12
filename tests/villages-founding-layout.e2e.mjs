@@ -1047,7 +1047,6 @@ try {
     await expect(inspector.getByLabel("Venue name", { exact: true })).toBeVisible();
     await expect(inspector.getByLabel("Exterior description", { exact: true })).toBeVisible();
     await expect(root.getByRole("dialog", { name: "Venue editor", exact: true })).toHaveCount(1);
-    await inspector.locator(".villages-workspace-image-options > summary").click();
     const initialActions = await inspector.locator(".villages-workspace-image-actions > button").all();
     assert.equal(initialActions.length, 3);
     const initialBoxes = await Promise.all(initialActions.map((button) => button.boundingBox()));
@@ -1055,11 +1054,35 @@ try {
       initialBoxes.every((box) => Math.abs(box.y - initialBoxes[0].y) < 1),
       "three image actions stay side by side at every viewport",
     );
-    await inspector.locator(".villages-workspace-image-options > summary").click();
+    if (width === 390 && height === 844) {
+      const pickerReady = page.waitForEvent("filechooser");
+      await inspector.getByRole("button", { name: "Upload image", exact: true }).click();
+      const picker = await pickerReady;
+      await picker.setFiles({ name: "venue.png", mimeType: "image/png", buffer: PNG.sync.write(art) });
+      const thumbnail = inspector.getByRole("button", { name: "View image", exact: true });
+      await expect(thumbnail).toBeVisible();
+      await thumbnail.click();
+      const phoneViewer = root.getByRole("dialog", { name: "Venue image viewer" });
+      await expect(phoneViewer).toBeVisible();
+      await page.mouse.click(0, 0);
+      await expect(phoneViewer).not.toBeVisible();
+      await expect(inspector).toBeVisible();
+      await expect(thumbnail).toBeFocused();
+      const cancelReady = page.waitForEvent("filechooser");
+      await inspector.getByRole("button", { name: "Upload image", exact: true }).click();
+      const cancelPicker = await cancelReady;
+      await cancelPicker.setFiles([]);
+      await inspector
+        .getByLabel("Upload exterior image", { exact: true })
+        .evaluate((input) => input.dispatchEvent(new Event("cancel", { bubbles: true })));
+      await expect(inspector).toBeVisible();
+      await expect(inspector.getByRole("button", { name: "Upload image", exact: true })).toBeFocused();
+      await capture("venue-image-preview");
+    }
     await inspector.getByRole("button", { name: "Done", exact: true }).click();
     await expect(root.locator("[data-venue-id]").first()).toBeFocused();
     await mapView();
-    assert.equal(imageCalls, 0, "editing an unplaced Venue starts no image request");
+    assert.equal(imageCalls, 0, "editing an unplaced Venue starts no image generation");
     await expect(root.locator(".villages-workspace-overview")).toHaveCSS("border-color", "rgb(67, 84, 125)");
     await expect(root).toHaveCSS("background-color", "rgb(18, 25, 54)");
     await capture("venue-placement");
@@ -1333,7 +1356,6 @@ try {
       // Optional image failures and saved responses keep unrelated editing available.
       await open(1);
       await zone("Common");
-      await inspector.locator(".villages-workspace-artwork summary").first().click();
       await expect(inspector.getByText("Artwork context", { exact: true })).toHaveCount(0);
       await expect(inspector.getByRole("checkbox", { name: "Use assigned resident’s personality" })).toHaveCount(0);
       await expect(inspector.getByText(/expected AI request|Read-only forecast/)).toHaveCount(0);
@@ -1351,10 +1373,8 @@ try {
       await open(1);
       await zone("Common");
       await expect(inspector.locator(".villages-workspace-artwork img")).toHaveCount(1);
-      await expect(inspector.locator(".villages-workspace-artwork img")).toBeHidden();
-      await inspector.locator(".villages-workspace-image-options > summary").first().click();
       await expect(inspector.locator(".villages-workspace-artwork img")).toBeVisible();
-      await expect(inspector.locator(".villages-workspace-image-options > summary")).toHaveText("Image options");
+      await expect(inspector.locator(".villages-workspace-artwork summary")).toHaveCount(0);
       await expect(inspector.locator(".villages-workspace-image-actions > button")).toHaveCount(3);
       const imageButtons = await inspector.locator(".villages-workspace-image-actions > button").all();
       const imageButtonBoxes = await Promise.all(imageButtons.map((button) => button.boundingBox()));
@@ -1367,9 +1387,44 @@ try {
       await inspector.getByRole("button", { name: "Upload image", exact: true }).click();
       const filePicker = await filePickerPromise;
       assert.equal(await filePicker.element().getAttribute("aria-label"), "Upload interior image");
+      await inspector.evaluate((dialog) => dialog.dispatchEvent(new Event("cancel", { cancelable: true })));
+      await expect(inspector).toBeVisible();
       await filePicker.setFiles([]);
-      await inspector.locator(".villages-workspace-image-options > summary").first().click();
-      await expect(inspector.locator(".villages-workspace-artwork img")).toBeHidden();
+      await inspector
+        .getByLabel("Upload interior image", { exact: true })
+        .evaluate((input) => input.dispatchEvent(new Event("cancel", { bubbles: true })));
+      await expect(inspector.getByRole("button", { name: "Upload image", exact: true })).toBeFocused();
+      await inspector.evaluate((dialog) =>
+        dialog.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 0, clientY: 0 })),
+      );
+      await expect(inspector).toBeVisible();
+      await inspector.getByLabel("Zone appearance", { exact: true }).focus();
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("focus"));
+        return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      });
+      await expect(inspector.getByLabel("Zone appearance", { exact: true })).toBeFocused();
+      const smallPreview = inspector.getByRole("button", { name: "View image", exact: true });
+      const previewBox = await smallPreview.boundingBox();
+      const actionsBox = await inspector.locator(".villages-workspace-image-actions").boundingBox();
+      assert.ok(previewBox.y >= actionsBox.y + actionsBox.height, "preview below action buttons");
+      assert.ok(
+        Math.abs(previewBox.x + previewBox.width / 2 - (actionsBox.x + actionsBox.width / 2)) < 2,
+        "preview centered",
+      );
+      await smallPreview.click();
+      const imageViewer = root.getByRole("dialog", { name: "Venue image viewer" });
+      await expect(imageViewer).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(imageViewer).not.toBeVisible();
+      await expect(inspector).toBeVisible();
+      await expect(smallPreview).toBeFocused();
+      await smallPreview.click();
+      await expect(imageViewer).toBeVisible();
+      await page.mouse.click(0, 0);
+      await expect(imageViewer).not.toBeVisible();
+      await expect(inspector).toBeVisible();
+      await expect(smallPreview).toBeFocused();
       await mapView();
       await forward("Suggest names & descriptions").click();
       await expect(forward("Suggest names & descriptions")).toBeEnabled();
@@ -1377,7 +1432,6 @@ try {
       await zone("Common");
       await expect(inspector.locator(".villages-workspace-artwork img")).toHaveCount(1);
       await zone("Exterior");
-      await inspector.getByRole("region", { name: "exterior image", exact: true }).locator("summary").first().click();
       await inspector.getByRole("button", { name: "Generate image", exact: true }).click();
       await expect(inspector.getByRole("button", { name: "Generate again", exact: true })).toBeVisible();
       await inspector.getByRole("button", { name: "Generate again", exact: true }).click();

@@ -233,7 +233,13 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-workspace-sheet .villages-workspace-included { display:flex; align-items:center; gap:.4rem; margin:0; font-size:.85rem; }
 .villages-forging-v2 .villages-workspace-included input { width:1.2rem; min-height:1.2rem; height:1.2rem; accent-color:#aa87ff; }
 .villages-workspace-sheet .villages-workspace-artwork { margin:.4rem 0; font-size:.9rem; }
-.villages-workspace-sheet .villages-workspace-artwork img { max-height:6rem; }
+.villages-forging-v2 .villages-workspace-image-preview,.villages-workspace-image-placeholder { display:block; width:8rem; height:5rem; margin:.6rem auto; padding:.2rem; border:1px solid #65799c; border-radius:.45rem; background:#0c1830; }
+.villages-workspace-image-placeholder { text-align:center; align-content:center; font-size:.75rem; color:#c1cce5; }
+.villages-workspace-image-preview img { width:100%; height:100%; object-fit:contain; }
+.villages-workspace-image-viewer { position:fixed; inset:0; margin:auto; width:fit-content; max-width:90vw; max-height:90dvh; padding:.5rem; border:1px solid #8574be; border-radius:.6rem; background:#10172f; color:#f3f3ff; }
+.villages-workspace-image-viewer::backdrop { background:#090c1acc; }
+.villages-workspace-image-viewer img { display:block; max-width:85vw; max-height:80dvh; object-fit:contain; }
+.villages-workspace-image-viewer button { display:block; margin:0 0 .4rem auto; min-height:32px; padding:.25rem .5rem; border:1px solid #65799c; border-radius:.4rem; background:#192c4c; color:inherit; }
 .villages-workspace-image-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.35rem; margin-top:.35rem; }
 .villages-forging-v2 .villages-workspace-image-actions button { min-width:0; min-height:44px; padding:.25rem; font-size:.75rem; line-height:1.2; }
 .villages-forging-v2 .villages-workspace-sheet-footer { position:absolute; bottom:0; left:0; right:0; flex:none; display:block!important; border-top:1px solid #43547d; padding:.35rem .75rem!important; margin:0!important; min-height:0; background:#192c4c; }
