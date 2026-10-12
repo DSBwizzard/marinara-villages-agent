@@ -1160,6 +1160,8 @@ try {
     await expect(inspector.getByRole("button", { name: "Edit Venue name" })).toHaveCount(0);
     await expect(inspector.getByRole("button", { name: "Edit Physical form" })).toHaveCount(0);
     await expect(inspector.locator("header").getByRole("textbox")).toHaveCount(2);
+    await expect(inspector.locator("header").getByText("Venue name", { exact: true })).toBeVisible();
+    await expect(inspector.locator("header").getByText("Venue form", { exact: true })).toBeVisible();
     const entranceHelp = inspector.getByRole("button", { name: "Help: Entrance and approach", exact: true });
     await entranceHelp.click();
     await expect(inspector.getByRole("note")).toHaveText(
@@ -1176,7 +1178,20 @@ try {
     await expect(inspector.getByRole("button", { name: "Move photograph", exact: true })).toHaveCount(0);
     assert.ok(doneBox.height <= 45 && doneBox.width < 100, "compact Done button");
     const dialogBox = await inspector.boundingBox();
-    assert.ok(dialogBox.y + dialogBox.height - (doneBox.y + doneBox.height) < 25, "Done sits at bottom of sheet");
+    const footerBox = await inspector.locator("footer").boundingBox();
+    assert.ok(
+      Math.abs(dialogBox.y + dialogBox.height - (footerBox.y + footerBox.height)) < 2,
+      "footer flush with actual dialog bottom",
+    );
+    assert.ok(dialogBox.y + dialogBox.height - (doneBox.y + doneBox.height) < 10, "Done sits at bottom of sheet");
+    await inspector.evaluate((el) => el.style.setProperty("padding-bottom", "80px", "important"));
+    const paddedDialog = await inspector.boundingBox();
+    const anchoredFooter = await inspector.locator("footer").boundingBox();
+    assert.ok(
+      Math.abs(paddedDialog.y + paddedDialog.height - (anchoredFooter.y + anchoredFooter.height)) < 2,
+      "footer ignores extra inherited bottom spacing",
+    );
+    await inspector.evaluate((el) => el.style.removeProperty("padding-bottom"));
     const descriptionBeforeHelp = await inspector.getByLabel("Exterior description", { exact: true }).boundingBox();
     await formHelp.click();
     await expect(inspector.getByRole("note")).toBeVisible();
