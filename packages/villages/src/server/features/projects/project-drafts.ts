@@ -155,6 +155,9 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
         id,
         name,
         preserveDescription: !description && !!existingArea,
+        roomSpecification: ["private-residence", "staff", "restricted"].includes(kind)
+          ? boundText(raw.roomSpecification ?? (description || existingArea?.roomSpecification), 1000)
+          : undefined,
         kind: kind as VillageZoneDraft["kind"],
         description,
         purpose: boundText(raw.purpose, 240),
@@ -209,6 +212,9 @@ export function draftRenovationProject(state: VillageState, venueId: string, val
           name,
           description,
           preserveDescription: !description && !!existing,
+          roomSpecification: ["private-residence", "staff", "restricted"].includes(String(zone.kind))
+            ? boundText(zone.roomSpecification ?? (description || existing?.roomSpecification), 1000)
+            : undefined,
           purpose: boundText(zone.purpose, 240),
           ownerId: asTrimmedString(zone.ownerId) || undefined,
           controllerIds: Array.isArray(zone.controllerIds)

@@ -135,7 +135,23 @@ export function FoundingZoneFields({
                 </label>
               ) : null}
               {generatedLater ? (
-                <p>Appearance is prepared for the assigned resident after founding and stays hidden until entry.</p>
+                <>
+                  <label>
+                    Room specification (optional)
+                    <textarea
+                      aria-label="Room specification"
+                      disabled={busy}
+                      maxLength={1000}
+                      rows={3}
+                      value={zone.roomSpecification ?? zone.description}
+                      placeholder="Structure, windows, and furnishings you are providing…"
+                      onChange={(event) => patch({ roomSpecification: event.target.value })}
+                    />
+                  </label>
+                  <p>
+                    The interior is prepared privately from this specification and stays hidden until authorized entry.
+                  </p>
+                </>
               ) : !identityInHeader ? (
                 <label>
                   Appearance

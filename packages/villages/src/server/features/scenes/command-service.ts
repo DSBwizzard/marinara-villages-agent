@@ -1,4 +1,5 @@
 import { type SceneReply } from "./writing.js";
+import { isPrivateInterior, observePrivateInterior } from "../../domain/rules/private-interior.js";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
@@ -662,6 +663,7 @@ export function createSceneCommands({
       if (
         !venue ||
         !zone ||
+        zoneClosed(state, venue, zone) ||
         (venue.access &&
           !evaluateZoneAccess(venue, zone, "player", {
             ...sceneAccessContext(session, state),
@@ -669,16 +671,20 @@ export function createSceneCommands({
           }).allowed)
       )
         return;
-      zone.seen = true;
+      observePrivateInterior(zone, new Date().toISOString());
       admitted = true;
     });
     if (!admitted) return;
-    if (session.area === "private") await markResidenceSeen(session, generateImage);
     if (!generateImage) return;
     const village = await readVillageState(),
       venue = village.venues.find((entry) => entry.id === session.placeId),
-      zone = venue && resolveVenueZone(venue, session.zoneId ?? "");
-    if (zone && ["staff", "restricted"].includes(zone.kind))
+      zone =
+        venue &&
+        resolveVenueZone(
+          venue,
+          session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId),
+        );
+    if (zone && isPrivateInterior(zone))
       outsideVenueOperation(() => {
         void loadPrivateSpaceImages()
           .then(({ generateFirstPrivateSpaceImage }) => generateFirstPrivateSpaceImage(session.placeId, zone.id))
@@ -2222,43 +2228,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         },
       ].slice(-16);
     });
-  }
-
-  async function markResidenceSeen(session: VenueScene, generateImage = true): Promise<void> {
-    let admitted = false;
-    await mutateVillageState((state) => {
-      admitted = false;
-      const venue = state.venues.find((entry) => entry.id === session.placeId);
-      if (!venue || !venueClasses(venue).includes("residence")) return;
-      if (session.zoneId) {
-        const zone = resolveVenueZone(venue, session.zoneId);
-        if (
-          !zone ||
-          (venue.access &&
-            !evaluateZoneAccess(venue, zone, "player", {
-              ...sceneAccessContext(session, state),
-              unavailable: zoneClosed(state, venue, zone),
-            }).allowed)
-        )
-          return;
-        zone.seen = true;
-      } else if (session.area === "shared") venue.playerSeenShared = true;
-      if (!session.zoneId && session.area === "private" && venueResidentIds(venue).includes(session.privateOwnerId))
-        venue.playerSeenPrivateIds = [...new Set([...(venue.playerSeenPrivateIds ?? []), session.privateOwnerId])];
-      admitted = true;
-    });
-    if (admitted && generateImage && session.area === "private" && session.privateOwnerId) {
-      outsideVenueOperation(() => {
-        void loadPrivateSpaceImages()
-          .then(({ generateFirstPrivateSpaceImage }) =>
-            generateFirstPrivateSpaceImage(
-              session.placeId,
-              session.zoneId ?? session.privateSpaceId ?? session.privateOwnerId,
-            ),
-          )
-          .catch((error) => villagesLogger().warn("[villages] private-space image could not start: %s", String(error)));
-      });
-    }
   }
 
   async function applyVenueRequests(session: VenueScene, submission: VenueSubmission): Promise<void> {

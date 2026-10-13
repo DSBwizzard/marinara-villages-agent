@@ -531,7 +531,8 @@ async function main() {
     assert.equal(state.projects.find((entry) => entry.id === projectId)?.status, "complete");
     const openedVenue = state.venues.find((entry) => entry.buildProjectId === projectId);
     const privateRoom = openedVenue.zones.find((zone) => zone.id === "restricted:archive");
-    assert.equal(privateRoom.description, "An authored archive");
+    assert.equal(privateRoom.roomSpecification, "An authored archive");
+    assert.equal(privateRoom.description, "", "prepared interior is separate from the known Project specification");
     assert.deepEqual(privateRoom.controllerIds, ["player"]);
     assert.ok(privateRoom.preparation, "private preparation belongs to the opening flow");
     assert.deepEqual(openedVenue.imageContext, { useAssignedVillagerContext: false, useVisualLore: false });

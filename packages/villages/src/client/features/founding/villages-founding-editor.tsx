@@ -280,6 +280,24 @@ export function BaseZoneFields({
               />
             </label>
           )}
+          {["private-residence", "staff", "restricted"].includes(zone.kind) ? (
+            <label>
+              Room specification · optional
+              <textarea
+                aria-label="Room specification"
+                maxLength={1000}
+                value={zone.roomSpecification ?? ""}
+                placeholder="Physical changes to the provided room…"
+                onChange={(event) =>
+                  onChange(
+                    zones.map((area) =>
+                      area.id === zone.id ? { ...area, roomSpecification: event.target.value } : area,
+                    ),
+                  )
+                }
+              />
+            </label>
+          ) : null}
           {zone.kind === "private-residence" && !venue.zones?.some((area) => area.id === zone.id) ? (
             <label>
               Assigned resident
@@ -442,22 +460,19 @@ export function PrivateSpaceFields({
                 ))}
               </fieldset>
             ) : null}
-            {room.venueClass === "residence" ? (
-              <p>
-                This residential Private Space is prepared for its assigned resident. Contents remain hidden until
-                invitation.
-              </p>
-            ) : (
-              <label>
-                Description · optional
-                <textarea
-                  maxLength={1000}
-                  value={room.description}
-                  onChange={(event) => patch(room.id, { description: event.target.value })}
-                />
-              </label>
-            )}
-            <p>Private details will be prepared when the venue opens. Its image is drawn on first invited entry.</p>
+            <label>
+              Room specification · optional
+              <textarea
+                aria-label="Room specification"
+                maxLength={1000}
+                value={room.roomSpecification ?? room.description}
+                onChange={(event) => patch(room.id, { roomSpecification: event.target.value })}
+              />
+            </label>
+            <p>
+              Private details are prepared when the venue opens. Assigned residents personalize their rooms; vacant
+              rooms start neutral. Discover and image the interior on your first authorized entry.
+            </p>
             <button type="button" onClick={() => onChange(rooms.filter((entry) => entry.id !== room.id))}>
               Remove this private space
             </button>

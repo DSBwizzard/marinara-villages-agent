@@ -436,6 +436,9 @@ export type VillageVenue = {
   >;
   spaces?: Array<{
     id: string;
+    roomSpecification?: string;
+    imageOutdated?: boolean;
+    observedAt?: string;
     name?: string;
     ownerId?: string;
     purpose?: string;
@@ -548,7 +551,7 @@ export type TownMapFit = "cover" | "stretch" | "contain";
 /** Reviewed zone terms; artwork and discovered state are not part of a layout draft. */
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   NonNullable<VillageVenue["zones"]>[number],
-  "id" | "name" | "kind" | "description" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
+  "id" | "name" | "kind" | "description" | "roomSpecification" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
 >;
 
 /**

@@ -96,7 +96,18 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     venue.residentIds,
     venue.workerIds,
     venue.imageContext,
-    zone ? [zone.name, zone.purpose, zone.description, zone.state, zone.image] : null,
+    zone
+      ? [
+          zone.name,
+          zone.purpose,
+          zone.roomSpecification,
+          zone.description,
+          zone.state.condition,
+          zone.state.items,
+          zone.state.publicFacts,
+          zone.image,
+        ]
+      : null,
     venue.improvements?.filter((upgrade) => upgrade && (upgrade.spaceId === zoneId || upgrade.id === zone?.upgradeId)),
   ]);
 }
