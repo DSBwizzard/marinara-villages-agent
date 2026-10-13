@@ -252,7 +252,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           sentence. The map is drawn upright now and the sentence is no longer
           true; the component is dormant beside its own definition and the CSS is
           dormant in the stylesheet. Put this line back to bring it back. */}
-      {/* <RotateNotice /> */}
     </div>
   );
 }

@@ -99,7 +99,7 @@ export function useReadingPages(
         Number.parseFloat(host.style.getPropertyValue("--villages-scene-canvas-height")) || host.clientHeight;
       const lines = Math.max(
         1,
-        // Leave room for the fixed controls and visible faces in short landscape Scenes.
+        // Leave room for the fixed controls and visible faces in short Scene canvases.
         Math.min(3, Math.floor((canvasHeight * 0.2) / lineHeight), Math.floor((canvasHeight - 300) / lineHeight)),
       );
       if (mobile) host.style.setProperty("--villages-reading-page-height", `${lines * lineHeight}px`);

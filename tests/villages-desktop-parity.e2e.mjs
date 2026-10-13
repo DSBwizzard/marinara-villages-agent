@@ -108,7 +108,7 @@ const snapshot = {
 try {
   for (const { width, height, mobile } of [
     { width: 390, height: 844, mobile: true },
-    { width: 844, height: 390, mobile: true },
+    { width: 360, height: 640, mobile: true },
     { width: 800, height: 600, mobile: false },
     { width: 1440, height: 900, mobile: false },
     { width: 1917, height: 655, mobile: false },

@@ -22,7 +22,7 @@ const art = originals ?? ["#5eb8ee", "#b99c71", "#426fe4", "#d4b38c"].map(synthe
 const sizes = [
   { width: 320, height: 568 },
   { width: 390, height: 844 },
-  { width: 844, height: 390 },
+  { width: 360, height: 640 },
   { width: 1440, height: 900 },
 ];
 const cases = sizes.flatMap((size) => [1, 2, 3, 4].map((count) => ({ ...size, count, mode: "sprites" })));

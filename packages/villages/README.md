@@ -1,5 +1,11 @@
 # Villages
 
+## Phone design
+
+Portrait is the supported phone design target. Core navigation, map exploration, founding, resident profiles, Scene reading and replies, and Sprite Manager are designed and tested for portrait phones. Landscape remains accessible without an orientation lock or rotation notice, but has no dedicated phone layout or visual acceptance requirements. Ordinary resizing preserves drafts and reading position; keyboard and short-container handling remain supported. Desktop and tablet layouts retain their existing responsive behavior.
+
+Map artwork proportions and generation prompts are independent of phone orientation.
+
 ## 0.7.0 architecture baseline
 
 Villages remains a Marinara Engine Agent with its home tab, Venue Scenes, and per-village writing controls. The unused native-chat SpinOff creation and origin routes, roleplay tracker panels, old Engine-preset narration pipeline, and their legacy document readers are retired. Villages no longer requests native chat read/write permissions; its current Scene records use the package document store. Existing native chats and lorebooks are untouched.
