@@ -3,6 +3,7 @@ import type { readVillageVisualLore } from "../../adapters/engine/lorebooks.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
+import { isPrivateInterior } from "../../domain/rules/private-interior.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
 import {
   buildLocationPrompt,
@@ -130,23 +131,45 @@ export function createLocationImages(ports: LocationImagePorts) {
 
     const prompt = sceneryPrompt(
       [
-        `Venue Type: ${venue.venueType || venue.name}. Physical form: ${venue.form || "unspecified"}. Selected Zone: ${targetZone?.name || "Entrance"}. Used for: ${targetZone?.purpose || "arrival and approach"}. Appearance: ${venue.description}.`,
+        `Venue Type: ${venue.venueType || venue.name}. Physical form: ${venue.form || "unspecified"}. Selected Zone: ${targetZone?.name || "Entrance"}. Used for: ${targetZone?.purpose || "arrival and approach"}.` +
+          (targetZone && isPrivateInterior(targetZone) ? "" : ` Appearance: ${venue.description}.`),
         basePrompt,
-        character.includes("## Starting background:") ? `Occupant context: ${character}` : "",
+        "Shared architecture: Venue form defines the whole place. Preserve its scale and construction across every Zone. Zone appearance describes part of this same place and must not redefine its architecture. Use only explicitly described architectural facts; do not invent materials, windows or proportions from the building type alone.",
+        !exterior && !(targetZone && isPrivateInterior(targetZone))
+          ? `Public exterior context for architectural continuity only: ${found.venue.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
+          : "",
+        targetZone && isPrivateInterior(targetZone)
+          ? `Illustrate this saved interior without adding possessions from personality context. Visible items: ${targetZone.state.items.join("; ")}. Physical facts: ${targetZone.state.publicFacts.join("; ")}.`
+          : "",
+        character.includes("## Starting background:") && !(targetZone && isPrivateInterior(targetZone))
+          ? `Occupant context: ${character}`
+          : "",
       ],
       [
-        character && !character.includes("## Starting background:")
+        targetZone && isPrivateInterior(targetZone) && targetZone.roomSpecification
+          ? `Known room specification: ${targetZone.roomSpecification}.`
+          : "",
+        targetZone && isPrivateInterior(targetZone)
+          ? `Public exterior context for architectural continuity only: ${found.venue.description.slice(0, 400)}. Do not depict the exterior or infer hidden contents.`
+          : "",
+        character && !character.includes("## Starting background:") && !(targetZone && isPrivateInterior(targetZone))
           ? `Occupant context, reflect preferences without depicting people: ${character}`
           : "",
         village.setting ? `Village setting: ${village.setting.slice(0, 400)}` : "",
         ...village.worldFacts.map((fact) => `World fact: ${fact}`),
         lore ? `Established visual lore: ${lore}` : "",
-        ...(exterior ? (venue.exteriorState?.items ?? []) : venue.state.furniture).map(
-          (item) => `Visible physical detail: ${item}`,
-        ),
-        ...(exterior ? (venue.exteriorState?.publicFacts ?? []) : venue.state.publicFacts).map(
-          (fact) => `Established area fact: ${fact}`,
-        ),
+        ...(targetZone && isPrivateInterior(targetZone)
+          ? []
+          : exterior
+            ? (venue.exteriorState?.items ?? [])
+            : venue.state.furniture
+        ).map((item) => `Visible physical detail: ${item}`),
+        ...(targetZone && isPrivateInterior(targetZone)
+          ? []
+          : exterior
+            ? (venue.exteriorState?.publicFacts ?? [])
+            : venue.state.publicFacts
+        ).map((fact) => `Established area fact: ${fact}`),
       ],
       village.sceneryArtStyle,
     );
@@ -185,7 +208,6 @@ export function createLocationImages(ports: LocationImagePorts) {
       if (
         !space?.seen ||
         !["private-residence", "staff", "restricted"].includes(space.kind) ||
-        (space.kind === "private-residence" && space.ownerId === "player") ||
         space.image ||
         space.initialImageAttemptedAt ||
         space.preparation?.status === "pending" ||

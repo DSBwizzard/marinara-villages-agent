@@ -23,8 +23,10 @@ export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZon
     zone.name,
     zone.purpose,
     zone.description,
+    zone.roomSpecification,
     zone.ownerId,
     zone.state.updatedAt,
+    zone.preparation?.mode,
   ]);
 }
 export function privatePreparationRooms(village: Pick<VillageState, "venues">) {
@@ -34,7 +36,6 @@ export function privatePreparationRooms(village: Pick<VillageState, "venues">) {
         (zone) =>
           !!zone.preparation &&
           ["private-residence", "staff", "restricted"].includes(zone.kind) &&
-          (zone.kind !== "private-residence" || !!zone.ownerId) &&
           venue.constructionStatus !== "worksite",
       )
       .map((zone) => ({ venue, zone })),
@@ -113,7 +114,8 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         });
       try {
         await progress("lore", { loreEntryCount: undefined });
-        const owners = zoneControllerIds(venue, zone);
+        const owners =
+          zone.kind === "private-residence" ? (zone.ownerId ? [zone.ownerId] : []) : zoneControllerIds(venue, zone);
         const room = {
           venueId: venue.id,
           id: zone.id,
@@ -124,6 +126,17 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           commonArea: venue.spaces?.[0]?.description,
           layout: venueZones(venue).map((area) => ({ id: area.id, kind: area.kind, name: area.name })),
           authoredDescription: zone.description,
+          roomSpecification: zone.roomSpecification,
+          ...(zone.preparation?.mode === "renovation"
+            ? {
+                existingInterior: {
+                  description: zone.description,
+                  condition: zone.state.condition,
+                  items: zone.state.items,
+                  facts: zone.state.publicFacts,
+                },
+              }
+            : {}),
           characters: village.villagers
             .filter((person) => owners.includes(person.characterId))
             .map(({ cardSnapshot: card, foundingContext }) => ({
@@ -153,7 +166,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             role: "system",
             content:
               (room.characters.some((person) => person.foundingBackground) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
-              'Define exactly the one saved private space in the input. Respect venue form, world facts, authored description, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"at most 240 characters","items":["ordinary item"],"facts":["grounded physical detail"]}]}. Return at most four items and four facts, each at most 240 characters. Keep the complete reply concise.',
+              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled items and facts, removing only details contradicted by the approved work; do not reset the room or add unexplained possessions. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"at most 240 characters","items":["ordinary item"],"facts":["grounded physical detail"]}]}. Return at most four items and four facts for initial preparation, or up to twenty-four of each when preserving an existingInterior, each at most 240 characters. Keep the complete reply concise.',
           },
           {
             role: "user",
@@ -185,7 +198,13 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             privatePreparationKey(current.venue, current.zone) !== key
           )
             return;
-          current.zone.preparation = { status: "pending", claimId, startedAt: new Date().toISOString(), attempt };
+          current.zone.preparation = {
+            ...current.zone.preparation,
+            status: "pending",
+            claimId,
+            startedAt: new Date().toISOString(),
+            attempt,
+          };
           claimed = true;
         });
         if (!claimed) return;
@@ -231,6 +250,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             return;
           if (privatePreparationKey(current.venue, current.zone) !== key) {
             current.zone.preparation = {
+              ...current.zone.preparation,
               status: "failed",
               attempt,
               error: "The space changed during preparation. Retry deliberately.",
@@ -244,16 +264,23 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
                   .filter((item): item is string => typeof item === "string")
                   .map((item) => item.trim().slice(0, 240))
                   .filter(Boolean)
-                  .slice(0, 4)
+                  .slice(0, zone.preparation?.mode === "renovation" ? 24 : 4)
               : [];
           const target = current.zone;
           if (target.name === "Private work area")
             target.name = asTrimmedString(generated.name).slice(0, 100) || target.name;
-          target.description ||= asTrimmedString(generated.description).slice(0, 1000);
+          if (target.roomSpecification !== undefined)
+            target.description = asTrimmedString(generated.description).slice(0, 1000);
+          else target.description ||= asTrimmedString(generated.description).slice(0, 1000);
           target.state = {
             ...target.state,
             condition: asTrimmedString(generated.condition).slice(0, 240),
-            items: venue.layoutVersion === 1 ? [...new Set([...target.state.items, ...list("items")])] : list("items"),
+            items:
+              target.preparation?.mode === "renovation"
+                ? list("items")
+                : venue.layoutVersion === 1
+                  ? [...new Set([...target.state.items, ...list("items")])]
+                  : list("items"),
             publicFacts: list("facts"),
             updatedAt: new Date().toISOString(),
           };
@@ -289,7 +316,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
     await mutateVillageState((state) => {
       for (const { zone } of privatePreparationRooms(state))
         if (zone.preparation?.status === "failed")
-          zone.preparation = { status: "pending", attempt: zone.preparation.attempt };
+          zone.preparation = { status: "pending", attempt: zone.preparation.attempt, mode: zone.preparation.mode };
     });
     await preparePrivateSpaces();
   }

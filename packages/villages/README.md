@@ -331,6 +331,10 @@ Every venue has an Exterior and explicitly chooses exterior only, a Common Space
 
 Private details are prepared once through the System connection, with saved pending, ready, or failed status and explicit retry. Founding waits for preparation; later public venues can open while private areas are unavailable. Hidden room images get one durable attempt after first invited entry; failures never automatically spend another image request. New Venue finishing defines optional rooms, while changes to base areas and further Upgrade zones at an open venue use reviewed Renovations. Existing bedrooms, images, discovery, and archives are preserved.
 
+Resident Private Spaces have an optional **Room specification** during founding: the known structure, windows, and furnishings supplied by the player. The System prepares a separate personalized interior for the assigned resident. Founding Review shows the specification without revealing private contents or generating the room image. Vacant Project rooms prepare functional neutral interiors; moves explicitly assign a destination and adapt personal details within its specification.
+
+Private Zone views retain the last observed interior until another authorized visit. Approved Renovation specifications reconcile the existing room once, preserving unrelated contents and physical condition. First authorized entry starts one durable image attempt using the saved selected-room description, condition, items, physical facts, shared Venue architecture, and scenery settings. Features are excluded. Existing images stay in place after later changes; an outdated-image notice appears only after those changes become known, and regeneration is explicit. New residential occupancy archives prior imagery and starts a separate discovery and first-image lifecycle. Loading an existing world never requests new generation merely to initialize observation metadata.
+
 ## Venue projects
 
 ### Progress Engine foundation

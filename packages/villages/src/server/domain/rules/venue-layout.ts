@@ -55,6 +55,8 @@ export function readBaseVenueLayout(
     const role = area.venueClass as VillageVenueClass;
     if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
+    const roomSpecification = asTrimmedString(area.roomSpecification ?? (isPrivate ? area.description : ""));
+    if (roomSpecification.length > 1000) throw badRequest("Room specification must be at most 1000 characters.");
     if (description.length > 1000 || (!isPrivate && !description))
       throw badRequest("Describe the Common Space in at most 1000 characters.");
     const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
@@ -65,6 +67,7 @@ export function readBaseVenueLayout(
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
       ...defaultVenueSpace(role, description),
+      ...(isPrivate && ownerId !== "player" ? { roomSpecification, description: "" } : {}),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
       purpose:
@@ -82,10 +85,9 @@ export function readBaseVenueLayout(
           : "public",
       ownerId,
       controllerIds: controllers,
-      image: image(area.image),
+      image: isPrivate && ownerId !== "player" ? null : image(area.image),
       seen: ownerId === "player",
-      preparation:
-        isPrivate && (role !== "residence" || (!!ownerId && ownerId !== "player")) ? { status: "pending" } : undefined,
+      preparation: isPrivate && ownerId !== "player" ? { status: "pending" } : undefined,
     });
   }
   if (new Set(result.map((zone) => zone.id)).size !== result.length)

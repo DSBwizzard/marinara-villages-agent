@@ -1,3 +1,4 @@
+import { isPrivateInterior, privateInteriorKey } from "../../domain/rules/private-interior.js";
 import type {
   VillageSnapshot,
   VillageState,
@@ -271,7 +272,10 @@ export function createVenueCommands({
         if (!zone) throw notFound("That zone no longer exists.");
         if (zone.kind !== "exterior" && !zone.seen && !(zone.kind === "shared-residence" && venue.occupancy.playerHome))
           throw conflict("Visit this zone before changing its image.");
-        if (!onlyIfEmpty || !zone.image) zone.image = image;
+        if (!onlyIfEmpty || !zone.image) {
+          zone.image = image;
+          if (isPrivateInterior(zone)) zone.imageInteriorKey = image ? privateInteriorKey(zone) : undefined;
+        }
       } else if (privateOwnerId) {
         const space = venue.privateSpaces?.find((entry) => entry.ownerId === privateOwnerId);
         if (!space) throw notFound("That private space no longer exists.");
@@ -302,6 +306,13 @@ export function createVenueCommands({
         venue = village.venues.find((entry) => entry.id === venueId),
         zone = venue && resolveVenueZone(venue, zoneId || legacyZoneId(venue, "private", "residence", privateOwnerId));
       if (!zone) throw notFound("That zone no longer exists.");
+      if (zoneClosed(village, venue!, zone)) throw conflict("This Zone is not physically available yet.");
+      if (
+        isPrivateInterior(zone) &&
+        zone.lastObserved &&
+        privateInteriorKey(zone.lastObserved) !== privateInteriorKey(zone)
+      )
+        throw conflict("Visit this private interior again before changing its image.");
       if (
         ["private-residence", "staff", "restricted"].includes(zone.kind) &&
         !zoneControllerIds(venue!, zone).includes("player") &&

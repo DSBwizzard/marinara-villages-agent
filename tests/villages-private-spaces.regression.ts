@@ -1,4 +1,12 @@
 import assert from "node:assert/strict";
+import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import {
+  observePrivateInterior,
+  privateInteriorKey,
+  prepareRenovatedPrivateInterior,
+} from "../packages/villages/src/server/domain/rules/private-interior.js";
+import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
+import { createLocationImages } from "../packages/villages/src/server/features/media/location-image-service.js";
 import {
   defaultVillageState,
   coerceVillageState,
@@ -384,4 +392,177 @@ async function main() {
     restore();
   }
 }
-void main();
+async function privateInteriorLifecycle() {
+  const village = defaultVillageState();
+  const home = venue("bungalow", ["residence"]);
+  home.layoutVersion = 1;
+  home.zones = readBaseVenueLayout(
+    {
+      layout: "private",
+      description: "A cream bungalow with a wooden porch",
+      spaces: [],
+      privateSpaces: [
+        {
+          id: "bedroom",
+          name: "Bedroom",
+          purpose: "Sleeping",
+          venueClass: "residence",
+          roomSpecification: "A small room with a garden-facing window",
+        },
+      ],
+    },
+    ["residence"],
+    "",
+    () => null,
+  );
+  village.venues = [home];
+  let calls = 0;
+  const preparation = createPrivateSpacePreparation({
+    readVillageState: async () => structuredClone(village),
+    mutateVillageState: async (update: any) => {
+      update(village);
+      return structuredClone(village);
+    },
+    readVillageLore: async () => [],
+    reportFoundingProgress: async () => {},
+    villagesLogger: () => ({ warn() {} }),
+    villagesConnectionIdFor: async () => "synthetic",
+    villagesLanguageModels: () => ({
+      resolveForRequest: async () => ({
+        name: "Synthetic",
+        maxOutputTokens: 3000,
+        fitContext: (messages: any[], options: any) => ({ messages, ...options }),
+      }),
+    }),
+    completeWithRoom: async (_model: any, messages: any[]) => {
+      calls++;
+      const input = JSON.parse(messages[1].content).rooms[0];
+      assert.match(input.roomSpecification, /garden-facing window/);
+      assert.deepEqual(input.characters, [], "vacant rooms use no resident personality");
+      return {
+        content: JSON.stringify({
+          rooms: [
+            {
+              venueId: "bungalow",
+              id: "bedroom",
+              name: "Bedroom",
+              description: "A neutral bedroom with a garden-facing window and plain bed.",
+              condition: input.existingInterior?.condition ?? "New",
+              items: input.existingInterior?.items ?? ["Plain bed"],
+              facts: input.existingInterior?.facts ?? ["Garden-facing window"],
+            },
+          ],
+        }),
+      };
+    },
+  } as any);
+  await Promise.all([preparation.preparePrivateSpaces(), preparation.preparePrivateSpaces()]);
+  assert.equal(calls, 1, "vacant room preparation is durable and coalesced");
+  await preparation.preparePrivateSpaces();
+  assert.equal(calls, 1, "reading ready interiors never regenerates them");
+  const bedroom = resolveVenueZone(home, "bedroom")!;
+  assert.equal(bedroom.preparation?.status, "ready");
+  assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
+  const player = { name: "Player", description: "", personaId: "" } as any;
+  let view = villageSettings(village, player);
+  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, "");
+  assert.equal(
+    view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.roomSpecification,
+    bedroom.roomSpecification,
+  );
+  observePrivateInterior(bedroom, stamp);
+  bedroom.image = { ref: "global-gallery:before", id: "before", url: "https://example.test/before.png" };
+  bedroom.imageInteriorKey = privateInteriorKey(bedroom);
+  const prior = structuredClone(bedroom.lastObserved);
+  bedroom.description = "A newly personalized interior that has not been visited";
+  bedroom.state.items = ["Unseen keepsake"];
+  view = villageSettings(village, player);
+  const remembered = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
+  assert.equal(remembered.description, prior!.description);
+  assert.deepEqual(remembered.state.items, prior!.state.items);
+  assert.equal(remembered.imageOutdated, false, "unseen changes do not disclose image staleness");
+  assert.equal((remembered as any).lastObserved, undefined, "private observation storage stays server-only");
+  const reloaded = coerceVillageState(structuredClone(village));
+  assert.deepEqual(resolveVenueZone(reloaded.venues[0], "bedroom")!.lastObserved, prior);
+  const key = privateInteriorKey(bedroom);
+  bedroom.state.features = [
+    { id: "feature", text: "FEATURE_SENTINEL", locked: false, sourceCharacterId: "", updatedAt: stamp },
+  ];
+  assert.equal(privateInteriorKey(bedroom), key, "Features do not invalidate visual room state");
+  assert.equal(sceneryImageKey(village, home, "bedroom"), sceneryImageKey(village, structuredClone(home), "bedroom"));
+  const noFeatures = structuredClone(home);
+  resolveVenueZone(noFeatures, "bedroom")!.state.features = [];
+  assert.equal(
+    sceneryImageKey(village, home, "bedroom"),
+    sceneryImageKey(village, noFeatures, "bedroom"),
+    "Features do not fence image generation",
+  );
+  observePrivateInterior(bedroom, stamp);
+  assert.equal(
+    villageSettings(village, player).venues[0].zones!.find((zone) => zone.id === "bedroom")!.imageOutdated,
+    true,
+    "observed physical changes expose explicit redraw status",
+  );
+  bedroom.image = null;
+  let draws = 0;
+  const images = createLocationImages({
+    readVillageState: async () => structuredClone(village),
+    mutateVillageState: async (update: any) => {
+      update(village);
+      return structuredClone(village);
+    },
+    assertVenueImageAccess: async () => {},
+    readVillageVisualLore: async () => "",
+    generateVillageImage: async (input: any) => {
+      draws++;
+      assert.match(input.prompt, /newly personalized interior/);
+      assert.match(input.prompt, /Unseen keepsake/);
+      assert.match(input.prompt, /Shared architecture/);
+      assert.match(input.prompt, /garden-facing window/);
+      assert.doesNotMatch(input.prompt, /FEATURE_SENTINEL/);
+      throw new Error("Synthetic image failure");
+    },
+    villagesLogger: () => ({ warn() {} }),
+  } as any);
+  await Promise.all([
+    images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
+    images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
+  ]);
+  assert.equal(draws, 1, "first vacant-room entry gets one image attempt");
+  await images.generateFirstPrivateSpaceImage("bungalow", "bedroom");
+  assert.equal(draws, 1, "failed initial images require explicit retry");
+  assert.ok(bedroom.initialImageAttemptedAt);
+  const persisted = coerceVillageState(structuredClone(village));
+  assert.equal(
+    resolveVenueZone(persisted.venues[0], "bedroom")!.initialImageAttemptedAt,
+    bedroom.initialImageAttemptedAt,
+  );
+  bedroom.state.items = Array.from({ length: 24 }, () => "Large established physical item ".repeat(8).slice(0, 240));
+  await assert.rejects(
+    () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
+    /too long/,
+    "oversized saved interiors fail before another image request",
+  );
+  assert.equal(draws, 1);
+  const priorRoom = structuredClone(bedroom);
+  bedroom.state.condition = "Existing damage";
+  bedroom.roomSpecification = "A new garden-facing window";
+  prepareRenovatedPrivateInterior(bedroom, priorRoom);
+  assert.equal(bedroom.preparation?.mode, "renovation");
+  assert.equal(bedroom.description, priorRoom.description, "approved specification waits for reconciled preparation");
+  assert.deepEqual(bedroom.lastObserved, priorRoom.lastObserved);
+  assert.equal(bedroom.initialImageAttemptedAt, priorRoom.initialImageAttemptedAt);
+  await preparation.preparePrivateSpaces();
+  assert.equal(calls, 2, "an approved Renovation prepares exactly once");
+  assert.equal(bedroom.state.items.length, 24, "reconciliation preserves existing contents beyond initial room limits");
+  assert.equal(bedroom.state.condition, "Existing damage");
+  await preparation.preparePrivateSpaces();
+  assert.equal(calls, 2);
+  const ownRoom = { ...structuredClone(bedroom), ownerId: "player", description: "My authored interior" };
+  prepareRenovatedPrivateInterior(ownRoom);
+  assert.equal(ownRoom.description, "My authored interior", "player-owned Renovation keeps its authored appearance");
+}
+void (async () => {
+  await privateInteriorLifecycle();
+  await main();
+})();

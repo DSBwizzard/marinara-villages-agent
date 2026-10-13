@@ -202,13 +202,18 @@ export function createResidences(ports: ResidencePorts) {
             for (const zone of old.zones?.filter((zone) => zone.ownerId === characterId) ?? []) {
               zone.ownerId = undefined;
               zone.seen = false;
+              zone.lastObserved = undefined;
+              zone.initialImageAttemptedAt = undefined;
+              zone.imageInteriorKey = undefined;
+              zone.state.items = [];
+              zone.state.features = zone.state.features.filter((feature) => feature.sourceCharacterId !== characterId);
               zone.state.publicFacts = [];
               zone.state.traces = [];
               zone.preparation = undefined;
               zone.adaptationPending = false;
               zone.adaptationSourceArchiveAt = "";
               zone.image = null;
-              zone.description = zone.purpose || "Vacant residential Private Space.";
+              zone.description = zone.roomSpecification || zone.purpose || "Vacant residential Private Space.";
             }
             const ownedIds = new Set(allOwned.map((space) => space.id));
             old.playerInvitations = old.playerInvitations?.filter(
@@ -226,7 +231,16 @@ export function createResidences(ports: ResidencePorts) {
       destination.playerSeenPrivateIds = (destination.playerSeenPrivateIds ?? []).filter((id) => id !== characterId);
       if (destination.layoutVersion === 1 && residence.proposedPrivateZoneId) {
         const zone = destination.zones!.find((zone) => zone.id === residence.proposedPrivateZoneId)!;
+        if (zone.image || zone.seen)
+          destination.archivedZones = [
+            ...(destination.archivedZones ?? []),
+            { zone: structuredClone(zone), archivedAt },
+          ].slice(-64);
         zone.ownerId = characterId;
+        zone.image = null;
+        zone.imageInteriorKey = undefined;
+        zone.initialImageAttemptedAt = undefined;
+        zone.lastObserved = undefined;
         destination.destinations ??= {};
         destination.destinations[characterId] = { sleep: zone.id };
         zone.seen = false;
@@ -258,6 +272,7 @@ export function createResidences(ports: ResidencePorts) {
       venue.name,
       venue.form,
       room?.description,
+      room?.roomSpecification,
       room?.state.items,
       room?.state.features,
       room?.adaptationSourceArchiveAt,
@@ -311,7 +326,7 @@ export function createResidences(ports: ResidencePorts) {
       const messages = [
         {
           role: "system" as const,
-          content: `Choose portable personal elements from the archived Private Space and adapt its description to the new Residence form. Never copy shared furnishings or invent possessions. Return JSON only: {"description":"brief room description","items":["exact portable item from input"],"featureIds":["exact portable feature id from input"]}. Keep the result grounded and concise.`,
+          content: `Choose portable personal elements from the archived Private Space and adapt its description to the new Residence form, destinationRoomSpecification and saved destinationRoom. Preserve the destination's structure, equipment and physical condition. Never copy shared furnishings or invent possessions. Return JSON only: {"description":"brief room description","items":["exact portable item from input"],"featureIds":["exact portable feature id from input"]}. Keep the result grounded and concise.`,
         },
         {
           role: "user" as const,
@@ -321,6 +336,9 @@ export function createResidences(ports: ResidencePorts) {
             lore,
             destination: destination.name,
             destinationForm: destination.form,
+            destinationRoomSpecification: personalDestinationSpace(destination, characterId)?.roomSpecification,
+            destinationRoom: personalDestinationSpace(destination, characterId)?.description,
+            destinationItems: personalDestinationSpace(destination, characterId)?.state.items,
             archivedDescription: archive.space.description.slice(0, 500),
             archivedItems: archive.space.state.items.slice(0, 24),
             archivedFeatures: archive.space.state.features

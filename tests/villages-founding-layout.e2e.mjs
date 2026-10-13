@@ -1399,8 +1399,20 @@ try {
     await open(1);
     await zone("Private");
     await expect(inspector.getByLabel("Zone appearance", { exact: true })).toHaveCount(0);
+    await expect(inspector.getByLabel("Room specification", { exact: true })).toBeVisible();
+    await inspector
+      .getByLabel("Room specification", { exact: true })
+      .fill("A small bedroom with a garden-facing window.");
+    await expect(inspector.getByText(/will personalize this interior/)).toBeVisible();
+    await expect(inspector.getByRole("button", { name: "Generate image", exact: true })).toHaveCount(0);
+    await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();
+    await inspector.getByLabel("Include Private Space", { exact: true }).check();
+    await expect(inspector.getByLabel("Room specification", { exact: true })).toHaveValue(
+      "A small bedroom with a garden-facing window.",
+    );
+    await capture("resident-room-specification");
     await inspector.getByRole("button", { name: "Help: Private interior", exact: true }).click();
-    await expect(inspector.getByText(/hidden until invited/)).toBeVisible();
+    await expect(inspector.getByText(/prepared privately/)).toBeVisible();
     await open();
     await mapView();
     await forward("Suggest names & descriptions").click();
@@ -1829,6 +1841,10 @@ try {
     assert.equal(foundingPayload.venues[0].name, "My observatory quarters");
     assert.equal(foundingPayload.venues[0].description, "A blue door beside the telescope corridor.");
     assert.equal(foundingPayload.venues[0].privateSpaces[0].description, "My hammock and traveling journal.");
+    assert.equal(
+      foundingPayload.venues[1].privateSpaces[0].roomSpecification,
+      "A small bedroom with a garden-facing window.",
+    );
     assert.ok(foundingPayload.venues.every((venue) => venue.presentation.x !== null && venue.presentation.y !== null));
     assert.ok(
       foundingPayload.venues
