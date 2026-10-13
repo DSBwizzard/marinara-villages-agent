@@ -1298,7 +1298,12 @@ async function main() {
     200,
   );
   assert.match(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
-  assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof/u);
+  assert.match(
+    draws().at(-1)?.body?.appearance ?? "",
+    /Public exterior context for architectural continuity only: Blue slate roof/u,
+  );
+  assert.match(draws().at(-1)?.body?.appearance ?? "", /do not depict this exterior or infer hidden contents/u);
+  assert.match(draws().at(-1)?.body?.appearance ?? "", /Do not invent or show adjoining rooms/u);
 
   const specificZone = await post("/api/villages/setup/venue-image/generate", {
     ...foundingImageInput,
