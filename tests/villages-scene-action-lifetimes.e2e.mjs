@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { chromium } from "@playwright/test";
+// Test cases: scene/movement, scene/exit
 import { verifySceneActionLifetimes } from "./fixtures/villages-scene-action-lifetime.fixture.mjs";
 
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";

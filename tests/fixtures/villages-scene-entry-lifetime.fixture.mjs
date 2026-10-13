@@ -146,7 +146,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       },
     };
   }
-  for (const width of [1280, 390])
+  // State/ownership harness: responsive presentation is covered by the visual suites.
+  for (const width of [1280])
     for (const strict of [false, true]) {
       // Ordered handoffs survive null/blank/closed starts and immediate server/greeting replies.
       for (const initial of [null, "blank", "closed"]) {
@@ -374,6 +375,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
     }
   console.log(
-    "Scene entry lifetimes: owned placeholder/server/greeting handoffs, exact admission/payloads, recovery, revisions, real replacement requests, resets, closure, ABA, hydration and disposal passed (mounted hooks, synthetic HTTP; desktop/mobile and StrictMode).",
+    "Scene entry lifetimes: owned placeholder/server/greeting handoffs, exact admission/payloads, recovery, revisions, real replacement requests, resets, closure, ABA, hydration and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
   );
 }

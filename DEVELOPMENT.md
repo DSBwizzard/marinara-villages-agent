@@ -21,7 +21,7 @@ Client features own their screens, state and actions under `src/client/features`
 For a focused development check:
 
 ```powershell
-npm run check
+npm run check:changed
 npm test -- --filter=venue-access
 ```
 
@@ -29,7 +29,9 @@ npm test -- --filter=venue-access
 
 During feedback, a clearly labeled preview may use static checks and explicit affected regression/browser selections plus relevant packaged acceptance. Shared helpers require coverage of affected consumers; unknown impact requires broader validation.
 
-Before publication or claiming a fully validated candidate:
+CI runs complete integration through `npm run validate:ci`. The primary platform runs the full inventory; secondary portability coverage broadens for infrastructure and release changes. Development pushes/draft PRs use focused checks under applicable local authorization. Reuse successful CI evidence for matching maintained inputs and exact package bytes.
+
+When a complete local or release check is explicitly required:
 
 ```sh
 npm run validate
@@ -79,6 +81,6 @@ New villages follow Engine's default profile; explicit choices store only the pr
 
 ## Test iteration and diagnostics
 
-The runner defaults to four total workers and two browser workers. Use --jobs=1 for a serial comparison or --browser-jobs=1 to reduce browser pressure. Test and imported local helper hashes bind the maintained parallel audit; unknown/changed suites are exclusive until reviewed. Test outputs live under .build-tmp/test-results/<run-id>, with report.json recording exact coverage, outcomes and wall time. A per-checkout lock prevents overlapping runners; interrupted locks require owner inspection, not automatic removal.
+The runner defaults to four total workers and two browser workers. Use --jobs=1 for a serial comparison or --browser-jobs=1 to reduce pressure. Maintained resource ownership permits isolated tests to overlap even after edits; unknown suites stay exclusive. Local runs stop after the first failure; CI keeps going for diagnostics. Unexecuted tests never count as passing. Reports record exact coverage, outcomes and wall time. A per-checkout lock prevents overlapping builders/runners; inspect interrupted owners before recovery.
 
-The three largest browser scenarios use shorter observation intervals for synthetic fixture state without changing assertion deadlines or product timers. All desktop/mobile and StrictMode cases remain covered. No CI jobs or repository protections are removed. Computer-specific preview orchestration and source/package/runtime evidence stay in private tooling.
+Use `node scripts/select-tests.mjs` for affected owners/consumers and `node scripts/run-tests.mjs browser --case=settings/package` for a named scenario. Settings, Venue layout and Scene action scenarios expose cases in the inventory. Real layout checks retain desktop/mobile coverage; state-only fixtures run once per StrictMode variant. Source tooling can be refreshed on an idle clean managed task with `node scripts/task-tooling.mjs --apply`; it uses normal Git integration and preserves uncommitted work. Private preview orchestration remains outside product Git.

@@ -1,5 +1,5 @@
-/** Unknown or changed suites take the entire pool; browser workers share the total cap. */
-export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, run }) {
+/** Resource ownership controls concurrency; unclassified suites retain an exclusive barrier. */
+export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, failFast = false, run }) {
   if (
     !Number.isInteger(jobs) ||
     jobs < 1 ||
@@ -12,7 +12,13 @@ export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, run }) {
   const pending = tests.map((test, index) => ({ test, index }));
   const active = new Map();
   const results = new Array(tests.length);
+  let failed = false;
   while (pending.length || active.size) {
+    if (failed && failFast) {
+      for (const row of pending.splice(0))
+        results[row.index] = { ...row.test, code: null, signal: "not-run", skipped: true, durationMs: 0 };
+    }
+    if (!active.size && !pending.length) break;
     let browsers = [...active.values()].filter((row) => row.test.group === "browser").length;
     let exclusive = [...active.values()].some((row) => !row.test.parallelSafe);
     for (let index = 0; index < pending.length && active.size < jobs && !exclusive;) {
@@ -21,6 +27,13 @@ export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, run }) {
         if (active.size) break;
         exclusive = true;
       } else if (row.test.group === "browser" && browsers >= browserJobs) {
+        index++;
+        continue;
+      } else if (
+        row.test.resources?.some((resource) =>
+          [...active.values()].some((entry) => entry.test.resources?.includes(resource)),
+        )
+      ) {
         index++;
         continue;
       }
@@ -36,6 +49,7 @@ export async function scheduleTests(tests, { jobs = 4, browserJobs = 2, run }) {
     }
     const completed = await Promise.race([...active.values()].map((row) => row.promise));
     results[completed.index] = completed.result;
+    if (completed.result.code !== 0) failed = true;
     active.delete(completed.index);
   }
   return results;

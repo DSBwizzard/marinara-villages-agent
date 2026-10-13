@@ -1,10 +1,11 @@
 import { acquireCheckoutOperation } from "./checkout-operation.mjs";
-import { mkdir, writeFile, open, unlink } from "node:fs/promises";
+import { mkdir, writeFile, readFile, open, unlink } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { testInventory } from "./test-inventory.mjs";
 import { scheduleTests } from "./test-scheduler.mjs";
+import { caseMatches } from "./test-cases.mjs";
 
 const args = process.argv.slice(2);
 const group = args.find((arg) => !arg.startsWith("--")) ?? "regression";
@@ -17,13 +18,18 @@ if (!["regression", "browser", "engine", "review", "all"].includes(group))
   throw new Error(`Unknown test group: ${group}`);
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
 const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
+const cases = args.filter((arg) => arg.startsWith("--case=")).map((arg) => arg.slice(7));
+if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
+const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
 const jobs = Number(args.find((arg) => arg.startsWith("--jobs="))?.slice(7) ?? 4);
 const browserJobs = Number(args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ?? Math.min(2, jobs));
 for (const arg of args) {
   if (
     arg !== group &&
     arg !== "--list" &&
-    !["--filter=", "--test=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
+    arg !== "--fail-fast" &&
+    arg !== "--keep-going" &&
+    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
   )
     throw new Error(`Unknown test option: ${arg}`);
 }
@@ -42,13 +48,24 @@ for (const path of selected) {
   if (!(group === "all" || (group === "review" ? test.group !== "engine" : test.group === group)))
     throw new Error(`Test ${path} is outside group ${group}`);
 }
+for (const name of cases)
+  if (
+    !name ||
+    !inventory.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)))
+  )
+    throw new Error("Unknown test case: " + name);
 const tests = inventory.filter(
   (test) =>
     (group === "all" || (group === "review" ? test.group !== "engine" : test.group === group)) &&
     (!filter || test.path.includes(filter)) &&
-    (!selected.length || selected.includes(test.path)),
+    (!selected.length || selected.includes(test.path)) &&
+    (!cases.length ||
+      test.cases.some((entry) => cases.some((name) => caseMatches(entry, name) || caseMatches(name, entry)))),
 );
 if (!tests.length) throw new Error("No tests matched; validation cannot pass an empty selection.");
+for (const name of cases)
+  if (!tests.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry))))
+    throw new Error("Requested test case is outside the selected files/group: " + name);
 const operation = await acquireCheckoutOperation(process.cwd());
 try {
   const root = ".build-tmp/test-results";
@@ -82,13 +99,20 @@ try {
     const results = await scheduleTests(tests, {
       jobs,
       browserJobs,
+      failFast,
       async run(test) {
         if (cancelled) return { ...test, code: 1, signal: "cancelled", durationMs: 0 };
         const testStart = Date.now();
+        const testCases = cases.filter((name) =>
+          test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
+        );
+        const caseReport = join(directory, test.path.split("/").pop() + ".cases.json");
         const result = await new Promise((resolve) => {
           const child = spawn(process.execPath, ["--import", "tsx", test.path], {
             env: {
               ...process.env,
+              VILLAGES_TEST_CASES: JSON.stringify(testCases),
+              VILLAGES_TEST_CASE_REPORT: caseReport,
               ...(process.env.VILLAGES_SCREENSHOT_DIR
                 ? { VILLAGES_SCREENSHOT_DIR: join(directory, test.path.split("/").pop(), "screenshots") }
                 : {}),
@@ -133,6 +157,21 @@ try {
             });
           });
         });
+        if (testCases.length && result.code === 0) {
+          try {
+            const coverage = JSON.parse(await readFile(caseReport, "utf8"));
+            if (
+              !testCases.every((name) =>
+                coverage.completed.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
+              )
+            )
+              throw new Error("A requested case did not execute");
+            result.cases = coverage.completed;
+          } catch (error) {
+            result.code = 1;
+            result.output += "\nCase coverage verification failed: " + error.message + "\n";
+          }
+        }
         await writeFile(join(directory, test.path.split("/").pop() + ".log"), result.output);
         console.log(`${result.code === 0 ? "PASS" : "FAIL"} ${test.path} (${result.durationMs}ms)`);
         if (result.code !== 0) console.error(result.output.slice(-3500));
@@ -144,9 +183,15 @@ try {
       group,
       jobs,
       browserJobs,
+      failFast,
+      cases,
       durationMs: Date.now() - start,
-      completeInventory: !filter && !selected.length,
-      passed: results.every((result) => result.code === 0),
+      completeInventory: !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
+      passed:
+        results.every((result) => result.code === 0) &&
+        cases.every((name) =>
+          results.some((result) => result.cases?.some((entry) => caseMatches(entry, name) || caseMatches(name, entry))),
+        ),
       results,
     };
     await writeFile(join(directory, "report.json"), JSON.stringify(report, null, 2) + "\n");

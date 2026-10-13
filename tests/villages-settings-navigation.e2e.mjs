@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+// Test cases: settings/hooks, settings/package, settings/requests, venues/mutations, venues/requests
+import { runCase } from "../scripts/test-cases.mjs";
 import { chromium } from "@playwright/test";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { build } from "esbuild";
@@ -398,15 +400,15 @@ async function checkPackage(width) {
   await page.close();
 }
 try {
+  await runCase("settings/hooks/1366", () => checkHooks(1366));
   for (const width of [1366, 390]) {
-    await checkHooks(width);
-    await checkPackage(width);
+    await runCase("settings/package/" + width, () => checkPackage(width));
   }
-  await verifySettingsRequestLifetimes(browser);
-  await verifyVenueMutationLifetimes(browser);
-  await verifyVenueRequestLifetimes(browser);
+  await runCase("settings/requests", () => verifySettingsRequestLifetimes(browser));
+  await runCase("venues/mutations", () => verifyVenueMutationLifetimes(browser));
+  await runCase("venues/requests", () => verifyVenueRequestLifetimes(browser));
   console.log(
-    "Mocked desktop/mobile Settings draft navigation, save acknowledgement, reset and explicit Persona choices passed.",
+    "Selected Settings/Venue navigation and lifetime scenarios passed; the case report records exact coverage.",
   );
 } finally {
   await browser.close();

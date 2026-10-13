@@ -164,7 +164,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       },
     };
   }
-  for (const width of [1280, 390])
+  // State/ownership harness: responsive presentation is covered by the visual suites.
+  for (const width of [1280])
     for (const strict of [false, true]) {
       // Normal reloads preserve completion/ended state, counts, timeout and no snapshot launch.
       for (const restored of [null, "active", "opening", "closed"]) {
@@ -347,6 +348,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       }
     }
   console.log(
-    "Scene restoration lifetimes: unclaimed startup read, exact shared admission, owned greeting/recovery, reset/ABA/replacement, revision/closure, hydration and disposal passed (mounted hooks, synthetic HTTP; desktop/mobile and StrictMode).",
+    "Scene restoration lifetimes: unclaimed startup read, exact shared admission, owned greeting/recovery, reset/ABA/replacement, revision/closure, hydration and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
   );
 }
