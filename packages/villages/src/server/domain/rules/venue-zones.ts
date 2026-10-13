@@ -138,6 +138,7 @@ export function zoneClosed(
 ): boolean {
   if (zone.kind === "exterior") return false;
   if (zone.preparation && zone.preparation.status !== "ready") return true;
+  if (zone.adaptationPending) return true;
   if (venue.constructionStatus === "worksite") return true;
   return (state.projects ?? []).some((project) => {
     if (

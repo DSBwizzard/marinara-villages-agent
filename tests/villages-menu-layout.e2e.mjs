@@ -113,7 +113,7 @@ try {
     { width: 390, height: 844, foreground: "#121212", surface: "#ffffff" },
     { width: 390, height: 650, foreground: "#121212", surface: "#ffffff" },
   ]) {
-    const mobile = width <= 704 || (width <= 880 && height <= 512);
+    const mobile = width <= 704;
     const page = await browser.newPage({ viewport: { width, height } });
     const errors = [];
     let progressReads = 0;

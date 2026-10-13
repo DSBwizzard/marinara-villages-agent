@@ -1,3 +1,4 @@
+import { PNG } from "pngjs";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -294,13 +295,22 @@ try {
     assert.equal(writes.at(-1).image, "");
     await page.getByRole("button", { name: "Replace map" }).click();
     const upload = page.getByLabel("Upload replacement village map");
+    await expect(
+      page.getByText("Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await upload.setInputFiles({
+      name: "narrow-map.png",
+      mimeType: "image/png",
+      buffer: PNG.sync.write(new PNG({ width: 300, height: 2056 })),
+    });
+    await expect(page.getByText(/This image is 300px wide and 2056px tall/)).toBeVisible();
+    assert.equal(writes.length, 3, "Rejected upload does not save a map");
     await upload.setInputFiles({
       name: "map.png",
       mimeType: "image/png",
-      buffer: Buffer.from(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/qX8AAAAASUVORK5CYII=",
-        "base64",
-      ),
+      buffer: PNG.sync.write(new PNG({ width: 1536, height: 1024 })),
     });
     await expect(placement.getByText("Mara's home")).toBeVisible();
     staleSave = true;

@@ -31,6 +31,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       worldFacts?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
+      sceneryStyleProfileId?: unknown;
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
@@ -57,6 +58,7 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         worldFacts: body.worldFacts,
         selectedLorebookIds: body.selectedLorebookIds,
         sceneryArtStyle: body.sceneryArtStyle,
+        sceneryStyleProfileId: body.sceneryStyleProfileId,
         personalizeVenueImagesByDefault: body.personalizeVenueImagesByDefault,
         useVisualLoreByDefault: body.useVisualLoreByDefault,
         loreTokenBudget: body.loreTokenBudget,
@@ -89,10 +91,10 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       structure?: unknown;
       negative?: unknown;
       setting?: unknown;
-      options?: unknown;
       connectionId?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
+      sceneryStyleProfileId?: unknown;
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;

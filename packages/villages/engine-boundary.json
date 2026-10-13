@@ -21,5 +21,13 @@
         "ead04150a132"
       ]
     }
+  ],
+  "publicEngineRuntimeImports": [
+    {
+      "source": "server/adapters/engine/image-style-profiles.ts",
+      "modules": [
+        "@marinara-engine/shared"
+      ]
+    }
   ]
 }

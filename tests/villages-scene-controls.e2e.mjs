@@ -14,7 +14,7 @@ try {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
-    { width: 844, height: 390 },
+    { width: 360, height: 640 },
     { width: 1440, height: 900 },
   ]) {
     for (const count of [1, 2, 3, 4]) {

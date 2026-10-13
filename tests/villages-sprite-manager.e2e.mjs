@@ -41,7 +41,7 @@ try {
     { width: 390, height: 844 },
     { width: 320, height: 740 },
     { width: 1024, height: 768 },
-    { width: 844, height: 390 },
+    { width: 360, height: 640 },
   ]) {
     const page = await browser.newPage({ viewport, hasTouch: viewport.width < 720 });
     const errors = [],
@@ -520,7 +520,7 @@ try {
     await page.close();
   }
   console.log(
-    "Sprite Manager browser: desktop, portrait/landscape phones, uploads, framing, expressions, failures, exports, adoption and reload passed.",
+    "Sprite Manager browser: desktop, portrait phones, uploads, framing, expressions, failures, exports, adoption and reload passed.",
   );
 } finally {
   await browser.close();

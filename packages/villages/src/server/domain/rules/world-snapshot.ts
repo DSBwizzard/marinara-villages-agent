@@ -1,4 +1,5 @@
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
+import { isPrivateInterior, privateInteriorKey } from "./private-interior.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -170,6 +171,7 @@ export function villageSettings(
     worldFacts: village.worldFacts,
     selectedLorebookIds: village.selectedLorebookIds,
     sceneryArtStyle: village.sceneryArtStyle,
+    sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
     personalizeVenueImagesByDefault: village.personalizeVenueImagesByDefault,
     useVisualLoreByDefault: village.useVisualLoreByDefault,
     loreTokenBudget: village.loreTokenBudget,
@@ -207,6 +209,11 @@ export function villageSettings(
       const zones = venueZones(venue).map((originalZone) => {
         const zone = {
           ...originalZone,
+          lastObserved: undefined,
+          imageInteriorKey: undefined,
+          preparation: originalZone.preparation
+            ? { status: originalZone.preparation.status, error: originalZone.preparation.error }
+            : undefined,
           access: undefined,
           controllerIds: venue.access ? undefined : originalZone.controllerIds,
           accessView: venue.access
@@ -231,8 +238,21 @@ export function villageSettings(
           zone.seen ||
           (zone.kind === "shared-residence" && venue.occupancy.playerHome) ||
           (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id);
+        const observed = isPrivateInterior(originalZone) ? originalZone.lastObserved : undefined;
         return visible
-          ? { ...zone, closed: zoneClosed(village, venue, zone) }
+          ? {
+              ...zone,
+              ...(observed
+                ? { description: observed.description, state: observed.state, observedAt: observed.observedAt }
+                : {}),
+              imageOutdated: !!(
+                observed &&
+                zone.image &&
+                originalZone.imageInteriorKey &&
+                originalZone.imageInteriorKey !== privateInteriorKey(observed)
+              ),
+              closed: zoneClosed(village, venue, zone),
+            }
           : {
               ...zone,
               closed: zoneClosed(village, venue, zone),
@@ -290,7 +310,7 @@ export function villageSettings(
                   ...zone,
                   access: undefined,
                   controllerIds: venue.access ? undefined : zone.controllerIds,
-                  description: visibleIds.has(zone.id) ? zone.description : "",
+                  description: zones.find((observed) => observed.id === zone.id)?.description ?? "",
                 })),
               }
             : null,
@@ -301,7 +321,14 @@ export function villageSettings(
           )
           .map((proposal) => ({
             ...proposal,
-            proposed: { ...proposal.proposed, access: undefined, accessView: undefined, controllerIds: undefined },
+            proposed: {
+              ...proposal.proposed,
+              access: undefined,
+              accessView: undefined,
+              controllerIds: undefined,
+              lastObserved: undefined,
+              imageInteriorKey: undefined,
+            },
           })),
       };
     }),

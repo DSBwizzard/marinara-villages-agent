@@ -1,3 +1,4 @@
+import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
@@ -49,6 +50,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     saveTownMap,
     saveVenue,
     sceneryStyle,
+    sceneryStyleProfileId,
     selectedMapVenueId,
     setKnowledgeDraft,
     setLoreTokenBudgetDraft,
@@ -60,6 +62,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     setPlacingMapVenueId,
     setReframingMap,
     setSceneryStyle,
+    setSceneryStyleProfileId,
     setSelectedMapVenueId,
     setSettingDraft,
     setTownMapDraft,
@@ -86,7 +89,12 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
   return (
     <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
       <section className={ELEMENT_TAG + "-venue-card"}>
-        <SceneryStyleFields value={sceneryStyle} onChange={setSceneryStyle} />
+        <SceneryStyleFields
+          value={sceneryStyle}
+          profileId={sceneryStyleProfileId}
+          onChange={setSceneryStyle}
+          onProfileChange={setSceneryStyleProfileId}
+        />
         <label>
           <input
             type="checkbox"
@@ -175,6 +183,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
             />
             {mapReplaceOpen ? (
               <>
+                <p className={ELEMENT_TAG + "-hint"}>{MAP_UPLOAD_GUIDANCE}</p>
                 <div className={ELEMENT_TAG + "-row"}>
                   <button
                     type="button"

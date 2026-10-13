@@ -23,7 +23,7 @@ try {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
-    { width: 844, height: 390 },
+    { width: 360, height: 640 },
     { width: 1440, height: 900 },
   ]) {
     const mobile = width !== 1440;
@@ -179,6 +179,15 @@ try {
       await expect(counter).toContainText("Page 2/");
       const retainedPage = await counter.textContent();
       const retainedText = await text.textContent();
+      if (width === 390) {
+        // Rotation is allowed; only state survival is promised outside portrait.
+        await page.setViewportSize({ width: 844, height: 390 });
+        await expect(draft).toHaveValue("Preserve this draft");
+        await page.setViewportSize({ width, height });
+        await expect(counter).toHaveText(retainedPage);
+        await expect(text).toHaveText(retainedText);
+        await expect(draft).toHaveValue("Preserve this draft");
+      }
       for (let repeat = 0; repeat < 2; repeat++) {
         await visitVenueAndReturn();
         await expect(counter).toHaveText(retainedPage);

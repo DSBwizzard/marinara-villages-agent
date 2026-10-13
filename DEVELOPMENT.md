@@ -71,6 +71,11 @@ The architecture baseline is numbered 0.7.0 and starts with fresh worlds. The [m
 
 Installing a package uses the host's supported package mechanism and a validated ZIP, rather than copying a source tree into Engine. Computer-specific review environments, approval gates and installation helpers live in local workflow instructions outside this repository. Loading a changed server package requires a restart; follow that environment's explicit restart authorization. This repository does not publish a replacement for the official multi-agent catalog or plan upstream submission.
 
+## Engine image style profiles
+
+Villages reads the user's synced image style settings over the Engine HTTP API and normalizes them with the running Engine's public `@marinara-engine/shared` export. That public export also compiles background prompts before Villages submits its exact image override. The audited loader resolves the import entry declared by the Engine shared package manifest from the existing built server/shared package layout; it never bundles Engine implementations or loads private image modules. Illustrator is not required. Unsupported public exports report an actionable failure; saved custom descriptions and uploads remain usable.
+
+New villages follow Engine's default profile; explicit choices store only the profile ID, and existing descriptions remain custom. The catalog exposes only profile names/IDs and the default ID. Authored source prompts retain their 4000-character limit; normalized profile compilation has a separate 16000-character final positive/negative limit checked before provider dispatch. Map and Venue framing stays under Villages' control. The read-only image Engine contract test now also requires the selected Engine's existing built shared export.
 
 ## Test iteration and diagnostics
 

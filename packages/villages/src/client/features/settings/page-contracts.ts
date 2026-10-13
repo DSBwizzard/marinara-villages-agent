@@ -71,6 +71,7 @@ export type VillageSettingsPagePorts = {
   readonly saveTownMap: () => Promise<void>;
   readonly saveVenue: (draft: VillageVenue) => Promise<void>;
   readonly sceneryStyle: string;
+  readonly sceneryStyleProfileId: string | null;
   readonly selectedMapVenueId: string | null;
   readonly setKnowledgeDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setLoreTokenBudgetDraft: React.Dispatch<React.SetStateAction<number>>;
@@ -82,6 +83,7 @@ export type VillageSettingsPagePorts = {
   readonly setPlacingMapVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly setReframingMap: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSceneryStyle: React.Dispatch<React.SetStateAction<string>>;
+  readonly setSceneryStyleProfileId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly setSelectedMapVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly setSettingDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setTownMapDraft: React.Dispatch<React.SetStateAction<TownMapView | null>>;

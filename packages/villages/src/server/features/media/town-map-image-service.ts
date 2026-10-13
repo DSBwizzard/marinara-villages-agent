@@ -27,12 +27,12 @@ export function createTownMapImage(ports: TownMapImagePorts) {
   async function generateVillageTownMap(input: {
     structure?: unknown;
     setting?: unknown;
-    options?: unknown;
     negative?: unknown;
     connectionId?: unknown;
     selectedLorebookIds?: unknown;
     scenarioImprint?: unknown;
     sceneryArtStyle?: unknown;
+    sceneryStyleProfileId?: unknown;
     useVisualLore?: unknown;
   }): Promise<{ image: string; width: number; height: number }> {
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
@@ -40,8 +40,8 @@ export function createTownMapImage(ports: TownMapImagePorts) {
       throw badRequest("Visual lore must be on or off.");
     const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
     // Validate required inputs before lore reads or image dispatch.
-    const base = buildTownMapPrompt(input.structure, input.setting, input.options, "", input.scenarioImprint, style);
-    const negativePrompt = buildTownMapNegativePrompt(input.options, input.negative);
+    const base = buildTownMapPrompt(input.structure, input.setting, "", input.scenarioImprint, style);
+    const negativePrompt = buildTownMapNegativePrompt(input.negative);
     const lore =
       input.useVisualLore === false
         ? []
@@ -55,6 +55,7 @@ export function createTownMapImage(ports: TownMapImagePorts) {
       lore.map((entry) => "Compatible visual lore: " + entry),
     );
     const generated = await generateVillageImage({
+      sceneryStyleProfileId: input.sceneryStyleProfileId,
       connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,
       name: "Village map",
       prompt,

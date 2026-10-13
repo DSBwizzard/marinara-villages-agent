@@ -1,10 +1,12 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
   view: "map" | "details";
   paused: boolean;
   sections: Record<string, "venue" | "zones">;
   zones: Record<string, string>;
+  inactive?: Record<string, InactiveFoundingZones>;
 };
 export const emptyFoundingWorkspace = (): FoundingWorkspaceState => ({
   view: "map",
@@ -38,8 +40,12 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
       add("placement", "Place this Venue on the map.");
     if (!venue.name.trim()) add("name", "Add a Venue name.");
     if (!venue.form?.trim()) add("form", "Add its physical form.");
-    if (!venue.description.trim()) add("description", "Describe the Entrance appearance.", "exterior");
+    if (!venue.description.trim()) add("description", "Describe the Exterior.", "exterior");
     if (!existing && venue.layoutVersion === 1 && !venue.layout) add("layout", "Choose the Venue’s Zones.");
+    if (!existing && venue.classes?.includes("residence") && !venue.spaces?.length && !venue.privateSpaces?.length)
+      add("layout", "Include Common or Private Space.", "common");
+    if (!existing && venue.category === "public-center" && (!venue.spaces?.length || venue.privateSpaces?.length))
+      add("layout", "The starting Gathering Place requires Common Space and has no Private Space.", "common");
     if (venue.classes?.includes("residence") && !venue.occupancy.playerHome && !venue.occupancy.residentCharacterId)
       add("assignment", "Assign a resident.");
     if (
@@ -51,11 +57,12 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
       add("assignment", "Assign this resident to only one home.");
     for (const zone of [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])]) {
       const privateZone = venue.privateSpaces?.some((row) => row.id === zone.id);
-      if (zone.access || privateZone) {
+      if (!existing || zone.access || privateZone) {
         if (!zone.name?.trim()) add("zone-name", "Give the Zone a name.", zone.id);
         if (!zone.purpose?.trim()) add("zone-purpose", "Describe what the Zone is used for.", zone.id);
       }
-      if (!privateZone && !zone.description.trim()) add("zone-appearance", "Describe the Zone appearance.", zone.id);
+      if ((!privateZone || (!existing && zone.ownerId === "player")) && !zone.description.trim())
+        add("zone-appearance", "Describe the Zone appearance.", zone.id);
       if (
         privateZone &&
         !zone.access &&

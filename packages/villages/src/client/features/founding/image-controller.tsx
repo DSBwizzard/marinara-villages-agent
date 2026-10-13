@@ -15,15 +15,14 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly mapVisualLore: FoundingState["mapVisualLore"];
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
+  readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly setSetupMapBusy: FoundingState["setSetupMapBusy"];
-  readonly setSetupMapClock: FoundingState["setSetupMapClock"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupMapGenerationKey: string;
   readonly setupMapNegativePrompt: FoundingState["setupMapNegativePrompt"];
-  readonly setupMapOptions: FoundingState["setupMapOptions"];
   readonly setupMapPrompt: FoundingState["setupMapPrompt"];
   readonly setupMapRequestRef: FoundingState["setupMapRequestRef"];
   readonly setupSetting: FoundingState["setupSetting"];
@@ -36,15 +35,14 @@ export function useFoundingGenerateSetupTownMap(ports: {
       mapVisualLore,
       persistSetupDraft,
       sceneryStyle,
+      sceneryStyleProfileId,
       setSetupMapBusy,
-      setSetupMapClock,
       setSetupMapProblem,
       setSetupProblem,
       setupDraftData,
       setupLorebookDraft,
       setupMapGenerationKey,
       setupMapNegativePrompt,
-      setupMapOptions,
       setupMapPrompt,
       setupMapRequestRef,
       setupSetting,
@@ -68,7 +66,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
       phase: "starting",
     };
     updateSetupMapRequest(pending);
-    setSetupMapClock(Date.now());
     let dispatched = false;
     try {
       // Keep the receipt ID before the paid request, so a reload only retrieves it.
@@ -83,9 +80,9 @@ export function useFoundingGenerateSetupTownMap(ports: {
           negative:
             setupMapNegativePrompt === snapshot?.settings.townMapNegativePrompt ? undefined : setupMapNegativePrompt,
           setting: setupSetting,
-          options: setupMapOptions,
           selectedLorebookIds: setupLorebookDraft,
           sceneryArtStyle: sceneryStyle,
+          sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
           scenarioImprint: snapshot?.isFounded
             ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
@@ -110,9 +107,9 @@ export function useFoundingGenerateSetupTownMap(ports: {
     ports.setupMapNegativePrompt,
     ports.setupMapPrompt,
     ports.setupSetting,
-    ports.setupMapOptions,
     ports.setupMapGenerationKey,
     ports.sceneryStyle,
+    ports.sceneryStyleProfileId,
     ports.mapVisualLore,
     ports.setupWorldFacts,
     ports.snapshot?.isFounded,
@@ -150,6 +147,7 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly personaDraft: string;
   readonly personalizeHomes: FoundingState["personalizeHomes"];
   readonly sceneryStyle: FoundingState["sceneryStyle"];
+  readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly selectedResidentContexts: {
     [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
   };
@@ -183,8 +181,8 @@ export function createFoundingGenerateSetupImage(ports: {
     const {
       element,
       personaDraft,
-      personalizeHomes,
       sceneryStyle,
+      sceneryStyleProfileId,
       selectedResidentContexts,
       setSelectedSetupVenueId,
       setSetupImageTarget,
@@ -204,7 +202,6 @@ export function createFoundingGenerateSetupImage(ports: {
       setupVenuesRef,
       setupWorldFacts,
       snapshot,
-      visualLoreDefault,
       withSetupImage,
     } = ports;
 
@@ -263,8 +260,9 @@ export function createFoundingGenerateSetupImage(ports: {
             : undefined,
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,
-          useAssignedVillagerContext: venue.imageContext?.useAssignedVillagerContext ?? personalizeHomes,
-          useVisualLore: venue.imageContext?.useVisualLore ?? visualLoreDefault,
+          sceneryStyleProfileId,
+          useAssignedVillagerContext: true,
+          useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
           foundingDetails: setupFoundingDetails,

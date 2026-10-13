@@ -176,7 +176,11 @@ export async function analyzeArchitecture({
         continue;
       }
       if (!node || !ts.isStringLiteralLike(node)) {
-        if (from !== "server/adapters/engine/decisions-adapter.ts")
+        if (
+          !["server/adapters/engine/decisions-adapter.ts", "server/adapters/engine/image-style-profiles.ts"].includes(
+            from,
+          )
+        )
           failures.push(`${from}: computed module imports hide dependencies`);
         continue;
       }

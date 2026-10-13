@@ -572,6 +572,8 @@ export type VillageVenueClass = "residence" | "workplace" | "gathering" | "other
 export type VillageVenueSpace = {
   id: string;
   venueClass: VillageVenueClass;
+  /** Known authored constraints, separate from the prepared interior. */
+  roomSpecification?: string;
   description: string;
   image: VillageVenueImage | null;
   state: {
@@ -587,6 +589,7 @@ export type VillageVenueSpace = {
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
 export type PrivateSpacePreparation = {
   status: "pending" | "ready" | "failed";
+  mode?: "renovation";
   error?: string;
   /** Persisted before dispatch. A surviving claim requires deliberate retry. */
   claimId?: string;
@@ -594,6 +597,8 @@ export type PrivateSpacePreparation = {
   attempt?: number;
 };
 export type VillageVenueZone = VillageVenueSpace & {
+  lastObserved?: { description: string; state: VillageVenueSpace["state"]; observedAt: string };
+  imageInteriorKey?: string;
   access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
   accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
   relationshipAccess?: boolean;
@@ -612,10 +617,12 @@ export type VillageVenueZone = VillageVenueSpace & {
 };
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   VillageVenueZone,
-  "id" | "name" | "kind" | "description" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
+  "id" | "name" | "kind" | "description" | "roomSpecification" | "venueClass" | "purpose" | "controllerIds" | "ownerId"
 >;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
+  lastObserved?: VillageVenueZone["lastObserved"];
+  imageInteriorKey?: string;
   preparation?: PrivateSpacePreparation;
   ownerId: string;
   /** A first-entry picture is attempted once; later drawing is player controlled. */
@@ -1224,6 +1231,7 @@ export type VillageState = {
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
+  sceneryStyleProfileId?: string | null;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
@@ -1708,6 +1716,7 @@ export type VillageSettingsView = {
   worldFacts: string[];
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
+  sceneryStyleProfileId?: string | null;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;
   loreTokenBudget: number;

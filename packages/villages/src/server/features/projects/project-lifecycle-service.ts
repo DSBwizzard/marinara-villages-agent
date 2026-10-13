@@ -1,4 +1,5 @@
 import type { VillageProject, VillageVenue } from "../../domain/models/world.js";
+import { prepareRenovatedPrivateInterior } from "../../domain/rules/private-interior.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
 import {
@@ -532,12 +533,13 @@ export function createProjectLifecycle({
                 preparation:
                   !previous &&
                   ["staff", "restricted", "private-residence"].includes(draft.kind) &&
-                  (draft.kind !== "private-residence" || !!draft.ownerId)
+                  draft.ownerId !== "player"
                     ? { status: "pending" as const }
                     : previous?.preparation,
                 image: previous?.image ?? null,
                 seen: previous?.seen ?? draft.ownerId === "player",
               };
+              prepareRenovatedPrivateInterior(zone, previous);
               if (index >= 0) venue.zones[index] = zone;
               else venue.zones.push(zone);
             }
@@ -554,12 +556,13 @@ export function createProjectLifecycle({
                 preparation:
                   ["staff", "restricted", "private-residence"].includes(draft.kind) &&
                   !previous &&
-                  (draft.kind !== "private-residence" || !!draft.ownerId)
+                  draft.ownerId !== "player"
                     ? { status: "pending" as const }
                     : previous?.preparation,
                 upgradeId: change.improvement.id,
                 image: previous?.image ?? null,
               };
+              prepareRenovatedPrivateInterior(zone, previous);
               const image = validImage(asRecord(row.zoneImages)[draft.id]);
               if (image) zone.image = image;
               if (index >= 0) venue.zones[index] = zone;

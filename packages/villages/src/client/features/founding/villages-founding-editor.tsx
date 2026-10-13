@@ -1,46 +1,45 @@
+import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { draftZonePolicy, FoundingZoneFields, foundingZoneProblem } from "./villages-founding-zones";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-export const SCENERY_STYLES = {
-  "Painted illustration":
-    "Painted storybook illustration, coherent brushwork, soft lighting, and a consistent color palette.",
-  Watercolor: "Watercolor scenery with translucent washes, textured paper, soft edges, and a harmonious palette.",
-  Cartoon: "Cartoon scenery with clean outlines, simplified shapes, expressive colors, and consistent cel shading.",
-  "Pixel art": "Pixel art scenery with crisp pixel edges, a limited consistent palette, and carefully shaded forms.",
-  Photorealism: "Photorealistic scenery with natural materials, realistic lighting, and coherent photographic detail.",
-  Custom: "",
-};
-export function SceneryStyleFields({ value, onChange }: { value: string; onChange(value: string): void }) {
+export function SceneryStyleFields({
+  value,
+  profileId,
+  onChange,
+  onProfileChange,
+}: {
+  value: string;
+  profileId: string | null;
+  onChange(value: string): void;
+  onProfileChange(value: string | null): void;
+}) {
   return (
     <fieldset className="villages-scenery-fields">
       <legend>Scenery art style</legend>
       <label>
         Style preset
-        <select
-          aria-label="Scenery style preset"
-          value={
-            Object.keys(SCENERY_STYLES).find((key) => SCENERY_STYLES[key as keyof typeof SCENERY_STYLES] === value) ??
-            "Custom"
-          }
-          onChange={(event) => onChange(SCENERY_STYLES[event.target.value as keyof typeof SCENERY_STYLES])}
-        >
-          {Object.keys(SCENERY_STYLES).map((key) => (
-            <option key={key}>{key}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Style description
-        <textarea
-          aria-label="Scenery style description"
-          rows={3}
-          maxLength={600}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
+        <SceneryStylePicker
+          profileId={profileId}
+          onChange={(id) => {
+            onProfileChange(id);
+            if (id !== null) onChange("");
+          }}
         />
       </label>
+      {profileId === null ? (
+        <label>
+          Style description
+          <textarea
+            aria-label="Scenery style description"
+            rows={3}
+            maxLength={600}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </label>
+      ) : null}
       <p>Used for future map and venue images. Existing artwork stays as it is.</p>
     </fieldset>
   );
@@ -281,6 +280,24 @@ export function BaseZoneFields({
               />
             </label>
           )}
+          {["private-residence", "staff", "restricted"].includes(zone.kind) ? (
+            <label>
+              Room specification · optional
+              <textarea
+                aria-label="Room specification"
+                maxLength={1000}
+                value={zone.roomSpecification ?? ""}
+                placeholder="Physical changes to the provided room…"
+                onChange={(event) =>
+                  onChange(
+                    zones.map((area) =>
+                      area.id === zone.id ? { ...area, roomSpecification: event.target.value } : area,
+                    ),
+                  )
+                }
+              />
+            </label>
+          ) : null}
           {zone.kind === "private-residence" && !venue.zones?.some((area) => area.id === zone.id) ? (
             <label>
               Assigned resident
@@ -443,22 +460,19 @@ export function PrivateSpaceFields({
                 ))}
               </fieldset>
             ) : null}
-            {room.venueClass === "residence" ? (
-              <p>
-                This residential Private Space is prepared for its assigned resident. Contents remain hidden until
-                invitation.
-              </p>
-            ) : (
-              <label>
-                Description · optional
-                <textarea
-                  maxLength={1000}
-                  value={room.description}
-                  onChange={(event) => patch(room.id, { description: event.target.value })}
-                />
-              </label>
-            )}
-            <p>Private details will be prepared when the venue opens. Its image is drawn on first invited entry.</p>
+            <label>
+              Room specification · optional
+              <textarea
+                aria-label="Room specification"
+                maxLength={1000}
+                value={room.roomSpecification ?? room.description}
+                onChange={(event) => patch(room.id, { roomSpecification: event.target.value })}
+              />
+            </label>
+            <p>
+              Private details are prepared when the venue opens. Assigned residents personalize their rooms; vacant
+              rooms start neutral. Discover and image the interior on your first authorized entry.
+            </p>
             <button type="button" onClick={() => onChange(rooms.filter((entry) => entry.id !== room.id))}>
               Remove this private space
             </button>

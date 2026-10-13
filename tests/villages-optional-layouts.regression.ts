@@ -28,7 +28,11 @@ import {
   placeNewVenueProject,
   openFinishedProject,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { assertResidencePrivateDestination } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import {
+  assertResidencePrivateDestination,
+  readBaseVenueLayout,
+} from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
@@ -50,7 +54,13 @@ function draft(layout: string, role = "residence", owner = "a") {
     },
     spaces:
       layout === "common" || layout === "both"
-        ? [defaultVenueSpace(role as "residence", "An unfurnished Common Space.")]
+        ? [
+            {
+              ...defaultVenueSpace(role as "residence", "An unfurnished Common Space."),
+              name: "Common Space",
+              purpose: "Everyday activities",
+            },
+          ]
         : [],
     privateSpaces:
       layout === "private" || layout === "both"
@@ -68,8 +78,11 @@ function draft(layout: string, role = "residence", owner = "a") {
   };
 }
 function place(layout: string, role = "residence", owner = "a"): VillageVenue {
-  return coerceVillageState({ wishSystemVersion: 3, venues: [parsePlace(draft(layout, role, owner), true)] })
-    .venues[0]!;
+  const source = draft(layout, role, owner);
+  const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
+  const parsed = { ...parsePlace(source, false), zones };
+  initializeVenueAccess(parsed);
+  return coerceVillageState({ wishSystemVersion: 3, venues: [parsed] }).venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
   for (const role of ["residence", "workplace", "gathering", "other"]) {
@@ -87,12 +100,16 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     }
   }
 }
-assert.throws(() => parsePlace({ ...draft("exterior"), layout: undefined }, true), /Choose the venue layout/);
+assert.throws(() => parsePlace({ ...draft("common"), layout: undefined }, true), /Choose the venue layout/);
 assert.throws(() => parsePlace({ ...draft("exterior"), layoutVersion: undefined }, true), /Choose the venue layout/);
 assert.throws(() => parsePlace({ ...draft("both"), spaces: [] }, true), /matching its selected layout/);
 assert.throws(
-  () => parsePlace({ ...draft("common"), spaces: [defaultVenueSpace("residence")] }, true),
-  /Describe the Common Space/,
+  () =>
+    parsePlace(
+      { ...draft("common"), spaces: [{ ...defaultVenueSpace("residence"), name: "Room", purpose: "Meals" }] },
+      true,
+    ),
+  /visible Zone/,
 );
 assert.throws(
   () =>
@@ -117,15 +134,16 @@ assert.equal(chooseAgendaZone(place("exterior"), "a", "Sleep").id, "exterior");
 assert.equal(chooseAgendaZone(place("common"), "a", "Sleep").kind, "shared-residence");
 const vacant = place("private", "residence", "");
 assert.equal(
-  vacant.zones!.find((zone) => zone.kind === "private-residence")!.preparation,
-  undefined,
-  "vacant rooms do not spend generation requests",
+  vacant.zones!.find((zone) => zone.kind === "private-residence")!.preparation?.status,
+  "pending",
+  "vacant rooms prepare neutral interiors",
 );
 assert.equal(canOccupyZone(vacant, vacant.zones![1]!, "a"), false);
 const initial = defaultVillageState();
 initial.venues = [privateOnly, place("exterior", "residence", "b"), vacant];
 initial.venues[0]!.zones![1]!.description = "A secret journal and old furnishings.";
-initial.venues[0]!.zones![1]!.state.items = ["Fixed hammock"];
+initial.venues[0]!.zones![1]!.state.items = ["Personal hammock"];
+initial.venues[0]!.zones![1]!.state.condition = "Fixed hammock hooks remain anchored to the beams.";
 initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
 initial.villagers = coerceVillageState({
   wishSystemVersion: 3,
@@ -152,6 +170,9 @@ initial.villagers = coerceVillageState({
     },
   ],
 }).villagers;
+// Neutral preparation is a separate model job; this fixture completes it before testing moves.
+assert.throws(() => assertResidencePrivateDestination(initial, vacant, "b", "personal"), /no longer vacant/);
+vacant.zones!.find((zone) => zone.id === "personal")!.preparation!.status = "ready";
 const state = coerceVillageState(initial);
 assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
@@ -220,7 +241,12 @@ async function main() {
     current = await readVillageState();
     const old = current.venues.find((venue) => venue.id === privateOnly.id)!;
     assert.equal(old.zones!.find((zone) => zone.id === "personal")!.ownerId, undefined);
-    assert.deepEqual(old.zones!.find((zone) => zone.id === "personal")!.state.items, ["Fixed hammock"]);
+    assert.deepEqual(old.zones!.find((zone) => zone.id === "personal")!.state.items, []);
+    assert.equal(
+      old.zones!.find((zone) => zone.id === "personal")!.state.condition,
+      "Fixed hammock hooks remain anchored to the beams.",
+    );
+    assert.deepEqual(old.archivedPrivateSpaces![0]!.space.state.items, ["Personal hammock"]);
     assert.match(old.archivedPrivateSpaces![0]!.space.description, /secret journal/);
     assert.deepEqual(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.map((zone) => zone.kind),
@@ -369,8 +395,16 @@ async function main() {
     const chamber = expanded.zones!.find((zone) => zone.kind === "private-residence")!;
     assert.ok(chamber.upgradeId);
     assert.equal(chamber.ownerId, undefined);
-    assert.equal(chamber.preparation, undefined);
+    assert.equal(chamber.preparation?.status, "pending");
     assert.equal(venueCapacity(expanded), 2);
+    // The room stays closed during neutral preparation; later checks use a completed synthetic job.
+    assert.throws(() => assertResidencePrivateDestination(current, expanded, "player", chamber.id), /no longer vacant/);
+    chamber.preparation!.status = "ready";
+    await mutateVillageState((record) => {
+      for (const venue of record.venues)
+        for (const zone of venue.zones ?? [])
+          if (zone.preparation?.status === "pending") zone.preparation.status = "ready";
+    });
     assert.equal(
       canOccupyZone(expanded, chamber, "a"),
       false,
@@ -394,8 +428,8 @@ async function main() {
     current = await readVillageState();
     assert.equal(current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.ownerId, "player");
     assert.equal(
-      current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.items[0],
-      "Fixed hammock",
+      current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.condition,
+      "Fixed hammock hooks remain anchored to the beams.",
     );
     await proposePlayerMove(outside.id, chamber.id);
     current = await readVillageState();

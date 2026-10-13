@@ -198,7 +198,16 @@ const home = coerceVillageState({
         residentIds: ["same"],
         workerIds: ["same", "other"],
         spaces: [],
-        privateSpaces: [{ ...defaultVenueSpace("residence", "Secret writing"), id: "personal", ownerId: "same" }],
+        privateSpaces: [
+          {
+            ...defaultVenueSpace("residence", "Secret writing"),
+            roomSpecification: "A garden-facing window",
+            id: "personal",
+            ownerId: "same",
+            name: "Bedroom",
+            purpose: "Rest",
+          },
+        ],
       },
       true,
     ),
@@ -209,6 +218,8 @@ const zone = home.zones!.find((entry) => entry.ownerId === "same")!;
 zone.purpose = "Sleeping chamber";
 zone.seen = true;
 zone.preparation = { status: "ready" };
+zone.description = "Secret writing";
+home.privateSpaces![0].description = "Secret writing";
 zone.adaptationPending = true;
 zone.adaptationSourceArchiveAt = "previous";
 zone.controllerIds = ["same", "other"];
@@ -243,7 +254,7 @@ assert.equal(vacant.preparation, undefined);
 assert.equal(vacant.adaptationPending, false);
 assert.equal(vacant.adaptationSourceArchiveAt, "");
 assert.equal(vacant.seen, false);
-assert.equal(vacant.description, "Sleeping chamber");
+assert.equal(vacant.description, "A garden-facing window", "vacancy keeps the known shell rather than personal prose");
 assert.equal(vacant.image, null);
 assert.deepEqual(vacant.state.publicFacts, []);
 assert.deepEqual(vacant.access!.managerIds, null);

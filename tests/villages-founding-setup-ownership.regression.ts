@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import Fastify from "fastify";
+import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -27,6 +29,7 @@ function input(name: string) {
   return {
     name,
     setting: "An observatory village",
+    townMapImage: "test-map",
     foundingReason: "none",
     foundingDetails: "We begin our first day as neighbours.",
     playerPersonaId: "player",
@@ -39,8 +42,16 @@ function input(name: string) {
       category: id === "hall" ? "public-center" : "house",
       classes: [id === "hall" ? "gathering" : "residence"],
       layoutVersion: 1,
-      layout: "exterior",
-      spaces: [],
+      layout: "common",
+      spaces: [
+        {
+          id: "common:base",
+          name: "Shared room",
+          purpose: "Conversation",
+          description: "A table",
+          venueClass: id === "hall" ? "gathering" : "residence",
+        },
+      ],
       privateSpaces: [],
       occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
       presentation: { x: 0.2 + index * 0.2, y: 0.5 },
@@ -99,8 +110,8 @@ function fixture(name: string) {
     },
     async readTownMapSubmission(value) {
       note("map");
-      assert.equal(value, "");
-      return { image: "", size: null, view: DEFAULT_TOWN_MAP_VIEW };
+      assert.equal(value, "test-map");
+      return { image: "test-map", size: null, view: DEFAULT_TOWN_MAP_VIEW };
     },
     async readVillageConnectionSettings() {
       note("connections");
@@ -178,6 +189,44 @@ function fixture(name: string) {
   };
 }
 
+// Exercise the real HTTP entry and setup coordinator with provider-free ports.
+for (const invalid of ["exterior-residence", "missing-purpose", "gathering-private", "owned-gathering"]) {
+  const api = fixture(invalid),
+    payload = input(invalid);
+  if (invalid === "exterior-residence") Object.assign(payload.venues[0]!, { layout: "exterior", spaces: [] });
+  if (invalid === "missing-purpose") payload.venues[0]!.spaces[0]!.purpose = "";
+  if (invalid === "gathering-private")
+    Object.assign(payload.venues[2]!, {
+      layout: "both",
+      privateSpaces: [
+        {
+          id: "forbidden",
+          name: "Bedroom",
+          purpose: "Rest",
+          description: "Bed",
+          venueClass: "gathering",
+          ownerId: "player",
+        },
+      ],
+    });
+  if (invalid === "owned-gathering") Object.assign(payload.venues[2]!.spaces[0]!, { ownerId: "player" });
+  const dispose = configureFoundingSetup(api.service),
+    server = Fastify();
+  registerFoundingRoutes(server);
+  try {
+    const response = await server.inject({ method: "POST", url: "/setup", payload });
+    assert.equal(response.statusCode, 400, invalid);
+    assert.ok(response.json().error, "HTTP validation explains the rejected template");
+    assert.ok(
+      !api.calls.some((call) => ["mutate", "propose", "names", "descriptions", "prepare", "schedule"].includes(call)),
+      "Invalid initial templates cause no model work or world writes",
+    );
+    assert.equal(api.state.setupAt, "");
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
 const direct = fixture("Direct");
 await assert.rejects(
   direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "" }),

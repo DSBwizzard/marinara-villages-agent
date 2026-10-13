@@ -404,9 +404,9 @@ async function main() {
     assert.equal(
       (await readVillageState()).foundingPreparation?.status,
       "ready",
-      "vacant rooms and worksites do not block founding",
+      "vacant rooms are prepared and worksites stay deferred",
     );
-    assert.deepEqual(calls.slice(0, 2), ["sneak", "hall"]);
+    assert.deepEqual(calls.slice(0, 3), ["aqua", "sneak", "hall"]);
 
     install();
     conflicts = 2;
