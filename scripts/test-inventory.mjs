@@ -1,9 +1,11 @@
+import { isolationHash } from "./test-isolation.mjs";
+import { parallelAudit } from "./test-parallel-audit.mjs";
 import { readdir } from "node:fs/promises";
 
 /** Portable test inventory shared by CI and local candidate tooling. */
 export async function testInventory(root = new URL("../", import.meta.url)) {
   const names = (await readdir(new URL("tests/", root))).sort();
-  return names
+  const tests = names
     .filter((name) => /\.(?:regression\.ts|regression\.mjs|e2e\.mjs)$/.test(name))
     .map((name) => ({
       path: `tests/${name}`,
@@ -34,4 +36,13 @@ export async function testInventory(root = new URL("../", import.meta.url)) {
         ? { requirements: "VILLAGES_ENGINE_URL pointing to an isolated running Engine; package APIs mocked" }
         : {}),
     }));
+  const cache = new Map();
+  return Promise.all(
+    tests.map(async (test) => ({
+      ...test,
+      parallelSafe:
+        parallelAudit[test.path] ===
+        (await isolationHash(test.path, root.pathname ? (await import("node:url")).fileURLToPath(root) : root, cache)),
+    })),
+  );
 }

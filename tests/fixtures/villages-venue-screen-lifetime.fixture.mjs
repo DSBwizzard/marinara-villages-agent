@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "esbuild";
-import { expect } from "@playwright/test";
+import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
 export async function createVenueScreenHarness(browser) {

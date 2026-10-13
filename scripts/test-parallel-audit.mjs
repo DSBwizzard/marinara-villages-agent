@@ -1,0 +1,181 @@
+/** Reviewed process isolation, transitive helper and dependency hashes. Unknown/changed suites run exclusively. */
+export const parallelAudit = {
+  "tests/villages-activation-scope.regression.ts": "8455da1180c165319556828b71b77d3316704b94f3c7d0cfb3ba3e26d86e9a4c",
+  "tests/villages-agenda-movement.regression.ts": "82777fe6f17f7b8b7b74c11a31f3ca33fef9c4d1471b4a2589beec20f4668ca5",
+  "tests/villages-application.regression.ts": "fae8a1f3aa1c7857d96244ff45a5d709eeb8781e573738a69cdafcaf95e51bcc",
+  "tests/villages-asides.e2e.mjs": "669a655b5bdcffa7d606c261a90a5d14da9853ad38900f396cf21cf8a2b2e2b3",
+  "tests/villages-asides.regression.ts": "62d5d9e0efdf4d5dc07edaa425df7097c32add847a50f864008b7699d276b090",
+  "tests/villages-background-ownership.regression.ts":
+    "201be50993ee5ffa207638ba4b240709c7a16b16725073b565071080446a3adb",
+  "tests/villages-background-work.e2e.mjs": "d595fa16f634e689feedc307be09b6af8dcc8e4a5878f746f8ab038b1dfc30a7",
+  "tests/villages-background-work.regression.ts": "e0a771c8d006ec0e4e661d578586840d50486e7b78ec5aa7223519d7a3215dbe",
+  "tests/villages-card-colors.regression.ts": "555826956f18b1c883561b27d06f4394fcdb0c378655a3838677b0bc057c4c74",
+  "tests/villages-catalog-identity.regression.ts": "b0cb590c558c08387089130a89ca2da2990e6dc5599f1f15ff5b63f01cc60070",
+  "tests/villages-character-writing.regression.ts": "1858e7d282fc79e0821bddcaa82ed41a5c064fdfde571eff3370e1f5cff6e518",
+  "tests/villages-chat-vn.regression.ts": "951f0f05378abc02ce2dde1e50773db143f6ed6e1f752221ffd5a76d77ced8b8",
+  "tests/villages-check-cost-replay.regression.ts": "40b86eefcaefa04c3124937dda519acbc6f6241b9dd5050eca95d56326c1c970",
+  "tests/villages-compact-founding.regression.ts": "130a86287aebdbf4879951bc7076297008489a90cbc018add9bf021d0c8059f4",
+  "tests/villages-contact.e2e.mjs": "1772f53fb7075864750be235e7c72b0e5f16b50d293def40ee264b617c783c96",
+  "tests/villages-contact.regression.ts": "5de372596872d1bef9b3b24838bdab1bbaf299c2445db6587c6b63963f20c33b",
+  "tests/villages-desktop-parity.e2e.mjs": "e53d426586195c7e7ed5c1def3be29df33117be59188761d2ffa1aff9addbc9b",
+  "tests/villages-dialogue-context.regression.ts": "4f9d694cbb8f0fcd6f427abc6c7eea44a3fdc289609e18139c26cd5df628538f",
+  "tests/villages-dossier.e2e.mjs": "a61f3513fa9ed977d5e02be7cd9c3091d804bbe2210f71ac2633046a13d67ddc",
+  "tests/villages-esm-runtime.regression.mjs": "6a7253c0fcb2c39e67322e4156065698a0359d7e74e98f9762177ee826af3308",
+  "tests/villages-exchange-processing.regression.ts":
+    "b27bc271f674349c0770aff190db66269157010d52650713af57ca93dec710dd",
+  "tests/villages-founding-layout.e2e.mjs": "fafbf5267c52bc7e9cbd2b763cb17319ee81b26e3c9e03f10e8847ea3a4f26ad",
+  "tests/villages-founding-ownership.regression.ts": "6e09bf00dd28effaf401f88351e16e726125f6e92651a6f8fd37a2c2681c2aac",
+  "tests/villages-founding-preparation.e2e.mjs": "2d06e57672c7b44b187ac756bde10a418c1107e03f835c408caabce7914844d5",
+  "tests/villages-founding-preparation.regression.ts":
+    "908d69098db70cf1c8704ab0f62f5c1392f8d23283b5003e8103d27c658d6a1a",
+  "tests/villages-founding-setup-ownership.regression.ts":
+    "51c26a5fbcedf77ceb49ff47e9d3eb9b62bed7d5a441e19b50e0dc72ad9996f6",
+  "tests/villages-founding-workspace.regression.ts": "8d4c62909e30a4d1adb44653f1f40525cb51403d02b0f2b21ed97063a87e313b",
+  "tests/villages-generation-recovery.regression.ts":
+    "9b09674a4656f69e60db4c9840d0218c5ba1b38949ec941523a428d235f6da6a",
+  "tests/villages-greeting-recovery.e2e.mjs": "f4c8646323594184f8ba0f78d65d62733eada0b23388b35017ca0d840b10b3da",
+  "tests/villages-library-gallery-ownership.regression.ts":
+    "6b4c02bf4423dc62ec5861b6dd2eed383a6f5de73106bd03a16f105d6e9f62cc",
+  "tests/villages-linkapi-pricing.regression.ts": "d13e36a06d25a8ab73548179ccc8ade8892fb959f109cfed84cbab15118e6093",
+  "tests/villages-live-exchange.regression.ts": "7f0cd1b2464c78552b21f7d2c9021e945a71d4dce5f467408497913849722f13",
+  "tests/villages-live-memory.regression.ts": "342c1f71ada047bf0bf4c386c8ad1c194a5f271f720177606b7ffc43b5273c37",
+  "tests/villages-live-scene-ownership.regression.ts":
+    "8f0b5311bfb8d3c25d0a5e6032f3e864c2048af1cb623cde3ec4516884becd18",
+  "tests/villages-live-wishes.regression.ts": "33f81be87f33f5eaa86b9901518acf6c1a598c2b3c206f6e7f766c3b4e9689e5",
+  "tests/villages-lorebooks.regression.ts": "281482ceffcb228a75d6473c047bb34c1237928afe629a08a31eb36d22ebfbcc",
+  "tests/villages-map-replacement.regression.ts": "260dcfe9d233e677f3e63a2194f6209eb09a96ea8a9565733c44cf3cf713ee4a",
+  "tests/villages-markdown.regression.ts": "02f8e6a3f30cc5572f97a6631cf4f8bac7385d8ffe99ff96a034a8010500f1d7",
+  "tests/villages-menu-layout.e2e.mjs": "53bfa7d0bec77f1ef013f2abaa84c04dd02220c4611228e987cae7bee39836eb",
+  "tests/villages-menu-map.e2e.mjs": "03362c88e96d675381781d966eaa32c3cd09b863aa23003b8e5b5306de64d75e",
+  "tests/villages-mobile-exploration.e2e.mjs": "2d023d2cb6de28b8f61dba611cd7bec7a089fbcd1f343a7a77054aa4d7685c62",
+  "tests/villages-mobile-map.regression.ts": "afafcb304c19aa6b5822b5fa0242ae41e9525dea3031ac9e98be4da3ff8e8500",
+  "tests/villages-mobile-scene.e2e.mjs": "eb5673a6a58ab56e3decb555882f3bafad0b34629f170dede3ea77a6296e4382",
+  "tests/villages-mobile-scene.regression.ts": "a5c5e3c76380ea18c2ac59d377430eefb7803cb174b67eb8010e8198309e3a09",
+  "tests/villages-notice-dismiss.regression.ts": "6bbbee4b47de4734cfb7dce655541d0c81906b944efdda429977cd8e6a715709",
+  "tests/villages-operation-callback-ownership.regression.ts":
+    "31d349208163f6e2902b48427f7d0d57c7ed005d26632c8c7248454bd80cecfd",
+  "tests/villages-optional-layouts.regression.ts": "cf39177efd676ef2c6d4c20494117ef3f7e67749f2e1c307e37508a921412032",
+  "tests/villages-owned-agendas.e2e.mjs": "668391ce12f856755aef7418f21b8c61c5e77e9aa1431e93bdac2957209a3069",
+  "tests/villages-owned-agendas.regression.ts": "58b119cbcc7da3c58271df8d1aaa76f7c4e53608863700db37f3ee1d210cdcb7",
+  "tests/villages-persona-cache-ownership.regression.ts":
+    "78eb3668c1fce7e0797268ec9e13f968d30d59fcc4ef805639656bbe2251deb4",
+  "tests/villages-persona-cache-race.regression.ts": "65d6fc1013234fcc068f5dd9966bee6138f325d94244472d470c951905d30c97",
+  "tests/villages-persona-ownership.regression.ts": "7759a8bb8c3adbdf86857dd46a57e1fda49e9419938d04d0aa7d940c6dc962a2",
+  "tests/villages-pipeline-efficiency.regression.ts":
+    "e8cf00980f2db4bae6f65f67cd6cf4665a270246e8e568247d5843e1828b2979",
+  "tests/villages-player-role.e2e.mjs": "2934f46009944d95dfa29ef22fbdf89c9566baf15c751a7cc862fb936d6488d9",
+  "tests/villages-player-role.regression.ts": "5d16e0ddce00d014a6496de418fab71f469cbe47726c69230e0abb2a6b8175e0",
+  "tests/villages-player-voice.regression.ts": "9dcb62a65f66c6d9ae8a3e1cf4d8fb12081ff7e17be08a9f6ba88dd15359654d",
+  "tests/villages-private-preparation-ownership.regression.ts":
+    "544bae0765db3b99540e30c5247d8c992105fbd76453eb48bc218a603e0d4cf3",
+  "tests/villages-private-spaces.regression.ts": "07de47e73fa544e28d10cfe8495cfbff7d9536a819b91071c52970b3baae80df",
+  "tests/villages-progress-engine.regression.ts": "faa317ce83b50b34a962633ec1f8a21a33cefa018320161501683c5515a16c88",
+  "tests/villages-progress-projects.regression.ts": "963ba686c580216ec2ec425e4becd9ad2ef64fa724dc5b2409c2e26d4c04a88a",
+  "tests/villages-project-checks.regression.ts": "1645c4b9958da3e79d1a5ef8cacd43b634995a15bf51c74644cf1bbe68958a17",
+  "tests/villages-project-navigation.e2e.mjs": "12a9bbffae5a5605d8b16063316b4314926761cb82f16facc83f67a048bc83f7",
+  "tests/villages-prose-event-authority.regression.ts":
+    "a6ac54ffa23cf07ea104541a374e9076f0eeca90dd6a24bd0bbd804df1c31e46",
+  "tests/villages-reading-pages.e2e.mjs": "1d5d74199d50b16bdfe3a6b3f6da123dbdcf20076d06f043e1a806c98a8e96a0",
+  "tests/villages-reading-pages.regression.ts": "bfcbd14208232080db6f3f11c28c5f5c16786602b320bac529156e6356c6a67a",
+  "tests/villages-relationships.regression.ts": "7990276610165cc561cbcb67fb4d4f91b133779a2f6918237e2a310543681fc8",
+  "tests/villages-remote-access.regression.ts": "114b109f2a2bf95799f3adb48cbba5a6d846ce724c574267cae2da4a67808fa5",
+  "tests/villages-residence-ownership.regression.ts":
+    "7ce58934de8d307d7df2f1927c078363f02748cb8c8be1bc8d1c4894c65db0fe",
+  "tests/villages-resident-agenda-ownership.regression.ts":
+    "e699b18c5e0cf1ba2bfb92268e3a9b75d1b6c9807260e9b297143ac2714e7fba",
+  "tests/villages-resident-card-ownership.regression.ts":
+    "7662d3d224c39251e8dae53b595c6d695d16462097cf5362d8b76bc4ab1e678c",
+  "tests/villages-resident-continuity.regression.ts":
+    "a339a5f210842d1390ac0891c50becfb4b57ac990bcf0253ecd9c7bf9147da54",
+  "tests/villages-resident-roster-ownership.regression.ts":
+    "1d81fdb8b642faf1b8d2768effd05689443749f9e9991d7b54a59a61d829c934",
+  "tests/villages-resident-sprites.regression.ts": "2a15479012b9ef104d199729d61700953d9f001995b3bb025c8a34d0b0022e06",
+  "tests/villages-response-format.regression.ts": "e87a5a0e1bd5fcf14e5c1dc669d5b0b34e29f1667692f7e4ef8d53e76d653cee",
+  "tests/villages-room-events.regression.ts": "6c0d9b983f10189219ee1d0159032c9f2aa86e8be31e5ddbc73e0276309d85a4",
+  "tests/villages-room-notices.e2e.mjs": "a214e3a1085d824934398c0a46a9f675af704798a857912488108937e205fd49",
+  "tests/villages-room-occupancy.regression.ts": "a0435b54843ecf7eec3dfd3d55ca783ca07ea60caf1d4cfc912480c8663e3b8b",
+  "tests/villages-room-reading.regression.ts": "1fb9f5a27c345d8afa3423a5284804981f10570b09c34b8736e61dd1f70f6550",
+  "tests/villages-route-registration.regression.ts": "4398762b4157331b55583ddcd140b2725c9f55dbe09826480ed1158c83ead3d9",
+  "tests/villages-runtime-debug-ownership.regression.ts":
+    "6449f9a6e54b53553803f6bbbcfdf8b35d8f29759feaaaff6e6adc217de6520a",
+  "tests/villages-runtime-debug.e2e.mjs": "b81badf5b035ecbb45e809e1e86dde6531ccdcf60caa91498228c8087c112280",
+  "tests/villages-runtime-debug.regression.ts": "6206e69fb5ee7ac7eb20999ac7dc953342bf62214ce489dc10a93ac3082f4fa7",
+  "tests/villages-scene-action-lifetimes.e2e.mjs": "f4f878b4cdae2f45c26bbfdf98a5d842b8cb522439851f621eefd12131dc5f7b",
+  "tests/villages-scene-actions.e2e.mjs": "333c6eacdd166126a8691c61723e914dffdcb155391ab78f31b8bf4269be1db1",
+  "tests/villages-scene-actions.regression.ts": "b23d833a4c836b8edab5f2a3210374150e6190f249fb62145e585620abd7d2a8",
+  "tests/villages-scene-archive-ownership.regression.ts":
+    "d4fc2a297058daee65d2a623bdd20ba9e2711b9f8cfa953e3320e51ebea4daa4",
+  "tests/villages-scene-changes-ownership.regression.ts":
+    "bdee5a16af3bcc8507d9e02685a631b85c9151fe668177a22523dc0be400141b",
+  "tests/villages-scene-controls.e2e.mjs": "59eac1261f4117b48237e21e16bd3b3ce219a3b244aed4f560f59fc7f8510cb6",
+  "tests/villages-scene-entry-lifetimes.e2e.mjs": "1456f1393c68fc1dca6a1fc7edab6d9650b2e506efab558ed016c478d5aa78ec",
+  "tests/villages-scene-mutation.regression.ts": "f99ed6a6d82d6aba082cf1138671b06a80c5ca75bed84a85a0394e95cc558934",
+  "tests/villages-scene-privacy.regression.ts": "3defe97d6508896fa36a74f0317362fcfbb4f33275a6b1cea62e45c6b9f96182",
+  "tests/villages-scene-progress-ownership.regression.ts":
+    "f410a8323dbfa5936792dbd3443255942b7a2750e60c3ec06a984f5476bbe00f",
+  "tests/villages-scene-query-ownership.regression.ts":
+    "cef8cd641678101636c80a4900ccbb59c9c23541f519db26228d2f18a0ac5150",
+  "tests/villages-scene-reset-ownership.regression.ts":
+    "a9cf02d68692ee3203832ea73d9b78912c1906406dcefe4455e39d6501bad675",
+  "tests/villages-scene-restoration-lifetimes.e2e.mjs":
+    "5f141a63ed5e5b81bc4b95feb844fea059f2f6751d8e2cf700f5cf9f0463aa6a",
+  "tests/villages-scene-send-lifetime.e2e.mjs": "9570296705e0fce8310c62ecf7b8a1703dc19555c66fe19e27cbb65c5cbd4434",
+  "tests/villages-scene-send-recovery.e2e.mjs": "b0f314dc8ed6aca56d654ca35ee3131a185f4786e18db3e2328bc8ec8f5f3376",
+  "tests/villages-scene-staging.e2e.mjs": "a02d34ce4c7fbda663eead590fd595d559dd0fbd9bca82c1e1c7df151721b296",
+  "tests/villages-scene-staging.regression.ts": "eb6e004e18502cad1e16402247ed5acbc6b12f723eb23c56f33d35b0b20197ef",
+  "tests/villages-scene-storage-ownership.regression.ts":
+    "ab0e35ca35b9d0af427445bd928053994987f2a789ed3ba7a872d35ce556f87d",
+  "tests/villages-scene-text.regression.ts": "ee506969358bb95d52bc8929d2a7d6347090b0caeea23972bdb8f9616c5e9ec3",
+  "tests/villages-scene-work-ownership.regression.ts":
+    "adafedba80dc00d5d6198d819cf4c229d5e059c90130fb57405d0fbb60865abe",
+  "tests/villages-scene-writing-ownership.regression.ts":
+    "924bfb1d431a8918aac036e69c0b2c7b6164446fe706a861840d404635329290",
+  "tests/villages-schedule-remap.regression.ts": "15e4ff3f7a0c83b3c5c924cb9c2ad6efe8a0ea39b98f810b269497df3082b89a",
+  "tests/villages-setting-grounding.regression.ts": "d9905914c720ea82d34a59513490266830f19ce76be3d0dc6eae8842a878333c",
+  "tests/villages-settings-drift.regression.ts": "22e2c8062b519003d8fd2018525356970ace2fedce0ba5ede243febd5447991f",
+  "tests/villages-settings-navigation.e2e.mjs": "c5bff0dbe8877dd28a732309048cbc3fe628d9baf021297960ae0f326d45e6e0",
+  "tests/villages-settings-ownership.regression.ts": "02e9d93204a09eaa2666486e334e10fb4b7e013f0c5127eb23a6b601ebb0b6ca",
+  "tests/villages-signature-ownership.regression.ts":
+    "024ebb3af155a89babc451b9588bacec8d29ab2600490f7f78519daed7619437",
+  "tests/villages-signatures.regression.ts": "5b6bc5c961134bdc211260c19fa0ff59ec3d4c3c4b62358f52b109607b746da7",
+  "tests/villages-snapshot-ownership.regression.ts": "b66ec917d03269c44efbb2cf8d208dcfcff05cbda4d6fc4608b98c78b157e8df",
+  "tests/villages-speech-shape.regression.ts": "31f4cc6f4972394a9bb556d48452ec32fcb21431bd73a4e60a8ea8b4141e487c",
+  "tests/villages-sprite-manager.e2e.mjs": "6ebd9fb4461b5137babd719890f172186359f9c52d6fd7cd616012744d397251",
+  "tests/villages-sprite-manager.regression.ts": "89788e9e4714bf341440a764b17edee597c32bd9fb28e280b9f8d1056a0c334a",
+  "tests/villages-sprite-ownership.regression.ts": "07c12a71e8327a57ad7ba264bfb2089acba79d8ed230d529b900e40239b26c73",
+  "tests/villages-state-service.regression.ts": "4dac606c2fbe89028b8f1178280c4ff2da92cf6647d759a6af9d29d5dcc87bb8",
+  "tests/villages-town-map-ownership.regression.ts": "e07a21b68ebc88a7228d4051c4d6f87ebdd1cfc9abc147a24acb8c0a62f9ef1b",
+  "tests/villages-town-map-review-ownership.regression.ts":
+    "e77162077db6bd42a068d94b895572def4e076b0873dd337f6a25e65c1215b33",
+  "tests/villages-usage-meter.e2e.mjs": "02641ee26484a3188985298560578bd4c81a0c72bf22fe11ea6301a6ac713ae9",
+  "tests/villages-usage-meter.regression.ts": "ad733636ac782d0054f49fb13dd4a97ed9d89aae6bd14e6319d6729f0f98f5d1",
+  "tests/villages-usage-ownership.regression.ts": "5fac3240f268744fe71a8edf1dcce68c959ec38c9eda9b95a1db03610963836e",
+  "tests/villages-usage-preview.e2e.mjs": "6471c553d1317b660fee4ebfb5b047e3d8d66ef88c2d69b84dd23871dac7a47f",
+  "tests/villages-usage-preview.regression.ts": "a67994c790ae35a0f7a135527167173b9b1dede9eed6d1526aa5ece8e14df01a",
+  "tests/villages-venue-access.regression.ts": "eb923c5ca2094095c35133933ed7449b6016186bb99120bd33e770521d5f9df8",
+  "tests/villages-venue-capacity.regression.ts": "565062f9e858a0414ceaaa831b6820ec17dfc48d48ac4b2ec6fd9bd5439d6b07",
+  "tests/villages-venue-coordination.e2e.mjs": "a7814b65af7a596dd874c1c53fc082de269a58025582d1c3fbf6846e50e812ce",
+  "tests/villages-venue-coordinator.regression.ts": "f3cf39982df7d6cd168f788b89b4229dd62bebd93552bf353452caa88647c62c",
+  "tests/villages-venue-entry.regression.ts": "9c731089e33bc69ac50a8217a21bf19b265ee791ba1a4c99faa2dc86897212a5",
+  "tests/villages-venue-layout.e2e.mjs": "cbf9787c0ff42008a22b4837f8ba35bd8e3b55985b07d9e2a5f1f6b8e40fbbb7",
+  "tests/villages-venue-model.regression.ts": "49c887c23d64c3da64d1548ce9297fe0a034c0ecc106fcbba33a0842b3c9e773",
+  "tests/villages-venue-ownership.regression.ts": "b93d37b66f90c0373767ebe8d9d318b5a92a162a0b0af09832740d5794cd516c",
+  "tests/villages-venue-request-ownership.regression.ts":
+    "88557f94a5649d0f2fe16a68b25aabdfefb15e337dc6ec04a4d54f5f4af6c781",
+  "tests/villages-venue-requests.regression.ts": "f171cf1a85bd6b77769be2463d5c09b9eb666130c36275f1f6ec476d99079e52",
+  "tests/villages-venue-routes.regression.ts": "0f77c2b7bda32f352fb0e958fb97816929f15557cc956aab688612d45e77ceb0",
+  "tests/villages-venue-send.regression.ts": "4941f6678b0f3c29199b46450003e87bbcb51aaf60aec834f15e66c1b20fc573",
+  "tests/villages-venue-service.regression.ts": "07ebb03ae617587006945dcbff08a8fd6cb5fe3d05de7fafc655571ceef24984",
+  "tests/villages-venue-session.regression.ts": "1ae9c58976887197db88e76edb7f923ef6adf1c8d5da6f3b7f5c92b9686132e0",
+  "tests/villages-wish-batch.regression.ts": "03088522a9b4f3c7061f5099b2efe23c6f02323f135332f77a2ca2e1fac249a5",
+  "tests/villages-wish-clock-ownership.regression.ts":
+    "ee6a326a17e6aaaa7f6eb38076cb3a5bb54d64b5e6bb2820245a7f0a80b54f63",
+  "tests/villages-wish-journal.e2e.mjs": "7be2db354fe3589174459b96fc0daa0a1bb57887fe11554e46e716eda2e767e4",
+  "tests/villages-wish-journal.regression.ts": "fcb024ad3f1d668edec0ef52f6db4d84b88a5418d31a7b0684b1fc509d5bd885",
+  "tests/villages-wish-lifecycle.regression.ts": "4c2b7da506f707c8bb762383ce4a3447b3039572bd287c4e62053d6dd6aafea0",
+  "tests/villages-wish-prevention.regression.ts": "ef3921c9d28aa3f28cde704a9d633876d5ba8c5d3517213eb904739b3d99a0d6",
+  "tests/villages-world-coordination-ownership.regression.ts":
+    "26f89232070ed792a7f05efffe500b5eecea21a76a2f207e605f9e157d250bd1",
+  "tests/villages-world-mutation.regression.ts": "44a8959107ae3e3653c1c0dc95882a797bb8c73b1a6e5fc140c3b4c84d1f0e9f",
+  "tests/villages-zones.regression.ts": "0f6bd71774e7d2ebac36f4353921a990a52903d5e1de4fcb40f71f7c5b01b7ad",
+};

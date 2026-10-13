@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium } from "@playwright/test";
+import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { verifyVenueScreenLifetimes } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
 const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
