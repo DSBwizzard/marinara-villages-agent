@@ -292,14 +292,32 @@ async function checkHooks(width) {
 async function checkPackage(width) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }),
     errors = [],
-    scenerySaves = [];
+    scenerySaves = [],
+    usagePreviews = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const snapshot = initialSnapshot();
+  await page.clock.install();
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
       scenerySaves.push(route);
       return;
+    }
+    if (path.endsWith("/usage/preview") && route.request().method() === "POST") {
+      const preview = route.request().postDataJSON();
+      assert.ok(["images", "change"].includes(preview.action), "only Settings cost forecasts are admitted");
+      usagePreviews.push(preview);
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          requests: 0,
+          residents: [],
+          dollars: { min: 0, max: 0 },
+          unknownCosts: 0,
+          note: "Synthetic read-only forecast.",
+        }),
+      });
     }
     if (route.request().method() !== "GET" && !path.endsWith("/presence") && !path.endsWith("/reconcile"))
       throw Error(`Unexpected mutation: ${path}`);
@@ -344,6 +362,8 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
   await page.getByRole("button", { name: "General Settings", exact: true }).click();
   await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+  await page.clock.fastForward(350);
+  await expect.poll(() => usagePreviews.length).toBeGreaterThan(0);
   await page.getByLabel("The information villagers know", { exact: true }).fill("Packaged retained draft");
   await page.getByRole("button", { name: "Back to menu", exact: true }).click();
   await page.getByRole("button", { name: "General Settings", exact: true }).click();
