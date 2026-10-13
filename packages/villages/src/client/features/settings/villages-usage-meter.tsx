@@ -78,10 +78,10 @@ export function VillagesUsageMeter({ request, element }: { request: Request; ele
       const right = Math.min(rect.right, (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth));
       const bottom = Math.min(rect.bottom, (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight));
       const next = {
-        top: top + 4,
+        top: top + 48,
         right: window.innerWidth - right + 6,
         width: Math.max(0, right - left - 12),
-        height: Math.max(0, bottom - top - 12),
+        height: Math.max(0, bottom - top - 56),
       };
       setBounds((current) =>
         Object.keys(next).every((key) => current[key as keyof typeof next] === next[key as keyof typeof next])
